@@ -1,49 +1,10 @@
 {
-	"name": "@zinn-dev/cli",
-	"version": "0.0.1",
-	"description": "A kanban workflow for your terminal. Built on OpenTUI.",
-	"license": "MIT",
-	"bugs": {
-		"url": "https://github.com/yethranayeh/zinn/issues"
-	},
-	"author": {
-		"name": "Alper Halil",
-		"email": "contact@aktasalper.com",
-		"url": "https://aktasalper.com"
-	},
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/yethranayeh/zinn.git"
-	},
-	"keywords": [
-		"kanban",
-		"cli",
-		"terminal",
-		"tui",
-		"opentui",
-		"bun"
-	],
-	"module": "index.ts",
-	"exports": {
-		".": {
-			"types": "./index.ts",
-			"import": "./index.ts"
-		}
-	},
-	"files": [
-		"index.ts",
-		"README.md"
-	],
+	"name": "zinn",
+	"private": true,
+	"workspaces": ["packages/*"],
 	"type": "module",
-	"bin": {
-		"zinn": "./index.ts"
-	},
-	"private": false,
 	"devDependencies": {
 		"@types/bun": "latest",
 		"typescript": "^5"
-	},
-	"dependencies": {
-		"@opentui/core": "^0.4.5"
 	}
 }

@@ -1,0 +1,13 @@
+{
+	"name": "@zinn-dev/core",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"module": "index.ts",
+	"exports": {
+		".": {
+			"types": "./index.ts",
+			"import": "./index.ts"
+		}
+	}
+}

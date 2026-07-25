@@ -4,12 +4,31 @@
   "workspaces": {
     "": {
       "name": "@zinn-dev/cli",
-      "dependencies": {
-        "@opentui/core": "^0.4.5",
-      },
       "devDependencies": {
         "@types/bun": "latest",
         "typescript": "^5",
+      },
+    },
+    "packages/cli": {
+      "name": "@zinn-dev/cli",
+      "version": "0.0.1",
+      "bin": {
+        "zinn": "./index.ts",
+      },
+      "dependencies": {
+        "@zinn-dev/core": "workspace:*",
+        "@zinn-dev/tui": "workspace:*",
+      },
+    },
+    "packages/core": {
+      "name": "@zinn-dev/core",
+      "version": "0.0.1",
+    },
+    "packages/tui": {
+      "name": "@zinn-dev/tui",
+      "version": "0.0.1",
+      "dependencies": {
+        "@opentui/core": "^0.4.5",
       },
     },
   },
@@ -35,6 +54,12 @@
     "@types/bun": ["@types/bun@1.3.14", "", { "dependencies": { "bun-types": "1.3.14" } }, "sha512-h1hFqFVcvAvD9j9K7ZW7vd82aSA+rTdznZa+5bwvCwqSB1jmmfLcbIWhOLx1/+boy/xmjgCs/OMUL8hRJSmnPw=="],
 
     "@types/node": ["@types/node@26.1.1", "", { "dependencies": { "undici-types": "~8.3.0" } }, "sha512-nxAkRSVkN1Y0JC1W8ky/fTfkGsMmcrRsbx+3XoZE+rMOX71kLYTV7fLXpqud1GpbpP5TuffXFqfX7fH2GgZREw=="],
+
+    "@zinn-dev/cli": ["@zinn-dev/cli@workspace:packages/cli"],
+
+    "@zinn-dev/core": ["@zinn-dev/core@workspace:packages/core"],
+
+    "@zinn-dev/tui": ["@zinn-dev/tui@workspace:packages/tui"],
 
     "ansi-regex": ["ansi-regex@6.2.2", "", {}, "sha512-Bq3SmSpyFHaWjPk8If9yc6svM8c56dB5BAtW4Qbw5jHTwwXXcTLoRMkpDJp6VL0XzlWaCHTXrkFURMYmD0sLqg=="],
 
