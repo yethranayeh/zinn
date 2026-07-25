@@ -3,14 +3,12 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "kanbun",
+      "name": "@zinn-dev/cli",
       "dependencies": {
         "@opentui/core": "^0.4.5",
       },
       "devDependencies": {
         "@types/bun": "latest",
-      },
-      "peerDependencies": {
         "typescript": "^5",
       },
     },

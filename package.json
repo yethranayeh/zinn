@@ -1,10 +1,10 @@
 {
-	"name": "kanbun",
+	"name": "@zinn-dev/cli",
 	"version": "0.0.1",
 	"description": "A kanban workflow for your terminal. Built on OpenTUI.",
 	"license": "MIT",
 	"bugs": {
-		"url": "https://github.com/yethranayeh/kanbun/issues"
+		"url": "https://github.com/yethranayeh/zinn/issues"
 	},
 	"author": {
 		"name": "Alper Halil",
@@ -13,8 +13,7 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/yethranayeh/kanbun.git",
-		"directory": "packages/kanbun"
+		"url": "git+https://github.com/yethranayeh/zinn.git"
 	},
 	"keywords": [
 		"kanban",
@@ -31,9 +30,13 @@
 			"import": "./index.ts"
 		}
 	},
+	"files": [
+		"index.ts",
+		"README.md"
+	],
 	"type": "module",
 	"bin": {
-		"kanbun": "./index.ts"
+		"zinn": "./index.ts"
 	},
 	"private": false,
 	"devDependencies": {
