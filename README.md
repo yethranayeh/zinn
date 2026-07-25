@@ -1,15 +1,21 @@
 # kanbun
 
-To install dependencies:
+A kanban workflow for your terminal. Built on OpenTUI.
+
+## Install
 
 ```bash
-bun install
+bun add -g kanbun
 ```
 
-To run:
+OpenTUI is based on Bun, so Bun is the recommended runtime.
+
+## Usage
 
 ```bash
-bun run index.ts
+kanbun
 ```
 
-This project was created using `bun init` in bun v1.3.14. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+## License
+
+MIT
