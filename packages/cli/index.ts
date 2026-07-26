@@ -1,9 +1,11 @@
 #!/usr/bin/env bun
+
 const args = process.argv.slice(2);
 const FLAG = {
   help: ["-h", "--help"],
   project: ["project"],
   create: ["create"],
+  delete: ["delete"],
 };
 
 const MESSAGE = {
@@ -29,7 +31,7 @@ if (args.length === 0) {
       usage: zinn [options]
       -h, --help  For help using Zinn`);
   } else {
-    const { createProject } = await import("@zinn-dev/core");
+    const { createProject, deleteProject } = await import("@zinn-dev/core");
 
     if (FLAG.project.includes(firstArg)) {
       const secondArg = args[1];
@@ -58,6 +60,25 @@ if (args.length === 0) {
           } else {
             console.error(err);
           }
+          process.exit(1);
+        }
+      } else if (FLAG.delete.includes(secondArg)) {
+        const projectKey = args[2];
+        if (projectKey == null) {
+          console.error("You need to specificy which project to delete");
+          process.exit(1);
+        }
+
+        try {
+          // TODO: add y/n confirmation
+          deleteProject(projectKey);
+        } catch (err) {
+          if (err instanceof Error) {
+            console.error(err.message);
+          } else {
+            console.error(err);
+          }
+
           process.exit(1);
         }
       } else {

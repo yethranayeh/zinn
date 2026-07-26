@@ -18,6 +18,7 @@ projectTableSetup.run();
 export function getProjectByKey(key: string) {
   return db.query(`SELECT * FROM ${DB_TABLE.project} WHERE key = $key`).get({ $key: key });
 }
+
 export function addProject(key: string, name: string) {
   const query = db.query(`INSERT INTO
     ${DB_TABLE.project} (id, key, name, created_at, updated_at)
@@ -25,4 +26,8 @@ export function addProject(key: string, name: string) {
   const time = Date.now();
 
   return query.run({ $id: randomUUIDv7(), $key: key, $name: name, $created: time, $updated: time });
+}
+
+export function deleteProjectByKey(key: string) {
+  return db.query(`DELETE FROM ${DB_TABLE.project} WHERE key = $key;`).run({ $key: key });
 }
