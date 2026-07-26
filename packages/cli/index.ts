@@ -5,6 +5,11 @@ const FLAG = {
   create: ["create"],
 };
 
+const MESSAGE = {
+  displayUnknownCommand: (cmd: string) =>
+    `Unrecognized command "${cmd}". Please run \`zinn --help\` for a list of available commands`,
+};
+
 if (args.length === 0) {
   if (!!process.stdout.isTTY) {
     const tui = await import("@zinn-dev/tui");
@@ -34,11 +39,11 @@ if (args.length === 0) {
         process.exit(1);
       } else if (FLAG.create.includes(secondArg)) {
         createProject();
+      } else {
+        console.error(MESSAGE.displayUnknownCommand(`${firstArg} ${secondArg}`));
       }
     } else {
-      console.error(
-        `Unrecognized command "${firstArg}". Please run \`zinn --help\` for a list of available commands`,
-      );
+      console.error(MESSAGE.displayUnknownCommand(firstArg));
       process.exit(1);
     }
   }
