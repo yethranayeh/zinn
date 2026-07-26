@@ -1,7 +1,7 @@
 const args = process.argv.slice(2);
 const FLAG = {
   help: ["-h", "--help"],
-  create: ["create"],
+  project: ["project"],
 };
 
 if (args.length === 0) {
@@ -21,9 +21,20 @@ if (args.length === 0) {
       usage: zinn [options]
       -h, --help  For help using Zinn`);
   } else {
-    console.error(
-      `Unrecognized command "${firstArg}". Please run \`zinn --help\` for a list of available commands`,
-    );
-    process.exit(1);
+    if (FLAG.project.includes(firstArg)) {
+      const secondArg = args[1];
+      if (secondArg == null) {
+        // TODO: implement `zinn project --help` for better guiding
+        console.error(
+          `The command "${firstArg}" requires a secondary command: zinn ${firstArg} <command>`,
+        );
+        process.exit(1);
+      }
+    } else {
+      console.error(
+        `Unrecognized command "${firstArg}". Please run \`zinn --help\` for a list of available commands`,
+      );
+      process.exit(1);
+    }
   }
 }
