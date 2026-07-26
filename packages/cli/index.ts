@@ -5,7 +5,8 @@ if (args.length === 0) {
     const tui = await import("@zinn-dev/tui");
     tui.launch();
   } else {
-    // TODO: non interative branch
+    console.error("Direct launch in a non-TTY environment is not supported.");
+    process.exit(1);
   }
 } else {
   // TODO: headless CLI
