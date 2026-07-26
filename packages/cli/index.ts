@@ -2,6 +2,7 @@ const args = process.argv.slice(2);
 const FLAG = {
   help: ["-h", "--help"],
   project: ["project"],
+  create: ["create"],
 };
 
 if (args.length === 0) {
@@ -21,6 +22,8 @@ if (args.length === 0) {
       usage: zinn [options]
       -h, --help  For help using Zinn`);
   } else {
+    const { createProject } = await import("@zinn-dev/core");
+
     if (FLAG.project.includes(firstArg)) {
       const secondArg = args[1];
       if (secondArg == null) {
@@ -29,6 +32,8 @@ if (args.length === 0) {
           `The command "${firstArg}" requires a secondary command: zinn ${firstArg} <command>`,
         );
         process.exit(1);
+      } else if (FLAG.create.includes(secondArg)) {
+        createProject();
       }
     } else {
       console.error(
