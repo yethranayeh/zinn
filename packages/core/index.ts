@@ -1,3 +1,4 @@
+// TODO: do not initialize before the first "valid" command
 import "./src/config";
 import { db, addProject, getProjectByKey, deleteProjectByKey } from "./src/db";
 
@@ -6,6 +7,7 @@ function standardizeKey(key: string) {
   return key.toUpperCase();
 }
 
+// TODO: switch to object param
 export function createProject(key: string, name: string) {
   const standardizedKey = standardizeKey(key);
   const project = getProjectByKey(standardizedKey);

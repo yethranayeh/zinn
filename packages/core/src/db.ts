@@ -19,6 +19,7 @@ export function getProjectByKey(key: string) {
   return db.query(`SELECT * FROM ${DB_TABLE.project} WHERE key = $key`).get({ $key: key });
 }
 
+// TODO: switch to object param
 export function addProject(key: string, name: string) {
   const query = db.query(`INSERT INTO
     ${DB_TABLE.project} (id, key, name, created_at, updated_at)

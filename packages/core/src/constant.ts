@@ -14,4 +14,5 @@ export const DB_TABLE = {
   project: "project",
 };
 
+// TODO: implement zod schema for setting.json
 export const defaultConfig = {};
