@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 const args = process.argv.slice(2);
 const FLAG = {
   help: ["-h", "--help"],
