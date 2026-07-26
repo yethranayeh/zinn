@@ -83,6 +83,7 @@ if (args.length === 0) {
         }
       } else {
         console.error(MESSAGE.displayUnknownCommand(`${firstArg} ${secondArg}`));
+        process.exit(1);
       }
     } else {
       console.error(MESSAGE.displayUnknownCommand(firstArg));
