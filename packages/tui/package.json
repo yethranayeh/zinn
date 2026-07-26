@@ -1,7 +1,6 @@
 {
 	"name": "@zinn-dev/tui",
 	"version": "0.0.1",
-	"private": true,
 	"type": "module",
 	"module": "index.ts",
 	"exports": {
@@ -9,6 +8,12 @@
 			"types": "./index.ts",
 			"import": "./index.ts"
 		}
+	},
+	"files": [
+		"index.ts"
+	],
+	"publishConfig": {
+		"access": "public"
 	},
 	"dependencies": {
 		"@opentui/core": "^0.4.5"

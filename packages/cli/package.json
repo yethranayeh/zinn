@@ -1,6 +1,6 @@
 {
 	"name": "@zinn-dev/cli",
-	"version": "0.0.2",
+	"version": "0.0.3",
 	"description": "A kanban workflow for your terminal. Built on OpenTUI.",
 	"license": "MIT",
 	"bugs": {
@@ -31,12 +31,14 @@
 		}
 	},
 	"files": [
-		"index.ts",
-		"README.md"
+		"index.ts"
 	],
 	"type": "module",
 	"bin": {
 		"zinn": "./index.ts"
+	},
+	"publishConfig": {
+		"access": "public"
 	},
 	"dependencies": {
 		"@zinn-dev/core": "workspace:*",
