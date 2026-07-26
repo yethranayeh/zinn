@@ -1,6 +1,7 @@
 const args = process.argv.slice(2);
 const FLAG = {
   help: ["-h", "--help"],
+  create: ["create"],
 };
 
 if (args.length === 0) {
@@ -17,7 +18,12 @@ if (args.length === 0) {
   if (FLAG.help.includes(firstArg)) {
     console.log(`ZINN - A kanban workflow in the terminal
 
-usage: zinn [options]
-  -h, --help  For help using Zinn`);
+      usage: zinn [options]
+      -h, --help  For help using Zinn`);
+  } else {
+    console.error(
+      `Unrecognized command "${firstArg}". Please run \`zinn --help\` for a list of available commands`,
+    );
+    process.exit(1);
   }
 }
