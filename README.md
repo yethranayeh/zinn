@@ -1,6 +1,6 @@
 # zinn
 
-A kanban workflow for your terminal. Built on OpenTUI.
+A kanban workflow in the terminal. Built on OpenTUI.
 
 ## Install
 
