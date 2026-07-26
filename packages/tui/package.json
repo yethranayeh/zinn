@@ -1,6 +1,12 @@
 {
 	"name": "@zinn-dev/tui",
 	"version": "0.0.1",
+	"description": "The TUI for zinn, a kanban workflow in the terminal.",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/yethranayeh/zinn.git",
+		"directory": "packages/tui"
+	},
 	"type": "module",
 	"module": "index.ts",
 	"exports": {

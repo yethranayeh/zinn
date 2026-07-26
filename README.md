@@ -1,6 +1,6 @@
 # zinn
 
-A kanban workflow in the terminal. Built on OpenTUI.
+A kanban workflow in the terminal.
 
 ## Install
 
@@ -8,13 +8,21 @@ A kanban workflow in the terminal. Built on OpenTUI.
 bun add -g @zinn-dev/cli
 ```
 
-OpenTUI is based on Bun, so Bun is the recommended runtime.
+Requires [Bun](https://bun.sh).
 
 ## Usage
 
 ```bash
 zinn
 ```
+
+## Packages
+
+| Package | |
+| --- | --- |
+| [`@zinn-dev/cli`](packages/cli) | the `zinn` binary |
+| [`@zinn-dev/tui`](packages/tui) | the terminal interface |
+| [`@zinn-dev/core`](packages/core) | shared logic the other packages call into |
 
 ## License
 

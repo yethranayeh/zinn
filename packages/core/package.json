@@ -1,6 +1,12 @@
 {
 	"name": "@zinn-dev/core",
 	"version": "0.0.1",
+	"description": "Shared logic for zinn, a kanban workflow in the terminal.",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/yethranayeh/zinn.git",
+		"directory": "packages/core"
+	},
 	"private": false,
 	"type": "module",
 	"module": "index.ts",

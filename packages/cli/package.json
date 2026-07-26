@@ -1,7 +1,7 @@
 {
 	"name": "@zinn-dev/cli",
 	"version": "0.0.3",
-	"description": "A kanban workflow for your terminal. Built on OpenTUI.",
+	"description": "A kanban workflow in the terminal.",
 	"license": "MIT",
 	"bugs": {
 		"url": "https://github.com/yethranayeh/zinn/issues"
