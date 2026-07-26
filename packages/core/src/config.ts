@@ -1,8 +1,12 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { CONFIG_PATH, defaultConfig, MAIN_PATH } from "./constant";
+import { DATA_DIR, MAIN_DIR, CONFIG_PATH, defaultConfig } from "./constant";
 
-if (!existsSync(MAIN_PATH)) {
-  mkdirSync(MAIN_PATH);
+if (!existsSync(MAIN_DIR)) {
+  mkdirSync(MAIN_DIR);
+}
+
+if (!existsSync(DATA_DIR)) {
+  mkdirSync(DATA_DIR);
 }
 
 if (!existsSync(CONFIG_PATH)) {
