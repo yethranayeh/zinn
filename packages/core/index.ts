@@ -2,11 +2,13 @@ import "./src/config";
 import { addProject, db, getProjectByKey } from "./src/db";
 
 export function createProject(key: string, name: string) {
-  const project = getProjectByKey(key);
+  // TODO: maybe force latin characters only to prevent unexpected stuff from charaters like Ğ, İ, etc.
+  const standardizedKey = key.toUpperCase();
+  const project = getProjectByKey(standardizedKey);
 
   if (project != null) {
-    throw new Error(`Project with key "${key}" already exists!`);
+    throw new Error(`Project with key "${standardizedKey}" already exists!`);
   }
 
-  addProject(key, name);
+  addProject(standardizedKey, name);
 }

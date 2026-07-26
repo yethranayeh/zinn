@@ -23,6 +23,7 @@ if (args.length === 0) {
   // TODO: isTTY check for human readable colored and structured formatting like tables
   const firstArg = args[0]!;
   if (FLAG.help.includes(firstArg)) {
+    // TODO: document that project keys are always uppercased
     console.log(`ZINN - A kanban workflow in the terminal
 
       usage: zinn [options]
@@ -39,9 +40,18 @@ if (args.length === 0) {
         );
         process.exit(1);
       } else if (FLAG.create.includes(secondArg)) {
+        // TODO: allow direct key value pairs with flags like --name and --key
+        const projectName = args[2];
+        // TODO: maybe auto generate project key from name instead of forcing explicit input (however, very open to collision)
+        const projectKey = args[3];
+
+        if (projectName == null || projectKey == null) {
+          console.error("Both the project name and the project key must be defined");
+          process.exit(1);
+        }
+
         try {
-          // TODO: read from args
-          createProject("ZNN", "Zinn");
+          createProject(projectKey, projectName);
         } catch (err) {
           if (err instanceof Error) {
             console.error(err.message);
