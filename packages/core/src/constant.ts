@@ -10,5 +10,8 @@ export const CONFIG_PATH = join(MAIN_DIR, CONFIG_FILE_NAME);
 export const DATA_DIR = join(MAIN_DIR, "data");
 // TODO: environment variable based path overriding for tests
 export const DB_PATH = join(DATA_DIR, DB_FILE_NAME);
+export const DB_TABLE = {
+  project: "project",
+};
 
 export const defaultConfig = {};

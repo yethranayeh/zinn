@@ -39,7 +39,17 @@ if (args.length === 0) {
         );
         process.exit(1);
       } else if (FLAG.create.includes(secondArg)) {
-        createProject();
+        try {
+          // TODO: read from args
+          createProject("ZNN", "Zinn");
+        } catch (err) {
+          if (err instanceof Error) {
+            console.error(err.message);
+          } else {
+            console.error(err);
+          }
+          process.exit(1);
+        }
       } else {
         console.error(MESSAGE.displayUnknownCommand(`${firstArg} ${secondArg}`));
       }

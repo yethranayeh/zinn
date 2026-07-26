@@ -1,5 +1,12 @@
 import "./src/config";
+import { addProject, db, getProjectByKey } from "./src/db";
 
-export async function createProject() {
-  console.log("will create project");
+export function createProject(key: string, name: string) {
+  const project = getProjectByKey(key);
+
+  if (project != null) {
+    throw new Error(`Project with key "${key}" already exists!`);
+  }
+
+  addProject(key, name);
 }
