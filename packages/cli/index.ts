@@ -53,7 +53,7 @@ if (args.length === 0) {
         }
 
         try {
-          createProject(projectKey, projectName);
+          createProject({ key: projectKey, name: projectName });
         } catch (err) {
           if (err instanceof Error) {
             console.error(err.message);

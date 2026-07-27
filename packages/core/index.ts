@@ -1,14 +1,13 @@
 // TODO: do not initialize before the first "valid" command
 import "./src/config";
-import { db, addProject, getProjectByKey, deleteProjectByKey } from "./src/db";
+import { addProject, getProjectByKey, deleteProjectByKey } from "./src/db";
 
 function standardizeKey(key: string) {
   // TODO: maybe force latin characters only to prevent unexpected stuff from charaters like Ğ, İ, etc.
   return key.toUpperCase();
 }
 
-// TODO: switch to object param
-export function createProject(key: string, name: string) {
+export function createProject({ key, name }: { key: string; name: string }) {
   const standardizedKey = standardizeKey(key);
   const project = getProjectByKey(standardizedKey);
 
