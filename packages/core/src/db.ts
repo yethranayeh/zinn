@@ -2,26 +2,60 @@ import { Database } from "bun:sqlite";
 import { DB_PATH, DB_TABLE } from "./constant";
 import { randomUUIDv7 } from "bun";
 
-export const db = new Database(DB_PATH, { create: true });
-db.run("PRAGMA journal_mode = WAL;");
-// TODO: https://bun.com/docs/runtime/sqlite#wal-sidecar-file-cleanup macOS does not auto cleanup
+let db: Database | null = null;
 
-const projectTableSetup = db.query(`CREATE TABLE IF NOT EXISTS ${DB_TABLE.project} (
+function initDb() {
+  // TODO: turn on strict mode, and refactor `$` prefixes: https://bun.com/docs/runtime/sqlite#strict-true-lets-you-bind-values-without-prefixes
+  const db = new Database(DB_PATH, { create: true });
+
+  db.run("PRAGMA journal_mode = WAL;");
+  db.run("PRAGMA foreign_keys = true;");
+  // TODO: https://bun.com/docs/runtime/sqlite#wal-sidecar-file-cleanup macOS does not auto cleanup
+
+  // --- PROJECT TABLE
+  db.query(`CREATE TABLE IF NOT EXISTS ${DB_TABLE.project} (
   id          TEXT PRIMARY KEY,
   key         TEXT NOT NULL UNIQUE,
   name        TEXT NOT NULL,
+  task_count  INTEGER NOT NULL DEFAULT 0,
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL,
-  archived_at INTEGER);`);
-projectTableSetup.run();
+  archived_at INTEGER);`).run();
 
+  // --- TASK TABLE
+  db.query(`CREATE TABLE IF NOT EXISTS ${DB_TABLE.task} (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+  number      INTEGER NOT NULL,
+  name        TEXT NOT NULL,
+  description TEXT,
+  task_order  TEXT,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL,
+  archived_at INTEGER);`).run();
+
+  return db;
+}
+
+db = initDb();
+
+export function getDb() {
+  if (db == null) {
+    console.error("There was a problem initializing the database");
+    process.exit(1);
+  }
+
+  return db;
+}
+
+// --- PROJECT
 export function getProjectByKey(key: string) {
-  return db.query(`SELECT * FROM ${DB_TABLE.project} WHERE key = $key`).get({ $key: key });
+  return db!.query(`SELECT * FROM ${DB_TABLE.project} WHERE key = $key`).get({ $key: key });
 }
 
 // TODO: switch to object param
 export function addProject(key: string, name: string) {
-  const query = db.query(`INSERT INTO
+  const query = db!.query(`INSERT INTO
     ${DB_TABLE.project} (id, key, name, created_at, updated_at)
     VALUES              ($id, $key, $name, $created, $updated);`);
   const time = Date.now();
@@ -30,5 +64,5 @@ export function addProject(key: string, name: string) {
 }
 
 export function deleteProjectByKey(key: string) {
-  return db.query(`DELETE FROM ${DB_TABLE.project} WHERE key = $key;`).run({ $key: key });
+  return db!.query(`DELETE FROM ${DB_TABLE.project} WHERE key = $key;`).run({ $key: key });
 }

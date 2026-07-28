@@ -12,6 +12,7 @@ export const DATA_DIR = join(MAIN_DIR, "data");
 export const DB_PATH = join(DATA_DIR, DB_FILE_NAME);
 export const DB_TABLE = {
   project: "project",
+  task: "task",
 };
 
 // TODO: implement zod schema for setting.json
