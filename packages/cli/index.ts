@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { quit } from "./src/lib";
 
 const args = process.argv.slice(2);
 const FLAG = {
@@ -19,8 +20,7 @@ if (args.length === 0) {
     const tui = await import("@zinn-dev/tui");
     tui.launch();
   } else {
-    console.error("Direct launch in a non-TTY environment is not supported.");
-    process.exit(1);
+    quit("Direct launch in a non-TTY environment is not supported.");
   }
 } else {
   // TODO: isTTY check for human readable colored and structured formatting like tables
@@ -38,10 +38,7 @@ if (args.length === 0) {
       const secondArg = args[1];
       if (secondArg == null) {
         // TODO: implement `zinn project --help` for better guiding
-        console.error(
-          `The command "${firstArg}" requires a secondary command: zinn ${firstArg} <command>`,
-        );
-        process.exit(1);
+        quit(`The command "${firstArg}" requires a secondary command: zinn ${firstArg} <command>`);
       } else if (FLAG.create.includes(secondArg)) {
         // TODO: allow direct key value pairs with flags like --name and --key
         const projectName = args[2];
@@ -49,42 +46,28 @@ if (args.length === 0) {
         const projectKey = args[3];
 
         if (projectName == null || projectKey == null) {
-          console.error("Both the project name and the project key must be defined");
-          process.exit(1);
+          quit("Both the project name and the project key must be defined");
         }
 
         try {
           project.create({ key: projectKey, name: projectName });
-        } catch (err) {
-          if (err instanceof Error) {
-            console.error(err.message);
-          } else {
-            console.error(err);
-          }
-          process.exit(1);
+        } catch (err: any) {
+          quit(err?.message ?? "Something went wrong");
         }
       } else if (FLAG.delete.includes(secondArg)) {
         const projectKey = args[2];
         if (projectKey == null) {
-          console.error("You need to specificy which project to delete");
-          process.exit(1);
+          quit("You need to specificy which project to delete");
         }
 
         try {
           // TODO: add y/n confirmation
           project.delete(projectKey);
-        } catch (err) {
-          if (err instanceof Error) {
-            console.error(err.message);
-          } else {
-            console.error(err);
-          }
-
-          process.exit(1);
+        } catch (err: any) {
+          quit(err?.message ?? "Something went wrong");
         }
       } else {
-        console.error(MESSAGE.displayUnknownCommand(`${firstArg} ${secondArg}`));
-        process.exit(1);
+        quit(MESSAGE.displayUnknownCommand(`${firstArg} ${secondArg}`));
       }
     } else if (FLAG.task.includes(firstArg)) {
       const secondArg = args[1];
@@ -97,14 +80,12 @@ if (args.length === 0) {
       } else if (FLAG.create.includes(secondArg)) {
         const projectKey = args[2];
         if (projectKey == null) {
-          console.error("A task needs to belong to a project");
-          process.exit(1);
+          quit("A task needs to belong to a project");
         }
 
         const taskName = args[3];
         if (taskName == null) {
-          console.error("A task needs at least a title");
-          process.exit(1);
+          quit("A task needs at least a title");
         }
 
         const taskDesc = args[4];
@@ -116,8 +97,7 @@ if (args.length === 0) {
           // TODO: `getByKey` already standardizes the key, but to display it in standardized format, I also used it here. Should it run twice on the same thing?
           const projectMatch = project.getByKey(standardizedKey);
           if (projectMatch == null) {
-            console.error(`Project with key "${standardizedKey}" does not exist`);
-            process.exit(1);
+            quit(`Project with key "${standardizedKey}" does not exist`);
           }
 
           // TODO: should it non-null (??) or non-falsy (||) check?
@@ -126,18 +106,12 @@ if (args.length === 0) {
             name: taskName,
             description: taskDesc ?? null,
           });
-        } catch (err) {
-          if (err instanceof Error) {
-            console.error(err.message);
-          } else {
-            console.error(err);
-          }
-          process.exit(1);
+        } catch (err: any) {
+          quit(err?.message ?? "Something went wrong");
         }
       }
     } else {
-      console.error(MESSAGE.displayUnknownCommand(firstArg));
-      process.exit(1);
+      quit(MESSAGE.displayUnknownCommand(firstArg));
     }
   }
 }

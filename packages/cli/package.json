@@ -1,6 +1,6 @@
 {
 	"name": "@zinn-dev/cli",
-	"version": "0.0.7",
+	"version": "0.0.8",
 	"description": "A kanban workflow in the terminal.",
 	"license": "MIT",
 	"bugs": {
@@ -31,7 +31,8 @@
 		}
 	},
 	"files": [
-		"index.ts"
+		"index.ts",
+		"src"
 	],
 	"type": "module",
 	"bin": {
