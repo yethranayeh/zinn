@@ -32,7 +32,7 @@ if (args.length === 0) {
       usage: zinn [options]
       -h, --help  For help using Zinn`);
   } else {
-    const { createProject, deleteProject, project, task } = await import("@zinn-dev/core");
+    const { project, task } = await import("@zinn-dev/core");
 
     if (FLAG.project.includes(firstArg)) {
       const secondArg = args[1];
@@ -54,7 +54,7 @@ if (args.length === 0) {
         }
 
         try {
-          createProject({ key: projectKey, name: projectName });
+          project.create({ key: projectKey, name: projectName });
         } catch (err) {
           if (err instanceof Error) {
             console.error(err.message);
@@ -72,7 +72,7 @@ if (args.length === 0) {
 
         try {
           // TODO: add y/n confirmation
-          deleteProject(projectKey);
+          project.delete(projectKey);
         } catch (err) {
           if (err instanceof Error) {
             console.error(err.message);

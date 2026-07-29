@@ -1,5 +1,7 @@
 import type { Bind, Project } from "../types";
 
+import { randomUUIDv7 } from "bun";
+
 import { DB_TABLE } from "../constant";
 import { getDb } from "../db";
 import { standardizeProjectKey } from "../lib";
@@ -13,6 +15,18 @@ export function getByKey(key: string) {
     .get({ $key: standardizedKey });
 }
 
+// TODO: switch to object param
+export function create(key: string, name: string) {
+  const db = getDb();
+
+  const query = db.query(`INSERT INTO
+    ${DB_TABLE.project} (id, key, name, created_at, updated_at)
+    VALUES              ($id, $key, $name, $created, $updated);`);
+  const time = Date.now();
+
+  return query.run({ $id: randomUUIDv7(), $key: key, $name: name, $created: time, $updated: time });
+}
+
 export function incrementTaskCounterById(projectId: string) {
   const db = getDb();
 
@@ -22,4 +36,11 @@ export function incrementTaskCounterById(projectId: string) {
           WHERE id = $id RETURNING task_count`)
     .get({ $id: projectId });
   return nextTaskNumber;
+}
+
+// TODO: maybe allow both by `key` and `id`, and use whichever is provided
+export function deleteByKey(key: string) {
+  const db = getDb();
+
+  return db.query(`DELETE FROM ${DB_TABLE.project} WHERE key = $key;`).run({ $key: key });
 }

@@ -5,41 +5,32 @@ import { generateKeyBetween } from "fractional-indexing";
 
 // TODO: do not initialize before the first "valid" command
 import "./src/config";
-import { addProject, getProjectByKey, deleteProjectByKey } from "./src/db";
 import * as dbProject from "./src/db/project";
 import * as dbTask from "./src/db/task";
 import { standardizeProjectKey } from "./src/lib";
 
-// TODO: delete after refactor
-function standardizeKey(key: string) {
-  // TODO: maybe force latin characters only to prevent unexpected stuff from charaters like Ğ, İ, etc.
-  return key.toUpperCase();
-}
-
-export function createProject({ key, name }: { key: string; name: string }) {
-  const standardizedKey = standardizeKey(key);
-  const project = getProjectByKey(standardizedKey);
-
-  if (project != null) {
-    throw new Error(`Project with key "${standardizedKey}" already exists!`);
-  }
-
-  addProject(standardizedKey, name);
-}
-
-export function deleteProject(key: string) {
-  const standardizedKey = standardizeKey(key);
-  const project = getProjectByKey(standardizedKey);
-
-  if (project == null) {
-    throw new Error(`Project with key "${standardizedKey}" does not exist!`);
-  }
-
-  deleteProjectByKey(standardizedKey);
-}
-
 export const project = {
   getByKey: dbProject.getByKey,
+  create: ({ key, name }: { key: string; name: string }) => {
+    const standardizedKey = standardizeProjectKey(key);
+    const project = dbProject.getByKey(standardizedKey);
+
+    if (project != null) {
+      throw new Error(`Project with key "${standardizedKey}" already exists!`);
+    }
+
+    dbProject.create(standardizedKey, name);
+  },
+  delete: (key: string) => {
+    const standardizedKey = standardizeProjectKey(key);
+    const project = dbProject.getByKey(standardizedKey);
+
+    if (project == null) {
+      throw new Error(`Project with key "${standardizedKey}" does not exist!`);
+    }
+
+    dbProject.deleteByKey(standardizedKey);
+  },
   standardizeKey: standardizeProjectKey,
 };
 
