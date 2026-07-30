@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
-import { quit } from "./src/lib";
+import { getArgs, quit } from "./src/lib";
 
-const args = process.argv.slice(2);
+const args = getArgs();
 const FLAG = {
   help: ["-h", "--help"],
   project: ["project"],
