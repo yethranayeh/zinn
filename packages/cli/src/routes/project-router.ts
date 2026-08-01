@@ -1,4 +1,4 @@
-import { project } from "@zinn-dev/core";
+import { column, project } from "@zinn-dev/core";
 import { quit } from "../lib";
 
 export const projectRouter = {
@@ -36,5 +36,37 @@ export const projectRouter = {
       }
     },
     help: ``,
+  },
+  column: {
+    create: {
+      run: (args: Array<string>) => {
+        const projectKey = args[0];
+        const columnName = args[1];
+
+        if (projectKey == null || columnName == null) {
+          quit("Both the project name and the column name must be defined");
+        }
+
+        try {
+          column.create({ projectKey, name: columnName });
+        } catch (err: any) {
+          quit(err?.message ?? "Something went wrong");
+        }
+      },
+      help: ``,
+    },
+    list: {
+      run: (args: Array<string>) => {
+        const projectKey = args[0];
+        if (projectKey == null) {
+          quit("Project key needs to be specified to list columns");
+        }
+
+        // TODO: attach per-column task count
+        // TODO: terminal formatting
+        console.info(column.getAllByProjectKey(projectKey).map((c) => c.name));
+      },
+      help: ``,
+    },
   },
 };

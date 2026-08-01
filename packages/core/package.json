@@ -1,6 +1,6 @@
 {
 	"name": "@zinn-dev/core",
-	"version": "0.0.5",
+	"version": "0.0.6",
 	"description": "Shared logic for zinn, a kanban workflow in the terminal.",
 	"repository": {
 		"type": "git",

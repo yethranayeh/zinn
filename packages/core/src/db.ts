@@ -21,6 +21,13 @@ function initDb() {
   updated_at  INTEGER NOT NULL,
   archived_at INTEGER);`).run();
 
+  // --- PROJECT COLUMN TABLE
+  db.query(`CREATE TABLE IF NOT EXISTS ${DB_TABLE.projectColumn} (
+  id            TEXT PRIMARY KEY,
+  project_id    TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  column_order  TEXT);`).run();
+
   // --- TASK TABLE
   db.query(`CREATE TABLE IF NOT EXISTS ${DB_TABLE.task} (
   id          TEXT PRIMARY KEY,

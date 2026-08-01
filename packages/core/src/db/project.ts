@@ -6,6 +6,14 @@ import { DB_TABLE } from "../constant";
 import { getDb } from "../db";
 import { standardizeProjectKey } from "../lib";
 
+export function getById(id: string) {
+  const db = getDb();
+
+  return db
+    .query<Project, Bind<{ id: string }>>(`SELECT * FROM ${DB_TABLE.project} WHERE id = $id`)
+    .get({ $id: id });
+}
+
 export function getByKey(key: string) {
   const db = getDb();
   const standardizedKey = standardizeProjectKey(key);
@@ -19,12 +27,21 @@ export function getByKey(key: string) {
 export function create(key: string, name: string) {
   const db = getDb();
 
-  const query = db.query(`INSERT INTO
+  const query = db.query<
+    Project,
+    Bind<Pick<Project, "id" | "key" | "name" | "created_at" | "updated_at">>
+  >(`INSERT INTO
     ${DB_TABLE.project} (id, key, name, created_at, updated_at)
-    VALUES              ($id, $key, $name, $created, $updated);`);
+    VALUES              ($id, $key, $name, $created_at, $updated_at);`);
   const time = Date.now();
 
-  return query.run({ $id: randomUUIDv7(), $key: key, $name: name, $created: time, $updated: time });
+  return query.get({
+    $id: randomUUIDv7(),
+    $key: key,
+    $name: name,
+    $created_at: time,
+    $updated_at: time,
+  });
 }
 
 export function incrementTaskCounterById(projectId: string) {

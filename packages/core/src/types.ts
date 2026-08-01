@@ -26,3 +26,10 @@ export type Task = {
   updated_at: number;
   archived_at: number | null;
 };
+
+export type Column = {
+  id: string;
+  project_id: string;
+  name: string;
+  column_order: string;
+};
