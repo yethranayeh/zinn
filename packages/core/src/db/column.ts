@@ -18,9 +18,10 @@ export function create(column: Column) {
   const db = getDb();
   const query = db.query<Column, Bind<Column>>(`INSERT INTO
     ${DB_TABLE.projectColumn} (id, project_id, name, column_order)
-    VALUES                    ($id, $project_id, $name, $column_order);`);
+    VALUES                    ($id, $project_id, $name, $column_order)
+    RETURNING *;`);
 
-  return query.run({
+  return query.get({
     $id: column.id,
     $project_id: column.project_id,
     $name: column.name,

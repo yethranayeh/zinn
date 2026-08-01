@@ -1,4 +1,4 @@
-import type { Task } from "./src/types";
+import type { Column, Task } from "./src/types";
 
 import { randomUUIDv7 } from "bun";
 import { generateKeyBetween } from "fractional-indexing";
@@ -15,13 +15,27 @@ export const project = {
   getByKey: dbProject.getByKey,
   create: ({ key, name }: { key: string; name: string }) => {
     const standardizedKey = standardizeProjectKey(key);
-    const project = dbProject.getByKey(standardizedKey);
+    const existingProject = dbProject.getByKey(standardizedKey);
 
-    if (project != null) {
+    if (existingProject != null) {
       throw new Error(`Project with key "${standardizedKey}" already exists!`);
     }
 
-    dbProject.create(standardizedKey, name);
+    const project = dbProject.create(standardizedKey, name)!;
+
+    const defaultColumns = ["Backlog", "TODO", "In Progress", "Review", "Done"];
+    let lastColumnOrder: string | null = null;
+
+    for (const col of defaultColumns) {
+      const columnOrder = generateKeyBetween(lastColumnOrder, null);
+      dbColumn.create({
+        id: randomUUIDv7(),
+        project_id: project?.id,
+        name: col,
+        column_order: columnOrder,
+      })!;
+      lastColumnOrder = columnOrder;
+    }
   },
   delete: (key: string) => {
     const standardizedKey = standardizeProjectKey(key);
