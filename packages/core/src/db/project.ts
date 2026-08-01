@@ -32,7 +32,8 @@ export function create(key: string, name: string) {
     Bind<Pick<Project, "id" | "key" | "name" | "created_at" | "updated_at">>
   >(`INSERT INTO
     ${DB_TABLE.project} (id, key, name, created_at, updated_at)
-    VALUES              ($id, $key, $name, $created_at, $updated_at);`);
+    VALUES              ($id, $key, $name, $created_at, $updated_at)
+    RETURNING *;`);
   const time = Date.now();
 
   return query.get({
