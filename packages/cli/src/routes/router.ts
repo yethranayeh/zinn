@@ -60,5 +60,12 @@ export function route(args: Array<string>) {
     );
   }
 
-  match.run(getArgs(nestingLevel));
+  try {
+    match.run(getArgs(nestingLevel));
+  } catch (err: any) {
+    quit(
+      err?.message ??
+        `Something went wrong while running "${match.command}" with args: ${getArgs(nestingLevel).join(",")}`,
+    );
+  }
 }
