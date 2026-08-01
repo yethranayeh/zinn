@@ -12,7 +12,7 @@ function toCommand(args: Array<string>) {
   return args.join(" ");
 }
 
-function parseRoutes(routesDef: RouteDef, prefix?: string) {
+export function parseRoutes(routesDef: RouteDef, prefix?: string) {
   const routeDefinitions: Array<Route> = [];
   if (process.env.DEBUG) {
     console.debug(`::router.parseRoutes[${prefix ?? ""}]`, routesDef);
@@ -22,11 +22,11 @@ function parseRoutes(routesDef: RouteDef, prefix?: string) {
     const definition = routesDef[key as keyof typeof routesDef];
 
     const isRunnable = getIsRunnable(definition);
+    const combinedRoute = prefix ? `${prefix} ${key}` : key;
     if (isRunnable) {
-      const combinedRoute = prefix ? `${prefix} ${key}` : key;
       routeDefinitions.push({ command: combinedRoute, ...definition });
     } else {
-      const result = parseRoutes(definition, key);
+      const result = parseRoutes(definition, combinedRoute);
       routeDefinitions.push(...result);
     }
   }
