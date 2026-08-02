@@ -1,4 +1,4 @@
-import type { Command } from "../types";
+import type { Command, RouteDef } from "../types";
 
 import { test, expect, mock } from "bun:test";
 import { createRouter, parseRoutes } from "./router";
@@ -6,7 +6,7 @@ import { createRouter, parseRoutes } from "./router";
 const mockCommand: Command = { run: mock(() => {}), help: `` };
 
 test("command nesting is properly parsed", () => {
-  const routes = {
+  const routes: RouteDef = {
     foo: {
       create: mockCommand,
       bar: {
@@ -29,7 +29,7 @@ test("command nesting is properly parsed", () => {
 });
 
 test("router calls the run functions", () => {
-  const routes = {
+  const routes: RouteDef = {
     foo: {
       create: mockCommand,
       bar: {
@@ -51,12 +51,12 @@ test("router calls the deepest nesting command", () => {
   const barCreate = mock(() => {});
   const routes = {
     foo: {
-      create: { run: fooCreate },
+      create: { run: fooCreate, help: "" },
       bar: {
-        create: { run: barCreate },
+        create: { run: barCreate, help: "" },
       },
     },
-  };
+  } satisfies RouteDef;
 
   let router = createRouter(routes);
   router.route(["foo", "bar", "create"]);

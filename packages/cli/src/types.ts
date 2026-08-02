@@ -1,7 +1,6 @@
-export type Command = { run: Function; help: string };
-export type Route = {
+export type Command = { run: (args: Array<string>) => void; help: string };
+export type ParsedRoute = {
   command: string;
 } & Command;
 
-// TODO: proper route typing
-export type RouteDef = Object;
+export type RouteDef = { [key: string]: Command | RouteDef };

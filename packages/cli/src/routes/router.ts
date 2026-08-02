@@ -1,4 +1,4 @@
-import type { Command, Route, RouteDef } from "../types";
+import type { Command, ParsedRoute, RouteDef } from "../types";
 
 import { getArgs, quit } from "../lib";
 
@@ -11,13 +11,13 @@ function toCommand(args: Array<string>) {
 }
 
 export function parseRoutes(routesDef: RouteDef, prefix?: string) {
-  const routeDefinitions: Array<Route> = [];
+  const routeDefinitions: Array<ParsedRoute> = [];
   if (process.env.DEBUG) {
     console.debug(`::router.parseRoutes[${prefix ?? ""}]`, routesDef);
   }
 
   for (const key of Object.keys(routesDef)) {
-    const definition = routesDef[key as keyof typeof routesDef];
+    const definition = routesDef[key as keyof typeof routesDef]!;
 
     const isRunnable = getIsRunnable(definition);
     const combinedRoute = prefix ? `${prefix} ${key}` : key;
@@ -32,8 +32,8 @@ export function parseRoutes(routesDef: RouteDef, prefix?: string) {
   return routeDefinitions;
 }
 
-function route(parsedRoutes: Array<Route>, args: Array<string>) {
-  let match: Route | null = null;
+function route(parsedRoutes: Array<ParsedRoute>, args: Array<string>) {
+  let match: ParsedRoute | null = null;
   let nestingLevel = 0;
 
   for (let endIndex = args.length; endIndex >= 0; endIndex--) {
