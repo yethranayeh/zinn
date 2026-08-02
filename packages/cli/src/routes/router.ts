@@ -1,6 +1,6 @@
 import type { Command, ParsedRoute, RouteDef } from "../types";
 
-import { getArgs, quit } from "../lib";
+import { quit } from "../lib";
 
 function getIsRunnable(obj: any): obj is Command {
   return Object.hasOwn(obj, "run");
@@ -57,12 +57,13 @@ function route(parsedRoutes: Array<ParsedRoute>, args: Array<string>) {
     );
   }
 
+  const commandArgs = args.slice(nestingLevel);
   try {
-    match.run(getArgs(nestingLevel));
+    match.run(commandArgs);
   } catch (err: any) {
     quit(
       err?.message ??
-        `Something went wrong while running "${match.command}" with args: ${getArgs(nestingLevel).join(",")}`,
+        `Something went wrong while running "${match.command}" with args: ${commandArgs.join(",")}`,
     );
   }
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
-import { getArgs, quit } from "./src/lib";
+import { quit } from "./src/lib";
 
-const args = getArgs();
+const args = process.argv.slice(2);
 
 if (args.length === 0) {
   if (!!process.stdout.isTTY) {
