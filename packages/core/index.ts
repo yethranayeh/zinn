@@ -3,7 +3,6 @@ import type { Column, Task } from "./src/types";
 import { randomUUIDv7 } from "bun";
 import { generateKeyBetween } from "fractional-indexing";
 
-// TODO: do not initialize before the first "valid" command
 import * as dbProject from "./src/db/project";
 import * as dbColumn from "./src/db/column";
 import * as dbTask from "./src/db/task";

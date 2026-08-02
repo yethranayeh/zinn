@@ -50,8 +50,7 @@ export function getDb() {
       ensureConfigSetup();
       db = initDb();
     } catch (err) {
-      console.error("There was a problem initializing the database");
-      process.exit(1);
+      throw new Error("There was a problem initializing Zinn", { cause: err });
     }
   }
 
