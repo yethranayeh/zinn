@@ -67,8 +67,8 @@ function route(parsedRoutes: Array<Route>, args: Array<string>) {
   }
 }
 
-export function createRouter(routesDef: RouteDef, args: Array<string>) {
+export function createRouter(routesDef: RouteDef) {
   const parsedRoutes = parseRoutes(routesDef);
 
-  return { route: () => route(parsedRoutes, args) };
+  return { route: (args: Array<string>) => route(parsedRoutes, args) };
 }

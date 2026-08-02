@@ -23,7 +23,7 @@ if (args.length === 0) {
   } else {
     const { createRouter } = await import("./src/routes/router");
     const { routes } = await import("./src/routes/routes");
-    const router = createRouter(routes, args);
-    router.route();
+    const router = createRouter(routes);
+    router.route(args);
   }
 }

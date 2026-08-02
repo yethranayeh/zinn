@@ -38,12 +38,11 @@ test("router calls the run functions", () => {
     },
   };
 
-  let router = createRouter(routes, ["foo", "create"]);
-  router.route();
+  let router = createRouter(routes);
+  router.route(["foo", "create"]);
   expect(mockCommand.run).toHaveBeenCalledTimes(1);
 
-  router = createRouter(routes, ["foo", "bar", "create"]);
-  router.route();
+  router.route(["foo", "bar", "create"]);
   expect(mockCommand.run).toHaveBeenCalledTimes(2);
 });
 
@@ -59,8 +58,8 @@ test("router calls the deepest nesting command", () => {
     },
   };
 
-  let router = createRouter(routes, ["foo", "bar", "create"]);
-  router.route();
+  let router = createRouter(routes);
+  router.route(["foo", "bar", "create"]);
   expect(routes.foo.bar.create.run).toHaveBeenCalledTimes(1);
   expect(routes.foo.create.run).not.toHaveBeenCalled();
 });
