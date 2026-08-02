@@ -43,12 +43,14 @@ function initDb() {
   return db;
 }
 
-db = initDb();
-
 export function getDb() {
   if (db == null) {
-    console.error("There was a problem initializing the database");
-    process.exit(1);
+    try {
+      db = initDb();
+    } catch (err) {
+      console.error("There was a problem initializing the database");
+      process.exit(1);
+    }
   }
 
   return db;
