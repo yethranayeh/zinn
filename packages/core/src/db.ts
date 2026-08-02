@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 import { DB_PATH, DB_TABLE } from "./constant";
+import { ensureConfigSetup } from "./config";
 
 let db: Database | null = null;
 
@@ -46,6 +47,7 @@ function initDb() {
 export function getDb() {
   if (db == null) {
     try {
+      ensureConfigSetup();
       db = initDb();
     } catch (err) {
       console.error("There was a problem initializing the database");
