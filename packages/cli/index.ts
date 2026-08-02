@@ -21,7 +21,9 @@ if (args.length === 0) {
       usage: zinn [options]
       -h, --help  For help using Zinn`);
   } else {
-    const router = await import("./src/routes/router");
-    router.route(args);
+    const { createRouter } = await import("./src/routes/router");
+    const { routes } = await import("./src/routes/routes");
+    const router = createRouter(routes, args);
+    router.route();
   }
 }

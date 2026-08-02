@@ -1,8 +1,9 @@
-import { test, expect } from "bun:test";
-import { parseRoutes } from "./router";
 import type { Command } from "../types";
 
-const mockCommand: Command = { run: () => {}, help: `` };
+import { test, expect, mock } from "bun:test";
+import { createRouter, parseRoutes } from "./router";
+
+const mockCommand: Command = { run: mock(() => {}), help: `` };
 
 test("command nesting is properly parsed", () => {
   const routes = {
@@ -25,4 +26,41 @@ test("command nesting is properly parsed", () => {
     "foo bar baz create",
     "foo bar baz foo create",
   ]);
+});
+
+test("router calls the run functions", () => {
+  const routes = {
+    foo: {
+      create: mockCommand,
+      bar: {
+        create: mockCommand,
+      },
+    },
+  };
+
+  let router = createRouter(routes, ["foo", "create"]);
+  router.route();
+  expect(mockCommand.run).toHaveBeenCalledTimes(1);
+
+  router = createRouter(routes, ["foo", "bar", "create"]);
+  router.route();
+  expect(mockCommand.run).toHaveBeenCalledTimes(2);
+});
+
+test("router calls the deepest nesting command", () => {
+  const fooCreate = mock(() => {});
+  const barCreate = mock(() => {});
+  const routes = {
+    foo: {
+      create: { run: fooCreate },
+      bar: {
+        create: { run: barCreate },
+      },
+    },
+  };
+
+  let router = createRouter(routes, ["foo", "bar", "create"]);
+  router.route();
+  expect(routes.foo.bar.create.run).toHaveBeenCalledTimes(1);
+  expect(routes.foo.create.run).not.toHaveBeenCalled();
 });
