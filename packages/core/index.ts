@@ -11,15 +11,14 @@ import { standardizeProjectKey } from "./src/lib";
 export const project = {
   getById: dbProject.getById,
   getByKey: dbProject.getByKey,
-  create: ({ key, name }: { key: string; name: string }) => {
-    const standardizedKey = standardizeProjectKey(key);
-    const existingProject = dbProject.getByKey(standardizedKey);
+  create: (props: { key: string; name: string }) => {
+    const existingProject = dbProject.getByKey(props.key);
 
     if (existingProject != null) {
-      throw new Error(`Project with key "${standardizedKey}" already exists!`);
+      throw new Error(`Project with key "${existingProject.key}" already exists!`);
     }
 
-    const project = dbProject.create(standardizedKey, name)!;
+    const project = dbProject.create(props)!;
 
     const defaultColumns = ["Backlog", "TODO", "In Progress", "Review", "Done"];
     let lastColumnOrder: string | null = null;

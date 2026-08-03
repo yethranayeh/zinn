@@ -23,8 +23,7 @@ export function getByKey(key: string) {
     .get({ $key: standardizedKey });
 }
 
-// TODO: switch to object param
-export function create(key: string, name: string) {
+export function create({ key, name }: { key: string; name: string }) {
   const db = getDb();
 
   const query = db.query<
@@ -34,11 +33,13 @@ export function create(key: string, name: string) {
     ${DB_TABLE.project} (id, key, name, created_at, updated_at)
     VALUES              ($id, $key, $name, $created_at, $updated_at)
     RETURNING *;`);
+
   const time = Date.now();
+  const standardizedKey = standardizeProjectKey(key);
 
   return query.get({
     $id: randomUUIDv7(),
-    $key: key,
+    $key: standardizedKey,
     $name: name,
     $created_at: time,
     $updated_at: time,
