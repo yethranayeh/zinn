@@ -35,14 +35,13 @@ export const project = {
     }
   },
   delete: (key: string) => {
-    const standardizedKey = standardizeProjectKey(key);
-    const project = dbProject.getByKey(standardizedKey);
+    const project = dbProject.getByKey(key);
 
     if (project == null) {
-      throw new Error(`Project with key "${standardizedKey}" does not exist!`);
+      throw new Error(`Project with key "${key}" does not exist!`);
     }
 
-    dbProject.deleteByKey(standardizedKey);
+    dbProject.deleteByKey(key);
   },
   standardizeKey: standardizeProjectKey,
 };

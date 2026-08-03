@@ -61,5 +61,8 @@ export function incrementTaskCounterById(projectId: string) {
 export function deleteByKey(key: string) {
   const db = getDb();
 
-  return db.query(`DELETE FROM ${DB_TABLE.project} WHERE key = $key;`).run({ $key: key });
+  const standardizedKey = standardizeProjectKey(key);
+  return db
+    .query(`DELETE FROM ${DB_TABLE.project} WHERE key = $key;`)
+    .run({ $key: standardizedKey });
 }
