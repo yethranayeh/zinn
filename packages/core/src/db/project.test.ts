@@ -28,3 +28,67 @@ test("project.create can establish a project", () => {
   expect(created?.task_count).toBe(0);
   expect(created?.archived_at).toBeNull();
 });
+
+test("project.create standardizes the key", () => {
+  const created = project.create({ key: "key", name: "Lowercased Key" });
+
+  expect(created?.key).toBe("KEY");
+});
+
+test("project.create rejects a duplicate key", () => {
+  expect(project.create({ key: "DUPE", name: "First" })?.key).toBe("DUPE");
+
+  // ? "dupe" standardizes to the already-taken "DUPE".
+  expect(() => project.create({ key: "dupe", name: "Second" })).toThrow(
+    "UNIQUE constraint failed: project.key",
+  );
+});
+
+test("project.getById finds an existing project", () => {
+  const created = project.create({ key: "BYID", name: "By Id" })!;
+  const found = project.getById(created.id);
+
+  expect(found?.id).toEqual(created.id);
+});
+
+test("project.getById returns null for an unknown id", () => {
+  expect(project.getById("unknwon")).toBeNull();
+});
+
+test("project.getByKey is case insensitive for matching", () => {
+  const created = project.create({ key: "someKey", name: "Got By Key" })!;
+
+  expect(project.getByKey("SOMEKEY")).toEqual(created);
+  expect(project.getByKey("somekey")).toEqual(created);
+  expect(project.getByKey("SomEkeY")).toEqual(created);
+});
+
+test("project.getByKey returns null for an unknown key", () => {
+  expect(project.getByKey("NO")).toBeNull();
+});
+
+test("project.incrementTaskCounterById returns the next task number", () => {
+  const created = project.create({ key: "COUNT", name: "Counter" })!;
+
+  expect(project.incrementTaskCounterById(created.id)?.task_count).toBe(1);
+  expect(project.incrementTaskCounterById(created.id)?.task_count).toBe(2);
+  expect(project.getById(created.id)?.task_count).toBe(2);
+});
+
+test("project.incrementTaskCounterById returns null for an unknown id", () => {
+  expect(project.incrementTaskCounterById("nonexistent")).toBeNull();
+});
+
+test("project.deleteByKey removes a project regardless of key casing", () => {
+  const created = project.create({ key: "GONE", name: "Gone" })!;
+
+  const result = project.deleteByKey("gone");
+
+  expect(result.changes).toBe(1);
+  expect(project.getByKey("GONe")).toBeNull();
+  expect(project.getById(created.id)).toBeNull();
+});
+
+test("project.deleteByKey doesn't do anything for nonexistent project", () => {
+  expect(project.deleteByKey("void").changes).toBe(0);
+});
