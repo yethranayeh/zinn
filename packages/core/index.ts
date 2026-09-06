@@ -122,4 +122,52 @@ export const task = {
 
     return dbTask.getAllByProjectId(taskProject.id);
   },
+  getByKey: (taskKey: string) => {
+    const parts = taskKey.split("-");
+
+    if (parts.length !== 2) {
+      // TODO
+      throw new Error();
+    }
+
+    const projectKey = parts[0];
+    const taskNumber = parts[1];
+
+    if (projectKey == null || taskNumber == null) {
+      // TODO
+      throw new Error();
+    }
+
+    // Posted by Mike Samuel
+    // Retrieved 2026-09-06, License - CC BY-SA 3.0
+    // Source - https://stackoverflow.com/a/9011554
+    const digitRegex = /^\d+$/;
+    const isTaskNumberDigit = digitRegex.test(taskNumber);
+
+    if (!isTaskNumberDigit) {
+      // TODO
+      throw new Error();
+    }
+
+    // TODO: validate part types?
+
+    const project = dbProject.getByKey(projectKey);
+
+    if (project == null) {
+      // TODO
+      throw new Error();
+    }
+
+    const taskMatch = dbTask.getByProjectIdAndNumber({
+      projectId: project.id,
+      number: parseInt(taskNumber),
+    });
+
+    if (taskMatch == null) {
+      // TODO
+      throw new Error();
+    }
+
+    return taskMatch;
+  },
 };

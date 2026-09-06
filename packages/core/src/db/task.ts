@@ -18,6 +18,16 @@ export function getAllByProjectId(projectId: string) {
     .all({ $project_id: projectId });
 }
 
+export function getByProjectIdAndNumber(props: { projectId: string; number: number }) {
+  const db = getDb();
+  return db
+    .query<Task, Bind<Pick<Task, "project_id" | "number">>>(`SELECT *
+    FROM ${DB_TABLE.task}
+    WHERE project_id = $project_id
+    AND number = $number`)
+    .get({ $project_id: props.projectId, $number: props.number });
+}
+
 export function create(task: Omit<Task, "archived_at">) {
   const db = getDb();
 

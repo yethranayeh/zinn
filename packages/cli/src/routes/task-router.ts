@@ -53,9 +53,9 @@ export const taskRouter = {
 
       const presentableTasks = tasks.map((t) => {
         const taskProject = project.getById(t.project_id)!;
-        const taskVisualId = `${taskProject.key}-${t.number}`;
+        const taskKey = `${taskProject.key}-${t.number}`;
 
-        return { id: taskVisualId, name: t.name, description: t.description };
+        return { id: taskKey, name: t.name, description: t.description };
       });
 
       const longestIdLength = presentableTasks.reduce(
@@ -70,6 +70,20 @@ export const taskRouter = {
           })
           .join("\n"),
       );
+    },
+    help: "",
+  },
+  view: {
+    run: (args) => {
+      const taskKey = args[0];
+
+      if (taskKey == null) {
+        // TODO
+        return;
+      }
+
+      const taskMatch = task.getByKey(taskKey);
+      console.info(`${taskKey} | ${taskMatch.name} | ${taskMatch.description}`);
     },
     help: "",
   },
