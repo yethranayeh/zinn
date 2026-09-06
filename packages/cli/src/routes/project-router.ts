@@ -25,6 +25,10 @@ export const projectRouter = {
   list: {
     run: () => {
       const projects = project.getAll();
+      if (projects.length === 0) {
+        return;
+      }
+
       const longestKeyLength = projects.reduce(
         (prev, current) => Math.max(prev, current.key.length),
         0,

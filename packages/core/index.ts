@@ -12,6 +12,17 @@ export const project = {
   getById: dbProject.getById,
   getByKey: dbProject.getByKey,
   create: (props: { key: string; name: string }) => {
+    const validKeyRegex = /^[A-Za-z][A-Za-z0-9]*$/;
+    if (!validKeyRegex.test(props.key)) {
+      throw new Error("Project key must start with a letter and contain only letters and numbers");
+    }
+
+    const invalidNameCharRegex = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+    // control characters and Unicode line separators are not valid project data.
+    if (props.name.trim().length === 0 || invalidNameCharRegex.test(props.name)) {
+      throw new Error("Project name must contain printable text on a single line");
+    }
+
     const existingProject = dbProject.getByKey(props.key);
 
     if (existingProject != null) {

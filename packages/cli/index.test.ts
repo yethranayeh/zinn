@@ -26,9 +26,23 @@ afterAll(() => {
   rmSync(TEST_DIR, { recursive: true, force: true });
 });
 
-function runZinn(args: Array<string>) {
+function withIsolatedZinnDir(run: (testDir: string) => void) {
+  const testDir = mkdtempSync(PREFIX);
+
+  try {
+    run(testDir);
+  } finally {
+    if (!testDir.startsWith(PREFIX)) {
+      throw new Error(`Refusing to delete "${testDir}": not a ${PREFIX}* directory`);
+    }
+
+    rmSync(testDir, { recursive: true, force: true });
+  }
+}
+
+function runZinn(args: Array<string>, testDir = TEST_DIR) {
   const proc = Bun.spawnSync(["bun", CLI_PATH, ...args], {
-    env: { ...process.env, ZINN_DIR: TEST_DIR },
+    env: { ...process.env, ZINN_DIR: testDir },
   });
 
   return {
@@ -126,6 +140,82 @@ test("project delete rejects an unknown key", () => {
   expect(result.stderr).toContain(`Project with key "NOSUCH" does not exist!`);
 });
 
+test("project list on an empty database exits cleanly without inventing a row", () => {
+  withIsolatedZinnDir((testDir) => {
+    const result = runZinn(["project", "list"], testDir);
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("");
+  });
+});
+
+test("project list renders every project once and aligns unequal key widths", () => {
+  withIsolatedZinnDir((testDir) => {
+    expect(runZinn(["project", "create", "Short", "a"], testDir).code).toBe(0);
+    expect(runZinn(["project", "create", "Long", "LONGKEY"], testDir).code).toBe(0);
+
+    const result = runZinn(["project", "list"], testDir);
+    const lines = result.stdout.trimEnd().split("\n");
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(lines).toHaveLength(2);
+    expect(lines).toContain("A       | Short");
+    expect(lines).toContain("LONGKEY | Long");
+  });
+});
+
+test("project list does not retain a deleted project", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Keep", "KEEP"], testDir);
+    runZinn(["project", "create", "Remove", "REMOVE"], testDir);
+    expect(runZinn(["project", "delete", "REMOVE"], testDir).code).toBe(0);
+
+    const result = runZinn(["project", "list"], testDir);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("KEEP");
+    expect(result.stdout).not.toContain("REMOVE");
+    expect(result.stdout.trimEnd().split("\n")).toHaveLength(1);
+  });
+});
+
+test("project create accepts an alphanumeric key in any casing and stores it uppercase", () => {
+  withIsolatedZinnDir((testDir) => {
+    expect(runZinn(["project", "create", "Business", "b2B"], testDir).code).toBe(0);
+
+    const result = runZinn(["project", "list"], testDir);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe("B2B | Business\n");
+  });
+});
+
+test("project create rejects keys outside the alphanumeric contract", () => {
+  withIsolatedZinnDir((testDir) => {
+    for (const invalidKey of ["2B", "APP-DEV", "APP_DEV", "ÅPP", ""]) {
+      const result = runZinn(["project", "create", "Invalid", invalidKey], testDir);
+
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain(
+        "Project key must start with a letter and contain only letters and numbers",
+      );
+    }
+  });
+});
+
+test("project create rejects blank or non-single-line names", () => {
+  withIsolatedZinnDir((testDir) => {
+    for (const invalidName of ["   ", "first line\nsecond line", "name\u001b[31m"]) {
+      const result = runZinn(["project", "create", invalidName, "SAFE"], testDir);
+
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("Project name must contain printable text on a single line");
+    }
+  });
+});
+
 // --- TASK
 
 test("task create rejects an unknown project", () => {
@@ -167,10 +257,7 @@ test.todo("task create attaches a task to its project", () => {
   expect(runZinn(["task", "list", "BETA"]).stdout).not.toContain("alpha task");
 });
 
-// #TODO(build): `project list` command. This was the original stub's assertion
-// #TODO for "task delete does not touch the project" and it needs both this and
-// #TODO `task delete` before it can run.
-test.todo("project list shows every established project", () => {
+test("project list shows every established project", () => {
   runZinn(["project", "create", "Listed", "LIST"]);
 
   const result = runZinn(["project", "list"]);
