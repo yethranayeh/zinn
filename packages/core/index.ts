@@ -109,4 +109,5 @@ export const task = {
       updated_at: now,
     });
   },
+  getAll: dbTask.getAll,
 };

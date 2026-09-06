@@ -1,3 +1,5 @@
+import type { RouteDef } from "../types";
+
 import { task, project } from "@zinn-dev/core";
 import { quit } from "../lib";
 
@@ -38,4 +40,30 @@ export const taskRouter = {
     },
     help: ``,
   },
-};
+  list: {
+    run: () => {
+      // TODO: order by actual `t.order` per project
+      const tasks = task.getAll();
+      const presentableTasks = tasks.map((t) => {
+        const taskProject = project.getById(t.project_id)!;
+        const taskVisualId = `${taskProject.key}-${t.number}`;
+
+        return { id: taskVisualId, name: t.name, description: t.description };
+      });
+
+      const longestIdLength = presentableTasks.reduce(
+        (prev, current) => Math.max(prev, current.id.length),
+        0,
+      );
+
+      console.info(
+        presentableTasks
+          .map((t) => {
+            return `${t.id.padEnd(longestIdLength)} | ${t.name} | ${t.description}`;
+          })
+          .join("\n"),
+      );
+    },
+    help: "",
+  },
+} satisfies RouteDef;
