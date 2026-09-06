@@ -66,7 +66,8 @@ export const taskRouter = {
       console.info(
         presentableTasks
           .map((t) => {
-            return `${t.id.padEnd(longestIdLength)} | ${t.name} | ${t.description}`;
+            const description = t.description == null ? "" : ` | ${t.description}`;
+            return `${t.id.padEnd(longestIdLength)} | ${t.name}${description}`;
           })
           .join("\n"),
       );

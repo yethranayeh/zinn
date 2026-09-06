@@ -89,6 +89,17 @@ export const column = {
 
 export const task = {
   create: (task: Pick<Task, "project_id" | "name" | "description">) => {
+    const invalidTaskCharRegex = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+    // Tasks are currently rendered as single-line terminal rows, so their text
+    // cannot contain control characters or Unicode line separators.
+    if (task.name.trim().length === 0 || invalidTaskCharRegex.test(task.name)) {
+      throw new Error("Task title must contain printable text on a single line");
+    }
+
+    if (task.description != null && invalidTaskCharRegex.test(task.description)) {
+      throw new Error("Task description must contain printable text on a single line");
+    }
+
     // TODO: if anything after this fails, especially the task creation, the counter is still incremented but not assigned to any task
     const project = dbProject.incrementTaskCounterById(task.project_id);
 

@@ -243,6 +243,68 @@ test("task create succeeds against an existing project", () => {
   expect(result.code).toBe(0);
 });
 
+test("task list on an empty database exits cleanly without output", () => {
+  withIsolatedZinnDir((testDir) => {
+    const result = runZinn(["task", "list"], testDir);
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("");
+  });
+});
+
+test("task list renders every project's tasks once and aligns unequal key widths", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Short", "a"], testDir);
+    runZinn(["project", "create", "Long", "LONGKEY"], testDir);
+    runZinn(["task", "create", "A", "short task", "short description"], testDir);
+    runZinn(["task", "create", "LONGKEY", "long task", "long description"], testDir);
+
+    const result = runZinn(["task", "list"], testDir);
+    const lines = result.stdout.trimEnd().split("\n");
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(lines).toHaveLength(2);
+    expect(lines).toContain("A-1       | short task | short description");
+    expect(lines).toContain("LONGKEY-1 | long task | long description");
+  });
+});
+
+test("task list does not print a missing description as data", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "No description", "NONE"], testDir);
+    runZinn(["task", "create", "NONE", "title only"], testDir);
+
+    const result = runZinn(["task", "list"], testDir);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("NONE-1 | title only");
+    expect(result.stdout).not.toContain("null");
+  });
+});
+
+test("task create rejects control characters in text rendered by task list", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Safe", "SAFE"], testDir);
+    const hostileTitle = "first line\nFAKE-9 | forged row";
+    const hostileDescription = "description\u001b[31m";
+    const invalidTitle = runZinn(["task", "create", "SAFE", hostileTitle], testDir);
+    const invalidDescription = runZinn(
+      ["task", "create", "SAFE", "valid title", hostileDescription],
+      testDir,
+    );
+
+    expect(invalidTitle.code).toBe(1);
+    expect(invalidTitle.stderr).toContain("Task title must contain printable text on a single line");
+    expect(invalidDescription.code).toBe(1);
+    expect(invalidDescription.stderr).toContain(
+      "Task description must contain printable text on a single line",
+    );
+    expect(runZinn(["task", "list"], testDir).stdout).toBe("");
+  });
+});
+
 // --- NOT YET TESTABLE
 
 // #TODO(build): `task list` command. Without a read path there is no way to
