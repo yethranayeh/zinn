@@ -1,0 +1,15 @@
+# Per-directory zsh config for this repo
+# to make `zinn` available without typing `bun packages/cli/index.ts`
+
+zinn() {
+  local root
+  root="$(command git rev-parse --show-toplevel 2>/dev/null)" || {
+    echo "zinn: not inside a git repository" >&2
+    return 1
+  }
+  if [[ ! -f "$root/packages/cli/index.ts" ]]; then
+    echo "zinn: not inside the zinn repo" >&2
+    return 1
+  fi
+  command bun "$root/packages/cli/index.ts" "$@"
+}
