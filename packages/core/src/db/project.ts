@@ -6,6 +6,11 @@ import { DB_TABLE } from "../constant";
 import { getDb } from "../db";
 import { standardizeProjectKey } from "../lib";
 
+export function getAll() {
+  const db = getDb();
+  return db.query<Project, any>(`SELECT * FROM ${DB_TABLE.project}`).all();
+}
+
 export function getById(id: string) {
   const db = getDb();
 

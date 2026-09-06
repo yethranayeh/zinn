@@ -1,3 +1,5 @@
+import type { RouteDef } from "../types";
+
 import { column, project } from "@zinn-dev/core";
 import { quit } from "../lib";
 
@@ -19,6 +21,13 @@ export const projectRouter = {
       }
     },
     help: ``,
+  },
+  list: {
+    run: () => {
+      const projects = project.getAll();
+      console.info(projects.map((p) => p.name).join("\n"));
+    },
+    help: "",
   },
   delete: {
     run: (args: Array<string>) => {
@@ -69,4 +78,4 @@ export const projectRouter = {
       help: ``,
     },
   },
-};
+} satisfies RouteDef;

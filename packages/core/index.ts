@@ -34,6 +34,7 @@ export const project = {
       lastColumnOrder = columnOrder;
     }
   },
+  getAll: dbProject.getAll,
   delete: (key: string) => {
     const project = dbProject.getByKey(key);
 
