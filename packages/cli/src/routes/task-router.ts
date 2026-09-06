@@ -41,9 +41,16 @@ export const taskRouter = {
     help: ``,
   },
   list: {
-    run: () => {
+    run: (args) => {
+      const projectKey = args[0];
+
       // TODO: order by actual `t.order` per project
-      const tasks = task.getAll();
+      const tasks = task.getAll({ projectKey });
+
+      if (tasks.length === 0) {
+        return;
+      }
+
       const presentableTasks = tasks.map((t) => {
         const taskProject = project.getById(t.project_id)!;
         const taskVisualId = `${taskProject.key}-${t.number}`;

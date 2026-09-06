@@ -9,6 +9,15 @@ export function getAll() {
   return db.query<Task, any>(`SELECT * FROM ${DB_TABLE.task}`).all();
 }
 
+export function getAllByProjectId(projectId: string) {
+  const db = getDb();
+  return db
+    .query<Task, Bind<Pick<Task, "project_id">>>(`SELECT *
+    FROM ${DB_TABLE.task}
+    WHERE project_id = $project_id`)
+    .all({ $project_id: projectId });
+}
+
 export function create(task: Omit<Task, "archived_at">) {
   const db = getDb();
 

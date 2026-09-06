@@ -109,5 +109,17 @@ export const task = {
       updated_at: now,
     });
   },
-  getAll: dbTask.getAll,
+  getAll: (props: { projectKey?: string } = {}) => {
+    if (props.projectKey == null) {
+      return dbTask.getAll();
+    }
+
+    const taskProject = dbProject.getByKey(props.projectKey);
+
+    if (taskProject == null) {
+      throw new Error(`Project with key "${props.projectKey}" does not exist!`);
+    }
+
+    return dbTask.getAllByProjectId(taskProject.id);
+  },
 };
