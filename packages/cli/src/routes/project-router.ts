@@ -25,7 +25,12 @@ export const projectRouter = {
   list: {
     run: () => {
       const projects = project.getAll();
-      console.info(projects.map((p) => p.name).join("\n"));
+      const longestKeyLength = projects.reduce(
+        (prev, current) => Math.max(prev, current.key.length),
+        0,
+      );
+
+      console.info(projects.map((p) => `${p.key.padEnd(longestKeyLength)} | ${p.name}`).join("\n"));
     },
     help: "",
   },
