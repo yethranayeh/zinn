@@ -296,7 +296,9 @@ test("task create rejects control characters in text rendered by task list", () 
     );
 
     expect(invalidTitle.code).toBe(1);
-    expect(invalidTitle.stderr).toContain("Task title must contain printable text on a single line");
+    expect(invalidTitle.stderr).toContain(
+      "Task title must contain printable text on a single line",
+    );
     expect(invalidDescription.code).toBe(1);
     expect(invalidDescription.stderr).toContain(
       "Task description must contain printable text on a single line",
@@ -305,19 +307,65 @@ test("task create rejects control characters in text rendered by task list", () 
   });
 });
 
-// --- NOT YET TESTABLE
+test("task list filters to the requested project regardless of key casing", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Alpha", "ALPHA"], testDir);
+    runZinn(["project", "create", "Beta", "BETA"], testDir);
+    runZinn(["task", "create", "ALPHA", "alpha task"], testDir);
+    runZinn(["task", "create", "BETA", "beta task"], testDir);
 
-// #TODO(build): `task list` command. Without a read path there is no way to
-// #TODO observe a task through the CLI, so nothing downstream of `task create`
-// #TODO can be asserted end-to-end.
-test.todo("task create attaches a task to its project", () => {
-  runZinn(["project", "create", "Alpha", "ALPHA"]);
-  runZinn(["project", "create", "Beta", "BETA"]);
-  runZinn(["task", "create", "ALPHA", "alpha task"]);
+    const result = runZinn(["task", "list", "aLpHa"], testDir);
 
-  expect(runZinn(["task", "list", "ALPHA"]).stdout).toContain("alpha task");
-  expect(runZinn(["task", "list", "BETA"]).stdout).not.toContain("alpha task");
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("ALPHA-1 | alpha task");
+    expect(result.stdout).not.toContain("beta task");
+    expect(result.stdout.trimEnd().split("\n")).toHaveLength(1);
+  });
 });
+
+test("task list for an empty project does not leak another project's tasks", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Empty", "EMPTY"], testDir);
+    runZinn(["project", "create", "Busy", "BUSY"], testDir);
+    runZinn(["task", "create", "BUSY", "private task"], testDir);
+
+    const result = runZinn(["task", "list", "EMPTY"], testDir);
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("");
+  });
+});
+
+test("task list rejects an unknown project", () => {
+  withIsolatedZinnDir((testDir) => {
+    const result = runZinn(["task", "list", "NOSUCH"], testDir);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain(`Project with key "NOSUCH" does not exist!`);
+  });
+});
+
+test("project-scoped task list aligns one- and two-digit task numbers", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Ten tasks", "TEN"], testDir);
+    for (let number = 1; number <= 10; number++) {
+      runZinn(["task", "create", "TEN", `task ${number}`], testDir);
+    }
+
+    const result = runZinn(["task", "list", "TEN"], testDir);
+    const lines = result.stdout.trimEnd().split("\n");
+
+    expect(result.code).toBe(0);
+    expect(lines).toHaveLength(10);
+    expect(lines).toContain("TEN-1  | task 1");
+    expect(lines).toContain("TEN-10 | task 10");
+  });
+});
+
+// --- NOT YET TESTABLE
 
 test("project list shows every established project", () => {
   runZinn(["project", "create", "Listed", "LIST"]);
