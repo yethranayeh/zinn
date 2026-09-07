@@ -79,12 +79,14 @@ export const taskRouter = {
       const taskKey = args[0];
 
       if (taskKey == null) {
-        // TODO
-        return;
+        quit("Task key must be specified");
       }
 
       const taskMatch = task.getByKey(taskKey);
-      console.info(`${taskKey} | ${taskMatch.name} | ${taskMatch.description}`);
+      const taskProject = project.getById(taskMatch.project_id)!;
+      const canonicalTaskKey = `${taskProject.key}-${taskMatch.number}`;
+      const description = taskMatch.description == null ? "" : ` | ${taskMatch.description}`;
+      console.info(`${canonicalTaskKey} | ${taskMatch.name}${description}`);
     },
     help: "",
   },

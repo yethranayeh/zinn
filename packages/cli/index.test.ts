@@ -365,6 +365,68 @@ test("project-scoped task list aligns one- and two-digit task numbers", () => {
   });
 });
 
+test("task view resolves a case-insensitive key and prints its canonical form", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Viewed", "VIEW"], testDir);
+    runZinn(["task", "create", "VIEW", "visible task", "visible description"], testDir);
+
+    const result = runZinn(["task", "view", "vIeW-1"], testDir);
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("VIEW-1 | visible task | visible description\n");
+  });
+});
+
+test("task view does not print a missing description as data", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "No description", "NONE"], testDir);
+    runZinn(["task", "create", "NONE", "title only"], testDir);
+
+    const result = runZinn(["task", "view", "NONE-1"], testDir);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe("NONE-1 | title only\n");
+  });
+});
+
+test("task view requires a task key", () => {
+  withIsolatedZinnDir((testDir) => {
+    const result = runZinn(["task", "view"], testDir);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("Task key must be specified");
+  });
+});
+
+test("task view rejects malformed task keys with an actionable error", () => {
+  withIsolatedZinnDir((testDir) => {
+    for (const invalidKey of ["VIEW", "VIEW-", "VIEW-one", "VIEW-1-extra", "-1"]) {
+      const result = runZinn(["task", "view", invalidKey], testDir);
+
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain(`Invalid task key "${invalidKey}"`);
+      expect(result.stderr).toContain("Expected format PROJECT-1");
+    }
+  });
+});
+
+test("task view distinguishes an unknown project from an unknown task number", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Known", "KNOWN"], testDir);
+
+    const unknownProject = runZinn(["task", "view", "NOPE-1"], testDir);
+    const unknownTask = runZinn(["task", "view", "KNOWN-99"], testDir);
+
+    expect(unknownProject.code).toBe(1);
+    expect(unknownProject.stderr).toContain(`Project with key "NOPE" does not exist!`);
+    expect(unknownTask.code).toBe(1);
+    expect(unknownTask.stderr).toContain(`Task "KNOWN-99" does not exist!`);
+  });
+});
+
 // --- NOT YET TESTABLE
 
 test("project list shows every established project", () => {
