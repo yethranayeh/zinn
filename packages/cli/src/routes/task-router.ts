@@ -1,6 +1,6 @@
 import type { RouteDef } from "../types";
 
-import { task, project } from "@zinn-dev/core";
+import { task, project, column } from "@zinn-dev/core";
 import { quit } from "../lib";
 
 export const taskRouter = {
@@ -52,10 +52,12 @@ export const taskRouter = {
       }
 
       const presentableTasks = tasks.map((t) => {
+        // TODO: A task's project and column is fetched in both `list` and `view`. Make a reusable fetcher?
         const taskProject = project.getById(t.project_id)!;
+        const taskColumn = column.getById(t.column_id)!;
         const taskKey = `${taskProject.key}-${t.number}`;
 
-        return { id: taskKey, name: t.name, description: t.description };
+        return { id: taskKey, name: t.name, description: t.description, column: taskColumn.name };
       });
 
       const longestIdLength = presentableTasks.reduce(
@@ -66,8 +68,9 @@ export const taskRouter = {
       console.info(
         presentableTasks
           .map((t) => {
+            // TODO: console output formatting for standardizied output
             const description = t.description == null ? "" : ` | ${t.description}`;
-            return `${t.id.padEnd(longestIdLength)} | ${t.name}${description}`;
+            return `${t.id.padEnd(longestIdLength)} | ${t.column} | ${t.name}${description}`;
           })
           .join("\n"),
       );
@@ -84,9 +87,11 @@ export const taskRouter = {
 
       const taskMatch = task.getByKey(taskKey);
       const taskProject = project.getById(taskMatch.project_id)!;
+      const taskColumn = column.getById(taskMatch.column_id)!;
+
       const canonicalTaskKey = `${taskProject.key}-${taskMatch.number}`;
       const description = taskMatch.description == null ? "" : ` | ${taskMatch.description}`;
-      console.info(`${canonicalTaskKey} | ${taskMatch.name}${description}`);
+      console.info(`${canonicalTaskKey} | ${taskColumn?.name} | ${taskMatch.name}${description}`);
     },
     help: "",
   },

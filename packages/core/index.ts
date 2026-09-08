@@ -59,6 +59,7 @@ export const project = {
 };
 
 export const column = {
+  getById: dbColumn.getById,
   getAllByProjectKey: (key: string) => {
     const standardizedKey = standardizeProjectKey(key);
     const project = dbProject.getByKey(standardizedKey);
@@ -101,11 +102,14 @@ export const task = {
     }
 
     // TODO: if anything after this fails, especially the task creation, the counter is still incremented but not assigned to any task
+    // TODO: rename
     const project = dbProject.incrementTaskCounterById(task.project_id);
 
     if (project == null) {
       throw new Error(`Project's next task number could not be retrieved  (ID:${task.project_id})`);
     }
+
+    const initialColumn = dbColumn.getAllByProjectId(task.project_id)[0]!;
 
     // TODO: do proper refined query
     // FIXME: returns all tasks from *all* projects
@@ -123,6 +127,7 @@ export const task = {
     return dbTask.create({
       id: randomUUIDv7(),
       project_id: task.project_id,
+      column_id: initialColumn.id,
       number: project.task_count,
       name: task.name,
       description: task.description,

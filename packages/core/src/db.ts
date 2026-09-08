@@ -32,7 +32,8 @@ function initDb() {
   // --- TASK TABLE
   db.query(`CREATE TABLE IF NOT EXISTS ${DB_TABLE.task} (
   id          TEXT PRIMARY KEY,
-  project_id  TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+  project_id  TEXT NOT NULL REFERENCES ${DB_TABLE.project}(id) ON DELETE CASCADE,
+  column_id   TEXT NOT NULL REFERENCES ${DB_TABLE.projectColumn}(id),
   number      INTEGER NOT NULL,
   name        TEXT NOT NULL,
   description TEXT,

@@ -1,4 +1,5 @@
 import { test, expect, afterAll } from "bun:test";
+import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -50,6 +51,17 @@ function runZinn(args: Array<string>, testDir = TEST_DIR) {
     stderr: proc.stderr.toString(),
     code: proc.exitCode,
   };
+}
+
+function withTestDb<T>(testDir: string, inspect: (db: Database) => T) {
+  const db = new Database(join(testDir, "data", "zinn.sqlite"));
+  db.run("PRAGMA foreign_keys = ON;");
+
+  try {
+    return inspect(db);
+  } finally {
+    db.close();
+  }
 }
 
 // --- ENTRYPOINT
@@ -237,10 +249,76 @@ test("task create succeeds against an existing project", () => {
 
   const result = runZinn(["task", "create", "TSK", "first task"]);
 
-  // #TODO(build): this only proves the command exited cleanly. The actual
-  // #TODO "attaches to its project" assertion needs `task list` — see the
-  // #TODO `.todo` case directly below.
+  // The placement contract is asserted independently below.
   expect(result.code).toBe(0);
+});
+
+test("task create attaches the task to its project's first ordered column", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Placed", "PLACE"], testDir);
+    runZinn(["project", "column", "create", "PLACE", "Later"], testDir);
+
+    expect(runZinn(["task", "create", "PLACE", "placed task"], testDir).code).toBe(0);
+
+    withTestDb(testDir, (db) => {
+      const taskRow = db
+        .query<
+          { project_id: string; column_id: string },
+          []
+        >("SELECT project_id, column_id FROM task WHERE name = 'placed task'")
+        .get();
+      const firstColumn = db
+        .query<
+          { id: string; project_id: string; name: string },
+          []
+        >("SELECT id, project_id, name FROM project_column ORDER BY column_order LIMIT 1")
+        .get();
+
+      expect(taskRow).not.toBeNull();
+      expect(firstColumn).not.toBeNull();
+      expect(firstColumn?.name).toBe("Backlog");
+      expect(taskRow?.column_id).toBe(firstColumn?.id);
+      expect(taskRow?.project_id).toBe(firstColumn?.project_id);
+    });
+  });
+});
+
+test.todo("task ordering starts independently in each column", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Alpha", "ALPHA"], testDir);
+    runZinn(["project", "create", "Beta", "BETA"], testDir);
+    runZinn(["task", "create", "ALPHA", "alpha first"], testDir);
+    runZinn(["task", "create", "BETA", "beta first"], testDir);
+
+    withTestDb(testDir, (db) => {
+      const rows = db
+        .query<{ name: string; task_order: string }, []>(
+          "SELECT name, task_order FROM task ORDER BY name",
+        )
+        .all();
+
+      expect(rows).toHaveLength(2);
+      expect(rows[0]?.task_order).toBe(rows[1]?.task_order);
+    });
+  });
+});
+
+test.todo("a project without columns rejects task creation without consuming a task number", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "No columns", "EMPTYCOL"], testDir);
+    withTestDb(testDir, (db) => db.run("DELETE FROM project_column"));
+
+    const rejected = runZinn(["task", "create", "EMPTYCOL", "cannot place me"], testDir);
+
+    expect(rejected.code).toBe(1);
+    expect(rejected.stderr).toContain('Project "EMPTYCOL" does not have any columns');
+
+    runZinn(["project", "column", "create", "EMPTYCOL", "Inbox"], testDir);
+    expect(runZinn(["task", "create", "EMPTYCOL", "first real task"], testDir).code).toBe(0);
+    expect(runZinn(["task", "view", "EMPTYCOL-1"], testDir).stdout).toContain(
+      "EMPTYCOL-1 | Inbox | first real task",
+    );
+  });
 });
 
 test("task list on an empty database exits cleanly without output", () => {
@@ -266,8 +344,8 @@ test("task list renders every project's tasks once and aligns unequal key widths
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
     expect(lines).toHaveLength(2);
-    expect(lines).toContain("A-1       | short task | short description");
-    expect(lines).toContain("LONGKEY-1 | long task | long description");
+    expect(lines).toContain("A-1       | Backlog | short task | short description");
+    expect(lines).toContain("LONGKEY-1 | Backlog | long task | long description");
   });
 });
 
@@ -279,7 +357,7 @@ test("task list does not print a missing description as data", () => {
     const result = runZinn(["task", "list"], testDir);
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain("NONE-1 | title only");
+    expect(result.stdout).toContain("NONE-1 | Backlog | title only");
     expect(result.stdout).not.toContain("null");
   });
 });
@@ -318,7 +396,7 @@ test("task list filters to the requested project regardless of key casing", () =
 
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toContain("ALPHA-1 | alpha task");
+    expect(result.stdout).toContain("ALPHA-1 | Backlog | alpha task");
     expect(result.stdout).not.toContain("beta task");
     expect(result.stdout.trimEnd().split("\n")).toHaveLength(1);
   });
@@ -360,8 +438,8 @@ test("project-scoped task list aligns one- and two-digit task numbers", () => {
 
     expect(result.code).toBe(0);
     expect(lines).toHaveLength(10);
-    expect(lines).toContain("TEN-1  | task 1");
-    expect(lines).toContain("TEN-10 | task 10");
+    expect(lines).toContain("TEN-1  | Backlog | task 1");
+    expect(lines).toContain("TEN-10 | Backlog | task 10");
   });
 });
 
@@ -374,7 +452,7 @@ test("task view resolves a case-insensitive key and prints its canonical form", 
 
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toBe("VIEW-1 | visible task | visible description\n");
+    expect(result.stdout).toBe("VIEW-1 | Backlog | visible task | visible description\n");
   });
 });
 
@@ -386,7 +464,7 @@ test("task view does not print a missing description as data", () => {
     const result = runZinn(["task", "view", "NONE-1"], testDir);
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toBe("NONE-1 | title only\n");
+    expect(result.stdout).toBe("NONE-1 | Backlog | title only\n");
   });
 });
 
@@ -447,36 +525,6 @@ test.todo("task delete removes the task but not its project", () => {
   expect(runZinn(["task", "delete", "KEEP", "1"]).code).toBe(0);
   expect(runZinn(["task", "list", "KEEP"]).stdout).not.toContain("doomed task");
   expect(runZinn(["project", "list"]).stdout).toContain("KEEP");
-});
-
-// #TODO(fix): `task.create` in packages/core/index.ts increments the project's
-// #TODO task counter *before* inserting the task, so a failed insert burns a
-// #TODO number permanently. Already flagged inline there; needs the increment
-// #TODO and the insert wrapped in one transaction.
-test.todo("a failed task create does not burn a task number", () => {
-  runZinn(["project", "create", "Counter", "CNT"]);
-  runZinn(["task", "create", "CNT", "first task"]);
-  runZinn(["task", "create", "CNT", ""]); // ? expected to fail once empty titles are rejected
-
-  runZinn(["task", "create", "CNT", "second task"]);
-  expect(runZinn(["task", "list", "CNT"]).stdout).toContain("#2");
-});
-
-// #TODO(fix): `task.create` computes `task_order` from `dbTask.getAll()`, which
-// #TODO returns tasks across *all* projects (FIXME already noted in
-// #TODO packages/core/index.ts). Ordering within one project is therefore
-// #TODO influenced by unrelated projects' tasks.
-test.todo("task ordering is scoped to a single project", () => {
-  runZinn(["project", "create", "One", "ONE"]);
-  runZinn(["project", "create", "Two", "TWO"]);
-
-  runZinn(["task", "create", "ONE", "one first"]);
-  runZinn(["task", "create", "TWO", "two first"]);
-  runZinn(["task", "create", "ONE", "one second"]);
-
-  const listed = runZinn(["task", "list", "ONE"]).stdout;
-  expect(listed.indexOf("one first")).toBeLessThan(listed.indexOf("one second"));
-  expect(listed).not.toContain("two first");
 });
 
 // #TODO(build): empty-string arguments bypass the `== null` guards in both

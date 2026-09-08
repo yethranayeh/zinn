@@ -18,6 +18,7 @@ export type Project = {
 export type Task = {
   id: string;
   project_id: string;
+  column_id: string;
   number: number;
   name: string;
   description: string | null;
