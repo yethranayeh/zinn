@@ -283,12 +283,22 @@ test("task create attaches the task to its project's first ordered column", () =
   });
 });
 
-test.todo("task ordering starts independently in each column", () => {
+test("task ordering starts independently in each column", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "Alpha", "ALPHA"], testDir);
-    runZinn(["project", "create", "Beta", "BETA"], testDir);
-    runZinn(["task", "create", "ALPHA", "alpha first"], testDir);
-    runZinn(["task", "create", "BETA", "beta first"], testDir);
+    runZinn(["task", "create", "ALPHA", "todo first"], testDir);
+
+    withTestDb(testDir, (db) => {
+      const todoColumn = db
+        .query<{ id: string }, []>("SELECT id FROM project_column WHERE name = 'TODO'")
+        .get();
+
+      expect(todoColumn).not.toBeNull();
+      db.run("UPDATE task SET column_id = ? WHERE name = 'todo first'", [todoColumn!.id]);
+    });
+
+    runZinn(["task", "create", "ALPHA", "backlog first"], testDir);
+    runZinn(["task", "create", "ALPHA", "backlog second"], testDir);
 
     withTestDb(testDir, (db) => {
       const rows = db
@@ -297,8 +307,9 @@ test.todo("task ordering starts independently in each column", () => {
         )
         .all();
 
-      expect(rows).toHaveLength(2);
-      expect(rows[0]?.task_order).toBe(rows[1]?.task_order);
+      expect(rows).toHaveLength(3);
+      expect(rows[0]?.task_order).toBe(rows[2]?.task_order);
+      expect(rows[1]!.task_order > rows[0]!.task_order).toBe(true);
     });
   });
 });

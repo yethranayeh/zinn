@@ -18,6 +18,17 @@ export function getAllByProjectId(projectId: string) {
     .all({ $project_id: projectId });
 }
 
+export function getLastByColumnId(columnId: string) {
+  const db = getDb();
+  return db
+    .query<Task, Bind<Pick<Task, "column_id">>>(`SELECT *
+    FROM ${DB_TABLE.task}
+    WHERE column_id = $column_id
+    ORDER BY task_order DESC
+    LIMIT 1`)
+    .get({ $column_id: columnId });
+}
+
 export function getByProjectIdAndNumber(props: { projectId: string; number: number }) {
   const db = getDb();
   return db

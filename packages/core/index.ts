@@ -110,18 +110,8 @@ export const task = {
     }
 
     const initialColumn = dbColumn.getAllByProjectId(task.project_id)[0]!;
-
-    // TODO: do proper refined query
-    // FIXME: returns all tasks from *all* projects
-    const allTasks = dbTask.getAll();
-
-    let previousTaskOrder = null;
-    if (allTasks.length > 0) {
-      const lastTask = allTasks[allTasks.length - 1]!;
-      previousTaskOrder = lastTask.task_order;
-    }
-
-    const order = generateKeyBetween(previousTaskOrder, null);
+    const lastTask = dbTask.getLastByColumnId(initialColumn.id);
+    const order = generateKeyBetween(lastTask?.task_order ?? null, null);
 
     const now = Date.now();
     return dbTask.create({
