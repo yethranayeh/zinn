@@ -1,8 +1,13 @@
 {
 	"name": "zinn",
 	"private": true,
-	"workspaces": ["packages/*"],
+	"workspaces": [
+		"packages/*"
+	],
 	"type": "module",
+	"scripts": {
+		"dev:seed": "bun scripts/seed-dev.ts"
+	},
 	"devDependencies": {
 		"@types/bun": "latest",
 		"typescript": "^5"
