@@ -53,6 +53,19 @@ function runZinn(args: Array<string>, testDir = TEST_DIR) {
   };
 }
 
+function runZinnWithConfirmation(args: Array<string>, testDir = TEST_DIR) {
+  const proc = Bun.spawnSync(
+    ["/bin/sh", "-c", 'printf "y\\n" | exec bun "$@"', "zinn-confirm", CLI_PATH, ...args],
+    { env: { ...process.env, ZINN_DIR: testDir } },
+  );
+
+  return {
+    stdout: proc.stdout.toString(),
+    stderr: proc.stderr.toString(),
+    code: proc.exitCode,
+  };
+}
+
 function withTestDb<T>(testDir: string, inspect: (db: Database) => T) {
   const db = new Database(join(testDir, "data", "zinn.sqlite"));
   db.run("PRAGMA foreign_keys = ON;");
@@ -84,7 +97,7 @@ test("--help prints usage to stdout and exits zero", () => {
 // --- ROUTING
 
 test("an unrecognized command exits nonzero", () => {
-  const result = runZinn(["task", "delete", "WIP"]);
+  const result = runZinn(["task", "destroy", "WIP"]);
 
   expect(result.code).toBe(1);
   expect(result.stderr).toContain("Unrecognized command");
@@ -516,8 +529,6 @@ test("task view distinguishes an unknown project from an unknown task number", (
   });
 });
 
-// --- NOT YET TESTABLE
-
 test("project list shows every established project", () => {
   runZinn(["project", "create", "Listed", "LIST"]);
 
@@ -527,16 +538,35 @@ test("project list shows every established project", () => {
   expect(result.stdout).toContain("LIST");
 });
 
-// #TODO(build): `task delete` command. `taskRouter` currently exposes only
-// #TODO `create` (packages/cli/src/routes/task-router.ts).
-test.todo("task delete removes the task but not its project", () => {
-  runZinn(["project", "create", "Keep", "KEEP"]);
-  runZinn(["task", "create", "KEEP", "doomed task"]);
+test("task delete removes the task but not its project", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Keep", "KEEP"], testDir);
+    runZinn(["task", "create", "KEEP", "doomed task"], testDir);
 
-  expect(runZinn(["task", "delete", "KEEP", "1"]).code).toBe(0);
-  expect(runZinn(["task", "list", "KEEP"]).stdout).not.toContain("doomed task");
-  expect(runZinn(["project", "list"]).stdout).toContain("KEEP");
+    expect(runZinnWithConfirmation(["task", "delete", "KEEP-1"], testDir).code).toBe(0);
+    expect(runZinn(["task", "list", "KEEP"], testDir).stdout).not.toContain("doomed task");
+    expect(runZinn(["project", "list"], testDir).stdout).toContain("KEEP");
+  });
 });
+
+test("task delete keeps the task when confirmation is declined", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Keep", "KEEP"], testDir);
+    runZinn(["task", "create", "KEEP", "surviving task"], testDir);
+
+    expect(runZinn(["task", "delete", "KEEP-1"], testDir).code).toBe(0);
+    expect(runZinn(["task", "list", "KEEP"], testDir).stdout).toContain("surviving task");
+  });
+});
+
+test("task delete requires a valid existing task key", () => {
+  expect(runZinn(["task", "delete"]).stderr).toContain("Task key must be specified");
+  expect(runZinn(["task", "delete", "INVALID"]).stderr).toContain(
+    'Invalid task key "INVALID"',
+  );
+});
+
+// --- NOT YET TESTABLE
 
 // #TODO(build): empty-string arguments bypass the `== null` guards in both
 // #TODO routers, so `zinn task create WIP ""` creates a nameless task. The

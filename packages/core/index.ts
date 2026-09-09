@@ -88,6 +88,36 @@ export const column = {
   },
 };
 
+function getTaskByKey(taskKey: string) {
+  const taskKeyMatch = /^([A-Za-z][A-Za-z0-9]*)-(\d+)$/.exec(taskKey);
+  if (taskKeyMatch == null) {
+    throw new Error(`Invalid task key "${taskKey}". Expected format PROJECT-1`);
+  }
+
+  const projectKey = taskKeyMatch[1]!;
+  const taskNumber = Number(taskKeyMatch[2]);
+  if (!Number.isSafeInteger(taskNumber) || taskNumber < 1) {
+    throw new Error(`Invalid task key "${taskKey}". Expected format PROJECT-1`);
+  }
+
+  const project = dbProject.getByKey(projectKey);
+
+  if (project == null) {
+    throw new Error(`Project with key "${standardizeProjectKey(projectKey)}" does not exist!`);
+  }
+
+  const taskMatch = dbTask.getByProjectIdAndNumber({
+    projectId: project.id,
+    number: taskNumber,
+  });
+
+  if (taskMatch == null) {
+    throw new Error(`Task "${project.key}-${taskNumber}" does not exist!`);
+  }
+
+  return taskMatch;
+}
+
 export const task = {
   create: (task: Pick<Task, "project_id" | "name" | "description">) => {
     const invalidTaskCharRegex = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
@@ -139,33 +169,9 @@ export const task = {
 
     return dbTask.getAllByProjectId(taskProject.id);
   },
-  getByKey: (taskKey: string) => {
-    const taskKeyMatch = /^([A-Za-z][A-Za-z0-9]*)-(\d+)$/.exec(taskKey);
-    if (taskKeyMatch == null) {
-      throw new Error(`Invalid task key "${taskKey}". Expected format PROJECT-1`);
-    }
-
-    const projectKey = taskKeyMatch[1]!;
-    const taskNumber = Number(taskKeyMatch[2]);
-    if (!Number.isSafeInteger(taskNumber) || taskNumber < 1) {
-      throw new Error(`Invalid task key "${taskKey}". Expected format PROJECT-1`);
-    }
-
-    const project = dbProject.getByKey(projectKey);
-
-    if (project == null) {
-      throw new Error(`Project with key "${standardizeProjectKey(projectKey)}" does not exist!`);
-    }
-
-    const taskMatch = dbTask.getByProjectIdAndNumber({
-      projectId: project.id,
-      number: taskNumber,
-    });
-
-    if (taskMatch == null) {
-      throw new Error(`Task "${project.key}-${taskNumber}" does not exist!`);
-    }
-
-    return taskMatch;
+  getByKey: getTaskByKey,
+  delete: (taskKey: string) => {
+    const taskMatch = getTaskByKey(taskKey);
+    return dbTask.deleteById(taskMatch.id);
   },
 };

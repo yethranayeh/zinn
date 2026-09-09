@@ -95,4 +95,25 @@ export const taskRouter = {
     },
     help: "",
   },
+  delete: {
+    run: (args: Array<string>) => {
+      const taskKey = args[0];
+
+      if (taskKey == null) {
+        quit("Task key must be specified");
+      }
+
+      try {
+        task.getByKey(taskKey);
+        const canDelete = confirm(`Are you sure you want to delete ${taskKey}?`);
+
+        if (canDelete) {
+          task.delete(taskKey);
+        }
+      } catch (err: any) {
+        quit(err?.message ?? "Something went wrong");
+      }
+    },
+    help: "",
+  },
 } satisfies RouteDef;

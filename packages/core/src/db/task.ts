@@ -58,3 +58,11 @@ export function create(task: Omit<Task, "archived_at">) {
     $updated_at: task.updated_at,
   });
 }
+
+export function deleteById(taskId: string) {
+  const db = getDb();
+
+  return db
+    .query<never, Bind<Pick<Task, "id">>>(`DELETE FROM ${DB_TABLE.task} WHERE id = $id;`)
+    .run({ $id: taskId });
+}
