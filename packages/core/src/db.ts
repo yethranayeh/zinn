@@ -35,7 +35,7 @@ function initDb() {
   project_id  TEXT NOT NULL REFERENCES ${DB_TABLE.project}(id) ON DELETE CASCADE,
   column_id   TEXT NOT NULL REFERENCES ${DB_TABLE.projectColumn}(id),
   number      INTEGER NOT NULL,
-  name        TEXT NOT NULL,
+  title       TEXT NOT NULL,
   description TEXT,
   task_order  TEXT,
   created_at  INTEGER NOT NULL,

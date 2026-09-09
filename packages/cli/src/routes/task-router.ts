@@ -11,8 +11,8 @@ export const taskRouter = {
         quit("A task needs to belong to a project");
       }
 
-      const taskName = args[1];
-      if (taskName == null) {
+      const taskTitle = args[1];
+      if (taskTitle == null) {
         quit("A task needs at least a title");
       }
 
@@ -31,7 +31,7 @@ export const taskRouter = {
         // TODO: should it non-null (??) or non-falsy (||) check?
         task.create({
           project_id: projectMatch.id,
-          name: taskName,
+          title: taskTitle,
           description: taskDesc ?? null,
         });
       } catch (err: any) {
@@ -57,7 +57,7 @@ export const taskRouter = {
         const taskColumn = column.getById(t.column_id)!;
         const taskKey = `${taskProject.key}-${t.number}`;
 
-        return { id: taskKey, name: t.name, description: t.description, column: taskColumn.name };
+        return { id: taskKey, title: t.title, description: t.description, column: taskColumn.name };
       });
 
       const longestIdLength = presentableTasks.reduce(
@@ -70,7 +70,7 @@ export const taskRouter = {
           .map((t) => {
             // TODO: console output formatting for standardizied output
             const description = t.description == null ? "" : ` | ${t.description}`;
-            return `${t.id.padEnd(longestIdLength)} | ${t.column} | ${t.name}${description}`;
+            return `${t.id.padEnd(longestIdLength)} | ${t.column} | ${t.title}${description}`;
           })
           .join("\n"),
       );
@@ -91,7 +91,7 @@ export const taskRouter = {
 
       const canonicalTaskKey = `${taskProject.key}-${taskMatch.number}`;
       const description = taskMatch.description == null ? "" : ` | ${taskMatch.description}`;
-      console.info(`${canonicalTaskKey} | ${taskColumn?.name} | ${taskMatch.name}${description}`);
+      console.info(`${canonicalTaskKey} | ${taskColumn?.name} | ${taskMatch.title}${description}`);
     },
     help: "",
   },

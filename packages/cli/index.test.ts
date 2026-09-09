@@ -278,7 +278,7 @@ test("task create attaches the task to its project's first ordered column", () =
         .query<
           { project_id: string; column_id: string },
           []
-        >("SELECT project_id, column_id FROM task WHERE name = 'placed task'")
+        >("SELECT project_id, column_id FROM task WHERE title = 'placed task'")
         .get();
       const firstColumn = db
         .query<
@@ -307,7 +307,7 @@ test("task ordering starts independently in each column", () => {
         .get();
 
       expect(todoColumn).not.toBeNull();
-      db.run("UPDATE task SET column_id = ? WHERE name = 'todo first'", [todoColumn!.id]);
+      db.run("UPDATE task SET column_id = ? WHERE title = 'todo first'", [todoColumn!.id]);
     });
 
     runZinn(["task", "create", "ALPHA", "backlog first"], testDir);
@@ -315,8 +315,8 @@ test("task ordering starts independently in each column", () => {
 
     withTestDb(testDir, (db) => {
       const rows = db
-        .query<{ name: string; task_order: string }, []>(
-          "SELECT name, task_order FROM task ORDER BY name",
+        .query<{ title: string; task_order: string }, []>(
+          "SELECT title, task_order FROM task ORDER BY title",
         )
         .all();
 

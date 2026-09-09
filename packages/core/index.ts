@@ -119,11 +119,11 @@ function getTaskByKey(taskKey: string) {
 }
 
 export const task = {
-  create: (task: Pick<Task, "project_id" | "name" | "description">) => {
+  create: (task: Pick<Task, "project_id" | "title" | "description">) => {
     const invalidTaskCharRegex = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
     // Tasks are currently rendered as single-line terminal rows, so their text
     // cannot contain control characters or Unicode line separators.
-    if (task.name.trim().length === 0 || invalidTaskCharRegex.test(task.name)) {
+    if (task.title.trim().length === 0 || invalidTaskCharRegex.test(task.title)) {
       throw new Error("Task title must contain printable text on a single line");
     }
 
@@ -149,7 +149,7 @@ export const task = {
       project_id: task.project_id,
       column_id: initialColumn.id,
       number: project.task_count,
-      name: task.name,
+      title: task.title,
       description: task.description,
       task_order: order,
       created_at: now,

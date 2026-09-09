@@ -20,7 +20,7 @@ export type Task = {
   project_id: string;
   column_id: string;
   number: number;
-  name: string;
+  title: string;
   description: string | null;
   task_order: string;
   created_at: number;

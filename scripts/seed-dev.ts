@@ -30,10 +30,10 @@ function createProject(props: { key: string; name: string }) {
 
 function createTask(
   projectId: string,
-  name: string,
+  title: string,
   description: string | null = null,
 ) {
-  task.create({ project_id: projectId, name, description });
+  task.create({ project_id: projectId, title, description });
 }
 
 const app = createProject({ key: "APP", name: "Zinn App" });
