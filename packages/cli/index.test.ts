@@ -529,6 +529,96 @@ test("task view distinguishes an unknown project from an unknown task number", (
   });
 });
 
+test("task move requires a task key and target column", () => {
+  withIsolatedZinnDir((testDir) => {
+    expect(runZinn(["task", "move"], testDir).stderr).toContain("Task key must be specified");
+    expect(runZinn(["task", "move", "MOVE-1"], testDir).stderr).toContain(
+      "Target column must be specified",
+    );
+  });
+});
+
+test("task move rejects a column outside the task's project", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Origin", "ORIGIN"], testDir);
+    runZinn(["project", "create", "Other", "OTHER"], testDir);
+    runZinn(["project", "column", "create", "OTHER", "External"], testDir);
+    runZinn(["task", "create", "ORIGIN", "stationary task"], testDir);
+
+    const result = runZinn(["task", "move", "ORIGIN-1", "External"], testDir);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain(
+      `Column "External" does not exist in task "ORIGIN-1"'s project!`,
+    );
+    expect(runZinn(["task", "view", "ORIGIN-1"], testDir).stdout).toContain(
+      "ORIGIN-1 | Backlog | stationary task",
+    );
+  });
+});
+
+test("task move appends the task to the destination column", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Movable", "MOVE"], testDir);
+    runZinn(["task", "create", "MOVE", "first task"], testDir);
+    runZinn(["task", "create", "MOVE", "second task"], testDir);
+
+    expect(runZinn(["task", "move", "MOVE-1", "In Progress"], testDir).code).toBe(0);
+    expect(runZinn(["task", "move", "MOVE-2", "In Progress"], testDir).code).toBe(0);
+
+    withTestDb(testDir, (db) => {
+      const rows = db
+        .query<
+          {
+            title: string;
+            task_order: string;
+            column_name: string;
+            task_project: string;
+            column_project: string;
+          },
+          []
+        >(`SELECT task.title,
+                  task.task_order,
+                  project_column.name AS column_name,
+                  task.project_id AS task_project,
+                  project_column.project_id AS column_project
+           FROM task
+           JOIN project_column ON project_column.id = task.column_id
+           ORDER BY task.task_order`)
+        .all();
+
+      expect(rows).toHaveLength(2);
+      expect(rows.map((row) => row.title)).toEqual(["first task", "second task"]);
+      expect(rows.every((row) => row.column_name === "In Progress")).toBe(true);
+      expect(rows.every((row) => row.task_project === row.column_project)).toBe(true);
+      expect(rows[1]!.task_order > rows[0]!.task_order).toBe(true);
+    });
+  });
+});
+
+test("task move to the current column is a no-op", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Still", "STILL"], testDir);
+    runZinn(["task", "create", "STILL", "still task"], testDir);
+
+    const before = withTestDb(testDir, (db) =>
+      db.query<{ column_id: string; task_order: string; updated_at: number }, []>(
+        "SELECT column_id, task_order, updated_at FROM task WHERE title = 'still task'",
+      ).get(),
+    );
+
+    expect(runZinn(["task", "move", "STILL-1", "Backlog"], testDir).code).toBe(0);
+
+    const after = withTestDb(testDir, (db) =>
+      db.query<{ column_id: string; task_order: string; updated_at: number }, []>(
+        "SELECT column_id, task_order, updated_at FROM task WHERE title = 'still task'",
+      ).get(),
+    );
+
+    expect(after).toEqual(before);
+  });
+});
+
 test("project list shows every established project", () => {
   runZinn(["project", "create", "Listed", "LIST"]);
 

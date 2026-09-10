@@ -95,6 +95,22 @@ export const taskRouter = {
     },
     help: "",
   },
+  move: {
+    run: (args) => {
+      const [taskKey, targetColumn] = args;
+
+      if (taskKey == null) {
+        quit("Task key must be specified");
+      }
+
+      if (targetColumn == null) {
+        quit("Target column must be specified");
+      }
+
+      task.move({ taskKey, targetColumn });
+    },
+    help: "",
+  },
   delete: {
     run: (args: Array<string>) => {
       const taskKey = args[0];

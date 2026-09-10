@@ -170,6 +170,32 @@ export const task = {
     return dbTask.getAllByProjectId(taskProject.id);
   },
   getByKey: getTaskByKey,
+  move: (props: { taskKey: string; targetColumn: string }) => {
+    const taskMatch = getTaskByKey(props.taskKey);
+    const columnMatch = dbColumn
+      .getAllByProjectId(taskMatch.project_id)
+      .find((c) => c.name === props.targetColumn);
+
+    if (columnMatch == null) {
+      throw new Error(
+        `Column "${props.targetColumn}" does not exist in task "${props.taskKey}"'s project!`,
+      );
+    }
+
+    if (columnMatch.id === taskMatch.column_id) {
+      return taskMatch;
+    }
+
+    const lastTask = dbTask.getLastByColumnId(columnMatch.id);
+    const order = generateKeyBetween(lastTask?.task_order ?? null, null);
+
+    return dbTask.update({
+      id: taskMatch.id,
+      column_id: columnMatch.id,
+      task_order: order,
+      updated_at: Date.now(),
+    });
+  },
   delete: (taskKey: string) => {
     const taskMatch = getTaskByKey(taskKey);
     return dbTask.deleteById(taskMatch.id);

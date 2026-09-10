@@ -59,6 +59,27 @@ export function create(task: Omit<Task, "archived_at">) {
   });
 }
 
+export function update(props: Pick<Task, "id" | "column_id" | "task_order" | "updated_at">) {
+  const db = getDb();
+
+  return db
+    .query<
+      Task,
+      Bind<Pick<Task, "id" | "column_id" | "task_order" | "updated_at">>
+    >(`UPDATE ${DB_TABLE.task}
+    SET column_id = $column_id,
+        task_order = $task_order,
+        updated_at = $updated_at
+    WHERE id = $id
+    RETURNING *;`)
+    .get({
+      $id: props.id,
+      $column_id: props.column_id,
+      $task_order: props.task_order,
+      $updated_at: props.updated_at,
+    });
+}
+
 export function deleteById(taskId: string) {
   const db = getDb();
 
