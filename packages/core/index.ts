@@ -78,6 +78,16 @@ export const column = {
     }
 
     const allProjectColumns = dbColumn.getAllByProjectId(project.id);
+    const existingColumn = allProjectColumns.find(
+      (existing) => existing.name.toLowerCase() === column.name.toLowerCase(),
+    );
+
+    if (existingColumn != null) {
+      throw new Error(
+        `Column with name "${column.name}" already exists in project "${project.key}"!`,
+      );
+    }
+
     const lastColOrder = allProjectColumns[allProjectColumns.length - 1]?.column_order ?? null;
     const res = dbColumn.create({
       id: randomUUIDv7(),
@@ -174,9 +184,10 @@ export const task = {
     const taskMatch = getTaskByKey(props.taskKey);
     const columnMatch = dbColumn
       .getAllByProjectId(taskMatch.project_id)
-      .find((c) => c.name === props.targetColumn);
+      .find((column) => column.name.toLowerCase() === props.targetColumn.toLowerCase());
 
     if (columnMatch == null) {
+      // TODO: maybe a `did you mean` type of fuzzy check for misspelllings
       throw new Error(
         `Column "${props.targetColumn}" does not exist in task "${props.taskKey}"'s project!`,
       );

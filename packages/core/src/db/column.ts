@@ -23,7 +23,6 @@ export function getAllByProjectId(projectId: string) {
     .all({ $project_id: projectId });
 }
 
-// TODO: reject and prevent use of existing column names in the same project
 export function create(column: Column) {
   const db = getDb();
   const query = db.query<Column, Bind<Column>>(`INSERT INTO

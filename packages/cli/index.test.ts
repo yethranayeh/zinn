@@ -146,6 +146,42 @@ test("project create rejects a duplicate key regardless of casing", () => {
   expect(second.stderr).toContain(`Project with key "DUP" already exists!`);
 });
 
+test("project column create rejects a duplicate name regardless of casing", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Columns", "COL"], testDir);
+    expect(runZinn(["project", "column", "create", "COL", "Later"], testDir).code).toBe(0);
+
+    const duplicate = runZinn(["project", "column", "create", "COL", "later"], testDir);
+
+    expect(duplicate.code).toBe(1);
+    expect(duplicate.stderr).toContain(
+      `Column with name "later" already exists in project "COL"!`,
+    );
+    withTestDb(testDir, (db) => {
+      const matches = db
+        .query<{ count: number }, []>(
+          "SELECT COUNT(*) AS count FROM project_column WHERE project_id = (SELECT id FROM project WHERE key = 'COL') AND LOWER(name) = 'later'",
+        )
+        .get();
+
+      expect(matches?.count).toBe(1);
+    });
+  });
+});
+
+test("project column names are unique only within a project", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Alpha", "ALPHA"], testDir);
+    runZinn(["project", "create", "Beta", "BETA"], testDir);
+
+    const alpha = runZinn(["project", "column", "create", "ALPHA", "QA"], testDir);
+    const beta = runZinn(["project", "column", "create", "BETA", "qa"], testDir);
+
+    expect(alpha.code).toBe(0);
+    expect(beta.code).toBe(0);
+  });
+});
+
 test("project delete accepts a non-standardized key", () => {
   runZinn(["project", "create", "Doomed", "GONE"]);
 
