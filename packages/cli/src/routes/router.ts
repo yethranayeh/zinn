@@ -58,6 +58,13 @@ function route(parsedRoutes: Array<ParsedRoute>, args: Array<string>) {
   }
 
   const commandArgs = args.slice(nestingLevel);
+  const isHelpRequest = commandArgs.length === 1 && ["-h", "--help"].includes(commandArgs[0]!);
+
+  if (isHelpRequest && match.help.trim().length > 0) {
+    console.info(match.help);
+    return;
+  }
+
   try {
     match.run(commandArgs);
   } catch (err: any) {

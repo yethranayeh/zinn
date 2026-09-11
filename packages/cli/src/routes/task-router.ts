@@ -44,7 +44,6 @@ export const taskRouter = {
     run: (args) => {
       const projectKey = args[0];
 
-      // TODO: order by actual `t.order` per project
       const tasks = task.getAll({ projectKey });
 
       if (tasks.length === 0) {
@@ -109,7 +108,12 @@ export const taskRouter = {
 
       task.move({ taskKey, targetColumn });
     },
-    help: "",
+    help: `Usage: zinn task move <task-key> <target-column>
+
+Move a task to another column in its project.
+Moving a task to a different column lists it last in that column,
+matching placement at the bottom of a visual kanban column.
+Giving a task's current column as the target will not do anything.`,
   },
   delete: {
     run: (args: Array<string>) => {

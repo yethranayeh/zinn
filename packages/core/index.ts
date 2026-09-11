@@ -180,6 +180,13 @@ export const task = {
     return dbTask.getAllByProjectId(taskProject.id);
   },
   getByKey: getTaskByKey,
+  /**
+   * Moves a task to another column in its project.
+   *
+   * Moving a task to a different column lists it last in that column,
+   *  matching placement at the bottom of a visual kanban column.
+   * Giving a task's current column as the target will not do anything.
+   */
   move: (props: { taskKey: string; targetColumn: string }) => {
     const taskMatch = getTaskByKey(props.taskKey);
     const columnMatch = dbColumn

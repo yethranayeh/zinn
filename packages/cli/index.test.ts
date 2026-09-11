@@ -462,6 +462,36 @@ test("task list filters to the requested project regardless of key casing", () =
   });
 });
 
+test("project-scoped task list follows column order and task order within each column", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Ordered", "ORDER"], testDir);
+    runZinn(["task", "create", "ORDER", "todo first"], testDir);
+    runZinn(["task", "create", "ORDER", "backlog first"], testDir);
+    runZinn(["task", "create", "ORDER", "in progress"], testDir);
+    runZinn(["task", "create", "ORDER", "todo second"], testDir);
+    runZinn(["task", "create", "ORDER", "backlog second"], testDir);
+
+    runZinn(["task", "move", "ORDER-1", "TODO"], testDir);
+    runZinn(["task", "move", "ORDER-3", "In Progress"], testDir);
+    runZinn(["task", "move", "ORDER-4", "TODO"], testDir);
+
+    const result = runZinn(["task", "list", "ORDER"], testDir);
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe(
+      [
+        "ORDER-2 | Backlog | backlog first",
+        "ORDER-5 | Backlog | backlog second",
+        "ORDER-1 | TODO | todo first",
+        "ORDER-4 | TODO | todo second",
+        "ORDER-3 | In Progress | in progress",
+        "",
+      ].join("\n"),
+    );
+  });
+});
+
 test("task list for an empty project does not leak another project's tasks", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "Empty", "EMPTY"], testDir);
@@ -572,6 +602,23 @@ test("task move requires a task key and target column", () => {
       "Target column must be specified",
     );
   });
+});
+
+test("task move help documents destination placement", () => {
+  const longHelp = runZinn(["task", "move", "--help"]);
+  const shortHelp = runZinn(["task", "move", "-h"]);
+
+  expect(longHelp.code).toBe(0);
+  expect(longHelp.stderr).toBe("");
+  expect(longHelp.stdout).toContain("Usage: zinn task move <task-key> <target-column>");
+  expect(longHelp.stdout).toContain(
+    "Moving a task to a different column lists it last in that column,",
+  );
+  expect(longHelp.stdout).toContain(
+    "Giving a task's current column as the target will not do anything.",
+  );
+  expect(shortHelp.code).toBe(0);
+  expect(shortHelp.stdout).toBe(longHelp.stdout);
 });
 
 test("task move rejects a column outside the task's project", () => {

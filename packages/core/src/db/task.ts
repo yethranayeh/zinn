@@ -12,9 +12,14 @@ export function getAll() {
 export function getAllByProjectId(projectId: string) {
   const db = getDb();
   return db
-    .query<Task, Bind<Pick<Task, "project_id">>>(`SELECT *
+    .query<Task, Bind<Pick<Task, "project_id">>>(`SELECT task.*
     FROM ${DB_TABLE.task}
-    WHERE project_id = $project_id`)
+    INNER JOIN ${DB_TABLE.projectColumn}
+      ON project_column.id = task.column_id
+    WHERE task.project_id = $project_id
+    ORDER BY project_column.column_order ASC,
+      task.task_order ASC,
+      task.number ASC`)
     .all({ $project_id: projectId });
 }
 
