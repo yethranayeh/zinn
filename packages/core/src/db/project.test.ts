@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { Task } from "../types";
+
 const TEMP_DIR_ROOT = tmpdir();
 const PREFIX = join(TEMP_DIR_ROOT, "zinntest-");
 const TEST_DIR = mkdtempSync(PREFIX);
@@ -10,6 +12,8 @@ process.env.ZINN_DIR = TEST_DIR;
 
 // ? Dynamic so env is set before `MAIN_DIR` constant is initialized.
 const project = await import("./project");
+const column = await import("./column");
+const task = await import("./task");
 
 afterAll(() => {
   if (!TEST_DIR.startsWith(PREFIX)) {
@@ -91,4 +95,74 @@ test("project.deleteByKey removes a project regardless of key casing", () => {
 
 test("project.deleteByKey doesn't do anything for nonexistent project", () => {
   expect(project.deleteByKey("void").changes).toBe(0);
+});
+
+function createTask(title: string) {
+  const suffix = crypto.randomUUID();
+  const taskProject = project.create({ key: `P${suffix.replaceAll("-", "")}`, name: title })!;
+  const taskColumn = {
+    id: crypto.randomUUID(),
+    project_id: taskProject.id,
+    name: "Backlog",
+    column_order: "a0",
+  };
+  column.create(taskColumn);
+
+  const created: Omit<Task, "archived_at"> = {
+    id: crypto.randomUUID(),
+    project_id: taskProject.id,
+    column_id: taskColumn.id,
+    number: 1,
+    title,
+    description: "original description",
+    task_order: "a0",
+    created_at: 10,
+    updated_at: 10,
+  };
+  task.create(created);
+
+  return created;
+}
+
+test("task.update changes supplied fields and preserves omitted fields", () => {
+  const created = createTask("original title");
+
+  const updated = task.update({
+    id: created.id,
+    title: "updated title",
+    description: null,
+    updated_at: 20,
+  });
+
+  expect(updated).toEqual({
+    ...created,
+    title: "updated title",
+    description: null,
+    updated_at: 20,
+    archived_at: null,
+  });
+});
+
+test("task.update distinguishes null from an omitted field", () => {
+  const created = createTask("archivable task");
+
+  const archived = task.update({ id: created.id, archived_at: 30, updated_at: 30 })!;
+  const unarchived = task.update({ id: created.id, archived_at: null, updated_at: 40 });
+
+  expect(archived.archived_at).toBe(30);
+  expect(archived.description).toBe("original description");
+  expect(unarchived?.archived_at).toBeNull();
+  expect(unarchived?.description).toBe("original description");
+});
+
+test("task lists exclude archived tasks by default and support explicit filters", () => {
+  const created = createTask("filtered task");
+  task.update({ id: created.id, archived_at: 50, updated_at: 50 });
+
+  expect(task.getAll().map(({ id }) => id)).not.toContain(created.id);
+  expect(task.getAllByProjectId(created.project_id)).toEqual([]);
+  expect(task.getAll("archived").map(({ id }) => id)).toContain(created.id);
+  expect(task.getAllByProjectId(created.project_id, "all").map(({ id }) => id)).toEqual([
+    created.id,
+  ]);
 });

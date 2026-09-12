@@ -3,20 +3,43 @@ import type { Bind, Task } from "../types";
 import { getDb } from "../db";
 import { DB_TABLE } from "../constant";
 
-// TODO: refined parameters, preferably of type SQLBindings
-export function getAll() {
-  const db = getDb();
-  return db.query<Task, any>(`SELECT * FROM ${DB_TABLE.task}`).all();
+export type TaskArchiveFilter = "active" | "archived" | "all";
+
+function getArchiveCondition(filter: TaskArchiveFilter) {
+  switch (filter) {
+    case "active":
+      return `${DB_TABLE.task}.archived_at IS NULL`;
+    case "archived":
+      return `${DB_TABLE.task}.archived_at IS NOT NULL`;
+    case "all":
+      return null;
+  }
 }
 
-export function getAllByProjectId(projectId: string) {
+// TODO: refined parameters, preferably of type SQLBindings
+export function getAll(archive: TaskArchiveFilter = "active") {
   const db = getDb();
+  const archiveCondition = getArchiveCondition(archive);
+  const whereClause = archiveCondition == null ? "" : `WHERE ${archiveCondition}`;
+
+  return db
+    .query<Task, any>(`SELECT * FROM ${DB_TABLE.task}
+    ${whereClause}`)
+    .all();
+}
+
+export function getAllByProjectId(projectId: string, archive: TaskArchiveFilter = "active") {
+  const db = getDb();
+  const archiveCondition = getArchiveCondition(archive);
+  const archiveCluase = archiveCondition == null ? "" : `AND ${archiveCondition}`;
+
   return db
     .query<Task, Bind<Pick<Task, "project_id">>>(`SELECT task.*
     FROM ${DB_TABLE.task}
     INNER JOIN ${DB_TABLE.projectColumn}
       ON project_column.id = task.column_id
     WHERE task.project_id = $project_id
+      ${archiveCluase}
     ORDER BY project_column.column_order ASC,
       task.task_order ASC,
       task.number ASC`)
@@ -64,25 +87,42 @@ export function create(task: Omit<Task, "archived_at">) {
   });
 }
 
-export function update(props: Pick<Task, "id" | "column_id" | "task_order" | "updated_at">) {
+const TASK_UPDATE_COLUMNS = [
+  "column_id",
+  "title",
+  "description",
+  "task_order",
+  "updated_at",
+  "archived_at",
+] as const satisfies ReadonlyArray<keyof Task>;
+
+type TaskUpdateColumn = (typeof TASK_UPDATE_COLUMNS)[number];
+type TaskUpdateParams = Pick<Task, "id" | "updated_at"> &
+  Partial<Pick<Task, Exclude<TaskUpdateColumn, "updated_at">>>;
+type TaskUpdateBindings = Record<string, Task[keyof Task]>;
+
+export function update(props: TaskUpdateParams) {
   const db = getDb();
 
+  const setClauses: Array<string> = [];
+  const bindings: TaskUpdateBindings = { $id: props.id };
+
+  for (const column of TASK_UPDATE_COLUMNS) {
+    const value = props[column];
+    if (value === undefined) {
+      continue;
+    }
+
+    setClauses.push(`${column} = $${column}`);
+    bindings[`$${column}`] = value;
+  }
+
   return db
-    .query<
-      Task,
-      Bind<Pick<Task, "id" | "column_id" | "task_order" | "updated_at">>
-    >(`UPDATE ${DB_TABLE.task}
-    SET column_id = $column_id,
-        task_order = $task_order,
-        updated_at = $updated_at
+    .prepare<Task, TaskUpdateBindings>(`UPDATE ${DB_TABLE.task}
+    SET ${setClauses.join(",\n        ")}
     WHERE id = $id
     RETURNING *;`)
-    .get({
-      $id: props.id,
-      $column_id: props.column_id,
-      $task_order: props.task_order,
-      $updated_at: props.updated_at,
-    });
+    .get(bindings);
 }
 
 export function deleteById(taskId: string) {

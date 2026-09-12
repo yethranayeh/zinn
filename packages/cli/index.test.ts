@@ -702,6 +702,116 @@ test("task move to the current column is a no-op", () => {
   });
 });
 
+test("task archive hides a task from active lists without deleting it", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Archive", "ARCH"], testDir);
+    runZinn(["task", "create", "ARCH", "kept task", "kept description"], testDir);
+    runZinn(["task", "move", "ARCH-1", "In Progress"], testDir);
+
+    const before = withTestDb(testDir, (db) =>
+      db
+        .query<
+          {
+            id: string;
+            column_id: string;
+            number: number;
+            title: string;
+            description: string;
+            task_order: string;
+            created_at: number;
+            updated_at: number;
+          },
+          []
+        >("SELECT * FROM task WHERE number = 1")
+        .get(),
+    )!;
+
+    expect(runZinn(["task", "archive", "aRcH-1"], testDir).code).toBe(0);
+    expect(runZinn(["task", "list", "ARCH"], testDir).stdout).toBe("");
+    expect(runZinn(["task", "list", "ARCH", "--archived"], testDir).stdout).toContain(
+      "ARCH-1 | In Progress | kept task | kept description",
+    );
+    expect(runZinn(["task", "list", "--all", "ARCH"], testDir).stdout).toContain("kept task");
+    expect(runZinn(["task", "view", "ARCH-1"], testDir).stdout).toContain("kept task");
+
+    withTestDb(testDir, (db) => {
+      const after = db
+        .query<
+          typeof before & { archived_at: number },
+          { $id: string }
+        >("SELECT * FROM task WHERE id = $id")
+        .get({ $id: before.id })!;
+
+      expect(after.archived_at).toBeGreaterThan(0);
+      expect(after.updated_at).toBe(after.archived_at);
+      expect({
+        id: after.id,
+        column_id: after.column_id,
+        number: after.number,
+        title: after.title,
+        description: after.description,
+        task_order: after.task_order,
+        created_at: after.created_at,
+      }).toEqual({
+        id: before.id,
+        column_id: before.column_id,
+        number: before.number,
+        title: before.title,
+        description: before.description,
+        task_order: before.task_order,
+        created_at: before.created_at,
+      });
+    });
+  });
+});
+
+test("task archive is idempotent and unarchive restores active listing", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Restore", "RESTORE"], testDir);
+    runZinn(["task", "create", "RESTORE", "restorable task"], testDir);
+    runZinn(["task", "archive", "RESTORE-1"], testDir);
+
+    withTestDb(testDir, (db) =>
+      db.run("UPDATE task SET archived_at = 123, updated_at = 123 WHERE number = 1"),
+    );
+    expect(runZinn(["task", "archive", "RESTORE-1"], testDir).code).toBe(0);
+
+    const stillArchived = withTestDb(testDir, (db) =>
+      db
+        .query<{ archived_at: number; updated_at: number }, []>(
+          "SELECT archived_at, updated_at FROM task WHERE number = 1",
+        )
+        .get(),
+    );
+    expect(stillArchived).toEqual({ archived_at: 123, updated_at: 123 });
+
+    expect(runZinn(["task", "unarchive", "RESTORE-1"], testDir).code).toBe(0);
+    expect(runZinn(["task", "list", "RESTORE"], testDir).stdout).toContain("restorable task");
+    expect(runZinn(["task", "list", "RESTORE", "--archived"], testDir).stdout).toBe("");
+
+    const restored = withTestDb(testDir, (db) =>
+      db
+        .query<{ archived_at: null; updated_at: number }, []>(
+          "SELECT archived_at, updated_at FROM task WHERE number = 1",
+        )
+        .get(),
+    );
+    expect(restored?.archived_at).toBeNull();
+    expect(restored?.updated_at).toBeGreaterThan(123);
+  });
+});
+
+test("task archive and unarchive require a valid existing task key", () => {
+  expect(runZinn(["task", "archive"]).stderr).toContain("Task key must be specified");
+  expect(runZinn(["task", "unarchive"]).stderr).toContain("Task key must be specified");
+  expect(runZinn(["task", "archive", "INVALID"]).stderr).toContain(
+    'Invalid task key "INVALID"',
+  );
+  expect(runZinn(["task", "unarchive", "NOPE-1"]).stderr).toContain(
+    'Project with key "NOPE" does not exist!',
+  );
+});
+
 test("project list shows every established project", () => {
   runZinn(["project", "create", "Listed", "LIST"]);
 

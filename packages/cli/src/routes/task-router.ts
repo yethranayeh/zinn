@@ -42,9 +42,23 @@ export const taskRouter = {
   },
   list: {
     run: (args) => {
-      const projectKey = args[0];
+      const showsArchived = args.includes("--archived");
+      const showsAll = args.includes("--all");
 
-      const tasks = task.getAll({ projectKey });
+      if (showsArchived && showsAll) {
+        quit('Use either "--archived" or "--all", not both');
+      }
+
+      const positionalArgs = args.filter((arg) => !["--archived", "--all"].includes(arg));
+      const projectKey = positionalArgs[0];
+
+      if (positionalArgs.length > 1) {
+        quit("Only one project key can be specified");
+      }
+
+      const archive = showsAll ? "all" : showsArchived ? "archived" : "active";
+
+      const tasks = task.getAll({ projectKey, archive });
 
       if (tasks.length === 0) {
         return;
@@ -74,7 +88,10 @@ export const taskRouter = {
           .join("\n"),
       );
     },
-    help: "",
+    help: `Usage: zinn task list [project-key] [--archived | --all]
+
+List active tasks by default.
+Use --archived to list archived tasks or --all to list both.`,
   },
   view: {
     run: (args) => {
@@ -135,5 +152,29 @@ Giving a task's current column as the target will not do anything.`,
       }
     },
     help: "",
+  },
+  archive: {
+    run: (args: Array<string>) => {
+      const taskKey = args[0];
+
+      if (taskKey == null) {
+        quit("Task key must be specified");
+      }
+
+      task.archive(taskKey);
+    },
+    help: "Usage: zinn task archive <task-key>",
+  },
+  unarchive: {
+    run: (args: Array<string>) => {
+      const taskKey = args[0];
+
+      if (taskKey == null) {
+        quit("Task key must be specified");
+      }
+
+      task.unarchive(taskKey);
+    },
+    help: "Usage: zinn task unarchive <task-key>",
   },
 } satisfies RouteDef;

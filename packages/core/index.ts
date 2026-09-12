@@ -166,9 +166,11 @@ export const task = {
       updated_at: now,
     });
   },
-  getAll: (props: { projectKey?: string } = {}) => {
+  getAll: (
+    props: { projectKey?: string; archive?: dbTask.TaskArchiveFilter } = {},
+  ) => {
     if (props.projectKey == null) {
-      return dbTask.getAll();
+      return dbTask.getAll(props.archive);
     }
 
     const taskProject = dbProject.getByKey(props.projectKey);
@@ -177,7 +179,7 @@ export const task = {
       throw new Error(`Project with key "${props.projectKey}" does not exist!`);
     }
 
-    return dbTask.getAllByProjectId(taskProject.id);
+    return dbTask.getAllByProjectId(taskProject.id, props.archive);
   },
   getByKey: getTaskByKey,
   /**
@@ -217,5 +219,24 @@ export const task = {
   delete: (taskKey: string) => {
     const taskMatch = getTaskByKey(taskKey);
     return dbTask.deleteById(taskMatch.id);
+  },
+  archive: (taskKey: string) => {
+    const taskMatch = getTaskByKey(taskKey);
+
+    if (taskMatch.archived_at != null) {
+      return taskMatch;
+    }
+
+    const now = Date.now();
+    return dbTask.update({ id: taskMatch.id, updated_at: now, archived_at: now });
+  },
+  unarchive: (taskKey: string) => {
+    const taskMatch = getTaskByKey(taskKey);
+
+    if (taskMatch.archived_at == null) {
+      return taskMatch;
+    }
+
+    return dbTask.update({ id: taskMatch.id, updated_at: Date.now(), archived_at: null });
   },
 };
