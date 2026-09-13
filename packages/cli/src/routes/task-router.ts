@@ -70,11 +70,21 @@ export const taskRouter = {
         const taskColumn = column.getById(t.column_id)!;
         const taskKey = `${taskProject.key}-${t.number}`;
 
-        return { id: taskKey, title: t.title, description: t.description, column: taskColumn.name };
+        return {
+          id: taskKey,
+          status: t.archived_at == null ? "Active" : "Archived",
+          title: t.title,
+          description: t.description,
+          column: taskColumn.name,
+        };
       });
 
       const longestIdLength = presentableTasks.reduce(
         (prev, current) => Math.max(prev, current.id.length),
+        0,
+      );
+      const longestStatusLength = presentableTasks.reduce(
+        (prev, current) => Math.max(prev, current.status.length),
         0,
       );
 
@@ -82,8 +92,9 @@ export const taskRouter = {
         presentableTasks
           .map((t) => {
             // TODO: console output formatting for standardizied output
+            const status = showsAll ? ` | ${t.status.padEnd(longestStatusLength)}` : "";
             const description = t.description == null ? "" : ` | ${t.description}`;
-            return `${t.id.padEnd(longestIdLength)} | ${t.column} | ${t.title}${description}`;
+            return `${t.id.padEnd(longestIdLength)}${status} | ${t.column} | ${t.title}${description}`;
           })
           .join("\n"),
       );

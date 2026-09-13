@@ -1019,6 +1019,29 @@ test("task archive hides a task from active lists without deleting it", () => {
   });
 });
 
+test("task list --all identifies active and archived tasks in a status column", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Mixed archive", "MIXED"], testDir);
+    runZinn(["task", "create", "MIXED", "archived task"], testDir);
+    runZinn(["task", "create", "MIXED", "active task"], testDir);
+    runZinn(["task", "archive", "MIXED-1"], testDir);
+
+    expect(runZinn(["task", "list", "MIXED"], testDir).stdout).toBe(
+      "MIXED-2 | Backlog | active task\n",
+    );
+    expect(runZinn(["task", "list", "MIXED", "--archived"], testDir).stdout).toBe(
+      "MIXED-1 | Backlog | archived task\n",
+    );
+    expect(runZinn(["task", "list", "MIXED", "--all"], testDir).stdout).toBe(
+      [
+        "MIXED-1 | Archived | Backlog | archived task",
+        "MIXED-2 | Active   | Backlog | active task",
+        "",
+      ].join("\n"),
+    );
+  });
+});
+
 test("task archive is idempotent and unarchive restores active listing", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "Restore", "RESTORE"], testDir);
