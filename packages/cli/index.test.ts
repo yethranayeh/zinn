@@ -617,6 +617,9 @@ test("task move help documents destination placement", () => {
   expect(longHelp.stdout).toContain(
     "Giving a task's current column as the target will not do anything.",
   );
+  expect(longHelp.stdout).toContain(
+    "Archived tasks must be unarchived before they can be moved.",
+  );
   expect(shortHelp.code).toBe(0);
   expect(shortHelp.stdout).toBe(longHelp.stdout);
 });
@@ -696,6 +699,40 @@ test("task move to the current column is a no-op", () => {
       db.query<{ column_id: string; task_order: string; updated_at: number }, []>(
         "SELECT column_id, task_order, updated_at FROM task WHERE title = 'still task'",
       ).get(),
+    );
+
+    expect(after).toEqual(before);
+  });
+});
+
+test("task move rejects archived tasks", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Archived move", "ARCHMOVE"], testDir);
+    runZinn(["task", "create", "ARCHMOVE", "archived task"], testDir);
+    runZinn(["task", "archive", "ARCHMOVE-1"], testDir);
+
+    const before = withTestDb(testDir, (db) =>
+      db
+        .query<{ column_id: string; task_order: string; updated_at: number }, []>(
+          "SELECT column_id, task_order, updated_at FROM task WHERE number = 1",
+        )
+        .get(),
+    );
+
+    const result = runZinn(
+      ["task", "move", "ARCHMOVE-1", "In Progress"],
+      testDir,
+    );
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('Archived task "ARCHMOVE-1" cannot be moved');
+
+    const after = withTestDb(testDir, (db) =>
+      db
+        .query<{ column_id: string; task_order: string; updated_at: number }, []>(
+          "SELECT column_id, task_order, updated_at FROM task WHERE number = 1",
+        )
+        .get(),
     );
 
     expect(after).toEqual(before);
@@ -1034,12 +1071,55 @@ test("task list --all identifies active and archived tasks in a status column", 
     );
     expect(runZinn(["task", "list", "MIXED", "--all"], testDir).stdout).toBe(
       [
-        "MIXED-1 | Archived | Backlog | archived task",
         "MIXED-2 | Active   | Backlog | active task",
+        "MIXED-1 | Archived | Backlog | archived task",
         "",
       ].join("\n"),
     );
   });
+});
+
+test("task unarchive appends the task after active tasks in its previous column", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Restore order", "RESTOREORDER"], testDir);
+    runZinn(["task", "create", "RESTOREORDER", "first task"], testDir);
+    runZinn(["task", "create", "RESTOREORDER", "second task"], testDir);
+    runZinn(["task", "create", "RESTOREORDER", "third task"], testDir);
+    runZinn(["task", "archive", "RESTOREORDER-1"], testDir);
+
+    const archived = withTestDb(testDir, (db) =>
+      db
+        .query<{ column_id: string; task_order: string }, []>(
+          "SELECT column_id, task_order FROM task WHERE number = 1",
+        )
+        .get(),
+    )!;
+
+    expect(runZinn(["task", "unarchive", "RESTOREORDER-1"], testDir).code).toBe(0);
+    expect(runZinn(["task", "list", "RESTOREORDER"], testDir).stdout).toMatch(
+      /RESTOREORDER-2[^\n]*\nRESTOREORDER-3[^\n]*\nRESTOREORDER-1/,
+    );
+
+    const restored = withTestDb(testDir, (db) =>
+      db
+        .query<{ column_id: string; task_order: string }, []>(
+          "SELECT column_id, task_order FROM task WHERE number = 1",
+        )
+        .get(),
+    )!;
+
+    expect(restored.column_id).toBe(archived.column_id);
+    expect(restored.task_order).not.toBe(archived.task_order);
+  });
+});
+
+test("task unarchive help documents restored placement", () => {
+  const result = runZinn(["task", "unarchive", "--help"]);
+
+  expect(result.code).toBe(0);
+  expect(result.stdout).toContain(
+    "Unarchive a task at the bottom of its previous column.",
+  );
 });
 
 test("task archive is idempotent and unarchive restores active listing", () => {
@@ -1075,6 +1155,28 @@ test("task archive is idempotent and unarchive restores active listing", () => {
     );
     expect(restored?.archived_at).toBeNull();
     expect(restored?.updated_at).toBeGreaterThan(123);
+
+    withTestDb(testDir, (db) =>
+      db.run("UPDATE task SET updated_at = 1 WHERE number = 1"),
+    );
+    const beforeActiveUnarchive = withTestDb(testDir, (db) =>
+      db
+        .query<{ task_order: string; updated_at: number }, []>(
+          "SELECT task_order, updated_at FROM task WHERE number = 1",
+        )
+        .get(),
+    );
+
+    expect(runZinn(["task", "unarchive", "RESTORE-1"], testDir).code).toBe(0);
+
+    const afterActiveUnarchive = withTestDb(testDir, (db) =>
+      db
+        .query<{ task_order: string; updated_at: number }, []>(
+          "SELECT task_order, updated_at FROM task WHERE number = 1",
+        )
+        .get(),
+    );
+    expect(afterActiveUnarchive).toEqual(beforeActiveUnarchive);
   });
 });
 

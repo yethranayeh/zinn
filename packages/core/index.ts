@@ -198,9 +198,15 @@ export const task = {
    * Moving a task to a different column lists it last in that column,
    *  matching placement at the bottom of a visual kanban column.
    * Giving a task's current column as the target will not do anything.
+   * Archived tasks must be unarchived before they can be moved.
    */
   move: (props: { taskKey: string; targetColumn: string }) => {
     const taskMatch = getTaskByKey(props.taskKey);
+
+    if (taskMatch.archived_at != null) {
+      throw new Error(`Archived task "${props.taskKey}" cannot be moved`);
+    }
+
     const columnMatch = dbColumn
       .getAllByProjectId(taskMatch.project_id)
       .find((column) => column.name.toLowerCase() === props.targetColumn.toLowerCase());
@@ -319,6 +325,14 @@ export const task = {
       return taskMatch;
     }
 
-    return dbTask.update({ id: taskMatch.id, updated_at: Date.now(), archived_at: null });
+    const lastTask = dbTask.getLastByColumnId(taskMatch.column_id);
+    const order = generateKeyBetween(lastTask?.task_order ?? null, null);
+
+    return dbTask.update({
+      id: taskMatch.id,
+      task_order: order,
+      updated_at: Date.now(),
+      archived_at: null,
+    });
   },
 };

@@ -141,7 +141,9 @@ Use --archived to list archived tasks or --all to list both.`,
 Move a task to another column in its project.
 Moving a task to a different column lists it last in that column,
 matching placement at the bottom of a visual kanban column.
-Giving a task's current column as the target will not do anything.`,
+
+Giving a task's current column as the target will not do anything.
+Archived tasks must be unarchived before they can be moved.`,
   },
   order: {
     run: (args) => {
@@ -234,6 +236,8 @@ or before or after to place it relative to another task.`,
 
       task.unarchive(taskKey);
     },
-    help: "Usage: zinn task unarchive <task-key>",
+    help: `Usage: zinn task unarchive <task-key>
+
+Unarchive a task at the bottom of its previous column.`,
   },
 } satisfies RouteDef;

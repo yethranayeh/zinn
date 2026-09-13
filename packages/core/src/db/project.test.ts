@@ -166,3 +166,18 @@ test("task lists exclude archived tasks by default and support explicit filters"
     created.id,
   ]);
 });
+
+test("task.getLastByColumnId ignores archived tasks", () => {
+  const first = createTask("active ordering tail");
+  const archived = {
+    ...first,
+    id: crypto.randomUUID(),
+    number: 2,
+    title: "archived ordering tail",
+    task_order: "z0",
+  };
+  task.create(archived);
+  task.update({ id: archived.id, archived_at: 50, updated_at: 50 });
+
+  expect(task.getLastByColumnId(first.column_id)?.id).toBe(first.id);
+});

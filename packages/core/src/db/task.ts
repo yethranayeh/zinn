@@ -24,7 +24,8 @@ export function getAll(archive: TaskArchiveFilter = "active") {
 
   return db
     .query<Task, any>(`SELECT * FROM ${DB_TABLE.task}
-    ${whereClause}`)
+    ${whereClause}
+    ORDER BY (${DB_TABLE.task}.archived_at IS NOT NULL) ASC`)
     .all();
 }
 
@@ -41,6 +42,7 @@ export function getAllByProjectId(projectId: string, archive: TaskArchiveFilter 
     WHERE task.project_id = $project_id
       ${archiveCluase}
     ORDER BY project_column.column_order ASC,
+      (task.archived_at IS NOT NULL) ASC,
       task.task_order ASC,
       task.number ASC`)
     .all({ $project_id: projectId });
@@ -67,6 +69,7 @@ export function getLastByColumnId(columnId: string) {
     .query<Task, Bind<Pick<Task, "column_id">>>(`SELECT *
     FROM ${DB_TABLE.task}
     WHERE column_id = $column_id
+      AND archived_at IS NULL
     ORDER BY task_order DESC
     LIMIT 1`)
     .get({ $column_id: columnId });
