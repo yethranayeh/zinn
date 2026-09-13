@@ -702,6 +702,260 @@ test("task move to the current column is a no-op", () => {
   });
 });
 
+test("task order moves a task one position up or down within its column", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Ordered", "ORDER"], testDir);
+    runZinn(["task", "create", "ORDER", "first task"], testDir);
+    runZinn(["task", "create", "ORDER", "second task"], testDir);
+    runZinn(["task", "create", "ORDER", "third task"], testDir);
+
+    expect(runZinn(["task", "order", "ORDER-2", "up"], testDir).code).toBe(0);
+    expect(runZinn(["task", "list", "ORDER"], testDir).stdout).toMatch(
+      /ORDER-2[^\n]*\nORDER-1[^\n]*\nORDER-3/,
+    );
+
+    expect(runZinn(["task", "order", "ORDER-2", "down"], testDir).code).toBe(0);
+    expect(runZinn(["task", "list", "ORDER"], testDir).stdout).toMatch(
+      /ORDER-1[^\n]*\nORDER-2[^\n]*\nORDER-3/,
+    );
+  });
+});
+
+test("task order moves a task to the top or bottom of its column", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Edges", "EDGES"], testDir);
+    runZinn(["task", "create", "EDGES", "first task"], testDir);
+    runZinn(["task", "create", "EDGES", "second task"], testDir);
+    runZinn(["task", "create", "EDGES", "third task"], testDir);
+
+    expect(runZinn(["task", "order", "EDGES-3", "top"], testDir).code).toBe(0);
+    expect(runZinn(["task", "list", "EDGES"], testDir).stdout).toMatch(
+      /EDGES-3[^\n]*\nEDGES-1[^\n]*\nEDGES-2/,
+    );
+
+    expect(runZinn(["task", "order", "EDGES-3", "bottom"], testDir).code).toBe(0);
+    expect(runZinn(["task", "list", "EDGES"], testDir).stdout).toMatch(
+      /EDGES-1[^\n]*\nEDGES-2[^\n]*\nEDGES-3/,
+    );
+  });
+});
+
+test("task order places a task immediately before or after its target", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Anchored", "ANCHOR"], testDir);
+    runZinn(["task", "create", "ANCHOR", "first task"], testDir);
+    runZinn(["task", "create", "ANCHOR", "second task"], testDir);
+    runZinn(["task", "create", "ANCHOR", "third task"], testDir);
+    runZinn(["task", "create", "ANCHOR", "fourth task"], testDir);
+    runZinn(["task", "create", "ANCHOR", "fifth task"], testDir);
+
+    expect(runZinn(["task", "order", "ANCHOR-4", "before", "ANCHOR-2"], testDir).code).toBe(
+      0,
+    );
+    expect(runZinn(["task", "list", "ANCHOR"], testDir).stdout).toMatch(
+      /ANCHOR-1[^\n]*\nANCHOR-4[^\n]*\nANCHOR-2[^\n]*\nANCHOR-3[^\n]*\nANCHOR-5/,
+    );
+
+    expect(runZinn(["task", "order", "ANCHOR-4", "after", "ANCHOR-3"], testDir).code).toBe(
+      0,
+    );
+    expect(runZinn(["task", "list", "ANCHOR"], testDir).stdout).toMatch(
+      /ANCHOR-1[^\n]*\nANCHOR-2[^\n]*\nANCHOR-3[^\n]*\nANCHOR-4[^\n]*\nANCHOR-5/,
+    );
+  });
+});
+
+test("task order requires a task key and an ordering instruction", () => {
+  const missingTask = runZinn(["task", "order"]);
+  expect(missingTask.code).toBe(1);
+  expect(missingTask.stderr).toContain("Task key must be specified");
+
+  const missingInstruction = runZinn(["task", "order", "ORDER-1"]);
+  expect(missingInstruction.code).toBe(1);
+  expect(missingInstruction.stderr).toContain("Order direction must be specified");
+});
+
+test("task order validates direction and target arguments", () => {
+  const unknownDirection = runZinn(["task", "order", "ORDER-1", "sideways"]);
+  expect(unknownDirection.code).toBe(1);
+  expect(unknownDirection.stderr).toContain('Unknown order direction "sideways"');
+
+  const missingTarget = runZinn(["task", "order", "ORDER-1", "before"]);
+  expect(missingTarget.code).toBe(1);
+  expect(missingTarget.stderr).toContain('Target task must be specified for "before"');
+
+  const unexpectedTarget = runZinn(["task", "order", "ORDER-1", "top", "ORDER-2"]);
+  expect(unexpectedTarget.code).toBe(1);
+  expect(unexpectedTarget.stderr).toContain('Order direction "top" does not accept a target task');
+});
+
+test("task order help documents its own command", () => {
+  const result = runZinn(["task", "order", "--help"]);
+
+  expect(result.code).toBe(0);
+  expect(result.stdout).toContain("Usage: zinn task order");
+  expect(result.stdout).toContain("top");
+  expect(result.stdout).toContain("up");
+  expect(result.stdout).toContain("down");
+  expect(result.stdout).toContain("bottom");
+  expect(result.stdout).toContain("before");
+  expect(result.stdout).toContain("after");
+});
+
+test("task order does not cross a column boundary", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Bounded", "BOUND"], testDir);
+    runZinn(["task", "create", "BOUND", "backlog first"], testDir);
+    runZinn(["task", "create", "BOUND", "backlog last"], testDir);
+    runZinn(["task", "create", "BOUND", "progress first"], testDir);
+    runZinn(["task", "move", "BOUND-3", "In Progress"], testDir);
+
+    withTestDb(testDir, (db) => {
+      db.run("UPDATE task SET updated_at = 1 WHERE number IN (2, 3)");
+    });
+
+    expect(runZinn(["task", "order", "BOUND-2", "down"], testDir).code).toBe(0);
+    expect(runZinn(["task", "order", "BOUND-3", "up"], testDir).code).toBe(0);
+
+    const rows = withTestDb(testDir, (db) =>
+      db
+        .query<{ number: number; updated_at: number }, []>(
+          "SELECT number, updated_at FROM task WHERE number IN (2, 3) ORDER BY number",
+        )
+        .all(),
+    );
+
+    expect(rows).toEqual([
+      { number: 2, updated_at: 1 },
+      { number: 3, updated_at: 1 },
+    ]);
+  });
+});
+
+test("task order rejects an unknown target task", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Targeted", "TARGET"], testDir);
+    runZinn(["task", "create", "TARGET", "existing task"], testDir);
+
+    const result = runZinn(["task", "order", "TARGET-1", "before", "TARGET-99"], testDir);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('Task "TARGET-99" does not exist!');
+  });
+});
+
+test("task order rejects a target in another column", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Scoped", "SCOPE"], testDir);
+    runZinn(["task", "create", "SCOPE", "backlog task"], testDir);
+    runZinn(["task", "create", "SCOPE", "progress task"], testDir);
+    runZinn(["task", "move", "SCOPE-2", "In Progress"], testDir);
+
+    const result = runZinn(["task", "order", "SCOPE-1", "before", "SCOPE-2"], testDir);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("same column");
+  });
+});
+
+test("task order targeting itself is a no-op", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Unchanged", "UNCHANGED"], testDir);
+    runZinn(["task", "create", "UNCHANGED", "stationary task"], testDir);
+
+    withTestDb(testDir, (db) => db.run("UPDATE task SET updated_at = 1 WHERE number = 1"));
+
+    expect(
+      runZinn(["task", "order", "UNCHANGED-1", "before", "UNCHANGED-1"], testDir).code,
+    ).toBe(0);
+
+    const row = withTestDb(testDir, (db) =>
+      db
+        .query<{ updated_at: number }, []>("SELECT updated_at FROM task WHERE number = 1")
+        .get(),
+    );
+
+    expect(row?.updated_at).toBe(1);
+  });
+});
+
+test("task order leaves already-satisfied placements unchanged", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Satisfied", "SATISFIED"], testDir);
+    runZinn(["task", "create", "SATISFIED", "first task"], testDir);
+    runZinn(["task", "create", "SATISFIED", "second task"], testDir);
+    runZinn(["task", "create", "SATISFIED", "third task"], testDir);
+
+    withTestDb(testDir, (db) => db.run("UPDATE task SET updated_at = 1"));
+
+    expect(runZinn(["task", "order", "SATISFIED-1", "top"], testDir).code).toBe(0);
+    expect(runZinn(["task", "order", "SATISFIED-3", "bottom"], testDir).code).toBe(0);
+    expect(
+      runZinn(["task", "order", "SATISFIED-2", "before", "SATISFIED-3"], testDir).code,
+    ).toBe(0);
+    expect(
+      runZinn(["task", "order", "SATISFIED-2", "after", "SATISFIED-1"], testDir).code,
+    ).toBe(0);
+
+    const timestamps = withTestDb(testDir, (db) =>
+      db.query<{ updated_at: number }, []>("SELECT updated_at FROM task ORDER BY number").all(),
+    );
+    expect(timestamps).toEqual([{ updated_at: 1 }, { updated_at: 1 }, { updated_at: 1 }]);
+  });
+});
+
+test("task order rejects a target in another project", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "First", "FIRST"], testDir);
+    runZinn(["project", "create", "Second", "SECOND"], testDir);
+    runZinn(["task", "create", "FIRST", "first project task"], testDir);
+    runZinn(["task", "create", "SECOND", "second project task"], testDir);
+
+    const result = runZinn(
+      ["task", "order", "FIRST-1", "before", "SECOND-1"],
+      testDir,
+    );
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("same project");
+  });
+});
+
+test("task order rejects archived source and target tasks", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Archived order", "ARCHORDER"], testDir);
+    runZinn(["task", "create", "ARCHORDER", "active task"], testDir);
+    runZinn(["task", "create", "ARCHORDER", "archived task"], testDir);
+    runZinn(["task", "archive", "ARCHORDER-2"], testDir);
+
+    const archivedSource = runZinn(["task", "order", "ARCHORDER-2", "top"], testDir);
+    expect(archivedSource.code).toBe(1);
+    expect(archivedSource.stderr).toContain("cannot be reordered");
+
+    const archivedTarget = runZinn(
+      ["task", "order", "ARCHORDER-1", "before", "ARCHORDER-2"],
+      testDir,
+    );
+    expect(archivedTarget.code).toBe(1);
+    expect(archivedTarget.stderr).toContain("cannot be an ordering target");
+  });
+});
+
+test("task order uses visible active neighbours", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Visible", "VISIBLE"], testDir);
+    runZinn(["task", "create", "VISIBLE", "first task"], testDir);
+    runZinn(["task", "create", "VISIBLE", "archived task"], testDir);
+    runZinn(["task", "create", "VISIBLE", "third task"], testDir);
+    runZinn(["task", "archive", "VISIBLE-2"], testDir);
+
+    expect(runZinn(["task", "order", "VISIBLE-1", "down"], testDir).code).toBe(0);
+    expect(runZinn(["task", "list", "VISIBLE"], testDir).stdout).toMatch(
+      /VISIBLE-3[^\n]*\nVISIBLE-1/,
+    );
+  });
+});
+
 test("task archive hides a task from active lists without deleting it", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "Archive", "ARCH"], testDir);

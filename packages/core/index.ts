@@ -128,6 +128,18 @@ function getTaskByKey(taskKey: string) {
   return taskMatch;
 }
 
+type TaskOrderProps =
+  | {
+      taskKey: string;
+      direction: "top" | "up" | "down" | "bottom";
+      targetTaskKey?: never;
+    }
+  | {
+      taskKey: string;
+      direction: "before" | "after";
+      targetTaskKey: string;
+    };
+
 export const task = {
   create: (task: Pick<Task, "project_id" | "title" | "description">) => {
     const invalidTaskCharRegex = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
@@ -166,9 +178,7 @@ export const task = {
       updated_at: now,
     });
   },
-  getAll: (
-    props: { projectKey?: string; archive?: dbTask.TaskArchiveFilter } = {},
-  ) => {
+  getAll: (props: { projectKey?: string; archive?: dbTask.TaskArchiveFilter } = {}) => {
     if (props.projectKey == null) {
       return dbTask.getAll(props.archive);
     }
@@ -213,6 +223,78 @@ export const task = {
       id: taskMatch.id,
       column_id: columnMatch.id,
       task_order: order,
+      updated_at: Date.now(),
+    });
+  },
+  order: (props: TaskOrderProps) => {
+    const { taskKey, direction } = props;
+    const taskMatch = getTaskByKey(taskKey);
+
+    if (taskMatch.archived_at != null) {
+      throw new Error(`Archived task "${taskKey}" cannot be reordered`);
+    }
+
+    const allTasks = dbTask.getAllByColumnId(taskMatch.column_id);
+    const taskIndex = allTasks.findIndex((candidate) => candidate.id === taskMatch.id);
+    const otherTasks = allTasks.filter((candidate) => candidate.id !== taskMatch.id);
+    let insertionIndex: number;
+
+    switch (direction) {
+      case "top":
+        insertionIndex = 0;
+        break;
+      case "up":
+        insertionIndex = Math.max(0, taskIndex - 1);
+        break;
+      case "down":
+        insertionIndex = Math.min(otherTasks.length, taskIndex + 1);
+        break;
+      case "bottom":
+        insertionIndex = otherTasks.length;
+        break;
+      case "before":
+      case "after": {
+        const targetTask = getTaskByKey(props.targetTaskKey);
+
+        if (targetTask.id === taskMatch.id) {
+          return taskMatch;
+        }
+
+        if (targetTask.project_id !== taskMatch.project_id) {
+          throw new Error(
+            `Tasks "${taskKey}" and "${props.targetTaskKey}" must be in the same project`,
+          );
+        }
+
+        if (targetTask.column_id !== taskMatch.column_id) {
+          throw new Error(
+            `Tasks "${taskKey}" and "${props.targetTaskKey}" must be in the same column`,
+          );
+        }
+
+        if (targetTask.archived_at != null) {
+          throw new Error(`Archived task "${props.targetTaskKey}" cannot be an ordering target`);
+        }
+
+        const targetIndex = otherTasks.findIndex((candidate) => candidate.id === targetTask.id);
+        insertionIndex = direction === "before" ? targetIndex : targetIndex + 1;
+        break;
+      }
+    }
+
+    if (insertionIndex === taskIndex) {
+      return taskMatch;
+    }
+
+    const futurePrevTask = otherTasks[insertionIndex - 1] ?? null;
+    const futureNextTask = otherTasks[insertionIndex] ?? null;
+
+    return dbTask.update({
+      id: taskMatch.id,
+      task_order: generateKeyBetween(
+        futurePrevTask?.task_order ?? null,
+        futureNextTask?.task_order ?? null,
+      ),
       updated_at: Date.now(),
     });
   },

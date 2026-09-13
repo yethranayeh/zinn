@@ -15,6 +15,7 @@ export type Project = {
   archived_at: number | null;
 };
 
+export type TaskMoveDirection = "top" | "up" | "down" | "bottom";
 export type Task = {
   id: string;
   project_id: string;

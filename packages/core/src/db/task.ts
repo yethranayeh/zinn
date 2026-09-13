@@ -46,6 +46,21 @@ export function getAllByProjectId(projectId: string, archive: TaskArchiveFilter 
     .all({ $project_id: projectId });
 }
 
+export function getAllByColumnId(columnId: string, archive: TaskArchiveFilter = "active") {
+  const db = getDb();
+  const archiveCondition = getArchiveCondition(archive);
+  const archiveClause = archiveCondition == null ? "" : `AND ${archiveCondition}`;
+
+  return db
+    .query<Task, Bind<Pick<Task, "column_id">>>(`SELECT *
+    FROM ${DB_TABLE.task}
+    WHERE column_id = $column_id
+      ${archiveClause}
+    ORDER BY task_order ASC,
+      number ASC`)
+    .all({ $column_id: columnId });
+}
+
 export function getLastByColumnId(columnId: string) {
   const db = getDb();
   return db

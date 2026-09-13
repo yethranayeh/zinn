@@ -132,6 +132,54 @@ Moving a task to a different column lists it last in that column,
 matching placement at the bottom of a visual kanban column.
 Giving a task's current column as the target will not do anything.`,
   },
+  order: {
+    run: (args) => {
+      const [taskKey, direction, targetTaskKey, ...extraArgs] = args;
+
+      if (taskKey == null) {
+        quit("Task key must be specified");
+      }
+
+      if (direction == null) {
+        quit("Order direction must be specified");
+      }
+
+      switch (direction) {
+        case "before":
+        case "after": {
+          if (targetTaskKey == null) {
+            quit(`Target task must be specified for "${direction}"`);
+          }
+
+          if (extraArgs.length > 0) {
+            quit("Only one target task can be specified");
+          }
+
+          task.order({ taskKey, direction, targetTaskKey });
+          return;
+        }
+        case "top":
+        case "up":
+        case "down":
+        case "bottom": {
+          if (targetTaskKey != null) {
+            quit(`Order direction "${direction}" does not accept a target task`);
+          }
+
+          task.order({ taskKey, direction });
+          return;
+        }
+        default:
+          quit(`Unknown order direction "${direction}"`);
+      }
+    },
+    help: `Usage: zinn task order <task-key> <top | up | down | bottom>
+       zinn task order <task-key> <before | after> <target-task-key>
+
+Change a task's position within its current column.
+Use top or bottom for either end, up or down for one position,
+or before or after to place it relative to another task.`,
+  },
   delete: {
     run: (args: Array<string>) => {
       const taskKey = args[0];
