@@ -10,6 +10,19 @@ function toCommand(args: Array<string>) {
   return args.join(" ");
 }
 
+function getNamespaceHelp(parsedRoutes: Array<ParsedRoute>, namespace: string) {
+  const prefix = `${namespace} `;
+  const commands = parsedRoutes
+    .map((route) => route.command)
+    .filter((command) => command.startsWith(prefix));
+
+  if (commands.length === 0) {
+    return null;
+  }
+
+  return `Usage: zinn ${namespace} <command>\n\nCommands:\n${commands.map((command) => `  ${command}`).join("\n")}`;
+}
+
 export function parseRoutes(routesDef: RouteDef, prefix?: string) {
   const routeDefinitions: Array<ParsedRoute> = [];
   if (process.env.DEBUG) {
@@ -33,6 +46,17 @@ export function parseRoutes(routesDef: RouteDef, prefix?: string) {
 }
 
 function route(parsedRoutes: Array<ParsedRoute>, args: Array<string>) {
+  const isHelpRequest = ["-h", "--help"].includes(args.at(-1) ?? "");
+
+  if (isHelpRequest && args.length > 1) {
+    const namespace = toCommand(args.slice(0, -1));
+    const namespaceHelp = getNamespaceHelp(parsedRoutes, namespace);
+    if (namespaceHelp != null) {
+      console.info(namespaceHelp);
+      return;
+    }
+  }
+
   let match: ParsedRoute | null = null;
   let nestingLevel = 0;
 
@@ -58,9 +82,10 @@ function route(parsedRoutes: Array<ParsedRoute>, args: Array<string>) {
   }
 
   const commandArgs = args.slice(nestingLevel);
-  const isHelpRequest = commandArgs.length === 1 && ["-h", "--help"].includes(commandArgs[0]!);
+  const isCommandHelpRequest =
+    commandArgs.length === 1 && ["-h", "--help"].includes(commandArgs[0]!);
 
-  if (isHelpRequest && match.help.trim().length > 0) {
+  if (isCommandHelpRequest) {
     console.info(match.help);
     return;
   }

@@ -1,6 +1,6 @@
 import type { Command, RouteDef } from "../types";
 
-import { test, expect, mock } from "bun:test";
+import { test, expect, mock, spyOn } from "bun:test";
 import { createRouter, parseRoutes } from "./router";
 
 const mockCommand: Command = { run: mock(() => {}), help: `` };
@@ -62,4 +62,18 @@ test("router calls the deepest nesting command", () => {
   router.route(["foo", "bar", "create"]);
   expect(routes.foo.bar.create.run).toHaveBeenCalledTimes(1);
   expect(routes.foo.create.run).not.toHaveBeenCalled();
+});
+
+test("a help request never runs a command even when its help is empty", () => {
+  const run = mock(() => {});
+  const info = spyOn(console, "info").mockImplementation(() => {});
+  const router = createRouter({ foo: { run, help: "" } });
+
+  try {
+    router.route(["foo", "--help"]);
+    expect(run).not.toHaveBeenCalled();
+    expect(info).toHaveBeenCalledWith("");
+  } finally {
+    info.mockRestore();
+  }
 });

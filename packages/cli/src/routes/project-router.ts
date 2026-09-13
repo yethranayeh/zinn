@@ -20,7 +20,12 @@ export const projectRouter = {
         quit(err?.message ?? "Something went wrong");
       }
     },
-    help: ``,
+    help: `Usage: zinn project create <name> <project-key>
+
+Create a project with the default Backlog, TODO, In Progress, Review, and Done columns.
+Project keys are stored in uppercase.
+
+Example: zinn project create "Website refresh" SITE`,
   },
   list: {
     run: () => {
@@ -36,7 +41,11 @@ export const projectRouter = {
 
       console.info(projects.map((p) => `${p.key.padEnd(longestKeyLength)} | ${p.name}`).join("\n"));
     },
-    help: "",
+    help: `Usage: zinn project list
+
+List projects and their keys.
+
+Example: zinn project list`,
   },
   delete: {
     run: (args: Array<string>) => {
@@ -53,7 +62,11 @@ export const projectRouter = {
         quit(err?.message ?? "Something went wrong");
       }
     },
-    help: ``,
+    help: `Usage: zinn project delete <project-key>
+
+Permanently delete a project and all of its columns and tasks without confirmation.
+
+Example: zinn project delete SITE`,
   },
   column: {
     create: {
@@ -71,7 +84,11 @@ export const projectRouter = {
           quit(err?.message ?? "Something went wrong");
         }
       },
-      help: ``,
+      help: `Usage: zinn project column create <project-key> <column-name>
+
+Add a column at the end of a project's board.
+
+Example: zinn project column create SITE "Waiting for review"`,
     },
     list: {
       run: (args: Array<string>) => {
@@ -84,7 +101,11 @@ export const projectRouter = {
         // TODO: terminal formatting
         console.info(column.getAllByProjectKey(projectKey).map((c) => c.name));
       },
-      help: ``,
+      help: `Usage: zinn project column list <project-key>
+
+List a project's columns in board order.
+
+Example: zinn project column list SITE`,
     },
   },
 } satisfies RouteDef;

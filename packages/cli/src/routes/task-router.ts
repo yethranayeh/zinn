@@ -52,7 +52,9 @@ Provide at least one edit flag. Use --description "" for an empty description.
 
 Titles cannot be blank.
 Archived tasks can be edited. Unchanged values leave the task unchanged.
-Use --title="--example" for text beginning with a dash.`,
+Use --title="--example" for text beginning with a dash.
+
+Example: zinn task edit SITE-1 --title "Rewrite the landing page"`,
   },
   create: {
     run: (args: Array<string>) => {
@@ -88,7 +90,11 @@ Use --title="--example" for text beginning with a dash.`,
         quit(err?.message ?? "Something went wrong");
       }
     },
-    help: ``,
+    help: `Usage: zinn task create <project-key> <title> [description]
+
+Create a task in the project's first column.
+
+Example: zinn task create SITE "Rewrite the home page" "Update the product copy"`,
   },
   list: {
     run: (args) => {
@@ -152,7 +158,9 @@ Use --title="--example" for text beginning with a dash.`,
     help: `Usage: zinn task list [project-key] [--archived | --all]
 
 List active tasks by default.
-Use --archived to list archived tasks or --all to list both.`,
+Use --archived to list archived tasks or --all to list both.
+
+Example: zinn task list SITE --all`,
   },
   view: {
     run: (args) => {
@@ -170,7 +178,11 @@ Use --archived to list archived tasks or --all to list both.`,
       const description = taskMatch.description == null ? "" : ` | ${taskMatch.description}`;
       console.info(`${canonicalTaskKey} | ${taskColumn?.name} | ${taskMatch.title}${description}`);
     },
-    help: "",
+    help: `Usage: zinn task view <task-key>
+
+Show a task with its current column and description.
+
+Example: zinn task view SITE-1`,
   },
   move: {
     run: (args) => {
@@ -193,7 +205,9 @@ Moving a task to a different column lists it last in that column,
 matching placement at the bottom of a visual kanban column.
 
 Giving a task's current column as the target will not do anything.
-Archived tasks must be unarchived before they can be moved.`,
+Archived tasks must be unarchived before they can be moved.
+
+Example: zinn task move SITE-1 "In Progress"`,
   },
   order: {
     run: (args) => {
@@ -241,7 +255,9 @@ Archived tasks must be unarchived before they can be moved.`,
 
 Change a task's position within its current column.
 Use top or bottom for either end, up or down for one position,
-or before or after to place it relative to another task.`,
+or before or after to place it relative to another task.
+
+Example: zinn task order SITE-2 before SITE-1`,
   },
   delete: {
     run: (args: Array<string>) => {
@@ -262,7 +278,11 @@ or before or after to place it relative to another task.`,
         quit(err?.message ?? "Something went wrong");
       }
     },
-    help: "",
+    help: `Usage: zinn task delete <task-key>
+
+Permanently delete a task after confirmation.
+
+Example: zinn task delete SITE-1`,
   },
   archive: {
     run: (args: Array<string>) => {
@@ -274,7 +294,11 @@ or before or after to place it relative to another task.`,
 
       task.archive(taskKey);
     },
-    help: "Usage: zinn task archive <task-key>",
+    help: `Usage: zinn task archive <task-key>
+
+Archive a task so it no longer appears in active task lists.
+
+Example: zinn task archive SITE-1`,
   },
   unarchive: {
     run: (args: Array<string>) => {
@@ -288,6 +312,8 @@ or before or after to place it relative to another task.`,
     },
     help: `Usage: zinn task unarchive <task-key>
 
-Unarchive a task at the bottom of its previous column.`,
+Unarchive a task at the bottom of its previous column.
+
+Example: zinn task unarchive SITE-1`,
   },
 } satisfies RouteDef;

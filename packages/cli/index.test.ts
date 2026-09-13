@@ -87,11 +87,15 @@ test("bare invocation in a non-TTY exits nonzero", () => {
   expect(result.stderr).toContain("non-TTY environment is not supported");
 });
 
-test("--help prints usage to stdout and exits zero", () => {
-  const result = runZinn(["--help"]);
+test("root help supports -h and --help and lists commands", () => {
+  const longHelp = runZinn(["--help"]);
+  const shortHelp = runZinn(["-h"]);
 
-  expect(result.code).toBe(0);
-  expect(result.stdout).toContain("ZINN - A kanban workflow in the terminal");
+  expect(longHelp.code).toBe(0);
+  expect(longHelp.stdout).toContain("ZINN - A kanban workflow in the terminal");
+  expect(longHelp.stdout).toContain("project column list");
+  expect(longHelp.stdout).toContain("task edit");
+  expect(shortHelp).toEqual(longHelp);
 });
 
 // --- ROUTING
@@ -112,6 +116,49 @@ test("a nested route resolves past its namespace", () => {
 
   expect(result.code).toBe(0);
   expect(result.stdout).toContain("Backlog");
+});
+
+test("namespace help lists its commands without running one", () => {
+  const taskHelp = runZinn(["task", "--help"]);
+  const projectHelp = runZinn(["project", "-h"]);
+  const columnHelp = runZinn(["project", "column", "--help"]);
+
+  expect(taskHelp.code).toBe(0);
+  expect(taskHelp.stdout).toContain("Usage: zinn task <command>");
+  expect(taskHelp.stdout).toContain("task create");
+  expect(taskHelp.stdout).toContain("task unarchive");
+  expect(projectHelp.code).toBe(0);
+  expect(projectHelp.stdout).toContain("project create");
+  expect(projectHelp.stdout).toContain("project column list");
+  expect(columnHelp.code).toBe(0);
+  expect(columnHelp.stdout).toContain("Usage: zinn project column <command>");
+  expect(columnHelp.stdout).toContain("project column create");
+});
+
+test("every command help exits cleanly instead of running the command", () => {
+  const commands = [
+    ["project", "create"],
+    ["project", "list"],
+    ["project", "delete"],
+    ["project", "column", "create"],
+    ["project", "column", "list"],
+    ["task", "create"],
+    ["task", "list"],
+    ["task", "view"],
+    ["task", "edit"],
+    ["task", "move"],
+    ["task", "order"],
+    ["task", "delete"],
+    ["task", "archive"],
+    ["task", "unarchive"],
+  ];
+
+  for (const command of commands) {
+    const result = runZinn([...command, "--help"]);
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain(`Usage: zinn ${command.join(" ")}`);
+  }
 });
 
 // --- PROJECT
