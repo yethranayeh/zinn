@@ -1,9 +1,59 @@
 import type { RouteDef } from "../types";
 
+import { parseArgs } from "node:util";
+
 import { task, project, column } from "@zinn-dev/core";
 import { quit } from "../lib";
 
 export const taskRouter = {
+  edit: {
+    run: (args) => {
+      const { values, positionals, tokens } = parseArgs({
+        args,
+        options: { title: { type: "string" }, description: { type: "string" } },
+        allowPositionals: true,
+        strict: true,
+        tokens: true,
+      });
+
+      const taskKey = positionals[0];
+
+      if (taskKey == null) {
+        quit("Task key must be specified");
+      }
+
+      if (positionals.length > 1) {
+        quit("Only one task key can be specified");
+      }
+
+      const parsedArgs = new Set<string>();
+      for (const token of tokens) {
+        if (token.kind !== "option") {
+          continue;
+        }
+
+        if (parsedArgs.has(token.name)) {
+          quit(`Option "--${token.name}" can only be specified once`);
+        }
+
+        parsedArgs.add(token.name);
+      }
+
+      if (values.title === undefined && values.description === undefined) {
+        quit("Provide at least one edit flag: --title or --description");
+      }
+
+      task.edit({ taskKey, ...values });
+    },
+    help: `Usage: zinn task edit <task-key> [--title <text>] [--description <text>]
+
+Change the supplied fields and preserve everything else.
+Provide at least one edit flag. Use --description "" for an empty description.
+
+Titles cannot be blank.
+Archived tasks can be edited. Unchanged values leave the task unchanged.
+Use --title="--example" for text beginning with a dash.`,
+  },
   create: {
     run: (args: Array<string>) => {
       const projectKey = args[0];

@@ -1,4 +1,4 @@
-import type { Column, Task } from "./src/types";
+import type { Column } from "./src/types";
 
 import { randomUUIDv7 } from "bun";
 import { generateKeyBetween } from "fractional-indexing";
@@ -7,6 +7,11 @@ import * as dbProject from "./src/db/project";
 import * as dbColumn from "./src/db/column";
 import * as dbTask from "./src/db/task";
 import { standardizeProjectKey } from "./src/lib";
+import { validateTaskInput, taskCreateSchema, taskEditSchema } from "./src/schemas/task";
+import type { TaskCreateInput, TaskEditInput } from "./src/schemas/task";
+
+export { taskCreateSchema, taskEditSchema } from "./src/schemas/task";
+export type { TaskCreateInput, TaskEditInput } from "./src/schemas/task";
 
 export const project = {
   getById: dbProject.getById,
@@ -141,17 +146,8 @@ type TaskOrderProps =
     };
 
 export const task = {
-  create: (task: Pick<Task, "project_id" | "title" | "description">) => {
-    const invalidTaskCharRegex = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
-    // Tasks are currently rendered as single-line terminal rows, so their text
-    // cannot contain control characters or Unicode line separators.
-    if (task.title.trim().length === 0 || invalidTaskCharRegex.test(task.title)) {
-      throw new Error("Task title must contain printable text on a single line");
-    }
-
-    if (task.description != null && invalidTaskCharRegex.test(task.description)) {
-      throw new Error("Task description must contain printable text on a single line");
-    }
+  create: (input: TaskCreateInput) => {
+    const task = validateTaskInput(taskCreateSchema, input);
 
     // TODO: if anything after this fails, especially the task creation, the counter is still incremented but not assigned to any task
     // TODO: rename
@@ -192,6 +188,25 @@ export const task = {
     return dbTask.getAllByProjectId(taskProject.id, props.archive);
   },
   getByKey: getTaskByKey,
+  /** Edit supplied content fields, including on archived tasks. Unchanged edits are no-ops. */
+  edit: (input: TaskEditInput) => {
+    const props = validateTaskInput(taskEditSchema, input);
+    const existing = getTaskByKey(props.taskKey);
+    const isTitleUnchanged = props.title === undefined || props.title === existing.title;
+    const isDescriptionUnchanged =
+      props.description === undefined || props.description === existing.description;
+
+    if (isTitleUnchanged && isDescriptionUnchanged) {
+      return existing;
+    }
+
+    return dbTask.update({
+      id: existing.id,
+      title: props.title,
+      description: props.description,
+      updated_at: Date.now(),
+    });
+  },
   /**
    * Moves a task to another column in its project.
    *

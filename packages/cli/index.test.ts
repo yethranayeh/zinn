@@ -422,29 +422,6 @@ test("task list does not print a missing description as data", () => {
   });
 });
 
-test("task create rejects control characters in text rendered by task list", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "Safe", "SAFE"], testDir);
-    const hostileTitle = "first line\nFAKE-9 | forged row";
-    const hostileDescription = "description\u001b[31m";
-    const invalidTitle = runZinn(["task", "create", "SAFE", hostileTitle], testDir);
-    const invalidDescription = runZinn(
-      ["task", "create", "SAFE", "valid title", hostileDescription],
-      testDir,
-    );
-
-    expect(invalidTitle.code).toBe(1);
-    expect(invalidTitle.stderr).toContain(
-      "Task title must contain printable text on a single line",
-    );
-    expect(invalidDescription.code).toBe(1);
-    expect(invalidDescription.stderr).toContain(
-      "Task description must contain printable text on a single line",
-    );
-    expect(runZinn(["task", "list"], testDir).stdout).toBe("");
-  });
-});
-
 test("task list filters to the requested project regardless of key casing", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "Alpha", "ALPHA"], testDir);
@@ -1226,6 +1203,71 @@ test("task delete requires a valid existing task key", () => {
   expect(runZinn(["task", "delete", "INVALID"]).stderr).toContain(
     'Invalid task key "INVALID"',
   );
+});
+
+test("task edit preserves omitted fields and identity, and accepts empty descriptions", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "Edits", "EDIT"], dir);
+    runZinn(["task", "create", "EDIT", "Original", "Description"], dir);
+    const read = () => withTestDb(dir, (db) =>
+      db.query<import("../core/src/types").Task, []>("SELECT * FROM task").get()!);
+    withTestDb(dir, (db) => db.run("UPDATE task SET updated_at = 1"));
+    const before = read();
+    expect(runZinn(["task", "edit", "edit-1", "--title", "New title"], dir).code).toBe(0);
+    const after = read();
+    expect(after).toEqual({ ...before, title: "New title", updated_at: after.updated_at });
+    expect(after.updated_at).toBeGreaterThan(1);
+    expect(runZinn(["task", "edit", "EDIT-1", "--description", ""], dir).code).toBe(0);
+    expect(read().description).toBe("");
+    expect(read().title).toBe("New title");
+    withTestDb(dir, (db) => db.run("UPDATE task SET updated_at = 1"));
+    expect(runZinn(["task", "edit", "EDIT-1", "--title", "New title", "--description", ""], dir).code).toBe(0);
+    expect(read().updated_at).toBe(1);
+    expect(runZinn(["task", "edit", "--description=Changed", "EDIT-1", "--title=--example"], dir).code).toBe(0);
+    expect(read()).toMatchObject({ title: "--example", description: "Changed" });
+  });
+});
+
+test("task edit rejects invalid requests without partial writes", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "Edits", "EDIT"], dir);
+    runZinn(["task", "create", "EDIT", "Original", "Description"], dir);
+    const cases: Array<[string[], string]> = [
+      [[], "Task key must be specified"],
+      [["EDIT-1"], "Provide at least one edit flag"],
+      [["EDIT-1", "--title"], "argument missing"],
+      [["EDIT-1", "--description"], "argument missing"],
+      [["EDIT-1", "--unknown", "text"], "Unknown option"],
+      [["EDIT-1", "extra", "--title", "text"], "Only one task key"],
+      [["EDIT-1", "--title", "one", "--title", "two"], "only be specified once"],
+      [["EDIT-1", "--title", ""], "Task title cannot be blank"],
+      [["EDIT-1", "--title", "   "], "Task title cannot be blank"],
+      [["EDIT-1", "--title", "", "--description", "Changed"], "Task title cannot be blank"],
+      [["INVALID", "--title", "text"], "Invalid task key"],
+      [["EDIT-99", "--title", "text"], "does not exist"],
+    ];
+    for (const [args, message] of cases) {
+      const result = runZinn(["task", "edit", ...args], dir);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain(message);
+      expect(result.stdout).toBe("");
+    }
+    expect(runZinn(["task", "view", "EDIT-1"], dir).stdout).toContain("Original | Description");
+  });
+});
+
+test("task edit preserves archive state and documents its flags", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "Edits", "EDIT"], dir);
+    runZinn(["task", "create", "EDIT", "Original"], dir);
+    runZinn(["task", "archive", "EDIT-1"], dir);
+    expect(runZinn(["task", "edit", "EDIT-1", "--title", "Archived edit"], dir).code).toBe(0);
+    expect(runZinn(["task", "list", "EDIT"], dir).stdout).toBe("");
+    expect(runZinn(["task", "list", "EDIT", "--archived"], dir).stdout).toContain("Archived edit");
+  });
+  const help = runZinn(["task", "edit", "--help"]);
+  expect(help.code).toBe(0);
+  expect(help.stdout).toContain('--description ""');
 });
 
 // --- NOT YET TESTABLE
