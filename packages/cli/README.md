@@ -26,6 +26,16 @@ zinn project list
 zinn project column list SITE
 ```
 
+Rename a project:
+
+```sh
+zinn project edit SITE --name "Website redesign"
+```
+
+The `--name` flag is required. Names must contain printable text on a single line.
+Supplying the current name leaves the modification timestamp unchanged.
+Use `--name="--example"` when a value begins with a dash.
+
 Add another column at the end of the board:
 
 ```sh

@@ -71,3 +71,13 @@ export function deleteByKey(key: string) {
     .query(`DELETE FROM ${DB_TABLE.project} WHERE key = $key;`)
     .run({ $key: standardizedKey });
 }
+
+export function update(props: Pick<Project, "id" | "name" | "updated_at">) {
+  const db = getDb();
+
+  return db
+    .query<Project, Bind<typeof props>>(`UPDATE ${DB_TABLE.project}
+      SET name = $name, updated_at = $updated_at
+      WHERE id = $id RETURNING *`)
+    .get({ $id: props.id, $name: props.name, $updated_at: props.updated_at });
+}

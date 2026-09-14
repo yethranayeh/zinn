@@ -1,4 +1,6 @@
 import type { Column } from "./src/types";
+import type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project";
+import type { TaskCreateInput, TaskEditInput } from "./src/schemas/task";
 
 import { randomUUIDv7 } from "bun";
 import { generateKeyBetween } from "fractional-indexing";
@@ -8,26 +10,24 @@ import * as dbColumn from "./src/db/column";
 import * as dbTask from "./src/db/task";
 import { standardizeProjectKey } from "./src/lib";
 import { validateTaskInput, taskCreateSchema, taskEditSchema } from "./src/schemas/task";
-import type { TaskCreateInput, TaskEditInput } from "./src/schemas/task";
 
-export { taskCreateSchema, taskEditSchema } from "./src/schemas/task";
+import {
+  validateProjectInput,
+  projectCreateSchema,
+  projectEditSchema,
+} from "./src/schemas/project";
+
+export type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project";
 export type { TaskCreateInput, TaskEditInput } from "./src/schemas/task";
+
+export { projectCreateSchema, projectEditSchema } from "./src/schemas/project";
+export { taskCreateSchema, taskEditSchema } from "./src/schemas/task";
 
 export const project = {
   getById: dbProject.getById,
   getByKey: dbProject.getByKey,
-  create: (props: { key: string; name: string }) => {
-    const validKeyRegex = /^[A-Za-z][A-Za-z0-9]*$/;
-    if (!validKeyRegex.test(props.key)) {
-      throw new Error("Project key must start with a letter and contain only letters and numbers");
-    }
-
-    const invalidNameCharRegex = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
-    // control characters and Unicode line separators are not valid project data.
-    if (props.name.trim().length === 0 || invalidNameCharRegex.test(props.name)) {
-      throw new Error("Project name must contain printable text on a single line");
-    }
-
+  create: (input: ProjectCreateInput) => {
+    const props = validateProjectInput(projectCreateSchema, input);
     const existingProject = dbProject.getByKey(props.key);
 
     if (existingProject != null) {
@@ -51,6 +51,23 @@ export const project = {
     }
 
     return project;
+  },
+  /** Rename a project. Same name does not alter the timestamp */
+  edit: (input: ProjectEditInput) => {
+    const props = validateProjectInput(projectEditSchema, input);
+    const projectMatch = dbProject.getByKey(props.projectKey);
+
+    if (projectMatch == null) {
+      throw new Error(
+        `Project with key "${standardizeProjectKey(props.projectKey)}" does not exist!`,
+      );
+    }
+
+    if (props.name === projectMatch.name) {
+      return projectMatch;
+    }
+
+    return dbProject.update({ id: projectMatch.id, name: props.name, updated_at: Date.now() })!;
   },
   getAll: dbProject.getAll,
   delete: (key: string) => {

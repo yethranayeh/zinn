@@ -1,9 +1,61 @@
 import type { RouteDef } from "../types";
 
+import { parseArgs } from "node:util";
+
 import { column, project } from "@zinn-dev/core";
 import { quit } from "../lib";
 
 export const projectRouter = {
+  edit: {
+    run: (args) => {
+      const { values, positionals, tokens } = parseArgs({
+        args,
+        options: { name: { type: "string" } },
+        allowPositionals: true,
+        strict: true,
+        tokens: true,
+      });
+
+      const projectKey = positionals[0];
+
+      if (projectKey == null) {
+        quit("Project key must be specified");
+      }
+
+      if (positionals.length > 1) {
+        quit("Only one project key can be specified");
+      }
+
+      const parsedArgs = new Set<string>();
+      for (const token of tokens) {
+        if (token.kind !== "option") {
+          continue;
+        }
+
+        if (parsedArgs.has(token.name)) {
+          quit(`The "--${token.name}" flag can only be specified once`);
+        }
+
+        parsedArgs.add(token.name);
+      }
+
+      if (values.name === undefined) {
+        quit("Provide an edit flag: --name");
+      }
+
+      const editedProject = project.edit({ projectKey, name: values.name });
+      console.info(`${editedProject.key} | ${editedProject.name}`);
+    },
+    help: `Usage: zinn project edit <project-key> --name <text>
+
+Change the project name.
+The --name flag is required.
+
+Unchanged names leave the modification timestamp unchanged.
+
+Example: zinn project edit MDR --name "Macrodata Refinement"`,
+  },
+
   create: {
     run: (args: Array<string>) => {
       const projectName = args[0];

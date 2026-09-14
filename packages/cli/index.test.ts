@@ -146,6 +146,7 @@ test("every command help exits cleanly instead of running the command", () => {
     ["task", "list"],
     ["task", "view"],
     ["task", "edit"],
+    ["project", "edit"],
     ["task", "move"],
     ["task", "order"],
     ["task", "delete"],
@@ -1414,4 +1415,60 @@ test.todo("handlers throw instead of exiting, so they can be tested in-process",
   expect(() => projectRouter.create.run([])).toThrow(
     "Both the project name and the project key must be defined",
   );
+});
+
+
+test("project edit renames without changing identity, tasks, columns, or archive state", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "Original", "EDIT"], dir);
+    runZinn(["task", "create", "EDIT", "Keep task"], dir);
+    const read = () => withTestDb(dir, (db) => ({
+      project: db.query<import("../core/src/types").Project, []>("SELECT * FROM project").get()!,
+      tasks: db.query("SELECT * FROM task").all(),
+      columns: db.query("SELECT * FROM project_column").all(),
+    }));
+    withTestDb(dir, (db) => db.run("UPDATE project SET updated_at = 1, archived_at = 2"));
+    const before = read();
+    const result = runZinn(["project", "edit", "edit", "--name", "New name"], dir);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe("EDIT | New name\n");
+    expect(result.stderr).toBe("");
+    const after = read();
+    expect(after).toEqual({ ...before, project: {
+      ...before.project, name: "New name", updated_at: after.project.updated_at,
+    } });
+    expect(after.project.updated_at).toBeGreaterThan(1);
+    withTestDb(dir, (db) => db.run("UPDATE project SET updated_at = 1"));
+    expect(runZinn(["project", "edit", "EDIT", "--name", "New name"], dir).code).toBe(0);
+    expect(read().project.updated_at).toBe(1);
+    expect(runZinn(["project", "edit", "--name=--example", "EDIT"], dir).code).toBe(0);
+    expect(runZinn(["project", "list"], dir).stdout).toContain("EDIT | --example");
+  });
+});
+
+test("project edit rejects invalid requests without writes", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "Original", "EDIT"], dir);
+    const read = () => withTestDb(dir, (db) => db.query("SELECT * FROM project").get());
+    const before = read();
+    const cases: Array<[string[], string]> = [
+      [[], "Project key must be specified"],
+      [["EDIT"], "Provide an edit flag"],
+      [["EDIT", "--name"], "argument missing"],
+      [["EDIT", "--key", "NEW"], "Unknown option"],
+      [["EDIT", "extra", "--name", "Name"], "Only one project key"],
+      [["EDIT", "--name", "One", "--name", "Two"], "only be specified once"],
+      [["EDIT", "--name", ""], "printable text on a single line"],
+      [["EDIT", "--name", "   "], "printable text on a single line"],
+      [["EDIT", "--name", "Two\nlines"], "printable text on a single line"],
+      [["MISSING", "--name", "Name"], "does not exist"],
+    ];
+    for (const [args, message] of cases) {
+      const result = runZinn(["project", "edit", ...args], dir);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain(message);
+      expect(result.stdout).toBe("");
+      expect(read()).toEqual(before);
+    }
+  });
 });
