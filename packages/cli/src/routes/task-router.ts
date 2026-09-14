@@ -70,7 +70,7 @@ Titles cannot be blank.
 Archived tasks can be edited. Unchanged values leave the task unchanged.
 Use --title="--example" for text beginning with a dash.
 
-Example: zinn task edit SITE-1 --title "Rewrite the landing page"`,
+Example: zinn task edit MDR-1 --title "Meet the quarterly refinement quota"`,
   },
   create: {
     run: (args: Array<string>) => {
@@ -111,7 +111,7 @@ Example: zinn task edit SITE-1 --title "Rewrite the landing page"`,
 
 Create a task in the project's first column.
 
-Example: zinn task create SITE "Rewrite the home page" "Update the product copy"`,
+Example: zinn task create MDR "Refine the numbers" "Sort the numbers and meet the quarterly quota"`,
   },
   list: {
     run: (args) => {
@@ -177,7 +177,7 @@ Example: zinn task create SITE "Rewrite the home page" "Update the product copy"
 List active tasks by default.
 Use --archived to list archived tasks or --all to list both.
 
-Example: zinn task list SITE --all`,
+Example: zinn task list MDR --all`,
   },
   view: {
     run: (args) => {
@@ -194,7 +194,7 @@ Example: zinn task list SITE --all`,
 
 Show a task with its current column and description.
 
-Example: zinn task view SITE-1`,
+Example: zinn task view MDR-1`,
   },
   move: {
     run: (args) => {
@@ -220,7 +220,7 @@ matching placement at the bottom of a visual kanban column.
 Giving a task's current column as the target will not do anything.
 Archived tasks must be unarchived before they can be moved.
 
-Example: zinn task move SITE-1 "In Progress"`,
+Example: zinn task move MDR-1 "In Progress"`,
   },
   order: {
     run: (args) => {
@@ -272,7 +272,7 @@ Change a task's position within its current column.
 Use top or bottom for either end, up or down for one position,
 or before or after to place it relative to another task.
 
-Example: zinn task order SITE-2 before SITE-1`,
+Example: zinn task order MDR-2 before MDR-1`,
   },
   delete: {
     run: (args: Array<string>) => {
@@ -300,7 +300,7 @@ Example: zinn task order SITE-2 before SITE-1`,
 
 Permanently delete a task after confirmation.
 
-Example: zinn task delete SITE-1`,
+Example: zinn task delete MDR-1`,
   },
   archive: {
     run: (args: Array<string>) => {
@@ -317,7 +317,7 @@ Example: zinn task delete SITE-1`,
 
 Archive a task so it no longer appears in active task lists.
 
-Example: zinn task archive SITE-1`,
+Example: zinn task archive MDR-1`,
   },
   unarchive: {
     run: (args: Array<string>) => {
@@ -334,6 +334,6 @@ Example: zinn task archive SITE-1`,
 
 Unarchive a task at the bottom of its previous column.
 
-Example: zinn task unarchive SITE-1`,
+Example: zinn task unarchive MDR-1`,
   },
 } satisfies RouteDef;

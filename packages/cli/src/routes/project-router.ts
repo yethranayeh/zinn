@@ -104,7 +104,7 @@ Project keys are stored in uppercase.
 An omitted name defaults to the uppercase project key.
 Names cannot be blank.
 
-Example: zinn project create SITE --name "Website refresh"`,
+Example: zinn project create MDR --name "Macrodata Refinement"`,
   },
   list: {
     run: () => {
@@ -146,7 +146,7 @@ Example: zinn project list`,
 
 Permanently delete a project and all of its columns and tasks without confirmation.
 
-Example: zinn project delete SITE`,
+Example: zinn project delete MDR`,
   },
   column: {
     create: {
@@ -171,7 +171,7 @@ Example: zinn project delete SITE`,
 
 Add a column at the end of a project's board.
 
-Example: zinn project column create SITE "Waiting for review"`,
+Example: zinn project column create MDR "Boardlog"`,
     },
     list: {
       run: (args: Array<string>) => {
@@ -188,7 +188,7 @@ Example: zinn project column create SITE "Waiting for review"`,
 
 List a project's columns in board order.
 
-Example: zinn project column list SITE`,
+Example: zinn project column list MDR`,
     },
   },
 } satisfies RouteDef;
