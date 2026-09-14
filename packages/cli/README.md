@@ -47,7 +47,7 @@ Add another column at the end of the board:
 zinn project column create MDR "Boardlog"
 ```
 
-`zinn project delete MDR` permanently deletes the project and all of its columns and tasks. The command does not ask for confirmation.
+`zinn project delete MDR` asks for confirmation, then permanently deletes the project and all of its columns and tasks.
 
 ## Create and read tasks
 

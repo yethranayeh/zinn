@@ -263,16 +263,46 @@ test("project column names are unique only within a project", () => {
   });
 });
 
-test("project delete accepts a non-standardized key", () => {
-  runZinn(["project", "create", "GONE", "--name", "Doomed"]);
+test("project delete accepts a non-standardized key and removes its columns and tasks", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "GONE", "--name", "Doomed"], testDir);
+    runZinn(["task", "create", "GONE", "Doomed task"], testDir);
+    runZinn(["project", "create", "KEEP", "--name", "Kept"], testDir);
+    runZinn(["task", "create", "KEEP", "Kept task"], testDir);
 
-  expect(runZinn(["project", "delete", "gone"]).code).toBe(0);
+    expect(
+      runZinnWithConfirmation(["project", "delete", "gone"], testDir).code,
+    ).toBe(0);
 
-  // ? Reading the columns back is the only way to observe the project is gone
-  // ? until `project list` exists.
-  const listed = runZinn(["project", "column", "list", "GONE"]);
-  expect(listed.code).toBe(1);
-  expect(listed.stderr).toContain("does not exist");
+    withTestDb(testDir, (db) => {
+      expect(db.query("SELECT * FROM project WHERE key = 'GONE'").get()).toBeNull();
+      expect(
+        db
+          .query("SELECT * FROM project_column WHERE project_id NOT IN (SELECT id FROM project)")
+          .all(),
+      ).toEqual([]);
+      expect(
+        db.query("SELECT * FROM task WHERE project_id NOT IN (SELECT id FROM project)").all(),
+      ).toEqual([]);
+      expect(db.query("SELECT * FROM project WHERE key = 'KEEP'").get()).not.toBeNull();
+      expect(db.query("SELECT * FROM task WHERE title = 'Kept task'").get()).not.toBeNull();
+      expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
+    });
+  });
+});
+
+test("project delete keeps the project when confirmation is declined", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "KEEP", "--name", "Kept"], testDir);
+    runZinn(["task", "create", "KEEP", "Kept task"], testDir);
+
+    const result = runZinn(["project", "delete", "keep"], testDir);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("Deletion cancelled for KEEP | Kept");
+    expect(runZinn(["project", "list"], testDir).stdout).toContain("KEEP | Kept");
+    expect(runZinn(["task", "list", "KEEP"], testDir).stdout).toContain("Kept task");
+  });
 });
 
 test("project delete rejects an unknown key", () => {
@@ -312,7 +342,9 @@ test("project list does not retain a deleted project", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "KEEP", "--name", "Keep"], testDir);
     runZinn(["project", "create", "REMOVE", "--name", "Remove"], testDir);
-    expect(runZinn(["project", "delete", "REMOVE"], testDir).code).toBe(0);
+    expect(
+      runZinnWithConfirmation(["project", "delete", "REMOVE"], testDir).code,
+    ).toBe(0);
 
     const result = runZinn(["project", "list"], testDir);
 
@@ -1359,7 +1391,7 @@ test("project and column mutations print the affected entity", () => {
     expect(
       runZinn(["project", "column", "create", "life", "Waiting"], testDir).stdout,
     ).toBe("LIFE | Waiting\n");
-    expect(runZinn(["project", "delete", "life"], testDir).stdout).toBe(
+    expect(runZinnWithConfirmation(["project", "delete", "life"], testDir).stdout).toContain(
       "Deleted LIFE | Responsive\n",
     );
   });

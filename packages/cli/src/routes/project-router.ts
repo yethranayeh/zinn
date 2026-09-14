@@ -135,16 +135,29 @@ Example: zinn project list`,
       }
 
       try {
-        // TODO: add y/n confirmation
-        const deletedProject = project.delete(projectKey);
-        console.info(`Deleted ${deletedProject.key} | ${deletedProject.name}`);
+        const projectMatch = project.getByKey(projectKey);
+
+        if (projectMatch == null) {
+          throw new Error(`Project with key "${projectKey}" does not exist!`);
+        }
+
+        const canDelete = confirm(
+          `Are you sure you want to delete ${projectMatch.key} and all of its columns and tasks?`,
+        );
+
+        if (canDelete) {
+          const deletedProject = project.delete(projectKey);
+          console.info(`Deleted ${deletedProject.key} | ${deletedProject.name}`);
+        } else {
+          console.info(`Deletion cancelled for ${projectMatch.key} | ${projectMatch.name}`);
+        }
       } catch (err: any) {
         quit(err?.message ?? "Something went wrong");
       }
     },
     help: `Usage: zinn project delete <project-key>
 
-Permanently delete a project and all of its columns and tasks without confirmation.
+Permanently delete a project and all of its columns and tasks after confirmation.
 
 Example: zinn project delete MDR`,
   },
