@@ -1317,6 +1317,53 @@ test("task edit preserves archive state and documents its flags", () => {
   expect(help.stdout).toContain('--description ""');
 });
 
+test("project and column mutations print the affected entity", () => {
+  withIsolatedZinnDir((testDir) => {
+    expect(runZinn(["project", "create", "Responsive", "life"], testDir).stdout).toBe(
+      "LIFE | Responsive\n",
+    );
+    expect(
+      runZinn(["project", "column", "create", "life", "Waiting"], testDir).stdout,
+    ).toBe("LIFE | Waiting\n");
+    expect(runZinn(["project", "delete", "life"], testDir).stdout).toBe(
+      "Deleted LIFE | Responsive\n",
+    );
+  });
+});
+
+test("task mutations print the resulting entity", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "Responsive", "LIFE"], testDir);
+
+    expect(runZinn(["task", "create", "LIFE", "First", "Description"], testDir).stdout).toBe(
+      "LIFE-1 | Backlog | First | Description\n",
+    );
+    runZinn(["task", "create", "LIFE", "Second"], testDir);
+    expect(
+      runZinn(["task", "edit", "life-1", "--title", "Updated"], testDir).stdout,
+    ).toBe("LIFE-1 | Backlog | Updated | Description\n");
+    expect(runZinn(["task", "move", "LIFE-1", "TODO"], testDir).stdout).toBe(
+      "LIFE-1 | TODO | Updated | Description\n",
+    );
+    runZinn(["task", "move", "LIFE-2", "TODO"], testDir);
+    expect(runZinn(["task", "order", "LIFE-2", "top"], testDir).stdout).toBe(
+      "LIFE-2 | TODO | Second\n",
+    );
+    expect(runZinn(["task", "archive", "LIFE-1"], testDir).stdout).toBe(
+      "LIFE-1 | Archived | TODO | Updated | Description\n",
+    );
+    expect(runZinn(["task", "unarchive", "LIFE-1"], testDir).stdout).toBe(
+      "LIFE-1 | Active | TODO | Updated | Description\n",
+    );
+    expect(runZinnWithConfirmation(["task", "delete", "LIFE-1"], testDir).stdout).toContain(
+      "Deleted LIFE-1 | TODO | Updated | Description",
+    );
+    expect(runZinn(["task", "delete", "LIFE-2"], testDir).stdout).toContain(
+      "Deletion cancelled for LIFE-2 | TODO | Second",
+    );
+  });
+});
+
 // --- NOT YET TESTABLE
 
 // #TODO(build): empty-string arguments bypass the `== null` guards in both

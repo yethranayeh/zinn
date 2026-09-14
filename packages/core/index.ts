@@ -49,6 +49,8 @@ export const project = {
       })!;
       lastColumnOrder = columnOrder;
     }
+
+    return project;
   },
   getAll: dbProject.getAll,
   delete: (key: string) => {
@@ -59,6 +61,7 @@ export const project = {
     }
 
     dbProject.deleteByKey(key);
+    return project;
   },
   standardizeKey: standardizeProjectKey,
 };
@@ -94,12 +97,13 @@ export const column = {
     }
 
     const lastColOrder = allProjectColumns[allProjectColumns.length - 1]?.column_order ?? null;
-    const res = dbColumn.create({
+
+    return dbColumn.create({
       id: randomUUIDv7(),
       name: column.name,
       column_order: generateKeyBetween(lastColOrder, null),
       project_id: project.id,
-    });
+    })!;
   },
 };
 
@@ -205,7 +209,7 @@ export const task = {
       title: props.title,
       description: props.description,
       updated_at: Date.now(),
-    });
+    })!;
   },
   /**
    * Moves a task to another column in its project.
@@ -245,7 +249,7 @@ export const task = {
       column_id: columnMatch.id,
       task_order: order,
       updated_at: Date.now(),
-    });
+    })!;
   },
   order: (props: TaskOrderProps) => {
     const { taskKey, direction } = props;
@@ -317,11 +321,13 @@ export const task = {
         futureNextTask?.task_order ?? null,
       ),
       updated_at: Date.now(),
-    });
+    })!;
   },
   delete: (taskKey: string) => {
     const taskMatch = getTaskByKey(taskKey);
-    return dbTask.deleteById(taskMatch.id);
+    dbTask.deleteById(taskMatch.id);
+
+    return taskMatch;
   },
   archive: (taskKey: string) => {
     const taskMatch = getTaskByKey(taskKey);
@@ -331,7 +337,8 @@ export const task = {
     }
 
     const now = Date.now();
-    return dbTask.update({ id: taskMatch.id, updated_at: now, archived_at: now });
+
+    return dbTask.update({ id: taskMatch.id, updated_at: now, archived_at: now })!;
   },
   unarchive: (taskKey: string) => {
     const taskMatch = getTaskByKey(taskKey);
@@ -348,6 +355,6 @@ export const task = {
       task_order: order,
       updated_at: Date.now(),
       archived_at: null,
-    });
+    })!;
   },
 };

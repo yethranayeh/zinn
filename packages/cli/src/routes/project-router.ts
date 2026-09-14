@@ -15,7 +15,8 @@ export const projectRouter = {
       }
 
       try {
-        project.create({ key: projectKey, name: projectName });
+        const createdProject = project.create({ key: projectKey, name: projectName });
+        console.info(`${createdProject.key} | ${createdProject.name}`);
       } catch (err: any) {
         quit(err?.message ?? "Something went wrong");
       }
@@ -57,7 +58,8 @@ Example: zinn project list`,
 
       try {
         // TODO: add y/n confirmation
-        project.delete(projectKey);
+        const deletedProject = project.delete(projectKey);
+        console.info(`Deleted ${deletedProject.key} | ${deletedProject.name}`);
       } catch (err: any) {
         quit(err?.message ?? "Something went wrong");
       }
@@ -79,7 +81,10 @@ Example: zinn project delete SITE`,
         }
 
         try {
-          column.create({ projectKey, name: columnName });
+          const createdColumn = column.create({ projectKey, name: columnName });
+          const columnProject = project.getById(createdColumn.project_id)!;
+
+          console.info(`${columnProject.key} | ${createdColumn.name}`);
         } catch (err: any) {
           quit(err?.message ?? "Something went wrong");
         }

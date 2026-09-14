@@ -92,7 +92,7 @@ export function create(task: Omit<Task, "archived_at">) {
     ${DB_TABLE.task}  (id, project_id, column_id, number, title, description, task_order, created_at, updated_at)
     VALUES            ($id, $project_id, $column_id, $number, $title, $description, $task_order, $created_at, $updated_at);`);
 
-  return q.run({
+  q.run({
     $id: task.id,
     $project_id: task.project_id,
     $column_id: task.column_id,
@@ -103,6 +103,8 @@ export function create(task: Omit<Task, "archived_at">) {
     $created_at: task.created_at,
     $updated_at: task.updated_at,
   });
+
+  return { ...task, archived_at: null };
 }
 
 const TASK_UPDATE_COLUMNS = [

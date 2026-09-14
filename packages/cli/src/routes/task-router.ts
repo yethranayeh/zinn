@@ -5,6 +5,21 @@ import { parseArgs } from "node:util";
 import { task, project, column } from "@zinn-dev/core";
 import { quit } from "../lib";
 
+function formatTask(
+  taskMatch: ReturnType<typeof task.getByKey>,
+  options: { showsStatus?: boolean } = {},
+) {
+  const taskProject = project.getById(taskMatch.project_id)!;
+  const taskColumn = column.getById(taskMatch.column_id)!;
+  const taskKey = `${taskProject.key}-${taskMatch.number}`;
+  const status = options.showsStatus
+    ? ` | ${taskMatch.archived_at == null ? "Active" : "Archived"}`
+    : "";
+  const description = taskMatch.description == null ? "" : ` | ${taskMatch.description}`;
+
+  return `${taskKey}${status} | ${taskColumn.name} | ${taskMatch.title}${description}`;
+}
+
 export const taskRouter = {
   edit: {
     run: (args) => {
@@ -43,7 +58,8 @@ export const taskRouter = {
         quit("Provide at least one edit flag: --title or --description");
       }
 
-      task.edit({ taskKey, ...values });
+      const editedTask = task.edit({ taskKey, ...values });
+      console.info(formatTask(editedTask));
     },
     help: `Usage: zinn task edit <task-key> [--title <text>] [--description <text>]
 
@@ -81,11 +97,12 @@ Example: zinn task edit SITE-1 --title "Rewrite the landing page"`,
         }
 
         // TODO: should it non-null (??) or non-falsy (||) check?
-        task.create({
+        const createdTask = task.create({
           project_id: projectMatch.id,
           title: taskTitle,
           description: taskDesc ?? null,
         });
+        console.info(formatTask(createdTask));
       } catch (err: any) {
         quit(err?.message ?? "Something went wrong");
       }
@@ -171,12 +188,7 @@ Example: zinn task list SITE --all`,
       }
 
       const taskMatch = task.getByKey(taskKey);
-      const taskProject = project.getById(taskMatch.project_id)!;
-      const taskColumn = column.getById(taskMatch.column_id)!;
-
-      const canonicalTaskKey = `${taskProject.key}-${taskMatch.number}`;
-      const description = taskMatch.description == null ? "" : ` | ${taskMatch.description}`;
-      console.info(`${canonicalTaskKey} | ${taskColumn?.name} | ${taskMatch.title}${description}`);
+      console.info(formatTask(taskMatch));
     },
     help: `Usage: zinn task view <task-key>
 
@@ -196,7 +208,8 @@ Example: zinn task view SITE-1`,
         quit("Target column must be specified");
       }
 
-      task.move({ taskKey, targetColumn });
+      const movedTask = task.move({ taskKey, targetColumn });
+      console.info(formatTask(movedTask));
     },
     help: `Usage: zinn task move <task-key> <target-column>
 
@@ -232,7 +245,8 @@ Example: zinn task move SITE-1 "In Progress"`,
             quit("Only one target task can be specified");
           }
 
-          task.order({ taskKey, direction, targetTaskKey });
+          const orderedTask = task.order({ taskKey, direction, targetTaskKey });
+          console.info(formatTask(orderedTask));
           return;
         }
         case "top":
@@ -243,7 +257,8 @@ Example: zinn task move SITE-1 "In Progress"`,
             quit(`Order direction "${direction}" does not accept a target task`);
           }
 
-          task.order({ taskKey, direction });
+          const orderedTask = task.order({ taskKey, direction });
+          console.info(formatTask(orderedTask));
           return;
         }
         default:
@@ -268,11 +283,14 @@ Example: zinn task order SITE-2 before SITE-1`,
       }
 
       try {
-        task.getByKey(taskKey);
+        const taskMatch = task.getByKey(taskKey);
         const canDelete = confirm(`Are you sure you want to delete ${taskKey}?`);
 
         if (canDelete) {
-          task.delete(taskKey);
+          const deletedTask = task.delete(taskKey);
+          console.info(`Deleted ${formatTask(deletedTask)}`);
+        } else {
+          console.info(`Deletion cancelled for ${formatTask(taskMatch)}`);
         }
       } catch (err: any) {
         quit(err?.message ?? "Something went wrong");
@@ -292,7 +310,8 @@ Example: zinn task delete SITE-1`,
         quit("Task key must be specified");
       }
 
-      task.archive(taskKey);
+      const archivedTask = task.archive(taskKey);
+      console.info(formatTask(archivedTask, { showsStatus: true }));
     },
     help: `Usage: zinn task archive <task-key>
 
@@ -308,7 +327,8 @@ Example: zinn task archive SITE-1`,
         quit("Task key must be specified");
       }
 
-      task.unarchive(taskKey);
+      const unarchivedTask = task.unarchive(taskKey);
+      console.info(formatTask(unarchivedTask, { showsStatus: true }));
     },
     help: `Usage: zinn task unarchive <task-key>
 
