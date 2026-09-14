@@ -13,13 +13,18 @@ Set `ZINN_DIR` to use another Zinn directory and keep using the same value for c
 
 ## Start a project
 
-Create a project with a name and a short key that begins with a letter and then uses only letters and numbers:
+Create a project with a key or optionally provide a name:
 
 ```sh
-zinn project create "Website refresh" SITE
+zinn project create SITE --name "Website refresh"
 ```
 
-Project keys are stored in uppercase. Each project starts with _Backlog_, _TODO_, _In Progress_, _Review_, and _Done_ columns. List projects or inspect a project's columns with:
+Project keys are stored in **uppercase**. You can create a project without a project name, like `zinn project create SITE`, which will just default to having the key as the project name too.
+Intetionally empty or whitespace project names are rejected.
+
+Each project starts with _Backlog_, _TODO_, _In Progress_, _Review_, and _Done_ columns.
+
+You can list projects or inspect a project's columns with:
 
 ```sh
 zinn project list

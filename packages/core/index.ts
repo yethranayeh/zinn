@@ -34,7 +34,8 @@ export const project = {
       throw new Error(`Project with key "${existingProject.key}" already exists!`);
     }
 
-    const project = dbProject.create(props)!;
+    const key = standardizeProjectKey(props.key);
+    const project = dbProject.create({ key, name: props.name ?? key })!;
 
     const defaultColumns = ["Backlog", "TODO", "In Progress", "Review", "Done"];
     let lastColumnOrder: string | null = null;

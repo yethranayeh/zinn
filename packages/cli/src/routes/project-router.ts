@@ -58,27 +58,53 @@ Example: zinn project edit MDR --name "Macrodata Refinement"`,
 
   create: {
     run: (args: Array<string>) => {
-      const projectName = args[0];
-      // TODO: maybe auto generate project key from name instead of forcing explicit input (however, very open to collision)
-      const projectKey = args[1];
+      const { values, positionals, tokens } = parseArgs({
+        args,
+        options: { name: { type: "string" } },
+        allowPositionals: true,
+        strict: true,
+        tokens: true,
+      });
 
-      if (projectName == null || projectKey == null) {
-        quit("Both the project name and the project key must be defined");
+      const projectKey = positionals[0];
+
+      if (projectKey == null) {
+        quit("Project key must be specified");
+      }
+
+      if (positionals.length > 1) {
+        quit("Only one project key can be specified");
+      }
+
+      const parsedArgs = new Set<string>();
+      for (const token of tokens) {
+        if (token.kind !== "option") {
+          continue;
+        }
+
+        if (parsedArgs.has(token.name)) {
+          quit(`The "--${token.name}" flag can only be specified once`);
+        }
+
+        parsedArgs.add(token.name);
       }
 
       try {
-        const createdProject = project.create({ key: projectKey, name: projectName });
+        const createdProject = project.create({ key: projectKey, name: values.name });
         console.info(`${createdProject.key} | ${createdProject.name}`);
       } catch (err: any) {
         quit(err?.message ?? "Something went wrong");
       }
     },
-    help: `Usage: zinn project create <name> <project-key>
+    help: `Usage: zinn project create <project-key> [--name <text>]
 
-Create a project with the default Backlog, TODO, In Progress, Review, and Done columns.
+Create a project with the default columns.
 Project keys are stored in uppercase.
 
-Example: zinn project create "Website refresh" SITE`,
+An omitted name defaults to the uppercase project key.
+Names cannot be blank.
+
+Example: zinn project create SITE --name "Website refresh"`,
   },
   list: {
     run: () => {

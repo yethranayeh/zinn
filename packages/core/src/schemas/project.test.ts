@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 import { projectCreateSchema, projectEditSchema, validateProjectInput } from "./project";
 
+test("project creation accepts an omitted name but rejects null", () => {
+  expect(projectCreateSchema.parse({ key: "test" })).toEqual({ key: "test" });
+  expect(projectCreateSchema.safeParse({ key: "TEST", name: null }).success).toBe(false);
+});
+
 test("project creation and editing share name validation and preserve supplied text", () => {
   for (const name of ["", " ", "Two\nlines", "Bad\u0000name"]) {
     expect(projectCreateSchema.safeParse({ key: "TEST", name }).success).toBe(false);

@@ -15,10 +15,10 @@ Requires [Bun](https://bun.sh).
 Create a project, add a task, and inspect it:
 
 ```sh
-zinn project create "Side project" SIDE
-zinn task create SIDE "Ship the first version" "Finish the README and publish it"
-zinn task list SIDE
-zinn task view SIDE-1
+zinn project create MDR --name "Macrodata Refinement"
+zinn task create MDR "Ship the first version" "Finish the README and publish it"
+zinn task list MDR
+zinn task view MDR-1
 ```
 
 A new project starts with Backlog, TODO, In Progress, Review, and Done columns.
@@ -26,9 +26,9 @@ Move work through those columns and archive it when it no longer belongs in the
 active list:
 
 ```sh
-zinn task move SIDE-1 "In Progress"
-zinn task archive SIDE-1
-zinn task list SIDE --archived
+zinn task move MDR-1 "In Progress"
+zinn task archive MDR-1
+zinn task list MDR --archived
 ```
 
 Run `zinn --help` to see every command, `zinn task --help` to browse task commands, or `zinn <command> --help` for command-specific usage. The complete command reference is in the [CLI README](packages/cli/README.md).

@@ -14,7 +14,7 @@ export const projectCreateSchema = z.strictObject({
       /^[A-Za-z][A-Za-z0-9]*$/,
       "Project key must start with a letter and contain only letters and numbers",
     ),
-  name: projectNameSchema,
+  name: projectNameSchema.optional(),
 });
 
 export const projectEditSchema = z.strictObject({
