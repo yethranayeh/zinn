@@ -2,6 +2,15 @@
 	"name": "@zinn-dev/tui",
 	"version": "0.0.1",
 	"description": "The TUI for zinn, a kanban workflow in the terminal.",
+	"license": "MIT",
+	"bugs": {
+		"url": "https://github.com/yethranayeh/zinn/issues"
+	},
+	"author": {
+		"name": "Alper Halil",
+		"email": "contact@aktasalper.com",
+		"url": "https://aktasalper.com"
+	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/yethranayeh/zinn.git",
@@ -16,7 +25,8 @@
 		}
 	},
 	"files": [
-		"index.ts"
+		"index.ts",
+		"LICENSE"
 	],
 	"publishConfig": {
 		"access": "public"
