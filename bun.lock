@@ -11,18 +11,17 @@
     },
     "packages/cli": {
       "name": "@zinn-dev/cli",
-      "version": "0.0.30",
+      "version": "0.6.0",
       "bin": {
         "zinn": "./index.ts",
       },
       "dependencies": {
         "@zinn-dev/core": "workspace:*",
-        "@zinn-dev/tui": "workspace:*",
       },
     },
     "packages/core": {
       "name": "@zinn-dev/core",
-      "version": "0.0.29",
+      "version": "0.5.0",
       "dependencies": {
         "fractional-indexing": "4.0.0",
         "zod": "4.6.4",

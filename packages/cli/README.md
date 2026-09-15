@@ -141,4 +141,4 @@ zinn task move --help
 
 The short `-h` form works in the same positions.
 
-Running `zinn` without a command launches the work-in-progress TUI when attached to an interactive terminal. The commands documented above provide the complete current workflow.
+Running `zinn` without a command shows help

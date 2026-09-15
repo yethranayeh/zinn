@@ -1,6 +1,6 @@
 {
 	"name": "@zinn-dev/cli",
-	"version": "0.5.0",
+	"version": "0.6.0",
 	"description": "A kanban workflow in the terminal.",
 	"license": "MIT",
 	"bugs": {
@@ -20,8 +20,6 @@
 		"kanban",
 		"cli",
 		"terminal",
-		"tui",
-		"opentui",
 		"bun"
 	],
 	"module": "index.ts",
@@ -44,7 +42,6 @@
 		"access": "public"
 	},
 	"dependencies": {
-		"@zinn-dev/core": "workspace:*",
-		"@zinn-dev/tui": "workspace:*"
+		"@zinn-dev/core": "workspace:*"
 	}
 }

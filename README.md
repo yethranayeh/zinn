@@ -33,7 +33,7 @@ zinn task list MDR --archived
 
 Run `zinn --help` to see every command, `zinn task --help` to browse task commands, or `zinn <command> --help` for command-specific usage. The complete command reference is in the [CLI README](packages/cli/README.md).
 
-Running `zinn` without a command launches the terminal interface when attached to an interactive terminal. The TUI is still a work in progress. So, use the CLI commands for the complete current workflow.
+Running `zinn` without a command shows help.
 
 ## Data location
 

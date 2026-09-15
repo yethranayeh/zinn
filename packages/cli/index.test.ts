@@ -79,12 +79,12 @@ function withTestDb<T>(testDir: string, inspect: (db: Database) => T) {
 
 // --- ENTRYPOINT
 
-test("bare invocation in a non-TTY exits nonzero", () => {
-  // ? `spawnSync` gives the child no TTY, which is exactly the CI case this guards.
+test("bare invocation shows root help and exits zero", () => {
   const result = runZinn([]);
 
-  expect(result.code).toBe(1);
-  expect(result.stderr).toContain("non-TTY environment is not supported");
+  expect(result.code).toBe(0);
+  expect(result.stderr).toBe("");
+  expect(result).toEqual(runZinn(["--help"]));
 });
 
 test("root help supports -h and --help and lists commands", () => {
