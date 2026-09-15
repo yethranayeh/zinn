@@ -42,6 +42,19 @@ function initDb() {
   updated_at  INTEGER NOT NULL,
   archived_at INTEGER);`).run();
 
+  // --- TASK RELATIONS TABLE
+  db.query(`CREATE TABLE IF NOT EXISTS ${DB_TABLE.task_relations} (
+  id              TEXT PRIMARY KEY,
+  source_task_id  TEXT NOT NULL REFERENCES ${DB_TABLE.task}(id) ON DELETE CASCADE,
+  target_task_id  TEXT NOT NULL REFERENCES ${DB_TABLE.task}(id) ON DELETE CASCADE,
+  relation_type   TEXT NOT NULL CHECK (
+    relation_type IN ('related', 'dependency', 'duplicate')
+  ),
+  created_at      INTEGER NOT NULL,
+
+  UNIQUE (source_task_id, target_task_id, relation_type),
+  CHECK (source_task_id <> target_task_id));`).run();
+
   return db;
 }
 
