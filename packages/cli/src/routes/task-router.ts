@@ -10,9 +10,8 @@ function formatTask(
   taskMatch: ReturnType<typeof task.getByKey>,
   options: { showsStatus?: boolean } = {},
 ) {
-  const taskProject = project.getById(taskMatch.project_id)!;
   const taskColumn = column.getById(taskMatch.column_id)!;
-  const taskKey = `${taskProject.key}-${taskMatch.number}`;
+  const taskKey = taskMatch.key;
   const status = options.showsStatus
     ? ` | ${taskMatch.archived_at == null ? "Active" : "Archived"}`
     : "";
@@ -140,10 +139,8 @@ Example: zinn task create MDR "Refine the numbers" "Sort the numbers and meet th
       }
 
       const presentableTasks = tasks.map((t) => {
-        // TODO: A task's project and column is fetched in both `list` and `view`. Make a reusable fetcher?
-        const taskProject = project.getById(t.project_id)!;
         const taskColumn = column.getById(t.column_id)!;
-        const taskKey = `${taskProject.key}-${t.number}`;
+        const taskKey = t.key;
 
         return {
           id: taskKey,

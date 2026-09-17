@@ -30,6 +30,8 @@ export type Task = {
   archived_at: number | null;
 };
 
+export type TaskWithKey = Task & { key: string };
+
 export type TaskRelationType = "related" | "dependency" | "duplicate";
 export type TaskRelation = {
   id: string;

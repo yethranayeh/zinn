@@ -1,4 +1,4 @@
-import type { Column, Task, TaskRelation } from "./src/types";
+import type { Column, Task, TaskRelation, TaskWithKey } from "./src/types";
 import type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project";
 import type { TaskCreateInput, TaskEditInput } from "./src/schemas/task";
 import type { RelationCreateInput } from "./src/schemas/relation";
@@ -22,6 +22,7 @@ import {
 
 export type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project";
 export type { TaskCreateInput, TaskEditInput } from "./src/schemas/task";
+export type { TaskWithKey } from "./src/types";
 export type { RelationCreateInput } from "./src/schemas/relation";
 
 export { projectCreateSchema, projectEditSchema } from "./src/schemas/project";
@@ -157,7 +158,7 @@ function getTaskByKey(taskKey: string) {
     throw new Error(`Task "${project.key}-${taskNumber}" does not exist!`);
   }
 
-  return taskMatch;
+  return attachTaskKey(taskMatch, project.key);
 }
 
 type TaskOrderProps =
@@ -171,6 +172,11 @@ type TaskOrderProps =
       direction: "before" | "after";
       targetTaskKey: string;
     };
+
+function attachTaskKey(task: Task, projectKey?: string): TaskWithKey {
+  const key = projectKey ?? dbProject.getById(task.project_id)!.key;
+  return { ...task, key: `${key}-${task.number}` };
+}
 
 export const task = {
   create: (input: TaskCreateInput) => {
@@ -189,7 +195,7 @@ export const task = {
     const order = generateKeyBetween(lastTask?.task_order ?? null, null);
 
     const now = Date.now();
-    return dbTask.create({
+    const createdTask = dbTask.create({
       id: randomUUIDv7(),
       project_id: task.project_id,
       column_id: initialColumn.id,
@@ -199,11 +205,13 @@ export const task = {
       task_order: order,
       created_at: now,
       updated_at: now,
-    });
+    })!;
+
+    return attachTaskKey(createdTask);
   },
   getAll: (props: { projectKey?: string; archive?: dbTask.TaskArchiveFilter } = {}) => {
     if (props.projectKey == null) {
-      return dbTask.getAll(props.archive);
+      return dbTask.getAll(props.archive).map((task) => attachTaskKey(task));
     }
 
     const taskProject = dbProject.getByKey(props.projectKey);
@@ -212,7 +220,9 @@ export const task = {
       throw new Error(`Project with key "${props.projectKey}" does not exist!`);
     }
 
-    return dbTask.getAllByProjectId(taskProject.id, props.archive);
+    return dbTask
+      .getAllByProjectId(taskProject.id, props.archive)
+      .map((task) => attachTaskKey(task, taskProject.key));
   },
   getByKey: getTaskByKey,
   /** Edit supplied content fields, including on archived tasks. Unchanged edits are no-ops. */
@@ -227,12 +237,15 @@ export const task = {
       return existing;
     }
 
-    return dbTask.update({
-      id: existing.id,
-      title: props.title,
-      description: props.description,
-      updated_at: Date.now(),
-    })!;
+    return {
+      ...dbTask.update({
+        id: existing.id,
+        title: props.title,
+        description: props.description,
+        updated_at: Date.now(),
+      })!,
+      key: existing.key,
+    };
   },
   /**
    * Moves a task to another column in its project.
@@ -267,12 +280,15 @@ export const task = {
     const lastTask = dbTask.getLastByColumnId(columnMatch.id);
     const order = generateKeyBetween(lastTask?.task_order ?? null, null);
 
-    return dbTask.update({
-      id: taskMatch.id,
-      column_id: columnMatch.id,
-      task_order: order,
-      updated_at: Date.now(),
-    })!;
+    return {
+      ...dbTask.update({
+        id: taskMatch.id,
+        column_id: columnMatch.id,
+        task_order: order,
+        updated_at: Date.now(),
+      })!,
+      key: taskMatch.key,
+    };
   },
   order: (props: TaskOrderProps) => {
     const { taskKey, direction } = props;
@@ -337,14 +353,17 @@ export const task = {
     const futurePrevTask = otherTasks[insertionIndex - 1] ?? null;
     const futureNextTask = otherTasks[insertionIndex] ?? null;
 
-    return dbTask.update({
-      id: taskMatch.id,
-      task_order: generateKeyBetween(
-        futurePrevTask?.task_order ?? null,
-        futureNextTask?.task_order ?? null,
-      ),
-      updated_at: Date.now(),
-    })!;
+    return {
+      ...dbTask.update({
+        id: taskMatch.id,
+        task_order: generateKeyBetween(
+          futurePrevTask?.task_order ?? null,
+          futureNextTask?.task_order ?? null,
+        ),
+        updated_at: Date.now(),
+      })!,
+      key: taskMatch.key,
+    };
   },
   delete: (taskKey: string) => {
     const taskMatch = getTaskByKey(taskKey);
@@ -361,7 +380,10 @@ export const task = {
 
     const now = Date.now();
 
-    return dbTask.update({ id: taskMatch.id, updated_at: now, archived_at: now })!;
+    return {
+      ...dbTask.update({ id: taskMatch.id, updated_at: now, archived_at: now })!,
+      key: taskMatch.key,
+    };
   },
   unarchive: (taskKey: string) => {
     const taskMatch = getTaskByKey(taskKey);
@@ -373,22 +395,17 @@ export const task = {
     const lastTask = dbTask.getLastByColumnId(taskMatch.column_id);
     const order = generateKeyBetween(lastTask?.task_order ?? null, null);
 
-    return dbTask.update({
-      id: taskMatch.id,
-      task_order: order,
-      updated_at: Date.now(),
-      archived_at: null,
-    })!;
+    return {
+      ...dbTask.update({
+        id: taskMatch.id,
+        task_order: order,
+        updated_at: Date.now(),
+        archived_at: null,
+      })!,
+      key: taskMatch.key,
+    };
   },
 };
-
-type TaskWithKey = Task & { key: string };
-
-// TODO: would be better to reuse where task keys attached manually
-function attachTaskKey(task: Task): TaskWithKey {
-  const project = dbProject.getById(task.project_id)!;
-  return { ...task, key: `${project.key}-${task.number}` };
-}
 
 type RelationResult = TaskRelation & {
   source?: TaskWithKey;

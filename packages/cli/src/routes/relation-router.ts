@@ -1,7 +1,7 @@
 import type { RouteDef } from "../types";
 
 import { parseArgs } from "node:util";
-import { project, relation, relationCreateSchema, task } from "@zinn-dev/core";
+import { relation, relationCreateSchema, task } from "@zinn-dev/core";
 import { quit } from "../lib";
 
 export function formatRelations(taskKey: string) {
@@ -69,15 +69,13 @@ export const relationRouter = {
       const source = task.getByKey(sourceTaskKey);
       const target = task.getByKey(targetTaskKey);
 
-      const sourceKey = `${project.getById(source.project_id)!.key}-${source.number}`;
-      const targetKey = `${project.getById(target.project_id)!.key}-${target.number}`;
-
       const label = {
         related: "related to",
         dependency: "depends on",
         duplicate: "is a duplicate of",
       }[typeResult.data];
-      console.info(`${sourceKey} ${label} ${targetKey}`);
+
+      console.info(`${source.key} ${label} ${target.key}`);
     },
     help: `Usage: zinn task relation create <source-task-key> <target-task-key> --type <type>
 
