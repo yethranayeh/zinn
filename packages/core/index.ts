@@ -1,4 +1,4 @@
-import type { Column } from "./src/types";
+import type { Column, Task, TaskRelation } from "./src/types";
 import type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project";
 import type { TaskCreateInput, TaskEditInput } from "./src/schemas/task";
 import type { RelationCreateInput } from "./src/schemas/relation";
@@ -382,6 +382,41 @@ export const task = {
   },
 };
 
+type TaskWithKey = Task & { key: string };
+
+// TODO: would be better to reuse where task keys attached manually
+function attachTaskKey(task: Task): TaskWithKey {
+  const project = dbProject.getById(task.project_id)!;
+  return { ...task, key: `${project.key}-${task.number}` };
+}
+
+type RelationResult = TaskRelation & {
+  source?: TaskWithKey;
+  target?: TaskWithKey;
+};
+
+type RelationGetOptions = {
+  include?: { tasks?: boolean };
+};
+
+function getRelations(taskKey: string, options?: RelationGetOptions): Array<RelationResult> {
+  if (taskKey == null) {
+    throw new Error("A task key is required to list relations");
+  }
+
+  const taskMatch = getTaskByKey(taskKey);
+  const relations = dbRelation.getAllByTaskId(taskMatch.id);
+  if (!options?.include?.tasks) {
+    return relations;
+  }
+
+  return relations.map((entry) => ({
+    ...entry,
+    source: attachTaskKey(dbTask.getById(entry.source_task_id)!),
+    target: attachTaskKey(dbTask.getById(entry.target_task_id)!),
+  }));
+}
+
 export const relation = {
   create: (input: RelationCreateInput) => {
     const props = validateTaskInput(relationCreateSchema, input);
@@ -423,12 +458,5 @@ export const relation = {
       relation_type: props.relation_type,
     });
   },
-  getAll: (taskKey: string) => {
-    if (taskKey == null) {
-      throw new Error("Provide a task key to list relations");
-    }
-    const taskMatch = getTaskByKey(taskKey);
-
-    return dbRelation.getAllByTaskId(taskMatch.id);
-  },
+  getAll: getRelations,
 };

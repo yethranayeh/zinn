@@ -68,6 +68,24 @@ zinn task view MDR-1
 
 When a project key is supplied, the list follows the project's column order and the task order within each column.
 
+## Task relations
+
+```sh
+zinn task relation create MDR-1 MDR-2 --type dependency
+zinn task relation create MDR-1 MDR-2 --type duplicate
+zinn task relation create MDR-1 OTHER-1 --type related
+zinn task relation list MDR-1
+```
+
+`dependency` means the first task depends on the second, `duplicate` means the first task is a duplicate of the second. `related` is a bit different as the order of the tasks mentioned _does not matter_, either case describes the same relation.
+
+Relations do not have any side effects. They are purely for information.
+Tasks from separate projects can be related to each other. Tasks can also be related to archived tasks.
+
+`task view` a task's existing relations.
+
+Use `task relation create --help` to discover types.
+
 ## Edit tasks
 
 Edit a task's title, description, or both:

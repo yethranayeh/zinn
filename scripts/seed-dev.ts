@@ -15,7 +15,7 @@ for (const databaseFile of [DB_PATH, `${DB_PATH}-wal`, `${DB_PATH}-shm`]) {
   rmSync(databaseFile, { force: true });
 }
 
-const { column, project, task } = await import("../packages/core/index.ts");
+const { column, project, relation, task } = await import("../packages/core/index.ts");
 
 function createProject(props: { key: string; name: string }) {
   project.create(props);
@@ -53,6 +53,21 @@ createTask(site.id, "Publish installation instructions", "Cover Bun and the zinn
 const experiments = createProject({ key: "LAB", name: "Experiments" });
 createTask(experiments.id, "Try a compact task card layout");
 createTask(experiments.id, "Explore activity history", "Keep the first version read-only");
+createTask(experiments.id, "Prototype keyboard navigation", "Superseded by the board navigation task");
+task.archive("LAB-3");
+
+// Dependencies: source depends on target. APP-3 shows both outgoing and incoming links.
+relation.create({ sourceTaskKey: "APP-3", targetTaskKey: "APP-1", relation_type: "dependency" });
+relation.create({ sourceTaskKey: "APP-3", targetTaskKey: "APP-2", relation_type: "dependency" });
+relation.create({ sourceTaskKey: "SITE-2", targetTaskKey: "APP-3", relation_type: "dependency" });
+
+// Related links are symmetric, including across projects.
+relation.create({ sourceTaskKey: "APP-3", targetTaskKey: "LAB-1", relation_type: "related" });
+relation.create({ sourceTaskKey: "SITE-3", targetTaskKey: "APP-4", relation_type: "related" });
+
+// Duplicate: source is a duplicate of target. Archived tasks remain visible in relations.
+relation.create({ sourceTaskKey: "LAB-3", targetTaskKey: "APP-3", relation_type: "duplicate" });
 
 console.info(`Reset and seeded the default Zinn database at ${DB_PATH}`);
 console.info("Run `zinn task list` to inspect it.");
+console.info("Run `zinn task view APP-3` or `zinn task relation list APP-3` to inspect relations.");

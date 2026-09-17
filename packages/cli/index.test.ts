@@ -1537,3 +1537,61 @@ test("project edit rejects invalid requests without writes", () => {
     }
   });
 });
+
+// --- RELATIONS
+
+test("relation commands show directional and symmetric links, including archived cross-project tasks", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = (...args: string[]) => runZinn(args, dir);
+    expect(run("project", "create", "APP").code).toBe(0);
+    expect(run("project", "create", "OTHER").code).toBe(0);
+    run("task", "create", "APP", "Copy");
+    run("task", "create", "OTHER", "Original");
+    expect(run("task", "relation", "list", "APP-1").stdout).toBe("");
+    expect(run("task", "relation", "create", "APP-1", "APP-1", "--type", "related").stderr).toContain("itself");
+    expect(run("task", "relation", "create", "APP-1", "OTHER-99", "--type", "related").code).toBe(1);
+    expect(run("task", "relation", "list", "OTHER-99").code).toBe(1);
+    for (const type of ["dependency", "duplicate", "related"]) {
+      const created = run("task", "relation", "create", "app-1", "OTHER-1", "--type", type);
+      expect(created.code).toBe(0);
+      expect(created.stdout).toContain("APP-1");
+      expect(created.stdout).toContain("OTHER-1");
+    }
+    const outgoing = run("task", "relation", "list", "APP-1");
+    expect(outgoing.stdout).toContain("Depends on | OTHER-1 | Original");
+    expect(outgoing.stdout).toContain("Duplicate of | OTHER-1 | Original");
+    const incoming = run("task", "relation", "list", "OTHER-1");
+    expect(incoming.stdout).toContain("Depended on by | APP-1 | Copy");
+    expect(incoming.stdout).toContain("Duplicated by | APP-1 | Copy");
+    expect(incoming.stdout).toContain("Related to | APP-1 | Copy");
+    expect(run("task", "relation", "create", "OTHER-1", "APP-1", "--type", "related").stderr).toContain("already exists");
+    run("task", "archive", "OTHER-1");
+    expect(run("task", "view", "APP-1").stdout).toContain("Duplicate of | OTHER-1 | Original | Archived");
+    expect(run("task", "relation", "create", "OTHER-1", "APP-1", "--type", "dependency").code).toBe(0);
+  });
+});
+
+test("relation help and argument errors make types discoverable without prompting", () => {
+  for (const args of [
+    ["APP-1", "APP-2"],
+    ["APP-1", "APP-2", "--type", "unknown"],
+  ]) {
+    const result = runZinn(["task", "relation", "create", ...args]);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("related, dependency, duplicate");
+  }
+  for (const args of [
+    ["APP-1", "--type", "related"],
+    ["APP-1", "APP-2", "APP-3", "--type", "related"],
+    ["APP-1", "APP-2", "--type", "related", "--type", "duplicate"],
+    ["APP-1", "APP-2", "--typo", "related"],
+  ]) {
+    expect(runZinn(["task", "relation", "create", ...args]).code).toBe(1);
+  }
+  const help = runZinn(["task", "relation", "create", "--help"]);
+  expect(help.code).toBe(0);
+  expect(help.stdout).toContain("Source is a duplicate of target");
+  expect(runZinn(["task", "relation", "--help"]).stdout).toContain("task relation list");
+  expect(runZinn(["task", "relation", "list"]).code).toBe(1);
+  expect(runZinn(["task", "relation", "list", "APP-1", "APP-2"]).code).toBe(1);
+});

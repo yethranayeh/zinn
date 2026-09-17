@@ -25,6 +25,8 @@ Commands:
   task archive
   task unarchive
   task delete
+  task relation create
+  task relation list
 
 Run zinn <namespace> --help or zinn <command> --help for more information.
 Running zinn without a command shows this help.`);

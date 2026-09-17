@@ -1,9 +1,10 @@
 import type { RouteDef } from "../types";
 
 import { parseArgs } from "node:util";
-
 import { task, project, column } from "@zinn-dev/core";
+
 import { quit } from "../lib";
+import { formatRelations, relationRouter } from "./relation-router";
 
 function formatTask(
   taskMatch: ReturnType<typeof task.getByKey>,
@@ -21,6 +22,7 @@ function formatTask(
 }
 
 export const taskRouter = {
+  relation: relationRouter,
   edit: {
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
@@ -189,10 +191,15 @@ Example: zinn task list MDR --all`,
 
       const taskMatch = task.getByKey(taskKey);
       console.info(formatTask(taskMatch));
+
+      const relations = formatRelations(taskKey);
+      if (relations.length > 0) {
+        console.info(`\nRelations:\n${relations}`);
+      }
     },
     help: `Usage: zinn task view <task-key>
 
-Show a task with its current column and description.
+Show a task with its current column, description, and relations.
 
 Example: zinn task view MDR-1`,
   },

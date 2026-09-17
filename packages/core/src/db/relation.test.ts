@@ -101,3 +101,29 @@ test("relations clean up without deleting connected tasks", () => {
       assert.deepEqual(getDb().query("PRAGMA foreign_key_check").all(), []);
   `);
 });
+
+test("duplicate direction and optional task enrichment preserve raw lookup", () => {
+  runRelationCheck(`
+    const app = project.create({ key: "APP" });
+    const other = project.create({ key: "OTHER" });
+    task.create({ project_id: app.id, title: "Copy", description: null });
+    task.create({ project_id: other.id, title: "Original", description: null });
+    const before = task.getByKey("OTHER-1");
+    const created = relation.create({ sourceTaskKey: "APP-1", targetTaskKey: "OTHER-1", relation_type: "duplicate" });
+    assert.equal(created.source_task_id, task.getByKey("APP-1").id);
+    assert.equal(created.target_task_id, before.id);
+    assert.deepEqual(task.getByKey("OTHER-1"), before);
+    assert.throws(() => relation.create({ sourceTaskKey: "APP-1", targetTaskKey: "OTHER-1", relation_type: "duplicate" }), /already exists/);
+    const raw = relation.getAll("APP-1");
+    assert.equal("source" in raw[0], false);
+    assert.deepEqual(relation.getAll("APP-1", { include: { tasks: false } }), raw);
+    task.archive("OTHER-1");
+    const [expanded] = relation.getAll("APP-1", { include: { tasks: true } });
+    assert.equal(expanded.source.key, "APP-1");
+    assert.equal(expanded.target.key, "OTHER-1");
+    assert.equal(expanded.target.title, "Original");
+    assert.ok(expanded.target.archived_at);
+    relation.create({ sourceTaskKey: "OTHER-1", targetTaskKey: "APP-1", relation_type: "duplicate" });
+    assert.equal(relation.getAll("APP-1").length, 2);
+  `);
+});

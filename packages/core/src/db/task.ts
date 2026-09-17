@@ -16,6 +16,10 @@ function getArchiveCondition(filter: TaskArchiveFilter) {
   }
 }
 
+export function getById(taskId: string) {
+  return getDb().query<Task, [string]>(`SELECT * FROM ${DB_TABLE.task} WHERE id = ?`).get(taskId);
+}
+
 // TODO: refined parameters, preferably of type SQLBindings
 export function getAll(archive: TaskArchiveFilter = "active") {
   const db = getDb();
