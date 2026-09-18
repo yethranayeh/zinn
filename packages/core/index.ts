@@ -1,7 +1,7 @@
 import type { Column, Task, TaskRelation, TaskWithKey } from "./src/types";
 import type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project";
 import type { TaskCreateInput, TaskEditInput } from "./src/schemas/task";
-import type { RelationCreateInput } from "./src/schemas/relation";
+import type { RelationCreateInput, RelationDeleteInput } from "./src/schemas/relation";
 
 import { randomUUIDv7 } from "bun";
 import { generateKeyBetween } from "fractional-indexing";
@@ -10,9 +10,10 @@ import * as dbProject from "./src/db/project";
 import * as dbColumn from "./src/db/column";
 import * as dbTask from "./src/db/task";
 import * as dbRelation from "./src/db/relation";
+
 import { standardizeProjectKey } from "./src/lib";
 import { validateTaskInput, taskCreateSchema, taskEditSchema } from "./src/schemas/task";
-import { relationCreateSchema } from "./src/schemas/relation";
+import { relationCreateSchema, relationDeleteSchema } from "./src/schemas/relation";
 
 import {
   validateProjectInput,
@@ -23,11 +24,11 @@ import {
 export type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project";
 export type { TaskCreateInput, TaskEditInput } from "./src/schemas/task";
 export type { TaskWithKey } from "./src/types";
-export type { RelationCreateInput } from "./src/schemas/relation";
+export type { RelationCreateInput, RelationDeleteInput } from "./src/schemas/relation";
 
 export { projectCreateSchema, projectEditSchema } from "./src/schemas/project";
 export { taskCreateSchema, taskEditSchema } from "./src/schemas/task";
-export { relationCreateSchema } from "./src/schemas/relation";
+export { relationCreateSchema, relationDeleteSchema } from "./src/schemas/relation";
 
 export const project = {
   getById: dbProject.getById,
@@ -434,46 +435,57 @@ function getRelations(taskKey: string, options?: RelationGetOptions): Array<Rela
   }));
 }
 
+function resolveRelationTaskIds(props: RelationCreateInput) {
+  const sourceTask = getTaskByKey(props.sourceTaskKey);
+  const targetTask = getTaskByKey(props.targetTaskKey);
+
+  if (sourceTask.id === targetTask.id) {
+    throw new Error("A task cannot have a relation to itself. Not appropriate.");
+  }
+
+  let sourceId = sourceTask.id;
+  let targetId = targetTask.id;
+
+  /**
+   * To avoid headaches with relations that
+   *  technically have no semantic source/target
+   *  it felt reasonable to invent reliable "source" and "target"
+   *  by enforcing the placements through ID comparison
+   */
+  const isSymmetricRelation = props.relation_type === "related";
+  if (isSymmetricRelation && sourceId > targetId) {
+    sourceId = targetTask.id;
+    targetId = sourceTask.id;
+  }
+
+  return { source_task_id: sourceId, target_task_id: targetId, relation_type: props.relation_type };
+}
+
 export const relation = {
   create: (input: RelationCreateInput) => {
     const props = validateTaskInput(relationCreateSchema, input);
-    const sourceTask = getTaskByKey(props.sourceTaskKey);
-    const targetTask = getTaskByKey(props.targetTaskKey);
+    const resolved = resolveRelationTaskIds(props);
 
-    if (sourceTask.id === targetTask.id) {
-      throw new Error("A task cannot have a relation to itself. Not appropriate.");
-    }
-
-    let sourceId = sourceTask.id;
-    let targetId = targetTask.id;
-
-    /**
-     * To avoid headaches with relations that
-     *  technically have no semantic source/target
-     *  it felt reasonable to invent reliable "source" and "target"
-     *  by enforcing the placements through ID comparison
-     */
-    const isSymmetricRelation = props.relation_type === "related";
-    if (isSymmetricRelation && sourceId > targetId) {
-      sourceId = targetTask.id;
-      targetId = sourceTask.id;
-    }
-
-    const relationMatch = dbRelation.getByTaskIdsAndType({
-      source_task_id: sourceId,
-      target_task_id: targetId,
-      relation_type: props.relation_type,
-    });
+    const relationMatch = dbRelation.getByTaskIdsAndType(resolved);
 
     if (relationMatch != null) {
       throw new Error("This relation already exists");
     }
 
-    return dbRelation.create({
-      source_task_id: sourceId,
-      target_task_id: targetId,
-      relation_type: props.relation_type,
-    });
+    return dbRelation.create(resolved);
+  },
+  delete: (input: RelationDeleteInput) => {
+    const props = validateTaskInput(relationDeleteSchema, input);
+
+    const resolved = resolveRelationTaskIds(props);
+    const relationMatch = dbRelation.getByTaskIdsAndType(resolved);
+
+    if (relationMatch == null) {
+      throw new Error("This relation does not exist");
+    }
+
+    dbRelation.deleteById(relationMatch.id);
+    return relationMatch;
   },
   getAll: getRelations,
 };

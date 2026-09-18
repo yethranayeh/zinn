@@ -127,3 +127,31 @@ test("duplicate direction and optional task enrichment preserve raw lookup", () 
     assert.equal(relation.getAll("APP-1").length, 2);
   `);
 });
+
+test("relation deletion matches type and direction, preserving tasks and other relations", () => {
+  runRelationCheck(`
+    const app = project.create({ key: "APP" });
+    const other = project.create({ key: "OTHER" });
+    task.create({ project_id: app.id, title: "Source", description: null });
+    task.create({ project_id: other.id, title: "Target", description: null });
+    task.archive("OTHER-1");
+    const before = [task.getByKey("APP-1"), task.getByKey("OTHER-1")];
+    const input = { sourceTaskKey: "APP-1", targetTaskKey: "OTHER-1", relation_type: "related" };
+    const reverse = { sourceTaskKey: "OTHER-1", targetTaskKey: "APP-1" };
+    const related = relation.create(input);
+    for (const relation_type of ["dependency", "duplicate"]) {
+      const forward = relation.create({ ...input, relation_type });
+      assert.throws(() => relation.delete({ ...reverse, relation_type }), /does not exist/);
+      const backward = relation.create({ ...reverse, relation_type });
+      assert.deepEqual(relation.delete({ ...input, relation_type }), forward);
+      assert.ok(relation.getAll("APP-1").some(r => r.id === backward.id));
+    }
+    assert.throws(() => relation.delete({ ...input, relation_type: "invalid" }));
+    assert.throws(() => relation.delete({ ...input, targetTaskKey: "OTHER-99" }));
+    assert.deepEqual(relation.delete({ ...input, ...reverse }), related);
+    assert.throws(() => relation.delete(input), /does not exist/);
+    assert.equal(relation.getAll("APP-1").length, 2);
+    assert.deepEqual([task.getByKey("APP-1"), task.getByKey("OTHER-1")], before);
+    assert.deepEqual(getDb().query("PRAGMA foreign_key_check").all(), []);
+  `);
+});

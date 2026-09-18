@@ -38,33 +38,68 @@ export function formatRelations(taskKey: string) {
     .join("\n");
 }
 
+function parseRelationArgs(args: string[]) {
+  const { values, positionals, tokens } = parseArgs({
+    args,
+    options: { type: { type: "string" } },
+    allowPositionals: true,
+    strict: true,
+    tokens: true,
+  });
+
+  if (positionals.length !== 2) {
+    quit("Exactly two task keys are required: source, target");
+  }
+
+  const optionCount = tokens.filter((token) => token.kind === "option").length;
+
+  if (optionCount > 1) {
+    // TODO: maybe a reusable option validator can be given expected option keys, and it can spit out unsupported options as well as help for what options are supported
+    quit('Option "--type" can only be specified once');
+  }
+
+  const typeResult = relationCreateSchema.shape.relation_type.safeParse(values.type);
+
+  if (!typeResult.success) {
+    quit("--type must be one of these: related, dependency, duplicate");
+  }
+  const sourceTaskKey = positionals[0]!;
+  const targetTaskKey = positionals[1]!;
+
+  return { sourceTaskKey, targetTaskKey, relation_type: typeResult.data };
+}
+
 export const relationRouter = {
+  delete: {
+    run: (args) => {
+      const props = parseRelationArgs(args);
+      relation.delete(props);
+
+      const source = task.getByKey(props.sourceTaskKey);
+      const target = task.getByKey(props.targetTaskKey);
+      console.info(`Deleted ${props.relation_type} relation from ${source.key} to ${target.key}`);
+    },
+    help: `Usage: zinn task relation delete <source-task-key> <target-task-key> --type <type>
+
+Remove only the specified relation. No confirmation is required.
+
+Types: related, dependency, duplicate.
+
+For related, either task order works.
+For dependency and duplicate, use the creation direction:
+  source depends on target, or source is a duplicate of target.
+
+Archived and cross-project tasks are supported.
+A missing relation is an error.
+
+Example: zinn task relation delete APP-1 APP-2 --type dependency`,
+  },
   create: {
     run: (args) => {
-      const { values, positionals, tokens } = parseArgs({
-        args,
-        options: { type: { type: "string" } },
-        allowPositionals: true,
-        strict: true,
-        tokens: true,
-      });
+      const props = parseRelationArgs(args);
+      const { sourceTaskKey, targetTaskKey } = props;
 
-      if (positionals.length !== 2) {
-        quit("Provide exactly two task keys: source and target");
-      }
-
-      if (tokens.filter((token) => token.kind === "option").length > 1) {
-        quit('Option "--type" can only be specified once');
-      }
-
-      const typeResult = relationCreateSchema.shape.relation_type.safeParse(values.type);
-      if (!typeResult.success) {
-        quit("Provide --type with one of: related, dependency, duplicate");
-      }
-      const sourceTaskKey = positionals[0]!;
-      const targetTaskKey = positionals[1]!;
-
-      relation.create({ sourceTaskKey, targetTaskKey, relation_type: typeResult.data });
+      relation.create(props);
 
       const source = task.getByKey(sourceTaskKey);
       const target = task.getByKey(targetTaskKey);
@@ -73,7 +108,7 @@ export const relationRouter = {
         related: "related to",
         dependency: "depends on",
         duplicate: "is a duplicate of",
-      }[typeResult.data];
+      }[props.relation_type];
 
       console.info(`${source.key} ${label} ${target.key}`);
     },

@@ -9,3 +9,6 @@ export const relationCreateSchema = z.strictObject({
 });
 
 export type RelationCreateInput = z.infer<typeof relationCreateSchema>;
+
+export const relationDeleteSchema = relationCreateSchema;
+export type RelationDeleteInput = z.infer<typeof relationDeleteSchema>;

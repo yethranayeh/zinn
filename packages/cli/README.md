@@ -84,6 +84,9 @@ Tasks from separate projects can be related to each other. Tasks can also be rel
 
 `task view` a task's existing relations.
 
+Remove a relation with `zinn task relation delete MDR-1 MDR-2 --type dependency`, using its original direction for `dependency` and `duplicate`. For `related`, order does not matter.
+Note that a deletion happens _without_ confirmation.
+
 Use `task relation create --help` to discover types.
 
 ## Edit tasks

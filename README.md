@@ -45,6 +45,9 @@ For example, you can use `zinn task relation create MDR-1 MDR-2 --type dependenc
 
 To see created relations, you can use `zinn task relation list MDR-1` and for task-specific relation details you can use `zinn task view MDR-1`.
 
+Remove a relation with `zinn task relation delete MDR-1 MDR-2 --type dependency`, using its original direction for `dependency` and `duplicate`. For `related`, order does not matter.
+Note that a deletion happens _without_ confirmation.
+
 See the [CLI documentation](packages/cli/README.md#task-relations) for details.
 
 ## Data location

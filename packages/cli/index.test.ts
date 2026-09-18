@@ -1595,3 +1595,28 @@ test("relation help and argument errors make types discoverable without promptin
   expect(runZinn(["task", "relation", "list"]).code).toBe(1);
   expect(runZinn(["task", "relation", "list", "APP-1", "APP-2"]).code).toBe(1);
 });
+
+test("relation deletion is usable without a prompt and updates list and view", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = (...args: string[]) => runZinn(args, dir);
+    run("project", "create", "APP");
+    run("task", "create", "APP", "First");
+    run("task", "create", "APP", "Second");
+    run("task", "relation", "create", "APP-1", "APP-2", "--type", "related");
+    run("task", "relation", "create", "APP-1", "APP-2", "--type", "dependency");
+    const removed = run("task", "relation", "delete", "app-2", "APP-1", "--type", "related");
+    expect(removed.code).toBe(0);
+    expect(removed.stdout).toContain("Deleted related relation: APP-2 → APP-1");
+    expect(run("task", "relation", "list", "APP-1").stdout).toContain("Depends on");
+    expect(run("task", "view", "APP-2").stdout).not.toContain("Related to");
+    expect(run("task", "relation", "delete", "APP-1", "APP-2", "--type", "related").stderr).toContain("does not exist");
+    for (const args of [[], ["APP-1"], ["APP-1", "APP-2"],
+      ["APP-1", "APP-2", "--type", "invalid"],
+      ["APP-1", "APP-2", "--type", "related", "--type", "dependency"],
+    ]) {
+      expect(run("task", "relation", "delete", ...args).code).toBe(1);
+    }
+    expect(run("task", "relation", "delete", "--help").stdout).toContain("Both tasks remain unchanged");
+    expect(run("task", "relation", "--help").stdout).toContain("task relation delete");
+  });
+});
