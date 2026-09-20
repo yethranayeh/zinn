@@ -54,8 +54,8 @@ zinn project column create MDR "Boardlog"
 Create a task with a title and an optional description. New tasks enter the project's first column:
 
 ```sh
-zinn task create MDR "Refine 75% of the numbers"
-zinn task create MDR "Review the employee handbook" "Prepare for a 75% Dance Experience"
+zinn task create MDR --title "Refine 75% of the numbers"
+zinn task create MDR --title "Review the employee handbook" --description "Prepare for a 75% Dance Experience"
 ```
 
 Tasks are created with keys such as `MDR-1`. List active tasks, optionally limited to one project, or view one task:
@@ -67,6 +67,39 @@ zinn task view MDR-1
 ```
 
 When a project key is supplied, the list follows the project's column order and the task order within each column.
+
+## Labels
+
+Labels are global and reusable in all the available projects.
+
+```sh
+zinn label create urgent --color red --description "Needs attention soon"
+zinn label create review
+zinn label list
+```
+
+### Adding to tasks
+
+```sh
+zinn task create MDR --title "Check the numbers" --label urgent --label review
+zinn task label add MDR-1 urgent review
+zinn task label remove MDR-1 review
+zinn task edit MDR-1 --add-label review --remove-label urgent
+```
+
+For adding or removing multiple labels at the same time, repeat `--label` on creation, or `--add-label` and `--remove-label` while editing for each label.
+Each value is considered as the label name: `--label "needs review"`, so if you have commas, then they are considered parts of names.
+Label names are case-sensitive, and the whitespace from input is trimmed.
+
+Descriptions default to an empty string and the label colors default to white. Available colors are _red_, _green_, _yellow_, _blue_, _magenta_, _cyan_, _white_, and _gray_.
+
+Task creation and edits apply content and label changes together, or roll back together on failure.
+Note that label changes also update the task's modification timestamp. Archived tasks can also have their labels edited.
+
+Commands like `task view` and task mutation output show attached labels.
+
+`zinn label delete urgent` asks for confirmation, then deletes the definition and removes it from every task. Declining confirmation leaves the label and its attachments unchanged.
+Use `task label remove` to remove a label attachment from one task instead. Task/project deletion cleans up label attachments, but does not affect labels themselves.
 
 ## Task relations
 
@@ -91,7 +124,7 @@ Use `task relation create --help` to discover types.
 
 ## Edit tasks
 
-Edit a task's title, description, or both:
+Edit a task's title, description, or labels:
 
 ```sh
 zinn task edit MDR-1 --title "Meet the quarterly refinement quota"

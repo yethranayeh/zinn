@@ -55,6 +55,19 @@ function initDb() {
   UNIQUE (source_task_id, target_task_id, relation_type),
   CHECK (source_task_id <> target_task_id));`).run();
 
+  db.query(`CREATE TABLE IF NOT EXISTS ${DB_TABLE.label} (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL,
+    color TEXT NOT NULL CHECK (color IN ('red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white', 'gray'))
+  );`).run();
+
+  db.query(`CREATE TABLE IF NOT EXISTS ${DB_TABLE.taskLabel} (
+    task_id TEXT NOT NULL REFERENCES ${DB_TABLE.task}(id) ON DELETE CASCADE,
+    label_id TEXT NOT NULL REFERENCES ${DB_TABLE.label}(id) ON DELETE CASCADE,
+    PRIMARY KEY (task_id, label_id)
+  );`).run();
+
   return db;
 }
 

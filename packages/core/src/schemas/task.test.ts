@@ -29,3 +29,10 @@ test("creation and editing share content validation", () => {
   }
   expect(taskCreateSchema.parse({ project_id: "id", title: "Valid", description: "" }).description).toBe("");
 });
+
+test("label edits reject empty requests and conflicting normalized names", () => {
+  expect(taskEditSchema.safeParse({ taskKey: "TEST-1", addLabelNames: [] }).success).toBe(false);
+  expect(taskEditSchema.safeParse({ taskKey: "TEST-1", addLabelNames: ["bug"], removeLabelNames: [" bug "] }).success).toBe(false);
+  expect(taskEditSchema.safeParse({ taskKey: "TEST-1", addLabelNames: [""] }).success).toBe(false);
+  expect(taskEditSchema.parse({ taskKey: "TEST-1", addLabelNames: [" bug "] }).addLabelNames).toEqual(["bug"]);
+});

@@ -27,6 +27,12 @@ Commands:
   task delete
   task relation create
   task relation list
+  task relation delete
+  task label add
+  task label remove
+  label create
+  label list
+  label delete
 
 Run zinn <namespace> --help or zinn <command> --help for more information.
 Running zinn without a command shows this help.`);

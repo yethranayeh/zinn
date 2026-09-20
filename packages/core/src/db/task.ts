@@ -1,4 +1,4 @@
-import type { Bind, Task } from "../types";
+import type { Bind, Task, Label } from "../types";
 
 import { getDb } from "../db";
 import { DB_TABLE } from "../constant";
@@ -155,4 +155,33 @@ export function deleteById(taskId: string) {
   return db
     .query<never, Bind<Pick<Task, "id">>>(`DELETE FROM ${DB_TABLE.task} WHERE id = $id;`)
     .run({ $id: taskId });
+}
+
+export function getLabels(taskId: string) {
+  return getDb()
+    .query<Label, [string]>(`SELECT label.* FROM ${DB_TABLE.label} AS label
+    INNER JOIN ${DB_TABLE.taskLabel} AS attachment ON attachment.label_id = label.id
+    WHERE attachment.task_id = ? ORDER BY label.name`)
+    .all(taskId);
+}
+
+export function addLabel(taskId: string, labelId: string) {
+  return getDb()
+    .query(`INSERT INTO ${DB_TABLE.taskLabel} (task_id, label_id)
+    VALUES (?, ?) ON CONFLICT (task_id, label_id) DO NOTHING`)
+    .run(taskId, labelId);
+}
+
+export function removeLabel(taskId: string, labelId: string) {
+  return getDb()
+    .query(`DELETE FROM ${DB_TABLE.taskLabel}
+    WHERE task_id = ? AND label_id = ?`)
+    .run(taskId, labelId);
+}
+
+export function updateLabelTasksTimestamp(labelId: string, updatedAt: number) {
+  return getDb()
+    .query(`UPDATE ${DB_TABLE.task} SET updated_at = ? WHERE id IN
+    (SELECT task_id FROM ${DB_TABLE.taskLabel} WHERE label_id = ?)`)
+    .run(updatedAt, labelId);
 }

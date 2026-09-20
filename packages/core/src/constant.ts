@@ -15,6 +15,8 @@ export const DB_TABLE = {
   projectColumn: "project_column",
   task: "task",
   task_relations: "task_relations",
+  label: "label",
+  taskLabel: "task_label",
 };
 
 // TODO: implement zod schema for setting.json

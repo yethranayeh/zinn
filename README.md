@@ -16,7 +16,7 @@ Create a project, add a task, and inspect it:
 
 ```sh
 zinn project create MDR --name "Macrodata Refinement"
-zinn task create MDR "Refine 75% of the numbers" "Qualify for a Music Experience"
+zinn task create MDR --title "Refine 75% of the numbers" --description "Qualify for a Music Experience"
 zinn task list MDR
 zinn task view MDR-1
 ```

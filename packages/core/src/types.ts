@@ -1,8 +1,11 @@
+import type { LabelColor } from "./schemas/label";
+export type { LabelColor } from "./schemas/label";
+
 // https://www.typescriptlang.org/docs/handbook/2/template-literal-types.html
 type BoundProperty<P extends string> = `$${P}`;
 // https://www.typescriptlang.org/docs/handbook/2/mapped-types.html
 export type Bind<T, K extends string & keyof T = string & keyof T> = {
-  [Property in BoundProperty<K>]: T[keyof T];
+  [Property in K as BoundProperty<Property>]: T[Property];
 };
 
 export type WithId<T extends { id: string }> = Pick<T, "id"> & Partial<Omit<T, "id">>;
@@ -46,4 +49,11 @@ export type Column = {
   project_id: string;
   name: string;
   column_order: string;
+};
+
+export type Label = {
+  id: string;
+  name: string;
+  description: string;
+  color: LabelColor;
 };

@@ -2,7 +2,7 @@ import type { RouteDef } from "../types";
 
 import { parseArgs } from "node:util";
 import { relation, relationCreateSchema, task } from "@zinn-dev/core";
-import { quit } from "../lib";
+import { quit, validatePositionalCount, validateUniqueOptions } from "../lib";
 
 export function formatRelations(taskKey: string) {
   const taskMatch = task.getByKey(taskKey);
@@ -47,16 +47,9 @@ function parseRelationArgs(args: string[]) {
     tokens: true,
   });
 
-  if (positionals.length !== 2) {
-    quit("Exactly two task keys are required: source, target");
-  }
+  validatePositionalCount(positionals, 2, "Exactly two task keys are required: source, target");
 
-  const optionCount = tokens.filter((token) => token.kind === "option").length;
-
-  if (optionCount > 1) {
-    // TODO: maybe a reusable option validator can be given expected option keys, and it can spit out unsupported options as well as help for what options are supported
-    quit('Option "--type" can only be specified once');
-  }
+  validateUniqueOptions(tokens);
 
   const typeResult = relationCreateSchema.shape.relation_type.safeParse(values.type);
 
@@ -127,10 +120,9 @@ Example: zinn task relation create APP-1 APP-2 --type dependency`,
   list: {
     run: (args) => {
       const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
-      if (positionals.length !== 1) {
-        quit("Provide exactly one task key");
-      }
+      validatePositionalCount(positionals, 1, "Provide exactly one task key");
       const output = formatRelations(positionals[0]!);
+
       if (output.length > 0) {
         console.info(output);
       }

@@ -3,7 +3,7 @@ import type { RouteDef } from "../types";
 import { parseArgs } from "node:util";
 
 import { column, project } from "@zinn-dev/core";
-import { quit } from "../lib";
+import { quit, validatePositionalCount, validateUniqueOptions } from "../lib";
 
 export const projectRouter = {
   edit: {
@@ -22,22 +22,9 @@ export const projectRouter = {
         quit("Project key must be specified");
       }
 
-      if (positionals.length > 1) {
-        quit("Only one project key can be specified");
-      }
+      validatePositionalCount(positionals, 1, "Only one project key can be specified");
 
-      const parsedArgs = new Set<string>();
-      for (const token of tokens) {
-        if (token.kind !== "option") {
-          continue;
-        }
-
-        if (parsedArgs.has(token.name)) {
-          quit(`The "--${token.name}" flag can only be specified once`);
-        }
-
-        parsedArgs.add(token.name);
-      }
+      validateUniqueOptions(tokens);
 
       if (values.name === undefined) {
         quit("Provide an edit flag: --name");
@@ -72,22 +59,9 @@ Example: zinn project edit MDR --name "Macrodata Refinement"`,
         quit("Project key must be specified");
       }
 
-      if (positionals.length > 1) {
-        quit("Only one project key can be specified");
-      }
+      validatePositionalCount(positionals, 1, "Only one project key can be specified");
 
-      const parsedArgs = new Set<string>();
-      for (const token of tokens) {
-        if (token.kind !== "option") {
-          continue;
-        }
-
-        if (parsedArgs.has(token.name)) {
-          quit(`The "--${token.name}" flag can only be specified once`);
-        }
-
-        parsedArgs.add(token.name);
-      }
+      validateUniqueOptions(tokens);
 
       try {
         const createdProject = project.create({ key: projectKey, name: values.name });

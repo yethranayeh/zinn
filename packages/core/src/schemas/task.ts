@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { labelNameSchema } from "./label";
+
 const titleMessage = "Task title cannot be blank";
 
 export const taskTitleSchema = z
@@ -12,6 +14,7 @@ export const taskCreateSchema = z.strictObject({
   project_id: z.string(),
   title: taskTitleSchema,
   description: taskDescriptionSchema,
+  labelNames: z.array(labelNameSchema).optional(),
 });
 
 export const taskEditSchema = z
@@ -19,10 +22,20 @@ export const taskEditSchema = z
     taskKey: z.string(),
     title: taskTitleSchema.optional(),
     description: taskDescriptionSchema.optional(),
+    addLabelNames: z.array(labelNameSchema).optional(),
+    removeLabelNames: z.array(labelNameSchema).optional(),
   })
   .refine(
-    (value) => value.title !== undefined || value.description !== undefined,
-    "Provide at least one field to edit: title or description",
+    (value) =>
+      value.title !== undefined ||
+      value.description !== undefined ||
+      (value.addLabelNames?.length ?? 0) > 0 ||
+      (value.removeLabelNames?.length ?? 0) > 0,
+    "Provide at least one field to edit: title, description, or labels",
+  )
+  .refine(
+    (value) => !value.addLabelNames?.some((name) => value.removeLabelNames?.includes(name)),
+    "Cannot add and remove the same label",
   );
 
 export type TaskCreateInput = z.infer<typeof taskCreateSchema>;

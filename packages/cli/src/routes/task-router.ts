@@ -3,7 +3,7 @@ import type { RouteDef } from "../types";
 import { parseArgs } from "node:util";
 import { task, project, column } from "@zinn-dev/core";
 
-import { quit } from "../lib";
+import { quit, validatePositionalCount, validateUniqueOptions } from "../lib";
 import { formatRelations, relationRouter } from "./relation-router";
 
 function formatTask(
@@ -17,16 +17,24 @@ function formatTask(
     : "";
   const description = taskMatch.description == null ? "" : ` | ${taskMatch.description}`;
 
-  return `${taskKey}${status} | ${taskColumn.name} | ${taskMatch.title}${description}`;
+  const labels = task.label.getAll(taskKey);
+  const labelText =
+    labels.length === 0 ? "" : ` | Labels: ${labels.map((label) => label.name).join(", ")}`;
+
+  return `${taskKey}${status} | ${taskColumn.name} | ${taskMatch.title}${description}${labelText}`;
 }
 
 export const taskRouter = {
-  relation: relationRouter,
   edit: {
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
-        options: { title: { type: "string" }, description: { type: "string" } },
+        options: {
+          title: { type: "string" },
+          description: { type: "string" },
+          "add-label": { type: "string", multiple: true },
+          "remove-label": { type: "string", multiple: true },
+        },
         allowPositionals: true,
         strict: true,
         tokens: true,
@@ -38,81 +46,89 @@ export const taskRouter = {
         quit("Task key must be specified");
       }
 
-      if (positionals.length > 1) {
-        quit("Only one task key can be specified");
+      validatePositionalCount(positionals, 1, "Only one task key can be specified");
+
+      validateUniqueOptions(tokens, ["add-label", "remove-label"]);
+
+      const hasEditFlags =
+        values.title !== undefined ||
+        values.description !== undefined ||
+        values["add-label"] !== undefined ||
+        values["remove-label"] !== undefined;
+
+      if (!hasEditFlags) {
+        quit(
+          "Provide at least one edit flag: --title, --description, --add-label, or --remove-label",
+        );
       }
 
-      const parsedArgs = new Set<string>();
-      for (const token of tokens) {
-        if (token.kind !== "option") {
-          continue;
-        }
+      const editedTask = task.edit({
+        taskKey,
+        title: values.title,
+        description: values.description,
+        addLabelNames: values["add-label"],
+        removeLabelNames: values["remove-label"],
+      });
 
-        if (parsedArgs.has(token.name)) {
-          quit(`Option "--${token.name}" can only be specified once`);
-        }
-
-        parsedArgs.add(token.name);
-      }
-
-      if (values.title === undefined && values.description === undefined) {
-        quit("Provide at least one edit flag: --title or --description");
-      }
-
-      const editedTask = task.edit({ taskKey, ...values });
       console.info(formatTask(editedTask));
     },
-    help: `Usage: zinn task edit <task-key> [--title <text>] [--description <text>]
+    help: `Usage: zinn task edit <task-key> [--title <text>] [--description <text>] [--add-label <name>] [--remove-label <name>]
 
 Change the supplied fields and preserve everything else.
 Provide at least one edit flag. Use --description "" for an empty description.
 
-Titles cannot be blank.
+Repeat --add-label or --remove-label for multiple existing labels.
+Adding an attached label or removing an unattached label does not do anything.
 Archived tasks can be edited. Unchanged values leave the task unchanged.
+
+The same label cannot be both added and removed.
+Titles cannot be blank.
+
 Use --title="--example" for text beginning with a dash.
 
 Example: zinn task edit MDR-1 --title "Meet the quarterly refinement quota"`,
   },
   create: {
-    run: (args: Array<string>) => {
-      const projectKey = args[0];
+    run: (args) => {
+      const { values, positionals, tokens } = parseArgs({
+        args,
+        options: {
+          title: { type: "string" },
+          description: { type: "string" },
+          label: { type: "string", multiple: true },
+        },
+        allowPositionals: true,
+        strict: true,
+        tokens: true,
+      });
+      const projectKey = positionals[0];
       if (projectKey == null) {
         quit("A task needs to belong to a project");
       }
-
-      const taskTitle = args[1];
-      if (taskTitle == null) {
-        quit("A task needs at least a title");
+      validatePositionalCount(positionals, 1, "Only one project key can be specified; use --title and --description");
+      if (values.title === undefined) {
+        quit("A task needs at least a title: use --title");
       }
-
-      const taskDesc = args[2];
-
-      // TODO: do empty strings bypass this check?
-
-      try {
-        const standardizedKey = project.standardizeKey(projectKey);
-        // TODO: `getByKey` already standardizes the key, but to display it in standardized format, I also used it here. Should it run twice on the same thing?
-        const projectMatch = project.getByKey(standardizedKey);
-        if (projectMatch == null) {
-          quit(`Project with key "${standardizedKey}" does not exist`);
-        }
-
-        // TODO: should it non-null (??) or non-falsy (||) check?
-        const createdTask = task.create({
-          project_id: projectMatch.id,
-          title: taskTitle,
-          description: taskDesc ?? null,
-        });
-        console.info(formatTask(createdTask));
-      } catch (err: any) {
-        quit(err?.message ?? "Something went wrong");
+      validateUniqueOptions(tokens, ["label"]);
+      const projectMatch = project.getByKey(projectKey);
+      if (projectMatch == null) {
+        quit(`Project with key "${project.standardizeKey(projectKey)}" does not exist`);
       }
+      const createdTask = task.create({
+        project_id: projectMatch.id,
+        title: values.title,
+        description: values.description ?? null,
+        labelNames: values.label,
+      });
+      console.info(formatTask(createdTask));
     },
-    help: `Usage: zinn task create <project-key> <title> [description]
+    help: `Usage: zinn task create <project-key> --title <text> [--description <text>] [--label <name>]
 
 Create a task in the project's first column.
+Repeat --label to attach multiple existing labels. Unknown labels are errors.
+Titles cannot be blank. Use --title="--example" for text beginning with a dash.
 
-Example: zinn task create MDR "Refine the numbers" "Sort the numbers and meet the quarterly quota"`,
+Example: zinn task create MDR --title "Refine the numbers" --description "Meet the quarterly quota" --label urgent`,
   },
   list: {
     run: (args) => {
@@ -196,7 +212,7 @@ Example: zinn task list MDR --all`,
     },
     help: `Usage: zinn task view <task-key>
 
-Show a task with its current column, description, and relations.
+Show a task with its current column, description, labels, and relations.
 
 Example: zinn task view MDR-1`,
   },
@@ -291,8 +307,9 @@ Example: zinn task order MDR-2 before MDR-1`,
         const canDelete = confirm(`Are you sure you want to delete ${taskKey}?`);
 
         if (canDelete) {
-          const deletedTask = task.delete(taskKey);
-          console.info(`Deleted ${formatTask(deletedTask)}`);
+          const formattedTask = formatTask(taskMatch);
+          task.delete(taskKey);
+          console.info(`Deleted ${formattedTask}`);
         } else {
           console.info(`Deletion cancelled for ${formatTask(taskMatch)}`);
         }
@@ -340,4 +357,34 @@ Unarchive a task at the bottom of its previous column.
 
 Example: zinn task unarchive MDR-1`,
   },
+  relation: relationRouter,
+  label: {
+    add: {
+      run: (args) => {
+        const props = parseTaskLabelArgs(args);
+        console.info(formatTask(task.label.add(props)));
+      },
+      help: `Usage: zinn task label add <task-key> <label-name> [label-name ...]
+
+Add existing labels to a task. Already attached labels are unchanged.`,
+    },
+    remove: {
+      run: (args) => {
+        const props = parseTaskLabelArgs(args);
+        console.info(formatTask(task.label.remove(props)));
+      },
+      help: `Usage: zinn task label remove <task-key> <label-name> [label-name ...]
+
+Remove existing labels from a task. Unattached labels are unchanged.
+Label definitions are preserved.`,
+    },
+  },
 } satisfies RouteDef;
+
+function parseTaskLabelArgs(args: string[]) {
+  const { positionals } = parseArgs({ args, strict: true, allowPositionals: true });
+  if (positionals.length < 2) {
+    quit("Provide a task key and at least one label name");
+  }
+  return { taskKey: positionals[0]!, labelNames: positionals.slice(1) };
+}

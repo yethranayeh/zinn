@@ -266,9 +266,9 @@ test("project column names are unique only within a project", () => {
 test("project delete accepts a non-standardized key and removes its columns and tasks", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "GONE", "--name", "Doomed"], testDir);
-    runZinn(["task", "create", "GONE", "Doomed task"], testDir);
+    runZinn(["task", "create", "GONE", "--title", "Doomed task"], testDir);
     runZinn(["project", "create", "KEEP", "--name", "Kept"], testDir);
-    runZinn(["task", "create", "KEEP", "Kept task"], testDir);
+    runZinn(["task", "create", "KEEP", "--title", "Kept task"], testDir);
 
     expect(
       runZinnWithConfirmation(["project", "delete", "gone"], testDir).code,
@@ -294,7 +294,7 @@ test("project delete accepts a non-standardized key and removes its columns and 
 test("project delete keeps the project when confirmation is declined", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "KEEP", "--name", "Kept"], testDir);
-    runZinn(["task", "create", "KEEP", "Kept task"], testDir);
+    runZinn(["task", "create", "KEEP", "--title", "Kept task"], testDir);
 
     const result = runZinn(["project", "delete", "keep"], testDir);
 
@@ -393,7 +393,7 @@ test("project create rejects blank or non-single-line names", () => {
 // --- TASK
 
 test("task create rejects an unknown project", () => {
-  const result = runZinn(["task", "create", "NOPE", "orphan task"]);
+  const result = runZinn(["task", "create", "NOPE", "--title", "orphan task"]);
 
   expect(result.code).toBe(1);
   expect(result.stderr).toContain(`Project with key "NOPE" does not exist`);
@@ -409,7 +409,7 @@ test("task create requires a project key and a title", () => {
 test("task create succeeds against an existing project", () => {
   runZinn(["project", "create", "TSK", "--name", "Tasks"]);
 
-  const result = runZinn(["task", "create", "TSK", "first task"]);
+  const result = runZinn(["task", "create", "TSK", "--title", "first task"]);
 
   // The placement contract is asserted independently below.
   expect(result.code).toBe(0);
@@ -420,7 +420,7 @@ test("task create attaches the task to its project's first ordered column", () =
     runZinn(["project", "create", "PLACE", "--name", "Placed"], testDir);
     runZinn(["project", "column", "create", "PLACE", "Later"], testDir);
 
-    expect(runZinn(["task", "create", "PLACE", "placed task"], testDir).code).toBe(0);
+    expect(runZinn(["task", "create", "PLACE", "--title", "placed task"], testDir).code).toBe(0);
 
     withTestDb(testDir, (db) => {
       const taskRow = db
@@ -448,7 +448,7 @@ test("task create attaches the task to its project's first ordered column", () =
 test("task ordering starts independently in each column", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "ALPHA", "--name", "Alpha"], testDir);
-    runZinn(["task", "create", "ALPHA", "todo first"], testDir);
+    runZinn(["task", "create", "ALPHA", "--title", "todo first"], testDir);
 
     withTestDb(testDir, (db) => {
       const todoColumn = db
@@ -459,8 +459,8 @@ test("task ordering starts independently in each column", () => {
       db.run("UPDATE task SET column_id = ? WHERE title = 'todo first'", [todoColumn!.id]);
     });
 
-    runZinn(["task", "create", "ALPHA", "backlog first"], testDir);
-    runZinn(["task", "create", "ALPHA", "backlog second"], testDir);
+    runZinn(["task", "create", "ALPHA", "--title", "backlog first"], testDir);
+    runZinn(["task", "create", "ALPHA", "--title", "backlog second"], testDir);
 
     withTestDb(testDir, (db) => {
       const rows = db
@@ -476,18 +476,18 @@ test("task ordering starts independently in each column", () => {
   });
 });
 
-test.todo("a project without columns rejects task creation without consuming a task number", () => {
+test("a project without columns rejects task creation without consuming a task number", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "EMPTYCOL", "--name", "No columns"], testDir);
     withTestDb(testDir, (db) => db.run("DELETE FROM project_column"));
 
-    const rejected = runZinn(["task", "create", "EMPTYCOL", "cannot place me"], testDir);
+    const rejected = runZinn(["task", "create", "EMPTYCOL", "--title", "cannot place me"], testDir);
 
     expect(rejected.code).toBe(1);
     expect(rejected.stderr).toContain('Project "EMPTYCOL" does not have any columns');
 
     runZinn(["project", "column", "create", "EMPTYCOL", "Inbox"], testDir);
-    expect(runZinn(["task", "create", "EMPTYCOL", "first real task"], testDir).code).toBe(0);
+    expect(runZinn(["task", "create", "EMPTYCOL", "--title", "first real task"], testDir).code).toBe(0);
     expect(runZinn(["task", "view", "EMPTYCOL-1"], testDir).stdout).toContain(
       "EMPTYCOL-1 | Inbox | first real task",
     );
@@ -508,8 +508,8 @@ test("task list renders every project's tasks once and aligns unequal key widths
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "a", "--name", "Short"], testDir);
     runZinn(["project", "create", "LONGKEY", "--name", "Long"], testDir);
-    runZinn(["task", "create", "A", "short task", "short description"], testDir);
-    runZinn(["task", "create", "LONGKEY", "long task", "long description"], testDir);
+    runZinn(["task", "create", "A", "--title", "short task", "--description", "short description"], testDir);
+    runZinn(["task", "create", "LONGKEY", "--title", "long task", "--description", "long description"], testDir);
 
     const result = runZinn(["task", "list"], testDir);
     const lines = result.stdout.trimEnd().split("\n");
@@ -525,7 +525,7 @@ test("task list renders every project's tasks once and aligns unequal key widths
 test("task list does not print a missing description as data", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "NONE", "--name", "No description"], testDir);
-    runZinn(["task", "create", "NONE", "title only"], testDir);
+    runZinn(["task", "create", "NONE", "--title", "title only"], testDir);
 
     const result = runZinn(["task", "list"], testDir);
 
@@ -539,8 +539,8 @@ test("task list filters to the requested project regardless of key casing", () =
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "ALPHA", "--name", "Alpha"], testDir);
     runZinn(["project", "create", "BETA", "--name", "Beta"], testDir);
-    runZinn(["task", "create", "ALPHA", "alpha task"], testDir);
-    runZinn(["task", "create", "BETA", "beta task"], testDir);
+    runZinn(["task", "create", "ALPHA", "--title", "alpha task"], testDir);
+    runZinn(["task", "create", "BETA", "--title", "beta task"], testDir);
 
     const result = runZinn(["task", "list", "aLpHa"], testDir);
 
@@ -555,11 +555,11 @@ test("task list filters to the requested project regardless of key casing", () =
 test("project-scoped task list follows column order and task order within each column", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "ORDER", "--name", "Ordered"], testDir);
-    runZinn(["task", "create", "ORDER", "todo first"], testDir);
-    runZinn(["task", "create", "ORDER", "backlog first"], testDir);
-    runZinn(["task", "create", "ORDER", "in progress"], testDir);
-    runZinn(["task", "create", "ORDER", "todo second"], testDir);
-    runZinn(["task", "create", "ORDER", "backlog second"], testDir);
+    runZinn(["task", "create", "ORDER", "--title", "todo first"], testDir);
+    runZinn(["task", "create", "ORDER", "--title", "backlog first"], testDir);
+    runZinn(["task", "create", "ORDER", "--title", "in progress"], testDir);
+    runZinn(["task", "create", "ORDER", "--title", "todo second"], testDir);
+    runZinn(["task", "create", "ORDER", "--title", "backlog second"], testDir);
 
     runZinn(["task", "move", "ORDER-1", "TODO"], testDir);
     runZinn(["task", "move", "ORDER-3", "In Progress"], testDir);
@@ -586,7 +586,7 @@ test("task list for an empty project does not leak another project's tasks", () 
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "EMPTY", "--name", "Empty"], testDir);
     runZinn(["project", "create", "BUSY", "--name", "Busy"], testDir);
-    runZinn(["task", "create", "BUSY", "private task"], testDir);
+    runZinn(["task", "create", "BUSY", "--title", "private task"], testDir);
 
     const result = runZinn(["task", "list", "EMPTY"], testDir);
 
@@ -610,7 +610,7 @@ test("project-scoped task list aligns one- and two-digit task numbers", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "TEN", "--name", "Ten tasks"], testDir);
     for (let number = 1; number <= 10; number++) {
-      runZinn(["task", "create", "TEN", `task ${number}`], testDir);
+      runZinn(["task", "create", "TEN", "--title", `task ${number}`], testDir);
     }
 
     const result = runZinn(["task", "list", "TEN"], testDir);
@@ -626,7 +626,7 @@ test("project-scoped task list aligns one- and two-digit task numbers", () => {
 test("task view resolves a case-insensitive key and prints its canonical form", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "VIEW", "--name", "Viewed"], testDir);
-    runZinn(["task", "create", "VIEW", "visible task", "visible description"], testDir);
+    runZinn(["task", "create", "VIEW", "--title", "visible task", "--description", "visible description"], testDir);
 
     const result = runZinn(["task", "view", "vIeW-1"], testDir);
 
@@ -639,7 +639,7 @@ test("task view resolves a case-insensitive key and prints its canonical form", 
 test("task view does not print a missing description as data", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "NONE", "--name", "No description"], testDir);
-    runZinn(["task", "create", "NONE", "title only"], testDir);
+    runZinn(["task", "create", "NONE", "--title", "title only"], testDir);
 
     const result = runZinn(["task", "view", "NONE-1"], testDir);
 
@@ -719,7 +719,7 @@ test("task move rejects a column outside the task's project", () => {
     runZinn(["project", "create", "ORIGIN", "--name", "Origin"], testDir);
     runZinn(["project", "create", "OTHER", "--name", "Other"], testDir);
     runZinn(["project", "column", "create", "OTHER", "External"], testDir);
-    runZinn(["task", "create", "ORIGIN", "stationary task"], testDir);
+    runZinn(["task", "create", "ORIGIN", "--title", "stationary task"], testDir);
 
     const result = runZinn(["task", "move", "ORIGIN-1", "External"], testDir);
 
@@ -736,8 +736,8 @@ test("task move rejects a column outside the task's project", () => {
 test("task move appends the task to the destination column", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "MOVE", "--name", "Movable"], testDir);
-    runZinn(["task", "create", "MOVE", "first task"], testDir);
-    runZinn(["task", "create", "MOVE", "second task"], testDir);
+    runZinn(["task", "create", "MOVE", "--title", "first task"], testDir);
+    runZinn(["task", "create", "MOVE", "--title", "second task"], testDir);
 
     expect(runZinn(["task", "move", "MOVE-1", "In Progress"], testDir).code).toBe(0);
     expect(runZinn(["task", "move", "MOVE-2", "In Progress"], testDir).code).toBe(0);
@@ -775,7 +775,7 @@ test("task move appends the task to the destination column", () => {
 test("task move to the current column is a no-op", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "STILL", "--name", "Still"], testDir);
-    runZinn(["task", "create", "STILL", "still task"], testDir);
+    runZinn(["task", "create", "STILL", "--title", "still task"], testDir);
 
     const before = withTestDb(testDir, (db) =>
       db.query<{ column_id: string; task_order: string; updated_at: number }, []>(
@@ -798,7 +798,7 @@ test("task move to the current column is a no-op", () => {
 test("task move rejects archived tasks", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "ARCHMOVE", "--name", "Archived move"], testDir);
-    runZinn(["task", "create", "ARCHMOVE", "archived task"], testDir);
+    runZinn(["task", "create", "ARCHMOVE", "--title", "archived task"], testDir);
     runZinn(["task", "archive", "ARCHMOVE-1"], testDir);
 
     const before = withTestDb(testDir, (db) =>
@@ -832,9 +832,9 @@ test("task move rejects archived tasks", () => {
 test("task order moves a task one position up or down within its column", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "ORDER", "--name", "Ordered"], testDir);
-    runZinn(["task", "create", "ORDER", "first task"], testDir);
-    runZinn(["task", "create", "ORDER", "second task"], testDir);
-    runZinn(["task", "create", "ORDER", "third task"], testDir);
+    runZinn(["task", "create", "ORDER", "--title", "first task"], testDir);
+    runZinn(["task", "create", "ORDER", "--title", "second task"], testDir);
+    runZinn(["task", "create", "ORDER", "--title", "third task"], testDir);
 
     expect(runZinn(["task", "order", "ORDER-2", "up"], testDir).code).toBe(0);
     expect(runZinn(["task", "list", "ORDER"], testDir).stdout).toMatch(
@@ -851,9 +851,9 @@ test("task order moves a task one position up or down within its column", () => 
 test("task order moves a task to the top or bottom of its column", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "EDGES", "--name", "Edges"], testDir);
-    runZinn(["task", "create", "EDGES", "first task"], testDir);
-    runZinn(["task", "create", "EDGES", "second task"], testDir);
-    runZinn(["task", "create", "EDGES", "third task"], testDir);
+    runZinn(["task", "create", "EDGES", "--title", "first task"], testDir);
+    runZinn(["task", "create", "EDGES", "--title", "second task"], testDir);
+    runZinn(["task", "create", "EDGES", "--title", "third task"], testDir);
 
     expect(runZinn(["task", "order", "EDGES-3", "top"], testDir).code).toBe(0);
     expect(runZinn(["task", "list", "EDGES"], testDir).stdout).toMatch(
@@ -870,11 +870,11 @@ test("task order moves a task to the top or bottom of its column", () => {
 test("task order places a task immediately before or after its target", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "ANCHOR", "--name", "Anchored"], testDir);
-    runZinn(["task", "create", "ANCHOR", "first task"], testDir);
-    runZinn(["task", "create", "ANCHOR", "second task"], testDir);
-    runZinn(["task", "create", "ANCHOR", "third task"], testDir);
-    runZinn(["task", "create", "ANCHOR", "fourth task"], testDir);
-    runZinn(["task", "create", "ANCHOR", "fifth task"], testDir);
+    runZinn(["task", "create", "ANCHOR", "--title", "first task"], testDir);
+    runZinn(["task", "create", "ANCHOR", "--title", "second task"], testDir);
+    runZinn(["task", "create", "ANCHOR", "--title", "third task"], testDir);
+    runZinn(["task", "create", "ANCHOR", "--title", "fourth task"], testDir);
+    runZinn(["task", "create", "ANCHOR", "--title", "fifth task"], testDir);
 
     expect(runZinn(["task", "order", "ANCHOR-4", "before", "ANCHOR-2"], testDir).code).toBe(
       0,
@@ -932,9 +932,9 @@ test("task order help documents its own command", () => {
 test("task order does not cross a column boundary", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "BOUND", "--name", "Bounded"], testDir);
-    runZinn(["task", "create", "BOUND", "backlog first"], testDir);
-    runZinn(["task", "create", "BOUND", "backlog last"], testDir);
-    runZinn(["task", "create", "BOUND", "progress first"], testDir);
+    runZinn(["task", "create", "BOUND", "--title", "backlog first"], testDir);
+    runZinn(["task", "create", "BOUND", "--title", "backlog last"], testDir);
+    runZinn(["task", "create", "BOUND", "--title", "progress first"], testDir);
     runZinn(["task", "move", "BOUND-3", "In Progress"], testDir);
 
     withTestDb(testDir, (db) => {
@@ -962,7 +962,7 @@ test("task order does not cross a column boundary", () => {
 test("task order rejects an unknown target task", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "TARGET", "--name", "Targeted"], testDir);
-    runZinn(["task", "create", "TARGET", "existing task"], testDir);
+    runZinn(["task", "create", "TARGET", "--title", "existing task"], testDir);
 
     const result = runZinn(["task", "order", "TARGET-1", "before", "TARGET-99"], testDir);
 
@@ -974,8 +974,8 @@ test("task order rejects an unknown target task", () => {
 test("task order rejects a target in another column", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "SCOPE", "--name", "Scoped"], testDir);
-    runZinn(["task", "create", "SCOPE", "backlog task"], testDir);
-    runZinn(["task", "create", "SCOPE", "progress task"], testDir);
+    runZinn(["task", "create", "SCOPE", "--title", "backlog task"], testDir);
+    runZinn(["task", "create", "SCOPE", "--title", "progress task"], testDir);
     runZinn(["task", "move", "SCOPE-2", "In Progress"], testDir);
 
     const result = runZinn(["task", "order", "SCOPE-1", "before", "SCOPE-2"], testDir);
@@ -988,7 +988,7 @@ test("task order rejects a target in another column", () => {
 test("task order targeting itself is a no-op", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "UNCHANGED", "--name", "Unchanged"], testDir);
-    runZinn(["task", "create", "UNCHANGED", "stationary task"], testDir);
+    runZinn(["task", "create", "UNCHANGED", "--title", "stationary task"], testDir);
 
     withTestDb(testDir, (db) => db.run("UPDATE task SET updated_at = 1 WHERE number = 1"));
 
@@ -1009,9 +1009,9 @@ test("task order targeting itself is a no-op", () => {
 test("task order leaves already-satisfied placements unchanged", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "SATISFIED", "--name", "Satisfied"], testDir);
-    runZinn(["task", "create", "SATISFIED", "first task"], testDir);
-    runZinn(["task", "create", "SATISFIED", "second task"], testDir);
-    runZinn(["task", "create", "SATISFIED", "third task"], testDir);
+    runZinn(["task", "create", "SATISFIED", "--title", "first task"], testDir);
+    runZinn(["task", "create", "SATISFIED", "--title", "second task"], testDir);
+    runZinn(["task", "create", "SATISFIED", "--title", "third task"], testDir);
 
     withTestDb(testDir, (db) => db.run("UPDATE task SET updated_at = 1"));
 
@@ -1035,8 +1035,8 @@ test("task order rejects a target in another project", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "FIRST", "--name", "First"], testDir);
     runZinn(["project", "create", "SECOND", "--name", "Second"], testDir);
-    runZinn(["task", "create", "FIRST", "first project task"], testDir);
-    runZinn(["task", "create", "SECOND", "second project task"], testDir);
+    runZinn(["task", "create", "FIRST", "--title", "first project task"], testDir);
+    runZinn(["task", "create", "SECOND", "--title", "second project task"], testDir);
 
     const result = runZinn(
       ["task", "order", "FIRST-1", "before", "SECOND-1"],
@@ -1051,8 +1051,8 @@ test("task order rejects a target in another project", () => {
 test("task order rejects archived source and target tasks", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "ARCHORDER", "--name", "Archived order"], testDir);
-    runZinn(["task", "create", "ARCHORDER", "active task"], testDir);
-    runZinn(["task", "create", "ARCHORDER", "archived task"], testDir);
+    runZinn(["task", "create", "ARCHORDER", "--title", "active task"], testDir);
+    runZinn(["task", "create", "ARCHORDER", "--title", "archived task"], testDir);
     runZinn(["task", "archive", "ARCHORDER-2"], testDir);
 
     const archivedSource = runZinn(["task", "order", "ARCHORDER-2", "top"], testDir);
@@ -1071,9 +1071,9 @@ test("task order rejects archived source and target tasks", () => {
 test("task order uses visible active neighbours", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "VISIBLE", "--name", "Visible"], testDir);
-    runZinn(["task", "create", "VISIBLE", "first task"], testDir);
-    runZinn(["task", "create", "VISIBLE", "archived task"], testDir);
-    runZinn(["task", "create", "VISIBLE", "third task"], testDir);
+    runZinn(["task", "create", "VISIBLE", "--title", "first task"], testDir);
+    runZinn(["task", "create", "VISIBLE", "--title", "archived task"], testDir);
+    runZinn(["task", "create", "VISIBLE", "--title", "third task"], testDir);
     runZinn(["task", "archive", "VISIBLE-2"], testDir);
 
     expect(runZinn(["task", "order", "VISIBLE-1", "down"], testDir).code).toBe(0);
@@ -1086,7 +1086,7 @@ test("task order uses visible active neighbours", () => {
 test("task archive hides a task from active lists without deleting it", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "ARCH", "--name", "Archive"], testDir);
-    runZinn(["task", "create", "ARCH", "kept task", "kept description"], testDir);
+    runZinn(["task", "create", "ARCH", "--title", "kept task", "--description", "kept description"], testDir);
     runZinn(["task", "move", "ARCH-1", "In Progress"], testDir);
 
     const before = withTestDb(testDir, (db) =>
@@ -1149,8 +1149,8 @@ test("task archive hides a task from active lists without deleting it", () => {
 test("task list --all identifies active and archived tasks in a status column", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "MIXED", "--name", "Mixed archive"], testDir);
-    runZinn(["task", "create", "MIXED", "archived task"], testDir);
-    runZinn(["task", "create", "MIXED", "active task"], testDir);
+    runZinn(["task", "create", "MIXED", "--title", "archived task"], testDir);
+    runZinn(["task", "create", "MIXED", "--title", "active task"], testDir);
     runZinn(["task", "archive", "MIXED-1"], testDir);
 
     expect(runZinn(["task", "list", "MIXED"], testDir).stdout).toBe(
@@ -1172,9 +1172,9 @@ test("task list --all identifies active and archived tasks in a status column", 
 test("task unarchive appends the task after active tasks in its previous column", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "RESTOREORDER", "--name", "Restore order"], testDir);
-    runZinn(["task", "create", "RESTOREORDER", "first task"], testDir);
-    runZinn(["task", "create", "RESTOREORDER", "second task"], testDir);
-    runZinn(["task", "create", "RESTOREORDER", "third task"], testDir);
+    runZinn(["task", "create", "RESTOREORDER", "--title", "first task"], testDir);
+    runZinn(["task", "create", "RESTOREORDER", "--title", "second task"], testDir);
+    runZinn(["task", "create", "RESTOREORDER", "--title", "third task"], testDir);
     runZinn(["task", "archive", "RESTOREORDER-1"], testDir);
 
     const archived = withTestDb(testDir, (db) =>
@@ -1215,7 +1215,7 @@ test("task unarchive help documents restored placement", () => {
 test("task archive is idempotent and unarchive restores active listing", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "RESTORE", "--name", "Restore"], testDir);
-    runZinn(["task", "create", "RESTORE", "restorable task"], testDir);
+    runZinn(["task", "create", "RESTORE", "--title", "restorable task"], testDir);
     runZinn(["task", "archive", "RESTORE-1"], testDir);
 
     withTestDb(testDir, (db) =>
@@ -1293,7 +1293,7 @@ test("project list shows every established project", () => {
 test("task delete removes the task but not its project", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "KEEP", "--name", "Keep"], testDir);
-    runZinn(["task", "create", "KEEP", "doomed task"], testDir);
+    runZinn(["task", "create", "KEEP", "--title", "doomed task"], testDir);
 
     expect(runZinnWithConfirmation(["task", "delete", "KEEP-1"], testDir).code).toBe(0);
     expect(runZinn(["task", "list", "KEEP"], testDir).stdout).not.toContain("doomed task");
@@ -1304,7 +1304,7 @@ test("task delete removes the task but not its project", () => {
 test("task delete keeps the task when confirmation is declined", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "KEEP", "--name", "Keep"], testDir);
-    runZinn(["task", "create", "KEEP", "surviving task"], testDir);
+    runZinn(["task", "create", "KEEP", "--title", "surviving task"], testDir);
 
     expect(runZinn(["task", "delete", "KEEP-1"], testDir).code).toBe(0);
     expect(runZinn(["task", "list", "KEEP"], testDir).stdout).toContain("surviving task");
@@ -1321,7 +1321,7 @@ test("task delete requires a valid existing task key", () => {
 test("task edit preserves omitted fields and identity, and accepts empty descriptions", () => {
   withIsolatedZinnDir((dir) => {
     runZinn(["project", "create", "EDIT", "--name", "Edits"], dir);
-    runZinn(["task", "create", "EDIT", "Original", "Description"], dir);
+    runZinn(["task", "create", "EDIT", "--title", "Original", "--description", "Description"], dir);
     const read = () => withTestDb(dir, (db) =>
       db.query<import("../core/src/types").Task, []>("SELECT * FROM task").get()!);
     withTestDb(dir, (db) => db.run("UPDATE task SET updated_at = 1"));
@@ -1344,7 +1344,7 @@ test("task edit preserves omitted fields and identity, and accepts empty descrip
 test("task edit rejects invalid requests without partial writes", () => {
   withIsolatedZinnDir((dir) => {
     runZinn(["project", "create", "EDIT", "--name", "Edits"], dir);
-    runZinn(["task", "create", "EDIT", "Original", "Description"], dir);
+    runZinn(["task", "create", "EDIT", "--title", "Original", "--description", "Description"], dir);
     const cases: Array<[string[], string]> = [
       [[], "Task key must be specified"],
       [["EDIT-1"], "Provide at least one edit flag"],
@@ -1372,7 +1372,7 @@ test("task edit rejects invalid requests without partial writes", () => {
 test("task edit preserves archive state and documents its flags", () => {
   withIsolatedZinnDir((dir) => {
     runZinn(["project", "create", "EDIT", "--name", "Edits"], dir);
-    runZinn(["task", "create", "EDIT", "Original"], dir);
+    runZinn(["task", "create", "EDIT", "--title", "Original"], dir);
     runZinn(["task", "archive", "EDIT-1"], dir);
     expect(runZinn(["task", "edit", "EDIT-1", "--title", "Archived edit"], dir).code).toBe(0);
     expect(runZinn(["task", "list", "EDIT"], dir).stdout).toBe("");
@@ -1401,10 +1401,10 @@ test("task mutations print the resulting entity", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "LIFE", "--name", "Responsive"], testDir);
 
-    expect(runZinn(["task", "create", "LIFE", "First", "Description"], testDir).stdout).toBe(
+    expect(runZinn(["task", "create", "LIFE", "--title", "First", "--description", "Description"], testDir).stdout).toBe(
       "LIFE-1 | Backlog | First | Description\n",
     );
-    runZinn(["task", "create", "LIFE", "Second"], testDir);
+    runZinn(["task", "create", "LIFE", "--title", "Second"], testDir);
     expect(
       runZinn(["task", "edit", "life-1", "--title", "Updated"], testDir).stdout,
     ).toBe("LIFE-1 | Backlog | Updated | Description\n");
@@ -1433,12 +1433,12 @@ test("task mutations print the resulting entity", () => {
 // --- NOT YET TESTABLE
 
 // #TODO(build): empty-string arguments bypass the `== null` guards in both
-// #TODO routers, so `zinn task create WIP ""` creates a nameless task. The
+// #TODO routers, so `zinn task create WIP --title ""` creates a nameless task. The
 // #TODO routers already carry a "do empty strings bypass this check?" TODO.
 test.todo("empty-string arguments are rejected", () => {
   runZinn(["project", "create", "EMPTY", "--name", "Empty"]);
 
-  expect(runZinn(["task", "create", "EMPTY", ""]).code).toBe(1);
+  expect(runZinn(["task", "create", "EMPTY", "--title", ""]).code).toBe(1);
   expect(runZinn(["project", "create", "", "--name", ""]).code).toBe(1);
 });
 
@@ -1486,7 +1486,7 @@ test.todo("handlers throw instead of exiting, so they can be tested in-process",
 test("project edit renames without changing identity, tasks, columns, or archive state", () => {
   withIsolatedZinnDir((dir) => {
     runZinn(["project", "create", "EDIT", "--name", "Original"], dir);
-    runZinn(["task", "create", "EDIT", "Keep task"], dir);
+    runZinn(["task", "create", "EDIT", "--title", "Keep task"], dir);
     const read = () => withTestDb(dir, (db) => ({
       project: db.query<import("../core/src/types").Project, []>("SELECT * FROM project").get()!,
       tasks: db.query("SELECT * FROM task").all(),
@@ -1545,8 +1545,8 @@ test("relation commands show directional and symmetric links, including archived
     const run = (...args: string[]) => runZinn(args, dir);
     expect(run("project", "create", "APP").code).toBe(0);
     expect(run("project", "create", "OTHER").code).toBe(0);
-    run("task", "create", "APP", "Copy");
-    run("task", "create", "OTHER", "Original");
+    run("task", "create", "APP", "--title", "Copy");
+    run("task", "create", "OTHER", "--title", "Original");
     expect(run("task", "relation", "list", "APP-1").stdout).toBe("");
     expect(run("task", "relation", "create", "APP-1", "APP-1", "--type", "related").stderr).toContain("itself");
     expect(run("task", "relation", "create", "APP-1", "OTHER-99", "--type", "related").code).toBe(1);
@@ -1600,13 +1600,13 @@ test("relation deletion is usable without a prompt and updates list and view", (
   withIsolatedZinnDir((dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
     run("project", "create", "APP");
-    run("task", "create", "APP", "First");
-    run("task", "create", "APP", "Second");
+    run("task", "create", "APP", "--title", "First");
+    run("task", "create", "APP", "--title", "Second");
     run("task", "relation", "create", "APP-1", "APP-2", "--type", "related");
     run("task", "relation", "create", "APP-1", "APP-2", "--type", "dependency");
     const removed = run("task", "relation", "delete", "app-2", "APP-1", "--type", "related");
     expect(removed.code).toBe(0);
-    expect(removed.stdout).toContain("Deleted related relation: APP-2 → APP-1");
+    expect(removed.stdout).toContain("Deleted related relation from APP-2 to APP-1");
     expect(run("task", "relation", "list", "APP-1").stdout).toContain("Depends on");
     expect(run("task", "view", "APP-2").stdout).not.toContain("Related to");
     expect(run("task", "relation", "delete", "APP-1", "APP-2", "--type", "related").stderr).toContain("does not exist");
@@ -1616,7 +1616,132 @@ test("relation deletion is usable without a prompt and updates list and view", (
     ]) {
       expect(run("task", "relation", "delete", ...args).code).toBe(1);
     }
-    expect(run("task", "relation", "delete", "--help").stdout).toContain("Both tasks remain unchanged");
+    expect(run("task", "relation", "delete", "--help").stdout).toContain("Remove only the specified relation");
     expect(run("task", "relation", "--help").stdout).toContain("task relation delete");
+  });
+});
+
+test("global label workflows support repeated create/edit flags and preserve task content", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = (...args: string[]) => runZinn(args, dir);
+    expect(run("project", "create", "APP").code).toBe(0);
+    for (const name of ["bug", "auth", "needs review, soon"]) {
+      expect(run("label", "create", name, "--color", "red", "--description", "Details").code).toBe(0);
+    }
+    expect(run("label", "create", "bug").stderr).toContain("already exists");
+    expect(run("label", "create", "invalid", "--color", "purple").code).toBe(1);
+    expect(run("label", "list").stdout).toContain("bug | red | Details");
+    const created = run("task", "create", "APP", "--title", "Login", "--description", "", "--label", "bug", "--label", "auth");
+    expect(created.code).toBe(0);
+    expect(created.stdout).toContain("Labels: auth, bug");
+    expect(run("task", "edit", "APP-1", "--title", "Changed", "--add-label", "needs review, soon", "--add-label", "auth", "--remove-label", "bug").code).toBe(0);
+    expect(run("task", "view", "APP-1").stdout).toContain("Labels: auth, needs review, soon");
+    expect(run("task", "edit", "APP-1", "--title", "Must not change", "--add-label", "unknown").code).toBe(1);
+    expect(run("task", "view", "APP-1").stdout).toContain("Changed");
+    expect(run("task", "edit", "APP-1", "--add-label", "bug", "--remove-label", "bug").code).toBe(1);
+    expect(run("task", "label", "add", "APP-1", "bug").stdout).toContain("Labels: auth, bug, needs review, soon");
+    expect(run("task", "label", "remove", "APP-1", "auth", "bug").stdout).toContain("Labels: needs review, soon");
+    expect(runZinnWithConfirmation(["label", "delete", "needs review, soon"], dir).code).toBe(0);
+    expect(run("task", "view", "APP-1").stdout).not.toContain("Labels:");
+    expect(run("label", "list").stdout).toContain("auth");
+    for (const args of [
+      ["APP", "Old positional title"],
+      ["APP", "--title", "One", "--title", "Two"],
+      ["APP", "--title", "One", "--description", "A", "--description", "B"],
+      ["APP", "--title", "One", "--unknown", "x"],
+      ["APP", "--title", "One", "--label", "missing"],
+    ]) {
+      expect(run("task", "create", ...args).code).toBe(1);
+    }
+    expect(run("task", "create", "APP", "--title=--example").stdout).toContain("APP-2");
+  });
+});
+
+test("label namespaces and commands expose help without initializing storage", () => {
+  withIsolatedZinnDir((dir) => {
+    for (const args of [["label"], ["label", "create"], ["label", "list"], ["label", "delete"], ["task", "label"], ["task", "label", "add"], ["task", "label", "remove"]]) {
+      for (const flag of ["-h", "--help"]) {
+        const result = runZinn([...args, flag], dir);
+        expect(result.code).toBe(0);
+        expect(result.stdout).not.toContain("TODO");
+      }
+    }
+    expect(Bun.file(join(dir, "data", "zinn.sqlite")).size).toBe(0);
+  });
+});
+
+test("opening an existing board adds label storage without losing task data", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "KEEP"], dir);
+    runZinn(["task", "create", "KEEP", "--title", "Existing task"], dir);
+    withTestDb(dir, (db) => {
+      db.run("DROP TABLE task_label");
+      db.run("DROP TABLE label");
+    });
+    expect(runZinn(["label", "create", "bug"], dir).code).toBe(0);
+    expect(runZinn(["task", "label", "add", "KEEP-1", "bug"], dir).code).toBe(0);
+    const taskView = runZinn(["task", "view", "KEEP-1"], dir);
+    expect(taskView.stdout).toContain("Existing task");
+    expect(taskView.stdout).toContain("Labels: bug");
+    expect(runZinnWithConfirmation(["task", "delete", "KEEP-1"], dir).code).toBe(0);
+    expect(runZinn(["label", "list"], dir).stdout).toContain("bug");
+  });
+});
+
+test("label deletion confirms global removal and cancellation preserves attachments and timestamps", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = (...args: string[]) => runZinn(args, dir);
+    run("project", "create", "APP");
+    run("label", "create", "bug");
+    run("label", "create", "keep");
+    run("task", "create", "APP", "--title", "First", "--label", "bug", "--label", "keep");
+    run("task", "create", "APP", "--title", "Second", "--label", "bug");
+    const snapshot = () => withTestDb(dir, (db) => ({
+      labels: db.query("SELECT * FROM label ORDER BY id").all(),
+      attachments: db.query("SELECT * FROM task_label ORDER BY task_id, label_id").all(),
+      tasks: db.query("SELECT * FROM task ORDER BY id").all(),
+    }));
+    const before = snapshot();
+    const cancelled = run("label", "delete", "bug");
+    expect(cancelled.code).toBe(0);
+    expect(cancelled.stdout).toContain('delete label "bug" and remove it from all tasks?');
+    expect(cancelled.stdout).toContain('Deletion cancelled for label "bug"');
+    expect(snapshot()).toEqual(before);
+    const deleted = runZinnWithConfirmation(["label", "delete", "bug"], dir);
+    expect(deleted.code).toBe(0);
+    expect(deleted.stdout).toContain('Deleted label "bug"');
+    expect(run("label", "list").stdout).toContain("keep");
+    expect(run("label", "list").stdout).not.toContain("bug");
+    expect(run("task", "view", "APP-1").stdout).toContain("Labels: keep");
+    expect(run("task", "view", "APP-2").code).toBe(0);
+    withTestDb(dir, (db) => {
+      expect(db.query("SELECT * FROM task_label").all()).toHaveLength(1);
+      expect(db.query("SELECT * FROM task").all()).toHaveLength(2);
+      expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
+    });
+    const missing = run("label", "delete", "missing");
+    expect(missing.code).toBe(1);
+    expect(missing.stdout).not.toContain("Are you sure");
+    expect(run("label", "delete", "--help").stdout).toContain("after confirmation");
+  });
+});
+
+test("shared option checks reject repeated scalar flags and retain positional validation", () => {
+  withIsolatedZinnDir((dir) => {
+    for (const args of [
+      ["label", "create", "bug", "--color", "red", "--color", "blue"],
+      ["label", "create", "bug", "--description", "a", "--description", "b"],
+      ["project", "create", "APP", "--name", "a", "--name", "b"],
+      ["project", "edit", "APP", "--name", "a", "--name", "b"],
+      ["task", "edit", "APP-1", "--title", "a", "--title", "b"],
+      ["task", "relation", "create", "APP-1", "APP-2", "--type", "related", "--type", "duplicate"],
+    ]) {
+      const result = runZinn(args, dir);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("can only be specified once");
+    }
+    for (const args of [["label", "create"], ["label", "create", "one", "two"], ["label", "delete", "one", "two"]]) {
+      expect(runZinn(args, dir).stderr).toContain("Exactly one label name is required");
+    }
   });
 });

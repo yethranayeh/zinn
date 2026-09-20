@@ -2,14 +2,19 @@ import type { Column, Task, TaskRelation, TaskWithKey } from "./src/types";
 import type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project";
 import type { TaskCreateInput, TaskEditInput } from "./src/schemas/task";
 import type { RelationCreateInput, RelationDeleteInput } from "./src/schemas/relation";
+import type { LabelCreateInput, LabelDeleteInput, TaskLabelInput } from "./src/schemas/label";
 
 import { randomUUIDv7 } from "bun";
 import { generateKeyBetween } from "fractional-indexing";
+
+import { getDb } from "./src/db";
+import { labelCreateSchema, labelDeleteSchema, taskLabelSchema } from "./src/schemas/label";
 
 import * as dbProject from "./src/db/project";
 import * as dbColumn from "./src/db/column";
 import * as dbTask from "./src/db/task";
 import * as dbRelation from "./src/db/relation";
+import * as dbLabel from "./src/db/label";
 
 import { standardizeProjectKey } from "./src/lib";
 import { validateTaskInput, taskCreateSchema, taskEditSchema } from "./src/schemas/task";
@@ -23,9 +28,11 @@ import {
 
 export type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project";
 export type { TaskCreateInput, TaskEditInput } from "./src/schemas/task";
-export type { TaskWithKey } from "./src/types";
+export type { TaskWithKey, Label, LabelColor } from "./src/types";
+export type { LabelCreateInput, LabelDeleteInput, TaskLabelInput } from "./src/schemas/label";
 export type { RelationCreateInput, RelationDeleteInput } from "./src/schemas/relation";
 
+export { labelCreateSchema, labelDeleteSchema, taskLabelSchema } from "./src/schemas/label";
 export { projectCreateSchema, projectEditSchema } from "./src/schemas/project";
 export { taskCreateSchema, taskEditSchema } from "./src/schemas/task";
 export { relationCreateSchema, relationDeleteSchema } from "./src/schemas/relation";
@@ -179,36 +186,60 @@ function attachTaskKey(task: Task, projectKey?: string): TaskWithKey {
   return { ...task, key: `${key}-${task.number}` };
 }
 
+function resolveLabels(names: Array<string>) {
+  const uniqueNames = [...new Set(names)];
+  return uniqueNames.map((name) => {
+    const match = dbLabel.getByName(name);
+    if (match == null) {
+      throw new Error(`A label with name "${name}" does not exist`);
+    }
+
+    return match;
+  });
+}
+
 export const task = {
   create: (input: TaskCreateInput) => {
     const task = validateTaskInput(taskCreateSchema, input);
 
-    // TODO: if anything after this fails, especially the task creation, the counter is still incremented but not assigned to any task
-    // TODO: rename
-    const project = dbProject.incrementTaskCounterById(task.project_id);
+    return getDb().transaction(() => {
+      const labels = resolveLabels(task.labelNames ?? []);
+      const project = dbProject.getById(task.project_id);
+      const counter = dbProject.incrementTaskCounterById(task.project_id);
 
-    if (project == null) {
-      throw new Error(`Project's next task number could not be retrieved  (ID:${task.project_id})`);
-    }
+      if (project == null || counter == null) {
+        throw new Error(
+          `Project's next task number could not be retrieved  (ID:${task.project_id})`,
+        );
+      }
 
-    const initialColumn = dbColumn.getAllByProjectId(task.project_id)[0]!;
-    const lastTask = dbTask.getLastByColumnId(initialColumn.id);
-    const order = generateKeyBetween(lastTask?.task_order ?? null, null);
+      const initialColumn = dbColumn.getAllByProjectId(task.project_id)[0];
+      if (initialColumn == null) {
+        throw new Error(`Project "${project.key}" does not have any columns`);
+      }
 
-    const now = Date.now();
-    const createdTask = dbTask.create({
-      id: randomUUIDv7(),
-      project_id: task.project_id,
-      column_id: initialColumn.id,
-      number: project.task_count,
-      title: task.title,
-      description: task.description,
-      task_order: order,
-      created_at: now,
-      updated_at: now,
-    })!;
+      const lastTask = dbTask.getLastByColumnId(initialColumn.id);
+      const order = generateKeyBetween(lastTask?.task_order ?? null, null);
 
-    return attachTaskKey(createdTask);
+      const now = Date.now();
+      const createdTask = dbTask.create({
+        id: randomUUIDv7(),
+        project_id: task.project_id,
+        column_id: initialColumn.id,
+        number: counter.task_count,
+        title: task.title,
+        description: task.description,
+        task_order: order,
+        created_at: now,
+        updated_at: now,
+      })!;
+
+      for (const label of labels) {
+        dbTask.addLabel(createdTask.id, label.id);
+      }
+
+      return attachTaskKey(createdTask, project.key);
+    })();
   },
   getAll: (props: { projectKey?: string; archive?: dbTask.TaskArchiveFilter } = {}) => {
     if (props.projectKey == null) {
@@ -226,27 +257,54 @@ export const task = {
       .map((task) => attachTaskKey(task, taskProject.key));
   },
   getByKey: getTaskByKey,
+  label: {
+    getAll: (taskKey: string) => dbTask.getLabels(getTaskByKey(taskKey).id),
+    add: (input: TaskLabelInput): TaskWithKey => {
+      const props = validateTaskInput(taskLabelSchema, input);
+      return task.edit({ taskKey: props.taskKey, addLabelNames: props.labelNames });
+    },
+    remove: (input: TaskLabelInput): TaskWithKey => {
+      const props = validateTaskInput(taskLabelSchema, input);
+      return task.edit({ taskKey: props.taskKey, removeLabelNames: props.labelNames });
+    },
+  },
   /** Edit supplied content fields, including on archived tasks. Unchanged edits are no-ops. */
   edit: (input: TaskEditInput) => {
     const props = validateTaskInput(taskEditSchema, input);
-    const existing = getTaskByKey(props.taskKey);
-    const isTitleUnchanged = props.title === undefined || props.title === existing.title;
-    const isDescriptionUnchanged =
-      props.description === undefined || props.description === existing.description;
+    return getDb().transaction(() => {
+      const existing = getTaskByKey(props.taskKey);
+      const additions = resolveLabels(props.addLabelNames ?? []);
+      const removals = resolveLabels(props.removeLabelNames ?? []);
+      const existingLabelIds = new Set(dbTask.getLabels(existing.id).map((label) => label.id));
+      const labelsToAdd = additions.filter((label) => !existingLabelIds.has(label.id));
+      const labelsToRemove = removals.filter((label) => existingLabelIds.has(label.id));
+      const areLabelsUnchanged = labelsToAdd.length === 0 && labelsToRemove.length === 0;
+      const isTitleUnchanged = props.title === undefined || props.title === existing.title;
+      const isDescriptionUnchanged =
+        props.description === undefined || props.description === existing.description;
 
-    if (isTitleUnchanged && isDescriptionUnchanged) {
-      return existing;
-    }
+      if (isTitleUnchanged && isDescriptionUnchanged && areLabelsUnchanged) {
+        return existing;
+      }
 
-    return {
-      ...dbTask.update({
-        id: existing.id,
-        title: props.title,
-        description: props.description,
-        updated_at: Date.now(),
-      })!,
-      key: existing.key,
-    };
+      for (const label of labelsToAdd) {
+        dbTask.addLabel(existing.id, label.id);
+      }
+
+      for (const label of labelsToRemove) {
+        dbTask.removeLabel(existing.id, label.id);
+      }
+
+      return {
+        ...dbTask.update({
+          id: existing.id,
+          title: props.title,
+          description: props.description,
+          updated_at: Date.now(),
+        })!,
+        key: existing.key,
+      };
+    })();
   },
   /**
    * Moves a task to another column in its project.
@@ -488,4 +546,34 @@ export const relation = {
     return relationMatch;
   },
   getAll: getRelations,
+};
+
+export const label = {
+  create: (input: LabelCreateInput) => {
+    const props = validateTaskInput(labelCreateSchema, input);
+
+    if (dbLabel.getByName(props.name) != null) {
+      throw new Error(`A label with name "${props.name}" already exists`);
+    }
+
+    return dbLabel.create({
+      name: props.name,
+      description: props.description ?? "",
+      color: props.color ?? "white",
+    })!;
+  },
+  getAll: dbLabel.getAll,
+  getByName: (name: string) => {
+    const props = validateTaskInput(labelDeleteSchema, { name });
+    return dbLabel.getByName(props.name);
+  },
+  delete: (input: LabelDeleteInput) => {
+    const props = validateTaskInput(labelDeleteSchema, input);
+    return getDb().transaction(() => {
+      const match = resolveLabels([props.name])[0]!;
+      dbTask.updateLabelTasksTimestamp(match.id, Date.now());
+      dbLabel.deleteById(match.id);
+      return match;
+    })();
+  },
 };
