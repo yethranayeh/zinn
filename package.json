@@ -6,6 +6,7 @@
 	],
 	"type": "module",
 	"scripts": {
+		"dev": "bun scripts/dev-cli.ts",
 		"dev:seed": "bun scripts/seed-dev.ts"
 	},
 	"devDependencies": {

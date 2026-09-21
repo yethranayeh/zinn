@@ -65,13 +65,22 @@ Use the same `ZINN_DIR` value on later commands to access that database.
 
 ## Development data
 
-For local development, it is possible to populate the default database with mock data:
+For local development you can seed the repository `.zinn-dev` database with mock data:
 
 ```bash
 bun run dev:seed
+bun run dev -- task list
 ```
 
-Please note that this development command ignores `ZINN_DIR`, deletes the database and SQLite sidecar files at `~/.zinn/data/zinn.sqlite`, and recreates the database. **DO NOT** run it if you have existing data in the default Zinn DB path that you would want to preserve.
+The sample board includes three projects, shared labels, tasks in different workflow columns, custom ordering, multiline descriptions, archived work, and all three relation types. Start with `bun run dev -- task view APP-3` to inspect a connected task, or `bun run dev -- label list` to browse labels. Move, edit, reorder, and restore tasks freely to test things out. You can also run the seed again to reset the examples.
+
+`dev:seed` deliberately **deletes** and recreates the repository development database and its SQLite sidecar files. The `dev` command always uses that same ignored directory. Its script can also be run by absolute path from outside the repository while preserving CLI arguments:
+
+```bash
+bun /path/to/zinn/scripts/dev-cli.ts task list
+```
+
+The usual `zinn` commands continue to use the default global database at `~/.zinn` (or a `ZINN_DIR` if provided).
 
 ## Packages
 

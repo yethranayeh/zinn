@@ -1,10 +1,10 @@
 import { rmSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { selectDevelopmentDatabase } from "./dev-environment";
 
-delete process.env.ZINN_DIR;
+const developmentDirectory = selectDevelopmentDatabase();
 
-const expectedDatabasePath = join(homedir(), ".zinn", "data", "zinn.sqlite");
+const expectedDatabasePath = join(developmentDirectory, "data", "zinn.sqlite");
 const { DB_PATH } = await import("../packages/core/src/constant.ts");
 
 if (DB_PATH !== expectedDatabasePath) {
@@ -15,7 +15,7 @@ for (const databaseFile of [DB_PATH, `${DB_PATH}-wal`, `${DB_PATH}-shm`]) {
   rmSync(databaseFile, { force: true });
 }
 
-const { column, project, relation, task } = await import("../packages/core/index.ts");
+const { column, label, project, relation, task } = await import("../packages/core/index.ts");
 
 function createProject(props: { key: string; name: string }) {
   project.create(props);
@@ -32,34 +32,71 @@ function createTask(
   projectId: string,
   title: string,
   description: string | null = null,
+  labelNames: string[] = [],
 ) {
-  task.create({ project_id: projectId, title, description });
+  return task.create({ project_id: projectId, title, description, labelNames });
 }
+
+// Shared labels make it easy to explore classification across projects.
+label.create({ name: "feature", description: "New user-facing capabilities", color: "green" });
+label.create({ name: "bug", description: "Unexpected behavior to investigate", color: "red" });
+label.create({ name: "docs", description: "Guides, examples, and onboarding", color: "blue" });
+label.create({ name: "interface", description: "Terminal layout and interaction", color: "cyan" });
+label.create({ name: "research", description: "Experiments that inform a later decision", color: "magenta" });
 
 const app = createProject({ key: "APP", name: "Zinn App" });
 column.create({ projectKey: app.key, name: "Blocked" });
-createTask(app.id, "Design task movement", "Move cards between project columns");
-createTask(app.id, "Add column-aware task ordering", "Keep card positions local to each column");
-createTask(app.id, "Render the board in the TUI", "Start with keyboard navigation");
-createTask(app.id, "Document the local development workflow", "Cover seeding and local commands");
-createTask(app.id, "Verify a task without a description");
+createTask(app.id, "Design task movement", "Move cards between project columns", ["feature"]);
+createTask(app.id, "Add column-aware task ordering", "Keep card positions local to each column", ["feature"]);
+createTask(app.id, "Render the board in the TUI", [
+  "Build a keyboard-first board for the existing task workflow.",
+  "",
+  "Acceptance criteria:",
+  "- Show columns and their ordered tasks.",
+  "- Open task details without losing the selected card.",
+  "- Move cards using the existing core operations.",
+].join("\n"), ["feature", "interface"]);
+createTask(app.id, "Document the local development workflow", "Cover seeding and local commands", ["docs"]);
+createTask(app.id, "Explore saved board views");
+createTask(app.id, "Keep long task titles readable", "Try wrapping and truncation on a narrow terminal", ["bug", "interface"]);
+createTask(app.id, "Show keyboard shortcuts", "Keep common actions discoverable from the board", ["interface"]);
+createTask(app.id, "Write a first-run walkthrough", "Walk through creating a project and finishing a task", ["docs"]);
+createTask(app.id, "Polish the board walkthrough", "Needs the first working board before examples can be finalized", ["docs", "interface"]);
+
+task.move({ taskKey: "APP-1", targetColumn: "Done" });
+task.move({ taskKey: "APP-2", targetColumn: "Review" });
+task.move({ taskKey: "APP-3", targetColumn: "In Progress" });
+task.move({ taskKey: "APP-4", targetColumn: "Done" });
+task.move({ taskKey: "APP-6", targetColumn: "TODO" });
+task.move({ taskKey: "APP-7", targetColumn: "TODO" });
+task.move({ taskKey: "APP-8", targetColumn: "TODO" });
+task.move({ taskKey: "APP-9", targetColumn: "Blocked" });
+// Display order is independent of task number; leave several cards to rearrange.
+task.order({ taskKey: "APP-8", direction: "before", targetTaskKey: "APP-6" });
 
 const site = createProject({ key: "SITE", name: "Zinn Website" });
 column.create({ projectKey: site.key, name: "Icebox" });
-createTask(site.id, "Write the project overview", "Explain what makes Zinn useful");
-createTask(site.id, "Capture terminal screenshots");
-createTask(site.id, "Publish installation instructions", "Cover Bun and the zinn executable");
+createTask(site.id, "Write the project overview", "Explain what makes Zinn useful", ["docs"]);
+createTask(site.id, "Capture terminal screenshots", "Wait for the board layout before capturing images", ["docs", "interface"]);
+createTask(site.id, "Publish installation instructions", "Cover Bun and the zinn executable", ["docs"]);
+createTask(site.id, "Explore an interactive demo", "Revisit after the first documentation release", ["research"]);
+task.move({ taskKey: "SITE-1", targetColumn: "Review" });
+task.move({ taskKey: "SITE-3", targetColumn: "Done" });
+task.move({ taskKey: "SITE-4", targetColumn: "Icebox" });
 
 const experiments = createProject({ key: "LAB", name: "Experiments" });
-createTask(experiments.id, "Try a compact task card layout");
-createTask(experiments.id, "Explore activity history", "Keep the first version read-only");
-createTask(experiments.id, "Prototype keyboard navigation", "Superseded by the board navigation task");
+createTask(experiments.id, "Try a compact task card layout", null, ["research", "interface"]);
+createTask(experiments.id, "Explore activity history", "Keep the first version read-only", ["research"]);
+createTask(experiments.id, "Prototype keyboard navigation", "Superseded by the board navigation task", ["interface"]);
+task.move({ taskKey: "LAB-1", targetColumn: "In Progress" });
+task.move({ taskKey: "LAB-3", targetColumn: "Done" });
 task.archive("LAB-3");
 
 // Dependencies: source depends on target. APP-3 shows both outgoing and incoming links.
 relation.create({ sourceTaskKey: "APP-3", targetTaskKey: "APP-1", relation_type: "dependency" });
 relation.create({ sourceTaskKey: "APP-3", targetTaskKey: "APP-2", relation_type: "dependency" });
 relation.create({ sourceTaskKey: "SITE-2", targetTaskKey: "APP-3", relation_type: "dependency" });
+relation.create({ sourceTaskKey: "APP-9", targetTaskKey: "APP-3", relation_type: "dependency" });
 
 // Related links are symmetric, including across projects.
 relation.create({ sourceTaskKey: "APP-3", targetTaskKey: "LAB-1", relation_type: "related" });
@@ -68,6 +105,8 @@ relation.create({ sourceTaskKey: "SITE-3", targetTaskKey: "APP-4", relation_type
 // Duplicate: source is a duplicate of target. Archived tasks remain visible in relations.
 relation.create({ sourceTaskKey: "LAB-3", targetTaskKey: "APP-3", relation_type: "duplicate" });
 
-console.info(`Reset and seeded the default Zinn database at ${DB_PATH}`);
-console.info("Run `zinn task list` to inspect it.");
-console.info("Run `zinn task view APP-3` or `zinn task relation list APP-3` to inspect relations.");
+console.info(`Reset and seeded the development Zinn database at ${DB_PATH}`);
+console.info("Run `bun run dev -- task list` to inspect it.");
+console.info("Run `bun run dev -- task view APP-3` or `bun run dev -- task relation list APP-3` to inspect relations.");
+console.info("Run `bun run dev -- label list` to browse shared labels, or `bun run dev -- task list LAB --all` to see archived work.");
+console.info("Try `bun run dev -- task order APP-7 top` or `bun run dev -- task unarchive LAB-3`, then reseed to start over.");
