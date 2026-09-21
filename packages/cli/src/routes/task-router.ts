@@ -5,6 +5,21 @@ import { task, project, column } from "@zinn-dev/core";
 
 import { quit, validatePositionalCount, validateUniqueOptions } from "../lib";
 import { formatRelations, relationRouter } from "./relation-router";
+import { TASK_DESCRIPTION_PREVIEW_LENGTH } from "../constant";
+
+function formatTaskDescriptionPreview(description: string | null) {
+  if (description == null) {
+    return "";
+  }
+
+  const normalizedDescription = description.replace(/\s+/g, " ").trim();
+
+  if (normalizedDescription.length <= TASK_DESCRIPTION_PREVIEW_LENGTH) {
+    return normalizedDescription;
+  }
+
+  return `${normalizedDescription.slice(0, TASK_DESCRIPTION_PREVIEW_LENGTH - 1).trimEnd()}…`;
+}
 
 // TODO: a CLI row formatter that accepts text columns and joins them with " | " would be useful
 // Reuse it across task list/view and other command output in a separate change.
@@ -196,7 +211,8 @@ Example: zinn task create MDR --title "Refine the numbers" --description "Meet t
           .map((t) => {
             // TODO: console output formatting for standardizied output
             const status = showsAll ? ` | ${t.status.padEnd(longestStatusLength)}` : "";
-            const description = t.description == null ? "" : ` | ${t.description}`;
+            const descriptionPreview = formatTaskDescriptionPreview(t.description);
+            const description = t.description == null ? "" : ` | ${descriptionPreview}`;
             const priority = t.priority == null ? "" : ` | Priority: ${t.priority}`;
             return `${t.id.padEnd(longestIdLength)}${status} | ${t.column} | ${t.title}${description}${priority}`;
           })

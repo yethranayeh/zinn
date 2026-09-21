@@ -535,6 +535,32 @@ test("task list does not print a missing description as data", () => {
   });
 });
 
+test("task list renders an 80-character single-line description preview", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "PREVIEW", "--name", "Description preview"], testDir);
+    const description = `${"A".repeat(40)}\n\t${"B".repeat(50)}`;
+    const expectedPreview = `${"A".repeat(40)} ${"B".repeat(38)}…`;
+
+    runZinn(
+      ["task", "create", "PREVIEW", "--title", "long description", "--description", description],
+      testDir,
+    );
+
+    const listResult = runZinn(["task", "list", "PREVIEW"], testDir);
+    const viewResult = runZinn(["task", "view", "PREVIEW-1"], testDir);
+
+    expect(listResult.code).toBe(0);
+    expect(listResult.stdout).toBe(
+      `PREVIEW-1 | Backlog | long description | ${expectedPreview}\n`,
+    );
+    expect(expectedPreview.length).toBe(80);
+    expect(viewResult.code).toBe(0);
+    expect(viewResult.stdout).toBe(
+      `PREVIEW-1 | Backlog | long description | ${description}\n`,
+    );
+  });
+});
+
 test("task list filters to the requested project regardless of key casing", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "ALPHA", "--name", "Alpha"], testDir);
