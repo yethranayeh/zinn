@@ -1745,3 +1745,41 @@ test("shared option checks reject repeated scalar flags and retain positional va
     }
   });
 });
+
+test("priority persists across CLI creation, editing, listing, clearing, and no-op edits", () => {
+  withIsolatedZinnDir((directory) => {
+    expect(runZinn(["project", "create", "PRI"], directory).code).toBe(0);
+    expect(runZinn(["task", "create", "PRI", "--title", "Default"], directory).code).toBe(0);
+    withTestDb(directory, (db) => {
+      expect(db.query<{ priority: string | null }, []>("SELECT priority FROM task").get()!.priority).toBeNull();
+    });
+    for (const priority of ["low", "medium", "high", "urgent"]) {
+      const created = runZinn(["task", "create", "PRI", "--title", priority, "--priority", priority], directory);
+      expect(created.code).toBe(0);
+      expect(created.stdout).toContain(`Priority: ${priority}`);
+    }
+    withTestDb(directory, (db) => db.run("UPDATE task SET updated_at = 1 WHERE number = 1"));
+    expect(runZinn(["task", "edit", "PRI-1", "--priority", "high"], directory).code).toBe(0);
+    withTestDb(directory, (db) => {
+      expect(db.query<{ updated_at: number }, []>("SELECT updated_at FROM task WHERE number = 1").get()!.updated_at).toBeGreaterThan(1);
+    });
+    withTestDb(directory, (db) => db.run("UPDATE task SET updated_at = 1 WHERE number = 1"));
+    expect(runZinn(["task", "edit", "PRI-1", "--priority", "high"], directory).code).toBe(0);
+    withTestDb(directory, (db) => {
+      expect(db.query<{ updated_at: number }, []>("SELECT updated_at FROM task WHERE number = 1").get()!.updated_at).toBe(1);
+    });
+    expect(runZinn(["task", "edit", "PRI-1", "--title", "Renamed"], directory).stdout).toContain("Priority: high");
+    expect(runZinn(["task", "list", "PRI"], directory).stdout).toContain("Priority: high");
+    const invalid = runZinn(["task", "edit", "PRI-1", "--title", "Wrong", "--priority", "critical"], directory);
+    expect(invalid.code).not.toBe(0);
+    expect(runZinn(["task", "view", "PRI-1"], directory).stdout).toContain("Renamed");
+    expect(runZinn(["task", "archive", "PRI-1"], directory).code).toBe(0);
+    expect(runZinn(["task", "edit", "PRI-1", "--priority", "none"], directory).code).toBe(0);
+    withTestDb(directory, (db) => {
+      const row = db.query<{ priority: string | null; archived_at: number | null }, []>("SELECT priority, archived_at FROM task WHERE number = 1").get()!;
+      expect(row.priority).toBeNull();
+      expect(row.archived_at).not.toBeNull();
+      expect(() => db.run("UPDATE task SET priority = 'critical'")).toThrow();
+    });
+  });
+});

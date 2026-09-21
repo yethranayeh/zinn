@@ -6,6 +6,8 @@ import { task, project, column } from "@zinn-dev/core";
 import { quit, validatePositionalCount, validateUniqueOptions } from "../lib";
 import { formatRelations, relationRouter } from "./relation-router";
 
+// TODO: a CLI row formatter that accepts text columns and joins them with " | " would be useful
+// Reuse it across task list/view and other command output in a separate change.
 function formatTask(
   taskMatch: ReturnType<typeof task.getByKey>,
   options: { showsStatus?: boolean } = {},
@@ -17,11 +19,12 @@ function formatTask(
     : "";
   const description = taskMatch.description == null ? "" : ` | ${taskMatch.description}`;
 
+  const priority = taskMatch.priority == null ? "" : ` | Priority: ${taskMatch.priority}`;
   const labels = task.label.getAll(taskKey);
   const labelText =
     labels.length === 0 ? "" : ` | Labels: ${labels.map((label) => label.name).join(", ")}`;
 
-  return `${taskKey}${status} | ${taskColumn.name} | ${taskMatch.title}${description}${labelText}`;
+  return `${taskKey}${status} | ${taskColumn.name} | ${taskMatch.title}${description}${priority}${labelText}`;
 }
 
 export const taskRouter = {
@@ -32,6 +35,7 @@ export const taskRouter = {
         options: {
           title: { type: "string" },
           description: { type: "string" },
+          priority: { type: "string" },
           "add-label": { type: "string", multiple: true },
           "remove-label": { type: "string", multiple: true },
         },
@@ -53,12 +57,13 @@ export const taskRouter = {
       const hasEditFlags =
         values.title !== undefined ||
         values.description !== undefined ||
+        values.priority !== undefined ||
         values["add-label"] !== undefined ||
         values["remove-label"] !== undefined;
 
       if (!hasEditFlags) {
         quit(
-          "Provide at least one edit flag: --title, --description, --add-label, or --remove-label",
+          "Provide at least one edit flag: --title, --description, --priority, --add-label, or --remove-label",
         );
       }
 
@@ -66,15 +71,17 @@ export const taskRouter = {
         taskKey,
         title: values.title,
         description: values.description,
+        priority: parsePriority(values.priority),
         addLabelNames: values["add-label"],
         removeLabelNames: values["remove-label"],
       });
 
       console.info(formatTask(editedTask));
     },
-    help: `Usage: zinn task edit <task-key> [--title <text>] [--description <text>] [--add-label <name>] [--remove-label <name>]
+    help: `Usage: zinn task edit <task-key> [--title <text>] [--description <text>] [--priority <low|medium|high|urgent|none>] [--add-label <name>] [--remove-label <name>]
 
 Change the supplied fields and preserve everything else.
+Use --priority none to clear priority.
 Provide at least one edit flag. Use --description "" for an empty description.
 
 Repeat --add-label or --remove-label for multiple existing labels.
@@ -95,6 +102,7 @@ Example: zinn task edit MDR-1 --title "Meet the quarterly refinement quota"`,
         options: {
           title: { type: "string" },
           description: { type: "string" },
+          priority: { type: "string" },
           label: { type: "string", multiple: true },
         },
         allowPositionals: true,
@@ -105,7 +113,11 @@ Example: zinn task edit MDR-1 --title "Meet the quarterly refinement quota"`,
       if (projectKey == null) {
         quit("A task needs to belong to a project");
       }
-      validatePositionalCount(positionals, 1, "Only one project key can be specified; use --title and --description");
+      validatePositionalCount(
+        positionals,
+        1,
+        "Only one project key can be specified; use --title and --description",
+      );
       if (values.title === undefined) {
         quit("A task needs at least a title: use --title");
       }
@@ -118,13 +130,15 @@ Example: zinn task edit MDR-1 --title "Meet the quarterly refinement quota"`,
         project_id: projectMatch.id,
         title: values.title,
         description: values.description ?? null,
+        priority: parsePriority(values.priority),
         labelNames: values.label,
       });
       console.info(formatTask(createdTask));
     },
-    help: `Usage: zinn task create <project-key> --title <text> [--description <text>] [--label <name>]
+    help: `Usage: zinn task create <project-key> --title <text> [--description <text>] [--priority <low|medium|high|urgent|none>] [--label <name>]
 
 Create a task in the project's first column.
+Priority defaults to none (unassigned).
 Repeat --label to attach multiple existing labels. Unknown labels are errors.
 Titles cannot be blank. Use --title="--example" for text beginning with a dash.
 
@@ -163,6 +177,7 @@ Example: zinn task create MDR --title "Refine the numbers" --description "Meet t
           status: t.archived_at == null ? "Active" : "Archived",
           title: t.title,
           description: t.description,
+          priority: t.priority,
           column: taskColumn.name,
         };
       });
@@ -182,7 +197,8 @@ Example: zinn task create MDR --title "Refine the numbers" --description "Meet t
             // TODO: console output formatting for standardizied output
             const status = showsAll ? ` | ${t.status.padEnd(longestStatusLength)}` : "";
             const description = t.description == null ? "" : ` | ${t.description}`;
-            return `${t.id.padEnd(longestIdLength)}${status} | ${t.column} | ${t.title}${description}`;
+            const priority = t.priority == null ? "" : ` | Priority: ${t.priority}`;
+            return `${t.id.padEnd(longestIdLength)}${status} | ${t.column} | ${t.title}${description}${priority}`;
           })
           .join("\n"),
       );
@@ -212,7 +228,7 @@ Example: zinn task list MDR --all`,
     },
     help: `Usage: zinn task view <task-key>
 
-Show a task with its current column, description, labels, and relations.
+Show a task with its current column, description, priority, labels, and relations.
 
 Example: zinn task view MDR-1`,
   },
@@ -387,4 +403,20 @@ function parseTaskLabelArgs(args: string[]) {
     quit("Provide a task key and at least one label name");
   }
   return { taskKey: positionals[0]!, labelNames: positionals.slice(1) };
+}
+
+function parsePriority(value: string | undefined) {
+  switch (value) {
+    case undefined:
+      return undefined;
+    case "none":
+      return null;
+    case "low":
+    case "medium":
+    case "high":
+    case "urgent":
+      return value;
+    default:
+      quit("Priority must be low, medium, high, urgent, or none");
+  }
 }

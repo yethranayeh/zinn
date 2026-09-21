@@ -28,7 +28,7 @@ import {
 
 export type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project";
 export type { TaskCreateInput, TaskEditInput } from "./src/schemas/task";
-export type { TaskWithKey, Label, LabelColor } from "./src/types";
+export type { TaskWithKey, TaskPriority, Label, LabelColor } from "./src/types";
 export type { LabelCreateInput, LabelDeleteInput, TaskLabelInput } from "./src/schemas/label";
 export type { RelationCreateInput, RelationDeleteInput } from "./src/schemas/relation";
 
@@ -230,6 +230,7 @@ export const task = {
         title: task.title,
         description: task.description,
         task_order: order,
+        priority: task.priority ?? null,
         created_at: now,
         updated_at: now,
       })!;
@@ -283,7 +284,10 @@ export const task = {
       const isDescriptionUnchanged =
         props.description === undefined || props.description === existing.description;
 
-      if (isTitleUnchanged && isDescriptionUnchanged && areLabelsUnchanged) {
+      const isPriorityUnchanged =
+        props.priority === undefined || props.priority === existing.priority;
+
+      if (isTitleUnchanged && isDescriptionUnchanged && isPriorityUnchanged && areLabelsUnchanged) {
         return existing;
       }
 
@@ -300,6 +304,7 @@ export const task = {
           id: existing.id,
           title: props.title,
           description: props.description,
+          priority: props.priority,
           updated_at: Date.now(),
         })!,
         key: existing.key,

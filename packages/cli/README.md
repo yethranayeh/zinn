@@ -124,7 +124,7 @@ Use `task relation create --help` to discover types.
 
 ## Edit tasks
 
-Edit a task's title, description, or labels:
+Edit a task's title, description, priority, or labels:
 
 ```sh
 zinn task edit MDR-1 --title "Meet the quarterly refinement quota"
@@ -196,3 +196,15 @@ zinn task move --help
 The short `-h` form works in the same positions.
 
 Running `zinn` without a command shows help
+
+## Task priority
+
+Priority is optional: `low`, `medium`, `high`, or `urgent`. New tasks have no assigned priority by default.
+
+```sh
+zinn task create MDR --title "Review the numbers" --priority high
+zinn task edit MDR-1 --priority urgent
+zinn task edit MDR-1 --priority none
+```
+
+Use `none` to clear priority. Omitting `--priority` on edits preserves it. Assigned priorities appear in task list and view output; board ordering remains unchanged.

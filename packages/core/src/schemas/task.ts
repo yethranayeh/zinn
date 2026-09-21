@@ -10,10 +10,13 @@ export const taskTitleSchema = z
 
 export const taskDescriptionSchema = z.string().nullable();
 
+export const taskPrioritySchema = z.enum(["low", "medium", "high", "urgent"]);
+
 export const taskCreateSchema = z.strictObject({
   project_id: z.string(),
   title: taskTitleSchema,
   description: taskDescriptionSchema,
+  priority: taskPrioritySchema.nullable().optional(),
   labelNames: z.array(labelNameSchema).optional(),
 });
 
@@ -22,22 +25,25 @@ export const taskEditSchema = z
     taskKey: z.string(),
     title: taskTitleSchema.optional(),
     description: taskDescriptionSchema.optional(),
+    priority: taskPrioritySchema.nullable().optional(),
     addLabelNames: z.array(labelNameSchema).optional(),
     removeLabelNames: z.array(labelNameSchema).optional(),
   })
-  .refine(
-    (value) =>
-      value.title !== undefined ||
-      value.description !== undefined ||
-      (value.addLabelNames?.length ?? 0) > 0 ||
-      (value.removeLabelNames?.length ?? 0) > 0,
-    "Provide at least one field to edit: title, description, or labels",
-  )
+  .refine((value) => {
+    const hasTitle = value.title !== undefined;
+    const hasDescription = value.description !== undefined;
+    const hasPriority = value.priority !== undefined;
+    const hasLabelsToAdd = (value.addLabelNames?.length ?? 0) > 0;
+    const hasLabelsToRemove = (value.removeLabelNames?.length ?? 0) > 0;
+
+    return hasTitle || hasDescription || hasPriority || hasLabelsToAdd || hasLabelsToRemove;
+  }, "Provide at least one field to edit: title, description, priority, or labels")
   .refine(
     (value) => !value.addLabelNames?.some((name) => value.removeLabelNames?.includes(name)),
     "Cannot add and remove the same label",
   );
 
+export type TaskPriority = z.infer<typeof taskPrioritySchema>;
 export type TaskCreateInput = z.infer<typeof taskCreateSchema>;
 export type TaskEditInput = z.infer<typeof taskEditSchema>;
 

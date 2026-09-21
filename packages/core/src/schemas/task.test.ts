@@ -36,3 +36,16 @@ test("label edits reject empty requests and conflicting normalized names", () =>
   expect(taskEditSchema.safeParse({ taskKey: "TEST-1", addLabelNames: [""] }).success).toBe(false);
   expect(taskEditSchema.parse({ taskKey: "TEST-1", addLabelNames: [" bug "] }).addLabelNames).toEqual(["bug"]);
 });
+
+test("priority accepts only fixed values or null and leaves omitted edits unset", () => {
+  for (const priority of ["low", "medium", "high", "urgent", null] as const) {
+    expect(taskCreateSchema.parse({ project_id: "id", title: "Task", description: null, priority }).priority).toBe(priority);
+    expect(taskEditSchema.parse({ taskKey: "TEST-1", priority }).priority).toBe(priority);
+  }
+  for (const priority of ["none", "critical", "", 1]) {
+    expect(taskCreateSchema.safeParse({ project_id: "id", title: "Task", description: null, priority }).success).toBe(false);
+    expect(taskEditSchema.safeParse({ taskKey: "TEST-1", priority }).success).toBe(false);
+  }
+  expect(taskEditSchema.parse({ taskKey: "TEST-1", title: "Task" }).priority).toBeUndefined();
+  expect(taskEditSchema.safeParse({ taskKey: "TEST-1", priority: undefined }).success).toBe(false);
+});

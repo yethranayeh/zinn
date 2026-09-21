@@ -115,6 +115,7 @@ function createTask(title: string) {
     number: 1,
     title,
     description: "original description",
+    priority: null,
     task_order: "a0",
     created_at: 10,
     updated_at: 10,

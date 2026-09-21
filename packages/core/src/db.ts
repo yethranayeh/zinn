@@ -37,6 +37,7 @@ function initDb() {
   number      INTEGER NOT NULL,
   title       TEXT NOT NULL,
   description TEXT,
+  priority    TEXT CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
   task_order  TEXT,
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL,

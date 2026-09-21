@@ -1,5 +1,8 @@
 import type { LabelColor } from "./schemas/label";
+import type { TaskPriority } from "./schemas/task";
+
 export type { LabelColor } from "./schemas/label";
+export type { TaskPriority } from "./schemas/task";
 
 // https://www.typescriptlang.org/docs/handbook/2/template-literal-types.html
 type BoundProperty<P extends string> = `$${P}`;
@@ -28,6 +31,7 @@ export type Task = {
   title: string;
   description: string | null;
   task_order: string;
+  priority: TaskPriority | null;
   created_at: number;
   updated_at: number;
   archived_at: number | null;
