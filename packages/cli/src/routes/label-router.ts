@@ -1,9 +1,26 @@
+import type { Label } from "@zinn-dev/core";
 import type { RouteDef } from "../types";
 
 import { parseArgs } from "node:util";
 import { label, labelCreateSchema, labelDeleteSchema } from "@zinn-dev/core";
 
-import { quit, validatePositionalCount, validateUniqueOptions } from "../lib";
+import {
+  confirmAction,
+  output,
+  quit,
+  validatePositionalCount,
+  validateUniqueOptions,
+} from "../lib";
+
+type PresentedLabel = Omit<Label, "id">;
+
+function presentLabel(labelMatch: Label): PresentedLabel {
+  return { name: labelMatch.name, color: labelMatch.color, description: labelMatch.description };
+}
+
+function formatLabel(presented: PresentedLabel) {
+  return `${presented.name} | ${presented.color} | ${presented.description}`;
+}
 
 export const labelRouter = {
   create: {
@@ -23,7 +40,7 @@ export const labelRouter = {
       const input = labelCreateSchema.parse({ name: positionals[0], ...values });
       const created = label.create(input);
 
-      console.info(`${created.name} | ${created.color} | ${created.description}`);
+      output(presentLabel(created), formatLabel);
     },
     help: `Usage: zinn label create <name> [--description <text>] [--color <color>]
 
@@ -36,9 +53,7 @@ Example: zinn label create bug --description "Unexpected behavior" --color red`,
   list: {
     run: (args) => {
       parseArgs({ args, strict: true, allowPositionals: false });
-      for (const entry of label.getAll()) {
-        console.info(`${entry.name} | ${entry.color} | ${entry.description}`);
-      }
+      output(label.getAll().map(presentLabel), (labels) => labels.map(formatLabel).join("\n"));
     },
     help: `Usage: zinn label list
 
@@ -55,16 +70,16 @@ List all global label definitions.`,
         quit(`A label with name "${props.name}" does not exist`);
       }
 
-      const canDelete = confirm(
+      const canDelete = confirmAction(
         `Are you sure you want to delete label "${labelMatch.name}" and remove it from all tasks?`,
       );
       if (!canDelete) {
-        console.info(`Deletion cancelled for label "${labelMatch.name}"`);
+        output(presentLabel(labelMatch), (l) => `Deletion cancelled for label "${l.name}"`);
         return;
       }
 
       const deleted = label.delete(props);
-      console.info(`Deleted label "${deleted.name}"`);
+      output(presentLabel(deleted), (l) => `Deleted label "${l.name}"`);
     },
     help: `Usage: zinn label delete <name>
 

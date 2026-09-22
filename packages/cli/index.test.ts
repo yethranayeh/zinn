@@ -167,15 +167,16 @@ test("every command help exits cleanly instead of running the command", () => {
 test("project create seeds the default columns", () => {
   expect(runZinn(["project", "create", "WIP", "--name", "Work"]).code).toBe(0);
 
-  const listed = runZinn(["project", "column", "list", "WIP"]);
+  const listed = runZinn(["project", "column", "list", "WIP", "--json"]);
 
   expect(listed.code).toBe(0);
-  // #TODO(refactor): `project column list` prints a raw JS array via `console.info`,
-  // #TODO so this asserts on inspect formatting rather than a real output contract.
-  // #TODO Tighten once `--json` lands (see the output-contract TODO below).
-  expect(listed.stdout).toContain("Backlog");
-  expect(listed.stdout).toContain("In Progress");
-  expect(listed.stdout).toContain("Done");
+  expect(JSON.parse(listed.stdout)).toEqual([
+    { name: "Backlog" },
+    { name: "TODO" },
+    { name: "In Progress" },
+    { name: "Review" },
+    { name: "Done" },
+  ]);
 });
 
 test("project create requires a key", () => {
@@ -1456,26 +1457,25 @@ test("task mutations print the resulting entity", () => {
   });
 });
 
-// --- NOT YET TESTABLE
-
-// #TODO(build): empty-string arguments bypass the `== null` guards in both
-// #TODO routers, so `zinn task create WIP --title ""` creates a nameless task. The
-// #TODO routers already carry a "do empty strings bypass this check?" TODO.
-test.todo("empty-string arguments are rejected", () => {
+// ? Empty strings pass the routers' `== null` guards; core's validation rejects them.
+test("empty-string arguments are rejected", () => {
   runZinn(["project", "create", "EMPTY", "--name", "Empty"]);
 
-  expect(runZinn(["task", "create", "EMPTY", "--title", ""]).code).toBe(1);
-  expect(runZinn(["project", "create", "", "--name", ""]).code).toBe(1);
+  const blankTitle = runZinn(["task", "create", "EMPTY", "--title", ""]);
+  expect(blankTitle.code).toBe(1);
+  expect(blankTitle.stderr).toContain("Task title cannot be blank");
+
+  const blankProject = runZinn(["project", "create", "", "--name", ""]);
+  expect(blankProject.code).toBe(1);
+  expect(blankProject.stderr).toContain("Project key must start with a letter");
 });
 
-// #TODO(build): the `--json` output contract from NOTES.md ("Output contract")
-// #TODO is decided but unimplemented. Every assertion above matches substrings
-// #TODO of human-readable output, which will break the moment formatting or
-// #TODO colors land.
-// #TODO Do not assert merely that stdout is JSON-parseable: `console.info` renders
-// #TODO a flat string array as `[ "Backlog", ... ]`, which parses by coincidence.
-// #TODO Assert the entity shape instead, as below.
-test.todo("--json emits machine-readable output on read commands", () => {
+// --- NOT YET TESTABLE
+
+// ? Do not assert merely that stdout is JSON-parseable: `console.info` renders
+// ? a flat string array as `[ "Backlog", ... ]`, which parses by coincidence.
+// ? Assert the entity shape instead.
+test("--json emits machine-readable output on read commands", () => {
   runZinn(["project", "create", "JSON", "--name", "Json"]);
 
   const result = runZinn(["project", "column", "list", "JSON", "--json"]);
@@ -1484,6 +1484,77 @@ test.todo("--json emits machine-readable output on read commands", () => {
   const parsed = JSON.parse(result.stdout);
   expect(parsed).toBeArray();
   expect(parsed[0]).toMatchObject({ name: "Backlog" });
+});
+
+test("--json prints the created entity on write commands, wherever the flag is placed", () => {
+  withIsolatedZinnDir((testDir) => {
+    const project = runZinn(["project", "create", "--json", "WEB", "--name", "Web"], testDir);
+    expect(JSON.parse(project.stdout)).toEqual({ key: "WEB", name: "Web" });
+
+    const created = runZinn(["task", "create", "WEB", "--title", "Ship it", "--json"], testDir);
+
+    expect(created.code).toBe(0);
+    expect(JSON.parse(created.stdout)).toEqual({
+      key: "WEB-1",
+      status: "Active",
+      column: "Backlog",
+      title: "Ship it",
+      description: null,
+      priority: null,
+      labels: [],
+    });
+  });
+});
+
+test("--json combines a task and its relations into one document on task view", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "WEB"], testDir);
+    runZinn(["task", "create", "WEB", "--title", "API"], testDir);
+    runZinn(["task", "create", "WEB", "--title", "UI"], testDir);
+    runZinn(["task", "relation", "create", "WEB-2", "WEB-1", "--type", "dependency"], testDir);
+
+    const viewed = JSON.parse(runZinn(["task", "view", "WEB-2", "--json"], testDir).stdout);
+
+    expect(viewed).toMatchObject({ key: "WEB-2", title: "UI" });
+    expect(viewed.relations).toEqual([
+      {
+        type: "dependency",
+        direction: "outgoing",
+        task: { key: "WEB-1", title: "API", status: "Active" },
+      },
+    ]);
+  });
+});
+
+test("--json prints an empty array for empty lists, while text output stays empty", () => {
+  withIsolatedZinnDir((testDir) => {
+    expect(runZinn(["project", "list"], testDir).stdout).toBe("");
+    expect(JSON.parse(runZinn(["project", "list", "--json"], testDir).stdout)).toEqual([]);
+    expect(JSON.parse(runZinn(["label", "list", "--json"], testDir).stdout)).toEqual([]);
+  });
+});
+
+test("--json reports errors as JSON on stderr and leaves stdout empty", () => {
+  const result = runZinn(["project", "create", "--json"]);
+
+  expect(result.code).toBe(1);
+  expect(result.stdout).toBe("");
+  expect(JSON.parse(result.stderr)).toEqual({
+    error: { message: "Project key must be specified" },
+  });
+});
+
+test("--json refuses commands that ask for confirmation without deleting anything", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "WEB"], testDir);
+
+    const result = runZinnWithConfirmation(["project", "delete", "WEB", "--json"], testDir);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(JSON.parse(result.stderr).error.message).toContain("--json");
+    expect(runZinn(["project", "list"], testDir).stdout).toBe("WEB | WEB\n");
+  });
 });
 
 // #TODO(build): the exit-code table from NOTES.md ("Output contract", still

@@ -1,6 +1,6 @@
 import type { Command, ParsedRoute, RouteDef } from "../types";
 
-import { isHelpFlag, quit } from "../lib";
+import { isHelpFlag, isJsonFlag, quit, setOutputMode } from "../lib";
 
 function getIsRunnable(obj: any): obj is Command {
   return Object.hasOwn(obj, "run");
@@ -45,7 +45,14 @@ export function parseRoutes(routesDef: RouteDef, prefix?: string) {
   return routeDefinitions;
 }
 
-function route(parsedRoutes: Array<ParsedRoute>, args: Array<string>) {
+function route(parsedRoutes: Array<ParsedRoute>, rawArgs: Array<string>) {
+  // Stripped here so commands with strict `parseArgs` never see an unknown "--json" option
+  const args = rawArgs.filter((arg) => !isJsonFlag(arg));
+
+  if (args.length !== rawArgs.length) {
+    setOutputMode("json");
+  }
+
   const isHelpRequest = isHelpFlag(args.at(-1) ?? "");
 
   if (isHelpRequest && args.length > 1) {

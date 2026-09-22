@@ -1,42 +1,74 @@
+import type { RelationCreateInput } from "@zinn-dev/core";
 import type { RouteDef } from "../types";
 
 import { parseArgs } from "node:util";
 import { relation, relationCreateSchema, task } from "@zinn-dev/core";
-import { quit, validatePositionalCount, validateUniqueOptions } from "../lib";
+import { output, quit, validatePositionalCount, validateUniqueOptions } from "../lib";
 
-export function formatRelations(taskKey: string) {
+// TODO: maybe core should export it as a reusable if we need it in more places
+type RelationType = RelationCreateInput["relation_type"];
+
+type PresentedRelation = {
+  type: RelationType;
+  direction: "outgoing" | "incoming" | null;
+  task: { key: string; title: string; status: "Active" | "Archived" };
+};
+
+export function presentRelations(taskKey: string): Array<PresentedRelation> {
   const taskMatch = task.getByKey(taskKey);
 
-  return relation
-    .getAll(taskKey, { include: { tasks: true } })
+  return relation.getAll(taskKey, { include: { tasks: true } }).map((entry) => {
+    const isSource = entry.source_task_id === taskMatch.id;
+    const other = isSource ? entry.target : entry.source;
+    if (other == null) {
+      throw new Error("Connected task details were not included in the relation");
+    }
+
+    let direction: PresentedRelation["direction"] = null;
+    if (entry.relation_type !== "related") {
+      direction = isSource ? "outgoing" : "incoming";
+    }
+
+    return {
+      type: entry.relation_type,
+      direction,
+      task: {
+        key: other.key,
+        title: other.title,
+        status: other.archived_at == null ? "Active" : "Archived",
+      },
+    };
+  });
+}
+
+export function formatRelations(relations: Array<PresentedRelation>) {
+  return relations
     .map((entry) => {
-      const isSource = entry.source_task_id === taskMatch.id;
-      const other = isSource ? entry.target : entry.source;
-      if (other == null) {
-        throw new Error("Connected task details were not included in the relation");
-      }
+      const isOutgoing = entry.direction === "outgoing";
 
       let label: string;
-      switch (entry.relation_type) {
+      switch (entry.type) {
         case "related": {
           label = "Related to";
           break;
         }
         case "dependency": {
-          label = isSource ? "Depends on" : "Depended on by";
+          label = isOutgoing ? "Depends on" : "Depended on by";
           break;
         }
         case "duplicate": {
-          label = isSource ? "Duplicate of" : "Duplicated by";
+          label = isOutgoing ? "Duplicate of" : "Duplicated by";
           break;
         }
       }
 
-      const archived = other.archived_at == null ? "" : " | Archived";
-      return `${label} | ${other.key} | ${other.title}${archived}`;
+      const archived = entry.task.status === "Archived" ? " | Archived" : "";
+      return `${label} | ${entry.task.key} | ${entry.task.title}${archived}`;
     })
     .join("\n");
 }
+
+type PresentedRelationChange = { type: RelationType; source: string; target: string };
 
 function parseRelationArgs(args: string[]) {
   const { values, positionals, tokens } = parseArgs({
@@ -70,7 +102,13 @@ export const relationRouter = {
 
       const source = task.getByKey(props.sourceTaskKey);
       const target = task.getByKey(props.targetTaskKey);
-      console.info(`Deleted ${props.relation_type} relation from ${source.key} to ${target.key}`);
+      const deleted: PresentedRelationChange = {
+        type: props.relation_type,
+        source: source.key,
+        target: target.key,
+      };
+
+      output(deleted, (r) => `Deleted ${r.type} relation from ${r.source} to ${r.target}`);
     },
     help: `Usage: zinn task relation delete <source-task-key> <target-task-key> --type <type>
 
@@ -96,14 +134,21 @@ Example: zinn task relation delete APP-1 APP-2 --type dependency`,
 
       const source = task.getByKey(sourceTaskKey);
       const target = task.getByKey(targetTaskKey);
+      const created: PresentedRelationChange = {
+        type: props.relation_type,
+        source: source.key,
+        target: target.key,
+      };
 
-      const label = {
-        related: "related to",
-        dependency: "depends on",
-        duplicate: "is a duplicate of",
-      }[props.relation_type];
+      output(created, (r) => {
+        const label = {
+          related: "related to",
+          dependency: "depends on",
+          duplicate: "is a duplicate of",
+        }[r.type];
 
-      console.info(`${source.key} ${label} ${target.key}`);
+        return `${r.source} ${label} ${r.target}`;
+      });
     },
     help: `Usage: zinn task relation create <source-task-key> <target-task-key> --type <type>
 
@@ -121,11 +166,7 @@ Example: zinn task relation create APP-1 APP-2 --type dependency`,
     run: (args) => {
       const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
       validatePositionalCount(positionals, 1, "Provide exactly one task key");
-      const output = formatRelations(positionals[0]!);
-
-      if (output.length > 0) {
-        console.info(output);
-      }
+      output(presentRelations(positionals[0]!), formatRelations);
     },
     help: `Usage: zinn task relation list <task-key>
 

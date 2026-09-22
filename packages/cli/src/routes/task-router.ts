@@ -1,10 +1,17 @@
+import type { TaskPriority } from "@zinn-dev/core";
 import type { RouteDef } from "../types";
 
 import { parseArgs } from "node:util";
 import { task, project, column } from "@zinn-dev/core";
 
-import { quit, validatePositionalCount, validateUniqueOptions } from "../lib";
-import { formatRelations, relationRouter } from "./relation-router";
+import {
+  confirmAction,
+  output,
+  quit,
+  validatePositionalCount,
+  validateUniqueOptions,
+} from "../lib";
+import { formatRelations, presentRelations, relationRouter } from "./relation-router";
 import { TASK_DESCRIPTION_PREVIEW_LENGTH } from "../constant";
 
 function formatTaskDescriptionPreview(description: string | null) {
@@ -21,25 +28,43 @@ function formatTaskDescriptionPreview(description: string | null) {
   return `${normalizedDescription.slice(0, TASK_DESCRIPTION_PREVIEW_LENGTH - 1).trimEnd()}…`;
 }
 
+type PresentedTask = {
+  key: string;
+  status: "Active" | "Archived";
+  column: string;
+  title: string;
+  description: string | null;
+  priority: TaskPriority | null;
+  labels: Array<string>;
+};
+
+function presentTask(taskMatch: ReturnType<typeof task.getByKey>): PresentedTask {
+  return {
+    key: taskMatch.key,
+    status: taskMatch.archived_at == null ? "Active" : "Archived",
+    column: column.getById(taskMatch.column_id)!.name,
+    title: taskMatch.title,
+    description: taskMatch.description,
+    priority: taskMatch.priority,
+    labels: task.label.getAll(taskMatch.key).map((label) => label.name),
+  };
+}
+
 // TODO: a CLI row formatter that accepts text columns and joins them with " | " would be useful
 // Reuse it across task list/view and other command output in a separate change.
-function formatTask(
-  taskMatch: ReturnType<typeof task.getByKey>,
-  options: { showsStatus?: boolean } = {},
-) {
-  const taskColumn = column.getById(taskMatch.column_id)!;
-  const taskKey = taskMatch.key;
-  const status = options.showsStatus
-    ? ` | ${taskMatch.archived_at == null ? "Active" : "Archived"}`
-    : "";
-  const description = taskMatch.description == null ? "" : ` | ${taskMatch.description}`;
+function formatTask(presented: PresentedTask, options: { showsStatus?: boolean } = {}) {
+  const status = options.showsStatus ? ` | ${presented.status}` : "";
+  const description = presented.description == null ? "" : ` | ${presented.description}`;
 
-  const priority = taskMatch.priority == null ? "" : ` | Priority: ${taskMatch.priority}`;
-  const labels = task.label.getAll(taskKey);
+  const priority = presented.priority == null ? "" : ` | Priority: ${presented.priority}`;
   const labelText =
-    labels.length === 0 ? "" : ` | Labels: ${labels.map((label) => label.name).join(", ")}`;
+    presented.labels.length === 0 ? "" : ` | Labels: ${presented.labels.join(", ")}`;
 
-  return `${taskKey}${status} | ${taskColumn.name} | ${taskMatch.title}${description}${priority}${labelText}`;
+  return `${presented.key}${status} | ${presented.column} | ${presented.title}${description}${priority}${labelText}`;
+}
+
+function formatTaskWithStatus(presented: PresentedTask) {
+  return formatTask(presented, { showsStatus: true });
 }
 
 export const taskRouter = {
@@ -91,7 +116,7 @@ export const taskRouter = {
         removeLabelNames: values["remove-label"],
       });
 
-      console.info(formatTask(editedTask));
+      output(presentTask(editedTask), formatTask);
     },
     help: `Usage: zinn task edit <task-key> [--title <text>] [--description <text>] [--priority <low|medium|high|urgent|none>] [--add-label <name>] [--remove-label <name>]
 
@@ -148,7 +173,7 @@ Example: zinn task edit MDR-1 --title "Meet the quarterly refinement quota"`,
         priority: parsePriority(values.priority),
         labelNames: values.label,
       });
-      console.info(formatTask(createdTask));
+      output(presentTask(createdTask), formatTask);
     },
     help: `Usage: zinn task create <project-key> --title <text> [--description <text>] [--priority <low|medium|high|urgent|none>] [--label <name>]
 
@@ -179,45 +204,27 @@ Example: zinn task create MDR --title "Refine the numbers" --description "Meet t
 
       const tasks = task.getAll({ projectKey, archive });
 
-      if (tasks.length === 0) {
-        return;
-      }
+      output(tasks.map(presentTask), (presentedTasks) => {
+        const longestKeyLength = presentedTasks.reduce(
+          (prev, current) => Math.max(prev, current.key.length),
+          0,
+        );
+        const longestStatusLength = presentedTasks.reduce(
+          (prev, current) => Math.max(prev, current.status.length),
+          0,
+        );
 
-      const presentableTasks = tasks.map((t) => {
-        const taskColumn = column.getById(t.column_id)!;
-        const taskKey = t.key;
-
-        return {
-          id: taskKey,
-          status: t.archived_at == null ? "Active" : "Archived",
-          title: t.title,
-          description: t.description,
-          priority: t.priority,
-          column: taskColumn.name,
-        };
-      });
-
-      const longestIdLength = presentableTasks.reduce(
-        (prev, current) => Math.max(prev, current.id.length),
-        0,
-      );
-      const longestStatusLength = presentableTasks.reduce(
-        (prev, current) => Math.max(prev, current.status.length),
-        0,
-      );
-
-      console.info(
-        presentableTasks
+        return presentedTasks
           .map((t) => {
             // TODO: console output formatting for standardizied output
             const status = showsAll ? ` | ${t.status.padEnd(longestStatusLength)}` : "";
             const descriptionPreview = formatTaskDescriptionPreview(t.description);
             const description = t.description == null ? "" : ` | ${descriptionPreview}`;
             const priority = t.priority == null ? "" : ` | Priority: ${t.priority}`;
-            return `${t.id.padEnd(longestIdLength)}${status} | ${t.column} | ${t.title}${description}${priority}`;
+            return `${t.key.padEnd(longestKeyLength)}${status} | ${t.column} | ${t.title}${description}${priority}`;
           })
-          .join("\n"),
-      );
+          .join("\n");
+      });
     },
     help: `Usage: zinn task list [project-key] [--archived | --all]
 
@@ -235,12 +242,14 @@ Example: zinn task list MDR --all`,
       }
 
       const taskMatch = task.getByKey(taskKey);
-      console.info(formatTask(taskMatch));
+      const viewedTask = { ...presentTask(taskMatch), relations: presentRelations(taskKey) };
 
-      const relations = formatRelations(taskKey);
-      if (relations.length > 0) {
-        console.info(`\nRelations:\n${relations}`);
-      }
+      output(viewedTask, (t) => {
+        const relations = formatRelations(t.relations);
+        return relations.length > 0
+          ? `${formatTask(t)}\n\nRelations:\n${relations}`
+          : formatTask(t);
+      });
     },
     help: `Usage: zinn task view <task-key>
 
@@ -261,7 +270,7 @@ Example: zinn task view MDR-1`,
       }
 
       const movedTask = task.move({ taskKey, targetColumn });
-      console.info(formatTask(movedTask));
+      output(presentTask(movedTask), formatTask);
     },
     help: `Usage: zinn task move <task-key> <target-column>
 
@@ -298,7 +307,7 @@ Example: zinn task move MDR-1 "In Progress"`,
           }
 
           const orderedTask = task.order({ taskKey, direction, targetTaskKey });
-          console.info(formatTask(orderedTask));
+          output(presentTask(orderedTask), formatTask);
           return;
         }
         case "top":
@@ -310,7 +319,7 @@ Example: zinn task move MDR-1 "In Progress"`,
           }
 
           const orderedTask = task.order({ taskKey, direction });
-          console.info(formatTask(orderedTask));
+          output(presentTask(orderedTask), formatTask);
           return;
         }
         default:
@@ -336,14 +345,14 @@ Example: zinn task order MDR-2 before MDR-1`,
 
       try {
         const taskMatch = task.getByKey(taskKey);
-        const canDelete = confirm(`Are you sure you want to delete ${taskKey}?`);
+        const canDelete = confirmAction(`Are you sure you want to delete ${taskKey}?`);
+        const presented = presentTask(taskMatch);
 
         if (canDelete) {
-          const formattedTask = formatTask(taskMatch);
           task.delete(taskKey);
-          console.info(`Deleted ${formattedTask}`);
+          output(presented, (t) => `Deleted ${formatTask(t)}`);
         } else {
-          console.info(`Deletion cancelled for ${formatTask(taskMatch)}`);
+          output(presented, (t) => `Deletion cancelled for ${formatTask(t)}`);
         }
       } catch (err: any) {
         quit(err?.message ?? "Something went wrong");
@@ -364,7 +373,7 @@ Example: zinn task delete MDR-1`,
       }
 
       const archivedTask = task.archive(taskKey);
-      console.info(formatTask(archivedTask, { showsStatus: true }));
+      output(presentTask(archivedTask), formatTaskWithStatus);
     },
     help: `Usage: zinn task archive <task-key>
 
@@ -381,7 +390,7 @@ Example: zinn task archive MDR-1`,
       }
 
       const unarchivedTask = task.unarchive(taskKey);
-      console.info(formatTask(unarchivedTask, { showsStatus: true }));
+      output(presentTask(unarchivedTask), formatTaskWithStatus);
     },
     help: `Usage: zinn task unarchive <task-key>
 
@@ -394,7 +403,7 @@ Example: zinn task unarchive MDR-1`,
     add: {
       run: (args) => {
         const props = parseTaskLabelArgs(args);
-        console.info(formatTask(task.label.add(props)));
+        output(presentTask(task.label.add(props)), formatTask);
       },
       help: `Usage: zinn task label add <task-key> <label-name> [label-name ...]
 
@@ -403,7 +412,7 @@ Add existing labels to a task. Already attached labels are unchanged.`,
     remove: {
       run: (args) => {
         const props = parseTaskLabelArgs(args);
-        console.info(formatTask(task.label.remove(props)));
+        output(presentTask(task.label.remove(props)), formatTask);
       },
       help: `Usage: zinn task label remove <task-key> <label-name> [label-name ...]
 

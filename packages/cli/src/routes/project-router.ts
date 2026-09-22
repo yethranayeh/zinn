@@ -3,7 +3,23 @@ import type { RouteDef } from "../types";
 import { parseArgs } from "node:util";
 
 import { column, project } from "@zinn-dev/core";
-import { quit, validatePositionalCount, validateUniqueOptions } from "../lib";
+import {
+  confirmAction,
+  output,
+  quit,
+  validatePositionalCount,
+  validateUniqueOptions,
+} from "../lib";
+
+type PresentedProject = { key: string; name: string };
+
+function presentProject(projectMatch: PresentedProject): PresentedProject {
+  return { key: projectMatch.key, name: projectMatch.name };
+}
+
+function formatProject(presented: PresentedProject) {
+  return `${presented.key} | ${presented.name}`;
+}
 
 export const projectRouter = {
   edit: {
@@ -31,7 +47,7 @@ export const projectRouter = {
       }
 
       const editedProject = project.edit({ projectKey, name: values.name });
-      console.info(`${editedProject.key} | ${editedProject.name}`);
+      output(presentProject(editedProject), formatProject);
     },
     help: `Usage: zinn project edit <project-key> --name <text>
 
@@ -65,7 +81,7 @@ Example: zinn project edit MDR --name "Macrodata Refinement"`,
 
       try {
         const createdProject = project.create({ key: projectKey, name: values.name });
-        console.info(`${createdProject.key} | ${createdProject.name}`);
+        output(presentProject(createdProject), formatProject);
       } catch (err: any) {
         quit(err?.message ?? "Something went wrong");
       }
@@ -83,16 +99,17 @@ Example: zinn project create MDR --name "Macrodata Refinement"`,
   list: {
     run: () => {
       const projects = project.getAll();
-      if (projects.length === 0) {
-        return;
-      }
 
-      const longestKeyLength = projects.reduce(
-        (prev, current) => Math.max(prev, current.key.length),
-        0,
-      );
+      output(projects.map(presentProject), (presentedProjects) => {
+        const longestKeyLength = presentedProjects.reduce(
+          (prev, current) => Math.max(prev, current.key.length),
+          0,
+        );
 
-      console.info(projects.map((p) => `${p.key.padEnd(longestKeyLength)} | ${p.name}`).join("\n"));
+        return presentedProjects
+          .map((p) => `${p.key.padEnd(longestKeyLength)} | ${p.name}`)
+          .join("\n");
+      });
     },
     help: `Usage: zinn project list
 
@@ -115,15 +132,15 @@ Example: zinn project list`,
           throw new Error(`Project with key "${projectKey}" does not exist!`);
         }
 
-        const canDelete = confirm(
+        const canDelete = confirmAction(
           `Are you sure you want to delete ${projectMatch.key} and all of its columns and tasks?`,
         );
 
         if (canDelete) {
           const deletedProject = project.delete(projectKey);
-          console.info(`Deleted ${deletedProject.key} | ${deletedProject.name}`);
+          output(presentProject(deletedProject), (p) => `Deleted ${formatProject(p)}`);
         } else {
-          console.info(`Deletion cancelled for ${projectMatch.key} | ${projectMatch.name}`);
+          output(presentProject(projectMatch), (p) => `Deletion cancelled for ${formatProject(p)}`);
         }
       } catch (err: any) {
         quit(err?.message ?? "Something went wrong");
@@ -148,8 +165,9 @@ Example: zinn project delete MDR`,
         try {
           const createdColumn = column.create({ projectKey, name: columnName });
           const columnProject = project.getById(createdColumn.project_id)!;
+          const presentedColumn = { project: columnProject.key, name: createdColumn.name };
 
-          console.info(`${columnProject.key} | ${createdColumn.name}`);
+          output(presentedColumn, (c) => `${c.project} | ${c.name}`);
         } catch (err: any) {
           quit(err?.message ?? "Something went wrong");
         }
@@ -169,7 +187,8 @@ Example: zinn project column create MDR "Boardlog"`,
 
         // TODO: attach per-column task count
         // TODO: terminal formatting
-        console.info(column.getAllByProjectKey(projectKey).map((c) => c.name));
+        const columns = column.getAllByProjectKey(projectKey).map((c) => ({ name: c.name }));
+        output(columns, (presentedColumns) => presentedColumns.map((c) => c.name).join("\n"));
       },
       help: `Usage: zinn project column list <project-key>
 

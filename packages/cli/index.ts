@@ -11,6 +11,7 @@ Usage: zinn <command>
 
 Options:
   -h, --help  Show help
+  --json      Print command output as JSON
 
 Commands:
   project create
