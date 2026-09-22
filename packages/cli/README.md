@@ -93,6 +93,8 @@ Label names are case-sensitive, and the whitespace from input is trimmed.
 
 Descriptions default to an empty string and the label colors default to white. Available colors are _red_, _green_, _yellow_, _blue_, _magenta_, _cyan_, _white_, and _gray_.
 
+`label create` and `label list` print each label name in its color. `--json` output shows the color as a value instead.
+
 Task creation and edits apply content and label changes together, or roll back together on failure.
 Note that label changes also update the task's modification timestamp. Archived tasks can also have their labels edited.
 

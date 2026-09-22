@@ -1,7 +1,7 @@
 import type { Label } from "@zinn-dev/core";
 import type { RouteDef } from "../types";
 
-import { parseArgs } from "node:util";
+import { parseArgs, styleText } from "node:util";
 import { label, labelCreateSchema, labelDeleteSchema } from "@zinn-dev/core";
 
 import {
@@ -19,7 +19,8 @@ function presentLabel(labelMatch: Label): PresentedLabel {
 }
 
 function formatLabel(presented: PresentedLabel) {
-  return `${presented.name} | ${presented.color} | ${presented.description}`;
+  const coloredName = styleText(presented.color, presented.name);
+  return `${coloredName} | ${presented.description}`;
 }
 
 export const labelRouter = {

@@ -1727,7 +1727,7 @@ test("global label workflows support repeated create/edit flags and preserve tas
     }
     expect(run("label", "create", "bug").stderr).toContain("already exists");
     expect(run("label", "create", "invalid", "--color", "purple").code).toBe(1);
-    expect(run("label", "list").stdout).toContain("bug | red | Details");
+    expect(run("label", "list").stdout).toContain("\x1b[31mbug\x1b[39m | Details");
     const created = run("task", "create", "APP", "--title", "Login", "--description", "", "--label", "bug", "--label", "auth");
     expect(created.code).toBe(0);
     expect(created.stdout).toContain("Labels: auth, bug");
@@ -1751,6 +1751,31 @@ test("global label workflows support repeated create/edit flags and preserve tas
       expect(run("task", "create", ...args).code).toBe(1);
     }
     expect(run("task", "create", "APP", "--title=--example").stdout).toContain("APP-2");
+  });
+});
+
+test("label text output colors the name instead of naming the color, while JSON keeps the color value", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = (...args: string[]) => runZinn(args, dir);
+
+    expect(run("label", "create", "bug", "--color", "red", "--description", "Broken").stdout).toBe(
+      "\x1b[31mbug\x1b[39m | Broken\n",
+    );
+    expect(run("label", "create", "later").stdout).toBe("\x1b[37mlater\x1b[39m | \n");
+    expect(run("label", "create", "chore", "--color", "gray").stdout).toBe("\x1b[90mchore\x1b[39m | \n");
+
+    const listed = run("label", "list").stdout;
+    for (const colorName of ["red", "white", "gray"]) {
+      expect(listed).not.toContain(colorName);
+    }
+
+    const created = run("label", "create", "docs", "--color", "cyan", "--json").stdout;
+    expect(created).not.toContain("\x1b[");
+    expect(JSON.parse(created)).toEqual({ name: "docs", color: "cyan", description: "" });
+
+    const listedJson = run("label", "list", "--json").stdout;
+    expect(listedJson).not.toContain("\x1b[");
+    expect(JSON.parse(listedJson)).toContainEqual({ name: "bug", color: "red", description: "Broken" });
   });
 });
 
