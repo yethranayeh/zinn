@@ -1,8 +1,10 @@
 #!/usr/bin/env bun
 
+import { isHelpFlag } from "./src/lib";
+
 const args = process.argv.slice(2);
 
-if (args.length === 0 || ["-h", "--help"].includes(args[0]!)) {
+if (args.length === 0 || isHelpFlag(args[0]!)) {
   console.info(`ZINN - A kanban workflow in the terminal
 
 Usage: zinn <command>

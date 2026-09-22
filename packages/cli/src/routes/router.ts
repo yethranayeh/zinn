@@ -1,6 +1,6 @@
 import type { Command, ParsedRoute, RouteDef } from "../types";
 
-import { quit } from "../lib";
+import { isHelpFlag, quit } from "../lib";
 
 function getIsRunnable(obj: any): obj is Command {
   return Object.hasOwn(obj, "run");
@@ -46,7 +46,7 @@ export function parseRoutes(routesDef: RouteDef, prefix?: string) {
 }
 
 function route(parsedRoutes: Array<ParsedRoute>, args: Array<string>) {
-  const isHelpRequest = ["-h", "--help"].includes(args.at(-1) ?? "");
+  const isHelpRequest = isHelpFlag(args.at(-1) ?? "");
 
   if (isHelpRequest && args.length > 1) {
     const namespace = toCommand(args.slice(0, -1));
@@ -82,8 +82,7 @@ function route(parsedRoutes: Array<ParsedRoute>, args: Array<string>) {
   }
 
   const commandArgs = args.slice(nestingLevel);
-  const isCommandHelpRequest =
-    commandArgs.length === 1 && ["-h", "--help"].includes(commandArgs[0]!);
+  const isCommandHelpRequest = commandArgs.length === 1 && isHelpFlag(commandArgs[0]!);
 
   if (isCommandHelpRequest) {
     console.info(match.help);

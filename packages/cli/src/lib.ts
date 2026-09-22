@@ -33,3 +33,7 @@ export function validateUniqueOptions(tokens: ParsedTokens, repeatableOptions: A
     parsedArgs.add(token.name);
   }
 }
+
+export function isHelpFlag(flag: string) {
+  return ["-h", "--help"].includes(flag);
+}
