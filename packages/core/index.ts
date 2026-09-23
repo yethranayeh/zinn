@@ -123,9 +123,7 @@ export const column = {
     );
 
     if (existingColumn != null) {
-      throw new Error(
-        `Column with name "${column.name}" already exists in project "${project.key}"!`,
-      );
+      throw new Error(`There is already a "${column.name}" column`);
     }
 
     const lastColOrder = allProjectColumns[allProjectColumns.length - 1]?.column_order ?? null;
@@ -332,9 +330,8 @@ export const task = {
 
     if (columnMatch == null) {
       // TODO: maybe a `did you mean` type of fuzzy check for misspelllings
-      throw new Error(
-        `Column "${props.targetColumn}" does not exist in task "${props.taskKey}"'s project!`,
-      );
+      const projectMatch = dbProject.getById(taskMatch.project_id)!;
+      throw new Error(`${projectMatch.name} does not have a column named "${props.targetColumn}"`);
     }
 
     if (columnMatch.id === taskMatch.column_id) {

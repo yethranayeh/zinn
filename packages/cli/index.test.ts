@@ -243,7 +243,7 @@ test("project column create rejects a duplicate name regardless of casing", () =
 
     expect(duplicate.code).toBe(1);
     expect(duplicate.stderr).toContain(
-      `Column with name "later" already exists in project "COL"!`,
+      `There is already a "later" column`,
     );
     withTestDb(testDir, (db) => {
       const matches = db
@@ -790,7 +790,7 @@ test("task move rejects a column outside the task's project", () => {
 
     expect(result.code).toBe(1);
     expect(result.stderr).toContain(
-      `Column "External" does not exist in task "ORIGIN-1"'s project!`,
+      `Origin does not have a column named "External"`,
     );
     expect(runZinn(["task", "view", "ORIGIN-1"], testDir).stdout).toContain(
       `ORIGIN-1 | ${GRAY_BACKLOG} | stationary task`,
