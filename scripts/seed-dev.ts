@@ -16,6 +16,11 @@ for (const databaseFile of [DB_PATH, `${DB_PATH}-wal`, `${DB_PATH}-shm`]) {
 }
 
 const { column, label, project, relation, task } = await import("../packages/core/index.ts");
+type Actor = import("../packages/core/index.ts").Actor;
+
+// Two actors so activity history shows both kinds.
+const seedHuman: Actor = { name: "Dev Human", email: "dev@example.com", kind: "human" };
+const seedAgent: Actor = { name: "claude-code", email: null, kind: "agent" };
 
 function createProject(props: { key: string; name: string }) {
   project.create(props);
@@ -34,7 +39,7 @@ function createTask(
   description: string | null = null,
   labelNames: string[] = [],
 ) {
-  return task.create({ project_id: projectId, title, description, labelNames });
+  return task.create({ project_id: projectId, title, description, labelNames }, seedHuman);
 }
 
 // Shared labels make it easy to explore classification across projects.
@@ -63,16 +68,16 @@ createTask(app.id, "Show keyboard shortcuts", "Keep common actions discoverable 
 createTask(app.id, "Write a first-run walkthrough", "Walk through creating a project and finishing a task", ["docs"]);
 createTask(app.id, "Polish the board walkthrough", "Needs the first working board before examples can be finalized", ["docs", "interface"]);
 
-task.move({ taskKey: "APP-1", targetColumn: "Done" });
-task.move({ taskKey: "APP-2", targetColumn: "Review" });
-task.move({ taskKey: "APP-3", targetColumn: "In Progress" });
-task.move({ taskKey: "APP-4", targetColumn: "Done" });
-task.move({ taskKey: "APP-6", targetColumn: "TODO" });
-task.move({ taskKey: "APP-7", targetColumn: "TODO" });
-task.move({ taskKey: "APP-8", targetColumn: "TODO" });
-task.move({ taskKey: "APP-9", targetColumn: "Blocked" });
+task.move({ taskKey: "APP-1", targetColumn: "Done" }, seedAgent);
+task.move({ taskKey: "APP-2", targetColumn: "Review" }, seedAgent);
+task.move({ taskKey: "APP-3", targetColumn: "In Progress" }, seedAgent);
+task.move({ taskKey: "APP-4", targetColumn: "Done" }, seedAgent);
+task.move({ taskKey: "APP-6", targetColumn: "TODO" }, seedAgent);
+task.move({ taskKey: "APP-7", targetColumn: "TODO" }, seedAgent);
+task.move({ taskKey: "APP-8", targetColumn: "TODO" }, seedAgent);
+task.move({ taskKey: "APP-9", targetColumn: "Blocked" }, seedAgent);
 // Display order is independent of task number; leave several cards to rearrange.
-task.order({ taskKey: "APP-8", direction: "before", targetTaskKey: "APP-6" });
+task.order({ taskKey: "APP-8", direction: "before", targetTaskKey: "APP-6" }, seedAgent);
 
 const site = createProject({ key: "SITE", name: "Zinn Website" });
 column.create({ projectKey: site.key, name: "Icebox" });
@@ -80,30 +85,30 @@ createTask(site.id, "Write the project overview", "Explain what makes Zinn usefu
 createTask(site.id, "Capture terminal screenshots", "Wait for the board layout before capturing images", ["docs", "interface"]);
 createTask(site.id, "Publish installation instructions", "Cover Bun and the zinn executable", ["docs"]);
 createTask(site.id, "Explore an interactive demo", "Revisit after the first documentation release", ["research"]);
-task.move({ taskKey: "SITE-1", targetColumn: "Review" });
-task.move({ taskKey: "SITE-3", targetColumn: "Done" });
-task.move({ taskKey: "SITE-4", targetColumn: "Icebox" });
+task.move({ taskKey: "SITE-1", targetColumn: "Review" }, seedAgent);
+task.move({ taskKey: "SITE-3", targetColumn: "Done" }, seedAgent);
+task.move({ taskKey: "SITE-4", targetColumn: "Icebox" }, seedAgent);
 
 const experiments = createProject({ key: "LAB", name: "Experiments" });
 createTask(experiments.id, "Try a compact task card layout", null, ["research", "interface"]);
 createTask(experiments.id, "Explore activity history", "Keep the first version read-only", ["research"]);
 createTask(experiments.id, "Prototype keyboard navigation", "Superseded by the board navigation task", ["interface"]);
-task.move({ taskKey: "LAB-1", targetColumn: "In Progress" });
-task.move({ taskKey: "LAB-3", targetColumn: "Done" });
-task.archive("LAB-3");
+task.move({ taskKey: "LAB-1", targetColumn: "In Progress" }, seedAgent);
+task.move({ taskKey: "LAB-3", targetColumn: "Done" }, seedAgent);
+task.archive("LAB-3", seedAgent);
 
 // Dependencies: source depends on target. APP-3 shows both outgoing and incoming links.
-relation.create({ sourceTaskKey: "APP-3", targetTaskKey: "APP-1", relation_type: "dependency" });
-relation.create({ sourceTaskKey: "APP-3", targetTaskKey: "APP-2", relation_type: "dependency" });
-relation.create({ sourceTaskKey: "SITE-2", targetTaskKey: "APP-3", relation_type: "dependency" });
-relation.create({ sourceTaskKey: "APP-9", targetTaskKey: "APP-3", relation_type: "dependency" });
+relation.create({ sourceTaskKey: "APP-3", targetTaskKey: "APP-1", relation_type: "dependency" }, seedAgent);
+relation.create({ sourceTaskKey: "APP-3", targetTaskKey: "APP-2", relation_type: "dependency" }, seedAgent);
+relation.create({ sourceTaskKey: "SITE-2", targetTaskKey: "APP-3", relation_type: "dependency" }, seedAgent);
+relation.create({ sourceTaskKey: "APP-9", targetTaskKey: "APP-3", relation_type: "dependency" }, seedAgent);
 
 // Related links are symmetric, including across projects.
-relation.create({ sourceTaskKey: "APP-3", targetTaskKey: "LAB-1", relation_type: "related" });
-relation.create({ sourceTaskKey: "SITE-3", targetTaskKey: "APP-4", relation_type: "related" });
+relation.create({ sourceTaskKey: "APP-3", targetTaskKey: "LAB-1", relation_type: "related" }, seedAgent);
+relation.create({ sourceTaskKey: "SITE-3", targetTaskKey: "APP-4", relation_type: "related" }, seedAgent);
 
 // Duplicate: source is a duplicate of target. Archived tasks remain visible in relations.
-relation.create({ sourceTaskKey: "LAB-3", targetTaskKey: "APP-3", relation_type: "duplicate" });
+relation.create({ sourceTaskKey: "LAB-3", targetTaskKey: "APP-3", relation_type: "duplicate" }, seedAgent);
 
 console.info(`Reset and seeded the development Zinn database at ${DB_PATH}`);
 console.info("Run `bun run dev -- task list` to inspect it.");

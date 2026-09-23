@@ -13,6 +13,7 @@ import {
 } from "../lib";
 import { formatRelations, presentRelations, relationRouter } from "./relation-router";
 import { TASK_DESCRIPTION_PREVIEW_LENGTH } from "../constant";
+import { currentActor } from "../actor";
 
 function formatTaskDescriptionPreview(description: string | null) {
   if (description == null) {
@@ -138,14 +139,17 @@ export const taskRouter = {
         );
       }
 
-      const editedTask = task.edit({
-        taskKey,
-        title: values.title,
-        description: values.description,
-        priority: parsePriority(values.priority),
-        addLabelNames: values["add-label"],
-        removeLabelNames: values["remove-label"],
-      });
+      const editedTask = task.edit(
+        {
+          taskKey,
+          title: values.title,
+          description: values.description,
+          priority: parsePriority(values.priority),
+          addLabelNames: values["add-label"],
+          removeLabelNames: values["remove-label"],
+        },
+        currentActor(),
+      );
 
       output(presentTask(editedTask), formatTask);
     },
@@ -197,13 +201,16 @@ Example: zinn task edit MDR-1 --title "Meet the quarterly refinement quota"`,
       if (projectMatch == null) {
         quit(`Project with key "${project.standardizeKey(projectKey)}" does not exist`);
       }
-      const createdTask = task.create({
-        project_id: projectMatch.id,
-        title: values.title,
-        description: values.description ?? null,
-        priority: parsePriority(values.priority),
-        labelNames: values.label,
-      });
+      const createdTask = task.create(
+        {
+          project_id: projectMatch.id,
+          title: values.title,
+          description: values.description ?? null,
+          priority: parsePriority(values.priority),
+          labelNames: values.label,
+        },
+        currentActor(),
+      );
       output(presentTask(createdTask), formatTask);
     },
     help: `Usage: zinn task create <project-key> --title <text> [--description <text>] [--priority <low|medium|high|urgent|none>] [--label <name>]
@@ -310,7 +317,7 @@ Example: zinn task view MDR-1`,
         quit("Target column must be specified");
       }
 
-      const movedTask = task.move({ taskKey, targetColumn });
+      const movedTask = task.move({ taskKey, targetColumn }, currentActor());
       output(presentTask(movedTask), formatTaskMove);
     },
     help: `Usage: zinn task move <task-key> <target-column>
@@ -349,7 +356,7 @@ Example: zinn task move MDR-1 "In Progress"`,
             quit("Only one target task can be specified");
           }
 
-          const orderedTask = task.order({ taskKey, direction, targetTaskKey });
+          const orderedTask = task.order({ taskKey, direction, targetTaskKey }, currentActor());
           output(presentTask(orderedTask), formatTask);
           return;
         }
@@ -361,7 +368,7 @@ Example: zinn task move MDR-1 "In Progress"`,
             quit(`Order direction "${direction}" does not accept a target task`);
           }
 
-          const orderedTask = task.order({ taskKey, direction });
+          const orderedTask = task.order({ taskKey, direction }, currentActor());
           output(presentTask(orderedTask), formatTask);
           return;
         }
@@ -392,7 +399,7 @@ Example: zinn task order MDR-2 before MDR-1`,
         const presented = presentTask(taskMatch);
 
         if (canDelete) {
-          task.delete(taskKey);
+          task.delete(taskKey, currentActor());
           output(presented, (t) => `Deleted ${formatTask(t)}`);
         } else {
           output(presented, (t) => `Deletion cancelled for ${formatTask(t)}`);
@@ -415,7 +422,7 @@ Example: zinn task delete MDR-1`,
         quit("Task key must be specified");
       }
 
-      const archivedTask = task.archive(taskKey);
+      const archivedTask = task.archive(taskKey, currentActor());
       output(presentTask(archivedTask), formatTaskWithStatus);
     },
     help: `Usage: zinn task archive <task-key>
@@ -432,7 +439,7 @@ Example: zinn task archive MDR-1`,
         quit("Task key must be specified");
       }
 
-      const unarchivedTask = task.unarchive(taskKey);
+      const unarchivedTask = task.unarchive(taskKey, currentActor());
       output(presentTask(unarchivedTask), formatTaskWithStatus);
     },
     help: `Usage: zinn task unarchive <task-key>
@@ -446,7 +453,7 @@ Example: zinn task unarchive MDR-1`,
     add: {
       run: (args) => {
         const props = parseTaskLabelArgs(args);
-        output(presentTask(task.label.add(props)), formatTask);
+        output(presentTask(task.label.add(props, currentActor())), formatTask);
       },
       help: `Usage: zinn task label add <task-key> <label-name> [label-name ...]
 
@@ -455,7 +462,7 @@ Add existing labels to a task. Already attached labels are unchanged.`,
     remove: {
       run: (args) => {
         const props = parseTaskLabelArgs(args);
-        output(presentTask(task.label.remove(props)), formatTask);
+        output(presentTask(task.label.remove(props, currentActor())), formatTask);
       },
       help: `Usage: zinn task label remove <task-key> <label-name> [label-name ...]
 

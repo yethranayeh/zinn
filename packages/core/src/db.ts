@@ -69,6 +69,21 @@ function initDb() {
     PRIMARY KEY (task_id, label_id)
   );`).run();
 
+  // --- ACTIVITY TABLE
+  db.query(`CREATE TABLE IF NOT EXISTS ${DB_TABLE.activity} (
+  id          TEXT PRIMARY KEY,
+  created_at  INTEGER NOT NULL,
+  actor_name  TEXT NOT NULL,
+  actor_email TEXT,
+  actor_kind  TEXT NOT NULL CHECK (actor_kind IN ('human', 'agent')),
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('task')),
+  entity_id   TEXT NOT NULL,
+  action      TEXT NOT NULL CHECK (action IN (
+    'create', 'edit', 'move', 'order', 'archive', 'unarchive', 'delete',
+    'relation_create', 'relation_delete'
+  )),
+  changes     TEXT);`).run();
+
   return db;
 }
 

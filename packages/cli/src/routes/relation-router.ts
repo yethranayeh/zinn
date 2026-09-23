@@ -4,6 +4,7 @@ import type { RouteDef } from "../types";
 import { parseArgs } from "node:util";
 import { relation, relationCreateSchema, task } from "@zinn-dev/core";
 import { output, quit, validatePositionalCount, validateUniqueOptions } from "../lib";
+import { currentActor } from "../actor";
 
 // TODO: maybe core should export it as a reusable if we need it in more places
 type RelationType = RelationCreateInput["relation_type"];
@@ -98,7 +99,7 @@ export const relationRouter = {
   delete: {
     run: (args) => {
       const props = parseRelationArgs(args);
-      relation.delete(props);
+      relation.delete(props, currentActor());
 
       const source = task.getByKey(props.sourceTaskKey);
       const target = task.getByKey(props.targetTaskKey);
@@ -130,7 +131,7 @@ Example: zinn task relation delete APP-1 APP-2 --type dependency`,
       const props = parseRelationArgs(args);
       const { sourceTaskKey, targetTaskKey } = props;
 
-      relation.create(props);
+      relation.create(props, currentActor());
 
       const source = task.getByKey(sourceTaskKey);
       const target = task.getByKey(targetTaskKey);

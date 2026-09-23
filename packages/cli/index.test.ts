@@ -1,7 +1,7 @@
 import { test, expect, afterAll } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 
 // ? End-to-end tests: each case spawns the real bin, so there is no module-level
@@ -1986,5 +1986,46 @@ test("priority persists across CLI creation, editing, listing, clearing, and no-
       expect(row.archived_at).not.toBeNull();
       expect(() => db.run("UPDATE task SET priority = 'critical'")).toThrow();
     });
+  });
+});
+
+// --- ACTIVITY ACTOR
+
+const AGENT_VARIABLES = ["AI_AGENT", "AGENT", "CLAUDECODE", "CODEX_THREAD_ID", "CODEX_SANDBOX", "OPENCODE", "GEMINI_CLI", "CLINE_ACTIVE", "CURSOR_AGENT", "COPILOT_AGENT_SESSION_ID", "CRUSH"];
+
+// ? Agent shells carry these variables, so each case starts from an env without them.
+function runZinnAs(args: Array<string>, testDir: string, env: Record<string, string>) {
+  const baseEnv: Record<string, string | undefined> = { ...process.env, ZINN_DIR: testDir, GIT_CONFIG_NOSYSTEM: "1" };
+  for (const variable of AGENT_VARIABLES) {
+    delete baseEnv[variable];
+  }
+
+  // ? cwd outside any repository, so only the identity file given per case applies.
+  const proc = Bun.spawnSync(["bun", CLI_PATH, ...args], { cwd: testDir, env: { ...baseEnv, ...env } });
+  return { stderr: proc.stderr.toString(), code: proc.exitCode };
+}
+
+function lastActor(testDir: string) {
+  return withTestDb(testDir, (db) =>
+    db.query<{ action: string; actor_name: string; actor_email: string | null; actor_kind: string }, []>(
+      "SELECT action, actor_name, actor_email, actor_kind FROM activity ORDER BY id DESC LIMIT 1",
+    ).get(),
+  );
+}
+
+test("mutations record the invoking agent, then the git identity, then the OS user", () => {
+  withIsolatedZinnDir((dir) => {
+    const identityFile = join(dir, "gitconfig");
+    writeFileSync(identityFile, "[user]\n\tname = Git Person\n\temail = git@example.com\n");
+
+    expect(runZinnAs(["project", "create", "ACT"], dir, {}).code).toBe(0);
+    expect(runZinnAs(["task", "create", "ACT", "--title", "Tracked"], dir, { AI_AGENT: "test-agent_1-0" }).code).toBe(0);
+    expect(lastActor(dir)).toEqual({ action: "create", actor_name: "test-agent_1-0", actor_email: null, actor_kind: "agent" });
+
+    expect(runZinnAs(["task", "move", "ACT-1", "TODO"], dir, { GIT_CONFIG_GLOBAL: identityFile }).code).toBe(0);
+    expect(lastActor(dir)).toEqual({ action: "move", actor_name: "Git Person", actor_email: "git@example.com", actor_kind: "human" });
+
+    expect(runZinnAs(["task", "archive", "ACT-1"], dir, { GIT_CONFIG_GLOBAL: "/dev/null" }).code).toBe(0);
+    expect(lastActor(dir)).toEqual({ action: "archive", actor_name: userInfo().username, actor_email: null, actor_kind: "human" });
   });
 });

@@ -211,3 +211,12 @@ zinn task edit MDR-1 --priority none
 ```
 
 Use `none` to clear priority. Omitting `--priority` on edits preserves it. Task lists show priority in a compact column after the board column: `-` for unassigned and `L`, `M`, `H`, or `U` for low, medium, high, or urgent. Task views show the full priority value. Priority does not affect board ordering.
+
+## Activity
+
+Zinn keeps an activity log of changes made to a task like creating, editing, moving, reordering, archiving, unarchiving and deleting it, its labels and its relations. Each log also says _who_ made the change.
+Note that this data is not yet surfaced by any command yet.
+
+When a coding agent performs a mutation with `zinn`, the change is recorded under that agent's name.
+
+Zinn recognizes Claude Code, Codex, OpenCode, Gemini CLI, Cline, Cursor, Copilot's coding agent, Crush, Amp, and any tool that sets `AI_AGENT`. If you are using a tool that Zinn does not recognize, you can set `AI_AGENT` in that tool's environment settings, for example `AI_AGENT=hermes`. Otherwise, Zinn uses your git `user.name` and `user.email`, and if that's also not set, it falls to your system username.

@@ -1,8 +1,16 @@
-import type { Column, Task, TaskRelation, TaskWithKey } from "./src/types";
+import type {
+  Activity,
+  ActivityAction,
+  Column,
+  Task,
+  TaskRelation,
+  TaskWithKey,
+} from "./src/types";
 import type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project";
 import type { TaskCreateInput, TaskEditInput } from "./src/schemas/task";
 import type { RelationCreateInput, RelationDeleteInput } from "./src/schemas/relation";
 import type { LabelCreateInput, LabelDeleteInput, TaskLabelInput } from "./src/schemas/label";
+import type { Actor } from "./src/schemas/actor";
 
 import { randomUUIDv7 } from "bun";
 import { generateKeyBetween } from "fractional-indexing";
@@ -15,10 +23,12 @@ import * as dbColumn from "./src/db/column";
 import * as dbTask from "./src/db/task";
 import * as dbRelation from "./src/db/relation";
 import * as dbLabel from "./src/db/label";
+import * as dbActivity from "./src/db/activity";
 
 import { standardizeProjectKey } from "./src/lib";
 import { validateTaskInput, taskCreateSchema, taskEditSchema } from "./src/schemas/task";
 import { relationCreateSchema, relationDeleteSchema } from "./src/schemas/relation";
+import { actorSchema } from "./src/schemas/actor";
 
 import {
   validateProjectInput,
@@ -28,7 +38,16 @@ import {
 
 export type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project";
 export type { TaskCreateInput, TaskEditInput } from "./src/schemas/task";
-export type { TaskWithKey, TaskPriority, Label, LabelColor } from "./src/types";
+export type {
+  TaskWithKey,
+  TaskPriority,
+  Label,
+  LabelColor,
+  Actor,
+  ActorKind,
+  Activity,
+  ActivityAction,
+} from "./src/types";
 export type { LabelCreateInput, LabelDeleteInput, TaskLabelInput } from "./src/schemas/label";
 export type { RelationCreateInput, RelationDeleteInput } from "./src/schemas/relation";
 
@@ -36,6 +55,7 @@ export { labelCreateSchema, labelDeleteSchema, taskLabelSchema } from "./src/sch
 export { projectCreateSchema, projectEditSchema } from "./src/schemas/project";
 export { taskCreateSchema, taskEditSchema } from "./src/schemas/task";
 export { relationCreateSchema, relationDeleteSchema } from "./src/schemas/relation";
+export { actorSchema } from "./src/schemas/actor";
 
 export const project = {
   getById: dbProject.getById,
@@ -196,9 +216,45 @@ function resolveLabels(names: Array<string>) {
   });
 }
 
+function recordTaskActivity(
+  actor: Actor,
+  props: {
+    taskId: string;
+    action: ActivityAction;
+    changes: Activity["changes"];
+    createdAt: number;
+  },
+) {
+  dbActivity.create({
+    created_at: props.createdAt,
+    actor_name: actor.name,
+    actor_email: actor.email,
+    actor_kind: actor.kind,
+    entity_type: "task",
+    entity_id: props.taskId,
+    action: props.action,
+    changes: props.changes,
+  });
+}
+
+/** Snapshot of a relation with task keys, so history still reads after either task is deleted. */
+function describeRelation(
+  relation: Pick<TaskRelation, "source_task_id" | "target_task_id" | "relation_type">,
+) {
+  const source = attachTaskKey(dbTask.getById(relation.source_task_id)!);
+  const target = attachTaskKey(dbTask.getById(relation.target_task_id)!);
+
+  return {
+    type: relation.relation_type,
+    source: { id: source.id, key: source.key },
+    target: { id: target.id, key: target.key },
+  };
+}
+
 export const task = {
-  create: (input: TaskCreateInput) => {
+  create: (input: TaskCreateInput, actor: Actor) => {
     const task = validateTaskInput(taskCreateSchema, input);
+    const validActor = validateTaskInput(actorSchema, actor);
 
     return getDb().transaction(() => {
       const labels = resolveLabels(task.labelNames ?? []);
@@ -237,6 +293,19 @@ export const task = {
         dbTask.addLabel(createdTask.id, label.id);
       }
 
+      recordTaskActivity(validActor, {
+        taskId: createdTask.id,
+        action: "create",
+        changes: {
+          title: createdTask.title,
+          description: createdTask.description,
+          priority: createdTask.priority,
+          column: { id: initialColumn.id, name: initialColumn.name },
+          labels: labels.map((label) => label.name),
+        },
+        createdAt: now,
+      });
+
       return attachTaskKey(createdTask, project.key);
     })();
   },
@@ -258,18 +327,19 @@ export const task = {
   getByKey: getTaskByKey,
   label: {
     getAll: (taskKey: string) => dbTask.getLabels(getTaskByKey(taskKey).id),
-    add: (input: TaskLabelInput): TaskWithKey => {
+    add: (input: TaskLabelInput, actor: Actor): TaskWithKey => {
       const props = validateTaskInput(taskLabelSchema, input);
-      return task.edit({ taskKey: props.taskKey, addLabelNames: props.labelNames });
+      return task.edit({ taskKey: props.taskKey, addLabelNames: props.labelNames }, actor);
     },
-    remove: (input: TaskLabelInput): TaskWithKey => {
+    remove: (input: TaskLabelInput, actor: Actor): TaskWithKey => {
       const props = validateTaskInput(taskLabelSchema, input);
-      return task.edit({ taskKey: props.taskKey, removeLabelNames: props.labelNames });
+      return task.edit({ taskKey: props.taskKey, removeLabelNames: props.labelNames }, actor);
     },
   },
   /** Edit supplied content fields, including on archived tasks. Unchanged edits are no-ops. */
-  edit: (input: TaskEditInput) => {
+  edit: (input: TaskEditInput, actor: Actor) => {
     const props = validateTaskInput(taskEditSchema, input);
+    const validActor = validateTaskInput(actorSchema, actor);
     return getDb().transaction(() => {
       const existing = getTaskByKey(props.taskKey);
       const additions = resolveLabels(props.addLabelNames ?? []);
@@ -297,13 +367,41 @@ export const task = {
         dbTask.removeLabel(existing.id, label.id);
       }
 
+      const changes: Record<string, unknown> = {};
+      if (!isTitleUnchanged) {
+        changes.title = [existing.title, props.title];
+      }
+
+      if (!isDescriptionUnchanged) {
+        changes.description = [existing.description, props.description];
+      }
+
+      if (!isPriorityUnchanged) {
+        changes.priority = [existing.priority, props.priority];
+      }
+
+      if (!areLabelsUnchanged) {
+        changes.labels = {
+          added: labelsToAdd.map((label) => label.name),
+          removed: labelsToRemove.map((label) => label.name),
+        };
+      }
+
+      const now = Date.now();
+      recordTaskActivity(validActor, {
+        taskId: existing.id,
+        action: "edit",
+        changes,
+        createdAt: now,
+      });
+
       return {
         ...dbTask.update({
           id: existing.id,
           title: props.title,
           description: props.description,
           priority: props.priority,
-          updated_at: Date.now(),
+          updated_at: now,
         })!,
         key: existing.key,
       };
@@ -317,155 +415,243 @@ export const task = {
    * Giving a task's current column as the target will not do anything.
    * Archived tasks must be unarchived before they can be moved.
    */
-  move: (props: { taskKey: string; targetColumn: string }) => {
-    const taskMatch = getTaskByKey(props.taskKey);
+  move: (props: { taskKey: string; targetColumn: string }, actor: Actor) => {
+    const validActor = validateTaskInput(actorSchema, actor);
 
-    if (taskMatch.archived_at != null) {
-      throw new Error(`Archived task "${props.taskKey}" cannot be moved`);
-    }
+    return getDb().transaction(() => {
+      const taskMatch = getTaskByKey(props.taskKey);
 
-    const columnMatch = dbColumn
-      .getAllByProjectId(taskMatch.project_id)
-      .find((column) => column.name.toLowerCase() === props.targetColumn.toLowerCase());
-
-    if (columnMatch == null) {
-      // TODO: maybe a `did you mean` type of fuzzy check for misspelllings
-      const projectMatch = dbProject.getById(taskMatch.project_id)!;
-      throw new Error(`${projectMatch.name} does not have a column named "${props.targetColumn}"`);
-    }
-
-    if (columnMatch.id === taskMatch.column_id) {
-      return taskMatch;
-    }
-
-    const lastTask = dbTask.getLastByColumnId(columnMatch.id);
-    const order = generateKeyBetween(lastTask?.task_order ?? null, null);
-
-    return {
-      ...dbTask.update({
-        id: taskMatch.id,
-        column_id: columnMatch.id,
-        task_order: order,
-        updated_at: Date.now(),
-      })!,
-      key: taskMatch.key,
-    };
-  },
-  order: (props: TaskOrderProps) => {
-    const { taskKey, direction } = props;
-    const taskMatch = getTaskByKey(taskKey);
-
-    if (taskMatch.archived_at != null) {
-      throw new Error(`Archived task "${taskKey}" cannot be reordered`);
-    }
-
-    const allTasks = dbTask.getAllByColumnId(taskMatch.column_id);
-    const taskIndex = allTasks.findIndex((candidate) => candidate.id === taskMatch.id);
-    const otherTasks = allTasks.filter((candidate) => candidate.id !== taskMatch.id);
-    let insertionIndex: number;
-
-    switch (direction) {
-      case "top":
-        insertionIndex = 0;
-        break;
-      case "up":
-        insertionIndex = Math.max(0, taskIndex - 1);
-        break;
-      case "down":
-        insertionIndex = Math.min(otherTasks.length, taskIndex + 1);
-        break;
-      case "bottom":
-        insertionIndex = otherTasks.length;
-        break;
-      case "before":
-      case "after": {
-        const targetTask = getTaskByKey(props.targetTaskKey);
-
-        if (targetTask.id === taskMatch.id) {
-          return taskMatch;
-        }
-
-        if (targetTask.project_id !== taskMatch.project_id) {
-          throw new Error(
-            `Tasks "${taskKey}" and "${props.targetTaskKey}" must be in the same project`,
-          );
-        }
-
-        if (targetTask.column_id !== taskMatch.column_id) {
-          throw new Error(
-            `Tasks "${taskKey}" and "${props.targetTaskKey}" must be in the same column`,
-          );
-        }
-
-        if (targetTask.archived_at != null) {
-          throw new Error(`Archived task "${props.targetTaskKey}" cannot be an ordering target`);
-        }
-
-        const targetIndex = otherTasks.findIndex((candidate) => candidate.id === targetTask.id);
-        insertionIndex = direction === "before" ? targetIndex : targetIndex + 1;
-        break;
+      if (taskMatch.archived_at != null) {
+        throw new Error(`Archived task "${props.taskKey}" cannot be moved`);
       }
-    }
 
-    if (insertionIndex === taskIndex) {
+      const projectColumns = dbColumn.getAllByProjectId(taskMatch.project_id);
+      const columnMatch = projectColumns.find(
+        (column) => column.name.toLowerCase() === props.targetColumn.toLowerCase(),
+      );
+
+      if (columnMatch == null) {
+        // TODO: maybe a `did you mean` type of fuzzy check for misspelllings
+        const projectMatch = dbProject.getById(taskMatch.project_id)!;
+        throw new Error(
+          `${projectMatch.name} does not have a column named "${props.targetColumn}"`,
+        );
+      }
+
+      if (columnMatch.id === taskMatch.column_id) {
+        return taskMatch;
+      }
+
+      const currentColumn = projectColumns.find((column) => column.id === taskMatch.column_id)!;
+      const lastTask = dbTask.getLastByColumnId(columnMatch.id);
+      const order = generateKeyBetween(lastTask?.task_order ?? null, null);
+      const now = Date.now();
+
+      recordTaskActivity(validActor, {
+        taskId: taskMatch.id,
+        action: "move",
+        changes: {
+          column: [
+            { id: currentColumn.id, name: currentColumn.name },
+            { id: columnMatch.id, name: columnMatch.name },
+          ],
+        },
+        createdAt: now,
+      });
+
+      return {
+        ...dbTask.update({
+          id: taskMatch.id,
+          column_id: columnMatch.id,
+          task_order: order,
+          updated_at: now,
+        })!,
+        key: taskMatch.key,
+      };
+    })();
+  },
+  order: (props: TaskOrderProps, actor: Actor) => {
+    const validActor = validateTaskInput(actorSchema, actor);
+    const { taskKey, direction } = props;
+
+    return getDb().transaction(() => {
+      const taskMatch = getTaskByKey(taskKey);
+
+      if (taskMatch.archived_at != null) {
+        throw new Error(`Archived task "${taskKey}" cannot be reordered`);
+      }
+
+      const allTasks = dbTask.getAllByColumnId(taskMatch.column_id);
+      const taskIndex = allTasks.findIndex((candidate) => candidate.id === taskMatch.id);
+      const otherTasks = allTasks.filter((candidate) => candidate.id !== taskMatch.id);
+      let insertionIndex: number;
+
+      switch (direction) {
+        case "top":
+          insertionIndex = 0;
+          break;
+        case "up":
+          insertionIndex = Math.max(0, taskIndex - 1);
+          break;
+        case "down":
+          insertionIndex = Math.min(otherTasks.length, taskIndex + 1);
+          break;
+        case "bottom":
+          insertionIndex = otherTasks.length;
+          break;
+        case "before":
+        case "after": {
+          const targetTask = getTaskByKey(props.targetTaskKey);
+
+          if (targetTask.id === taskMatch.id) {
+            return taskMatch;
+          }
+
+          if (targetTask.project_id !== taskMatch.project_id) {
+            throw new Error(
+              `Tasks "${taskKey}" and "${props.targetTaskKey}" must be in the same project`,
+            );
+          }
+
+          if (targetTask.column_id !== taskMatch.column_id) {
+            throw new Error(
+              `Tasks "${taskKey}" and "${props.targetTaskKey}" must be in the same column`,
+            );
+          }
+
+          if (targetTask.archived_at != null) {
+            throw new Error(`Archived task "${props.targetTaskKey}" cannot be an ordering target`);
+          }
+
+          const targetIndex = otherTasks.findIndex((candidate) => candidate.id === targetTask.id);
+          insertionIndex = direction === "before" ? targetIndex : targetIndex + 1;
+          break;
+        }
+      }
+
+      if (insertionIndex === taskIndex) {
+        return taskMatch;
+      }
+
+      const futurePrevTask = otherTasks[insertionIndex - 1] ?? null;
+      const futureNextTask = otherTasks[insertionIndex] ?? null;
+      const now = Date.now();
+
+      recordTaskActivity(validActor, {
+        taskId: taskMatch.id,
+        action: "order",
+        changes: null,
+        createdAt: now,
+      });
+
+      return {
+        ...dbTask.update({
+          id: taskMatch.id,
+          task_order: generateKeyBetween(
+            futurePrevTask?.task_order ?? null,
+            futureNextTask?.task_order ?? null,
+          ),
+          updated_at: now,
+        })!,
+        key: taskMatch.key,
+      };
+    })();
+  },
+  /**
+   * Deletes a task. Its activity rows remain.
+   * Tasks on the other side of its relations get a relation_delete row,
+   *  since the cascade removes those relations too.
+   */
+  delete: (taskKey: string, actor: Actor) => {
+    const validActor = validateTaskInput(actorSchema, actor);
+
+    return getDb().transaction(() => {
+      const taskMatch = getTaskByKey(taskKey);
+      const now = Date.now();
+
+      for (const relationMatch of dbRelation.getAllByTaskId(taskMatch.id)) {
+        const otherTaskId =
+          relationMatch.source_task_id === taskMatch.id
+            ? relationMatch.target_task_id
+            : relationMatch.source_task_id;
+
+        recordTaskActivity(validActor, {
+          taskId: otherTaskId,
+          action: "relation_delete",
+          changes: describeRelation(relationMatch),
+          createdAt: now,
+        });
+      }
+
+      recordTaskActivity(validActor, {
+        taskId: taskMatch.id,
+        action: "delete",
+        changes: { key: taskMatch.key, title: taskMatch.title },
+        createdAt: now,
+      });
+
+      dbTask.deleteById(taskMatch.id);
       return taskMatch;
-    }
-
-    const futurePrevTask = otherTasks[insertionIndex - 1] ?? null;
-    const futureNextTask = otherTasks[insertionIndex] ?? null;
-
-    return {
-      ...dbTask.update({
-        id: taskMatch.id,
-        task_order: generateKeyBetween(
-          futurePrevTask?.task_order ?? null,
-          futureNextTask?.task_order ?? null,
-        ),
-        updated_at: Date.now(),
-      })!,
-      key: taskMatch.key,
-    };
+    })();
   },
-  delete: (taskKey: string) => {
-    const taskMatch = getTaskByKey(taskKey);
-    dbTask.deleteById(taskMatch.id);
+  archive: (taskKey: string, actor: Actor) => {
+    const validActor = validateTaskInput(actorSchema, actor);
 
-    return taskMatch;
+    return getDb().transaction(() => {
+      const taskMatch = getTaskByKey(taskKey);
+
+      if (taskMatch.archived_at != null) {
+        return taskMatch;
+      }
+
+      const now = Date.now();
+      recordTaskActivity(validActor, {
+        taskId: taskMatch.id,
+        action: "archive",
+        changes: null,
+        createdAt: now,
+      });
+
+      return {
+        ...dbTask.update({ id: taskMatch.id, updated_at: now, archived_at: now })!,
+        key: taskMatch.key,
+      };
+    })();
   },
-  archive: (taskKey: string) => {
-    const taskMatch = getTaskByKey(taskKey);
+  unarchive: (taskKey: string, actor: Actor) => {
+    const validActor = validateTaskInput(actorSchema, actor);
 
-    if (taskMatch.archived_at != null) {
-      return taskMatch;
-    }
+    return getDb().transaction(() => {
+      const taskMatch = getTaskByKey(taskKey);
 
-    const now = Date.now();
+      if (taskMatch.archived_at == null) {
+        return taskMatch;
+      }
 
-    return {
-      ...dbTask.update({ id: taskMatch.id, updated_at: now, archived_at: now })!,
-      key: taskMatch.key,
-    };
+      const lastTask = dbTask.getLastByColumnId(taskMatch.column_id);
+      const order = generateKeyBetween(lastTask?.task_order ?? null, null);
+      const now = Date.now();
+
+      recordTaskActivity(validActor, {
+        taskId: taskMatch.id,
+        action: "unarchive",
+        changes: null,
+        createdAt: now,
+      });
+
+      return {
+        ...dbTask.update({
+          id: taskMatch.id,
+          task_order: order,
+          updated_at: now,
+          archived_at: null,
+        })!,
+        key: taskMatch.key,
+      };
+    })();
   },
-  unarchive: (taskKey: string) => {
-    const taskMatch = getTaskByKey(taskKey);
-
-    if (taskMatch.archived_at == null) {
-      return taskMatch;
-    }
-
-    const lastTask = dbTask.getLastByColumnId(taskMatch.column_id);
-    const order = generateKeyBetween(lastTask?.task_order ?? null, null);
-
-    return {
-      ...dbTask.update({
-        id: taskMatch.id,
-        task_order: order,
-        updated_at: Date.now(),
-        archived_at: null,
-      })!,
-      key: taskMatch.key,
-    };
-  },
+  /** Activity rows recorded for a task, oldest first. */
+  activity: (taskKey: string) => dbActivity.getAllByEntityId(getTaskByKey(taskKey).id),
 };
 
 type RelationResult = TaskRelation & {
@@ -522,30 +708,62 @@ function resolveRelationTaskIds(props: RelationCreateInput) {
 }
 
 export const relation = {
-  create: (input: RelationCreateInput) => {
+  /** Records the same relation_create row on both tasks. */
+  create: (input: RelationCreateInput, actor: Actor) => {
     const props = validateTaskInput(relationCreateSchema, input);
-    const resolved = resolveRelationTaskIds(props);
+    const validActor = validateTaskInput(actorSchema, actor);
 
-    const relationMatch = dbRelation.getByTaskIdsAndType(resolved);
+    return getDb().transaction(() => {
+      const resolved = resolveRelationTaskIds(props);
+      const relationMatch = dbRelation.getByTaskIdsAndType(resolved);
 
-    if (relationMatch != null) {
-      throw new Error("This relation already exists");
-    }
+      if (relationMatch != null) {
+        throw new Error("This relation already exists");
+      }
 
-    return dbRelation.create(resolved);
+      const createdRelation = dbRelation.create(resolved)!;
+      const changes = describeRelation(createdRelation);
+
+      for (const taskId of [createdRelation.source_task_id, createdRelation.target_task_id]) {
+        recordTaskActivity(validActor, {
+          taskId,
+          action: "relation_create",
+          changes,
+          createdAt: createdRelation.created_at,
+        });
+      }
+
+      return createdRelation;
+    })();
   },
-  delete: (input: RelationDeleteInput) => {
+  /** Records the same relation_delete row on both tasks. */
+  delete: (input: RelationDeleteInput, actor: Actor) => {
     const props = validateTaskInput(relationDeleteSchema, input);
+    const validActor = validateTaskInput(actorSchema, actor);
 
-    const resolved = resolveRelationTaskIds(props);
-    const relationMatch = dbRelation.getByTaskIdsAndType(resolved);
+    return getDb().transaction(() => {
+      const resolved = resolveRelationTaskIds(props);
+      const relationMatch = dbRelation.getByTaskIdsAndType(resolved);
 
-    if (relationMatch == null) {
-      throw new Error("This relation does not exist");
-    }
+      if (relationMatch == null) {
+        throw new Error("This relation does not exist");
+      }
 
-    dbRelation.deleteById(relationMatch.id);
-    return relationMatch;
+      const changes = describeRelation(relationMatch);
+      const now = Date.now();
+
+      for (const taskId of [relationMatch.source_task_id, relationMatch.target_task_id]) {
+        recordTaskActivity(validActor, {
+          taskId,
+          action: "relation_delete",
+          changes,
+          createdAt: now,
+        });
+      }
+
+      dbRelation.deleteById(relationMatch.id);
+      return relationMatch;
+    })();
   },
   getAll: getRelations,
 };
@@ -569,11 +787,25 @@ export const label = {
     const props = validateTaskInput(labelDeleteSchema, { name });
     return dbLabel.getByName(props.name);
   },
-  delete: (input: LabelDeleteInput) => {
+  /** Deleting a definition detaches it from tasks, so each affected task gets an edit row. */
+  delete: (input: LabelDeleteInput, actor: Actor) => {
     const props = validateTaskInput(labelDeleteSchema, input);
+    const validActor = validateTaskInput(actorSchema, actor);
+
     return getDb().transaction(() => {
       const match = resolveLabels([props.name])[0]!;
-      dbTask.updateLabelTasksTimestamp(match.id, Date.now());
+      const now = Date.now();
+
+      for (const taskId of dbTask.getIdsByLabelId(match.id)) {
+        recordTaskActivity(validActor, {
+          taskId,
+          action: "edit",
+          changes: { labels: { added: [], removed: [match.name] } },
+          createdAt: now,
+        });
+      }
+
+      dbTask.updateLabelTasksTimestamp(match.id, now);
       dbLabel.deleteById(match.id);
       return match;
     })();

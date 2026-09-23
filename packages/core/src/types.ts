@@ -1,8 +1,10 @@
 import type { LabelColor } from "./schemas/label";
 import type { TaskPriority } from "./schemas/task";
+import type { ActorKind } from "./schemas/actor";
 
 export type { LabelColor } from "./schemas/label";
 export type { TaskPriority } from "./schemas/task";
+export type { Actor, ActorKind } from "./schemas/actor";
 
 // https://www.typescriptlang.org/docs/handbook/2/template-literal-types.html
 type BoundProperty<P extends string> = `$${P}`;
@@ -60,4 +62,27 @@ export type Label = {
   name: string;
   description: string;
   color: LabelColor;
+};
+
+export type ActivityAction =
+  | "create"
+  | "edit"
+  | "move"
+  | "order"
+  | "archive"
+  | "unarchive"
+  | "delete"
+  | "relation_create"
+  | "relation_delete";
+
+export type Activity = {
+  id: string;
+  created_at: number;
+  actor_name: string;
+  actor_email: string | null;
+  actor_kind: ActorKind;
+  entity_type: "task";
+  entity_id: string;
+  action: ActivityAction;
+  changes: Record<string, unknown> | null;
 };

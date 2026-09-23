@@ -11,6 +11,7 @@ import {
   validatePositionalCount,
   validateUniqueOptions,
 } from "../lib";
+import { currentActor } from "../actor";
 
 type PresentedLabel = Omit<Label, "id">;
 
@@ -84,7 +85,7 @@ List all global label definitions.`,
         return;
       }
 
-      const deleted = label.delete(props);
+      const deleted = label.delete(props, currentActor());
       output(presentLabel(deleted), (l) => `Deleted label "${l.name}"`);
     },
     help: `Usage: zinn label delete <name>

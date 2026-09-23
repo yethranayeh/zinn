@@ -181,6 +181,14 @@ export function removeLabel(taskId: string, labelId: string) {
     .run(taskId, labelId);
 }
 
+export function getIdsByLabelId(labelId: string) {
+  return getDb()
+    .query<Pick<Task, "id">, [string]>(`SELECT task_id AS id FROM ${DB_TABLE.taskLabel}
+    WHERE label_id = ?`)
+    .all(labelId)
+    .map((row) => row.id);
+}
+
 export function updateLabelTasksTimestamp(labelId: string, updatedAt: number) {
   return getDb()
     .query(`UPDATE ${DB_TABLE.task} SET updated_at = ? WHERE id IN
