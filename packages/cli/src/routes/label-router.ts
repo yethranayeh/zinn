@@ -20,6 +20,11 @@ function presentLabel(labelMatch: Label): PresentedLabel {
 
 function formatLabel(presented: PresentedLabel) {
   const coloredName = styleText(presented.color, presented.name);
+
+  if (presented.description.length === 0) {
+    return coloredName;
+  }
+
   return `${coloredName} | ${presented.description}`;
 }
 

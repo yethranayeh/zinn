@@ -14,7 +14,8 @@ function getNamespaceHelp(parsedRoutes: Array<ParsedRoute>, namespace: string) {
   const prefix = `${namespace} `;
   const commands = parsedRoutes
     .map((route) => route.command)
-    .filter((command) => command.startsWith(prefix));
+    .filter((command) => command.startsWith(prefix))
+    .map((command) => command.slice(prefix.length));
 
   if (commands.length === 0) {
     return null;

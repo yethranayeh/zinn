@@ -1,7 +1,7 @@
 import type { TaskPriority } from "@zinn-dev/core";
 import type { RouteDef } from "../types";
 
-import { parseArgs } from "node:util";
+import { parseArgs, styleText } from "node:util";
 import { task, project, column } from "@zinn-dev/core";
 
 import {
@@ -38,6 +38,29 @@ type PresentedTask = {
   labels: Array<string>;
 };
 
+function formatTaskPriorityMarker(priority: TaskPriority | null) {
+  if (priority == null) {
+    return "-";
+  }
+
+  return priority[0]!.toUpperCase();
+}
+
+function formatTaskColumn(columnName: string, width = columnName.length) {
+  const paddedColumnName = columnName.padEnd(width);
+
+  // TODO: Derive column colors from column roles once roles exist instead of relying on names.
+  if (columnName === "Backlog") {
+    return styleText("gray", paddedColumnName);
+  }
+
+  if (columnName === "Done") {
+    return styleText("green", paddedColumnName);
+  }
+
+  return paddedColumnName;
+}
+
 function presentTask(taskMatch: ReturnType<typeof task.getByKey>): PresentedTask {
   return {
     key: taskMatch.key,
@@ -52,19 +75,27 @@ function presentTask(taskMatch: ReturnType<typeof task.getByKey>): PresentedTask
 
 // TODO: a CLI row formatter that accepts text columns and joins them with " | " would be useful
 // Reuse it across task list/view and other command output in a separate change.
-function formatTask(presented: PresentedTask, options: { showsStatus?: boolean } = {}) {
+function formatTask(
+  presented: PresentedTask,
+  options: { showsStatus?: boolean } = {},
+) {
   const status = options.showsStatus ? ` | ${presented.status}` : "";
+  const column = formatTaskColumn(presented.column);
   const description = presented.description == null ? "" : ` | ${presented.description}`;
 
   const priority = presented.priority == null ? "" : ` | Priority: ${presented.priority}`;
   const labelText =
     presented.labels.length === 0 ? "" : ` | Labels: ${presented.labels.join(", ")}`;
 
-  return `${presented.key}${status} | ${presented.column} | ${presented.title}${description}${priority}${labelText}`;
+  return `${presented.key}${status} | ${column} | ${presented.title}${description}${priority}${labelText}`;
 }
 
 function formatTaskWithStatus(presented: PresentedTask) {
   return formatTask(presented, { showsStatus: true });
+}
+
+function formatTaskMove(presented: PresentedTask) {
+  return `${presented.key} | ${formatTaskColumn(presented.column)}`;
 }
 
 export const taskRouter = {
@@ -209,6 +240,11 @@ Example: zinn task create MDR --title "Refine the numbers" --description "Meet t
           (prev, current) => Math.max(prev, current.key.length),
           0,
         );
+        const longestColumnNameLength = presentedTasks.reduce(
+          (previousLength, currentTask) =>
+            Math.max(previousLength, currentTask.column.length),
+          0,
+        );
         const longestStatusLength = presentedTasks.reduce(
           (prev, current) => Math.max(prev, current.status.length),
           0,
@@ -220,8 +256,10 @@ Example: zinn task create MDR --title "Refine the numbers" --description "Meet t
             const status = showsAll ? ` | ${t.status.padEnd(longestStatusLength)}` : "";
             const descriptionPreview = formatTaskDescriptionPreview(t.description);
             const description = t.description == null ? "" : ` | ${descriptionPreview}`;
-            const priority = t.priority == null ? "" : ` | Priority: ${t.priority}`;
-            return `${t.key.padEnd(longestKeyLength)}${status} | ${t.column} | ${t.title}${description}${priority}`;
+            const priority = formatTaskPriorityMarker(t.priority);
+            const column = formatTaskColumn(t.column, longestColumnNameLength);
+
+            return `${t.key.padEnd(longestKeyLength)}${status} | ${column} | ${priority} | ${t.title}${description}`;
           })
           .join("\n");
       });
@@ -230,6 +268,7 @@ Example: zinn task create MDR --title "Refine the numbers" --description "Meet t
 
 List active tasks by default.
 Use --archived to list archived tasks or --all to list both.
+Priority markers: - unassigned, L low, M medium, H high, U urgent.
 
 Example: zinn task list MDR --all`,
   },
@@ -246,9 +285,11 @@ Example: zinn task list MDR --all`,
 
       output(viewedTask, (t) => {
         const relations = formatRelations(t.relations);
+        const formattedTask = formatTask(t);
+
         return relations.length > 0
-          ? `${formatTask(t)}\n\nRelations:\n${relations}`
-          : formatTask(t);
+          ? `${formattedTask}\n\nRelations:\n${relations}`
+          : formattedTask;
       });
     },
     help: `Usage: zinn task view <task-key>
@@ -270,13 +311,15 @@ Example: zinn task view MDR-1`,
       }
 
       const movedTask = task.move({ taskKey, targetColumn });
-      output(presentTask(movedTask), formatTask);
+      output(presentTask(movedTask), formatTaskMove);
     },
     help: `Usage: zinn task move <task-key> <target-column>
 
 Move a task to another column in its project.
 Moving a task to a different column lists it last in that column,
 matching placement at the bottom of a visual kanban column.
+
+Prints the task's key and new column.
 
 Giving a task's current column as the target will not do anything.
 Archived tasks must be unarchived before they can be moved.

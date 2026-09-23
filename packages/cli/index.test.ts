@@ -18,6 +18,8 @@ const PREFIX = join(tmpdir(), "zinntest-");
 const TEST_DIR = mkdtempSync(PREFIX);
 // ? Resolved from this file so the suite does not depend on the cwd it is run from.
 const CLI_PATH = join(import.meta.dir, "index.ts");
+const GRAY_BACKLOG = "\x1b[90mBacklog\x1b[39m";
+const GREEN_DONE = "\x1b[32mDone\x1b[39m";
 
 afterAll(() => {
   if (!TEST_DIR.startsWith(PREFIX)) {
@@ -125,14 +127,18 @@ test("namespace help lists its commands without running one", () => {
 
   expect(taskHelp.code).toBe(0);
   expect(taskHelp.stdout).toContain("Usage: zinn task <command>");
-  expect(taskHelp.stdout).toContain("task create");
-  expect(taskHelp.stdout).toContain("task unarchive");
+  expect(taskHelp.stdout).toContain("  create");
+  expect(taskHelp.stdout).toContain("  unarchive");
+  expect(taskHelp.stdout).toContain("  relation list");
+  expect(taskHelp.stdout).not.toContain("  task create");
   expect(projectHelp.code).toBe(0);
-  expect(projectHelp.stdout).toContain("project create");
-  expect(projectHelp.stdout).toContain("project column list");
+  expect(projectHelp.stdout).toContain("  create");
+  expect(projectHelp.stdout).toContain("  column list");
+  expect(projectHelp.stdout).not.toContain("  project create");
   expect(columnHelp.code).toBe(0);
   expect(columnHelp.stdout).toContain("Usage: zinn project column <command>");
-  expect(columnHelp.stdout).toContain("project column create");
+  expect(columnHelp.stdout).toContain("  create");
+  expect(columnHelp.stdout).not.toContain("  project column create");
 });
 
 test("every command help exits cleanly instead of running the command", () => {
@@ -518,8 +524,10 @@ test("task list renders every project's tasks once and aligns unequal key widths
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
     expect(lines).toHaveLength(2);
-    expect(lines).toContain("A-1       | Backlog | short task | short description");
-    expect(lines).toContain("LONGKEY-1 | Backlog | long task | long description");
+    expect(lines).toContain(`A-1       | ${GRAY_BACKLOG} | - | short task | short description`);
+    expect(lines).toContain(
+      `LONGKEY-1 | ${GRAY_BACKLOG} | - | long task | long description`,
+    );
   });
 });
 
@@ -531,7 +539,7 @@ test("task list does not print a missing description as data", () => {
     const result = runZinn(["task", "list"], testDir);
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain("NONE-1 | Backlog | title only");
+    expect(result.stdout).toContain(`NONE-1 | ${GRAY_BACKLOG} | - | title only`);
     expect(result.stdout).not.toContain("null");
   });
 });
@@ -552,12 +560,12 @@ test("task list renders an 80-character single-line description preview", () => 
 
     expect(listResult.code).toBe(0);
     expect(listResult.stdout).toBe(
-      `PREVIEW-1 | Backlog | long description | ${expectedPreview}\n`,
+      `PREVIEW-1 | ${GRAY_BACKLOG} | - | long description | ${expectedPreview}\n`,
     );
     expect(expectedPreview.length).toBe(80);
     expect(viewResult.code).toBe(0);
     expect(viewResult.stdout).toBe(
-      `PREVIEW-1 | Backlog | long description | ${description}\n`,
+      `PREVIEW-1 | ${GRAY_BACKLOG} | long description | ${description}\n`,
     );
   });
 });
@@ -573,13 +581,13 @@ test("task list filters to the requested project regardless of key casing", () =
 
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toContain("ALPHA-1 | Backlog | alpha task");
+    expect(result.stdout).toContain(`ALPHA-1 | ${GRAY_BACKLOG} | - | alpha task`);
     expect(result.stdout).not.toContain("beta task");
     expect(result.stdout.trimEnd().split("\n")).toHaveLength(1);
   });
 });
 
-test("project-scoped task list follows column order and task order within each column", () => {
+test("project-scoped task list aligns column names and follows board order", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "ORDER", "--name", "Ordered"], testDir);
     runZinn(["task", "create", "ORDER", "--title", "todo first"], testDir);
@@ -598,11 +606,11 @@ test("project-scoped task list follows column order and task order within each c
     expect(result.stderr).toBe("");
     expect(result.stdout).toBe(
       [
-        "ORDER-2 | Backlog | backlog first",
-        "ORDER-5 | Backlog | backlog second",
-        "ORDER-1 | TODO | todo first",
-        "ORDER-4 | TODO | todo second",
-        "ORDER-3 | In Progress | in progress",
+        `ORDER-2 | \x1b[90m${"Backlog".padEnd(11)}\x1b[39m | - | backlog first`,
+        `ORDER-5 | \x1b[90m${"Backlog".padEnd(11)}\x1b[39m | - | backlog second`,
+        "ORDER-1 | TODO        | - | todo first",
+        "ORDER-4 | TODO        | - | todo second",
+        "ORDER-3 | In Progress | - | in progress",
         "",
       ].join("\n"),
     );
@@ -645,8 +653,8 @@ test("project-scoped task list aligns one- and two-digit task numbers", () => {
 
     expect(result.code).toBe(0);
     expect(lines).toHaveLength(10);
-    expect(lines).toContain("TEN-1  | Backlog | task 1");
-    expect(lines).toContain("TEN-10 | Backlog | task 10");
+    expect(lines).toContain(`TEN-1  | ${GRAY_BACKLOG} | - | task 1`);
+    expect(lines).toContain(`TEN-10 | ${GRAY_BACKLOG} | - | task 10`);
   });
 });
 
@@ -659,7 +667,9 @@ test("task view resolves a case-insensitive key and prints its canonical form", 
 
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toBe("VIEW-1 | Backlog | visible task | visible description\n");
+    expect(result.stdout).toBe(
+      `VIEW-1 | ${GRAY_BACKLOG} | visible task | visible description\n`,
+    );
   });
 });
 
@@ -671,7 +681,35 @@ test("task view does not print a missing description as data", () => {
     const result = runZinn(["task", "view", "NONE-1"], testDir);
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toBe("NONE-1 | Backlog | title only\n");
+    expect(result.stdout).toBe(`NONE-1 | ${GRAY_BACKLOG} | title only\n`);
+  });
+});
+
+test("task list and view color temporary workflow column names while JSON stays raw", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "COLOR", "--name", "Column colors"], testDir);
+    runZinn(["task", "create", "COLOR", "--title", "waiting"], testDir);
+    runZinn(["task", "create", "COLOR", "--title", "finished"], testDir);
+    expect(runZinn(["task", "move", "COLOR-2", "Done"], testDir).stdout).toBe(
+      `COLOR-2 | ${GREEN_DONE}\n`,
+    );
+
+    expect(runZinn(["task", "list", "COLOR"], testDir).stdout).toBe(
+      [
+        `COLOR-1 | ${GRAY_BACKLOG} | - | waiting`,
+        `COLOR-2 | \x1b[32m${"Done".padEnd("Backlog".length)}\x1b[39m | - | finished`,
+        "",
+      ].join("\n"),
+    );
+    expect(runZinn(["task", "view", "COLOR-1"], testDir).stdout).toContain(GRAY_BACKLOG);
+    expect(runZinn(["task", "view", "COLOR-2"], testDir).stdout).toContain(GREEN_DONE);
+
+    const listedJson = runZinn(["task", "list", "COLOR", "--json"], testDir).stdout;
+    expect(listedJson).not.toContain("\x1b");
+    expect(JSON.parse(listedJson).map((task: { column: string }) => task.column)).toEqual([
+      "Backlog",
+      "Done",
+    ]);
   });
 });
 
@@ -755,7 +793,7 @@ test("task move rejects a column outside the task's project", () => {
       `Column "External" does not exist in task "ORIGIN-1"'s project!`,
     );
     expect(runZinn(["task", "view", "ORIGIN-1"], testDir).stdout).toContain(
-      "ORIGIN-1 | Backlog | stationary task",
+      `ORIGIN-1 | ${GRAY_BACKLOG} | stationary task`,
     );
   });
 });
@@ -810,7 +848,9 @@ test("task move to the current column is a no-op", () => {
       ).get(),
     );
 
-    expect(runZinn(["task", "move", "STILL-1", "Backlog"], testDir).code).toBe(0);
+    const result = runZinn(["task", "move", "STILL-1", "Backlog"], testDir);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe(`STILL-1 | ${GRAY_BACKLOG}\n`);
 
     const after = withTestDb(testDir, (db) =>
       db.query<{ column_id: string; task_order: string; updated_at: number }, []>(
@@ -819,6 +859,33 @@ test("task move to the current column is a no-op", () => {
     );
 
     expect(after).toEqual(before);
+  });
+});
+
+test("task move prints only the key and new column, while --json returns the full task", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["label", "create", "urgent"], testDir);
+    runZinn(["project", "create", "BRIEF"], testDir);
+    runZinn(
+      ["task", "create", "BRIEF", "--title", "Detailed task", "--description", "Hidden from move output", "--priority", "high", "--label", "urgent"],
+      testDir,
+    );
+
+    const moved = runZinn(["task", "move", "BRIEF-1", "In Progress"], testDir);
+    expect(moved.code).toBe(0);
+    expect(moved.stdout).toBe("BRIEF-1 | In Progress\n");
+
+    const movedJson = runZinn(["task", "move", "BRIEF-1", "Review", "--json"], testDir);
+    expect(movedJson.code).toBe(0);
+    expect(JSON.parse(movedJson.stdout)).toEqual({
+      key: "BRIEF-1",
+      status: "Active",
+      column: "Review",
+      title: "Detailed task",
+      description: "Hidden from move output",
+      priority: "high",
+      labels: ["urgent"],
+    });
   });
 });
 
@@ -1137,7 +1204,7 @@ test("task archive hides a task from active lists without deleting it", () => {
     expect(runZinn(["task", "archive", "aRcH-1"], testDir).code).toBe(0);
     expect(runZinn(["task", "list", "ARCH"], testDir).stdout).toBe("");
     expect(runZinn(["task", "list", "ARCH", "--archived"], testDir).stdout).toContain(
-      "ARCH-1 | In Progress | kept task | kept description",
+      "ARCH-1 | In Progress | - | kept task | kept description",
     );
     expect(runZinn(["task", "list", "--all", "ARCH"], testDir).stdout).toContain("kept task");
     expect(runZinn(["task", "view", "ARCH-1"], testDir).stdout).toContain("kept task");
@@ -1181,15 +1248,15 @@ test("task list --all identifies active and archived tasks in a status column", 
     runZinn(["task", "archive", "MIXED-1"], testDir);
 
     expect(runZinn(["task", "list", "MIXED"], testDir).stdout).toBe(
-      "MIXED-2 | Backlog | active task\n",
+      `MIXED-2 | ${GRAY_BACKLOG} | - | active task\n`,
     );
     expect(runZinn(["task", "list", "MIXED", "--archived"], testDir).stdout).toBe(
-      "MIXED-1 | Backlog | archived task\n",
+      `MIXED-1 | ${GRAY_BACKLOG} | - | archived task\n`,
     );
     expect(runZinn(["task", "list", "MIXED", "--all"], testDir).stdout).toBe(
       [
-        "MIXED-2 | Active   | Backlog | active task",
-        "MIXED-1 | Archived | Backlog | archived task",
+        `MIXED-2 | Active   | ${GRAY_BACKLOG} | - | active task`,
+        `MIXED-1 | Archived | ${GRAY_BACKLOG} | - | archived task`,
         "",
       ].join("\n"),
     );
@@ -1429,15 +1496,13 @@ test("task mutations print the resulting entity", () => {
     runZinn(["project", "create", "LIFE", "--name", "Responsive"], testDir);
 
     expect(runZinn(["task", "create", "LIFE", "--title", "First", "--description", "Description"], testDir).stdout).toBe(
-      "LIFE-1 | Backlog | First | Description\n",
+      `LIFE-1 | ${GRAY_BACKLOG} | First | Description\n`,
     );
     runZinn(["task", "create", "LIFE", "--title", "Second"], testDir);
     expect(
       runZinn(["task", "edit", "life-1", "--title", "Updated"], testDir).stdout,
-    ).toBe("LIFE-1 | Backlog | Updated | Description\n");
-    expect(runZinn(["task", "move", "LIFE-1", "TODO"], testDir).stdout).toBe(
-      "LIFE-1 | TODO | Updated | Description\n",
-    );
+    ).toBe(`LIFE-1 | ${GRAY_BACKLOG} | Updated | Description\n`);
+    expect(runZinn(["task", "move", "LIFE-1", "TODO"], testDir).stdout).toBe("LIFE-1 | TODO\n");
     runZinn(["task", "move", "LIFE-2", "TODO"], testDir);
     expect(runZinn(["task", "order", "LIFE-2", "top"], testDir).stdout).toBe(
       "LIFE-2 | TODO | Second\n",
@@ -1688,7 +1753,7 @@ test("relation help and argument errors make types discoverable without promptin
   const help = runZinn(["task", "relation", "create", "--help"]);
   expect(help.code).toBe(0);
   expect(help.stdout).toContain("Source is a duplicate of target");
-  expect(runZinn(["task", "relation", "--help"]).stdout).toContain("task relation list");
+  expect(runZinn(["task", "relation", "--help"]).stdout).toContain("  list");
   expect(runZinn(["task", "relation", "list"]).code).toBe(1);
   expect(runZinn(["task", "relation", "list", "APP-1", "APP-2"]).code).toBe(1);
 });
@@ -1714,7 +1779,7 @@ test("relation deletion is usable without a prompt and updates list and view", (
       expect(run("task", "relation", "delete", ...args).code).toBe(1);
     }
     expect(run("task", "relation", "delete", "--help").stdout).toContain("Remove only the specified relation");
-    expect(run("task", "relation", "--help").stdout).toContain("task relation delete");
+    expect(run("task", "relation", "--help").stdout).toContain("  delete");
   });
 });
 
@@ -1761,8 +1826,8 @@ test("label text output colors the name instead of naming the color, while JSON 
     expect(run("label", "create", "bug", "--color", "red", "--description", "Broken").stdout).toBe(
       "\x1b[31mbug\x1b[39m | Broken\n",
     );
-    expect(run("label", "create", "later").stdout).toBe("\x1b[37mlater\x1b[39m | \n");
-    expect(run("label", "create", "chore", "--color", "gray").stdout).toBe("\x1b[90mchore\x1b[39m | \n");
+    expect(run("label", "create", "later").stdout).toBe("\x1b[37mlater\x1b[39m\n");
+    expect(run("label", "create", "chore", "--color", "gray").stdout).toBe("\x1b[90mchore\x1b[39m\n");
 
     const listed = run("label", "list").stdout;
     for (const colorName of ["red", "white", "gray"]) {
@@ -1870,6 +1935,9 @@ test("shared option checks reject repeated scalar flags and retain positional va
 
 test("priority persists across CLI creation, editing, listing, clearing, and no-op edits", () => {
   withIsolatedZinnDir((directory) => {
+    expect(runZinn(["task", "list", "--help"], directory).stdout).toContain(
+      "Priority markers: - unassigned, L low, M medium, H high, U urgent.",
+    );
     expect(runZinn(["project", "create", "PRI"], directory).code).toBe(0);
     expect(runZinn(["task", "create", "PRI", "--title", "Default"], directory).code).toBe(0);
     withTestDb(directory, (db) => {
@@ -1880,6 +1948,15 @@ test("priority persists across CLI creation, editing, listing, clearing, and no-
       expect(created.code).toBe(0);
       expect(created.stdout).toContain(`Priority: ${priority}`);
     }
+    expect(runZinn(["task", "list", "PRI"], directory).stdout).toBe(
+      [
+        `PRI-1 | ${GRAY_BACKLOG} | - | Default`,
+        `PRI-2 | ${GRAY_BACKLOG} | L | low`,
+        `PRI-3 | ${GRAY_BACKLOG} | M | medium`,
+        `PRI-4 | ${GRAY_BACKLOG} | H | high`,
+        `PRI-5 | ${GRAY_BACKLOG} | U | urgent`,
+      ].join("\n") + "\n",
+    );
     withTestDb(directory, (db) => db.run("UPDATE task SET updated_at = 1 WHERE number = 1"));
     expect(runZinn(["task", "edit", "PRI-1", "--priority", "high"], directory).code).toBe(0);
     withTestDb(directory, (db) => {
@@ -1891,7 +1968,13 @@ test("priority persists across CLI creation, editing, listing, clearing, and no-
       expect(db.query<{ updated_at: number }, []>("SELECT updated_at FROM task WHERE number = 1").get()!.updated_at).toBe(1);
     });
     expect(runZinn(["task", "edit", "PRI-1", "--title", "Renamed"], directory).stdout).toContain("Priority: high");
-    expect(runZinn(["task", "list", "PRI"], directory).stdout).toContain("Priority: high");
+    expect(runZinn(["task", "list", "PRI"], directory).stdout).toContain(
+      `PRI-1 | ${GRAY_BACKLOG} | H | Renamed`,
+    );
+    expect(runZinn(["task", "view", "PRI-1"], directory).stdout).toContain("Priority: high");
+    expect(JSON.parse(runZinn(["task", "list", "PRI", "--json"], directory).stdout)[0].priority).toBe(
+      "high",
+    );
     const invalid = runZinn(["task", "edit", "PRI-1", "--title", "Wrong", "--priority", "critical"], directory);
     expect(invalid.code).not.toBe(0);
     expect(runZinn(["task", "view", "PRI-1"], directory).stdout).toContain("Renamed");

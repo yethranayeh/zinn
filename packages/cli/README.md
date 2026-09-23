@@ -148,6 +148,7 @@ zinn task move MDR-1 "In Progress"
 ```
 
 A moved task appears at the bottom of its destination column. Moving it to its current column does nothing. Archived tasks must be unarchived before they can be moved.
+Moving prints only the task's key and new column, such as `MDR-1 | In Progress`, while `--json` prints the full task details.
 
 Change a task's position within its current column:
 
@@ -209,4 +210,4 @@ zinn task edit MDR-1 --priority urgent
 zinn task edit MDR-1 --priority none
 ```
 
-Use `none` to clear priority. Omitting `--priority` on edits preserves it. Assigned priorities appear in task list and view output; board ordering remains unchanged.
+Use `none` to clear priority. Omitting `--priority` on edits preserves it. Task lists show priority in a compact column after the board column: `-` for unassigned and `L`, `M`, `H`, or `U` for low, medium, high, or urgent. Task views show the full priority value. Priority does not affect board ordering.
