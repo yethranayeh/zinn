@@ -4,6 +4,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 
+import packageJson from "./package.json";
+
 // ? End-to-end tests: each case spawns the real bin, so there is no module-level
 // ? import of core here and `ZINN_DIR` is passed per-spawn rather than set on
 // ? `process.env`. Subprocesses are the only option while `quit()` calls
@@ -89,6 +91,16 @@ test("bare invocation shows root help and exits zero", () => {
   expect(result).toEqual(runZinn(["--help"]));
 });
 
+test("--version prints the CLI package version and exits zero", () => {
+  withIsolatedZinnDir((testDir) => {
+    const result = runZinn(["--version"], testDir);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe(`${packageJson.version}\n`);
+    expect(result.stderr).toBe("");
+  });
+});
+
 test("root help supports -h and --help and lists commands", () => {
   const longHelp = runZinn(["--help"]);
   const shortHelp = runZinn(["-h"]);
@@ -99,6 +111,7 @@ test("root help supports -h and --help and lists commands", () => {
   expect(longHelp.stdout).toContain("project view");
   expect(longHelp.stdout).toContain("task edit");
   expect(longHelp.stdout).toContain("task comment create");
+  expect(longHelp.stdout).toContain("--version   Show version");
   expect(shortHelp).toEqual(longHelp);
 });
 
