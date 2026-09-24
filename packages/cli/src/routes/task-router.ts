@@ -11,6 +11,7 @@ import {
   validateUniqueOptions,
 } from "../lib";
 import { formatRelations, presentRelations, relationRouter } from "./relation-router";
+import { commentRouter, formatComments, presentComments } from "./comment-router";
 import { currentActor } from "../actor";
 import {
   formatTask,
@@ -184,20 +185,32 @@ Example: zinn task list MDR --all`,
       }
 
       const taskMatch = task.getByKey(taskKey);
-      const viewedTask = { ...presentTask(taskMatch), relations: presentRelations(taskKey) };
+      const viewedTask = {
+        ...presentTask(taskMatch),
+        relations: presentRelations(taskMatch),
+        comments: presentComments(taskMatch.key),
+      };
 
       output(viewedTask, (t) => {
         const relations = formatRelations(t.relations);
+        const comments = formatComments(t.comments);
         const formattedTask = formatTask(t);
+        const sections = [formattedTask];
 
-        return relations.length > 0
-          ? `${formattedTask}\n\nRelations:\n${relations}`
-          : formattedTask;
+        if (relations.length > 0) {
+          sections.push(`Relations:\n${relations}`);
+        }
+
+        if (comments.length > 0) {
+          sections.push(`Comments:\n${comments}`);
+        }
+
+        return sections.join("\n\n");
       });
     },
     help: `Usage: zinn task view <task-key>
 
-Show a task with its current column, description, priority, labels, and relations.
+Show a task with its current column, description, priority, labels, relations, and comments.
 
 Example: zinn task view MDR-1`,
   },
@@ -345,6 +358,7 @@ Unarchive a task at the bottom of its previous column.
 Example: zinn task unarchive MDR-1`,
   },
   relation: relationRouter,
+  comment: commentRouter,
   label: {
     add: {
       run: (args) => {

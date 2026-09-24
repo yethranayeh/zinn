@@ -127,6 +127,27 @@ Note that a deletion happens _without_ confirmation.
 
 Use `task relation create --help` to discover types.
 
+## Task comments
+
+Add and list comments on a task:
+
+```sh
+zinn task comment create MDR-1 --text "Ready for review"
+zinn task comment list MDR-1
+```
+
+Comments receive keys per task like `MDR-1#1`.
+`task view` includes the task's comments.
+
+Edit or delete a comment using its key:
+
+```sh
+zinn task comment edit MDR-1#1 --text "Approved"
+zinn task comment delete MDR-1#1
+```
+
+Deletion asks for confirmation. Comments can be added to archived tasks. Comment mutations are recorded in the activity log without changing the task's modification timestamp.
+
 ## Edit tasks
 
 Edit a task's title, description, priority, or labels:
@@ -217,7 +238,7 @@ Use `none` to clear priority. Omitting `--priority` on edits preserves it. Task 
 
 ## Activity
 
-Zinn keeps an activity log of changes made to a task like creating, editing, moving, reordering, archiving, unarchiving and deleting it, its labels and its relations. Each log also says _who_ made the change.
+Zinn keeps an activity log of changes made to a task like creating, editing, moving, reordering, archiving, unarchiving and deleting it, its labels, its relations, and its comments. Each log also says _who_ made the change.
 Note that this data is not yet surfaced by any command yet.
 
 When a coding agent performs a mutation with `zinn`, the change is recorded under that agent's name.

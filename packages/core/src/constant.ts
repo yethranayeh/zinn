@@ -17,6 +17,7 @@ export const DB_TABLE = {
   task_relations: "task_relations",
   label: "label",
   taskLabel: "task_label",
+  comment: "comment",
   activity: "activity",
 };
 

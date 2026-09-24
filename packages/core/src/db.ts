@@ -31,17 +31,18 @@ function initDb() {
 
   // --- TASK TABLE
   db.query(`CREATE TABLE IF NOT EXISTS ${DB_TABLE.task} (
-  id          TEXT PRIMARY KEY,
-  project_id  TEXT NOT NULL REFERENCES ${DB_TABLE.project}(id) ON DELETE CASCADE,
-  column_id   TEXT NOT NULL REFERENCES ${DB_TABLE.projectColumn}(id),
-  number      INTEGER NOT NULL,
-  title       TEXT NOT NULL,
-  description TEXT,
-  priority    TEXT CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
-  task_order  TEXT,
-  created_at  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL,
-  archived_at INTEGER);`).run();
+  id             TEXT PRIMARY KEY,
+  project_id     TEXT NOT NULL REFERENCES ${DB_TABLE.project}(id) ON DELETE CASCADE,
+  column_id      TEXT NOT NULL REFERENCES ${DB_TABLE.projectColumn}(id),
+  number         INTEGER NOT NULL,
+  title          TEXT NOT NULL,
+  description    TEXT,
+  priority       TEXT CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+  task_order     TEXT,
+  comment_count  INTEGER NOT NULL DEFAULT 0,
+  created_at     INTEGER NOT NULL,
+  updated_at     INTEGER NOT NULL,
+  archived_at    INTEGER);`).run();
 
   // --- TASK RELATIONS TABLE
   db.query(`CREATE TABLE IF NOT EXISTS ${DB_TABLE.task_relations} (
@@ -56,6 +57,7 @@ function initDb() {
   UNIQUE (source_task_id, target_task_id, relation_type),
   CHECK (source_task_id <> target_task_id));`).run();
 
+  // --- TASK LABELS
   db.query(`CREATE TABLE IF NOT EXISTS ${DB_TABLE.label} (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
@@ -63,10 +65,22 @@ function initDb() {
     color TEXT NOT NULL CHECK (color IN ('red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white', 'gray'))
   );`).run();
 
+  // --- TASK LABEL RECORDS
   db.query(`CREATE TABLE IF NOT EXISTS ${DB_TABLE.taskLabel} (
     task_id TEXT NOT NULL REFERENCES ${DB_TABLE.task}(id) ON DELETE CASCADE,
     label_id TEXT NOT NULL REFERENCES ${DB_TABLE.label}(id) ON DELETE CASCADE,
     PRIMARY KEY (task_id, label_id)
+  );`).run();
+
+  // --- TASK COMMENT
+  db.query(`CREATE TABLE IF NOT EXISTS ${DB_TABLE.comment} (
+    id           TEXT PRIMARY KEY,
+    task_id      TEXT NOT NULL REFERENCES ${DB_TABLE.task}(id) ON DELETE CASCADE,
+    number       INTEGER NOT NULL,
+    text         TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL,
+    UNIQUE (task_id, number)
   );`).run();
 
   // --- ACTIVITY TABLE
@@ -80,7 +94,8 @@ function initDb() {
   entity_id   TEXT NOT NULL,
   action      TEXT NOT NULL CHECK (action IN (
     'create', 'edit', 'move', 'order', 'archive', 'unarchive', 'delete',
-    'relation_create', 'relation_delete'
+    'relation_create', 'relation_delete',
+    'comment_create', 'comment_edit', 'comment_delete'
   )),
   changes     TEXT);`).run();
 

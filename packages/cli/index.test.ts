@@ -98,6 +98,7 @@ test("root help supports -h and --help and lists commands", () => {
   expect(longHelp.stdout).toContain("project column list");
   expect(longHelp.stdout).toContain("project view");
   expect(longHelp.stdout).toContain("task edit");
+  expect(longHelp.stdout).toContain("task comment create");
   expect(shortHelp).toEqual(longHelp);
 });
 
@@ -161,6 +162,10 @@ test("every command help exits cleanly instead of running the command", () => {
     ["task", "delete"],
     ["task", "archive"],
     ["task", "unarchive"],
+    ["task", "comment", "create"],
+    ["task", "comment", "list"],
+    ["task", "comment", "edit"],
+    ["task", "comment", "delete"],
   ];
 
   for (const command of commands) {
@@ -849,6 +854,107 @@ test("task view distinguishes an unknown project from an unknown task number", (
     expect(unknownProject.stderr).toContain(`Project with key "NOPE" does not exist!`);
     expect(unknownTask.code).toBe(1);
     expect(unknownTask.stderr).toContain(`Task "KNOWN-99" does not exist!`);
+  });
+});
+
+test("task comments can be created, listed, edited, viewed, and deleted", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "NOTE"], testDir);
+    runZinn(["task", "create", "NOTE", "--title", "Commented task"], testDir);
+
+    const first = runZinn(
+      ["task", "comment", "create", "NOTE-1", "--text", "First comment"],
+      testDir,
+    );
+    expect(first.code).toBe(0);
+    expect(first.stdout).toBe("NOTE-1#1 | First comment\n");
+
+    const second = JSON.parse(
+      runZinn(
+        ["task", "comment", "create", "note-1", "--text", "Second comment", "--json"],
+        testDir,
+      ).stdout,
+    );
+    expect(second).toEqual({
+      key: "NOTE-1#2",
+      text: "Second comment",
+      created_at: second.created_at,
+      updated_at: second.updated_at,
+    });
+    expect(second.created_at).toBeNumber();
+    expect(second.updated_at).toBe(second.created_at);
+
+    expect(runZinn(["task", "comment", "list", "NOTE-1"], testDir).stdout).toBe(
+      "NOTE-1#1 | First comment\nNOTE-1#2 | Second comment\n",
+    );
+
+    expect(
+      runZinn(
+        ["task", "comment", "edit", second.key, "--text", "Edited second"],
+        testDir,
+      ).stdout,
+    ).toBe("NOTE-1#2 | Edited second\n");
+
+    const viewed = runZinn(["task", "view", "NOTE-1"], testDir);
+    expect(viewed.stdout).toContain(
+      "\n\nComments:\nNOTE-1#1 | First comment\nNOTE-1#2 | Edited second\n",
+    );
+
+    const viewedJson = JSON.parse(
+      runZinn(["task", "view", "NOTE-1", "--json"], testDir).stdout,
+    );
+    expect(viewedJson.comments.map((entry: { key: string }) => entry.key)).toEqual([
+      "NOTE-1#1",
+      "NOTE-1#2",
+    ]);
+
+    const deleted = runZinnWithConfirmation(
+      ["task", "comment", "delete", "NOTE-1#2"],
+      testDir,
+    );
+    expect(deleted.code).toBe(0);
+    expect(deleted.stdout).toContain("Deleted NOTE-1#2");
+
+    expect(
+      runZinn(["task", "comment", "create", "NOTE-1", "--text", "Third comment"], testDir)
+        .stdout,
+    ).toBe("NOTE-1#3 | Third comment\n");
+
+    expect(
+      runZinn(["task", "comment", "create", "NOTE-1", "--text", "Line one\nLine two"], testDir)
+        .stdout,
+    ).toBe("NOTE-1#4 | Line one\n           Line two\n");
+  });
+});
+
+test("task comment commands validate their inputs without partial writes", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "NOTE"], testDir);
+    runZinn(["task", "create", "NOTE", "--title", "Commented task"], testDir);
+
+    const cases: Array<[Array<string>, string]> = [
+      [["task", "comment", "create", "NOTE-1"], "Comment text must be specified"],
+      [["task", "comment", "create", "NOTE-1", "--text", "   "], "cannot be blank"],
+      [
+        ["task", "comment", "create", "NOTE-1", "--text", "one", "--text", "two"],
+        "only be specified once",
+      ],
+      [["task", "comment", "list"], "Exactly one task key is required"],
+      [["task", "comment", "edit", "NOTE-1#1"], "Comment text must be specified"],
+      [
+        ["task", "comment", "edit", "019dbfc3-f513-7000-8000-000000000000", "--text", "No"],
+        "Invalid comment key",
+      ],
+      [["task", "comment", "delete"], "Exactly one comment key is required"],
+    ];
+
+    for (const [args, message] of cases) {
+      const result = runZinn(args, testDir);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain(message);
+    }
+
+    expect(runZinn(["task", "comment", "list", "NOTE-1"], testDir).stdout).toBe("");
   });
 });
 

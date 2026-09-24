@@ -2,6 +2,11 @@
 
 Shared logic for [zinn](https://github.com/yethranayeh/zinn)
 
+> [!IMPORTANT]
+> Zinn is in rapid development, and this package's API and database schema _can_ and **will** change between versions.
+> There is no migration system yet. Instead, when a release changes the schema, Zinn will try to run as if everything is aligned with its current version.
+> If you have an established board, keep a copy of `~/.zinn/data/` before migrating it yourself.
+
 ## Task results
 
 Though the tasks do not natively carry thier `key` value in a column, public task reads and mutations return tasks with a derived `key`, like `APP-1`.

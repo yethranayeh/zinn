@@ -2,6 +2,8 @@ import type {
   Activity,
   ActivityAction,
   Column,
+  Comment,
+  CommentWithKey,
   Task,
   TaskRelation,
   TaskWithKey,
@@ -11,6 +13,11 @@ import type { TaskCreateInput, TaskEditInput } from "./src/schemas/task";
 import type { RelationCreateInput, RelationDeleteInput } from "./src/schemas/relation";
 import type { LabelCreateInput, LabelDeleteInput, TaskLabelInput } from "./src/schemas/label";
 import type { Actor } from "./src/schemas/actor";
+import type {
+  CommentCreateInput,
+  CommentDeleteInput,
+  CommentEditInput,
+} from "./src/schemas/comment";
 
 import { randomUUIDv7 } from "bun";
 import { generateKeyBetween } from "fractional-indexing";
@@ -24,11 +31,13 @@ import * as dbTask from "./src/db/task";
 import * as dbRelation from "./src/db/relation";
 import * as dbLabel from "./src/db/label";
 import * as dbActivity from "./src/db/activity";
+import * as dbComment from "./src/db/comment";
 
 import { standardizeProjectKey } from "./src/lib";
 import { validateTaskInput, taskCreateSchema, taskEditSchema } from "./src/schemas/task";
 import { relationCreateSchema, relationDeleteSchema } from "./src/schemas/relation";
 import { actorSchema } from "./src/schemas/actor";
+import { commentCreateSchema, commentDeleteSchema, commentEditSchema } from "./src/schemas/comment";
 
 import {
   validateProjectInput,
@@ -47,15 +56,23 @@ export type {
   ActorKind,
   Activity,
   ActivityAction,
+  Comment,
+  CommentWithKey,
 } from "./src/types";
 export type { LabelCreateInput, LabelDeleteInput, TaskLabelInput } from "./src/schemas/label";
 export type { RelationCreateInput, RelationDeleteInput } from "./src/schemas/relation";
+export type {
+  CommentCreateInput,
+  CommentDeleteInput,
+  CommentEditInput,
+} from "./src/schemas/comment";
 
 export { labelCreateSchema, labelDeleteSchema, taskLabelSchema } from "./src/schemas/label";
 export { projectCreateSchema, projectEditSchema } from "./src/schemas/project";
 export { taskCreateSchema, taskEditSchema } from "./src/schemas/task";
 export { relationCreateSchema, relationDeleteSchema } from "./src/schemas/relation";
 export { actorSchema } from "./src/schemas/actor";
+export { commentCreateSchema, commentDeleteSchema, commentEditSchema } from "./src/schemas/comment";
 
 export const project = {
   getById: dbProject.getById,
@@ -202,6 +219,27 @@ type TaskOrderProps =
 function attachTaskKey(task: Task, projectKey?: string): TaskWithKey {
   const key = projectKey ?? dbProject.getById(task.project_id)!.key;
   return { ...task, key: `${key}-${task.number}` };
+}
+
+function attachCommentKey(comment: Comment, taskKey: string): CommentWithKey {
+  return { ...comment, key: `${taskKey}#${comment.number}` };
+}
+
+function getCommentByKey(commentKey: string): CommentWithKey {
+  const commentKeyMatch = /^([A-Za-z][A-Za-z0-9]*-\d+)#(\d+)$/.exec(commentKey);
+  const commentNumber = Number(commentKeyMatch?.[2]);
+  const isValidCommentNumber = Number.isSafeInteger(commentNumber) && commentNumber >= 1;
+  if (commentKeyMatch == null || !isValidCommentNumber) {
+    throw new Error(`Invalid comment key "${commentKey}". Expected format PROJECT-1#1`);
+  }
+
+  const taskMatch = getTaskByKey(commentKeyMatch[1]!);
+  const commentMatch = dbComment.getByTaskIdAndNumber(taskMatch.id, commentNumber);
+  if (commentMatch == null) {
+    throw new Error(`Comment "${taskMatch.key}#${commentNumber}" does not exist`);
+  }
+
+  return attachCommentKey(commentMatch, taskMatch.key);
 }
 
 function resolveLabels(names: Array<string>) {
@@ -652,6 +690,100 @@ export const task = {
   },
   /** Activity rows recorded for a task, oldest first. */
   activity: (taskKey: string) => dbActivity.getAllByEntityId(getTaskByKey(taskKey).id),
+};
+
+function describeComment(comment: CommentWithKey) {
+  return { id: comment.id, key: comment.key, text: comment.text };
+}
+
+export const comment = {
+  getByKey: getCommentByKey,
+  getAll: (taskKey: string) => {
+    const taskMatch = getTaskByKey(taskKey);
+    return dbComment
+      .getAllByTaskId(taskMatch.id)
+      .map((commentMatch) => attachCommentKey(commentMatch, taskMatch.key));
+  },
+  create: (input: CommentCreateInput, actor: Actor) => {
+    const props = validateTaskInput(commentCreateSchema, input);
+    const validActor = validateTaskInput(actorSchema, actor);
+
+    return getDb().transaction(() => {
+      const taskMatch = getTaskByKey(props.taskKey);
+      const counter = dbTask.incrementCommentCounterById(taskMatch.id);
+
+      if (counter == null) {
+        throw new Error(`Task comment number could not be retrieved for "${taskMatch.key}"`);
+      }
+
+      const createdComment = attachCommentKey(
+        dbComment.create({
+          task_id: taskMatch.id,
+          number: counter.comment_count,
+          text: props.text,
+        })!,
+        taskMatch.key,
+      );
+
+      recordTaskActivity(validActor, {
+        taskId: taskMatch.id,
+        action: "comment_create",
+        changes: { comment: describeComment(createdComment) },
+        createdAt: createdComment.created_at,
+      });
+
+      return createdComment;
+    })();
+  },
+  edit: (input: CommentEditInput, actor: Actor) => {
+    const props = validateTaskInput(commentEditSchema, input);
+    const validActor = validateTaskInput(actorSchema, actor);
+
+    return getDb().transaction(() => {
+      const existing = getCommentByKey(props.commentKey);
+
+      if (existing.text === props.text) {
+        return existing;
+      }
+
+      const now = Date.now();
+      const editedComment = {
+        ...dbComment.update({ id: existing.id, text: props.text, updated_at: now })!,
+        key: existing.key,
+      };
+
+      recordTaskActivity(validActor, {
+        taskId: existing.task_id,
+        action: "comment_edit",
+        changes: {
+          comment: { id: existing.id, key: existing.key },
+          text: [existing.text, editedComment.text],
+        },
+        createdAt: now,
+      });
+
+      return editedComment;
+    })();
+  },
+  delete: (input: CommentDeleteInput, actor: Actor) => {
+    const props = validateTaskInput(commentDeleteSchema, input);
+    const validActor = validateTaskInput(actorSchema, actor);
+
+    return getDb().transaction(() => {
+      const existing = getCommentByKey(props.commentKey);
+      const now = Date.now();
+
+      recordTaskActivity(validActor, {
+        taskId: existing.task_id,
+        action: "comment_delete",
+        changes: { comment: describeComment(existing) },
+        createdAt: now,
+      });
+      dbComment.deleteById(existing.id);
+
+      return existing;
+    })();
+  },
 };
 
 type RelationResult = TaskRelation & {

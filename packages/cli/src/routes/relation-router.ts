@@ -1,4 +1,4 @@
-import type { RelationCreateInput } from "@zinn-dev/core";
+import type { RelationCreateInput, TaskWithKey } from "@zinn-dev/core";
 import type { RouteDef } from "../types";
 
 import { parseArgs } from "node:util";
@@ -15,10 +15,8 @@ type PresentedRelation = {
   task: { key: string; title: string; status: "Active" | "Archived" };
 };
 
-export function presentRelations(taskKey: string): Array<PresentedRelation> {
-  const taskMatch = task.getByKey(taskKey);
-
-  return relation.getAll(taskKey, { include: { tasks: true } }).map((entry) => {
+export function presentRelations(taskMatch: TaskWithKey): Array<PresentedRelation> {
+  return relation.getAll(taskMatch.key, { include: { tasks: true } }).map((entry) => {
     const isSource = entry.source_task_id === taskMatch.id;
     const other = isSource ? entry.target : entry.source;
     if (other == null) {
@@ -167,7 +165,7 @@ Example: zinn task relation create APP-1 APP-2 --type dependency`,
     run: (args) => {
       const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
       validatePositionalCount(positionals, 1, "Provide exactly one task key");
-      output(presentRelations(positionals[0]!), formatRelations);
+      output(presentRelations(task.getByKey(positionals[0]!)), formatRelations);
     },
     help: `Usage: zinn task relation list <task-key>
 

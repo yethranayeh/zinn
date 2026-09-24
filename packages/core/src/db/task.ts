@@ -89,10 +89,10 @@ export function getByProjectIdAndNumber(props: { projectId: string; number: numb
     .get({ $project_id: props.projectId, $number: props.number });
 }
 
-export function create(task: Omit<Task, "archived_at">) {
+export function create(task: Omit<Task, "archived_at" | "comment_count">) {
   const db = getDb();
 
-  const q = db.query<Task, Bind<Omit<Task, "archived_at">>>(`INSERT INTO
+  const q = db.query<Task, Bind<Omit<Task, "archived_at" | "comment_count">>>(`INSERT INTO
     ${DB_TABLE.task}  (id, project_id, column_id, number, title, description, priority, task_order, created_at, updated_at)
     VALUES            ($id, $project_id, $column_id, $number, $title, $description, $priority, $task_order, $created_at, $updated_at);`);
 
@@ -109,7 +109,7 @@ export function create(task: Omit<Task, "archived_at">) {
     $updated_at: task.updated_at,
   });
 
-  return { ...task, archived_at: null };
+  return { ...task, comment_count: 0, archived_at: null };
 }
 
 const TASK_UPDATE_COLUMNS = [
@@ -157,6 +157,15 @@ export function deleteById(taskId: string) {
   return db
     .query<never, Bind<Pick<Task, "id">>>(`DELETE FROM ${DB_TABLE.task} WHERE id = $id;`)
     .run({ $id: taskId });
+}
+
+export function incrementCommentCounterById(taskId: string) {
+  return getDb()
+    .query<{ comment_count: number }, Bind<{ taskId: string }>>(`UPDATE ${DB_TABLE.task}
+    SET comment_count = comment_count + 1
+    WHERE id = $taskId
+    RETURNING comment_count`)
+    .get({ $taskId: taskId });
 }
 
 export function getLabels(taskId: string) {

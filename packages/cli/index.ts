@@ -32,6 +32,10 @@ Commands:
   task relation create
   task relation list
   task relation delete
+  task comment create
+  task comment list
+  task comment edit
+  task comment delete
   task label add
   task label remove
   label create

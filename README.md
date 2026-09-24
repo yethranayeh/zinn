@@ -2,6 +2,11 @@
 
 A kanban workflow in the terminal.
 
+> [!IMPORTANT]
+> Zinn is in rapid development, so commands, output and the database schema _can_ and **will** change between releases.
+> There is no migration system yet. Instead, when a release changes the schema, Zinn will try to run as if everything is aligned with its current version.
+> If you have an established board, keep a copy of `~/.zinn/data/` before migrating it yourself.
+
 ## Install
 
 ```bash
@@ -50,6 +55,19 @@ Remove a relation with `zinn task relation delete MDR-1 MDR-2 --type dependency`
 Note that a deletion happens _without_ confirmation.
 
 See the [CLI documentation](packages/cli/README.md#task-relations) for details.
+
+## Task comments
+
+Comments can be written to tasks for additional information. Comments are assigned keys on creation which can be used to target them for further operations:
+
+```sh
+zinn task comment create MDR-1 --text "Ready for review"
+zinn task comment list MDR-1
+zinn task comment edit MDR-1#1 --text "Approved"
+zinn task comment delete MDR-1#1
+```
+
+Comments also appear in `task view`. See the [CLI documentation](packages/cli/README.md#task-comments) for details.
 
 ## Data location
 

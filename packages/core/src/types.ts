@@ -34,6 +34,7 @@ export type Task = {
   description: string | null;
   task_order: string;
   priority: TaskPriority | null;
+  comment_count: number;
   created_at: number;
   updated_at: number;
   archived_at: number | null;
@@ -64,6 +65,17 @@ export type Label = {
   color: LabelColor;
 };
 
+export type Comment = {
+  id: string;
+  task_id: string;
+  number: number;
+  text: string;
+  created_at: number;
+  updated_at: number;
+};
+
+export type CommentWithKey = Comment & { key: string };
+
 export type ActivityAction =
   | "create"
   | "edit"
@@ -73,7 +85,10 @@ export type ActivityAction =
   | "unarchive"
   | "delete"
   | "relation_create"
-  | "relation_delete";
+  | "relation_delete"
+  | "comment_create"
+  | "comment_edit"
+  | "comment_delete";
 
 export type Activity = {
   id: string;
