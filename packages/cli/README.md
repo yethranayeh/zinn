@@ -28,8 +28,11 @@ You can list projects or inspect a project's columns with:
 
 ```sh
 zinn project list
+zinn project view MDR
 zinn project column list MDR
 ```
+
+`project view` prints the project and its unarchived tasks. It's the same list as you would get with `zinn task list <project-key>`.
 
 Rename a project:
 

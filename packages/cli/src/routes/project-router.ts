@@ -1,8 +1,9 @@
 import type { RouteDef } from "../types";
+import type { PresentedTask } from "../presentation/task-presentation";
 
 import { parseArgs } from "node:util";
 
-import { column, project } from "@zinn-dev/core";
+import { column, project, task } from "@zinn-dev/core";
 import {
   confirmAction,
   output,
@@ -10,8 +11,10 @@ import {
   validatePositionalCount,
   validateUniqueOptions,
 } from "../lib";
+import { formatTaskList, presentTask } from "../presentation/task-presentation";
 
 type PresentedProject = { key: string; name: string };
+type PresentedProjectView = PresentedProject & { tasks: Array<PresentedTask> };
 
 function presentProject(projectMatch: PresentedProject): PresentedProject {
   return { key: projectMatch.key, name: projectMatch.name };
@@ -116,6 +119,40 @@ Example: zinn project create MDR --name "Macrodata Refinement"`,
 List projects and their keys.
 
 Example: zinn project list`,
+  },
+  view: {
+    run: (args: Array<string>) => {
+      const projectKey = args[0];
+
+      if (projectKey == null) {
+        quit("Project key must be specified");
+      }
+
+      validatePositionalCount(args, 1, "Only one project key can be specified");
+
+      const projectMatch = project.getByKey(projectKey);
+
+      if (projectMatch == null) {
+        quit(`Project with key "${project.standardizeKey(projectKey)}" does not exist!`);
+      }
+
+      const presentedProject: PresentedProjectView = {
+        ...presentProject(projectMatch),
+        tasks: task.getAll({ projectKey, archive: "active" }).map(presentTask),
+      };
+
+      output(presentedProject, (viewedProject) => {
+        const projectHeader = formatProject(viewedProject);
+        const taskList = formatTaskList(viewedProject.tasks);
+
+        return taskList.length === 0 ? projectHeader : `${projectHeader}\n\n${taskList}`;
+      });
+    },
+    help: `Usage: zinn project view <project-key>
+
+Show a project and its active tasks in board order.
+
+Example: zinn project view MDR`,
   },
   delete: {
     run: (args: Array<string>) => {

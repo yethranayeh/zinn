@@ -16,6 +16,7 @@ Options:
 Commands:
   project create
   project list
+  project view
   project delete
   project column create
   project column list

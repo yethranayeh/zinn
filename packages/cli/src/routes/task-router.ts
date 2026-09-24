@@ -1,8 +1,7 @@
-import type { TaskPriority } from "@zinn-dev/core";
 import type { RouteDef } from "../types";
 
-import { parseArgs, styleText } from "node:util";
-import { task, project, column } from "@zinn-dev/core";
+import { parseArgs } from "node:util";
+import { task, project } from "@zinn-dev/core";
 
 import {
   confirmAction,
@@ -12,92 +11,14 @@ import {
   validateUniqueOptions,
 } from "../lib";
 import { formatRelations, presentRelations, relationRouter } from "./relation-router";
-import { TASK_DESCRIPTION_PREVIEW_LENGTH } from "../constant";
 import { currentActor } from "../actor";
-
-function formatTaskDescriptionPreview(description: string | null) {
-  if (description == null) {
-    return "";
-  }
-
-  const normalizedDescription = description.replace(/\s+/g, " ").trim();
-
-  if (normalizedDescription.length <= TASK_DESCRIPTION_PREVIEW_LENGTH) {
-    return normalizedDescription;
-  }
-
-  return `${normalizedDescription.slice(0, TASK_DESCRIPTION_PREVIEW_LENGTH - 1).trimEnd()}…`;
-}
-
-type PresentedTask = {
-  key: string;
-  status: "Active" | "Archived";
-  column: string;
-  title: string;
-  description: string | null;
-  priority: TaskPriority | null;
-  labels: Array<string>;
-};
-
-function formatTaskPriorityMarker(priority: TaskPriority | null) {
-  if (priority == null) {
-    return "-";
-  }
-
-  return priority[0]!.toUpperCase();
-}
-
-function formatTaskColumn(columnName: string, width = columnName.length) {
-  const paddedColumnName = columnName.padEnd(width);
-
-  // TODO: Derive column colors from column roles once roles exist instead of relying on names.
-  if (columnName === "Backlog") {
-    return styleText("gray", paddedColumnName);
-  }
-
-  if (columnName === "Done") {
-    return styleText("green", paddedColumnName);
-  }
-
-  return paddedColumnName;
-}
-
-function presentTask(taskMatch: ReturnType<typeof task.getByKey>): PresentedTask {
-  return {
-    key: taskMatch.key,
-    status: taskMatch.archived_at == null ? "Active" : "Archived",
-    column: column.getById(taskMatch.column_id)!.name,
-    title: taskMatch.title,
-    description: taskMatch.description,
-    priority: taskMatch.priority,
-    labels: task.label.getAll(taskMatch.key).map((label) => label.name),
-  };
-}
-
-// TODO: a CLI row formatter that accepts text columns and joins them with " | " would be useful
-// Reuse it across task list/view and other command output in a separate change.
-function formatTask(
-  presented: PresentedTask,
-  options: { showsStatus?: boolean } = {},
-) {
-  const status = options.showsStatus ? ` | ${presented.status}` : "";
-  const column = formatTaskColumn(presented.column);
-  const description = presented.description == null ? "" : ` | ${presented.description}`;
-
-  const priority = presented.priority == null ? "" : ` | Priority: ${presented.priority}`;
-  const labelText =
-    presented.labels.length === 0 ? "" : ` | Labels: ${presented.labels.join(", ")}`;
-
-  return `${presented.key}${status} | ${column} | ${presented.title}${description}${priority}${labelText}`;
-}
-
-function formatTaskWithStatus(presented: PresentedTask) {
-  return formatTask(presented, { showsStatus: true });
-}
-
-function formatTaskMove(presented: PresentedTask) {
-  return `${presented.key} | ${formatTaskColumn(presented.column)}`;
-}
+import {
+  formatTask,
+  formatTaskList,
+  formatTaskMove,
+  formatTaskWithStatus,
+  presentTask,
+} from "../presentation/task-presentation";
 
 export const taskRouter = {
   edit: {
@@ -242,34 +163,9 @@ Example: zinn task create MDR --title "Refine the numbers" --description "Meet t
 
       const tasks = task.getAll({ projectKey, archive });
 
-      output(tasks.map(presentTask), (presentedTasks) => {
-        const longestKeyLength = presentedTasks.reduce(
-          (prev, current) => Math.max(prev, current.key.length),
-          0,
-        );
-        const longestColumnNameLength = presentedTasks.reduce(
-          (previousLength, currentTask) =>
-            Math.max(previousLength, currentTask.column.length),
-          0,
-        );
-        const longestStatusLength = presentedTasks.reduce(
-          (prev, current) => Math.max(prev, current.status.length),
-          0,
-        );
-
-        return presentedTasks
-          .map((t) => {
-            // TODO: console output formatting for standardizied output
-            const status = showsAll ? ` | ${t.status.padEnd(longestStatusLength)}` : "";
-            const descriptionPreview = formatTaskDescriptionPreview(t.description);
-            const description = t.description == null ? "" : ` | ${descriptionPreview}`;
-            const priority = formatTaskPriorityMarker(t.priority);
-            const column = formatTaskColumn(t.column, longestColumnNameLength);
-
-            return `${t.key.padEnd(longestKeyLength)}${status} | ${column} | ${priority} | ${t.title}${description}`;
-          })
-          .join("\n");
-      });
+      output(tasks.map(presentTask), (presentedTasks) =>
+        formatTaskList(presentedTasks, { showsStatus: showsAll }),
+      );
     },
     help: `Usage: zinn task list [project-key] [--archived | --all]
 

@@ -96,6 +96,7 @@ test("root help supports -h and --help and lists commands", () => {
   expect(longHelp.code).toBe(0);
   expect(longHelp.stdout).toContain("ZINN - A kanban workflow in the terminal");
   expect(longHelp.stdout).toContain("project column list");
+  expect(longHelp.stdout).toContain("project view");
   expect(longHelp.stdout).toContain("task edit");
   expect(shortHelp).toEqual(longHelp);
 });
@@ -133,6 +134,7 @@ test("namespace help lists its commands without running one", () => {
   expect(taskHelp.stdout).not.toContain("  task create");
   expect(projectHelp.code).toBe(0);
   expect(projectHelp.stdout).toContain("  create");
+  expect(projectHelp.stdout).toContain("  view");
   expect(projectHelp.stdout).toContain("  column list");
   expect(projectHelp.stdout).not.toContain("  project create");
   expect(columnHelp.code).toBe(0);
@@ -145,6 +147,7 @@ test("every command help exits cleanly instead of running the command", () => {
   const commands = [
     ["project", "create"],
     ["project", "list"],
+    ["project", "view"],
     ["project", "delete"],
     ["project", "column", "create"],
     ["project", "column", "list"],
@@ -359,6 +362,105 @@ test("project list does not retain a deleted project", () => {
     expect(result.stdout).toContain("KEEP");
     expect(result.stdout).not.toContain("REMOVE");
     expect(result.stdout.trimEnd().split("\n")).toHaveLength(1);
+  });
+});
+
+test("project view prints the project followed by the same active tasks as task list", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "VIEW", "--name", "Project view"], testDir);
+    runZinn(
+      [
+        "task",
+        "create",
+        "VIEW",
+        "--title",
+        "Backlog task",
+        "--description",
+        "Backlog description",
+        "--priority",
+        "high",
+      ],
+      testDir,
+    );
+    runZinn(["task", "create", "VIEW", "--title", "TODO task"], testDir);
+    runZinn(["task", "move", "VIEW-2", "TODO"], testDir);
+    runZinn(["task", "create", "VIEW", "--title", "Archived task"], testDir);
+    runZinn(["task", "archive", "VIEW-3"], testDir);
+
+    const listedTasks = runZinn(["task", "list", "VIEW"], testDir);
+    const viewedProject = runZinn(["project", "view", "view"], testDir);
+
+    expect(viewedProject.code).toBe(0);
+    expect(viewedProject.stderr).toBe("");
+    expect(viewedProject.stdout).toBe(`VIEW | Project view\n\n${listedTasks.stdout}`);
+    expect(viewedProject.stdout).not.toContain("Archived task");
+  });
+});
+
+test("project view prints an empty project without inventing task output", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "EMPTY", "--name", "Empty project"], testDir);
+
+    expect(runZinn(["project", "view", "EMPTY"], testDir).stdout).toBe(
+      "EMPTY | Empty project\n",
+    );
+  });
+});
+
+test("project view JSON contains project identity and a flat active-task array", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["label", "create", "ready", "--color", "green"], testDir);
+    runZinn(["project", "create", "VIEW", "--name", "Project view"], testDir);
+    runZinn(
+      [
+        "task",
+        "create",
+        "VIEW",
+        "--title",
+        "Visible task",
+        "--description",
+        "Full description",
+        "--priority",
+        "urgent",
+        "--label",
+        "ready",
+      ],
+      testDir,
+    );
+
+    const viewedProject = runZinn(["project", "view", "VIEW", "--json"], testDir);
+
+    expect(viewedProject.code).toBe(0);
+    expect(JSON.parse(viewedProject.stdout)).toEqual({
+      key: "VIEW",
+      name: "Project view",
+      tasks: [
+        {
+          key: "VIEW-1",
+          status: "Active",
+          column: "Backlog",
+          title: "Visible task",
+          description: "Full description",
+          priority: "urgent",
+          labels: ["ready"],
+        },
+      ],
+    });
+  });
+});
+
+test("project view validates its project key", () => {
+  withIsolatedZinnDir((testDir) => {
+    const missing = runZinn(["project", "view"], testDir);
+    const extra = runZinn(["project", "view", "ONE", "TWO"], testDir);
+    const unknown = runZinn(["project", "view", "unknown"], testDir);
+
+    expect(missing.code).toBe(1);
+    expect(missing.stderr).toContain("Project key must be specified");
+    expect(extra.code).toBe(1);
+    expect(extra.stderr).toContain("Only one project key can be specified");
+    expect(unknown.code).toBe(1);
+    expect(unknown.stderr).toContain('Project with key "UNKNOWN" does not exist!');
   });
 });
 
