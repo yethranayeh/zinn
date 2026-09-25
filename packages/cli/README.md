@@ -140,7 +140,8 @@ zinn task comment list MDR-1
 ```
 
 Comments receive keys per task like `MDR-1#1`.
-`task view` includes the task's comments.
+Comment lists show each comment's creation time in local time as `YYYY-MM-DD HH:mm ±HH:mm`.
+`task view` includes the task's comments in the same format.
 
 Edit or delete a comment using its key:
 

@@ -28,14 +28,39 @@ export function presentComments(taskKey: string) {
   return comment.getAll(taskKey).map(presentComment);
 }
 
-export function formatComment(commentMatch: PresentedComment) {
-  const continuationIndent = " ".repeat(`${commentMatch.key} | `.length);
+function formatCommentCreatedAt(createdAt: number) {
+  const date = new Date(createdAt);
+  const offsetMinutes = -date.getTimezoneOffset();
+  const offsetSign = offsetMinutes >= 0 ? "+" : "-";
+  const absoluteOffsetMinutes = Math.abs(offsetMinutes);
+  const offsetHours = Math.floor(absoluteOffsetMinutes / 60);
+  const remainingOffsetMinutes = absoluteOffsetMinutes % 60;
+  const pad = (value: number) => String(value).padStart(2, "0");
+
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())} ` +
+    `${offsetSign}${pad(offsetHours)}:${pad(remainingOffsetMinutes)}`
+  );
+}
+
+export function formatComment(
+  commentMatch: PresentedComment,
+  options: { showsCreatedAt?: boolean } = {},
+) {
+  const createdAt = options.showsCreatedAt
+    ? ` | ${formatCommentCreatedAt(commentMatch.created_at)}`
+    : "";
+  const prefix = `${commentMatch.key}${createdAt} | `;
+  const continuationIndent = " ".repeat(prefix.length);
   const text = commentMatch.text.split(/\r?\n/).join(`\n${continuationIndent}`);
-  return `${commentMatch.key} | ${text}`;
+  return `${prefix}${text}`;
 }
 
 export function formatComments(comments: Array<PresentedComment>) {
-  return comments.map(formatComment).join("\n");
+  return comments
+    .map((commentMatch) => formatComment(commentMatch, { showsCreatedAt: true }))
+    .join("\n");
 }
 
 function parseTextArgs(args: Array<string>, entityName: "task" | "comment") {

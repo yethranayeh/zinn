@@ -45,9 +45,13 @@ function withIsolatedZinnDir(run: (testDir: string) => void) {
   }
 }
 
-function runZinn(args: Array<string>, testDir = TEST_DIR) {
+function runZinn(
+  args: Array<string>,
+  testDir = TEST_DIR,
+  additionalEnv: Record<string, string> = {},
+) {
   const proc = Bun.spawnSync(["bun", CLI_PATH, ...args], {
-    env: { ...process.env, ZINN_DIR: testDir },
+    env: { ...process.env, ...additionalEnv, ZINN_DIR: testDir },
   });
 
   return {
@@ -897,8 +901,22 @@ test("task comments can be created, listed, edited, viewed, and deleted", () => 
     expect(second.created_at).toBeNumber();
     expect(second.updated_at).toBe(second.created_at);
 
-    expect(runZinn(["task", "comment", "list", "NOTE-1"], testDir).stdout).toBe(
-      "NOTE-1#1 | First comment\nNOTE-1#2 | Second comment\n",
+    withTestDb(testDir, (db) => {
+      db.run("UPDATE comment SET created_at = ? WHERE number = 1", [
+        Date.UTC(2026, 8, 24, 9, 5),
+      ]);
+      db.run("UPDATE comment SET created_at = ? WHERE number = 2", [
+        Date.UTC(2026, 8, 25, 17, 42),
+      ]);
+    });
+
+    expect(
+      runZinn(["task", "comment", "list", "NOTE-1"], testDir, {
+        TZ: "Europe/Berlin",
+      }).stdout,
+    ).toBe(
+      "NOTE-1#1 | 2026-09-24 11:05 +02:00 | First comment\n" +
+        "NOTE-1#2 | 2026-09-25 19:42 +02:00 | Second comment\n",
     );
 
     expect(
@@ -908,9 +926,13 @@ test("task comments can be created, listed, edited, viewed, and deleted", () => 
       ).stdout,
     ).toBe("NOTE-1#2 | Edited second\n");
 
-    const viewed = runZinn(["task", "view", "NOTE-1"], testDir);
+    const viewed = runZinn(["task", "view", "NOTE-1"], testDir, {
+      TZ: "Europe/Berlin",
+    });
     expect(viewed.stdout).toContain(
-      "\n\nComments:\nNOTE-1#1 | First comment\nNOTE-1#2 | Edited second\n",
+      "\n\nComments:\n" +
+        "NOTE-1#1 | 2026-09-24 11:05 +02:00 | First comment\n" +
+        "NOTE-1#2 | 2026-09-25 19:42 +02:00 | Edited second\n",
     );
 
     const viewedJson = JSON.parse(
@@ -937,6 +959,19 @@ test("task comments can be created, listed, edited, viewed, and deleted", () => 
       runZinn(["task", "comment", "create", "NOTE-1", "--text", "Line one\nLine two"], testDir)
         .stdout,
     ).toBe("NOTE-1#4 | Line one\n           Line two\n");
+
+    withTestDb(testDir, (db) => {
+      db.run("UPDATE comment SET created_at = ? WHERE number = 4", [
+        Date.UTC(2026, 8, 25, 18, 7),
+      ]);
+    });
+
+    const multilinePrefix = "NOTE-1#4 | 2026-09-25 20:07 +02:00 | ";
+    expect(
+      runZinn(["task", "comment", "list", "NOTE-1"], testDir, {
+        TZ: "Europe/Berlin",
+      }).stdout,
+    ).toContain(`${multilinePrefix}Line one\n${" ".repeat(multilinePrefix.length)}Line two\n`);
   });
 });
 
