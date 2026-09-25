@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { labelNameSchema } from "./label";
 
+export const positiveIntegerPattern = "[1-9]\\d{0,14}";
+
 const titleMessage = "Task title cannot be blank";
 
 export const taskTitleSchema = z
@@ -43,9 +45,29 @@ export const taskEditSchema = z
     "Cannot add and remove the same label",
   );
 
+const searchQueryMessage = "Search query cannot be blank";
+export const searchLimitMessage = "Search limit must be a positive integer";
+
+export const taskArchiveFilterSchema = z.enum(["active", "archived", "all"]);
+
+export const taskSearchSchema = z.strictObject({
+  query: z
+    .string({ error: searchQueryMessage })
+    .refine((value) => value.trim().length > 0, searchQueryMessage),
+  projectKey: z.string().optional(),
+  archive: taskArchiveFilterSchema.optional(),
+  limit: z
+    .number({ error: searchLimitMessage })
+    .int(searchLimitMessage)
+    .min(1, searchLimitMessage)
+    .optional(),
+});
+
 export type TaskPriority = z.infer<typeof taskPrioritySchema>;
+export type TaskArchiveFilter = z.infer<typeof taskArchiveFilterSchema>;
 export type TaskCreateInput = z.infer<typeof taskCreateSchema>;
 export type TaskEditInput = z.infer<typeof taskEditSchema>;
+export type TaskSearchInput = z.infer<typeof taskSearchSchema>;
 
 export function validateTaskInput<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {
   const result = schema.safeParse(input);

@@ -83,6 +83,15 @@ function initDb() {
     UNIQUE (task_id, number)
   );`).run();
 
+  // --- TASK SEARCH INDEX
+  db.query(`CREATE VIRTUAL TABLE IF NOT EXISTS ${DB_TABLE.taskSearch} USING fts5(
+    task_id UNINDEXED,
+    title,
+    description,
+    comments,
+    tokenize = 'unicode61 remove_diacritics 2'
+  );`).run();
+
   // --- ACTIVITY TABLE
   db.query(`CREATE TABLE IF NOT EXISTS ${DB_TABLE.activity} (
   id          TEXT PRIMARY KEY,

@@ -171,6 +171,7 @@ test("every command help exits cleanly instead of running the command", () => {
     ["project", "column", "list"],
     ["task", "create"],
     ["task", "list"],
+    ["task", "search"],
     ["task", "view"],
     ["task", "edit"],
     ["project", "edit"],
@@ -871,6 +872,36 @@ test("task view distinguishes an unknown project from an unknown task number", (
     expect(unknownProject.stderr).toContain(`Project with key "NOPE" does not exist!`);
     expect(unknownTask.code).toBe(1);
     expect(unknownTask.stderr).toContain(`Task "KNOWN-99" does not exist!`);
+  });
+});
+
+test("task and comment key numbers are capped at 15 digits", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "CAP", "--name", "Cap"], testDir);
+    runZinn(["task", "create", "CAP", "--title", "Only task"], testDir);
+
+    const tooManyDigits = "9".repeat(20);
+    const fifteenDigits = "9".repeat(15);
+
+    // 16+ digits: rejected as a malformed key, never rounded and looked up.
+    const invalidTask = runZinn(["task", "view", `CAP-${tooManyDigits}`], testDir);
+    expect(invalidTask.stderr).toContain(`Invalid task key "CAP-${tooManyDigits}"`);
+
+    const invalidComment = runZinn(
+      ["task", "comment", "edit", `CAP-1#${tooManyDigits}`, "--text", "x"],
+      testDir,
+    );
+    expect(invalidComment.stderr).toContain(`Invalid comment key "CAP-1#${tooManyDigits}"`);
+
+    // Exactly 15 digits: still a well-formed key (an exact JS integer), just not found.
+    const missingTask = runZinn(["task", "view", `CAP-${fifteenDigits}`], testDir);
+    expect(missingTask.stderr).toContain(`Task "CAP-${fifteenDigits}" does not exist!`);
+
+    const missingComment = runZinn(
+      ["task", "comment", "edit", `CAP-1#${fifteenDigits}`, "--text", "x"],
+      testDir,
+    );
+    expect(missingComment.stderr).toContain(`Comment "CAP-1#${fifteenDigits}" does not exist`);
   });
 });
 
@@ -1789,6 +1820,169 @@ test("empty-string arguments are rejected", () => {
   const blankProject = runZinn(["project", "create", "", "--name", ""]);
   expect(blankProject.code).toBe(1);
   expect(blankProject.stderr).toContain("Project key must start with a letter");
+});
+
+// --- TASK SEARCH
+
+test("task search prints matches in task list rows and JSON shape", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = (...args: Array<string>) => runZinn(args, dir);
+    run("project", "create", "FIND");
+    run("task", "create", "FIND", "--title", "Refine the numbers", "--description", "Quarterly quota", "--priority", "high");
+    run("task", "create", "FIND", "--title", "Unrelated");
+    run("task", "comment", "create", "FIND-2", "--text", "Blocked on refinement tools");
+
+    const result = run("task", "search", "REFIN");
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe(
+      [
+        `FIND-1 | ${GRAY_BACKLOG} | H | Refine the numbers | Quarterly quota`,
+        `FIND-2 | ${GRAY_BACKLOG} | - | Unrelated`,
+        "",
+      ].join("\n"),
+    );
+
+    const listed = JSON.parse(run("task", "list", "FIND", "--json").stdout);
+    const searched = JSON.parse(run("task", "search", "refine quota", "--json").stdout);
+    expect(searched).toEqual([listed[0]]);
+  });
+});
+
+test("task search with no matches exits zero without output", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "EMPTY"], dir);
+    runZinn(["task", "create", "EMPTY", "--title", "Something"], dir);
+
+    expect(runZinn(["task", "search", "nothing"], dir)).toEqual({ stdout: "", stderr: "", code: 0 });
+    expect(runZinn(["task", "search", "nothing", "--json"], dir)).toEqual({
+      stdout: "[]\n",
+      stderr: "",
+      code: 0,
+    });
+  });
+});
+
+test("task search treats FTS syntax as text and accepts a leading dash after --", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "SYN"], dir);
+    runZinn(["task", "create", "SYN", "--title", "Fix sign-in (again)", "--description", "AND NOT"], dir);
+
+    for (const query of ["-", '"', ":", "(", "AND", "NOT", "*", 'sign-in "', "NEAR(a b)"]) {
+      const result = runZinn(["task", "search", "--", query], dir);
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe("");
+    }
+
+    expect(runZinn(["task", "search", "--", "-sign"], dir).stdout).toContain("SYN-1");
+    expect(runZinn(["task", "search", "(again) and not"], dir).stdout).toContain("SYN-1");
+  });
+});
+
+test("task search treats --json and --help after -- as literal query text, not router flags", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "ESC"], dir);
+    runZinn(["task", "create", "ESC", "--title", "Something"], dir);
+
+    // Neither literal query matches any task; JSON mode would print "[]\n"
+    // and a help request would print usage text, so empty output on both
+    // stdout and stderr confirms "--json"/"--help" were searched for, not acted on.
+    expect(runZinn(["task", "search", "--", "--json"], dir)).toEqual({
+      stdout: "",
+      stderr: "",
+      code: 0,
+    });
+    expect(runZinn(["task", "search", "--", "--help"], dir)).toEqual({
+      stdout: "",
+      stderr: "",
+      code: 0,
+    });
+  });
+});
+
+test("task search pins an exact task key before text matches", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "PIN"], dir);
+    runZinn(["task", "create", "PIN", "--title", "Mentions pin-2 first"], dir);
+    runZinn(["task", "create", "PIN", "--title", "The pinned task"], dir);
+
+    const keys = JSON.parse(runZinn(["task", "search", "pin-2", "--json"], dir).stdout).map(
+      (entry: { key: string }) => entry.key,
+    );
+    expect(keys).toEqual(["PIN-2", "PIN-1"]);
+  });
+});
+
+test("task search hides archived matches with a stderr hint and filters by project and limit", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = (...args: Array<string>) => runZinn(args, dir);
+    run("project", "create", "ONE");
+    run("project", "create", "TWO");
+    run("task", "create", "ONE", "--title", "Widget active");
+    run("task", "create", "ONE", "--title", "Widget archived");
+    run("task", "create", "ONE", "--title", "Widget also archived");
+    run("task", "create", "TWO", "--title", "Widget elsewhere");
+    run("task", "archive", "ONE-2");
+    run("task", "archive", "ONE-3");
+
+    const active = run("task", "search", "widget", "one");
+    expect(active.code).toBe(0);
+    expect(active.stdout).toBe(`ONE-1 | ${GRAY_BACKLOG} | - | Widget active\n`);
+    expect(active.stderr).toBe("2 archived matches hidden, use --all to include them\n");
+
+    const activeJson = run("task", "search", "widget", "ONE", "--json");
+    expect(JSON.parse(activeJson.stdout)).toHaveLength(1);
+    expect(activeJson.stdout).not.toContain("hidden");
+    expect(activeJson.stderr).toBe("2 archived matches hidden, use --all to include them\n");
+
+    const single = run("task", "search", "ONE-2", "ONE");
+    expect(single.stdout).toBe("");
+    expect(single.stderr).toBe("1 archived match hidden, use --all to include them\n");
+
+    const archived = run("task", "search", "widget", "ONE", "--archived");
+    expect(archived.stderr).toBe("");
+    expect(archived.stdout.trimEnd().split("\n").sort()).toEqual([
+      `ONE-2 | ${GRAY_BACKLOG} | - | Widget archived`,
+      `ONE-3 | ${GRAY_BACKLOG} | - | Widget also archived`,
+    ]);
+
+    const all = run("task", "search", "widget", "--all");
+    expect(all.stderr).toBe("");
+    expect(all.stdout.trimEnd().split("\n")).toHaveLength(4);
+    expect(all.stdout).toContain(`ONE-2 | Archived | ${GRAY_BACKLOG} | - | Widget archived`);
+    expect(all.stdout).toContain(`TWO-1 | Active   | ${GRAY_BACKLOG} | - | Widget elsewhere`);
+
+    expect(run("task", "search", "widget", "--all", "--limit", "3").stdout.trimEnd().split("\n")).toHaveLength(3);
+    expect(run("task", "search", "widget", "TWO").stdout).toBe(`TWO-1 | ${GRAY_BACKLOG} | - | Widget elsewhere\n`);
+  });
+});
+
+test("task search validates its arguments", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "VAL"], dir);
+
+    const cases: Array<[Array<string>, string]> = [
+      [[], "A search query must be specified"],
+      [[""], "Search query cannot be blank"],
+      [["a", "VAL", "extra"], "quote multi-word queries"],
+      [["a", "--archived", "--all"], 'Use either "--archived" or "--all", not both'],
+      [["a", "--limit", "0"], "Search limit must be a positive integer"],
+      [["a", "--limit", "two"], "Search limit must be a positive integer"],
+      [["a", "--limit", "0x5"], "Search limit must be a positive integer"],
+      [["a", "--limit", "1e1"], "Search limit must be a positive integer"],
+      [["a", "--limit", " 5 "], "Search limit must be a positive integer"],
+      [["a", "--limit", "5."], "Search limit must be a positive integer"],
+      [["a", "--limit", "1", "--limit", "2"], 'Option "--limit" can only be specified once'],
+      [["a", "MISSING"], 'Project with key "MISSING" does not exist'],
+      [["a", "--label", "bug"], "Unknown option"],
+    ];
+
+    for (const [args, message] of cases) {
+      const result = runZinn(["task", "search", ...args], dir);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain(message);
+    }
+  });
 });
 
 // --- NOT YET TESTABLE

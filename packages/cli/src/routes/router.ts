@@ -47,17 +47,21 @@ export function parseRoutes(routesDef: RouteDef, prefix?: string) {
 }
 
 function route(parsedRoutes: Array<ParsedRoute>, rawArgs: Array<string>) {
-  // Stripped here so commands with strict `parseArgs` never see an unknown "--json" option
-  const args = rawArgs.filter((arg) => !isJsonFlag(arg));
+  // Anything after "--" belongs to the command, so "--json" there is search text, not a flag.
+  const separatorIndex = rawArgs.indexOf("--");
+  const routableArgs = separatorIndex === -1 ? rawArgs : rawArgs.slice(0, separatorIndex);
+  const passthroughArgs = separatorIndex === -1 ? [] : rawArgs.slice(separatorIndex);
+  const filteredRoutableArgs = routableArgs.filter((arg) => !isJsonFlag(arg));
 
-  if (args.length !== rawArgs.length) {
+  if (filteredRoutableArgs.length !== routableArgs.length) {
     setOutputMode("json");
   }
 
-  const isHelpRequest = isHelpFlag(args.at(-1) ?? "");
+  const args = [...filteredRoutableArgs, ...passthroughArgs];
+  const isHelpRequest = isHelpFlag(filteredRoutableArgs.at(-1) ?? "");
 
   if (isHelpRequest && args.length > 1) {
-    const namespace = toCommand(args.slice(0, -1));
+    const namespace = toCommand(filteredRoutableArgs.slice(0, -1));
     const namespaceHelp = getNamespaceHelp(parsedRoutes, namespace);
     if (namespaceHelp != null) {
       console.info(namespaceHelp);

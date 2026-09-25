@@ -9,7 +9,8 @@ import type {
   TaskWithKey,
 } from "./src/types";
 import type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project";
-import type { TaskCreateInput, TaskEditInput } from "./src/schemas/task";
+import { projectKeyPattern } from "./src/schemas/project";
+import type { TaskCreateInput, TaskEditInput, TaskSearchInput } from "./src/schemas/task";
 import type { RelationCreateInput, RelationDeleteInput } from "./src/schemas/relation";
 import type {
   LabelCreateInput,
@@ -44,7 +45,13 @@ import * as dbActivity from "./src/db/activity";
 import * as dbComment from "./src/db/comment";
 
 import { standardizeProjectKey } from "./src/lib";
-import { validateTaskInput, taskCreateSchema, taskEditSchema } from "./src/schemas/task";
+import {
+  validateTaskInput,
+  taskCreateSchema,
+  taskEditSchema,
+  taskSearchSchema,
+  positiveIntegerPattern,
+} from "./src/schemas/task";
 import { relationCreateSchema, relationDeleteSchema } from "./src/schemas/relation";
 import { actorSchema } from "./src/schemas/actor";
 import { commentCreateSchema, commentDeleteSchema, commentEditSchema } from "./src/schemas/comment";
@@ -56,7 +63,7 @@ import {
 } from "./src/schemas/project";
 
 export type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project";
-export type { TaskCreateInput, TaskEditInput } from "./src/schemas/task";
+export type { TaskCreateInput, TaskEditInput, TaskSearchInput } from "./src/schemas/task";
 export type {
   TaskWithKey,
   TaskPriority,
@@ -89,7 +96,13 @@ export {
   taskLabelSchema,
 } from "./src/schemas/label";
 export { projectCreateSchema, projectEditSchema } from "./src/schemas/project";
-export { taskCreateSchema, taskEditSchema } from "./src/schemas/task";
+export {
+  taskCreateSchema,
+  taskEditSchema,
+  taskSearchSchema,
+  positiveIntegerPattern,
+  searchLimitMessage,
+} from "./src/schemas/task";
 export { relationCreateSchema, relationDeleteSchema } from "./src/schemas/relation";
 export { actorSchema } from "./src/schemas/actor";
 export { commentCreateSchema, commentDeleteSchema, commentEditSchema } from "./src/schemas/comment";
@@ -149,7 +162,13 @@ export const project = {
       throw new Error(`Project with key "${key}" does not exist!`);
     }
 
-    dbProject.deleteByKey(key);
+    getDb().transaction(() => {
+      for (const taskMatch of dbTask.getAllByProjectId(project.id, "all")) {
+        dbTask.removeFromSearch(taskMatch.id);
+      }
+
+      dbProject.deleteByKey(key);
+    })();
     return project;
   },
   standardizeKey: standardizeProjectKey,
@@ -194,34 +213,88 @@ export const column = {
   },
 };
 
-function getTaskByKey(taskKey: string) {
-  const taskKeyMatch = /^([A-Za-z][A-Za-z0-9]*)-(\d+)$/.exec(taskKey);
+const taskKeyRegex = new RegExp(`^(${projectKeyPattern})-(${positiveIntegerPattern})$`);
+const commentKeyRegex = new RegExp(`^([^#]+)#(${positiveIntegerPattern})$`);
+
+function parseTaskKey(taskKey: string) {
+  const taskKeyMatch = taskKeyRegex.exec(taskKey);
   if (taskKeyMatch == null) {
-    throw new Error(`Invalid task key "${taskKey}". Expected format PROJECT-1`);
+    return null;
   }
 
-  const projectKey = taskKeyMatch[1]!;
-  const taskNumber = Number(taskKeyMatch[2]);
-  if (!Number.isSafeInteger(taskNumber) || taskNumber < 1) {
-    throw new Error(`Invalid task key "${taskKey}". Expected format PROJECT-1`);
-  }
+  return { projectKey: taskKeyMatch[1]!, taskNumber: Number(taskKeyMatch[2]) };
+}
 
-  const project = dbProject.getByKey(projectKey);
+type ParsedTaskKey = { projectKey: string; taskNumber: number };
 
+function findTaskByParsedKey(parsedKey: ParsedTaskKey) {
+  const project = dbProject.getByKey(parsedKey.projectKey);
   if (project == null) {
-    throw new Error(`Project with key "${standardizeProjectKey(projectKey)}" does not exist!`);
+    return { project: null, task: null };
   }
 
   const taskMatch = dbTask.getByProjectIdAndNumber({
     projectId: project.id,
-    number: taskNumber,
+    number: parsedKey.taskNumber,
   });
 
-  if (taskMatch == null) {
-    throw new Error(`Task "${project.key}-${taskNumber}" does not exist!`);
+  return { project, task: taskMatch == null ? null : attachTaskKey(taskMatch, project.key) };
+}
+
+function requireTaskByParsedKey(parsedKey: ParsedTaskKey) {
+  const { project, task } = findTaskByParsedKey(parsedKey);
+
+  if (project == null) {
+    throw new Error(
+      `Project with key "${standardizeProjectKey(parsedKey.projectKey)}" does not exist!`,
+    );
   }
 
-  return attachTaskKey(taskMatch, project.key);
+  if (task == null) {
+    throw new Error(`Task "${project.key}-${parsedKey.taskNumber}" does not exist!`);
+  }
+
+  return task;
+}
+
+function getTaskByKey(taskKey: string) {
+  const parsedKey = parseTaskKey(taskKey);
+  if (parsedKey == null) {
+    throw new Error(`Invalid task key "${taskKey}". Expected format PROJECT-1`);
+  }
+
+  return requireTaskByParsedKey(parsedKey);
+}
+
+function findTaskByExactKey(query: string) {
+  const parsedKey = parseTaskKey(query.trim());
+  if (parsedKey == null) {
+    return null;
+  }
+
+  return findTaskByParsedKey(parsedKey).task;
+}
+
+/** Rewrites a task's search row from its current title, description and comments. */
+function updateTaskSearchRecord(taskId: string) {
+  dbTask.removeFromSearch(taskId);
+
+  const taskMatch = dbTask.getById(taskId)!;
+  const comments = dbComment.getAllByTaskId(taskId).map((commentMatch) => commentMatch.text);
+  dbTask.addToSearch({
+    taskId,
+    title: taskMatch.title,
+    description: taskMatch.description,
+    comments: comments.join("\n"),
+  });
+}
+
+function getSearchMatchExpression(query: string) {
+  return query
+    .trim()
+    .split(/\s+/)
+    .map((word) => `"${word.replaceAll('"', '""')}"*`)
+    .join(" ");
 }
 
 type TaskOrderProps =
@@ -246,14 +319,18 @@ function attachCommentKey(comment: Comment, taskKey: string): CommentWithKey {
 }
 
 function getCommentByKey(commentKey: string): CommentWithKey {
-  const commentKeyMatch = /^([A-Za-z][A-Za-z0-9]*-\d+)#(\d+)$/.exec(commentKey);
-  const commentNumber = Number(commentKeyMatch?.[2]);
-  const isValidCommentNumber = Number.isSafeInteger(commentNumber) && commentNumber >= 1;
-  if (commentKeyMatch == null || !isValidCommentNumber) {
+  const commentKeyMatch = commentKeyRegex.exec(commentKey);
+  if (commentKeyMatch == null) {
     throw new Error(`Invalid comment key "${commentKey}". Expected format PROJECT-1#1`);
   }
 
-  const taskMatch = getTaskByKey(commentKeyMatch[1]!);
+  const parsedTaskKey = parseTaskKey(commentKeyMatch[1]!);
+  if (parsedTaskKey == null) {
+    throw new Error(`Invalid comment key "${commentKey}". Expected format PROJECT-1#1`);
+  }
+
+  const taskMatch = requireTaskByParsedKey(parsedTaskKey);
+  const commentNumber = Number(commentKeyMatch[2]);
   const commentMatch = dbComment.getByTaskIdAndNumber(taskMatch.id, commentNumber);
   if (commentMatch == null) {
     throw new Error(`Comment "${taskMatch.key}#${commentNumber}" does not exist`);
@@ -350,6 +427,7 @@ export const task = {
       for (const label of labels) {
         dbTask.addLabel(createdTask.id, label.id);
       }
+      updateTaskSearchRecord(createdTask.id);
 
       recordTaskActivity(validActor, {
         taskId: createdTask.id,
@@ -383,6 +461,44 @@ export const task = {
       .map((task) => attachTaskKey(task, taskProject.key));
   },
   getByKey: getTaskByKey,
+  search: (input: TaskSearchInput) => {
+    const props = validateTaskInput(taskSearchSchema, input);
+    const archive = props.archive ?? "active";
+    let projectId: string | undefined;
+
+    if (props.projectKey != null) {
+      const projectMatch = dbProject.getByKey(props.projectKey);
+
+      if (projectMatch == null) {
+        throw new Error(`Project with key "${props.projectKey}" does not exist!`);
+      }
+
+      projectId = projectMatch.id;
+    }
+
+    const keyMatch = findTaskByExactKey(props.query);
+    const isKeyMatchInScope =
+      keyMatch != null && (projectId == null || keyMatch.project_id === projectId);
+    const pinnedTasks = isKeyMatchInScope ? [keyMatch] : [];
+
+    const textMatches = dbTask
+      .search({ match: getSearchMatchExpression(props.query), projectId })
+      .filter((row) => !pinnedTasks.some((pinned) => pinned.id === row.id))
+      .map(({ project_key, ...row }) => attachTaskKey(row, project_key));
+
+    const matches = [...pinnedTasks, ...textMatches];
+    const hiddenArchivedCount =
+      archive === "active"
+        ? matches.filter((taskMatch) => taskMatch.archived_at != null).length
+        : 0;
+
+    return {
+      tasks: matches
+        .filter((taskMatch) => dbTask.matchesArchiveFilter(taskMatch, archive))
+        .slice(0, props.limit),
+      hiddenArchivedCount,
+    };
+  },
   label: {
     getAll: (taskKey: string) => dbTask.getLabels(getTaskByKey(taskKey).id),
     add: (input: TaskLabelInput, actor: Actor): TaskWithKey => {
@@ -453,16 +569,17 @@ export const task = {
         createdAt: now,
       });
 
-      return {
-        ...dbTask.update({
-          id: existing.id,
-          title: props.title,
-          description: props.description,
-          priority: props.priority,
-          updated_at: now,
-        })!,
-        key: existing.key,
-      };
+      const editedTask = dbTask.update({
+        id: existing.id,
+        title: props.title,
+        description: props.description,
+        priority: props.priority,
+        updated_at: now,
+      })!;
+
+      updateTaskSearchRecord(existing.id);
+
+      return { ...editedTask, key: existing.key };
     })();
   },
   /**
@@ -648,6 +765,7 @@ export const task = {
         createdAt: now,
       });
 
+      dbTask.removeFromSearch(taskMatch.id);
       dbTask.deleteById(taskMatch.id);
       return taskMatch;
     })();
@@ -744,6 +862,7 @@ export const comment = {
         })!,
         taskMatch.key,
       );
+      updateTaskSearchRecord(taskMatch.id);
 
       recordTaskActivity(validActor, {
         taskId: taskMatch.id,
@@ -771,6 +890,7 @@ export const comment = {
         ...dbComment.update({ id: existing.id, text: props.text, updated_at: now })!,
         key: existing.key,
       };
+      updateTaskSearchRecord(existing.task_id);
 
       recordTaskActivity(validActor, {
         taskId: existing.task_id,
@@ -800,6 +920,7 @@ export const comment = {
         createdAt: now,
       });
       dbComment.deleteById(existing.id);
+      updateTaskSearchRecord(existing.task_id);
 
       return existing;
     })();

@@ -64,6 +64,22 @@ test("router calls the deepest nesting command", () => {
   expect(routes.foo.create.run).not.toHaveBeenCalled();
 });
 
+test("only arguments before the first -- are treated as router flags", () => {
+  const run = mock(() => {});
+  const router = createRouter({ foo: { run, help: "" } });
+
+  router.route(["foo", "--", "--json", "--help"]);
+  expect(run).toHaveBeenCalledWith(["--", "--json", "--help"]);
+});
+
+test("router flags before a -- still apply", () => {
+  const run = mock(() => {});
+  const router = createRouter({ foo: { run, help: "" } });
+
+  router.route(["foo", "--json", "--", "literal"]);
+  expect(run).toHaveBeenCalledWith(["--", "literal"]);
+});
+
 test("a help request never runs a command even when its help is empty", () => {
   const run = mock(() => {});
   const info = spyOn(console, "info").mockImplementation(() => {});

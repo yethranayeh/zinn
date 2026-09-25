@@ -1,7 +1,7 @@
 import type { RouteDef } from "../types";
 
 import { parseArgs } from "node:util";
-import { task, project } from "@zinn-dev/core";
+import { task, project, positiveIntegerPattern, searchLimitMessage } from "@zinn-dev/core";
 
 import {
   confirmAction,
@@ -20,6 +20,8 @@ import {
   formatTaskWithStatus,
   presentTask,
 } from "../presentation/task-presentation";
+
+const limitPattern = new RegExp(`^${positiveIntegerPattern}$`);
 
 export const taskRouter = {
   edit: {
@@ -175,6 +177,74 @@ Use --archived to list archived tasks or --all to list both.
 Priority markers: - unassigned, L low, M medium, H high, U urgent.
 
 Example: zinn task list MDR --all`,
+  },
+  search: {
+    run: (args) => {
+      const { values, positionals, tokens } = parseArgs({
+        args,
+        options: {
+          archived: { type: "boolean" },
+          all: { type: "boolean" },
+          limit: { type: "string" },
+        },
+        allowPositionals: true,
+        strict: true,
+        tokens: true,
+      });
+
+      const [query, projectKey] = positionals;
+
+      if (query == null) {
+        quit("A search query must be specified");
+      }
+
+      if (positionals.length > 2) {
+        quit("Only one query and one project key can be specified; quote multi-word queries");
+      }
+
+      validateUniqueOptions(tokens);
+
+      if (values.archived && values.all) {
+        quit('Use either "--archived" or "--all", not both');
+      }
+
+      const archive = values.all ? "all" : values.archived ? "archived" : "active";
+
+      if (values.limit !== undefined && !limitPattern.test(values.limit)) {
+        quit(searchLimitMessage);
+      }
+
+      const limit = values.limit === undefined ? undefined : Number(values.limit);
+      const result = task.search({ query, projectKey, archive, limit });
+
+      output(result.tasks.map(presentTask), (presentedTasks) =>
+        formatTaskList(presentedTasks, { showsStatus: values.all }),
+      );
+
+      if (result.hiddenArchivedCount > 0) {
+        const count = result.hiddenArchivedCount;
+        const noun = count === 1 ? "match" : "matches";
+        console.error(`${count} archived ${noun} hidden, use --all to include them`);
+      }
+    },
+    help: `Usage: zinn task search <query> [project-key] [--archived | --all] [--limit <n>]
+
+Search task titles, descriptions, and comments. A comment match lists the task it belongs to.
+Each word matches the start of a word, ignoring case and accents: e.g. "auth" finds "Authentication".
+Every word must match. Quote a query with several words.
+
+A query that is exactly a task key, such as MDR-1, lists that task first.
+Other results are ordered by relevance, with title matches weighted highest.
+Equally relevant tasks are ordered by project key, then task number.
+
+By default, only active tasks are searched. Use --archived to search archived tasks or --all to search both.
+When archived matches are hidden, a note is printed to say how many.
+Use --limit to show at most <n> results.
+A search result's output matches that of 'task list'.
+
+Use -- before a query that begins with a dash.
+
+Example: zinn task search "refinement quota" MDR --limit 5`,
   },
   view: {
     run: (args) => {

@@ -71,6 +71,28 @@ zinn task view MDR-1
 
 When a project key is supplied, the list follows the project's column order and the task order within each column.
 
+## Search tasks
+
+Search task titles, descriptions, and comments, optionally in one project:
+
+```sh
+zinn task search refine
+zinn task search "quarterly quota" MDR
+zinn task search MDR-1
+zinn task search auth --all --limit 5
+```
+
+Each query matches the start of a word, ignoring case and accents, so `cafe` finds "Café" and `auth` finds "Authentication". Every word must match somewhere in the task: its title, its description, or any of its comments. A comment match lists the task the comment belongs to.
+
+If the whole query is an existing task key, such as `mdr-1`, that task comes first. Other results follow by relevance, with title matches weighted highest. Equally relevant tasks are ordered by project key, then task number.
+
+Note that by default only the active tasks are searched.
+`--archived` searches only archived tasks and `--all` searches both, just like how it is with `task list`. When archived matches are left out, Zinn prints a note such as `2 archived matches hidden, use --all to include them`. This extra info is not a part of the `--json` output. `--limit <n>` shows at most `n` results.
+
+Results use the same rows and `--json` shape as `task list`. A search with no results prints nothing and exits successfully. Put `--` before a query that begins with a dash: `zinn task search -- -flag`.
+
+Search uses an index that Zinn keeps up to date as tasks and comments change.
+
 ## Labels
 
 Labels are global and reusable in all the available projects.

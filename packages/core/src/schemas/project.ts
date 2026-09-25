@@ -7,11 +7,13 @@ export const projectNameSchema = z
   .string({ error: nameMessage })
   .refine((value) => value.trim().length > 0 && !invalidNameCharRegex.test(value), nameMessage);
 
+export const projectKeyPattern = "[A-Za-z][A-Za-z0-9]*";
+
 export const projectCreateSchema = z.strictObject({
   key: z
     .string()
     .regex(
-      /^[A-Za-z][A-Za-z0-9]*$/,
+      new RegExp(`^${projectKeyPattern}$`),
       "Project key must start with a letter and contain only letters and numbers",
     ),
   name: projectNameSchema.optional(),

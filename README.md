@@ -40,6 +40,16 @@ Run `zinn --help` to see every command, `zinn task --help` to browse task comman
 
 Running `zinn` without a command shows help.
 
+## Task search
+
+Search task titles, descriptions, and comments with `zinn task search <query> [project-key]`:
+
+```sh
+zinn task search "quarterly quota" MDR
+```
+
+Words match the start of words, ignoring case and accents, and every word must match. To surface matches from archived tasks, you can pass `--archived` or `--all`. See the [CLI documentation](packages/cli/README.md#search-tasks) for ranking, `--limit`, and task key lookups.
+
 ## Task relations
 
 To establish any kind of relationship between two tasks, the general syntax is: `zinn task relation create <source-task> <target-task> --type <relation-type>`

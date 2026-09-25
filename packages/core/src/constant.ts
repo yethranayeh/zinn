@@ -18,6 +18,7 @@ export const DB_TABLE = {
   label: "label",
   taskLabel: "task_label",
   comment: "comment",
+  taskSearch: "task_search",
   activity: "activity",
 };
 
