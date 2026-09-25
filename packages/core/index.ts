@@ -11,7 +11,12 @@ import type {
 import type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project";
 import type { TaskCreateInput, TaskEditInput } from "./src/schemas/task";
 import type { RelationCreateInput, RelationDeleteInput } from "./src/schemas/relation";
-import type { LabelCreateInput, LabelDeleteInput, TaskLabelInput } from "./src/schemas/label";
+import type {
+  LabelCreateInput,
+  LabelDeleteInput,
+  LabelEditInput,
+  TaskLabelInput,
+} from "./src/schemas/label";
 import type { Actor } from "./src/schemas/actor";
 import type {
   CommentCreateInput,
@@ -23,7 +28,12 @@ import { randomUUIDv7 } from "bun";
 import { generateKeyBetween } from "fractional-indexing";
 
 import { getDb } from "./src/db";
-import { labelCreateSchema, labelDeleteSchema, taskLabelSchema } from "./src/schemas/label";
+import {
+  labelCreateSchema,
+  labelDeleteSchema,
+  labelEditSchema,
+  taskLabelSchema,
+} from "./src/schemas/label";
 
 import * as dbProject from "./src/db/project";
 import * as dbColumn from "./src/db/column";
@@ -59,7 +69,12 @@ export type {
   Comment,
   CommentWithKey,
 } from "./src/types";
-export type { LabelCreateInput, LabelDeleteInput, TaskLabelInput } from "./src/schemas/label";
+export type {
+  LabelCreateInput,
+  LabelDeleteInput,
+  LabelEditInput,
+  TaskLabelInput,
+} from "./src/schemas/label";
 export type { RelationCreateInput, RelationDeleteInput } from "./src/schemas/relation";
 export type {
   CommentCreateInput,
@@ -67,7 +82,12 @@ export type {
   CommentEditInput,
 } from "./src/schemas/comment";
 
-export { labelCreateSchema, labelDeleteSchema, taskLabelSchema } from "./src/schemas/label";
+export {
+  labelCreateSchema,
+  labelDeleteSchema,
+  labelEditSchema,
+  taskLabelSchema,
+} from "./src/schemas/label";
 export { projectCreateSchema, projectEditSchema } from "./src/schemas/project";
 export { taskCreateSchema, taskEditSchema } from "./src/schemas/task";
 export { relationCreateSchema, relationDeleteSchema } from "./src/schemas/relation";
@@ -913,6 +933,30 @@ export const label = {
       description: props.description ?? "",
       color: props.color ?? "white",
     })!;
+  },
+  /** Editing a global definition preserves attachments and does not edit attached tasks. */
+  edit: (input: LabelEditInput) => {
+    const props = validateTaskInput(labelEditSchema, input);
+
+    return getDb().transaction(() => {
+      const match = resolveLabels([props.labelName])[0]!;
+      const name = props.name ?? match.name;
+      const description = props.description ?? match.description;
+      const color = props.color ?? match.color;
+
+      const isUnchanged =
+        name === match.name && description === match.description && color === match.color;
+      if (isUnchanged) {
+        return match;
+      }
+
+      const existingLabel = dbLabel.getByName(name);
+      if (existingLabel != null && existingLabel.id !== match.id) {
+        throw new Error(`A label with name "${name}" already exists`);
+      }
+
+      return dbLabel.update({ id: match.id, name, description, color })!;
+    })();
   },
   getAll: dbLabel.getAll,
   getByName: (name: string) => {

@@ -78,6 +78,7 @@ Labels are global and reusable in all the available projects.
 ```sh
 zinn label create urgent --color red --description "Needs attention soon"
 zinn label create review
+zinn label edit review --name ready --color green
 zinn label list
 ```
 
@@ -97,6 +98,8 @@ Label names are case-sensitive, and the whitespace from input is trimmed.
 Descriptions default to an empty string and the label colors default to white. Available colors are _red_, _green_, _yellow_, _blue_, _magenta_, _cyan_, _white_, and _gray_.
 
 `label create` and `label list` print each label name in its color. `--json` output shows the color as a value instead.
+
+`label edit` changes only the supplied name, color, or description. Renaming preserves every task attachment because attachments refer to the label's internal ID. Also, updating a label does not affect any tasks' timestamps that it is attached to.
 
 Task creation and edits apply content and label changes together, or roll back together on failure.
 Note that label changes also update the task's modification timestamp. Archived tasks can also have their labels edited.

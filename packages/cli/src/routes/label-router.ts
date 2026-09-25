@@ -2,7 +2,7 @@ import type { Label } from "@zinn-dev/core";
 import type { RouteDef } from "../types";
 
 import { parseArgs, styleText } from "node:util";
-import { label, labelCreateSchema, labelDeleteSchema } from "@zinn-dev/core";
+import { label, labelCreateSchema, labelDeleteSchema, labelEditSchema } from "@zinn-dev/core";
 
 import {
   confirmAction,
@@ -56,6 +56,38 @@ Description defaults to an empty string; color defaults to white.
 Colors: red, green, yellow, blue, magenta, cyan, white, gray.
 
 Example: zinn label create bug --description "Unexpected behavior" --color red`,
+  },
+  edit: {
+    run: (args) => {
+      const { values, positionals, tokens } = parseArgs({
+        args,
+        options: {
+          name: { type: "string" },
+          description: { type: "string" },
+          color: { type: "string" },
+        },
+        allowPositionals: true,
+        strict: true,
+        tokens: true,
+      });
+
+      validatePositionalCount(positionals, 1, "Exactly one label name is required");
+      validateUniqueOptions(tokens);
+
+      const input = labelEditSchema.parse({ labelName: positionals[0], ...values });
+      const edited = label.edit(input);
+
+      output(presentLabel(edited), formatLabel);
+    },
+    help: `Usage: zinn label edit <name> [--name <text>] [--description <text>] [--color <color>]
+
+Change specified fields.
+Provide at least one edit flag. Use --description "" for an empty description.
+
+Names are case-sensitive, trimmed, and must remain unique.
+Editing does not affect task attachments or task timestamps.
+
+Example: zinn label edit bug --name defect --color yellow`,
   },
   list: {
     run: (args) => {

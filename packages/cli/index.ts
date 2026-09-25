@@ -44,6 +44,7 @@ Commands:
   task label add
   task label remove
   label create
+  label edit
   label list
   label delete
 

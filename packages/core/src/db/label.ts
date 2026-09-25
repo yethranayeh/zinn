@@ -44,6 +44,20 @@ export function create(props: Omit<Label, "id">) {
   });
 }
 
+export function update(props: Label) {
+  return getDb()
+    .query<Label, Bind<Label>>(`UPDATE ${DB_TABLE.label}
+    SET name = $name, description = $description, color = $color
+    WHERE id = $id
+    RETURNING *;`)
+    .get({
+      $id: props.id,
+      $name: props.name,
+      $description: props.description,
+      $color: props.color,
+    });
+}
+
 export function deleteById(id: string) {
   const db = getDb();
 

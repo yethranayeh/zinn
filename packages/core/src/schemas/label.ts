@@ -16,6 +16,18 @@ export const labelCreateSchema = z.strictObject({
   description: z.string().optional(),
   color: labelColorSchema.optional(),
 });
+export const labelEditSchema = z
+  .strictObject({
+    labelName: labelNameSchema,
+    name: labelNameSchema.optional(),
+    description: z.string().optional(),
+    color: labelColorSchema.optional(),
+  })
+  .refine(
+    (value) =>
+      value.name !== undefined || value.description !== undefined || value.color !== undefined,
+    "Provide at least one field to edit: name, description, or color",
+  );
 export const labelDeleteSchema = z.strictObject({ name: labelNameSchema });
 export const taskLabelSchema = z.strictObject({
   taskKey: z.string(),
@@ -23,5 +35,6 @@ export const taskLabelSchema = z.strictObject({
 });
 export type LabelColor = z.infer<typeof labelColorSchema>;
 export type LabelCreateInput = z.infer<typeof labelCreateSchema>;
+export type LabelEditInput = z.infer<typeof labelEditSchema>;
 export type LabelDeleteInput = z.infer<typeof labelDeleteSchema>;
 export type TaskLabelInput = z.infer<typeof taskLabelSchema>;

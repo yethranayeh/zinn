@@ -2017,13 +2017,22 @@ test("global label workflows support repeated create/edit flags and preserve tas
     const created = run("task", "create", "APP", "--title", "Login", "--description", "", "--label", "bug", "--label", "auth");
     expect(created.code).toBe(0);
     expect(created.stdout).toContain("Labels: auth, bug");
-    expect(run("task", "edit", "APP-1", "--title", "Changed", "--add-label", "needs review, soon", "--add-label", "auth", "--remove-label", "bug").code).toBe(0);
+    const editedLabel = run("label", "edit", " bug ", "--name", " defect ", "--color", "blue", "--description", "");
+    expect(editedLabel.code).toBe(0);
+    expect(editedLabel.stdout).toBe("\x1b[34mdefect\x1b[39m\n");
+    expect(run("task", "view", "APP-1").stdout).toContain("Labels: auth, defect");
+    expect(JSON.parse(run("label", "edit", "defect", "--description", "Fixed", "--json").stdout)).toEqual({
+      name: "defect",
+      color: "blue",
+      description: "Fixed",
+    });
+    expect(run("task", "edit", "APP-1", "--title", "Changed", "--add-label", "needs review, soon", "--add-label", "auth", "--remove-label", "defect").code).toBe(0);
     expect(run("task", "view", "APP-1").stdout).toContain("Labels: auth, needs review, soon");
     expect(run("task", "edit", "APP-1", "--title", "Must not change", "--add-label", "unknown").code).toBe(1);
     expect(run("task", "view", "APP-1").stdout).toContain("Changed");
     expect(run("task", "edit", "APP-1", "--add-label", "bug", "--remove-label", "bug").code).toBe(1);
-    expect(run("task", "label", "add", "APP-1", "bug").stdout).toContain("Labels: auth, bug, needs review, soon");
-    expect(run("task", "label", "remove", "APP-1", "auth", "bug").stdout).toContain("Labels: needs review, soon");
+    expect(run("task", "label", "add", "APP-1", "defect").stdout).toContain("Labels: auth, defect, needs review, soon");
+    expect(run("task", "label", "remove", "APP-1", "auth", "defect").stdout).toContain("Labels: needs review, soon");
     expect(runZinnWithConfirmation(["label", "delete", "needs review, soon"], dir).code).toBe(0);
     expect(run("task", "view", "APP-1").stdout).not.toContain("Labels:");
     expect(run("label", "list").stdout).toContain("auth");
@@ -2067,7 +2076,7 @@ test("label text output colors the name instead of naming the color, while JSON 
 
 test("label namespaces and commands expose help without initializing storage", () => {
   withIsolatedZinnDir((dir) => {
-    for (const args of [["label"], ["label", "create"], ["label", "list"], ["label", "delete"], ["task", "label"], ["task", "label", "add"], ["task", "label", "remove"]]) {
+    for (const args of [["label"], ["label", "create"], ["label", "edit"], ["label", "list"], ["label", "delete"], ["task", "label"], ["task", "label", "add"], ["task", "label", "remove"]]) {
       for (const flag of ["-h", "--help"]) {
         const result = runZinn([...args, flag], dir);
         expect(result.code).toBe(0);
@@ -2139,6 +2148,9 @@ test("shared option checks reject repeated scalar flags and retain positional va
     for (const args of [
       ["label", "create", "bug", "--color", "red", "--color", "blue"],
       ["label", "create", "bug", "--description", "a", "--description", "b"],
+      ["label", "edit", "bug", "--name", "a", "--name", "b"],
+      ["label", "edit", "bug", "--color", "red", "--color", "blue"],
+      ["label", "edit", "bug", "--description", "a", "--description", "b"],
       ["project", "create", "APP", "--name", "a", "--name", "b"],
       ["project", "edit", "APP", "--name", "a", "--name", "b"],
       ["task", "edit", "APP-1", "--title", "a", "--title", "b"],
@@ -2148,9 +2160,26 @@ test("shared option checks reject repeated scalar flags and retain positional va
       expect(result.code).toBe(1);
       expect(result.stderr).toContain("can only be specified once");
     }
-    for (const args of [["label", "create"], ["label", "create", "one", "two"], ["label", "delete", "one", "two"]]) {
+    for (const args of [["label", "create"], ["label", "create", "one", "two"], ["label", "edit"], ["label", "edit", "one", "two", "--color", "red"], ["label", "delete", "one", "two"]]) {
       expect(runZinn(args, dir).stderr).toContain("Exactly one label name is required");
     }
+  });
+});
+
+test("label edit validates changes, uniqueness, and missing labels", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = (...args: string[]) => runZinn(args, dir);
+    run("label", "create", "bug");
+    run("label", "create", "auth");
+
+    expect(run("label", "edit", "bug").stderr).toContain("Provide at least one field to edit");
+    expect(run("label", "edit", "missing", "--color", "red").stderr).toContain("does not exist");
+    expect(run("label", "edit", "bug", "--name", "auth").stderr).toContain("already exists");
+    expect(run("label", "edit", "bug", "--name", " ").stderr).toContain("cannot be blank");
+    expect(run("label", "edit", "bug", "--color", "purple").code).toBe(1);
+    expect(run("label", "list", "--json").stdout).toContain('"name": "bug"');
+    expect(run("label", "edit", "--help").stdout).toContain("Renaming preserves task attachments");
+    expect(runZinn(["--help"], dir).stdout).toContain("label edit");
   });
 });
 
