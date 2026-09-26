@@ -39,6 +39,8 @@ import {
 import * as dbProject from "./src/db/project";
 import * as dbColumn from "./src/db/column";
 import * as dbTask from "./src/db/task";
+import * as dbTaskLabel from "./src/db/task-label";
+import * as dbSearch from "./src/db/search";
 import * as dbRelation from "./src/db/relation";
 import * as dbLabel from "./src/db/label";
 import * as dbActivity from "./src/db/activity";
@@ -164,7 +166,7 @@ export const project = {
 
     getDb().transaction(() => {
       for (const taskMatch of dbTask.getAllByProjectId(project.id, "all")) {
-        dbTask.removeFromSearch(taskMatch.id);
+        dbSearch.removeTask(taskMatch.id);
       }
 
       dbProject.deleteByKey(key);
@@ -277,11 +279,11 @@ function findTaskByExactKey(query: string) {
 
 /** Rewrites a task's search row from its current title, description and comments. */
 function updateTaskSearchRecord(taskId: string) {
-  dbTask.removeFromSearch(taskId);
+  dbSearch.removeTask(taskId);
 
   const taskMatch = dbTask.getById(taskId)!;
   const comments = dbComment.getAllByTaskId(taskId).map((commentMatch) => commentMatch.text);
-  dbTask.addToSearch({
+  dbSearch.addTask({
     taskId,
     title: taskMatch.title,
     description: taskMatch.description,
@@ -425,7 +427,7 @@ export const task = {
       })!;
 
       for (const label of labels) {
-        dbTask.addLabel(createdTask.id, label.id);
+        dbTaskLabel.create(createdTask.id, label.id);
       }
       updateTaskSearchRecord(createdTask.id);
 
@@ -481,8 +483,8 @@ export const task = {
       keyMatch != null && (projectId == null || keyMatch.project_id === projectId);
     const pinnedTasks = isKeyMatchInScope ? [keyMatch] : [];
 
-    const textMatches = dbTask
-      .search({ match: getSearchMatchExpression(props.query), projectId })
+    const textMatches = dbSearch
+      .searchTasks({ match: getSearchMatchExpression(props.query), projectId })
       .filter((row) => !pinnedTasks.some((pinned) => pinned.id === row.id))
       .map(({ project_key, ...row }) => attachTaskKey(row, project_key));
 
@@ -500,7 +502,7 @@ export const task = {
     };
   },
   label: {
-    getAll: (taskKey: string) => dbTask.getLabels(getTaskByKey(taskKey).id),
+    getAll: (taskKey: string) => dbTaskLabel.getAllByTaskId(getTaskByKey(taskKey).id),
     add: (input: TaskLabelInput, actor: Actor): TaskWithKey => {
       const props = validateTaskInput(taskLabelSchema, input);
       return task.edit({ taskKey: props.taskKey, addLabelNames: props.labelNames }, actor);
@@ -518,7 +520,7 @@ export const task = {
       const existing = getTaskByKey(props.taskKey);
       const additions = resolveLabels(props.addLabelNames ?? []);
       const removals = resolveLabels(props.removeLabelNames ?? []);
-      const existingLabelIds = new Set(dbTask.getLabels(existing.id).map((label) => label.id));
+      const existingLabelIds = new Set(dbTaskLabel.getAllByTaskId(existing.id).map((label) => label.id));
       const labelsToAdd = additions.filter((label) => !existingLabelIds.has(label.id));
       const labelsToRemove = removals.filter((label) => existingLabelIds.has(label.id));
       const areLabelsUnchanged = labelsToAdd.length === 0 && labelsToRemove.length === 0;
@@ -534,11 +536,11 @@ export const task = {
       }
 
       for (const label of labelsToAdd) {
-        dbTask.addLabel(existing.id, label.id);
+        dbTaskLabel.create(existing.id, label.id);
       }
 
       for (const label of labelsToRemove) {
-        dbTask.removeLabel(existing.id, label.id);
+        dbTaskLabel.deleteByIds(existing.id, label.id);
       }
 
       const changes: Record<string, unknown> = {};
@@ -765,7 +767,7 @@ export const task = {
         createdAt: now,
       });
 
-      dbTask.removeFromSearch(taskMatch.id);
+      dbSearch.removeTask(taskMatch.id);
       dbTask.deleteById(taskMatch.id);
       return taskMatch;
     })();
@@ -1093,7 +1095,7 @@ export const label = {
       const match = resolveLabels([props.name])[0]!;
       const now = Date.now();
 
-      for (const taskId of dbTask.getIdsByLabelId(match.id)) {
+      for (const taskId of dbTaskLabel.getTaskIdsByLabelId(match.id)) {
         recordTaskActivity(validActor, {
           taskId,
           action: "edit",
