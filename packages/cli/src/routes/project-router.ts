@@ -212,8 +212,51 @@ Example: zinn project delete MDR`,
       help: `Usage: zinn project column create <project-key> <column-name>
 
 Add a column at the end of a project's board.
+Names are trimmed, must contain printable text on a single line, and must be unique within the project regardless of casing.
 
 Example: zinn project column create MDR "Boardlog"`,
+    },
+    edit: {
+      run: (args: Array<string>) => {
+        const { values, positionals, tokens } = parseArgs({
+          args,
+          options: { name: { type: "string" } },
+          allowPositionals: true,
+          strict: true,
+          tokens: true,
+        });
+
+        validatePositionalCount(
+          positionals,
+          2,
+          "Both the project key and the column name must be specified",
+        );
+        validateUniqueOptions(tokens);
+
+        if (values.name === undefined) {
+          quit("Provide an edit flag: --name");
+        }
+
+        const editedColumn = column.edit({
+          projectKey: positionals[0]!,
+          columnName: positionals[1]!,
+          name: values.name,
+        });
+        const columnProject = project.getById(editedColumn.project_id)!;
+        const presentedColumn = { project: columnProject.key, name: editedColumn.name };
+
+        output(presentedColumn, (c) => `${c.project} | ${c.name}`);
+      },
+      help: `Usage: zinn project column edit <project-key> <column-name> --name <text>
+
+Rename a column.
+The --name flag is required.
+
+Columns are matched by name, and matching is case-insensitive.
+Names are trimmed, and must remain unique within the same project.
+Changing only the casing of a column's own name is allowed.
+
+Example: zinn project column edit MDR "In Progress" --name "Refining"`,
     },
     list: {
       run: (args: Array<string>) => {

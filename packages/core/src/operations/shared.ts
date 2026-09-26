@@ -1,6 +1,7 @@
 import type {
   Activity,
   ActivityAction,
+  Column,
   Comment,
   CommentWithKey,
   Task,
@@ -136,6 +137,11 @@ export function resolveLabels(names: Array<string>) {
 
     return match;
   });
+}
+
+/** Column names are matched within a project without case-sensitivity. */
+export function findColumnByName(columns: Array<Column>, name: string) {
+  return columns.find((column) => column.name.toLowerCase() === name.toLowerCase());
 }
 
 export function recordTaskActivity(

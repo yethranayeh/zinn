@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const nameMessage = "Project name must contain printable text on a single line";
-const invalidNameCharRegex = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+export const invalidNameCharRegex = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 
 export const projectNameSchema = z
   .string({ error: nameMessage })

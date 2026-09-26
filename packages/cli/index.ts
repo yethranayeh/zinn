@@ -24,6 +24,7 @@ Commands:
   project view
   project delete
   project column create
+  project column edit
   project column list
   task create
   task list

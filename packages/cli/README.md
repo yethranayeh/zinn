@@ -50,6 +50,16 @@ Add another column at the end of the board:
 zinn project column create MDR "Boardlog"
 ```
 
+Rename a column:
+
+```sh
+zinn project column edit MDR "In Progress" --name "Refining"
+```
+
+Columns are matched by name, and matching is case-insenstivie. Names are trimmed and they cannot be blank.
+Since columns are case-insensitive, you cannot have two columns with only different casing such as `todo` and `Todo`. However, you are free to change the casing of an existing column.
+Tasks stay in the renamed column.
+
 `zinn project delete MDR` asks for confirmation, then permanently deletes the project and all of its columns and tasks.
 
 ## Create and read tasks

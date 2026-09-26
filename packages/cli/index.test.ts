@@ -168,6 +168,7 @@ test("every command help exits cleanly instead of running the command", () => {
     ["project", "view"],
     ["project", "delete"],
     ["project", "column", "create"],
+    ["project", "column", "edit"],
     ["project", "column", "list"],
     ["task", "create"],
     ["task", "list"],
@@ -283,6 +284,26 @@ test("project column create rejects a duplicate name regardless of casing", () =
   });
 });
 
+test("project column create trims names and rejects invalid ones without writes", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "COL", "--name", "Columns"], dir);
+    const read = () => withTestDb(dir, (db) => db.query("SELECT * FROM project_column").all());
+    const before = read();
+    for (const [name, message] of [
+      [" done ", `There is already a "done" column`],
+      ["   ", "Column name cannot be blank"],
+      ["Next\nDone", "Column name must contain printable text on a single line"],
+    ]) {
+      const result = runZinn(["project", "column", "create", "COL", name!], dir);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain(message!);
+      expect(read()).toEqual(before);
+    }
+
+    expect(runZinn(["project", "column", "create", "COL", " Later "], dir).stdout).toBe("COL | Later\n");
+  });
+});
+
 test("project column names are unique only within a project", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "ALPHA", "--name", "Alpha"], testDir);
@@ -293,6 +314,66 @@ test("project column names are unique only within a project", () => {
 
     expect(alpha.code).toBe(0);
     expect(beta.code).toBe(0);
+  });
+});
+
+test("project column edit renames a column in place and keeps its tasks", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "COL", "--name", "Columns"], dir);
+    runZinn(["task", "create", "COL", "--title", "Stays put"], dir);
+    runZinn(["task", "move", "COL-1", "todo"], dir);
+    const readColumns = () =>
+      withTestDb(dir, (db) => db.query("SELECT * FROM project_column ORDER BY column_order").all());
+    const before = readColumns();
+
+    const renamed = runZinn(["project", "column", "edit", "col", "todo", "--name", " Next up "], dir);
+    expect(renamed).toEqual({ stdout: "COL | Next up\n", stderr: "", code: 0 });
+    expect(runZinn(["project", "column", "list", "COL"], dir).stdout).toBe(
+      "Backlog\nNext up\nIn Progress\nReview\nDone\n",
+    );
+    expect(readColumns()).toEqual(
+      before.map((row: any) => (row.name === "TODO" ? { ...row, name: "Next up" } : row)),
+    );
+    expect(runZinn(["task", "view", "COL-1", "--json"], dir).stdout).toContain(`"column": "Next up"`);
+
+    const caseOnly = runZinn(["project", "column", "edit", "COL", "next up", "--name", "NEXT UP", "--json"], dir);
+    expect(JSON.parse(caseOnly.stdout)).toEqual({ project: "COL", name: "NEXT UP" });
+    expect(runZinn(["project", "column", "edit", "COL", "--name=--example", "NEXT UP"], dir).stdout).toBe(
+      "COL | --example\n",
+    );
+  });
+});
+
+test("project column edit rejects invalid requests without writes", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "COL", "--name", "Columns"], dir);
+    const read = () => withTestDb(dir, (db) => db.query("SELECT * FROM project_column").all());
+    const before = read();
+    const cases: Array<[string[], string]> = [
+      [[], "Both the project key and the column name must be specified"],
+      [["COL"], "Both the project key and the column name must be specified"],
+      [["COL", "TODO", "extra", "--name", "Next"], "Both the project key and the column name must be specified"],
+      [["COL", "TODO"], "Provide an edit flag: --name"],
+      [["COL", "TODO", "--name"], "argument missing"],
+      [["COL", "TODO", "--title", "Next"], "Unknown option"],
+      [["COL", "TODO", "--name", "One", "--name", "Two"], "only be specified once"],
+      [["COL", "TODO", "--name", "   "], "Column name cannot be blank"],
+      [["COL", "TODO", "--name", "Next\nDone"], "Column name must contain printable text on a single line"],
+      [["COL", "TODO", "--name", "done"], `There is already a "done" column`],
+      [["COL", "Missing", "--name", "Next"], `Columns does not have a column named "Missing"`],
+      [["NOPE", "TODO", "--name", "Next"], `Project with key "NOPE" does not exist!`],
+    ];
+    for (const [args, message] of cases) {
+      const result = runZinn(["project", "column", "edit", ...args], dir);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain(message);
+      expect(result.stdout).toBe("");
+      expect(read()).toEqual(before);
+    }
+
+    const unchanged = runZinn(["project", "column", "edit", "COL", "todo", "--name", "TODO"], dir);
+    expect(unchanged).toEqual({ stdout: "COL | TODO\n", stderr: "", code: 0 });
+    expect(read()).toEqual(before);
   });
 });
 

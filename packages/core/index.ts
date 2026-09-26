@@ -1,4 +1,5 @@
 export type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project";
+export type { ColumnCreateInput, ColumnEditInput } from "./src/schemas/column";
 export type { TaskCreateInput, TaskEditInput, TaskSearchInput } from "./src/schemas/task";
 export type {
   TaskWithKey,
@@ -32,6 +33,7 @@ export {
   taskLabelSchema,
 } from "./src/schemas/label";
 export { projectCreateSchema, projectEditSchema } from "./src/schemas/project";
+export { columnCreateSchema, columnEditSchema } from "./src/schemas/column";
 export {
   taskCreateSchema,
   taskEditSchema,

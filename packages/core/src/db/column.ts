@@ -37,3 +37,12 @@ export function create(column: Column) {
     $column_order: column.column_order,
   });
 }
+
+export function update(props: Pick<Column, "id" | "name">) {
+  return getDb()
+    .query<Column, Bind<typeof props>>(`UPDATE ${DB_TABLE.projectColumn}
+    SET name = $name
+    WHERE id = $id
+    RETURNING *;`)
+    .get({ $id: props.id, $name: props.name });
+}

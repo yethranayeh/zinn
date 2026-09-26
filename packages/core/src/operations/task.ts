@@ -33,6 +33,7 @@ import {
   recordTaskActivity,
   updateTaskSearchRecord,
   describeRelation,
+  findColumnByName,
 } from "./shared";
 
 function getSearchMatchExpression(query: string) {
@@ -270,9 +271,7 @@ export const task = {
       }
 
       const projectColumns = dbColumn.getAllByProjectId(taskMatch.project_id);
-      const columnMatch = projectColumns.find(
-        (column) => column.name.toLowerCase() === props.targetColumn.toLowerCase(),
-      );
+      const columnMatch = findColumnByName(projectColumns, props.targetColumn);
 
       if (columnMatch == null) {
         // TODO: maybe a `did you mean` type of fuzzy check for misspelllings
