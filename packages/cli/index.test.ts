@@ -2715,7 +2715,8 @@ test("mutations record the invoking agent, then the git identity, then the OS us
     const identityFile = join(dir, "gitconfig");
     writeFileSync(identityFile, "[user]\n\tname = Git Person\n\temail = git@example.com\n");
 
-    expect(runZinnAs(["project", "create", "ACT"], dir, {}).code).toBe(0);
+    expect(runZinnAs(["project", "create", "ACT"], dir, { AI_AGENT: "project-agent" }).code).toBe(0);
+    expect(lastActor(dir)).toEqual({ action: "create", actor_name: "project-agent", actor_email: null, actor_kind: "agent" });
     expect(runZinnAs(["task", "create", "ACT", "--title", "Tracked"], dir, { AI_AGENT: "test-agent_1-0" }).code).toBe(0);
     expect(lastActor(dir)).toEqual({ action: "create", actor_name: "test-agent_1-0", actor_email: null, actor_kind: "agent" });
 

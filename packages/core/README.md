@@ -24,6 +24,12 @@ Internally, the DB functions still return task rows without `key`. Relation look
 
 The index is an FTS5 table, `task_search`, with one row per task, kept in sync by the core operations that change a task's title, description, or comments.
 
+## Activity
+
+Mutations that change tasks, projects, columns, global label definitions, relations, or comments require an actor and write activity in the same transaction.
+
+Project deletion produces one aggregate project activity row. Its snapshot contains the project's key and name, ordered columns as `{ id, name }`, and active and archived tasks as `{ id, key, title }`. SQLite's cascaded task, column, relation, comment, label-attachment, and search-row deletions do not produce individual deletion activity.
+
 ## Task priority
 
 Tasks store `priority: TaskPriority | null` and `TaskPriority` is `"low" | "medium" | "high" | "urgent"`.

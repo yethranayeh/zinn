@@ -45,7 +45,7 @@ export const labelRouter = {
       validateUniqueOptions(tokens);
 
       const input = labelCreateSchema.parse({ name: positionals[0], ...values });
-      const created = label.create(input);
+      const created = label.create(input, currentActor());
 
       output(presentLabel(created), formatLabel);
     },
@@ -85,7 +85,7 @@ List all global label definitions.`,
       validateUniqueOptions(tokens);
 
       const input = labelEditSchema.parse({ labelName: positionals[0], ...values });
-      const edited = label.edit(input);
+      const edited = label.edit(input, currentActor());
 
       output(presentLabel(edited), formatLabel);
     },

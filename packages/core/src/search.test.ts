@@ -16,7 +16,7 @@ function runSearchCheck(script: string) {
           import { comment, project, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
           import { getDb } from ${JSON.stringify(new URL("./db.ts", import.meta.url).pathname)};
           const human = { name: "Test Human", email: "human@example.com", kind: "human" };
-          const app = project.create({ key: "APP" });
+          const app = project.create({ key: "APP" }, human);
           const create = (title, description = null, projectId = app.id) =>
             task.create({ project_id: projectId, title, description }, human);
           const keys = (query, options = {}) => task.search({ query, ...options }).tasks.map((entry) => entry.key);
@@ -102,8 +102,8 @@ test("an exact task key is pinned first, followed by text matches", () => {
 
 test("ties break by project key, then task number", () => {
   runSearchCheck(`
-    const zed = project.create({ key: "ZED" });
-    const bee = project.create({ key: "BEE" });
+    const zed = project.create({ key: "ZED" }, human);
+    const bee = project.create({ key: "BEE" }, human);
     create("Same words", null, zed.id);
     create("Same words", null, app.id);
     create("Same words", null, bee.id);
@@ -142,7 +142,7 @@ test("archived matches are hidden by default and counted", () => {
 
 test("project filter, limit, and result shape", () => {
   runSearchCheck(`
-    const other = project.create({ key: "OTHER" });
+    const other = project.create({ key: "OTHER" }, human);
     create("Shared term one", null);
     create("Shared term two", null);
     create("Shared term elsewhere", null, other.id);
@@ -213,7 +213,7 @@ test("the index follows task and comment edits and deletions", () => {
     assert.deepEqual(keys("renamed"), []);
     assert.equal(indexRows(), 1);
 
-    project.delete("APP");
+    project.delete("APP", human);
     assert.equal(indexRows(), 0);
   `);
 });

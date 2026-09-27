@@ -1,5 +1,6 @@
 import type { Column, Project } from "../types";
 import type { ColumnCreateInput, ColumnEditInput, ColumnOrderInput } from "../schemas/column";
+import type { Actor } from "../schemas/actor";
 import type { OrderPlacement } from "./shared";
 
 import { randomUUIDv7 } from "bun";
@@ -11,9 +12,10 @@ import * as dbColumn from "../db/column";
 
 import { standardizeProjectKey } from "../lib";
 import { columnCreateSchema, columnEditSchema, columnOrderSchema } from "../schemas/column";
+import { actorSchema } from "../schemas/actor";
 import { validateTaskInput } from "../schemas/task";
 
-import { findByName, getInsertionIndex } from "./shared";
+import { findByName, getInsertionIndex, recordActivity } from "./shared";
 
 function requireProjectColumns(projectKey: string) {
   const project = dbProject.getByKey(projectKey);
@@ -38,26 +40,40 @@ function requireColumnByName(project: Project, projectColumns: Array<Column>, na
 export const column = {
   getById: dbColumn.getById,
   getAllByProjectKey: (key: string) => requireProjectColumns(key).projectColumns,
-  create: (input: ColumnCreateInput) => {
+  create: (input: ColumnCreateInput, actor: Actor) => {
     const props = validateTaskInput(columnCreateSchema, input);
-    const { project, projectColumns: allProjectColumns } = requireProjectColumns(props.projectKey);
-    const existingColumn = findByName(allProjectColumns, props.name);
+    const validActor = validateTaskInput(actorSchema, actor);
 
-    if (existingColumn != null) {
-      throw new Error(`There is already a "${props.name}" column`);
-    }
+    return getDb().transaction(() => {
+      const { project, projectColumns: allProjectColumns } = requireProjectColumns(props.projectKey);
+      const existingColumn = findByName(allProjectColumns, props.name);
 
-    const lastColOrder = allProjectColumns[allProjectColumns.length - 1]?.column_order ?? null;
+      if (existingColumn != null) {
+        throw new Error(`There is already a "${props.name}" column`);
+      }
 
-    return dbColumn.create({
-      id: randomUUIDv7(),
-      name: props.name,
-      column_order: generateKeyBetween(lastColOrder, null),
-      project_id: project.id,
-    })!;
+      const lastColOrder = allProjectColumns[allProjectColumns.length - 1]?.column_order ?? null;
+      const createdColumn = dbColumn.create({
+        id: randomUUIDv7(),
+        name: props.name,
+        column_order: generateKeyBetween(lastColOrder, null),
+        project_id: project.id,
+      })!;
+
+      recordActivity(validActor, {
+        entityType: "column",
+        entityId: createdColumn.id,
+        action: "create",
+        changes: { project: { id: project.id, key: project.key }, name: createdColumn.name },
+        createdAt: Date.now(),
+      });
+
+      return createdColumn;
+    })();
   },
-  edit: (input: ColumnEditInput) => {
+  edit: (input: ColumnEditInput, actor: Actor) => {
     const props = validateTaskInput(columnEditSchema, input);
+    const validActor = validateTaskInput(actorSchema, actor);
 
     return getDb().transaction(() => {
       const { project, projectColumns } = requireProjectColumns(props.projectKey);
@@ -74,11 +90,21 @@ export const column = {
         throw new Error(`There is already a "${props.name}" column`);
       }
 
+      const now = Date.now();
+      recordActivity(validActor, {
+        entityType: "column",
+        entityId: columnMatch.id,
+        action: "edit",
+        changes: { name: [columnMatch.name, props.name] },
+        createdAt: now,
+      });
+
       return dbColumn.update({ id: columnMatch.id, name: props.name })!;
     })();
   },
-  order: (input: ColumnOrderInput) => {
+  order: (input: ColumnOrderInput, actor: Actor) => {
     const props = validateTaskInput(columnOrderSchema, input);
+    const validActor = validateTaskInput(actorSchema, actor);
 
     return getDb().transaction(() => {
       const { project, projectColumns } = requireProjectColumns(props.projectKey);
@@ -122,6 +148,14 @@ export const column = {
       const otherColumns = projectColumns.filter((candidate) => candidate.id !== columnMatch.id);
       const futurePrevColumn = otherColumns[insertionIndex - 1] ?? null;
       const futureNextColumn = otherColumns[insertionIndex] ?? null;
+
+      recordActivity(validActor, {
+        entityType: "column",
+        entityId: columnMatch.id,
+        action: "order",
+        changes: null,
+        createdAt: Date.now(),
+      });
 
       return dbColumn.updateOrder({
         id: columnMatch.id,

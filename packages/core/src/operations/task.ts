@@ -501,5 +501,5 @@ export const task = {
     })();
   },
   /** Activity rows recorded for a task, oldest first. */
-  activity: (taskKey: string) => dbActivity.getAllByEntityId(getTaskByKey(taskKey).id),
+  activity: (taskKey: string) => dbActivity.getAllByEntity("task", getTaskByKey(taskKey).id),
 };

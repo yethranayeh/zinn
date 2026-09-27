@@ -1,6 +1,7 @@
 import type {
   Activity,
   ActivityAction,
+  ActivityEntityType,
   Comment,
   CommentWithKey,
   Label,
@@ -183,10 +184,11 @@ export function getInsertionIndex(itemCount: number, movedIndex: number, placeme
   }
 }
 
-export function recordTaskActivity(
+export function recordActivity(
   actor: Actor,
   props: {
-    taskId: string;
+    entityType: ActivityEntityType;
+    entityId: string;
     action: ActivityAction;
     changes: Activity["changes"];
     createdAt: number;
@@ -197,10 +199,28 @@ export function recordTaskActivity(
     actor_name: actor.name,
     actor_email: actor.email,
     actor_kind: actor.kind,
-    entity_type: "task",
-    entity_id: props.taskId,
+    entity_type: props.entityType,
+    entity_id: props.entityId,
     action: props.action,
     changes: props.changes,
+  });
+}
+
+export function recordTaskActivity(
+  actor: Actor,
+  props: {
+    taskId: string;
+    action: ActivityAction;
+    changes: Activity["changes"];
+    createdAt: number;
+  },
+) {
+  recordActivity(actor, {
+    entityType: "task",
+    entityId: props.taskId,
+    action: props.action,
+    changes: props.changes,
+    createdAt: props.createdAt,
   });
 }
 

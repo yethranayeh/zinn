@@ -16,7 +16,7 @@ function runCommentCheck(script: string) {
           import { comment, project, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
           import { getDb } from ${JSON.stringify(new URL("./db.ts", import.meta.url).pathname)};
           const human = { name: "Test Human", email: "human@example.com", kind: "human" };
-          const app = project.create({ key: "APP" });
+          const app = project.create({ key: "APP" }, human);
           ${script}
         `,
       ],

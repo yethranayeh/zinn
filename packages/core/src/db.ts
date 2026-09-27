@@ -99,7 +99,7 @@ function initDb() {
   actor_name  TEXT NOT NULL,
   actor_email TEXT,
   actor_kind  TEXT NOT NULL CHECK (actor_kind IN ('human', 'agent')),
-  entity_type TEXT NOT NULL CHECK (entity_type IN ('task')),
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('task', 'project', 'column', 'label')),
   entity_id   TEXT NOT NULL,
   action      TEXT NOT NULL CHECK (action IN (
     'create', 'edit', 'move', 'order', 'archive', 'unarchive', 'delete',

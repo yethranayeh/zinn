@@ -1,4 +1,4 @@
-import type { Activity, Bind } from "../types";
+import type { Activity, ActivityEntityType, Bind } from "../types";
 
 import { randomUUIDv7 } from "bun";
 
@@ -29,15 +29,15 @@ export function create(props: Omit<Activity, "id">) {
     });
 }
 
-export function getAllByEntityId(entityId: string): Array<Activity> {
+export function getAllByEntity(entityType: ActivityEntityType, entityId: string): Array<Activity> {
   const db = getDb();
 
   return db
-    .query<StoredActivity, Bind<{ entityId: string }>>(
+    .query<StoredActivity, Bind<{ entityType: ActivityEntityType; entityId: string }>>(
       `SELECT * FROM ${DB_TABLE.activity}
-    WHERE entity_id = $entityId
+    WHERE entity_type = $entityType AND entity_id = $entityId
     ORDER BY id ASC`,
     )
-    .all({ $entityId: entityId })
+    .all({ $entityType: entityType, $entityId: entityId })
     .map((row) => ({ ...row, changes: row.changes == null ? null : JSON.parse(row.changes) }));
 }

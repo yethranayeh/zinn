@@ -317,7 +317,9 @@ Use `none` to clear priority. Omitting `--priority` on edits preserves it. Task 
 
 ## Activity
 
-Zinn keeps an activity log of changes made to a task like creating, editing, moving, reordering, archiving, unarchiving and deleting it, its labels, its relations, and its comments. Each log also says _who_ made the change.
+Zinn keeps an activity log of task changes such as creating, editing, moving, reordering, archiving, unarchiving and deleting a task, its labels, its relations, and its comments. Project, column, and global label definition changes are recorded too. Each log also says _who_ made the change.
+
+Deleting a project records one project deletion rather than separate deletion activity for every cascaded row.
 Note that this data is not yet surfaced by any command yet.
 
 When a coding agent performs a mutation with `zinn`, the change is recorded under that agent's name.

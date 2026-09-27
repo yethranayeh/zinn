@@ -23,7 +23,7 @@ const seedHuman: Actor = { name: "Dev Human", email: "dev@example.com", kind: "h
 const seedAgent: Actor = { name: "claude-code", email: null, kind: "agent" };
 
 function createProject(props: { key: string; name: string }) {
-  project.create(props);
+  project.create(props, seedHuman);
 
   const createdProject = project.getByKey(props.key);
   if (createdProject == null) {
@@ -43,14 +43,14 @@ function createTask(
 }
 
 // Shared labels make it easy to explore classification across projects.
-label.create({ name: "feature", description: "New user-facing capabilities", color: "green" });
-label.create({ name: "bug", description: "Unexpected behavior to investigate", color: "red" });
-label.create({ name: "docs", description: "Guides, examples, and onboarding", color: "blue" });
-label.create({ name: "interface", description: "Terminal layout and interaction", color: "cyan" });
-label.create({ name: "research", description: "Experiments that inform a later decision", color: "magenta" });
+label.create({ name: "feature", description: "New user-facing capabilities", color: "green" }, seedHuman);
+label.create({ name: "bug", description: "Unexpected behavior to investigate", color: "red" }, seedHuman);
+label.create({ name: "docs", description: "Guides, examples, and onboarding", color: "blue" }, seedHuman);
+label.create({ name: "interface", description: "Terminal layout and interaction", color: "cyan" }, seedHuman);
+label.create({ name: "research", description: "Experiments that inform a later decision", color: "magenta" }, seedHuman);
 
 const app = createProject({ key: "APP", name: "Zinn App" });
-column.create({ projectKey: app.key, name: "Blocked" });
+column.create({ projectKey: app.key, name: "Blocked" }, seedHuman);
 createTask(app.id, "Design task movement", "Move cards between project columns", ["feature"]);
 createTask(app.id, "Add column-aware task ordering", "Keep card positions local to each column", ["feature"]);
 createTask(app.id, "Render the board in the TUI", [
@@ -80,7 +80,7 @@ task.move({ taskKey: "APP-9", targetColumn: "Blocked" }, seedAgent);
 task.order({ taskKey: "APP-8", direction: "before", targetTaskKey: "APP-6" }, seedAgent);
 
 const site = createProject({ key: "SITE", name: "Zinn Website" });
-column.create({ projectKey: site.key, name: "Icebox" });
+column.create({ projectKey: site.key, name: "Icebox" }, seedHuman);
 createTask(site.id, "Write the project overview", "Explain what makes Zinn useful", ["docs"]);
 createTask(site.id, "Capture terminal screenshots", "Wait for the board layout before capturing images", ["docs", "interface"]);
 createTask(site.id, "Publish installation instructions", "Cover Bun and the zinn executable", ["docs"]);

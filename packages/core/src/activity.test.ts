@@ -8,12 +8,12 @@ function runActivityCheck(script: string) {
   try {
     const result = Bun.spawnSync([process.execPath, "--eval", `
       import { strict as assert } from "node:assert";
-      import { project, task, relation, label } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
+      import { project, column, task, relation, label } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
       import * as dbActivity from ${JSON.stringify(new URL("./db/activity.ts", import.meta.url).pathname)};
       import { getDb } from ${JSON.stringify(new URL("./db.ts", import.meta.url).pathname)};
       const human = { name: "Test Human", email: "human@example.com", kind: "human" };
       const agent = { name: "claude-code", email: null, kind: "agent" };
-      const app = project.create({ key: "APP" });
+      const app = project.create({ key: "APP" }, human);
       const actions = (key) => task.activity(key).map((row) => row.action);
       ${script}
     `], { env: { ...process.env, ZINN_DIR: directory } });
@@ -26,8 +26,8 @@ function runActivityCheck(script: string) {
 
 test("each task mutation records one row with its actor and changes", () => {
   runActivityCheck(`
-    label.create({ name: "bug" });
-    label.create({ name: "docs" });
+    label.create({ name: "bug" }, human);
+    label.create({ name: "docs" }, human);
     const created = task.create({ project_id: app.id, title: "First", description: "old", labelNames: ["bug"] }, human);
     const [createRow] = task.activity("APP-1");
     assert.equal(createRow.action, "create");
@@ -79,8 +79,8 @@ test("each task mutation records one row with its actor and changes", () => {
 
 test("no-op mutations record nothing", () => {
   runActivityCheck(`
-    label.create({ name: "bug" });
-    label.create({ name: "docs" });
+    label.create({ name: "bug" }, human);
+    label.create({ name: "docs" }, human);
     task.create({ project_id: app.id, title: "Only", description: null, labelNames: ["bug"] }, human);
     task.edit({ taskKey: "APP-1", title: "Only" }, human);
     task.label.add({ taskKey: "APP-1", labelNames: ["bug"] }, human);
@@ -97,7 +97,16 @@ test("no-op mutations record nothing", () => {
 test("failed mutations leave no activity behind", () => {
   runActivityCheck(`
     task.create({ project_id: app.id, title: "Only", description: null }, human);
+    const later = column.create({ projectKey: "APP", name: "Later" }, human);
+    const bug = label.create({ name: "bug" }, human);
     const db = getDb();
+    db.run("CREATE TRIGGER fail_activity BEFORE INSERT ON activity BEGIN SELECT RAISE(ABORT, 'activity failed'); END");
+    assert.throws(() => project.create({ key: "OTHER" }, human), /activity failed/);
+    assert.equal(project.getByKey("OTHER"), null);
+    assert.throws(() => label.create({ name: "docs" }, human), /activity failed/);
+    assert.equal(label.getByName("docs") == null, true);
+    db.run("DROP TRIGGER fail_activity");
+
     db.run("CREATE TRIGGER fail_update BEFORE UPDATE ON task BEGIN SELECT RAISE(ABORT, 'update failed'); END");
     assert.throws(() => task.edit({ taskKey: "APP-1", title: "Nope" }, human), /update failed/);
     assert.throws(() => task.move({ taskKey: "APP-1", targetColumn: "Done" }, human), /update failed/);
@@ -105,11 +114,37 @@ test("failed mutations leave no activity behind", () => {
     db.run("DROP TRIGGER fail_update");
     assert.throws(() => task.edit({ taskKey: "APP-1", addLabelNames: ["missing"] }, human), /does not exist/);
     assert.deepEqual(actions("APP-1"), ["create"]);
+
+    db.run("CREATE TRIGGER fail_project_update BEFORE UPDATE ON project BEGIN SELECT RAISE(ABORT, 'project update failed'); END");
+    assert.throws(() => project.edit({ projectKey: "APP", name: "Nope" }, human), /project update failed/);
+    db.run("DROP TRIGGER fail_project_update");
+    assert.deepEqual(dbActivity.getAllByEntity("project", app.id).map((row) => row.action), ["create"]);
+
+    db.run("CREATE TRIGGER fail_column_update BEFORE UPDATE ON project_column BEGIN SELECT RAISE(ABORT, 'column update failed'); END");
+    assert.throws(() => column.edit({ projectKey: "APP", columnName: "Later", name: "Nope" }, human), /column update failed/);
+    db.run("DROP TRIGGER fail_column_update");
+    assert.deepEqual(dbActivity.getAllByEntity("column", later.id).map((row) => row.action), ["create"]);
+
+    db.run("CREATE TRIGGER fail_label_update BEFORE UPDATE ON label BEGIN SELECT RAISE(ABORT, 'label update failed'); END");
+    assert.throws(() => label.edit({ labelName: "bug", name: "Nope" }, human), /label update failed/);
+    db.run("DROP TRIGGER fail_label_update");
+    assert.deepEqual(dbActivity.getAllByEntity("label", bug.id).map((row) => row.action), ["create"]);
+
+    db.run("CREATE TRIGGER fail_project_delete BEFORE DELETE ON project BEGIN SELECT RAISE(ABORT, 'project delete failed'); END");
+    assert.throws(() => project.delete("APP", human), /project delete failed/);
+    db.run("DROP TRIGGER fail_project_delete");
+    assert.equal(project.getById(app.id).key, "APP");
+    assert.deepEqual(dbActivity.getAllByEntity("project", app.id).map((row) => row.action), ["create"]);
   `);
 });
 
 test("core requires a valid actor and never defaults one", () => {
   runActivityCheck(`
+    assert.throws(() => project.create({ key: "NOACTOR" }), /actor is required/);
+    assert.equal(project.getByKey("NOACTOR"), null);
+    assert.throws(() => project.edit({ projectKey: "APP", name: "No actor" }), /actor is required/);
+    assert.throws(() => column.create({ projectKey: "APP", name: "No actor" }), /actor is required/);
+    assert.throws(() => label.create({ name: "no-actor" }), /actor is required/);
     assert.throws(() => task.create({ project_id: app.id, title: "No actor", description: null }), /actor is required/);
     assert.throws(() => task.create({ project_id: app.id, title: "Blank", description: null }, { ...human, name: "  " }), /Actor name cannot be blank/);
     assert.throws(() => task.create({ project_id: app.id, title: "Robot", description: null }, { ...human, kind: "robot" }));
@@ -146,7 +181,7 @@ test("relations record the same row on both tasks, and deletions cascade to surv
     task.delete("APP-2", human);
     assert.deepEqual(actions("APP-1"), ["create", "relation_create", "relation_create", "relation_delete", "relation_delete"]);
     assert.equal(task.activity("APP-1").at(-1).changes.target.key, "APP-2");
-    const deletedHistory = dbActivity.getAllByEntityId(second.id);
+    const deletedHistory = dbActivity.getAllByEntity("task", second.id);
     assert.deepEqual(deletedHistory.map((row) => row.action), ["create", "relation_create", "delete"]);
     assert.deepEqual(deletedHistory.at(-1).changes, { key: "APP-2", title: "Second" });
     assert.deepEqual(actions("APP-3"), ["create", "relation_create", "relation_delete"]);
@@ -155,7 +190,7 @@ test("relations record the same row on both tasks, and deletions cascade to surv
 
 test("deleting a label definition records an edit on each task that had it", () => {
   runActivityCheck(`
-    label.create({ name: "bug" });
+    label.create({ name: "bug" }, human);
     task.create({ project_id: app.id, title: "Tagged", description: null, labelNames: ["bug"] }, human);
     task.create({ project_id: app.id, title: "Untagged", description: null }, human);
     label.delete({ name: "bug" }, agent);
@@ -165,5 +200,88 @@ test("deleting a label definition records an edit on each task that had it", () 
     assert.equal(row.created_at, task.getByKey("APP-1").updated_at);
     assert.deepEqual(row.changes, { labels: { added: [], removed: ["bug"] } });
     assert.deepEqual(actions("APP-2"), ["create"]);
+  `);
+});
+
+test("project, column, and label definition mutations record their own activity", () => {
+  runActivityCheck(`
+    const initialProjectActivity = dbActivity.getAllByEntity("project", app.id);
+    assert.equal(initialProjectActivity.length, 1);
+    assert.equal(initialProjectActivity[0].action, "create");
+    assert.deepEqual(initialProjectActivity[0].changes, {
+      key: "APP",
+      name: "APP",
+      columns: column.getAllByProjectKey("APP").map(({ id, name }) => ({ id, name })),
+    });
+
+    project.edit({ projectKey: "APP", name: "Application" }, human);
+    project.edit({ projectKey: "APP", name: "Application" }, agent);
+    assert.deepEqual(
+      dbActivity.getAllByEntity("project", app.id).map((row) => row.action),
+      ["create", "edit"],
+    );
+    assert.deepEqual(dbActivity.getAllByEntity("project", app.id).at(-1).changes, {
+      name: ["APP", "Application"],
+    });
+
+    const createdColumn = column.create({ projectKey: "APP", name: "Later" }, agent);
+    column.edit({ projectKey: "APP", columnName: "Later", name: "Someday" }, human);
+    column.edit({ projectKey: "APP", columnName: "Someday", name: "Someday" }, agent);
+    column.order({ projectKey: "APP", columnName: "Someday", direction: "first" }, agent);
+    column.order({ projectKey: "APP", columnName: "Someday", direction: "first" }, human);
+    const columnActivity = dbActivity.getAllByEntity("column", createdColumn.id);
+    assert.deepEqual(columnActivity.map((row) => row.action), ["create", "edit", "order"]);
+    assert.deepEqual(columnActivity[0].changes, {
+      project: { id: app.id, key: "APP" },
+      name: "Later",
+    });
+    assert.deepEqual(columnActivity[1].changes, { name: ["Later", "Someday"] });
+    assert.equal(columnActivity[2].changes, null);
+
+    const createdLabel = label.create({ name: "bug", description: "Broken", color: "red" }, human);
+    label.edit({ labelName: "bug", name: "defect", description: "Unexpected", color: "blue" }, agent);
+    label.edit({ labelName: "defect", name: "defect" }, human);
+    label.delete({ name: "defect" }, agent);
+    const labelActivity = dbActivity.getAllByEntity("label", createdLabel.id);
+    assert.deepEqual(labelActivity.map((row) => row.action), ["create", "edit", "delete"]);
+    assert.deepEqual(labelActivity[1].changes, {
+      name: ["bug", "defect"],
+      description: ["Broken", "Unexpected"],
+      color: ["red", "blue"],
+    });
+    assert.deepEqual(labelActivity[2].changes, {
+      name: "defect",
+      description: "Unexpected",
+      color: "blue",
+    });
+  `);
+});
+
+test("project deletion records one aggregate event with ordered columns and task snapshots", () => {
+  runActivityCheck(`
+    const extraColumn = column.create({ projectKey: "APP", name: "Icebox" }, human);
+    column.order({ projectKey: "APP", columnName: "Icebox", direction: "first" }, human);
+    const first = task.create({ project_id: app.id, title: "First", description: null }, human);
+    const second = task.create({ project_id: app.id, title: "Second", description: null }, agent);
+    task.archive("APP-2", agent);
+    const expectedColumns = column.getAllByProjectKey("APP").map(({ id, name }) => ({ id, name }));
+
+    project.delete("APP", human);
+
+    const projectActivity = dbActivity.getAllByEntity("project", app.id);
+    assert.deepEqual(projectActivity.map((row) => row.action), ["create", "delete"]);
+    assert.deepEqual(projectActivity.at(-1).changes, {
+      key: "APP",
+      name: "APP",
+      columns: expectedColumns,
+      tasks: [
+        { id: first.id, key: "APP-1", title: "First" },
+        { id: second.id, key: "APP-2", title: "Second" },
+      ],
+    });
+    assert.deepEqual(dbActivity.getAllByEntity("task", first.id).map((row) => row.action), ["create"]);
+    assert.deepEqual(dbActivity.getAllByEntity("task", second.id).map((row) => row.action), ["create", "archive"]);
+    assert.deepEqual(dbActivity.getAllByEntity("column", extraColumn.id).map((row) => row.action), ["create", "order"]);
+    assert.equal(project.getById(app.id), null);
   `);
 });

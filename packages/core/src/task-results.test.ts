@@ -11,8 +11,8 @@ test("public task results include keys across reads, mutations, and no-ops; DB r
       import { project, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
       const actor = { name: "Test Human", email: null, kind: "human" };
       import * as dbTask from ${JSON.stringify(new URL("./db/task.ts", import.meta.url).pathname)};
-      const app = project.create({ key: "app" });
-      const other = project.create({ key: "other" });
+      const app = project.create({ key: "app" }, actor);
+      const other = project.create({ key: "other" }, actor);
       const first = task.create({ project_id: app.id, title: "First", description: null }, actor);
       assert.equal(first.key, "APP-1");
       task.create({ project_id: app.id, title: "Second", description: null }, actor);

@@ -90,13 +90,15 @@ export type ActivityAction =
   | "comment_edit"
   | "comment_delete";
 
+export type ActivityEntityType = "task" | "project" | "column" | "label";
+
 export type Activity = {
   id: string;
   created_at: number;
   actor_name: string;
   actor_email: string | null;
   actor_kind: ActorKind;
-  entity_type: "task";
+  entity_type: ActivityEntityType;
   entity_id: string;
   action: ActivityAction;
   changes: Record<string, unknown> | null;

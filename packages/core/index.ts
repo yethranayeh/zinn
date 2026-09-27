@@ -10,6 +10,7 @@ export type {
   ActorKind,
   Activity,
   ActivityAction,
+  ActivityEntityType,
   Comment,
   CommentWithKey,
 } from "./src/types";

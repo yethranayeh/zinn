@@ -24,7 +24,7 @@ function runRelationCheck(script: string) {
 for (const inputOrder of ["smaller first", "larger first"]) {
   test(`related stores the smaller task ID as source with ${inputOrder}`, () => {
     runRelationCheck(`
-      const app = project.create({ key: "APP" });
+      const app = project.create({ key: "APP" }, actor);
       const tasks = [1, 2].map(() => task.create({
         project_id: app.id, title: "Task", description: null,
       }, actor)).sort((a, b) => a.id < b.id ? -1 : 1);
@@ -49,7 +49,7 @@ for (const inputOrder of ["smaller first", "larger first"]) {
 
 test("dependency preserves the dependent task as source regardless of task ID order", () => {
   runRelationCheck(`
-    const app = project.create({ key: "APP" });
+    const app = project.create({ key: "APP" }, actor);
     const tasks = [1, 2].map(() => task.create({
       project_id: app.id, title: "Task", description: null,
     }, actor)).sort((a, b) => a.id < b.id ? -1 : 1);
@@ -70,8 +70,8 @@ test("dependency preserves the dependent task as source regardless of task ID or
 
 test("relations clean up without deleting connected tasks", () => {
   runRelationCheck(`
-      const a = project.create({ key: "APP" });
-      const b = project.create({ key: "OTHER" });
+      const a = project.create({ key: "APP" }, actor);
+      const b = project.create({ key: "OTHER" }, actor);
       for (let i = 0; i < 4; i++) {
         task.create({ project_id: a.id, title: "Task", description: null }, actor);
       }
@@ -96,7 +96,7 @@ test("relations clean up without deleting connected tasks", () => {
       task.delete("APP-2", actor);
       assert.deepEqual(relation.getAll("APP-1"), []);
       assert.deepEqual(relation.getAll("APP-3").map(r => r.id), [preserved.id]);
-      project.delete("APP");
+      project.delete("APP", actor);
       assert.ok(task.getByKey("OTHER-1"));
       assert.deepEqual(relation.getAll("OTHER-1"), []);
       assert.deepEqual(getDb().query("PRAGMA foreign_key_check").all(), []);
@@ -105,8 +105,8 @@ test("relations clean up without deleting connected tasks", () => {
 
 test("duplicate direction and optional task enrichment preserve raw lookup", () => {
   runRelationCheck(`
-    const app = project.create({ key: "APP" });
-    const other = project.create({ key: "OTHER" });
+    const app = project.create({ key: "APP" }, actor);
+    const other = project.create({ key: "OTHER" }, actor);
     task.create({ project_id: app.id, title: "Copy", description: null }, actor);
     task.create({ project_id: other.id, title: "Original", description: null }, actor);
     const before = task.getByKey("OTHER-1");
@@ -131,8 +131,8 @@ test("duplicate direction and optional task enrichment preserve raw lookup", () 
 
 test("relation deletion matches type and direction, preserving tasks and other relations", () => {
   runRelationCheck(`
-    const app = project.create({ key: "APP" });
-    const other = project.create({ key: "OTHER" });
+    const app = project.create({ key: "APP" }, actor);
+    const other = project.create({ key: "OTHER" }, actor);
     task.create({ project_id: app.id, title: "Source", description: null }, actor);
     task.create({ project_id: other.id, title: "Target", description: null }, actor);
     task.archive("OTHER-1", actor);

@@ -12,6 +12,7 @@ import {
   validateUniqueOptions,
 } from "../lib";
 import { formatTaskList, presentTask } from "../presentation/task-presentation";
+import { currentActor } from "../actor";
 
 type PresentedProject = { key: string; name: string };
 type PresentedProjectView = PresentedProject & { tasks: Array<PresentedTask> };
@@ -58,7 +59,7 @@ export const projectRouter = {
       validateUniqueOptions(tokens);
 
       try {
-        const createdProject = project.create({ key: projectKey, name: values.name });
+        const createdProject = project.create({ key: projectKey, name: values.name }, currentActor());
         output(presentProject(createdProject), formatProject);
       } catch (err: any) {
         quit(err?.message ?? "Something went wrong");
@@ -153,7 +154,7 @@ Example: zinn project view MDR`,
         quit("Provide an edit flag: --name");
       }
 
-      const editedProject = project.edit({ projectKey, name: values.name });
+      const editedProject = project.edit({ projectKey, name: values.name }, currentActor());
       output(presentProject(editedProject), formatProject);
     },
     help: `Usage: zinn project edit <project-key> --name <text>
@@ -192,7 +193,7 @@ Example: zinn project edit MDR --name "Macrodata Refinement"`,
         );
 
         if (canDelete) {
-          const deletedProject = project.delete(projectKey);
+          const deletedProject = project.delete(projectKey, currentActor());
           output(presentProject(deletedProject), (p) => `Deleted ${formatProject(p)}`);
         } else {
           output(presentProject(projectMatch), (p) => `Deletion cancelled for ${formatProject(p)}`);
@@ -219,7 +220,7 @@ Example: zinn project delete MDR`,
         }
 
         try {
-          const createdColumn = column.create({ projectKey, name: columnName });
+          const createdColumn = column.create({ projectKey, name: columnName }, currentActor());
           output(presentColumn(createdColumn), formatColumn);
         } catch (err: any) {
           quit(err?.message ?? "Something went wrong");
@@ -271,11 +272,14 @@ Example: zinn project column list MDR`,
           quit("Provide an edit flag: --name");
         }
 
-        const editedColumn = column.edit({
-          projectKey: positionals[0]!,
-          columnName: positionals[1]!,
-          name: values.name,
-        });
+        const editedColumn = column.edit(
+          {
+            projectKey: positionals[0]!,
+            columnName: positionals[1]!,
+            name: values.name,
+          },
+          currentActor(),
+        );
         output(presentColumn(editedColumn), formatColumn);
       },
       help: `Usage: zinn project column edit <project-key> <column-name> --name <text>
@@ -314,7 +318,10 @@ Example: zinn project column edit MDR "In Progress" --name "Refining"`,
               quit("Only one target column can be specified");
             }
 
-            orderedColumn = column.order({ projectKey, columnName, direction, targetColumnName });
+            orderedColumn = column.order(
+              { projectKey, columnName, direction, targetColumnName },
+              currentActor(),
+            );
             break;
           }
           case "first":
@@ -325,7 +332,10 @@ Example: zinn project column edit MDR "In Progress" --name "Refining"`,
               quit(`Order direction "${direction}" does not accept a target column`);
             }
 
-            orderedColumn = column.order({ projectKey, columnName, direction });
+            orderedColumn = column.order(
+              { projectKey, columnName, direction },
+              currentActor(),
+            );
             break;
           }
           default:
