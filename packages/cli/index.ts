@@ -4,7 +4,7 @@ import { isHelpFlag } from "./src/lib";
 import packageJson from "./package.json";
 
 const args = process.argv.slice(2);
-const isVersionRequest = args.length === 1 && args[0] === "--version";
+const isVersionRequest = args.length === 1 && ["-v", "--version"].includes(args[0]!);
 
 if (isVersionRequest) {
   console.info(packageJson.version);
@@ -15,7 +15,7 @@ Usage: zinn <command>
 
 Options:
   -h, --help  Show help
-  --version   Show version
+  -v, --version  Show version
   --json      Print command output as JSON
 
 Commands:

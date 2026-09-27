@@ -95,13 +95,15 @@ test("bare invocation shows root help and exits zero", () => {
   expect(result).toEqual(runZinn(["--help"]));
 });
 
-test("--version prints the CLI package version and exits zero", () => {
+test("--version and -v print the CLI package version and exit zero", () => {
   withIsolatedZinnDir((testDir) => {
-    const result = runZinn(["--version"], testDir);
+    const longVersion = runZinn(["--version"], testDir);
+    const shortVersion = runZinn(["-v"], testDir);
 
-    expect(result.code).toBe(0);
-    expect(result.stdout).toBe(`${packageJson.version}\n`);
-    expect(result.stderr).toBe("");
+    expect(longVersion.code).toBe(0);
+    expect(longVersion.stdout).toBe(`${packageJson.version}\n`);
+    expect(longVersion.stderr).toBe("");
+    expect(shortVersion).toEqual(longVersion);
   });
 });
 
@@ -115,7 +117,7 @@ test("root help supports -h and --help and lists commands", () => {
   expect(longHelp.stdout).toContain("project view");
   expect(longHelp.stdout).toContain("task edit");
   expect(longHelp.stdout).toContain("task comment create");
-  expect(longHelp.stdout).toContain("--version   Show version");
+  expect(longHelp.stdout).toContain("-v, --version  Show version");
   expect(shortHelp).toEqual(longHelp);
 });
 
