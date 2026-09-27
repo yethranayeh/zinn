@@ -19,15 +19,6 @@ export function getById(labelId: string) {
     .get({ $labelId: labelId });
 }
 
-export function getByName(name: string) {
-  const db = getDb();
-
-  return db
-    .query<Label, Bind<{ name: string }>>(`SELECT * FROM ${DB_TABLE.label}
-    WHERE name = $name`)
-    .get({ $name: name });
-}
-
 export function create(props: Omit<Label, "id">) {
   const db = getDb();
 

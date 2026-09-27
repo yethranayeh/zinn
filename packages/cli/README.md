@@ -140,7 +140,7 @@ zinn task edit MDR-1 --add-label review --remove-label urgent
 
 For adding or removing multiple labels at the same time, repeat `--label` on creation, or `--add-label` and `--remove-label` while editing for each label.
 Each value is considered as the label name: `--label "needs review"`, so if you have commas, then they are considered parts of names.
-Label names are case-sensitive, and the whitespace from input is trimmed.
+Label names preserve their stored casing, but matching and uniqueness are case-insensitive. For example, `BUG` can match to a label stored as `Bug`, `Bug` or `bug`, but all three canno exist at the same time as three different label entries. Changing only the casing of an existing label is allowed. Whitespace around label names is trimmed.
 
 Descriptions default to an empty string and the label colors default to white. Available colors are _red_, _green_, _yellow_, _blue_, _magenta_, _cyan_, _white_, and _gray_.
 

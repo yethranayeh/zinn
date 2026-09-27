@@ -51,7 +51,8 @@ export const labelRouter = {
     },
     help: `Usage: zinn label create <name> [--description <text>] [--color <color>]
 
-Create a global label. Names are case-sensitive and cannot be blank.
+Create a global label. Names preserve casing, but uniqueness is case-insensitive.
+Names are trimmed and cannot be blank.
 Description defaults to an empty string; color defaults to white.
 Colors: red, green, yellow, blue, magenta, cyan, white, gray.
 
@@ -93,7 +94,8 @@ List all global label definitions.`,
 Change specified fields.
 Provide at least one edit flag. Use --description "" for an empty description.
 
-Names are case-sensitive, trimmed, and must remain unique.
+Names are matched and kept unique case-insensitively while preserving their casing.
+Names are trimmed. Changing only the casing is allowed.
 Editing does not affect task attachments or task timestamps.
 
 Example: zinn label edit bug --name defect --color yellow`,
@@ -133,6 +135,7 @@ Example: zinn label edit bug --name defect --color yellow`,
 
 Delete a label definition and remove it from all tasks after confirmation.
 To remove a label from just one task, use zinn task label remove.
+Label names are matched case-insensitively.
 
 Use --yes to skip the confirmation prompt, for example in scripts or with --json.`,
   },

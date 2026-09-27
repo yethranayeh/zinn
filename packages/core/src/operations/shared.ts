@@ -1,9 +1,9 @@
 import type {
   Activity,
   ActivityAction,
-  Column,
   Comment,
   CommentWithKey,
+  Label,
   Task,
   TaskRelation,
   TaskWithKey,
@@ -128,20 +128,23 @@ export function getCommentByKey(commentKey: string): CommentWithKey {
 }
 
 export function resolveLabels(names: Array<string>) {
-  const uniqueNames = [...new Set(names)];
-  return uniqueNames.map((name) => {
-    const match = dbLabel.getByName(name);
+  const labels = dbLabel.getAll();
+  const matches = new Map<string, Label>();
+
+  for (const name of names) {
+    const match = findByName(labels, name);
     if (match == null) {
       throw new Error(`A label with name "${name}" does not exist`);
     }
 
-    return match;
-  });
+    matches.set(match.id, match);
+  }
+
+  return [...matches.values()];
 }
 
-/** Column names are matched within a project without case-sensitivity. */
-export function findColumnByName(columns: Array<Column>, name: string) {
-  return columns.find((column) => column.name.toLowerCase() === name.toLowerCase());
+export function findByName<T extends { name: string }>(matches: Array<T>, name: string) {
+  return matches.find((match) => match.name.toLowerCase() === name.toLowerCase());
 }
 
 export type OrderPlacement =

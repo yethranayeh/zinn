@@ -13,7 +13,7 @@ import { standardizeProjectKey } from "../lib";
 import { columnCreateSchema, columnEditSchema, columnOrderSchema } from "../schemas/column";
 import { validateTaskInput } from "../schemas/task";
 
-import { findColumnByName, getInsertionIndex } from "./shared";
+import { findByName, getInsertionIndex } from "./shared";
 
 function requireProjectColumns(projectKey: string) {
   const project = dbProject.getByKey(projectKey);
@@ -26,7 +26,7 @@ function requireProjectColumns(projectKey: string) {
 }
 
 function requireColumnByName(project: Project, projectColumns: Array<Column>, name: string) {
-  const columnMatch = findColumnByName(projectColumns, name);
+  const columnMatch = findByName(projectColumns, name);
 
   if (columnMatch == null) {
     throw new Error(`${project.name} does not have a column named "${name}"`);
@@ -41,7 +41,7 @@ export const column = {
   create: (input: ColumnCreateInput) => {
     const props = validateTaskInput(columnCreateSchema, input);
     const { project, projectColumns: allProjectColumns } = requireProjectColumns(props.projectKey);
-    const existingColumn = findColumnByName(allProjectColumns, props.name);
+    const existingColumn = findByName(allProjectColumns, props.name);
 
     if (existingColumn != null) {
       throw new Error(`There is already a "${props.name}" column`);
@@ -67,7 +67,7 @@ export const column = {
         return columnMatch;
       }
 
-      const existingColumn = findColumnByName(projectColumns, props.name);
+      const existingColumn = findByName(projectColumns, props.name);
       const isTakenByAnotherColumn = existingColumn != null && existingColumn.id !== columnMatch.id;
 
       if (isTakenByAnotherColumn) {

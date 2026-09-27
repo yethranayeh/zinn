@@ -11,13 +11,17 @@ import * as dbLabel from "../db/label";
 import { validateTaskInput } from "../schemas/task";
 import { actorSchema } from "../schemas/actor";
 
-import { resolveLabels, recordTaskActivity } from "./shared";
+import { findByName, resolveLabels, recordTaskActivity } from "./shared";
+
+function findLabelByName(name: string) {
+  return findByName(dbLabel.getAll(), name);
+}
 
 export const label = {
   create: (input: LabelCreateInput) => {
     const props = validateTaskInput(labelCreateSchema, input);
 
-    if (dbLabel.getByName(props.name) != null) {
+    if (findLabelByName(props.name) != null) {
       throw new Error(`A label with name "${props.name}" already exists`);
     }
 
@@ -43,7 +47,7 @@ export const label = {
         return match;
       }
 
-      const existingLabel = dbLabel.getByName(name);
+      const existingLabel = findLabelByName(name);
       if (existingLabel != null && existingLabel.id !== match.id) {
         throw new Error(`A label with name "${name}" already exists`);
       }
@@ -54,7 +58,7 @@ export const label = {
   getAll: dbLabel.getAll,
   getByName: (name: string) => {
     const props = validateTaskInput(labelDeleteSchema, { name });
-    return dbLabel.getByName(props.name);
+    return findLabelByName(props.name);
   },
   /** Deleting a definition detaches it from tasks, so each affected task gets an edit row. */
   delete: (input: LabelDeleteInput, actor: Actor) => {

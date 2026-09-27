@@ -2457,13 +2457,13 @@ test("global label workflows support repeated create/edit flags and preserve tas
     for (const name of ["bug", "auth", "needs review, soon"]) {
       expect(run("label", "create", name, "--color", "red", "--description", "Details").code).toBe(0);
     }
-    expect(run("label", "create", "bug").stderr).toContain("already exists");
+    expect(run("label", "create", "BUG").stderr).toContain("already exists");
     expect(run("label", "create", "invalid", "--color", "purple").code).toBe(1);
     expect(run("label", "list").stdout).toContain("\x1b[31mbug\x1b[39m | Details");
-    const created = run("task", "create", "APP", "--title", "Login", "--description", "", "--label", "bug", "--label", "auth");
+    const created = run("task", "create", "APP", "--title", "Login", "--description", "", "--label", "BUG", "--label", "AUTH");
     expect(created.code).toBe(0);
     expect(created.stdout).toContain("Labels: auth, bug");
-    const editedLabel = run("label", "edit", " bug ", "--name", " defect ", "--color", "blue", "--description", "");
+    const editedLabel = run("label", "edit", " BUG ", "--name", " defect ", "--color", "blue", "--description", "");
     expect(editedLabel.code).toBe(0);
     expect(editedLabel.stdout).toBe("\x1b[34mdefect\x1b[39m\n");
     expect(run("task", "view", "APP-1").stdout).toContain("Labels: auth, defect");
@@ -2472,14 +2472,14 @@ test("global label workflows support repeated create/edit flags and preserve tas
       color: "blue",
       description: "Fixed",
     });
-    expect(run("task", "edit", "APP-1", "--title", "Changed", "--add-label", "needs review, soon", "--add-label", "auth", "--remove-label", "defect").code).toBe(0);
+    expect(run("task", "edit", "APP-1", "--title", "Changed", "--add-label", "NEEDS REVIEW, SOON", "--add-label", "AUTH", "--remove-label", "DEFECT").code).toBe(0);
     expect(run("task", "view", "APP-1").stdout).toContain("Labels: auth, needs review, soon");
     expect(run("task", "edit", "APP-1", "--title", "Must not change", "--add-label", "unknown").code).toBe(1);
     expect(run("task", "view", "APP-1").stdout).toContain("Changed");
-    expect(run("task", "edit", "APP-1", "--add-label", "bug", "--remove-label", "bug").code).toBe(1);
-    expect(run("task", "label", "add", "APP-1", "defect").stdout).toContain("Labels: auth, defect, needs review, soon");
-    expect(run("task", "label", "remove", "APP-1", "auth", "defect").stdout).toContain("Labels: needs review, soon");
-    expect(runZinnWithConfirmation(["label", "delete", "needs review, soon"], dir).code).toBe(0);
+    expect(run("task", "edit", "APP-1", "--add-label", "BUG", "--remove-label", "bug").code).toBe(1);
+    expect(run("task", "label", "add", "APP-1", "DEFECT").stdout).toContain("Labels: auth, defect, needs review, soon");
+    expect(run("task", "label", "remove", "APP-1", "AUTH", "dEfEcT").stdout).toContain("Labels: needs review, soon");
+    expect(runZinnWithConfirmation(["label", "delete", "NEEDS REVIEW, SOON"], dir).code).toBe(0);
     expect(run("task", "view", "APP-1").stdout).not.toContain("Labels:");
     expect(run("label", "list").stdout).toContain("auth");
     for (const args of [
@@ -2620,10 +2620,11 @@ test("label edit validates changes, uniqueness, and missing labels", () => {
 
     expect(run("label", "edit", "bug").stderr).toContain("Provide at least one field to edit");
     expect(run("label", "edit", "missing", "--color", "red").stderr).toContain("does not exist");
-    expect(run("label", "edit", "bug", "--name", "auth").stderr).toContain("already exists");
-    expect(run("label", "edit", "bug", "--name", " ").stderr).toContain("cannot be blank");
-    expect(run("label", "edit", "bug", "--color", "purple").code).toBe(1);
-    expect(run("label", "list", "--json").stdout).toContain('"name": "bug"');
+    expect(run("label", "edit", "BUG", "--name", "Bug").stdout).toContain("Bug");
+    expect(run("label", "edit", "bug", "--name", "AUTH").stderr).toContain("already exists");
+    expect(run("label", "edit", "BUG", "--name", " ").stderr).toContain("cannot be blank");
+    expect(run("label", "edit", "BUG", "--color", "purple").code).toBe(1);
+    expect(run("label", "list", "--json").stdout).toContain('"name": "Bug"');
     expect(run("label", "edit", "--help").stdout).toContain("Editing does not affect task attachments or task timestamps");
     expect(runZinn(["--help"], dir).stdout).toContain("label {create|list|edit|delete}");
   });

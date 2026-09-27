@@ -72,6 +72,7 @@ export const taskRouter = {
 Create a task in the project's first column.
 Priority defaults to none (unassigned).
 Repeat --label to attach multiple existing labels. Unknown labels are errors.
+Label names are matched case-insensitively.
 Titles cannot be blank. Use --title="--example" for text beginning with a dash.
 
 Example: zinn task create MDR --title "Refine the numbers" --description "Meet the quarterly quota" --label urgent`,
@@ -274,6 +275,7 @@ Use --priority none to clear priority.
 Provide at least one edit flag. Use --description "" for an empty description.
 
 Repeat --add-label or --remove-label for multiple existing labels.
+Label names are matched case-insensitively.
 Adding an attached label or removing an unattached label does not do anything.
 Archived tasks can be edited. Unchanged values leave the task unchanged.
 
@@ -447,7 +449,8 @@ Example: zinn task delete MDR-1`,
       },
       help: `Usage: zinn task label add <task-key> <label-name>...
 
-Add existing labels to a task. Already attached labels are unchanged.`,
+Add existing labels to a task. Label names are matched case-insensitively.
+Already attached labels are unchanged.`,
     },
     remove: {
       run: (args) => {
@@ -456,8 +459,7 @@ Add existing labels to a task. Already attached labels are unchanged.`,
       },
       help: `Usage: zinn task label remove <task-key> <label-name>...
 
-Remove existing labels from a task. Unattached labels are unchanged.
-Label definitions are preserved.`,
+Remove existing labels from a task. Label names are matched case-insensitively.`,
     },
   },
 } satisfies RouteDef;

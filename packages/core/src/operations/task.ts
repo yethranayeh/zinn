@@ -34,7 +34,7 @@ import {
   recordTaskActivity,
   updateTaskSearchRecord,
   describeRelation,
-  findColumnByName,
+  findByName,
   getInsertionIndex,
 } from "./shared";
 
@@ -281,7 +281,7 @@ export const task = {
       }
 
       const projectColumns = dbColumn.getAllByProjectId(taskMatch.project_id);
-      const columnMatch = findColumnByName(projectColumns, props.targetColumn);
+      const columnMatch = findByName(projectColumns, props.targetColumn);
 
       if (columnMatch == null) {
         // TODO: maybe a `did you mean` type of fuzzy check for misspelllings

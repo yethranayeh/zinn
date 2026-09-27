@@ -40,10 +40,17 @@ export const taskEditSchema = z
 
     return hasTitle || hasDescription || hasPriority || hasLabelsToAdd || hasLabelsToRemove;
   }, "Provide at least one field to edit: title, description, priority, or labels")
-  .refine(
-    (value) => !value.addLabelNames?.some((name) => value.removeLabelNames?.includes(name)),
-    "Cannot add and remove the same label",
-  );
+  .refine((value) => {
+    const normalizedRemovedLabelNames = new Set(
+      (value.removeLabelNames ?? []).map((name) => name.toLowerCase()),
+    );
+
+    const hasConflictingLabel = (value.addLabelNames ?? []).some((name) =>
+      normalizedRemovedLabelNames.has(name.toLowerCase()),
+    );
+
+    return !hasConflictingLabel;
+  }, "Cannot add and remove the same label");
 
 const searchQueryMessage = "Search query cannot be blank";
 export const searchLimitMessage = "Search limit must be a positive integer";
