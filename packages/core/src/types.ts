@@ -1,6 +1,7 @@
 import type { LabelColor } from "./schemas/label";
 import type { TaskPriority } from "./schemas/task";
 import type { ActorKind } from "./schemas/actor";
+import type { RelationCreateInput } from "./schemas/relation";
 
 export type { LabelColor } from "./schemas/label";
 export type { TaskPriority } from "./schemas/task";
@@ -42,7 +43,7 @@ export type Task = {
 
 export type TaskWithKey = Task & { key: string };
 
-export type TaskRelationType = "related" | "dependency" | "duplicate";
+export type TaskRelationType = RelationCreateInput["relation_type"];
 export type TaskRelation = {
   id: string;
   source_task_id: string;

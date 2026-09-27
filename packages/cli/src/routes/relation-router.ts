@@ -1,4 +1,4 @@
-import type { RelationCreateInput, TaskWithKey } from "@zinn-dev/core";
+import type { TaskRelationType, TaskWithKey } from "@zinn-dev/core";
 import type { RouteDef } from "../types";
 
 import { parseArgs } from "node:util";
@@ -6,11 +6,8 @@ import { relation, relationCreateSchema, task } from "@zinn-dev/core";
 import { output, quit, validatePositionalCount, validateUniqueOptions } from "../lib";
 import { currentActor } from "../actor";
 
-// TODO: maybe core should export it as a reusable if we need it in more places
-type RelationType = RelationCreateInput["relation_type"];
-
 type PresentedRelation = {
-  type: RelationType;
+  type: TaskRelationType;
   direction: "outgoing" | "incoming" | null;
   task: { key: string; title: string; status: "Active" | "Archived" };
 };
@@ -55,6 +52,10 @@ export function formatRelations(relations: Array<PresentedRelation>) {
           label = isOutgoing ? "Depends on" : "Depended on by";
           break;
         }
+        case "subtask": {
+          label = isOutgoing ? "Parent" : "Subtask";
+          break;
+        }
         case "duplicate": {
           label = isOutgoing ? "Duplicate of" : "Duplicated by";
           break;
@@ -67,7 +68,7 @@ export function formatRelations(relations: Array<PresentedRelation>) {
     .join("\n");
 }
 
-type PresentedRelationChange = { type: RelationType; source: string; target: string };
+type PresentedRelationChange = { type: TaskRelationType; source: string; target: string };
 
 function parseRelationArgs(args: string[]) {
   const { values, positionals, tokens } = parseArgs({
@@ -85,7 +86,9 @@ function parseRelationArgs(args: string[]) {
   const typeResult = relationCreateSchema.shape.relation_type.safeParse(values.type);
 
   if (!typeResult.success) {
-    quit("--type must be one of these: related, dependency, duplicate");
+    quit(
+      `--type must be one of these: ${relationCreateSchema.shape.relation_type.options.join(", ")}`,
+    );
   }
   const sourceTaskKey = positionals[0]!;
   const targetTaskKey = positionals[1]!;
@@ -114,6 +117,7 @@ export const relationRouter = {
           related: "related to",
           dependency: "depends on",
           duplicate: "is a duplicate of",
+          subtask: "is a subtask of",
         }[r.type];
 
         return `${r.source} ${label} ${r.target}`;
@@ -125,8 +129,13 @@ Types:
   related     Connect two tasks, with any order provided to indicate relation.
   dependency  Source depends on target.
   duplicate   Source is a duplicate of target.
+  subtask     Source is a subtask of target (child -> parent).
 
-Relations do not have any side effects. They are purely for information.
+A task may have one parent and many subtasks. Nesting is allowed; cycles are rejected.
+Remove an existing subtask relation before assigning a different parent.
+
+Relations do not automatically move, complete, or archive tasks.
+Deleting a parent removes its links and preserves its subtasks.
 Tasks from separate projects can be related to each other. Tasks can also be related to archived tasks.
 
 Example: zinn task relation create APP-1 APP-2 --type dependency`,
@@ -164,11 +173,11 @@ Example: zinn task relation list APP-1`,
 
 Remove only the specified relation. No confirmation is required.
 
-Types: related, dependency, duplicate.
+Types: ${relationCreateSchema.shape.relation_type.options.join(", ")}.
 
 For related, either task order works.
-For dependency and duplicate, use the creation direction:
-  source depends on target, or source is a duplicate of target.
+For dependency, duplicate, and subtask, use the creation direction:
+  source depends on target, is a duplicate of target, or is a subtask of target.
 
 Archived and cross-project tasks are supported.
 A missing relation is an error.

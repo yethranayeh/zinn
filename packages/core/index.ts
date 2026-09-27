@@ -4,6 +4,7 @@ export type { TaskCreateInput, TaskEditInput, TaskSearchInput } from "./src/sche
 export type {
   TaskWithKey,
   TaskPriority,
+  TaskRelationType,
   Label,
   LabelColor,
   Actor,

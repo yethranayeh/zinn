@@ -156,3 +156,59 @@ test("relation deletion matches type and direction, preserving tasks and other r
     assert.deepEqual(getDb().query("PRAGMA foreign_key_check").all(), []);
   `);
 });
+
+test("subtasks allow branching and nesting but reject multiple parents and cycles atomically", () => {
+  runRelationCheck(`
+    const app = project.create({ key: "APP" }, actor);
+    for (let i = 0; i < 5; i++) {
+      task.create({ project_id: app.id, title: "Task", description: null }, actor);
+    }
+    const input = (child, parent) => ({ sourceTaskKey: child, targetTaskKey: parent, relation_type: "subtask" });
+    const create = (child, parent) => relation.create(input(child, parent), actor);
+    create("APP-2", "APP-1");
+    create("APP-3", "APP-1");
+    create("APP-4", "APP-2");
+    const activityCount = () => getDb().query("SELECT count(*) AS n FROM activity").get().n;
+    const before = activityCount();
+    assert.throws(() => create("APP-2", "APP-1"), /already exists/);
+    assert.throws(() => create("APP-2", "APP-5"), /already has a parent/);
+    assert.throws(() => create("APP-1", "APP-2"), /cycle/);
+    assert.throws(() => create("APP-1", "APP-4"), /cycle/);
+    assert.throws(() => create("APP-1", "APP-1"), /itself/);
+    assert.equal(activityCount(), before);
+    assert.equal(relation.getAll("APP-1").length, 2);
+    // Other relation types do not participate in the hierarchy.
+    relation.create({ ...input("APP-1", "APP-4"), relation_type: "dependency" }, actor);
+    assert.throws(() => relation.delete(input("APP-1", "APP-2"), actor), /does not exist/);
+    relation.delete(input("APP-2", "APP-1"), actor);
+    create("APP-2", "APP-5");
+    assert.equal(relation.getAll("APP-4").filter(r => r.relation_type === "subtask").length, 1);
+  `);
+});
+
+test("subtask lifecycle preserves tasks and records activity on both sides", () => {
+  runRelationCheck(`
+    const app = project.create({ key: "APP" }, actor);
+    const other = project.create({ key: "OTHER" }, actor);
+    task.create({ project_id: app.id, title: "Child", description: null }, actor);
+    task.create({ project_id: other.id, title: "Parent", description: null }, actor);
+    task.archive("OTHER-1", actor);
+    const child = task.getByKey("APP-1");
+    const parent = task.getByKey("OTHER-1");
+    const input = { sourceTaskKey: child.key, targetTaskKey: parent.key, relation_type: "subtask" };
+    relation.create(input, actor);
+    assert.deepEqual(task.getByKey(child.key), child);
+    assert.deepEqual(task.getByKey(parent.key), parent);
+    const rows = getDb().query("SELECT entity_id, changes FROM activity WHERE action = 'relation_create'").all();
+    assert.deepEqual(rows.map(r => r.entity_id).sort(), [child.id, parent.id].sort());
+    assert.equal(JSON.parse(rows[0].changes).type, "subtask");
+    relation.delete(input, actor);
+    assert.equal(getDb().query("SELECT count(*) AS n FROM activity WHERE action = 'relation_delete'").get().n, 2);
+    relation.create(input, actor);
+    task.delete(parent.key, actor);
+    assert.deepEqual(task.getByKey(child.key), child);
+    assert.deepEqual(relation.getAll(child.key), []);
+    assert.equal(getDb().query("SELECT count(*) AS n FROM activity WHERE action = 'relation_delete' AND entity_id = ?").get(child.id).n, 2);
+    assert.deepEqual(getDb().query("PRAGMA foreign_key_check").all(), []);
+  `);
+});

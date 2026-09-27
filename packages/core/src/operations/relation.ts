@@ -80,6 +80,18 @@ export const relation = {
         throw new Error("This relation already exists");
       }
 
+      if (resolved.relation_type === "subtask") {
+        if (dbRelation.getParentByTaskId(resolved.source_task_id) != null) {
+          throw new Error("This task already has a parent. Remove its subtask relation first.");
+        }
+
+        const ancestorIds = dbRelation.getAncestorIds(resolved.target_task_id);
+        const wouldCreateCycle = ancestorIds.includes(resolved.source_task_id);
+        if (wouldCreateCycle) {
+          throw new Error("A subtask relation cannot create a cycle");
+        }
+      }
+
       const createdRelation = dbRelation.create(resolved)!;
       const changes = describeRelation(createdRelation);
 

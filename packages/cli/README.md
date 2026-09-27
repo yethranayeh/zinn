@@ -167,12 +167,16 @@ zinn task relation list MDR-1
 
 `dependency` means the first task depends on the second, `duplicate` means the first task is a duplicate of the second. `related` is a bit different as the order of the tasks mentioned _does not matter_, either case describes the same relation.
 
-Relations do not have any side effects. They are purely for information.
+Relations do not automatically move, complete, or archive tasks.
 Tasks from separate projects can be related to each other. Tasks can also be related to archived tasks.
 
 `task view` a task's existing relations.
 
-Remove a relation with `zinn task relation delete MDR-1 MDR-2 --type dependency`, using its original direction for `dependency` and `duplicate`. For `related`, order does not matter.
+Use `zinn task relation create APP-2 APP-1 --type subtask` to make APP-2 a child of APP-1. Each task can have at most one parent and any number of subtasks. A nested type of relationship is allowed, so a task can have both a parent and a child. Parents are also just ordinary tasks, including tasks in other projects or archived tasks. Relation list and task view show **Parent** on the child and **Subtask** on the parent.
+
+Remove the existing subtask relation before assigning a different parent. Moving or archiving a parent does not change its children, and deleting a parent removes its child relations while retaining child task data.
+
+Remove a relation with `zinn task relation delete MDR-1 MDR-2 --type dependency`, using its original direction for `dependency`, `duplicate`, and `subtask`. For `related`, order does not matter.
 Note that a deletion happens _without_ confirmation.
 
 Use `task relation create --help` to discover types.

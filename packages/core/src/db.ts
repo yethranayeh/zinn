@@ -50,7 +50,7 @@ function initDb() {
   source_task_id  TEXT NOT NULL REFERENCES ${DB_TABLE.task}(id) ON DELETE CASCADE,
   target_task_id  TEXT NOT NULL REFERENCES ${DB_TABLE.task}(id) ON DELETE CASCADE,
   relation_type   TEXT NOT NULL CHECK (
-    relation_type IN ('related', 'dependency', 'duplicate')
+    relation_type IN ('related', 'dependency', 'duplicate', 'subtask')
   ),
   created_at      INTEGER NOT NULL,
 

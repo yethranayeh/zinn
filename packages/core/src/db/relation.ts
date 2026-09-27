@@ -19,6 +19,29 @@ export function getAllByTaskId(taskId: string) {
     .all({ $taskId: taskId });
 }
 
+export function getParentByTaskId(taskId: string) {
+  return getDb()
+    .query<TaskRelation, Bind<{ taskId: string }>>(`SELECT * FROM ${DB_TABLE.task_relations}
+      WHERE source_task_id = $taskId AND relation_type = 'subtask'`)
+    .get({ $taskId: taskId });
+}
+
+/** Returns all ancestors, excluding the supplied task itself */
+export function getAncestorIds(taskId: string) {
+  return getDb()
+    .query<{ id: string }, Bind<{ taskId: string }>>(`WITH RECURSIVE ancestors(id) AS (
+      SELECT target_task_id FROM ${DB_TABLE.task_relations}
+      WHERE source_task_id = $taskId AND relation_type = 'subtask'
+      UNION ALL
+      SELECT relation.target_task_id FROM ${DB_TABLE.task_relations} AS relation
+      JOIN ancestors ON relation.source_task_id = ancestors.id
+      WHERE relation.relation_type = 'subtask'
+    )
+    SELECT id FROM ancestors`)
+    .all({ $taskId: taskId })
+    .map((ancestor) => ancestor.id);
+}
+
 export function getByTaskIdsAndType(
   props: Pick<TaskRelation, "source_task_id" | "target_task_id" | "relation_type">,
 ) {

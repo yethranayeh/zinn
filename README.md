@@ -61,7 +61,11 @@ For example, you can use `zinn task relation create MDR-1 MDR-2 --type dependenc
 
 To see created relations, you can use `zinn task relation list MDR-1` and for task-specific relation details you can use `zinn task view MDR-1`.
 
-Remove a relation with `zinn task relation delete MDR-1 MDR-2 --type dependency`, using its original direction for `dependency` and `duplicate`. For `related`, order does not matter.
+Use `zinn task relation create APP-2 APP-1 --type subtask` to make APP-2 a child of APP-1. Each task can have at most one parent and any number of subtasks. A nested type of relationship is allowed, so a task can have both a parent and a child.
+
+Parents are also just ordinary tasks, including tasks in other projects or archived tasks. Relation list and task view show **Parent** on the child and **Subtask** on the parent. Remove the existing subtask relation before assigning a different parent. Moving or archiving a parent does not change its children, and deleting a parent removes its child relations while retaining child task data.
+
+Remove a relation with `zinn task relation delete MDR-1 MDR-2 --type dependency`, using its original direction for `dependency`, `duplicate`, and `subtask`. For `related`, order does not matter.
 Note that a deletion happens _without_ confirmation.
 
 See the [CLI documentation](packages/cli/README.md#task-relations) for details.
@@ -101,7 +105,7 @@ bun run dev:seed
 bun run dev -- task list
 ```
 
-The sample board includes three projects, shared labels, tasks in different workflow columns, custom ordering, multiline descriptions, archived work, and all three relation types. Start with `bun run dev -- task view APP-3` to inspect a connected task, or `bun run dev -- label list` to browse labels. Move, edit, reorder, and restore tasks freely to test things out. You can also run the seed again to reset the examples.
+The sample board includes three projects, shared labels, tasks in different workflow columns, custom ordering, multiline descriptions, archived work, and all four relation types. Start with `bun run dev -- task view APP-3` to inspect a connected task, or `bun run dev -- task view APP-8` to see a subtask hierarchy. Run `bun run dev -- label list` to browse labels. Move, edit, reorder, and restore tasks freely to test things out. You can also run the seed again to reset the examples.
 
 `dev:seed` deliberately **deletes** and recreates the repository development database and its SQLite sidecar files. The `dev` command always uses that same ignored directory. Its script can also be run by absolute path from outside the repository while preserving CLI arguments:
 

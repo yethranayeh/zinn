@@ -36,3 +36,9 @@ Tasks store `priority: TaskPriority | null` and `TaskPriority` is `"low" | "medi
 You can optionally provide a task priority during `create`, but by default it is `null`.
 
 Changing or clearing priority updates `updated_at`. If the current priority is given as the only edit value, `updated_at` does not change.
+
+## Parent and child tasks
+
+`relation.create({ sourceTaskKey: "APP-2", targetTaskKey: "APP-1", relation_type: "subtask" }, actor)` makes the source a child of the target. Each task has at most one parent and any number of children. A nested type of relationship is allowed, so a task can have both a parent and a child. Remove the old relation before assigning another parent.
+
+Cross-project and archived tasks are supported. Creation and removal use the existing relation activity records on both tasks. Task deletion removes links, preserving connected tasks. Moving or archiving a parent does not change its children.

@@ -67,6 +67,8 @@ createTask(app.id, "Keep long task titles readable", "Try wrapping and truncatio
 createTask(app.id, "Show keyboard shortcuts", "Keep common actions discoverable from the board", ["interface"]);
 createTask(app.id, "Write a first-run walkthrough", "Walk through creating a project and finishing a task", ["docs"]);
 createTask(app.id, "Polish the board walkthrough", "Needs the first working board before examples can be finalized", ["docs", "interface"]);
+createTask(app.id, "Add a troubleshooting section to the walkthrough", "Cover common setup issues before the walkthrough ships", ["docs"]);
+createTask(app.id, "Capture screenshots for each walkthrough step", "Needs the polished walkthrough steps before shots make sense", ["docs", "interface"]);
 
 task.move({ taskKey: "APP-1", targetColumn: "Done" }, seedAgent);
 task.move({ taskKey: "APP-2", targetColumn: "Review" }, seedAgent);
@@ -110,8 +112,15 @@ relation.create({ sourceTaskKey: "SITE-3", targetTaskKey: "APP-4", relation_type
 // Duplicate: source is a duplicate of target. Archived tasks remain visible in relations.
 relation.create({ sourceTaskKey: "LAB-3", targetTaskKey: "APP-3", relation_type: "duplicate" }, seedAgent);
 
+// Subtasks: source is the child, target is the parent. APP-9 and APP-10 nest under
+// APP-8, and APP-11 nests one level deeper under APP-9, so the chain is visible.
+relation.create({ sourceTaskKey: "APP-9", targetTaskKey: "APP-8", relation_type: "subtask" }, seedAgent);
+relation.create({ sourceTaskKey: "APP-10", targetTaskKey: "APP-8", relation_type: "subtask" }, seedAgent);
+relation.create({ sourceTaskKey: "APP-11", targetTaskKey: "APP-9", relation_type: "subtask" }, seedAgent);
+
 console.info(`Reset and seeded the development Zinn database at ${DB_PATH}`);
 console.info("Run `bun run dev -- task list` to inspect it.");
 console.info("Run `bun run dev -- task view APP-3` or `bun run dev -- task relation list APP-3` to inspect relations.");
+console.info("Run `bun run dev -- task view APP-8` or `bun run dev -- task relation list APP-8` to inspect the subtask hierarchy.");
 console.info("Run `bun run dev -- label list` to browse shared labels, or `bun run dev -- task list LAB --all` to see archived work.");
 console.info("Try `bun run dev -- task order APP-7 top` or `bun run dev -- task unarchive LAB-3`, then reseed to start over.");

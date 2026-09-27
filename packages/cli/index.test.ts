@@ -2411,7 +2411,7 @@ test("relation commands show directional and symmetric links, including archived
     expect(run("task", "relation", "create", "APP-1", "APP-1", "--type", "related").stderr).toContain("itself");
     expect(run("task", "relation", "create", "APP-1", "OTHER-99", "--type", "related").code).toBe(1);
     expect(run("task", "relation", "list", "OTHER-99").code).toBe(1);
-    for (const type of ["dependency", "duplicate", "related"]) {
+    for (const type of ["dependency", "duplicate", "related", "subtask"]) {
       const created = run("task", "relation", "create", "app-1", "OTHER-1", "--type", type);
       expect(created.code).toBe(0);
       expect(created.stdout).toContain("APP-1");
@@ -2420,13 +2420,23 @@ test("relation commands show directional and symmetric links, including archived
     const outgoing = run("task", "relation", "list", "APP-1");
     expect(outgoing.stdout).toContain("Depends on | OTHER-1 | Original");
     expect(outgoing.stdout).toContain("Duplicate of | OTHER-1 | Original");
+    expect(outgoing.stdout).toContain("Parent | OTHER-1 | Original");
     const incoming = run("task", "relation", "list", "OTHER-1");
+    expect(incoming.stdout).toContain("Subtask | APP-1 | Copy");
     expect(incoming.stdout).toContain("Depended on by | APP-1 | Copy");
     expect(incoming.stdout).toContain("Duplicated by | APP-1 | Copy");
     expect(incoming.stdout).toContain("Related to | APP-1 | Copy");
     expect(run("task", "relation", "create", "OTHER-1", "APP-1", "--type", "related").stderr).toContain("already exists");
     run("task", "archive", "OTHER-1");
-    expect(run("task", "view", "APP-1").stdout).toContain("Duplicate of | OTHER-1 | Original | Archived");
+    expect(run("task", "view", "APP-1").stdout).toContain("Parent | OTHER-1 | Original | Archived");
+    const viewed = JSON.parse(run("task", "view", "APP-1", "--json").stdout);
+    expect(viewed.relations).toContainEqual({
+      type: "subtask", direction: "outgoing",
+      task: { key: "OTHER-1", title: "Original", status: "Archived" },
+    });
+    expect(run("task", "relation", "create", "OTHER-1", "APP-1", "--type", "subtask").stderr).toContain("cycle");
+    expect(run("task", "relation", "delete", "APP-1", "OTHER-1", "--type", "subtask").code).toBe(0);
+    expect(run("task", "view", "APP-1").stdout).not.toContain("Parent |");
     expect(run("task", "relation", "create", "OTHER-1", "APP-1", "--type", "dependency").code).toBe(0);
   });
 });
@@ -2438,7 +2448,7 @@ test("relation help and argument errors make types discoverable without promptin
   ]) {
     const result = runZinn(["task", "relation", "create", ...args]);
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain("related, dependency, duplicate");
+    expect(result.stderr).toContain("related, dependency, duplicate, subtask");
   }
   for (const args of [
     ["APP-1", "--type", "related"],
