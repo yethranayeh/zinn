@@ -75,7 +75,7 @@ Directions follow board order: `first` is the start of the board and `last` is i
 Both the column and the target of `before` or `after` are matched by name, and matching is case-insensitive.
 Moving a column to the position it already has, or before or after itself, does nothing. Tasks stay in their columns.
 
-`zinn project delete MDR` asks for confirmation, then permanently deletes the project and all of its columns and tasks.
+`zinn project delete MDR` asks for confirmation, then permanently deletes the project and all of its columns and tasks. `--yes` skips the confirmation (see [Confirmations](#confirmations)).
 
 ## Create and read tasks
 
@@ -153,7 +153,7 @@ Note that label changes also update the task's modification timestamp. Archived 
 
 Commands like `task view` and task mutation output show attached labels.
 
-`zinn label delete urgent` asks for confirmation, then deletes the definition and removes it from every task. Declining confirmation leaves the label and its attachments unchanged.
+`zinn label delete urgent` asks for confirmation, then deletes the definition and removes it from every task. Declining confirmation leaves the label and its attachments unchanged. `--yes` skips the confirmation (see [Confirmations](#confirmations)).
 Use `task label remove` to remove a label attachment from one task instead. Task/project deletion cleans up label attachments, but does not affect labels themselves.
 
 ## Task relations
@@ -197,7 +197,7 @@ zinn task comment edit MDR-1#1 --text "Approved"
 zinn task comment delete MDR-1#1
 ```
 
-Deletion asks for confirmation. Comments can be added to archived tasks. Comment mutations are recorded in the activity log without changing the task's modification timestamp.
+Deletion asks for confirmation, unless `--yes` is used (see [Confirmations](#confirmations)). Comments can be added to archived tasks. Comment mutations are recorded in the activity log without changing the task's modification timestamp.
 
 ## Edit tasks
 
@@ -257,7 +257,35 @@ Unarchiving puts a task at the bottom of its previous column:
 zinn task unarchive MDR-1
 ```
 
-Delete a task permanently with `zinn task delete MDR-1`. It asks for confirmation before performing the action.
+Delete a task permanently with `zinn task delete MDR-1`. It asks for confirmation before performing the action, unless `--yes` is used (see [Confirmations](#confirmations)).
+
+## Scripting and JSON output
+
+Add `--json` to any command to get JSON instead of text. The flag can go anywhere in the command, except after `--`, where it is treated as a regular argument such as searching literally for `--json` in text.
+
+```sh
+zinn task list MDR --json
+zinn task create MDR --title "Refine the numbers" --json
+```
+
+- Read commands print what they list or show. Write commands print the entity they created, changed, or deleted.
+- Output is a single JSON document on stdout. Empty lists print `[]`.
+- Errors go to stderr as `{ "error": { "message": "..." } }`, stdout stays empty, and the command exits with code 1.
+
+Text output is meant for people. It includes the invisible terminal color codes, so scripts should preferably use `--json` to get reliable output.
+
+### Confirmations
+
+Commands like `project delete`, `task delete`, etc. ask for confirmation before deleting. Use `--yes` to skip the prompt:
+
+```sh
+zinn task delete MDR-1 --yes
+zinn task delete MDR-1 --yes --json
+```
+
+- With `--json`, `--yes` is **required**. Without it, the command exits with an error and deletes nothing.
+- When nothing answers the prompt, as in CI or with input redirected from an empty source, a delete without `--yes` counts as declined: it prints `Deletion cancelled …` and exits with code 0. Scripts that delete should always use `--yes`.
+- `task relation delete` is consider a low consequence action, so it never asks for confirmation and does not accept `--yes`.
 
 ## Help
 

@@ -122,11 +122,19 @@ Example: zinn task comment edit MDR-1#2 --text "Approved"`,
   },
   delete: {
     run: (args) => {
-      const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
+      const { values, positionals } = parseArgs({
+        args,
+        options: { yes: { type: "boolean" } },
+        allowPositionals: true,
+        strict: true,
+      });
       validatePositionalCount(positionals, 1, "Exactly one comment key is required");
 
       const commentMatch = comment.getByKey(positionals[0]!);
-      const canDelete = confirmAction(`Are you sure you want to delete ${commentMatch.key}?`);
+      const canDelete = confirmAction(
+        `Are you sure you want to delete ${commentMatch.key}?`,
+        values.yes === true,
+      );
       const presented = presentComment(commentMatch);
 
       if (!canDelete) {
@@ -137,9 +145,10 @@ Example: zinn task comment edit MDR-1#2 --text "Approved"`,
       comment.delete({ commentKey: commentMatch.key }, currentActor());
       output(presented, (entry) => `Deleted ${entry.key}`);
     },
-    help: `Usage: zinn task comment delete <comment-key>
+    help: `Usage: zinn task comment delete <comment-key> [--yes]
 
 Permanently delete a comment after confirmation.
+Use --yes to skip the confirmation prompt, for example in scripts or with --json.
 
 Example: zinn task comment delete MDR-1#2`,
   },

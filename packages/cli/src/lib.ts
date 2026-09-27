@@ -26,10 +26,13 @@ export function output<T>(data: T, transformToString: (data: T) => string) {
   }
 }
 
-export function confirmAction(message: string) {
+export function confirmAction(message: string, isPreconfirmed: boolean) {
+  if (isPreconfirmed) {
+    return true;
+  }
+
   if (outputMode === "json") {
-    // FIXME: confirmations currently break JSON outputs with jq parse error
-    quit("Commands that ask for confirmation cannot be used with --json yet");
+    quit("Commands that ask for confirmation need --yes when used with --json");
   }
 
   return confirm(message);

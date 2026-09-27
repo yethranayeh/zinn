@@ -168,7 +168,13 @@ Example: zinn project view MDR`,
   },
   delete: {
     run: (args: Array<string>) => {
-      const projectKey = args[0];
+      const { values, positionals } = parseArgs({
+        args,
+        options: { yes: { type: "boolean" } },
+        allowPositionals: true,
+        strict: true,
+      });
+      const projectKey = positionals[0];
 
       if (projectKey == null) {
         quit("You need to specificy which project to delete");
@@ -183,6 +189,7 @@ Example: zinn project view MDR`,
 
         const canDelete = confirmAction(
           `Are you sure you want to delete ${projectMatch.key} and all of its columns and tasks?`,
+          values.yes === true,
         );
 
         if (canDelete) {
@@ -195,9 +202,10 @@ Example: zinn project view MDR`,
         quit(err?.message ?? "Something went wrong");
       }
     },
-    help: `Usage: zinn project delete <project-key>
+    help: `Usage: zinn project delete <project-key> [--yes]
 
 Permanently delete a project and all of its columns and tasks after confirmation.
+Use --yes to skip the confirmation prompt, for example in scripts or with --json.
 
 Example: zinn project delete MDR`,
   },

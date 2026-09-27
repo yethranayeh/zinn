@@ -2208,7 +2208,7 @@ test("--json reports errors as JSON on stderr and leaves stdout empty", () => {
   });
 });
 
-test("--json refuses commands that ask for confirmation without deleting anything", () => {
+test("--json refuses commands that ask for confirmation without --yes, deleting nothing", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "WEB"], testDir);
 
@@ -2216,8 +2216,76 @@ test("--json refuses commands that ask for confirmation without deleting anythin
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
-    expect(JSON.parse(result.stderr).error.message).toContain("--json");
+    expect(JSON.parse(result.stderr)).toEqual({
+      error: { message: "Commands that ask for confirmation need --yes when used with --json" },
+    });
     expect(runZinn(["project", "list"], testDir).stdout).toBe("WEB | WEB\n");
+  });
+});
+
+test("--yes deletes without asking for confirmation", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "WEB"], testDir);
+    runZinn(["task", "create", "WEB", "--title", "Ship it"], testDir);
+
+    // ? runZinn gives no stdin, so without --yes the prompt would be declined.
+    const result = runZinn(["task", "delete", "WEB-1", "--yes"], testDir);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe(`Deleted WEB-1 | ${GRAY_BACKLOG} | Ship it\n`);
+    expect(runZinn(["task", "list", "WEB"], testDir).stdout).toBe("");
+  });
+});
+
+test("delete commands with --yes and --json print the deleted entity", () => {
+  withIsolatedZinnDir((testDir) => {
+    const run = (...args: Array<string>) => runZinn(args, testDir);
+    const deleteJson = (...args: Array<string>) => {
+      const result = run(...args, "--yes", "--json");
+      expect(result.code).toBe(0);
+      return JSON.parse(result.stdout);
+    };
+
+    run("project", "create", "WEB", "--name", "Web");
+    run("project", "create", "GONE", "--name", "Gone");
+    run("task", "create", "WEB", "--title", "Ship it");
+    run("task", "create", "WEB", "--title", "Keep it");
+    run("task", "comment", "create", "WEB-2", "--text", "Looks good");
+    run("label", "create", "urgent", "--color", "red", "--description", "Needs attention soon");
+
+    expect(deleteJson("task", "delete", "WEB-1")).toEqual({
+      key: "WEB-1",
+      status: "Active",
+      column: "Backlog",
+      title: "Ship it",
+      description: null,
+      priority: null,
+      labels: [],
+    });
+    expect(JSON.parse(run("task", "list", "WEB", "--json").stdout)).toMatchObject([
+      { key: "WEB-2" },
+    ]);
+
+    const deletedComment = deleteJson("task", "comment", "delete", "WEB-2#1");
+    expect(deletedComment).toEqual({
+      key: "WEB-2#1",
+      text: "Looks good",
+      created_at: deletedComment.created_at,
+      updated_at: deletedComment.updated_at,
+    });
+    expect(JSON.parse(run("task", "comment", "list", "WEB-2", "--json").stdout)).toEqual([]);
+
+    expect(deleteJson("label", "delete", "urgent")).toEqual({
+      name: "urgent",
+      color: "red",
+      description: "Needs attention soon",
+    });
+    expect(JSON.parse(run("label", "list", "--json").stdout)).toEqual([]);
+
+    expect(deleteJson("project", "delete", "GONE")).toEqual({ key: "GONE", name: "Gone" });
+    expect(JSON.parse(run("project", "list", "--json").stdout)).toEqual([
+      { key: "WEB", name: "Web" },
+    ]);
   });
 });
 

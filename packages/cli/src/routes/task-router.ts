@@ -366,7 +366,13 @@ Example: zinn task order MDR-2 before MDR-1`,
   },
   delete: {
     run: (args: Array<string>) => {
-      const taskKey = args[0];
+      const { values, positionals } = parseArgs({
+        args,
+        options: { yes: { type: "boolean" } },
+        allowPositionals: true,
+        strict: true,
+      });
+      const taskKey = positionals[0];
 
       if (taskKey == null) {
         quit("Task key must be specified");
@@ -374,7 +380,10 @@ Example: zinn task order MDR-2 before MDR-1`,
 
       try {
         const taskMatch = task.getByKey(taskKey);
-        const canDelete = confirmAction(`Are you sure you want to delete ${taskKey}?`);
+        const canDelete = confirmAction(
+          `Are you sure you want to delete ${taskKey}?`,
+          values.yes === true,
+        );
         const presented = presentTask(taskMatch);
 
         if (canDelete) {
@@ -387,9 +396,10 @@ Example: zinn task order MDR-2 before MDR-1`,
         quit(err?.message ?? "Something went wrong");
       }
     },
-    help: `Usage: zinn task delete <task-key>
+    help: `Usage: zinn task delete <task-key> [--yes]
 
 Permanently delete a task after confirmation.
+Use --yes to skip the confirmation prompt, for example in scripts or with --json.
 
 Example: zinn task delete MDR-1`,
   },

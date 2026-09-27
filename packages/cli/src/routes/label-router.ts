@@ -100,8 +100,15 @@ List all global label definitions.`,
   },
   delete: {
     run: (args) => {
-      const { positionals } = parseArgs({ args, strict: true, allowPositionals: true });
+      const { values, positionals } = parseArgs({
+        args,
+        options: { yes: { type: "boolean" } },
+        strict: true,
+        allowPositionals: true,
+      });
+
       validatePositionalCount(positionals, 1, "Exactly one label name is required");
+
       const props = labelDeleteSchema.parse({ name: positionals[0] });
       const labelMatch = label.getByName(props.name);
 
@@ -111,7 +118,9 @@ List all global label definitions.`,
 
       const canDelete = confirmAction(
         `Are you sure you want to delete label "${labelMatch.name}" and remove it from all tasks?`,
+        values.yes === true,
       );
+
       if (!canDelete) {
         output(presentLabel(labelMatch), (l) => `Deletion cancelled for label "${l.name}"`);
         return;
@@ -120,9 +129,11 @@ List all global label definitions.`,
       const deleted = label.delete(props, currentActor());
       output(presentLabel(deleted), (l) => `Deleted label "${l.name}"`);
     },
-    help: `Usage: zinn label delete <name>
+    help: `Usage: zinn label delete <name> [--yes]
 
 Delete a label definition and remove it from all tasks after confirmation.
-To remove a label from just one task, use zinn task label remove.`,
+To remove a label from just one task, use zinn task label remove.
+
+Use --yes to skip the confirmation prompt, for example in scripts or with --json.`,
   },
 } satisfies RouteDef;
