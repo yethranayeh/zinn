@@ -2554,7 +2554,7 @@ test("label edit validates changes, uniqueness, and missing labels", () => {
     expect(run("label", "edit", "bug", "--name", " ").stderr).toContain("cannot be blank");
     expect(run("label", "edit", "bug", "--color", "purple").code).toBe(1);
     expect(run("label", "list", "--json").stdout).toContain('"name": "bug"');
-    expect(run("label", "edit", "--help").stdout).toContain("Renaming preserves task attachments");
+    expect(run("label", "edit", "--help").stdout).toContain("Editing does not affect task attachments or task timestamps");
     expect(runZinn(["--help"], dir).stdout).toContain("label edit");
   });
 });
