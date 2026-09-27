@@ -57,6 +57,15 @@ Colors: red, green, yellow, blue, magenta, cyan, white, gray.
 
 Example: zinn label create bug --description "Unexpected behavior" --color red`,
   },
+  list: {
+    run: (args) => {
+      parseArgs({ args, strict: true, allowPositionals: false });
+      output(label.getAll().map(presentLabel), (labels) => labels.map(formatLabel).join("\n"));
+    },
+    help: `Usage: zinn label list
+
+List all global label definitions.`,
+  },
   edit: {
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
@@ -88,15 +97,6 @@ Names are case-sensitive, trimmed, and must remain unique.
 Editing does not affect task attachments or task timestamps.
 
 Example: zinn label edit bug --name defect --color yellow`,
-  },
-  list: {
-    run: (args) => {
-      parseArgs({ args, strict: true, allowPositionals: false });
-      output(label.getAll().map(presentLabel), (labels) => labels.map(formatLabel).join("\n"));
-    },
-    help: `Usage: zinn label list
-
-List all global label definitions.`,
   },
   delete: {
     run: (args) => {

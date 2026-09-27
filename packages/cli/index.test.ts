@@ -113,10 +113,10 @@ test("root help supports -h and --help and lists commands", () => {
 
   expect(longHelp.code).toBe(0);
   expect(longHelp.stdout).toContain("ZINN - A kanban workflow in the terminal");
-  expect(longHelp.stdout).toContain("project column list");
-  expect(longHelp.stdout).toContain("project view");
-  expect(longHelp.stdout).toContain("task edit");
-  expect(longHelp.stdout).toContain("task comment create");
+  expect(longHelp.stdout).toContain("project column {create|list|edit|order}");
+  expect(longHelp.stdout).toContain("project {create|list|view|edit|delete}");
+  expect(longHelp.stdout).toContain("task {create|list|search|view|edit|move|order|archive|unarchive|delete}");
+  expect(longHelp.stdout).toContain("task comment {create|list|edit|delete}");
   expect(longHelp.stdout).toContain("-v, --version  Show version");
   expect(shortHelp).toEqual(longHelp);
 });
@@ -148,19 +148,19 @@ test("namespace help lists its commands without running one", () => {
 
   expect(taskHelp.code).toBe(0);
   expect(taskHelp.stdout).toContain("Usage: zinn task <command>");
-  expect(taskHelp.stdout).toContain("  create");
-  expect(taskHelp.stdout).toContain("  unarchive");
-  expect(taskHelp.stdout).toContain("  relation list");
-  expect(taskHelp.stdout).not.toContain("  task create");
+  expect(taskHelp.stdout).toContain(
+    "  {create|list|search|view|edit|move|order|archive|unarchive|delete}",
+  );
+  expect(taskHelp.stdout).toContain("  relation {create|list|delete}");
+  expect(taskHelp.stdout).not.toContain("  task ");
   expect(projectHelp.code).toBe(0);
-  expect(projectHelp.stdout).toContain("  create");
-  expect(projectHelp.stdout).toContain("  view");
-  expect(projectHelp.stdout).toContain("  column list");
-  expect(projectHelp.stdout).not.toContain("  project create");
+  expect(projectHelp.stdout).toContain("  {create|list|view|edit|delete}");
+  expect(projectHelp.stdout).toContain("  column {create|list|edit|order}");
+  expect(projectHelp.stdout).not.toContain("  project ");
   expect(columnHelp.code).toBe(0);
   expect(columnHelp.stdout).toContain("Usage: zinn project column <command>");
-  expect(columnHelp.stdout).toContain("  create");
-  expect(columnHelp.stdout).not.toContain("  project column create");
+  expect(columnHelp.stdout).toContain("  {create|list|edit|order}");
+  expect(columnHelp.stdout).not.toContain("  column ");
 });
 
 test("every command help exits cleanly instead of running the command", () => {
@@ -2420,7 +2420,7 @@ test("relation help and argument errors make types discoverable without promptin
   const help = runZinn(["task", "relation", "create", "--help"]);
   expect(help.code).toBe(0);
   expect(help.stdout).toContain("Source is a duplicate of target");
-  expect(runZinn(["task", "relation", "--help"]).stdout).toContain("  list");
+  expect(runZinn(["task", "relation", "--help"]).stdout).toContain("  {create|list|delete}");
   expect(runZinn(["task", "relation", "list"]).code).toBe(1);
   expect(runZinn(["task", "relation", "list", "APP-1", "APP-2"]).code).toBe(1);
 });
@@ -2446,7 +2446,7 @@ test("relation deletion is usable without a prompt and updates list and view", (
       expect(run("task", "relation", "delete", ...args).code).toBe(1);
     }
     expect(run("task", "relation", "delete", "--help").stdout).toContain("Remove only the specified relation");
-    expect(run("task", "relation", "--help").stdout).toContain("  delete");
+    expect(run("task", "relation", "--help").stdout).toContain("  {create|list|delete}");
   });
 });
 
@@ -2625,7 +2625,7 @@ test("label edit validates changes, uniqueness, and missing labels", () => {
     expect(run("label", "edit", "bug", "--color", "purple").code).toBe(1);
     expect(run("label", "list", "--json").stdout).toContain('"name": "bug"');
     expect(run("label", "edit", "--help").stdout).toContain("Editing does not affect task attachments or task timestamps");
-    expect(runZinn(["--help"], dir).stdout).toContain("label edit");
+    expect(runZinn(["--help"], dir).stdout).toContain("label {create|list|edit|delete}");
   });
 });
 

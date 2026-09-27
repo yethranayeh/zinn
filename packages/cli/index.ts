@@ -8,8 +8,13 @@ const isVersionRequest = args.length === 1 && ["-v", "--version"].includes(args[
 
 if (isVersionRequest) {
   console.info(packageJson.version);
-} else if (args.length === 0 || isHelpFlag(args[0]!)) {
-  console.info(`ZINN - A kanban workflow in the terminal
+} else {
+  const { createRouter } = await import("./src/routes/router");
+  const { routes } = await import("./src/routes/routes");
+  const router = createRouter(routes);
+
+  if (args.length === 0 || isHelpFlag(args[0]!)) {
+    console.info(`ZINN - A kanban workflow in the terminal
 
 Usage: zinn <command>
 
@@ -19,43 +24,11 @@ Options:
   --json      Print command output as JSON
 
 Commands:
-  project create
-  project list
-  project view
-  project delete
-  project column create
-  project column edit
-  project column list
-  project column order
-  task create
-  task list
-  task search
-  task view
-  task edit
-  task move
-  task order
-  task archive
-  task unarchive
-  task delete
-  task relation create
-  task relation list
-  task relation delete
-  task comment create
-  task comment list
-  task comment edit
-  task comment delete
-  task label add
-  task label remove
-  label create
-  label edit
-  label list
-  label delete
+${router.commands}
 
 Run zinn <namespace> --help or zinn <command> --help for more information.
 Running zinn without a command shows this help.`);
-} else {
-  const { createRouter } = await import("./src/routes/router");
-  const { routes } = await import("./src/routes/routes");
-  const router = createRouter(routes);
-  router.route(args);
+  } else {
+    router.route(args);
+  }
 }

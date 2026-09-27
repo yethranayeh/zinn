@@ -37,43 +37,6 @@ function formatColumn(presented: PresentedColumn) {
 }
 
 export const projectRouter = {
-  edit: {
-    run: (args) => {
-      const { values, positionals, tokens } = parseArgs({
-        args,
-        options: { name: { type: "string" } },
-        allowPositionals: true,
-        strict: true,
-        tokens: true,
-      });
-
-      const projectKey = positionals[0];
-
-      if (projectKey == null) {
-        quit("Project key must be specified");
-      }
-
-      validatePositionalCount(positionals, 1, "Only one project key can be specified");
-
-      validateUniqueOptions(tokens);
-
-      if (values.name === undefined) {
-        quit("Provide an edit flag: --name");
-      }
-
-      const editedProject = project.edit({ projectKey, name: values.name });
-      output(presentProject(editedProject), formatProject);
-    },
-    help: `Usage: zinn project edit <project-key> --name <text>
-
-Change the project name.
-The --name flag is required.
-
-Unchanged names leave the modification timestamp unchanged.
-
-Example: zinn project edit MDR --name "Macrodata Refinement"`,
-  },
-
   create: {
     run: (args: Array<string>) => {
       const { values, positionals, tokens } = parseArgs({
@@ -166,6 +129,42 @@ Show a project and its active tasks in board order.
 
 Example: zinn project view MDR`,
   },
+  edit: {
+    run: (args) => {
+      const { values, positionals, tokens } = parseArgs({
+        args,
+        options: { name: { type: "string" } },
+        allowPositionals: true,
+        strict: true,
+        tokens: true,
+      });
+
+      const projectKey = positionals[0];
+
+      if (projectKey == null) {
+        quit("Project key must be specified");
+      }
+
+      validatePositionalCount(positionals, 1, "Only one project key can be specified");
+
+      validateUniqueOptions(tokens);
+
+      if (values.name === undefined) {
+        quit("Provide an edit flag: --name");
+      }
+
+      const editedProject = project.edit({ projectKey, name: values.name });
+      output(presentProject(editedProject), formatProject);
+    },
+    help: `Usage: zinn project edit <project-key> --name <text>
+
+Change the project name.
+The --name flag is required.
+
+Unchanged names leave the modification timestamp unchanged.
+
+Example: zinn project edit MDR --name "Macrodata Refinement"`,
+  },
   delete: {
     run: (args: Array<string>) => {
       const { values, positionals } = parseArgs({
@@ -232,6 +231,24 @@ Add a column at the end of a project's board.
 Names are trimmed, must contain printable text on a single line, and must be unique within the project regardless of casing.
 
 Example: zinn project column create MDR "Boardlog"`,
+    },
+    list: {
+      run: (args: Array<string>) => {
+        const projectKey = args[0];
+        if (projectKey == null) {
+          quit("Project key needs to be specified to list columns");
+        }
+
+        // TODO: attach per-column task count
+        // TODO: terminal formatting
+        const columns = column.getAllByProjectKey(projectKey).map((c) => ({ name: c.name }));
+        output(columns, (presentedColumns) => presentedColumns.map((c) => c.name).join("\n"));
+      },
+      help: `Usage: zinn project column list <project-key>
+
+List a project's columns in board order.
+
+Example: zinn project column list MDR`,
     },
     edit: {
       run: (args: Array<string>) => {
@@ -318,8 +335,8 @@ Example: zinn project column edit MDR "In Progress" --name "Refining"`,
         // TODO: maybe also print the new full column state?
         output(presentColumn(orderedColumn), formatColumn);
       },
-      help: `Usage: zinn project column order <project-key> <column-name> <first | previous | next | last>
-       zinn project column order <project-key> <column-name> <before | after> <target-column-name>
+      help: `Usage: zinn project column order <project-key> <column-name> {first|previous|next|last}
+       zinn project column order <project-key> <column-name> {before|after} <target-column-name>
 
 Change a column's position on the project's board.
 Use first or last for either end, previous or next for one position,
@@ -328,24 +345,6 @@ Use first or last for either end, previous or next for one position,
 Columns are matched by name, and matching is case-insensitive.
 
 Example: zinn project column order MDR Review before "In Progress"`,
-    },
-    list: {
-      run: (args: Array<string>) => {
-        const projectKey = args[0];
-        if (projectKey == null) {
-          quit("Project key needs to be specified to list columns");
-        }
-
-        // TODO: attach per-column task count
-        // TODO: terminal formatting
-        const columns = column.getAllByProjectKey(projectKey).map((c) => ({ name: c.name }));
-        output(columns, (presentedColumns) => presentedColumns.map((c) => c.name).join("\n"));
-      },
-      help: `Usage: zinn project column list <project-key>
-
-List a project's columns in board order.
-
-Example: zinn project column list MDR`,
     },
   },
 } satisfies RouteDef;

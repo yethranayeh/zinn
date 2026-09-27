@@ -10,18 +10,32 @@ function toCommand(args: Array<string>) {
   return args.join(" ");
 }
 
-function getNamespaceHelp(parsedRoutes: Array<ParsedRoute>, namespace: string) {
-  const prefix = `${namespace} `;
-  const commands = parsedRoutes
-    .map((route) => route.command)
-    .filter((command) => command.startsWith(prefix))
-    .map((command) => command.slice(prefix.length));
+// Groups sibling commands into one line, e.g. "  comment {create|list|edit|delete}".
+function formatCommands(parsedRoutes: Array<ParsedRoute>, prefix: string) {
+  const siblingsByParent = new Map<string, Array<string>>();
+  for (const { command } of parsedRoutes) {
+    if (!command.startsWith(prefix)) {
+      continue;
+    }
 
-  if (commands.length === 0) {
+    const words = command.slice(prefix.length).split(" ");
+    const parent = toCommand(words.slice(0, -1));
+    siblingsByParent.set(parent, [...(siblingsByParent.get(parent) ?? []), words.at(-1)!]);
+  }
+
+  return [...siblingsByParent]
+    .map(([parent, siblings]) => `  ${parent === "" ? "" : `${parent} `}{${siblings.join("|")}}`)
+    .join("\n");
+}
+
+function getNamespaceHelp(parsedRoutes: Array<ParsedRoute>, namespace: string) {
+  const commands = formatCommands(parsedRoutes, `${namespace} `);
+
+  if (commands === "") {
     return null;
   }
 
-  return `Usage: zinn ${namespace} <command>\n\nCommands:\n${commands.map((command) => `  ${command}`).join("\n")}`;
+  return `Usage: zinn ${namespace} <command>\n\nCommands:\n${commands}`;
 }
 
 export function parseRoutes(routesDef: RouteDef, prefix?: string) {
@@ -114,5 +128,8 @@ function route(parsedRoutes: Array<ParsedRoute>, rawArgs: Array<string>) {
 export function createRouter(routesDef: RouteDef) {
   const parsedRoutes = parseRoutes(routesDef);
 
-  return { route: (args: Array<string>) => route(parsedRoutes, args) };
+  return {
+    route: (args: Array<string>) => route(parsedRoutes, args),
+    commands: formatCommands(parsedRoutes, ""),
+  };
 }

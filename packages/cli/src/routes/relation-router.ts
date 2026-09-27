@@ -94,36 +94,6 @@ function parseRelationArgs(args: string[]) {
 }
 
 export const relationRouter = {
-  delete: {
-    run: (args) => {
-      const props = parseRelationArgs(args);
-      relation.delete(props, currentActor());
-
-      const source = task.getByKey(props.sourceTaskKey);
-      const target = task.getByKey(props.targetTaskKey);
-      const deleted: PresentedRelationChange = {
-        type: props.relation_type,
-        source: source.key,
-        target: target.key,
-      };
-
-      output(deleted, (r) => `Deleted ${r.type} relation from ${r.source} to ${r.target}`);
-    },
-    help: `Usage: zinn task relation delete <source-task-key> <target-task-key> --type <type>
-
-Remove only the specified relation. No confirmation is required.
-
-Types: related, dependency, duplicate.
-
-For related, either task order works.
-For dependency and duplicate, use the creation direction:
-  source depends on target, or source is a duplicate of target.
-
-Archived and cross-project tasks are supported.
-A missing relation is an error.
-
-Example: zinn task relation delete APP-1 APP-2 --type dependency`,
-  },
   create: {
     run: (args) => {
       const props = parseRelationArgs(args);
@@ -174,5 +144,35 @@ Archived connected tasks are included and marked Archived.
 An empty list prints nothing.
 
 Example: zinn task relation list APP-1`,
+  },
+  delete: {
+    run: (args) => {
+      const props = parseRelationArgs(args);
+      relation.delete(props, currentActor());
+
+      const source = task.getByKey(props.sourceTaskKey);
+      const target = task.getByKey(props.targetTaskKey);
+      const deleted: PresentedRelationChange = {
+        type: props.relation_type,
+        source: source.key,
+        target: target.key,
+      };
+
+      output(deleted, (r) => `Deleted ${r.type} relation from ${r.source} to ${r.target}`);
+    },
+    help: `Usage: zinn task relation delete <source-task-key> <target-task-key> --type <type>
+
+Remove only the specified relation. No confirmation is required.
+
+Types: related, dependency, duplicate.
+
+For related, either task order works.
+For dependency and duplicate, use the creation direction:
+  source depends on target, or source is a duplicate of target.
+
+Archived and cross-project tasks are supported.
+A missing relation is an error.
+
+Example: zinn task relation delete APP-1 APP-2 --type dependency`,
   },
 } satisfies RouteDef;

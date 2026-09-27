@@ -24,76 +24,6 @@ import {
 const limitPattern = new RegExp(`^${positiveIntegerPattern}$`);
 
 export const taskRouter = {
-  edit: {
-    run: (args) => {
-      const { values, positionals, tokens } = parseArgs({
-        args,
-        options: {
-          title: { type: "string" },
-          description: { type: "string" },
-          priority: { type: "string" },
-          "add-label": { type: "string", multiple: true },
-          "remove-label": { type: "string", multiple: true },
-        },
-        allowPositionals: true,
-        strict: true,
-        tokens: true,
-      });
-
-      const taskKey = positionals[0];
-
-      if (taskKey == null) {
-        quit("Task key must be specified");
-      }
-
-      validatePositionalCount(positionals, 1, "Only one task key can be specified");
-
-      validateUniqueOptions(tokens, ["add-label", "remove-label"]);
-
-      const hasEditFlags =
-        values.title !== undefined ||
-        values.description !== undefined ||
-        values.priority !== undefined ||
-        values["add-label"] !== undefined ||
-        values["remove-label"] !== undefined;
-
-      if (!hasEditFlags) {
-        quit(
-          "Provide at least one edit flag: --title, --description, --priority, --add-label, or --remove-label",
-        );
-      }
-
-      const editedTask = task.edit(
-        {
-          taskKey,
-          title: values.title,
-          description: values.description,
-          priority: parsePriority(values.priority),
-          addLabelNames: values["add-label"],
-          removeLabelNames: values["remove-label"],
-        },
-        currentActor(),
-      );
-
-      output(presentTask(editedTask), formatTask);
-    },
-    help: `Usage: zinn task edit <task-key> [--title <text>] [--description <text>] [--priority <low|medium|high|urgent|none>] [--add-label <name>] [--remove-label <name>]
-
-Change the supplied fields and preserve everything else.
-Use --priority none to clear priority.
-Provide at least one edit flag. Use --description "" for an empty description.
-
-Repeat --add-label or --remove-label for multiple existing labels.
-Adding an attached label or removing an unattached label does not do anything.
-Archived tasks can be edited. Unchanged values leave the task unchanged.
-
-The same label cannot be both added and removed.
-Titles cannot be blank.
-
-Use --title="--example" for text beginning with a dash.
-
-Example: zinn task edit MDR-1 --title "Meet the quarterly refinement quota"`,
-  },
   create: {
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
@@ -137,7 +67,7 @@ Example: zinn task edit MDR-1 --title "Meet the quarterly refinement quota"`,
       );
       output(presentTask(createdTask), formatTask);
     },
-    help: `Usage: zinn task create <project-key> --title <text> [--description <text>] [--priority <low|medium|high|urgent|none>] [--label <name>]
+    help: `Usage: zinn task create <project-key> --title <text> [--description <text>] [--priority {low|medium|high|urgent|none}] [--label <name>]
 
 Create a task in the project's first column.
 Priority defaults to none (unassigned).
@@ -170,7 +100,7 @@ Example: zinn task create MDR --title "Refine the numbers" --description "Meet t
         formatTaskList(presentedTasks, { showsStatus: showsAll }),
       );
     },
-    help: `Usage: zinn task list [project-key] [--archived | --all]
+    help: `Usage: zinn task list [<project-key>] [--archived|--all]
 
 List active tasks by default.
 Use --archived to list archived tasks or --all to list both.
@@ -227,7 +157,7 @@ Example: zinn task list MDR --all`,
         console.error(`${count} archived ${noun} hidden, use --all to include them`);
       }
     },
-    help: `Usage: zinn task search <query> [project-key] [--archived | --all] [--limit <n>]
+    help: `Usage: zinn task search <query> [<project-key>] [--archived|--all] [--limit <n>]
 
 Search task titles, descriptions, and comments. A comment match lists the task it belongs to.
 Each word matches the start of a word, ignoring case and accents: e.g. "auth" finds "Authentication".
@@ -283,6 +213,76 @@ Example: zinn task search "refinement quota" MDR --limit 5`,
 Show a task with its current column, description, priority, labels, relations, and comments.
 
 Example: zinn task view MDR-1`,
+  },
+  edit: {
+    run: (args) => {
+      const { values, positionals, tokens } = parseArgs({
+        args,
+        options: {
+          title: { type: "string" },
+          description: { type: "string" },
+          priority: { type: "string" },
+          "add-label": { type: "string", multiple: true },
+          "remove-label": { type: "string", multiple: true },
+        },
+        allowPositionals: true,
+        strict: true,
+        tokens: true,
+      });
+
+      const taskKey = positionals[0];
+
+      if (taskKey == null) {
+        quit("Task key must be specified");
+      }
+
+      validatePositionalCount(positionals, 1, "Only one task key can be specified");
+
+      validateUniqueOptions(tokens, ["add-label", "remove-label"]);
+
+      const hasEditFlags =
+        values.title !== undefined ||
+        values.description !== undefined ||
+        values.priority !== undefined ||
+        values["add-label"] !== undefined ||
+        values["remove-label"] !== undefined;
+
+      if (!hasEditFlags) {
+        quit(
+          "Provide at least one edit flag: --title, --description, --priority, --add-label, or --remove-label",
+        );
+      }
+
+      const editedTask = task.edit(
+        {
+          taskKey,
+          title: values.title,
+          description: values.description,
+          priority: parsePriority(values.priority),
+          addLabelNames: values["add-label"],
+          removeLabelNames: values["remove-label"],
+        },
+        currentActor(),
+      );
+
+      output(presentTask(editedTask), formatTask);
+    },
+    help: `Usage: zinn task edit <task-key> [--title <text>] [--description <text>] [--priority {low|medium|high|urgent|none}] [--add-label <name>] [--remove-label <name>]
+
+Change the supplied fields and preserve everything else.
+Use --priority none to clear priority.
+Provide at least one edit flag. Use --description "" for an empty description.
+
+Repeat --add-label or --remove-label for multiple existing labels.
+Adding an attached label or removing an unattached label does not do anything.
+Archived tasks can be edited. Unchanged values leave the task unchanged.
+
+The same label cannot be both added and removed.
+Titles cannot be blank.
+
+Use --title="--example" for text beginning with a dash.
+
+Example: zinn task edit MDR-1 --title "Meet the quarterly refinement quota"`,
   },
   move: {
     run: (args) => {
@@ -355,14 +355,48 @@ Example: zinn task move MDR-1 "In Progress"`,
           quit(`Unknown order direction "${direction}"`);
       }
     },
-    help: `Usage: zinn task order <task-key> <top | up | down | bottom>
-       zinn task order <task-key> <before | after> <target-task-key>
+    help: `Usage: zinn task order <task-key> {top|up|down|bottom}
+       zinn task order <task-key> {before|after} <target-task-key>
 
 Change a task's position within its current column.
 Use top or bottom for either end, up or down for one position,
 or before or after to place it relative to another task.
 
 Example: zinn task order MDR-2 before MDR-1`,
+  },
+  archive: {
+    run: (args: Array<string>) => {
+      const taskKey = args[0];
+
+      if (taskKey == null) {
+        quit("Task key must be specified");
+      }
+
+      const archivedTask = task.archive(taskKey, currentActor());
+      output(presentTask(archivedTask), formatTaskWithStatus);
+    },
+    help: `Usage: zinn task archive <task-key>
+
+Archive a task so it no longer appears in active task lists.
+
+Example: zinn task archive MDR-1`,
+  },
+  unarchive: {
+    run: (args: Array<string>) => {
+      const taskKey = args[0];
+
+      if (taskKey == null) {
+        quit("Task key must be specified");
+      }
+
+      const unarchivedTask = task.unarchive(taskKey, currentActor());
+      output(presentTask(unarchivedTask), formatTaskWithStatus);
+    },
+    help: `Usage: zinn task unarchive <task-key>
+
+Unarchive a task at the bottom of its previous column.
+
+Example: zinn task unarchive MDR-1`,
   },
   delete: {
     run: (args: Array<string>) => {
@@ -403,40 +437,6 @@ Use --yes to skip the confirmation prompt, for example in scripts or with --json
 
 Example: zinn task delete MDR-1`,
   },
-  archive: {
-    run: (args: Array<string>) => {
-      const taskKey = args[0];
-
-      if (taskKey == null) {
-        quit("Task key must be specified");
-      }
-
-      const archivedTask = task.archive(taskKey, currentActor());
-      output(presentTask(archivedTask), formatTaskWithStatus);
-    },
-    help: `Usage: zinn task archive <task-key>
-
-Archive a task so it no longer appears in active task lists.
-
-Example: zinn task archive MDR-1`,
-  },
-  unarchive: {
-    run: (args: Array<string>) => {
-      const taskKey = args[0];
-
-      if (taskKey == null) {
-        quit("Task key must be specified");
-      }
-
-      const unarchivedTask = task.unarchive(taskKey, currentActor());
-      output(presentTask(unarchivedTask), formatTaskWithStatus);
-    },
-    help: `Usage: zinn task unarchive <task-key>
-
-Unarchive a task at the bottom of its previous column.
-
-Example: zinn task unarchive MDR-1`,
-  },
   relation: relationRouter,
   comment: commentRouter,
   label: {
@@ -445,7 +445,7 @@ Example: zinn task unarchive MDR-1`,
         const props = parseTaskLabelArgs(args);
         output(presentTask(task.label.add(props, currentActor())), formatTask);
       },
-      help: `Usage: zinn task label add <task-key> <label-name> [label-name ...]
+      help: `Usage: zinn task label add <task-key> <label-name>...
 
 Add existing labels to a task. Already attached labels are unchanged.`,
     },
@@ -454,7 +454,7 @@ Add existing labels to a task. Already attached labels are unchanged.`,
         const props = parseTaskLabelArgs(args);
         output(presentTask(task.label.remove(props, currentActor())), formatTask);
       },
-      help: `Usage: zinn task label remove <task-key> <label-name> [label-name ...]
+      help: `Usage: zinn task label remove <task-key> <label-name>...
 
 Remove existing labels from a task. Unattached labels are unchanged.
 Label definitions are preserved.`,

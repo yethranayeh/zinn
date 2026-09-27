@@ -42,7 +42,7 @@ Running `zinn` without a command shows help.
 
 ## Task search
 
-Search task titles, descriptions, and comments with `zinn task search <query> [project-key]`:
+Search task titles, descriptions, and comments with `zinn task search <query> [<project-key>]`:
 
 ```sh
 zinn task search "quarterly quota" MDR
