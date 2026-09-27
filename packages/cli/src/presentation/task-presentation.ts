@@ -67,7 +67,8 @@ export function presentTask(taskMatch: TaskWithKey): PresentedTask {
 export function formatTask(presented: PresentedTask, options: { showsStatus?: boolean } = {}) {
   const status = options.showsStatus ? ` | ${presented.status}` : "";
   const column = formatTaskColumn(presented.column);
-  const description = presented.description == null ? "" : ` | ${presented.description}`;
+  const hasDescription = presented.description != null && presented.description.length > 0;
+  const description = hasDescription ? ` | ${presented.description}` : "";
 
   const priority = presented.priority == null ? "" : ` | Priority: ${presented.priority}`;
   const labelText =
@@ -107,8 +108,8 @@ export function formatTaskList(
         ? ` | ${presentedTask.status.padEnd(longestStatusLength)}`
         : "";
       const descriptionPreview = formatTaskDescriptionPreview(presentedTask.description);
-      const description =
-        presentedTask.description == null ? "" : ` | ${descriptionPreview}`;
+      const hasDescriptionPreview = descriptionPreview.length > 0;
+      const description = hasDescriptionPreview ? ` | ${descriptionPreview}` : "";
       const priority = formatTaskPriorityMarker(presentedTask.priority);
       const column = formatTaskColumn(presentedTask.column, longestColumnNameLength);
 

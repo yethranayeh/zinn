@@ -959,6 +959,37 @@ test("task view does not print a missing description as data", () => {
   });
 });
 
+test("human task output omits empty descriptions while JSON preserves them", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "EMPTY", "--name", "Empty description"], testDir);
+
+    const created = runZinn(
+      ["task", "create", "EMPTY", "--title", "Empty description", "--description", ""],
+      testDir,
+    );
+    expect(created.stdout).toBe(`EMPTY-1 | ${GRAY_BACKLOG} | Empty description\n`);
+
+    expect(runZinn(["task", "list", "EMPTY"], testDir).stdout).toBe(
+      `EMPTY-1 | ${GRAY_BACKLOG} | - | Empty description\n`,
+    );
+    expect(runZinn(["task", "search", "Empty", "EMPTY"], testDir).stdout).toBe(
+      `EMPTY-1 | ${GRAY_BACKLOG} | - | Empty description\n`,
+    );
+    expect(runZinn(["task", "view", "EMPTY-1"], testDir).stdout).toBe(
+      `EMPTY-1 | ${GRAY_BACKLOG} | Empty description\n`,
+    );
+
+    runZinn(["task", "edit", "EMPTY-1", "--description", "Visible"], testDir);
+    expect(runZinn(["task", "edit", "EMPTY-1", "--description", ""], testDir).stdout).toBe(
+      `EMPTY-1 | ${GRAY_BACKLOG} | Empty description\n`,
+    );
+
+    expect(JSON.parse(runZinn(["task", "list", "EMPTY", "--json"], testDir).stdout)).toEqual([
+      expect.objectContaining({ key: "EMPTY-1", description: "" }),
+    ]);
+  });
+});
+
 test("task list and view color temporary workflow column names while JSON stays raw", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "COLOR", "--name", "Column colors"], testDir);
