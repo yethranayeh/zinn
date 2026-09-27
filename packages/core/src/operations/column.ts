@@ -1,4 +1,6 @@
-import type { ColumnCreateInput, ColumnEditInput } from "../schemas/column";
+import type { Column, Project } from "../types";
+import type { ColumnCreateInput, ColumnEditInput, ColumnOrderInput } from "../schemas/column";
+import type { OrderPlacement } from "./shared";
 
 import { randomUUIDv7 } from "bun";
 import { generateKeyBetween } from "fractional-indexing";
@@ -8,32 +10,37 @@ import * as dbProject from "../db/project";
 import * as dbColumn from "../db/column";
 
 import { standardizeProjectKey } from "../lib";
-import { columnCreateSchema, columnEditSchema } from "../schemas/column";
+import { columnCreateSchema, columnEditSchema, columnOrderSchema } from "../schemas/column";
 import { validateTaskInput } from "../schemas/task";
 
-import { findColumnByName } from "./shared";
+import { findColumnByName, getInsertionIndex } from "./shared";
+
+function requireProjectColumns(projectKey: string) {
+  const project = dbProject.getByKey(projectKey);
+
+  if (project == null) {
+    throw new Error(`Project with key "${standardizeProjectKey(projectKey)}" does not exist!`);
+  }
+
+  return { project, projectColumns: dbColumn.getAllByProjectId(project.id) };
+}
+
+function requireColumnByName(project: Project, projectColumns: Array<Column>, name: string) {
+  const columnMatch = findColumnByName(projectColumns, name);
+
+  if (columnMatch == null) {
+    throw new Error(`${project.name} does not have a column named "${name}"`);
+  }
+
+  return { columnMatch, columnIndex: projectColumns.indexOf(columnMatch) };
+}
 
 export const column = {
   getById: dbColumn.getById,
-  getAllByProjectKey: (key: string) => {
-    const standardizedKey = standardizeProjectKey(key);
-    const project = dbProject.getByKey(standardizedKey);
-
-    if (project == null) {
-      throw new Error(`Project with key "${key}" does not exist!`);
-    }
-    return dbColumn.getAllByProjectId(project.id);
-  },
+  getAllByProjectKey: (key: string) => requireProjectColumns(key).projectColumns,
   create: (input: ColumnCreateInput) => {
     const props = validateTaskInput(columnCreateSchema, input);
-    const standardizedKey = standardizeProjectKey(props.projectKey);
-    const project = dbProject.getByKey(standardizedKey);
-
-    if (project == null) {
-      throw new Error(`Project with key "${standardizedKey}" does not exist!`);
-    }
-
-    const allProjectColumns = dbColumn.getAllByProjectId(project.id);
+    const { project, projectColumns: allProjectColumns } = requireProjectColumns(props.projectKey);
     const existingColumn = findColumnByName(allProjectColumns, props.name);
 
     if (existingColumn != null) {
@@ -53,20 +60,8 @@ export const column = {
     const props = validateTaskInput(columnEditSchema, input);
 
     return getDb().transaction(() => {
-      const project = dbProject.getByKey(props.projectKey);
-
-      if (project == null) {
-        throw new Error(
-          `Project with key "${standardizeProjectKey(props.projectKey)}" does not exist!`,
-        );
-      }
-
-      const projectColumns = dbColumn.getAllByProjectId(project.id);
-      const columnMatch = findColumnByName(projectColumns, props.columnName);
-
-      if (columnMatch == null) {
-        throw new Error(`${project.name} does not have a column named "${props.columnName}"`);
-      }
+      const { project, projectColumns } = requireProjectColumns(props.projectKey);
+      const { columnMatch } = requireColumnByName(project, projectColumns, props.columnName);
 
       if (props.name === columnMatch.name) {
         return columnMatch;
@@ -80,6 +75,61 @@ export const column = {
       }
 
       return dbColumn.update({ id: columnMatch.id, name: props.name })!;
+    })();
+  },
+  order: (input: ColumnOrderInput) => {
+    const props = validateTaskInput(columnOrderSchema, input);
+
+    return getDb().transaction(() => {
+      const { project, projectColumns } = requireProjectColumns(props.projectKey);
+      const { columnMatch, columnIndex } = requireColumnByName(
+        project,
+        projectColumns,
+        props.columnName,
+      );
+      let placement: OrderPlacement;
+
+      switch (props.direction) {
+        case "first":
+        case "previous":
+        case "next":
+        case "last":
+          placement = { direction: props.direction };
+          break;
+        case "before":
+        case "after": {
+          const { columnIndex: targetIndex } = requireColumnByName(
+            project,
+            projectColumns,
+            props.targetColumnName,
+          );
+
+          if (targetIndex === columnIndex) {
+            return columnMatch;
+          }
+
+          placement = { direction: props.direction, targetIndex };
+          break;
+        }
+      }
+
+      const insertionIndex = getInsertionIndex(projectColumns.length, columnIndex, placement);
+
+      if (insertionIndex === columnIndex) {
+        return columnMatch;
+      }
+
+      const otherColumns = projectColumns.filter((candidate) => candidate.id !== columnMatch.id);
+      const futurePrevColumn = otherColumns[insertionIndex - 1] ?? null;
+      const futureNextColumn = otherColumns[insertionIndex] ?? null;
+
+      return dbColumn.updateOrder({
+        id: columnMatch.id,
+        column_order: generateKeyBetween(
+          futurePrevColumn?.column_order ?? null,
+          futureNextColumn?.column_order ?? null,
+        ),
+      })!;
     })();
   },
 };

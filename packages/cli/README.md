@@ -60,6 +60,21 @@ Columns are matched by name, and matching is case-insenstivie. Names are trimmed
 Since columns are case-insensitive, you cannot have two columns with only different casing such as `todo` and `Todo`. However, you are free to change the casing of an existing column.
 Tasks stay in the renamed column.
 
+Change a column's position on the board:
+
+```sh
+zinn project column order MDR Review first
+zinn project column order MDR Review previous
+zinn project column order MDR Review next
+zinn project column order MDR Review last
+zinn project column order MDR Review before "In Progress"
+zinn project column order MDR Review after Done
+```
+
+Directions follow board order: `first` is the start of the board and `last` is its end.
+Both the column and the target of `before` or `after` are matched by name, and matching is case-insensitive.
+Moving a column to the position it already has, or before or after itself, does nothing. Tasks stay in their columns.
+
 `zinn project delete MDR` asks for confirmation, then permanently deletes the project and all of its columns and tasks.
 
 ## Create and read tasks

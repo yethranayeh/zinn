@@ -24,6 +24,18 @@ function formatProject(presented: PresentedProject) {
   return `${presented.key} | ${presented.name}`;
 }
 
+type PresentedColumn = { project: string; name: string };
+
+function presentColumn(columnMatch: { project_id: string; name: string }): PresentedColumn {
+  const columnProject = project.getById(columnMatch.project_id)!;
+
+  return { project: columnProject.key, name: columnMatch.name };
+}
+
+function formatColumn(presented: PresentedColumn) {
+  return `${presented.project} | ${presented.name}`;
+}
+
 export const projectRouter = {
   edit: {
     run: (args) => {
@@ -201,10 +213,7 @@ Example: zinn project delete MDR`,
 
         try {
           const createdColumn = column.create({ projectKey, name: columnName });
-          const columnProject = project.getById(createdColumn.project_id)!;
-          const presentedColumn = { project: columnProject.key, name: createdColumn.name };
-
-          output(presentedColumn, (c) => `${c.project} | ${c.name}`);
+          output(presentColumn(createdColumn), formatColumn);
         } catch (err: any) {
           quit(err?.message ?? "Something went wrong");
         }
@@ -242,10 +251,7 @@ Example: zinn project column create MDR "Boardlog"`,
           columnName: positionals[1]!,
           name: values.name,
         });
-        const columnProject = project.getById(editedColumn.project_id)!;
-        const presentedColumn = { project: columnProject.key, name: editedColumn.name };
-
-        output(presentedColumn, (c) => `${c.project} | ${c.name}`);
+        output(presentColumn(editedColumn), formatColumn);
       },
       help: `Usage: zinn project column edit <project-key> <column-name> --name <text>
 
@@ -257,6 +263,63 @@ Names are trimmed, and must remain unique within the same project.
 Changing only the casing of a column's own name is allowed.
 
 Example: zinn project column edit MDR "In Progress" --name "Refining"`,
+    },
+    order: {
+      run: (args: Array<string>) => {
+        const [projectKey, columnName, direction, targetColumnName, ...extraArgs] = args;
+
+        if (projectKey == null || columnName == null) {
+          quit("Both the project key and the column name must be specified");
+        }
+
+        if (direction == null) {
+          quit("Order direction must be specified");
+        }
+
+        let orderedColumn: ReturnType<typeof column.order>;
+
+        switch (direction) {
+          case "before":
+          case "after": {
+            if (targetColumnName == null) {
+              quit(`Target column must be specified for "${direction}"`);
+            }
+
+            if (extraArgs.length > 0) {
+              quit("Only one target column can be specified");
+            }
+
+            orderedColumn = column.order({ projectKey, columnName, direction, targetColumnName });
+            break;
+          }
+          case "first":
+          case "previous":
+          case "next":
+          case "last": {
+            if (targetColumnName != null) {
+              quit(`Order direction "${direction}" does not accept a target column`);
+            }
+
+            orderedColumn = column.order({ projectKey, columnName, direction });
+            break;
+          }
+          default:
+            quit(`Unknown order direction "${direction}"`);
+        }
+
+        // TODO: maybe also print the new full column state?
+        output(presentColumn(orderedColumn), formatColumn);
+      },
+      help: `Usage: zinn project column order <project-key> <column-name> <first | previous | next | last>
+       zinn project column order <project-key> <column-name> <before | after> <target-column-name>
+
+Change a column's position on the project's board.
+Use first or last for either end, previous or next for one position,
+  or before or after to place it relative to another column.
+
+Columns are matched by name, and matching is case-insensitive.
+
+Example: zinn project column order MDR Review before "In Progress"`,
     },
     list: {
       run: (args: Array<string>) => {

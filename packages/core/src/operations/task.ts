@@ -2,6 +2,7 @@ import type { TaskWithKey } from "../types";
 import type { TaskCreateInput, TaskEditInput, TaskSearchInput } from "../schemas/task";
 import type { TaskLabelInput } from "../schemas/label";
 import type { Actor } from "../schemas/actor";
+import type { OrderPlacement } from "./shared";
 
 import { randomUUIDv7 } from "bun";
 import { generateKeyBetween } from "fractional-indexing";
@@ -34,6 +35,7 @@ import {
   updateTaskSearchRecord,
   describeRelation,
   findColumnByName,
+  getInsertionIndex,
 } from "./shared";
 
 function getSearchMatchExpression(query: string) {
@@ -47,6 +49,7 @@ function getSearchMatchExpression(query: string) {
 type TaskOrderProps =
   | {
       taskKey: string;
+      // TODO: maybe consider replacing with neutral words too?
       direction: "top" | "up" | "down" | "bottom";
       targetTaskKey?: never;
     }
@@ -55,6 +58,13 @@ type TaskOrderProps =
       direction: "before" | "after";
       targetTaskKey: string;
     };
+
+const neutralTaskDirections = {
+  top: "first",
+  up: "previous",
+  down: "next",
+  bottom: "last",
+} as const;
 
 export const task = {
   create: (input: TaskCreateInput, actor: Actor) => {
@@ -327,20 +337,14 @@ export const task = {
       const allTasks = dbTask.getAllByColumnId(taskMatch.column_id);
       const taskIndex = allTasks.findIndex((candidate) => candidate.id === taskMatch.id);
       const otherTasks = allTasks.filter((candidate) => candidate.id !== taskMatch.id);
-      let insertionIndex: number;
+      let placement: OrderPlacement;
 
       switch (direction) {
         case "top":
-          insertionIndex = 0;
-          break;
         case "up":
-          insertionIndex = Math.max(0, taskIndex - 1);
-          break;
         case "down":
-          insertionIndex = Math.min(otherTasks.length, taskIndex + 1);
-          break;
         case "bottom":
-          insertionIndex = otherTasks.length;
+          placement = { direction: neutralTaskDirections[direction] };
           break;
         case "before":
         case "after": {
@@ -366,11 +370,13 @@ export const task = {
             throw new Error(`Archived task "${props.targetTaskKey}" cannot be an ordering target`);
           }
 
-          const targetIndex = otherTasks.findIndex((candidate) => candidate.id === targetTask.id);
-          insertionIndex = direction === "before" ? targetIndex : targetIndex + 1;
+          const targetIndex = allTasks.findIndex((candidate) => candidate.id === targetTask.id);
+          placement = { direction, targetIndex };
           break;
         }
       }
+
+      const insertionIndex = getInsertionIndex(allTasks.length, taskIndex, placement);
 
       if (insertionIndex === taskIndex) {
         return taskMatch;

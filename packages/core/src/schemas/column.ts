@@ -19,5 +19,19 @@ export const columnEditSchema = z.strictObject({
   columnName: columnNameSchema,
   name: columnNameSchema,
 });
+export const columnOrderSchema = z.discriminatedUnion("direction", [
+  z.strictObject({
+    projectKey: z.string(),
+    columnName: columnNameSchema,
+    direction: z.enum(["first", "previous", "next", "last"]),
+  }),
+  z.strictObject({
+    projectKey: z.string(),
+    columnName: columnNameSchema,
+    direction: z.enum(["before", "after"]),
+    targetColumnName: columnNameSchema,
+  }),
+]);
 export type ColumnCreateInput = z.infer<typeof columnCreateSchema>;
 export type ColumnEditInput = z.infer<typeof columnEditSchema>;
+export type ColumnOrderInput = z.infer<typeof columnOrderSchema>;

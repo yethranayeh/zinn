@@ -170,6 +170,7 @@ test("every command help exits cleanly instead of running the command", () => {
     ["project", "column", "create"],
     ["project", "column", "edit"],
     ["project", "column", "list"],
+    ["project", "column", "order"],
     ["task", "create"],
     ["task", "list"],
     ["task", "search"],
@@ -374,6 +375,71 @@ test("project column edit rejects invalid requests without writes", () => {
     const unchanged = runZinn(["project", "column", "edit", "COL", "todo", "--name", "TODO"], dir);
     expect(unchanged).toEqual({ stdout: "COL | TODO\n", stderr: "", code: 0 });
     expect(read()).toEqual(before);
+  });
+});
+
+test("project column order moves a column in every direction and prints it", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "COL", "--name", "Columns"], dir);
+    const listColumns = () => runZinn(["project", "column", "list", "COL"], dir).stdout.trim().split("\n");
+
+    expect(runZinn(["project", "column", "order", "col", "review", "first"], dir)).toEqual({
+      stdout: "COL | Review\n",
+      stderr: "",
+      code: 0,
+    });
+    expect(listColumns()).toEqual(["Review", "Backlog", "TODO", "In Progress", "Done"]);
+
+    const steps: Array<[string[], string[]]> = [
+      [["Review", "next"], ["Backlog", "Review", "TODO", "In Progress", "Done"]],
+      [["Review", "last"], ["Backlog", "TODO", "In Progress", "Done", "Review"]],
+      [["Review", "previous"], ["Backlog", "TODO", "In Progress", "Review", "Done"]],
+      [["todo", "after", "DONE"], ["Backlog", "In Progress", "Review", "Done", "TODO"]],
+      [["todo", "before", "in progress"], ["Backlog", "TODO", "In Progress", "Review", "Done"]],
+    ];
+    for (const [args, expected] of steps) {
+      expect(runZinn(["project", "column", "order", "COL", ...args], dir).code).toBe(0);
+      expect(listColumns()).toEqual(expected);
+    }
+
+    const json = runZinn(["project", "column", "order", "COL", "done", "first", "--json"], dir);
+    expect(JSON.parse(json.stdout)).toEqual({ project: "COL", name: "Done" });
+  });
+});
+
+test("project column order rejects invalid requests and skips no-ops without writes", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "COL", "--name", "Columns"], dir);
+    const read = () => withTestDb(dir, (db) => db.query("SELECT * FROM project_column").all());
+    const before = read();
+    const cases: Array<[string[], string]> = [
+      [[], "Both the project key and the column name must be specified"],
+      [["COL"], "Both the project key and the column name must be specified"],
+      [["COL", "TODO"], "Order direction must be specified"],
+      [["COL", "TODO", "sideways"], `Unknown order direction "sideways"`],
+      [["COL", "TODO", "top"], `Unknown order direction "top"`],
+      [["COL", "TODO", "before"], `Target column must be specified for "before"`],
+      [["COL", "TODO", "before", "Done", "Review"], "Only one target column can be specified"],
+      [["COL", "TODO", "first", "Done"], `Order direction "first" does not accept a target column`],
+      [["COL", "   ", "first"], "Column name cannot be blank"],
+      [["COL", "Missing", "first"], `Columns does not have a column named "Missing"`],
+      [["COL", "TODO", "after", "Missing"], `Columns does not have a column named "Missing"`],
+      [["NOPE", "TODO", "first"], `Project with key "NOPE" does not exist!`],
+    ];
+    for (const [args, message] of cases) {
+      const result = runZinn(["project", "column", "order", ...args], dir);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain(message);
+      expect(result.stdout).toBe("");
+      expect(read()).toEqual(before);
+    }
+
+    for (const args of [["backlog", "first"], ["Done", "next"], ["TODO", "after", "backlog"], ["TODO", "before", "todo"]]) {
+      const unchanged = runZinn(["project", "column", "order", "COL", ...args], dir);
+      expect(unchanged.code).toBe(0);
+      expect(unchanged.stderr).toBe("");
+      expect(read()).toEqual(before);
+    }
   });
 });
 

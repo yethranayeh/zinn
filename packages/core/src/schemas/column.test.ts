@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { columnCreateSchema, columnEditSchema } from "./column";
+import { columnCreateSchema, columnEditSchema, columnOrderSchema } from "./column";
 
 test("column names are trimmed and must be printable text on a single line", () => {
   expect(columnCreateSchema.parse({ projectKey: "app", name: " Next " })).toEqual({
@@ -30,5 +30,28 @@ test("column edits require a valid name and trim both names", () => {
     { projectKey: "app", columnName: "todo", name: "Next", order: "a0" },
   ]) {
     expect(columnEditSchema.safeParse(input).success).toBe(false);
+  }
+});
+
+test("column orders take a target only for before and after", () => {
+  expect(columnOrderSchema.parse({ projectKey: "app", columnName: " todo ", direction: "first" })).toEqual({
+    projectKey: "app",
+    columnName: "todo",
+    direction: "first",
+  });
+  expect(
+    columnOrderSchema.parse({ projectKey: "app", columnName: "todo", direction: "after", targetColumnName: " done " }),
+  ).toEqual({ projectKey: "app", columnName: "todo", direction: "after", targetColumnName: "done" });
+
+  for (const input of [
+    { projectKey: "app", columnName: "todo" },
+    { projectKey: "app", columnName: "todo", direction: "sideways" },
+    { projectKey: "app", columnName: "todo", direction: "top" },
+    { projectKey: "app", columnName: "todo", direction: "before" },
+    { projectKey: "app", columnName: "todo", direction: "first", targetColumnName: "done" },
+    { projectKey: "app", columnName: " ", direction: "previous" },
+    { projectKey: "app", columnName: "todo", direction: "after", targetColumnName: " " },
+  ]) {
+    expect(columnOrderSchema.safeParse(input).success).toBe(false);
   }
 });

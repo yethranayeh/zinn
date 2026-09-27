@@ -47,3 +47,65 @@ test("column renames keep identity and tasks, reject duplicates, and skip no-op 
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("column orders move only the moved column and skip no-op writes", () => {
+  const directory = mkdtempSync(join(tmpdir(), "zinn-columns-"));
+  try {
+    const result = Bun.spawnSync([process.execPath, "--eval", `
+      import { strict as assert } from "node:assert";
+      import { project, column } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
+      import { getDb } from ${JSON.stringify(new URL("./db.ts", import.meta.url).pathname)};
+      const db = getDb();
+      project.create({ key: "APP", name: "App" });
+      const names = () => column.getAllByProjectKey("APP").map(c => c.name);
+      const order = (columnName, direction, targetColumnName) =>
+        column.order({ projectKey: "app", columnName, direction, ...(targetColumnName == null ? {} : { targetColumnName }) });
+
+      const review = column.getAllByProjectKey("APP")[3];
+      const moved = order("review", "first");
+      assert.deepEqual({ ...moved, column_order: review.column_order }, review);
+      assert.deepEqual(names(), ["Review", "Backlog", "TODO", "In Progress", "Done"]);
+      order("REVIEW", "next");
+      assert.deepEqual(names(), ["Backlog", "Review", "TODO", "In Progress", "Done"]);
+      order("Review", "previous");
+      assert.deepEqual(names(), ["Review", "Backlog", "TODO", "In Progress", "Done"]);
+      order("Review", "last");
+      assert.deepEqual(names(), ["Backlog", "TODO", "In Progress", "Done", "Review"]);
+
+      const rowsBefore = column.getAllByProjectKey("APP");
+      order("backlog", "before", "DONE");
+      assert.deepEqual(names(), ["TODO", "In Progress", "Backlog", "Done", "Review"]);
+      const changedRows = column.getAllByProjectKey("APP").filter(row => !rowsBefore.some(before => JSON.stringify(before) === JSON.stringify(row)));
+      assert.deepEqual(changedRows.map(row => row.name), ["Backlog"]);
+      order("Review", "after", "todo");
+      assert.deepEqual(names(), ["TODO", "Review", "In Progress", "Backlog", "Done"]);
+      order("TODO", "after", "in progress");
+      assert.deepEqual(names(), ["Review", "In Progress", "TODO", "Backlog", "Done"]);
+      order("Done", "before", "Review");
+      assert.deepEqual(names(), ["Done", "Review", "In Progress", "TODO", "Backlog"]);
+
+      const rowsBeforeNoOps = column.getAllByProjectKey("APP");
+      db.run("CREATE TRIGGER fail_column_update BEFORE UPDATE ON project_column BEGIN SELECT RAISE(ABORT, 'column written'); END");
+      for (const [columnName, direction, targetColumnName] of [
+        ["Done", "first"], ["Done", "previous"], ["Backlog", "last"], ["Backlog", "next"],
+        ["Review", "before", "In Progress"], ["In Progress", "after", "review"],
+        ["Review", "before", "review"], ["Review", "after", "REVIEW"],
+      ]) {
+        const unchanged = order(columnName, direction, targetColumnName);
+        assert.deepEqual(unchanged, rowsBeforeNoOps.find(row => row.id === unchanged.id));
+      }
+      db.run("DROP TRIGGER fail_column_update");
+      assert.deepEqual(column.getAllByProjectKey("APP"), rowsBeforeNoOps);
+
+      assert.throws(() => order("missing", "first"), /App does not have a column named "missing"/);
+      assert.throws(() => order("Review", "before", "missing"), /App does not have a column named "missing"/);
+      assert.throws(() => column.order({ projectKey: "nope", columnName: "Done", direction: "first" }), /Project with key "NOPE" does not exist!/);
+      assert.throws(() => order(" ", "first"), /Column name cannot be blank/);
+      assert.deepEqual(column.getAllByProjectKey("APP"), rowsBeforeNoOps);
+    `], { env: { ...process.env, ZINN_DIR: directory } });
+    expect(result.stderr.toString()).toBe("");
+    expect(result.exitCode).toBe(0);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

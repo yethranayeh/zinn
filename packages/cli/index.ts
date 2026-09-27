@@ -26,6 +26,7 @@ Commands:
   project column create
   project column edit
   project column list
+  project column order
   task create
   task list
   task search

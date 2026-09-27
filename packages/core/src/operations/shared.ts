@@ -144,6 +144,42 @@ export function findColumnByName(columns: Array<Column>, name: string) {
   return columns.find((column) => column.name.toLowerCase() === name.toLowerCase());
 }
 
+export type OrderPlacement =
+  | { direction: "first" | "previous" | "next" | "last" }
+  | { direction: "before" | "after"; targetIndex: number };
+
+/**
+ * Picks where a reordered item lands in an ordered list of `itemCount` items.
+ * `movedIndex` and `targetIndex` are positions in the full list.
+ * The result is a position in the list without the moved item,
+ *  so it equals `movedIndex` when the item would stay where it is.
+ */
+export function getInsertionIndex(itemCount: number, movedIndex: number, placement: OrderPlacement) {
+  const lastIndexWithoutMoved = itemCount - 1;
+
+  switch (placement.direction) {
+    case "first":
+      return 0;
+    case "previous":
+      return Math.max(0, movedIndex - 1);
+    case "next":
+      return Math.min(lastIndexWithoutMoved, movedIndex + 1);
+    case "last":
+      return lastIndexWithoutMoved;
+    case "before":
+    case "after": {
+      const isTargetAfterMoved = placement.targetIndex > movedIndex;
+      const targetIndexWithoutMoved = isTargetAfterMoved
+        ? placement.targetIndex - 1
+        : placement.targetIndex;
+
+      return placement.direction === "before"
+        ? targetIndexWithoutMoved
+        : targetIndexWithoutMoved + 1;
+    }
+  }
+}
+
 export function recordTaskActivity(
   actor: Actor,
   props: {
