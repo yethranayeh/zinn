@@ -1,7 +1,7 @@
 import type { Label } from "@zinn-dev/core";
 import type { RouteDef } from "../types";
 
-import { parseArgs, styleText } from "node:util";
+import { parseArgs } from "node:util";
 import { label, labelCreateSchema, labelDeleteSchema, labelEditSchema } from "@zinn-dev/core";
 
 import {
@@ -12,6 +12,7 @@ import {
   validateUniqueOptions,
 } from "../lib";
 import { currentActor } from "../actor";
+import { isColorEnabled, styleOutputText } from "../presentation/color";
 
 type PresentedLabel = Omit<Label, "id">;
 
@@ -20,13 +21,16 @@ function presentLabel(labelMatch: Label): PresentedLabel {
 }
 
 function formatLabel(presented: PresentedLabel) {
-  const coloredName = styleText(presented.color, presented.name);
+  // The colored name shows the color; without color, the color is named instead.
+  const name = isColorEnabled()
+    ? styleOutputText(presented.color, presented.name)
+    : `${presented.name} | ${presented.color}`;
 
   if (presented.description.length === 0) {
-    return coloredName;
+    return name;
   }
 
-  return `${coloredName} | ${presented.description}`;
+  return `${name} | ${presented.description}`;
 }
 
 export const labelRouter = {

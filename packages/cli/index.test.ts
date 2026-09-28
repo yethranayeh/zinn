@@ -31,17 +31,32 @@ afterAll(() => {
   rmSync(TEST_DIR, { recursive: true, force: true });
 });
 
+function removeIsolatedZinnDir(testDir: string) {
+  if (!testDir.startsWith(PREFIX)) {
+    throw new Error(`Refusing to delete "${testDir}": not a ${PREFIX}* directory`);
+  }
+
+  rmSync(testDir, { recursive: true, force: true });
+}
+
 function withIsolatedZinnDir(run: (testDir: string) => void) {
   const testDir = mkdtempSync(PREFIX);
 
   try {
     run(testDir);
   } finally {
-    if (!testDir.startsWith(PREFIX)) {
-      throw new Error(`Refusing to delete "${testDir}": not a ${PREFIX}* directory`);
-    }
+    removeIsolatedZinnDir(testDir);
+  }
+}
 
-    rmSync(testDir, { recursive: true, force: true });
+// ? Same as withIsolatedZinnDir, but removes the directory only after an async run settles.
+async function withIsolatedZinnDirAsync(run: (testDir: string) => Promise<void>) {
+  const testDir = mkdtempSync(PREFIX);
+
+  try {
+    await run(testDir);
+  } finally {
+    removeIsolatedZinnDir(testDir);
   }
 }
 
@@ -72,6 +87,35 @@ function runZinnWithConfirmation(args: Array<string>, testDir = TEST_DIR) {
     stderr: proc.stderr.toString(),
     code: proc.exitCode,
   };
+}
+
+// ? Runs the CLI in a pseudo-terminal, so stdout is a TTY and text output is colored.
+// ? stdout and stderr arrive merged, and the terminal's "\r\n" line endings are normalized.
+async function runZinnInTerminal(
+  args: Array<string>,
+  testDir = TEST_DIR,
+  additionalEnv: Record<string, string> = {},
+) {
+  const decoder = new TextDecoder();
+  const terminalClosed = Promise.withResolvers<void>();
+  let output = "";
+
+  const proc = Bun.spawn(["bun", CLI_PATH, ...args], {
+    env: { ...process.env, ...additionalEnv, ZINN_DIR: testDir },
+    terminal: {
+      cols: 200,
+      data: (_terminal, data) => {
+        output += decoder.decode(data, { stream: true });
+      },
+      exit: () => terminalClosed.resolve(),
+    },
+  });
+
+  const code = await proc.exited;
+  await terminalClosed.promise;
+  proc.terminal!.close();
+
+  return { output: output.replaceAll("\r\n", "\n"), code };
 }
 
 function withTestDb<T>(testDir: string, inspect: (db: Database) => T) {
@@ -798,9 +842,9 @@ test("task list renders every project's tasks once and aligns unequal key widths
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
     expect(lines).toHaveLength(2);
-    expect(lines).toContain(`A-1       | ${GRAY_BACKLOG} | - | short task | short description`);
+    expect(lines).toContain(`A-1       | Backlog | - | short task | short description`);
     expect(lines).toContain(
-      `LONGKEY-1 | ${GRAY_BACKLOG} | - | long task | long description`,
+      `LONGKEY-1 | Backlog | - | long task | long description`,
     );
   });
 });
@@ -813,7 +857,7 @@ test("task list does not print a missing description as data", () => {
     const result = runZinn(["task", "list"], testDir);
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain(`NONE-1 | ${GRAY_BACKLOG} | - | title only`);
+    expect(result.stdout).toContain(`NONE-1 | Backlog | - | title only`);
     expect(result.stdout).not.toContain("null");
   });
 });
@@ -834,12 +878,12 @@ test("task list renders an 80-character single-line description preview", () => 
 
     expect(listResult.code).toBe(0);
     expect(listResult.stdout).toBe(
-      `PREVIEW-1 | ${GRAY_BACKLOG} | - | long description | ${expectedPreview}\n`,
+      `PREVIEW-1 | Backlog | - | long description | ${expectedPreview}\n`,
     );
     expect(expectedPreview.length).toBe(80);
     expect(viewResult.code).toBe(0);
     expect(viewResult.stdout).toBe(
-      `PREVIEW-1 | ${GRAY_BACKLOG} | long description | ${description}\n`,
+      `PREVIEW-1 | Backlog | long description | ${description}\n`,
     );
   });
 });
@@ -855,7 +899,7 @@ test("task list filters to the requested project regardless of key casing", () =
 
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toContain(`ALPHA-1 | ${GRAY_BACKLOG} | - | alpha task`);
+    expect(result.stdout).toContain(`ALPHA-1 | Backlog | - | alpha task`);
     expect(result.stdout).not.toContain("beta task");
     expect(result.stdout.trimEnd().split("\n")).toHaveLength(1);
   });
@@ -880,8 +924,8 @@ test("project-scoped task list aligns column names and follows board order", () 
     expect(result.stderr).toBe("");
     expect(result.stdout).toBe(
       [
-        `ORDER-2 | \x1b[90m${"Backlog".padEnd(11)}\x1b[39m | - | backlog first`,
-        `ORDER-5 | \x1b[90m${"Backlog".padEnd(11)}\x1b[39m | - | backlog second`,
+        "ORDER-2 | Backlog     | - | backlog first",
+        "ORDER-5 | Backlog     | - | backlog second",
         "ORDER-1 | TODO        | - | todo first",
         "ORDER-4 | TODO        | - | todo second",
         "ORDER-3 | In Progress | - | in progress",
@@ -927,8 +971,8 @@ test("project-scoped task list aligns one- and two-digit task numbers", () => {
 
     expect(result.code).toBe(0);
     expect(lines).toHaveLength(10);
-    expect(lines).toContain(`TEN-1  | ${GRAY_BACKLOG} | - | task 1`);
-    expect(lines).toContain(`TEN-10 | ${GRAY_BACKLOG} | - | task 10`);
+    expect(lines).toContain(`TEN-1  | Backlog | - | task 1`);
+    expect(lines).toContain(`TEN-10 | Backlog | - | task 10`);
   });
 });
 
@@ -942,7 +986,7 @@ test("task view resolves a case-insensitive key and prints its canonical form", 
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.stdout).toBe(
-      `VIEW-1 | ${GRAY_BACKLOG} | visible task | visible description\n`,
+      `VIEW-1 | Backlog | visible task | visible description\n`,
     );
   });
 });
@@ -955,7 +999,7 @@ test("task view does not print a missing description as data", () => {
     const result = runZinn(["task", "view", "NONE-1"], testDir);
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toBe(`NONE-1 | ${GRAY_BACKLOG} | title only\n`);
+    expect(result.stdout).toBe(`NONE-1 | Backlog | title only\n`);
   });
 });
 
@@ -967,21 +1011,21 @@ test("human task output omits empty descriptions while JSON preserves them", () 
       ["task", "create", "EMPTY", "--title", "Empty description", "--description", ""],
       testDir,
     );
-    expect(created.stdout).toBe(`EMPTY-1 | ${GRAY_BACKLOG} | Empty description\n`);
+    expect(created.stdout).toBe(`EMPTY-1 | Backlog | Empty description\n`);
 
     expect(runZinn(["task", "list", "EMPTY"], testDir).stdout).toBe(
-      `EMPTY-1 | ${GRAY_BACKLOG} | - | Empty description\n`,
+      `EMPTY-1 | Backlog | - | Empty description\n`,
     );
     expect(runZinn(["task", "search", "Empty", "EMPTY"], testDir).stdout).toBe(
-      `EMPTY-1 | ${GRAY_BACKLOG} | - | Empty description\n`,
+      `EMPTY-1 | Backlog | - | Empty description\n`,
     );
     expect(runZinn(["task", "view", "EMPTY-1"], testDir).stdout).toBe(
-      `EMPTY-1 | ${GRAY_BACKLOG} | Empty description\n`,
+      `EMPTY-1 | Backlog | Empty description\n`,
     );
 
     runZinn(["task", "edit", "EMPTY-1", "--description", "Visible"], testDir);
     expect(runZinn(["task", "edit", "EMPTY-1", "--description", ""], testDir).stdout).toBe(
-      `EMPTY-1 | ${GRAY_BACKLOG} | Empty description\n`,
+      `EMPTY-1 | Backlog | Empty description\n`,
     );
 
     expect(JSON.parse(runZinn(["task", "list", "EMPTY", "--json"], testDir).stdout)).toEqual([
@@ -990,24 +1034,36 @@ test("human task output omits empty descriptions while JSON preserves them", () 
   });
 });
 
-test("task list and view color temporary workflow column names while JSON stays raw", () => {
-  withIsolatedZinnDir((testDir) => {
+test("task move, list and view color workflow column names only in a terminal, while JSON stays raw", async () => {
+  await withIsolatedZinnDirAsync(async (testDir) => {
     runZinn(["project", "create", "COLOR", "--name", "Column colors"], testDir);
     runZinn(["task", "create", "COLOR", "--title", "waiting"], testDir);
     runZinn(["task", "create", "COLOR", "--title", "finished"], testDir);
-    expect(runZinn(["task", "move", "COLOR-2", "Done"], testDir).stdout).toBe(
-      `COLOR-2 | ${GREEN_DONE}\n`,
-    );
 
-    expect(runZinn(["task", "list", "COLOR"], testDir).stdout).toBe(
+    const moved = await runZinnInTerminal(["task", "move", "COLOR-2", "Done"], testDir);
+    expect(moved.code).toBe(0);
+    expect(moved.output).toBe(`COLOR-2 | ${GREEN_DONE}\n`);
+
+    expect((await runZinnInTerminal(["task", "list", "COLOR"], testDir)).output).toBe(
       [
         `COLOR-1 | ${GRAY_BACKLOG} | - | waiting`,
         `COLOR-2 | \x1b[32m${"Done".padEnd("Backlog".length)}\x1b[39m | - | finished`,
         "",
       ].join("\n"),
     );
-    expect(runZinn(["task", "view", "COLOR-1"], testDir).stdout).toContain(GRAY_BACKLOG);
-    expect(runZinn(["task", "view", "COLOR-2"], testDir).stdout).toContain(GREEN_DONE);
+    expect((await runZinnInTerminal(["task", "view", "COLOR-1"], testDir)).output).toContain(
+      GRAY_BACKLOG,
+    );
+    expect((await runZinnInTerminal(["task", "view", "COLOR-2"], testDir)).output).toContain(
+      GREEN_DONE,
+    );
+
+    // Piped output keeps the same layout without color codes.
+    expect(runZinn(["task", "list", "COLOR"], testDir).stdout).toBe(
+      ["COLOR-1 | Backlog | - | waiting", "COLOR-2 | Done    | - | finished", ""].join("\n"),
+    );
+    expect(runZinn(["task", "view", "COLOR-2"], testDir).stdout).toBe("COLOR-2 | Done | finished\n");
+    expect(runZinn(["task", "move", "COLOR-2", "Done"], testDir).stdout).toBe("COLOR-2 | Done\n");
 
     const listedJson = runZinn(["task", "list", "COLOR", "--json"], testDir).stdout;
     expect(listedJson).not.toContain("\x1b");
@@ -1260,7 +1316,7 @@ test("task move rejects a column outside the task's project", () => {
       `Origin does not have a column named "External"`,
     );
     expect(runZinn(["task", "view", "ORIGIN-1"], testDir).stdout).toContain(
-      `ORIGIN-1 | ${GRAY_BACKLOG} | stationary task`,
+      `ORIGIN-1 | Backlog | stationary task`,
     );
   });
 });
@@ -1317,7 +1373,7 @@ test("task move to the current column is a no-op", () => {
 
     const result = runZinn(["task", "move", "STILL-1", "Backlog"], testDir);
     expect(result.code).toBe(0);
-    expect(result.stdout).toBe(`STILL-1 | ${GRAY_BACKLOG}\n`);
+    expect(result.stdout).toBe(`STILL-1 | Backlog\n`);
 
     const after = withTestDb(testDir, (db) =>
       db.query<{ column_id: string; task_order: string; updated_at: number }, []>(
@@ -1715,15 +1771,15 @@ test("task list --all identifies active and archived tasks in a status column", 
     runZinn(["task", "archive", "MIXED-1"], testDir);
 
     expect(runZinn(["task", "list", "MIXED"], testDir).stdout).toBe(
-      `MIXED-2 | ${GRAY_BACKLOG} | - | active task\n`,
+      `MIXED-2 | Backlog | - | active task\n`,
     );
     expect(runZinn(["task", "list", "MIXED", "--archived"], testDir).stdout).toBe(
-      `MIXED-1 | ${GRAY_BACKLOG} | - | archived task\n`,
+      `MIXED-1 | Backlog | - | archived task\n`,
     );
     expect(runZinn(["task", "list", "MIXED", "--all"], testDir).stdout).toBe(
       [
-        `MIXED-2 | Active   | ${GRAY_BACKLOG} | - | active task`,
-        `MIXED-1 | Archived | ${GRAY_BACKLOG} | - | archived task`,
+        `MIXED-2 | Active   | Backlog | - | active task`,
+        `MIXED-1 | Archived | Backlog | - | archived task`,
         "",
       ].join("\n"),
     );
@@ -1963,12 +2019,12 @@ test("task mutations print the resulting entity", () => {
     runZinn(["project", "create", "LIFE", "--name", "Responsive"], testDir);
 
     expect(runZinn(["task", "create", "LIFE", "--title", "First", "--description", "Description"], testDir).stdout).toBe(
-      `LIFE-1 | ${GRAY_BACKLOG} | First | Description\n`,
+      `LIFE-1 | Backlog | First | Description\n`,
     );
     runZinn(["task", "create", "LIFE", "--title", "Second"], testDir);
     expect(
       runZinn(["task", "edit", "life-1", "--title", "Updated"], testDir).stdout,
-    ).toBe(`LIFE-1 | ${GRAY_BACKLOG} | Updated | Description\n`);
+    ).toBe(`LIFE-1 | Backlog | Updated | Description\n`);
     expect(runZinn(["task", "move", "LIFE-1", "TODO"], testDir).stdout).toBe("LIFE-1 | TODO\n");
     runZinn(["task", "move", "LIFE-2", "TODO"], testDir);
     expect(runZinn(["task", "order", "LIFE-2", "top"], testDir).stdout).toBe(
@@ -2017,8 +2073,8 @@ test("task search prints matches in task list rows and JSON shape", () => {
     expect(result.stderr).toBe("");
     expect(result.stdout).toBe(
       [
-        `FIND-1 | ${GRAY_BACKLOG} | H | Refine the numbers | Quarterly quota`,
-        `FIND-2 | ${GRAY_BACKLOG} | - | Unrelated`,
+        `FIND-1 | Backlog | H | Refine the numbers | Quarterly quota`,
+        `FIND-2 | Backlog | - | Unrelated`,
         "",
       ].join("\n"),
     );
@@ -2107,7 +2163,7 @@ test("task search hides archived matches with a stderr hint and filters by proje
 
     const active = run("task", "search", "widget", "one");
     expect(active.code).toBe(0);
-    expect(active.stdout).toBe(`ONE-1 | ${GRAY_BACKLOG} | - | Widget active\n`);
+    expect(active.stdout).toBe(`ONE-1 | Backlog | - | Widget active\n`);
     expect(active.stderr).toBe("2 archived matches hidden, use --all to include them\n");
 
     const activeJson = run("task", "search", "widget", "ONE", "--json");
@@ -2122,18 +2178,18 @@ test("task search hides archived matches with a stderr hint and filters by proje
     const archived = run("task", "search", "widget", "ONE", "--archived");
     expect(archived.stderr).toBe("");
     expect(archived.stdout.trimEnd().split("\n").sort()).toEqual([
-      `ONE-2 | ${GRAY_BACKLOG} | - | Widget archived`,
-      `ONE-3 | ${GRAY_BACKLOG} | - | Widget also archived`,
+      `ONE-2 | Backlog | - | Widget archived`,
+      `ONE-3 | Backlog | - | Widget also archived`,
     ]);
 
     const all = run("task", "search", "widget", "--all");
     expect(all.stderr).toBe("");
     expect(all.stdout.trimEnd().split("\n")).toHaveLength(4);
-    expect(all.stdout).toContain(`ONE-2 | Archived | ${GRAY_BACKLOG} | - | Widget archived`);
-    expect(all.stdout).toContain(`TWO-1 | Active   | ${GRAY_BACKLOG} | - | Widget elsewhere`);
+    expect(all.stdout).toContain(`ONE-2 | Archived | Backlog | - | Widget archived`);
+    expect(all.stdout).toContain(`TWO-1 | Active   | Backlog | - | Widget elsewhere`);
 
     expect(run("task", "search", "widget", "--all", "--limit", "3").stdout.trimEnd().split("\n")).toHaveLength(3);
-    expect(run("task", "search", "widget", "TWO").stdout).toBe(`TWO-1 | ${GRAY_BACKLOG} | - | Widget elsewhere\n`);
+    expect(run("task", "search", "widget", "TWO").stdout).toBe(`TWO-1 | Backlog | - | Widget elsewhere\n`);
   });
 });
 
@@ -2263,7 +2319,7 @@ test("--yes deletes without asking for confirmation", () => {
     const result = runZinn(["task", "delete", "WEB-1", "--yes"], testDir);
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toBe(`Deleted WEB-1 | ${GRAY_BACKLOG} | Ship it\n`);
+    expect(result.stdout).toBe(`Deleted WEB-1 | Backlog | Ship it\n`);
     expect(runZinn(["task", "list", "WEB"], testDir).stdout).toBe("");
   });
 });
@@ -2500,13 +2556,13 @@ test("global label workflows support repeated create/edit flags and preserve tas
     }
     expect(run("label", "create", "BUG").stderr).toContain("already exists");
     expect(run("label", "create", "invalid", "--color", "purple").code).toBe(1);
-    expect(run("label", "list").stdout).toContain("\x1b[31mbug\x1b[39m | Details");
+    expect(run("label", "list").stdout).toContain("bug | red | Details");
     const created = run("task", "create", "APP", "--title", "Login", "--description", "", "--label", "BUG", "--label", "AUTH");
     expect(created.code).toBe(0);
     expect(created.stdout).toContain("Labels: auth, bug");
     const editedLabel = run("label", "edit", " BUG ", "--name", " defect ", "--color", "blue", "--description", "");
     expect(editedLabel.code).toBe(0);
-    expect(editedLabel.stdout).toBe("\x1b[34mdefect\x1b[39m\n");
+    expect(editedLabel.stdout).toBe("defect | blue\n");
     expect(run("task", "view", "APP-1").stdout).toContain("Labels: auth, defect");
     expect(JSON.parse(run("label", "edit", "defect", "--description", "Fixed", "--json").stdout)).toEqual({
       name: "defect",
@@ -2536,19 +2592,28 @@ test("global label workflows support repeated create/edit flags and preserve tas
   });
 });
 
-test("label text output colors the name instead of naming the color, while JSON keeps the color value", () => {
-  withIsolatedZinnDir((dir) => {
+test("label text output colors the name in a terminal and names the color when piped, while JSON keeps the color value", async () => {
+  await withIsolatedZinnDirAsync(async (dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
 
     expect(run("label", "create", "bug", "--color", "red", "--description", "Broken").stdout).toBe(
-      "\x1b[31mbug\x1b[39m | Broken\n",
+      "bug | red | Broken\n",
     );
-    expect(run("label", "create", "later").stdout).toBe("\x1b[37mlater\x1b[39m\n");
-    expect(run("label", "create", "chore", "--color", "gray").stdout).toBe("\x1b[90mchore\x1b[39m\n");
+    expect(run("label", "create", "later").stdout).toBe("later | white\n");
+
+    const createdInTerminal = await runZinnInTerminal(["label", "create", "chore", "--color", "gray"], dir);
+    expect(createdInTerminal.code).toBe(0);
+    expect(createdInTerminal.output).toBe("\x1b[90mchore\x1b[39m\n");
 
     const listed = run("label", "list").stdout;
+    expect(listed).not.toContain("\x1b[");
+    for (const line of ["bug | red | Broken", "chore | gray", "later | white"]) {
+      expect(listed).toContain(`${line}\n`);
+    }
+    const listedInTerminal = (await runZinnInTerminal(["label", "list"], dir)).output;
+    expect(listedInTerminal).toContain("\x1b[31mbug\x1b[39m | Broken\n");
     for (const colorName of ["red", "white", "gray"]) {
-      expect(listed).not.toContain(colorName);
+      expect(listedInTerminal).not.toContain(colorName);
     }
 
     const created = run("label", "create", "docs", "--color", "cyan", "--json").stdout;
@@ -2558,6 +2623,27 @@ test("label text output colors the name instead of naming the color, while JSON 
     const listedJson = run("label", "list", "--json").stdout;
     expect(listedJson).not.toContain("\x1b[");
     expect(JSON.parse(listedJson)).toContainEqual({ name: "bug", color: "red", description: "Broken" });
+  });
+});
+
+test("NO_COLOR turns color off in a terminal, so text output reads as it does when piped", async () => {
+  await withIsolatedZinnDirAsync(async (dir) => {
+    runZinn(["project", "create", "PLAIN"], dir);
+    runZinn(["task", "create", "PLAIN", "--title", "waiting"], dir);
+    runZinn(["label", "create", "bug", "--color", "red", "--description", "Broken"], dir);
+
+    const noColor = { NO_COLOR: "1" };
+    expect((await runZinnInTerminal(["task", "list", "PLAIN"], dir, noColor)).output).toBe(
+      "PLAIN-1 | Backlog | - | waiting\n",
+    );
+    expect((await runZinnInTerminal(["label", "list"], dir, noColor)).output).toBe(
+      "bug | red | Broken\n",
+    );
+
+    // An empty NO_COLOR counts as unset.
+    expect((await runZinnInTerminal(["label", "list"], dir, { NO_COLOR: "" })).output).toBe(
+      "\x1b[31mbug\x1b[39m | Broken\n",
+    );
   });
 });
 
@@ -2688,11 +2774,11 @@ test("priority persists across CLI creation, editing, listing, clearing, and no-
     }
     expect(runZinn(["task", "list", "PRI"], directory).stdout).toBe(
       [
-        `PRI-1 | ${GRAY_BACKLOG} | - | Default`,
-        `PRI-2 | ${GRAY_BACKLOG} | L | low`,
-        `PRI-3 | ${GRAY_BACKLOG} | M | medium`,
-        `PRI-4 | ${GRAY_BACKLOG} | H | high`,
-        `PRI-5 | ${GRAY_BACKLOG} | U | urgent`,
+        `PRI-1 | Backlog | - | Default`,
+        `PRI-2 | Backlog | L | low`,
+        `PRI-3 | Backlog | M | medium`,
+        `PRI-4 | Backlog | H | high`,
+        `PRI-5 | Backlog | U | urgent`,
       ].join("\n") + "\n",
     );
     withTestDb(directory, (db) => db.run("UPDATE task SET updated_at = 1 WHERE number = 1"));
@@ -2707,7 +2793,7 @@ test("priority persists across CLI creation, editing, listing, clearing, and no-
     });
     expect(runZinn(["task", "edit", "PRI-1", "--title", "Renamed"], directory).stdout).toContain("Priority: high");
     expect(runZinn(["task", "list", "PRI"], directory).stdout).toContain(
-      `PRI-1 | ${GRAY_BACKLOG} | H | Renamed`,
+      `PRI-1 | Backlog | H | Renamed`,
     );
     expect(runZinn(["task", "view", "PRI-1"], directory).stdout).toContain("Priority: high");
     expect(JSON.parse(runZinn(["task", "list", "PRI", "--json"], directory).stdout)[0].priority).toBe(

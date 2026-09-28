@@ -1,9 +1,9 @@
 import type { TaskPriority, TaskWithKey } from "@zinn-dev/core";
 
-import { styleText } from "node:util";
 import { column, task } from "@zinn-dev/core";
 
 import { TASK_DESCRIPTION_PREVIEW_LENGTH } from "../constant";
+import { styleOutputText } from "./color";
 
 function formatTaskDescriptionPreview(description: string | null) {
   if (description == null) {
@@ -42,11 +42,11 @@ export function formatTaskColumn(columnName: string, width = columnName.length) 
 
   // TODO: Derive column colors from column roles once roles exist instead of relying on names.
   if (columnName === "Backlog") {
-    return styleText("gray", paddedColumnName);
+    return styleOutputText("gray", paddedColumnName);
   }
 
   if (columnName === "Done") {
-    return styleText("green", paddedColumnName);
+    return styleOutputText("green", paddedColumnName);
   }
 
   return paddedColumnName;

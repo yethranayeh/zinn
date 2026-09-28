@@ -144,7 +144,7 @@ Label names preserve their stored casing, but matching and uniqueness are case-i
 
 Descriptions default to an empty string and the label colors default to white. Available colors are _red_, _green_, _yellow_, _blue_, _magenta_, _cyan_, _white_, and _gray_.
 
-`label create` and `label list` print each label name in its color. `--json` output shows the color as a value instead.
+`label create`, `label edit` and `label list` print each label name in its color. When color is off (see [Scripting and JSON output](#scripting-and-json-output)), they name the color instead, such as `bug | red | Broken`. `--json` output always shows the color as a value.
 
 `label edit` changes only the supplied name, color, or description. Renaming preserves every task attachment because attachments refer to the label's internal ID. Also, updating a label does not affect any tasks' timestamps that it is attached to.
 
@@ -276,7 +276,7 @@ zinn task create MDR --title "Refine the numbers" --json
 - Output is a single JSON document on stdout. Empty lists print `[]`.
 - Errors go to stderr as `{ "error": { "message": "..." } }`, stdout stays empty, and the command exits with code 1.
 
-Text output is meant for people. It includes the invisible terminal color codes, so scripts should preferably use `--json` to get reliable output.
+Text output is mainly for _visual_ consumption. Colors appear only when the output goes to a terminal and [`NO_COLOR`](https://no-color.org/) is unset or empty. Piped text is plain, but its layout may change between versions. Scripts should use `--json` to get reliable output.
 
 ### Confirmations
 
