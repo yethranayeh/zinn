@@ -94,7 +94,7 @@ zinn task list MDR
 zinn task view MDR-1
 ```
 
-When a project key is supplied, the list follows the project's column order and the task order within each column.
+The list follows the project's column order and the task order within each column. Without a project key, projects are listed one after another, sorted by key.
 
 ## Search tasks
 

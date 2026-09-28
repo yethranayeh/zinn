@@ -40,9 +40,18 @@ export function getAll(archive: TaskArchiveFilter = "active") {
   const whereClause = archiveCondition == null ? "" : `WHERE ${archiveCondition}`;
 
   return db
-    .query<Task, any>(`SELECT * FROM ${DB_TABLE.task}
+    .query<Task, any>(`SELECT task.*
+    FROM ${DB_TABLE.task}
+    INNER JOIN ${DB_TABLE.project}
+      ON project.id = task.project_id
+    INNER JOIN ${DB_TABLE.projectColumn}
+      ON project_column.id = task.column_id
     ${whereClause}
-    ORDER BY (${DB_TABLE.task}.archived_at IS NOT NULL) ASC`)
+    ORDER BY project.key ASC,
+      project_column.column_order ASC,
+      (task.archived_at IS NOT NULL) ASC,
+      task.task_order ASC,
+      task.number ASC`)
     .all();
 }
 

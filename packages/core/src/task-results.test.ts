@@ -49,3 +49,31 @@ test("public task results include keys across reads, mutations, and no-ops; DB r
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("task lists across projects follow project key, column order, and task order", () => {
+  const directory = mkdtempSync(join(tmpdir(), "zinn-task-results-"));
+  try {
+    const result = Bun.spawnSync([process.execPath, "--eval", `
+      import { strict as assert } from "node:assert";
+      import { project, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
+      const actor = { name: "Test Human", email: null, kind: "human" };
+      const later = project.create({ key: "BBB" }, actor);
+      const earlier = project.create({ key: "AAA" }, actor);
+      for (const title of ["One", "Two", "Three"]) {
+        task.create({ project_id: later.id, title, description: null }, actor);
+      }
+      task.create({ project_id: earlier.id, title: "Only", description: null }, actor);
+      task.move({ taskKey: "BBB-1", targetColumn: "In Progress" }, actor);
+      task.order({ taskKey: "BBB-3", direction: "top" }, actor);
+      task.archive("BBB-2", actor);
+      assert.deepEqual(task.getAll().map(t => t.key), ["AAA-1", "BBB-3", "BBB-1"]);
+      task.unarchive("BBB-2", actor);
+      task.order({ taskKey: "BBB-2", direction: "top" }, actor);
+      assert.deepEqual(task.getAll().map(t => t.key), ["AAA-1", "BBB-2", "BBB-3", "BBB-1"]);
+    `], { env: { ...process.env, ZINN_DIR: directory } });
+    expect(result.stderr.toString()).toBe("");
+    expect(result.exitCode).toBe(0);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
