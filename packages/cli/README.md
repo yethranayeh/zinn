@@ -286,7 +286,7 @@ zinn task create MDR --title "Refine the numbers" --json
 - Output is a single JSON document on stdout. Empty lists print `[]`.
 - Errors go to stderr as `{ "error": { "message": "..." } }`, stdout stays empty, and the command exits with code 1.
 
-Text output is mainly for _visual_ consumption. Colors appear only when the output goes to a terminal and [`NO_COLOR`](https://no-color.org/) is unset or empty. Piped text is plain, but its layout may change between versions. Scripts should use `--json` to get reliable output.
+Text output is mainly for _visual_ consumption. Colors appear only when the output goes to a terminal and [`NO_COLOR`](https://no-color.org/) is not set. In the case that [`FORCE_COLOR`](https://force-color.org/) is set, it overrides both. Note that `FORCE_COLOR=0` turns colors off, and any other value turns them on, even when piped. Piped text is plain otherwise, but its layout may change between versions. Scripts should use `--json` to get reliable output.
 
 ### Confirmations
 

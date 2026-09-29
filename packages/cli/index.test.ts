@@ -2649,6 +2649,27 @@ test("NO_COLOR turns color off in a terminal, so text output reads as it does wh
   });
 });
 
+test("FORCE_COLOR colors piped output and wins over NO_COLOR, while FORCE_COLOR=0 turns color off", async () => {
+  await withIsolatedZinnDirAsync(async (dir) => {
+    runZinn(["project", "create", "FORCE"], dir);
+    runZinn(["task", "create", "FORCE", "--title", "waiting"], dir);
+    runZinn(["label", "create", "bug", "--color", "red", "--description", "Broken"], dir);
+
+    const coloredLabel = "\x1b[31mbug\x1b[39m | Broken\n";
+    expect(runZinn(["task", "list", "FORCE"], dir, { FORCE_COLOR: "1" }).stdout).toBe(
+      `FORCE-1 | ${GRAY_BACKLOG} | - | waiting\n`,
+    );
+    expect(runZinn(["label", "list"], dir, { FORCE_COLOR: "1", NO_COLOR: "1" }).stdout).toBe(coloredLabel);
+
+    // Any non-empty value other than 0 forces color; an empty FORCE_COLOR counts as unset.
+    expect(runZinn(["label", "list"], dir, { FORCE_COLOR: "true" }).stdout).toBe(coloredLabel);
+    expect(runZinn(["label", "list"], dir, { FORCE_COLOR: "" }).stdout).toBe("bug | red | Broken\n");
+    expect((await runZinnInTerminal(["label", "list"], dir, { FORCE_COLOR: "0" })).output).toBe(
+      "bug | red | Broken\n",
+    );
+  });
+});
+
 test("label namespaces and commands expose help without initializing storage", () => {
   withIsolatedZinnDir((dir) => {
     for (const args of [["label"], ["label", "create"], ["label", "edit"], ["label", "list"], ["label", "delete"], ["task", "label"], ["task", "label", "add"], ["task", "label", "remove"]]) {
