@@ -1,6 +1,11 @@
 export type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project";
 export type { ColumnCreateInput, ColumnEditInput, ColumnOrderInput } from "./src/schemas/column";
-export type { TaskCreateInput, TaskEditInput, TaskSearchInput } from "./src/schemas/task";
+export type {
+  TaskCreateInput,
+  TaskEditInput,
+  TaskListInput,
+  TaskSearchInput,
+} from "./src/schemas/task";
 export type {
   TaskWithKey,
   TaskPriority,
@@ -40,6 +45,7 @@ export { columnCreateSchema, columnEditSchema, columnOrderSchema } from "./src/s
 export {
   taskCreateSchema,
   taskEditSchema,
+  taskListSchema,
   taskSearchSchema,
   positiveIntegerPattern,
   searchLimitMessage,

@@ -1,5 +1,10 @@
-import type { TaskWithKey } from "../types";
-import type { TaskCreateInput, TaskEditInput, TaskSearchInput } from "../schemas/task";
+import type { Task, TaskWithKey } from "../types";
+import type {
+  TaskCreateInput,
+  TaskEditInput,
+  TaskListInput,
+  TaskSearchInput,
+} from "../schemas/task";
 import type { TaskLabelInput } from "../schemas/label";
 import type { Actor } from "../schemas/actor";
 import type { OrderPlacement } from "./shared";
@@ -22,6 +27,7 @@ import {
   validateTaskInput,
   taskCreateSchema,
   taskEditSchema,
+  taskListSchema,
   taskSearchSchema,
 } from "../schemas/task";
 import { actorSchema } from "../schemas/actor";
@@ -44,6 +50,24 @@ function getSearchMatchExpression(query: string) {
     .split(/\s+/)
     .map((word) => `"${word.replaceAll('"', '""')}"*`)
     .join(" ");
+}
+
+function filterTasksByLabels<T extends Pick<Task, "id">>(
+  tasks: Array<T>,
+  labelNames: Array<string> = [],
+) {
+  if (labelNames.length === 0) {
+    return tasks;
+  }
+
+  const labels = resolveLabels(labelNames);
+  const taskIdsByLabel = labels.map(
+    (labelMatch) => new Set(dbTaskLabel.getTaskIdsByLabelId(labelMatch.id)),
+  );
+
+  return tasks.filter((taskMatch) =>
+    taskIdsByLabel.every((taskIds) => taskIds.has(taskMatch.id)),
+  );
 }
 
 type TaskOrderProps =
@@ -125,9 +149,12 @@ export const task = {
       return attachTaskKey(createdTask, project.key);
     })();
   },
-  getAll: (props: { projectKey?: string; archive?: dbTask.TaskArchiveFilter } = {}) => {
+  getAll: (input: TaskListInput = {}) => {
+    const props = validateTaskInput(taskListSchema, input);
+
     if (props.projectKey == null) {
-      return dbTask.getAll(props.archive).map((task) => attachTaskKey(task));
+      const taskMatches = filterTasksByLabels(dbTask.getAll(props.archive), props.labelNames);
+      return taskMatches.map((taskMatch) => attachTaskKey(taskMatch));
     }
 
     const taskProject = dbProject.getByKey(props.projectKey);
@@ -136,9 +163,11 @@ export const task = {
       throw new Error(`Project with key "${props.projectKey}" does not exist!`);
     }
 
-    return dbTask
-      .getAllByProjectId(taskProject.id, props.archive)
-      .map((task) => attachTaskKey(task, taskProject.key));
+    const taskMatches = filterTasksByLabels(
+      dbTask.getAllByProjectId(taskProject.id, props.archive),
+      props.labelNames,
+    );
+    return taskMatches.map((taskMatch) => attachTaskKey(taskMatch, taskProject.key));
   },
   getByKey: getTaskByKey,
   search: (input: TaskSearchInput) => {
@@ -166,7 +195,7 @@ export const task = {
       .filter((row) => !pinnedTasks.some((pinned) => pinned.id === row.id))
       .map(({ project_key, ...row }) => attachTaskKey(row, project_key));
 
-    const matches = [...pinnedTasks, ...textMatches];
+    const matches = filterTasksByLabels([...pinnedTasks, ...textMatches], props.labelNames);
     const hiddenArchivedCount =
       archive === "active"
         ? matches.filter((taskMatch) => taskMatch.archived_at != null).length

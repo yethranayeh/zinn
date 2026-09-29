@@ -961,6 +961,45 @@ test("task list rejects an unknown project", () => {
   });
 });
 
+test("task list and search filter by every repeated label", () => {
+  withIsolatedZinnDir((testDir) => {
+    const run = (...args: Array<string>) => runZinn(args, testDir);
+    run("project", "create", "FILTER");
+    run("label", "create", "CLI");
+    run("label", "create", "Groom");
+    run("task", "create", "FILTER", "--title", "Both labels", "--label", "CLI", "--label", "Groom");
+    run("task", "create", "FILTER", "--title", "CLI only", "--label", "CLI");
+    run("task", "create", "FILTER", "--title", "Groom only", "--label", "Groom");
+    run("task", "archive", "FILTER-3");
+
+    const listed = JSON.parse(
+      run("task", "list", "FILTER", "--label", "cli", "--label", "GROOM", "--json").stdout,
+    );
+    expect(listed.map((entry: { key: string }) => entry.key)).toEqual(["FILTER-1"]);
+
+    const searched = run(
+      "task",
+      "search",
+      "labels",
+      "FILTER",
+      "--label",
+      "CLI",
+      "--label",
+      "Groom",
+    );
+    expect(searched.code).toBe(0);
+    expect(searched.stdout).toContain("FILTER-1");
+    expect(searched.stdout).not.toContain("FILTER-2");
+
+    const archived = run("task", "list", "FILTER", "--archived", "--label", "groom");
+    expect(archived.stdout).toContain("FILTER-3");
+    expect(run("task", "list", "--label", "missing").stderr).toContain(
+      'A label with name "missing" does not exist',
+    );
+    expect(run("task", "search", "labels", "--label", "missing").code).toBe(1);
+  });
+});
+
 test("project-scoped task list aligns one- and two-digit task numbers", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "TEN", "--name", "Ten tasks"], testDir);
@@ -2212,7 +2251,6 @@ test("task search validates its arguments", () => {
       [["a", "--limit", "5."], "Search limit must be a positive integer"],
       [["a", "--limit", "1", "--limit", "2"], 'Option "--limit" can only be specified once'],
       [["a", "MISSING"], 'Project with key "MISSING" does not exist'],
-      [["a", "--label", "bug"], "Unknown option"],
     ];
 
     for (const [args, message] of cases) {

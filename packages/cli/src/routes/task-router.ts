@@ -79,35 +79,46 @@ Example: zinn task create MDR --title "Refine the numbers" --description "Meet t
   },
   list: {
     run: (args) => {
-      const showsArchived = args.includes("--archived");
-      const showsAll = args.includes("--all");
+      const { values, positionals, tokens } = parseArgs({
+        args,
+        options: {
+          archived: { type: "boolean" },
+          all: { type: "boolean" },
+          label: { type: "string", multiple: true },
+        },
+        allowPositionals: true,
+        strict: true,
+        tokens: true,
+      });
 
-      if (showsArchived && showsAll) {
+      validateUniqueOptions(tokens, ["label"]);
+
+      if (values.archived && values.all) {
         quit('Use either "--archived" or "--all", not both');
       }
 
-      const positionalArgs = args.filter((arg) => !["--archived", "--all"].includes(arg));
-      const projectKey = positionalArgs[0];
+      const projectKey = positionals[0];
 
-      if (positionalArgs.length > 1) {
+      if (positionals.length > 1) {
         quit("Only one project key can be specified");
       }
 
-      const archive = showsAll ? "all" : showsArchived ? "archived" : "active";
+      const archive = values.all ? "all" : values.archived ? "archived" : "active";
 
-      const tasks = task.getAll({ projectKey, archive });
+      const tasks = task.getAll({ projectKey, archive, labelNames: values.label });
 
       output(tasks.map(presentTask), (presentedTasks) =>
-        formatTaskList(presentedTasks, { showsStatus: showsAll }),
+        formatTaskList(presentedTasks, { showsStatus: values.all }),
       );
     },
-    help: `Usage: zinn task list [<project-key>] [--archived|--all]
+    help: `Usage: zinn task list [<project-key>] [--archived|--all] [--label <name>]
 
 List active tasks by default.
 Use --archived to list archived tasks or --all to list both.
+Use --label to filter for tasks with a specific label, no case-sensitivity is applied for matching.
 Priority markers: - unassigned, L low, M medium, H high, U urgent.
 
-Example: zinn task list MDR --all`,
+Example: zinn task list MDR --label cli`,
   },
   search: {
     run: (args) => {
@@ -117,6 +128,7 @@ Example: zinn task list MDR --all`,
           archived: { type: "boolean" },
           all: { type: "boolean" },
           limit: { type: "string" },
+          label: { type: "string", multiple: true },
         },
         allowPositionals: true,
         strict: true,
@@ -133,7 +145,7 @@ Example: zinn task list MDR --all`,
         quit("Only one query and one project key can be specified; quote multi-word queries");
       }
 
-      validateUniqueOptions(tokens);
+      validateUniqueOptions(tokens, ["label"]);
 
       if (values.archived && values.all) {
         quit('Use either "--archived" or "--all", not both');
@@ -146,7 +158,13 @@ Example: zinn task list MDR --all`,
       }
 
       const limit = values.limit === undefined ? undefined : Number(values.limit);
-      const result = task.search({ query, projectKey, archive, limit });
+      const result = task.search({
+        query,
+        projectKey,
+        archive,
+        limit,
+        labelNames: values.label,
+      });
 
       output(result.tasks.map(presentTask), (presentedTasks) =>
         formatTaskList(presentedTasks, { showsStatus: values.all }),
@@ -158,7 +176,7 @@ Example: zinn task list MDR --all`,
         console.error(`${count} archived ${noun} hidden, use --all to include them`);
       }
     },
-    help: `Usage: zinn task search <query> [<project-key>] [--archived|--all] [--limit <n>]
+    help: `Usage: zinn task search <query> [<project-key>] [--archived|--all] [--limit <n>] [--label <name>]
 
 Search task titles, descriptions, and comments. A comment match lists the task it belongs to.
 Each word matches the start of a word, ignoring case and accents: e.g. "auth" finds "Authentication".
@@ -171,6 +189,7 @@ Equally relevant tasks are ordered by project key, then task number.
 By default, only active tasks are searched. Use --archived to search archived tasks or --all to search both.
 When archived matches are hidden, a note is printed to say how many.
 Use --limit to show at most <n> results.
+Use --label to filter for tasks with a specific label, no case-sensitivity is applied for matching.
 A search result's output matches that of 'task list'.
 
 Use -- before a query that begins with a dash.

@@ -89,3 +89,36 @@ test("labels preserve atomic edits, no-op timestamps, uniqueness, and cascade in
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("task lists filter by every requested label without changing their order", () => {
+  const directory = mkdtempSync(join(tmpdir(), "zinn-label-filters-"));
+  try {
+    const result = Bun.spawnSync([process.execPath, "--eval", `
+      import { strict as assert } from "node:assert";
+      import { label, project, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
+      const actor = { name: "Test Human", email: null, kind: "human" };
+      const app = project.create({ key: "APP" }, actor);
+      const other = project.create({ key: "OTHER" }, actor);
+      label.create({ name: "bug" }, actor);
+      label.create({ name: "Groom" }, actor);
+      task.create({ project_id: app.id, title: "Both", description: null, labelNames: ["bug", "Groom"] }, actor);
+      task.create({ project_id: app.id, title: "Bug only", description: null, labelNames: ["bug"] }, actor);
+      task.create({ project_id: other.id, title: "Other both", description: null, labelNames: ["bug", "Groom"] }, actor);
+
+      const keys = (options) => task.getAll(options).map((entry) => entry.key);
+      assert.deepEqual(keys({ labelNames: ["BUG"] }), ["APP-1", "APP-2", "OTHER-1"]);
+      assert.deepEqual(keys({ projectKey: "app", labelNames: ["bug", "groom", "BUG"] }), ["APP-1"]);
+      assert.throws(() => task.getAll({ labelNames: ["missing"] }), /does not exist/);
+      assert.throws(() => task.getAll({ labelNames: [" "] }), /Label name cannot be blank/);
+
+      task.archive("APP-1", actor);
+      assert.deepEqual(keys({ labelNames: ["bug", "groom"] }), ["OTHER-1"]);
+      assert.deepEqual(keys({ archive: "archived", labelNames: ["bug", "groom"] }), ["APP-1"]);
+      assert.deepEqual(keys({ archive: "all", labelNames: ["bug", "groom"] }), ["APP-1", "OTHER-1"]);
+    `], { env: { ...process.env, ZINN_DIR: directory } });
+    expect(result.stderr.toString()).toBe("");
+    expect(result.exitCode).toBe(0);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

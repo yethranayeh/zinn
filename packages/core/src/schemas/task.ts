@@ -57,12 +57,19 @@ export const searchLimitMessage = "Search limit must be a positive integer";
 
 export const taskArchiveFilterSchema = z.enum(["active", "archived", "all"]);
 
+export const taskListSchema = z.strictObject({
+  projectKey: z.string().optional(),
+  archive: taskArchiveFilterSchema.optional(),
+  labelNames: z.array(labelNameSchema).optional(),
+});
+
 export const taskSearchSchema = z.strictObject({
   query: z
     .string({ error: searchQueryMessage })
     .refine((value) => value.trim().length > 0, searchQueryMessage),
   projectKey: z.string().optional(),
   archive: taskArchiveFilterSchema.optional(),
+  labelNames: z.array(labelNameSchema).optional(),
   limit: z
     .number({ error: searchLimitMessage })
     .int(searchLimitMessage)
@@ -74,6 +81,7 @@ export type TaskPriority = z.infer<typeof taskPrioritySchema>;
 export type TaskArchiveFilter = z.infer<typeof taskArchiveFilterSchema>;
 export type TaskCreateInput = z.infer<typeof taskCreateSchema>;
 export type TaskEditInput = z.infer<typeof taskEditSchema>;
+export type TaskListInput = z.infer<typeof taskListSchema>;
 export type TaskSearchInput = z.infer<typeof taskSearchSchema>;
 
 export function validateTaskInput<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {

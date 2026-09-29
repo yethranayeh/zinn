@@ -13,7 +13,7 @@ function runSearchCheck(script: string) {
         "--eval",
         `
           import { strict as assert } from "node:assert";
-          import { comment, project, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
+          import { comment, label, project, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
           import { getDb } from ${JSON.stringify(new URL("./db.ts", import.meta.url).pathname)};
           const human = { name: "Test Human", email: "human@example.com", kind: "human" };
           const app = project.create({ key: "APP" }, human);
@@ -158,6 +158,32 @@ test("project filter, limit, and result shape", () => {
     const [result] = task.search({ query: "one" }).tasks;
     assert.deepEqual(result, { ...task.getByKey("APP-1") });
     assert.equal("project_key" in result, false);
+  `);
+});
+
+test("label filters apply before archive counting and limits", () => {
+  runSearchCheck(`
+    label.create({ name: "bug" }, human);
+    label.create({ name: "Groom" }, human);
+    label.create({ name: "later" }, human);
+    const first = create("Widget first");
+    const second = create("Widget second");
+    const third = create("Widget third");
+    task.label.add({ taskKey: first.key, labelNames: ["bug", "Groom"] }, human);
+    task.label.add({ taskKey: second.key, labelNames: ["bug"] }, human);
+    task.label.add({ taskKey: third.key, labelNames: ["Groom", "later"] }, human);
+    task.archive(second.key, human);
+
+    const bugMatches = task.search({ query: "widget", labelNames: ["BUG"] });
+    assert.deepEqual(bugMatches.tasks.map((entry) => entry.key), ["APP-1"]);
+    assert.equal(bugMatches.hiddenArchivedCount, 1);
+
+    const bothMatches = task.search({ query: "widget", labelNames: ["bug", "groom", "BUG"] });
+    assert.deepEqual(bothMatches.tasks.map((entry) => entry.key), ["APP-1"]);
+    assert.equal(bothMatches.hiddenArchivedCount, 0);
+    assert.deepEqual(keys("APP-3", { labelNames: ["bug"] }), []);
+    assert.deepEqual(keys("widget", { labelNames: ["later"], limit: 1 }), ["APP-3"]);
+    assert.throws(() => task.search({ query: "widget", labelNames: ["missing"] }), /does not exist/);
   `);
 });
 

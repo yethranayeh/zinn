@@ -15,11 +15,13 @@ Internally, the DB functions still return task rows without `key`. Relation look
 
 ## Task search
 
-`task.search({ query, projectKey?, archive?, limit? })` searches task titles, descriptions, and comments. It returns `{ tasks, hiddenArchivedCount }`, where `tasks` are tasks with keys.
+`task.getAll({ projectKey?, archive?, labelNames? })` lists tasks in board order. `labelNames` requires every specified global label; names are case-insensitive and unknown names are errors.
+
+`task.search({ query, projectKey?, archive?, limit?, labelNames? })` searches task titles, descriptions, and comments. It returns `{ tasks, hiddenArchivedCount }`, where `tasks` are tasks with keys.
 
 - `query` cannot be blank. Each whitespace-separated word matches the start of a word, ignoring case and accents, and every word must match in the task's title, description, or comments.
 - If the trimmed query is an existing task key, that task comes first. The rest are ordered by bm25 relevance, with the title weighted three times the description and comments, then by project key and task number.
-- `projectKey` limits results to one project and must exist. `archive` is `"active"` (default), `"archived"`, or `"all"`. Both filters also apply to a task found by its key. `limit` is a positive integer and caps the number of tasks returned.
+- `projectKey` limits results to one project and must exist. `archive` is `"active"` (default), `"archived"`, or `"all"`. `labelNames` requires every specified label. These filters also apply to a task found by its key. `limit` is a positive integer and caps the number of tasks returned.
 - `hiddenArchivedCount` is the number of archived matches left out by the `"active"` filter, whatever the `limit`. It is `0` for `"archived"` and `"all"`.
 
 The index is an FTS5 table, `task_search`, with one row per task, kept in sync by the core operations that change a task's title, description, or comments.

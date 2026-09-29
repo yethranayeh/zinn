@@ -91,10 +91,13 @@ Tasks are created with keys such as `MDR-1`. List active tasks, optionally limit
 ```sh
 zinn task list
 zinn task list MDR
+zinn task list MDR --label CLI --label Groom
 zinn task view MDR-1
 ```
 
 The list follows the project's column order and the task order within each column. Without a project key, projects are listed one after another, sorted by key.
+
+Use `--label <name>` to list tasks with a label. You can provide multiple `--label` flags to refine your filter further down to more specific task results. Label names matching ignores casing. An unknown label causes an error to be raised.
 
 ## Search tasks
 
@@ -105,6 +108,7 @@ zinn task search refine
 zinn task search "quarterly quota" MDR
 zinn task search MDR-1
 zinn task search auth --all --limit 5
+zinn task search auth MDR --label cli
 ```
 
 Each query matches the start of a word, ignoring case and accents, so `cafe` finds "Café" and `auth` finds "Authentication". Every word must match somewhere in the task: its title, its description, or any of its comments. A comment match lists the task the comment belongs to.
@@ -113,6 +117,8 @@ If the whole query is an existing task key, such as `mdr-1`, that task comes fir
 
 Note that by default only the active tasks are searched.
 `--archived` searches only archived tasks and `--all` searches both, just like how it is with `task list`. When archived matches are left out, Zinn prints a note such as `2 archived matches hidden, use --all to include them`. This extra info is not a part of the `--json` output. `--limit <n>` shows at most `n` results.
+
+`--label` works as it does for `task list`: repeat it to require every specified label. Label filtering happens before `--limit` and before archived matches are counted.
 
 Results use the same rows and `--json` shape as `task list`. A search with no results prints nothing and exits successfully. Put `--` before a query that begins with a dash: `zinn task search -- -flag`.
 
