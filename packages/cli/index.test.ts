@@ -1,8 +1,8 @@
 import { test, expect, afterAll } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import packageJson from "./package.json";
 
@@ -161,6 +161,7 @@ test("root help supports -h and --help and lists commands", () => {
   expect(longHelp.stdout).toContain("project {create|list|view|edit|delete}");
   expect(longHelp.stdout).toContain("task {create|list|search|view|edit|move|order|archive|unarchive|delete}");
   expect(longHelp.stdout).toContain("task comment {create|list|edit|delete}");
+  expect(longHelp.stdout).toContain("\n  backup\n");
   expect(longHelp.stdout).toContain("-v, --version  Show version");
   expect(shortHelp).toEqual(longHelp);
 });
@@ -232,6 +233,7 @@ test("every command help exits cleanly instead of running the command", () => {
     ["task", "comment", "list"],
     ["task", "comment", "edit"],
     ["task", "comment", "delete"],
+    ["backup"],
   ];
 
   for (const command of commands) {
@@ -2852,5 +2854,41 @@ test("mutations record the invoking agent, then the git identity, then the OS us
 
     expect(runZinnAs(["task", "archive", "ACT-1"], dir, { GIT_CONFIG_GLOBAL: "/dev/null" }).code).toBe(0);
     expect(lastActor(dir)).toEqual({ action: "archive", actor_name: userInfo().username, actor_email: null, actor_kind: "human" });
+  });
+});
+
+// --- BACKUP
+
+test("backup saves a copy of the database named with the UTC time and CLI version", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "BAK"], dir);
+    runZinn(["task", "create", "BAK", "--title", "Saved"], dir);
+
+    const result = runZinn(["backup", "--json"], dir);
+    expect(result.code).toBe(0);
+
+    const { path } = JSON.parse(result.stdout) as { path: string };
+    expect(dirname(path)).toBe(join(dir, "backups"));
+    expect(basename(path)).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z-/);
+    expect(basename(path)).toEndWith(`Z-cli-${packageJson.version}.sqlite`);
+
+    const backupDb = new Database(path, { readonly: true });
+    try {
+      expect(backupDb.query("SELECT title FROM task").all()).toEqual([{ title: "Saved" }]);
+      expect(backupDb.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
+    } finally {
+      backupDb.close();
+    }
+  });
+});
+
+test("backup refuses when there is no database and does not create one", () => {
+  withIsolatedZinnDir((dir) => {
+    const result = runZinn(["backup"], dir);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain(`There is no Zinn database at ${join(dir, "data", "zinn.sqlite")} to back up`);
+    expect(existsSync(join(dir, "data"))).toBe(false);
+    expect(existsSync(join(dir, "backups"))).toBe(false);
   });
 });

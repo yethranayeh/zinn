@@ -11,6 +11,7 @@ function toCommand(args: Array<string>) {
 }
 
 // Groups sibling commands into one line, e.g. "  comment {create|list|edit|delete}".
+// A command without siblings is not a choice, so it gets no braces, e.g. "  backup".
 function formatCommands(parsedRoutes: Array<ParsedRoute>, prefix: string) {
   const siblingsByParent = new Map<string, Array<string>>();
   for (const { command } of parsedRoutes) {
@@ -24,7 +25,10 @@ function formatCommands(parsedRoutes: Array<ParsedRoute>, prefix: string) {
   }
 
   return [...siblingsByParent]
-    .map(([parent, siblings]) => `  ${parent === "" ? "" : `${parent} `}{${siblings.join("|")}}`)
+    .map(([parent, siblings]) => {
+      const commands = siblings.length === 1 ? siblings[0] : `{${siblings.join("|")}}`;
+      return `  ${parent === "" ? "" : `${parent} `}${commands}`;
+    })
     .join("\n");
 }
 

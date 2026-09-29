@@ -27,6 +27,7 @@ export type {
   CommentDeleteInput,
   CommentEditInput,
 } from "./src/schemas/comment";
+export type { BackupCreateInput } from "./src/operations/backup";
 
 export {
   labelCreateSchema,
@@ -53,3 +54,4 @@ export { task } from "./src/operations/task";
 export { comment } from "./src/operations/comment";
 export { relation } from "./src/operations/relation";
 export { label } from "./src/operations/label";
+export { backup } from "./src/operations/backup";

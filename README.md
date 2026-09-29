@@ -5,7 +5,7 @@ A kanban workflow in the terminal.
 > [!IMPORTANT]
 > Zinn is in rapid development, so commands, output and the database schema _can_ and **will** change between releases.
 > There is no migration system yet. Instead, when a release changes the schema, Zinn will try to run as if everything is aligned with its current version.
-> If you have an established board, keep a copy of `~/.zinn/data/` before migrating it yourself.
+> If you have an established board, run `zinn backup` before upgrading.
 
 ## Install
 
@@ -95,6 +95,10 @@ ZINN_DIR="./.zinn-local" zinn project list
 ```
 
 Use the same `ZINN_DIR` value on later commands to access that database.
+
+## Backups
+
+Run `zinn backup` to save a copy of the database to `~/.zinn/backups/` (or `backups/` in `ZINN_DIR`), in a file named after the UTC time and the CLI version that made it. It is recommended that you make a backup before upgrading Zinn, you know, just in case.
 
 ## Development data
 

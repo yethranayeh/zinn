@@ -5,7 +5,7 @@ Shared logic for [zinn](https://github.com/yethranayeh/zinn)
 > [!IMPORTANT]
 > Zinn is in rapid development, and this package's API and database schema _can_ and **will** change between versions.
 > There is no migration system yet. Instead, when a release changes the schema, Zinn will try to run as if everything is aligned with its current version.
-> If you have an established board, keep a copy of `~/.zinn/data/` before migrating it yourself.
+> If you have an established board, run `zinn backup` before upgrading.
 
 ## Task results
 
@@ -42,3 +42,9 @@ Changing or clearing priority updates `updated_at`. If the current priority is g
 `relation.create({ sourceTaskKey: "APP-2", targetTaskKey: "APP-1", relation_type: "subtask" }, actor)` makes the source a child of the target. Each task has at most one parent and any number of children. A nested type of relationship is allowed, so a task can have both a parent and a child. Remove the old relation before assigning another parent.
 
 Cross-project and archived tasks are supported. Creation and removal use the existing relation activity records on both tasks. Task deletion removes links, preserving connected tasks. Moving or archiving a parent does not change its children.
+
+## Backups
+
+`backup.create({ client, version })` saves a copy of the database to `backups/` in the Zinn directory and returns `{ path }`. The file is named `<UTC time>-<client>-<version>.sqlite`, for example `2026-09-29T12-30-05Z-cli-0.32.0.sqlite`. `client` and `version` identify the program using core that makes the backup, such as the CLI and its package version.
+
+The copy is made with SQLite's `VACUUM INTO`, so it is a single file that includes changes still in the WAL file. It throws when there is no database, instead of creating one, and when the file already exists. It records no activity.
