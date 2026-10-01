@@ -63,7 +63,7 @@ export type Column = {
 export type Label = {
   id: string;
   name: string;
-  description: string;
+  description: string | null;
   color: LabelColor;
 };
 

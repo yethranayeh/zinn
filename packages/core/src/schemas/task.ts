@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { labelNameSchema } from "./label";
+import { descriptionSchema } from "./description";
 
 export const positiveIntegerPattern = "[1-9]\\d{0,14}";
 
@@ -10,14 +11,12 @@ export const taskTitleSchema = z
   .string({ error: titleMessage })
   .refine((value) => value.trim().length > 0, titleMessage);
 
-export const taskDescriptionSchema = z.string().nullable();
-
 export const taskPrioritySchema = z.enum(["low", "medium", "high", "urgent"]);
 
 export const taskCreateSchema = z.strictObject({
   project_id: z.string(),
   title: taskTitleSchema,
-  description: taskDescriptionSchema,
+  description: descriptionSchema.default(null),
   priority: taskPrioritySchema.nullable().optional(),
   labelNames: z.array(labelNameSchema).optional(),
 });
@@ -26,7 +25,7 @@ export const taskEditSchema = z
   .strictObject({
     taskKey: z.string(),
     title: taskTitleSchema.optional(),
-    description: taskDescriptionSchema.optional(),
+    description: descriptionSchema.optional(),
     priority: taskPrioritySchema.nullable().optional(),
     addLabelNames: z.array(labelNameSchema).optional(),
     removeLabelNames: z.array(labelNameSchema).optional(),
@@ -79,7 +78,7 @@ export const taskSearchSchema = z.strictObject({
 
 export type TaskPriority = z.infer<typeof taskPrioritySchema>;
 export type TaskArchiveFilter = z.infer<typeof taskArchiveFilterSchema>;
-export type TaskCreateInput = z.infer<typeof taskCreateSchema>;
+export type TaskCreateInput = z.input<typeof taskCreateSchema>;
 export type TaskEditInput = z.infer<typeof taskEditSchema>;
 export type TaskListInput = z.infer<typeof taskListSchema>;
 export type TaskSearchInput = z.infer<typeof taskSearchSchema>;

@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import { validateTaskInput, taskEditSchema, taskCreateSchema } from "./task";
 
-test("edit schemas retain explicit values and never default omitted fields", () => {
+test("edit schemas normalize empty descriptions and never default omitted fields", () => {
   expect(taskEditSchema.parse({ taskKey: "TEST-1", description: "" })).toEqual({
-    taskKey: "TEST-1", description: "",
+    taskKey: "TEST-1", description: null,
   });
   expect(taskEditSchema.parse({ taskKey: "TEST-1", title: " Title " })).toEqual({
     taskKey: "TEST-1", title: " Title ",
@@ -27,7 +27,7 @@ test("creation and editing share content validation", () => {
     expect(taskCreateSchema.safeParse({ project_id: "id", title, description: null }).success).toBe(false);
     expect(taskEditSchema.safeParse({ taskKey: "TEST-1", title }).success).toBe(false);
   }
-  expect(taskCreateSchema.parse({ project_id: "id", title: "Valid", description: "" }).description).toBe("");
+  expect(taskCreateSchema.parse({ project_id: "id", title: "Valid", description: "" }).description).toBeNull();
 });
 
 test("label edits reject empty requests and conflicting normalized names", () => {

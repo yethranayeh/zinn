@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { projectCreateSchema, projectEditSchema, validateProjectInput } from "./project";
 
 test("project creation accepts an omitted name but rejects null", () => {
-  expect(projectCreateSchema.parse({ key: "test" })).toEqual({ key: "test" });
+  expect(projectCreateSchema.parse({ key: "test" })).toEqual({ key: "test", description: null });
   expect(projectCreateSchema.safeParse({ key: "TEST", name: null }).success).toBe(false);
 });
 
@@ -29,8 +29,8 @@ test("project edits require a field and reject unsupported fields", () => {
 });
 
 
-test("project descriptions accept multiline text, null and empty strings", () => {
-  for (const description of ["Line one\nLine two", "", null]) {
+test("project descriptions preserve multiline text and accept null", () => {
+  for (const description of ["Line one\nLine two", null]) {
     expect(projectCreateSchema.parse({ key: "APP", description }).description).toBe(description);
     expect(projectEditSchema.parse({ projectKey: "APP", description }).description).toBe(description);
   }

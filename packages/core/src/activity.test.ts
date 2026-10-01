@@ -24,6 +24,86 @@ function runActivityCheck(script: string) {
   }
 }
 
+test("descriptions normalize before persistence and activity across projects, tasks and labels", () => {
+  runActivityCheck(`
+    const entities = [
+      {
+        type: "project",
+        create: (description, index) => project.create({ key: "DESC" + index, description }, human),
+        edit: (entity, changes) => project.edit({ projectKey: entity.key, ...changes }, human),
+        rename: { name: "Renamed" },
+      },
+      {
+        type: "task",
+        create: (description, index) => task.create({ project_id: app.id, title: "Task " + index, description }, human),
+        edit: (entity, changes) => task.edit({ taskKey: entity.key, ...changes }, human),
+        rename: { title: "Renamed" },
+      },
+      {
+        type: "label",
+        create: (description, index) => label.create({ name: "label-" + index, description }, human),
+        edit: (entity, changes) => label.edit({ labelName: entity.name, ...changes }, human),
+        rename: { color: "red" },
+      },
+    ];
+
+    for (const entity of entities) {
+      const descriptions = [
+        { description: undefined, expectedDescription: null },
+        { description: "", expectedDescription: null },
+        { description: null, expectedDescription: null },
+        { description: " \\n\\t ", expectedDescription: null },
+        { description: "  Context\\nMore text  ", expectedDescription: "  Context\\nMore text  " },
+        { description: "\\tFirst\\n\\tSecond\\n", expectedDescription: "\\tFirst\\n\\tSecond\\n" },
+      ];
+      for (const [index, { description, expectedDescription }] of descriptions.entries()) {
+        const created = entity.create(description, index);
+        const read = () => getDb().query("SELECT * FROM " + entity.type + " WHERE id = ?").get(created.id);
+        const history = () => dbActivity.getAllByEntity(entity.type, created.id);
+        assert.equal(created.description, expectedDescription);
+        assert.equal(read().description, expectedDescription);
+        assert.equal(history()[0].changes.description, expectedDescription);
+
+        const renamed = entity.edit(created, entity.rename);
+        assert.equal(renamed.description, expectedDescription);
+        assert.equal(read().description, expectedDescription);
+
+        const clearInput = ["", null, " \\n\\t "][index % 3];
+        const beforeClear = history();
+        const cleared = entity.edit(renamed, { description: clearInput });
+        assert.equal(cleared.description, null);
+        assert.equal(read().description, null);
+        if (expectedDescription === null) {
+          assert.deepEqual(history(), beforeClear);
+          assert.deepEqual(cleared, renamed);
+        } else {
+          assert.equal(history().length, beforeClear.length + 1);
+          assert.deepEqual(history().at(-1).changes, { description: [expectedDescription, null] });
+        }
+
+        const beforeNoOps = history();
+        const beforeRow = read();
+        for (const description of ["", null, " \\n\\t "]) {
+          assert.deepEqual(entity.edit(cleared, { description }), cleared);
+        }
+        assert.deepEqual(read(), beforeRow);
+        assert.deepEqual(history(), beforeNoOps);
+      }
+    }
+  `);
+});
+
+test("clearing a task description removes its search terms and stores null in the index", () => {
+  runActivityCheck(`
+    const created = task.create({ project_id: app.id, title: "Searchable", description: "descriptionneedle" }, human);
+    assert.deepEqual(task.search({ query: "descriptionneedle" }).tasks.map((row) => row.key), [created.key]);
+    task.edit({ taskKey: created.key, description: " \\n\\t " }, human);
+    assert.deepEqual(task.search({ query: "descriptionneedle" }).tasks, []);
+    assert.equal(task.search({ query: "Searchable" }).tasks[0].description, null);
+    assert.equal(getDb().query("SELECT description FROM task_search WHERE task_id = ?").get(created.id).description, null);
+  `);
+});
+
 test("each task mutation records one row with its actor and changes", () => {
   runActivityCheck(`
     label.create({ name: "bug" }, human);
@@ -302,7 +382,7 @@ test("project description edits preserve omitted fields, skip no-ops and record 
     const before = dbActivity.getAllByEntity("project", described.id);
     assert.deepEqual(project.edit({ projectKey: "DESC", description: "New" }, human), edited);
     assert.deepEqual(dbActivity.getAllByEntity("project", described.id), before);
-    assert.equal(project.edit({ projectKey: "DESC", description: "" }, human).description, "");
+    assert.equal(project.edit({ projectKey: "DESC", description: "" }, human).description, null);
     assert.equal(project.edit({ projectKey: "DESC", description: null }, human).description, null);
     getDb().run("CREATE TRIGGER reject_description BEFORE UPDATE ON project BEGIN SELECT RAISE(ABORT, 'rejected'); END");
     const beforeFailure = dbActivity.getAllByEntity("project", described.id);

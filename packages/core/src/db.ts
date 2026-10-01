@@ -62,7 +62,7 @@ function initDb() {
   db.query(`CREATE TABLE IF NOT EXISTS ${DB_TABLE.label} (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
-    description TEXT NOT NULL,
+    description TEXT,
     color TEXT NOT NULL CHECK (color IN ('red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white', 'gray'))
   );`).run();
 

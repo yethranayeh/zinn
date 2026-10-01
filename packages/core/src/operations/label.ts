@@ -29,7 +29,7 @@ export const label = {
 
       const createdLabel = dbLabel.create({
         name: props.name,
-        description: props.description ?? "",
+        description: props.description,
         color: props.color ?? "white",
       })!;
 
@@ -56,7 +56,8 @@ export const label = {
     return getDb().transaction(() => {
       const match = resolveLabels([props.labelName])[0]!;
       const name = props.name ?? match.name;
-      const description = props.description ?? match.description;
+      const description =
+        props.description === undefined ? match.description : props.description;
       const color = props.color ?? match.color;
 
       const isUnchanged =

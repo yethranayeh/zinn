@@ -22,7 +22,7 @@ zinn project create MDR --name "Macrodata Refinement" --description "Refine macr
 Project keys are stored in **uppercase**. You can create a project without a project name, like `zinn project create MDR`, which will just default to having the key as the project name too.
 Intetionally empty or whitespace project names are rejected.
 
-Project descriptions are optional and may contain multiple lines. If a description is not provided, it is stored as `null`. Also, if you want to _empty_ an existing description, you can do so with `project edit --description ""`, which stores an empty string. Project list, view and mutation text show _truncated_ inline description previews. Project JSON includes `description`, including null and empty strings.
+Project descriptions are optional and may contain multiple lines. An omitted, empty or whitespace-only description is stored as `null`. Text containing a non-whitespace character is preserved exactly, including leading and trailing whitespace; the same rule applies to task and label descriptions. Clear an existing description with `zinn project edit <project-key> --description ""`. Project list, view and mutation text show truncated inline description previews. Project JSON includes the full description or `null`.
 
 Each project starts with _Backlog_, _TODO_, _In Progress_, _Review_, and _Done_ columns.
 
@@ -152,7 +152,7 @@ For adding or removing multiple labels at the same time, repeat `--label` on cre
 Each value is considered as the label name: `--label "needs review"`, so if you have commas, then they are considered parts of names.
 Label names preserve their stored casing, but matching and uniqueness are case-insensitive. For example, `BUG` can match to a label stored as `Bug`, `Bug` or `bug`, but all three canno exist at the same time as three different label entries. Changing only the casing of an existing label is allowed. Whitespace around label names is trimmed.
 
-Descriptions default to an empty string and the label colors default to white. Available colors are _red_, _green_, _yellow_, _blue_, _magenta_, _cyan_, _white_, and _gray_.
+Descriptions are `null` by default, and empty or whitespace-only strings are also interpreted as `null`. Clear a label description with `zinn label edit <name> --description ""`. Label colors default to white. Available colors are _red_, _green_, _yellow_, _blue_, _magenta_, _cyan_, _white_, and _gray_.
 
 `label create`, `label edit` and `label list` print each label name in its color. When color is off (see [Scripting and JSON output](#scripting-and-json-output)), they name the color instead, such as `bug | red | Broken`. `--json` output always shows the color as a value.
 
@@ -223,7 +223,7 @@ zinn task edit MDR-1 --description "Complete refinement before the waffle party"
 zinn task edit MDR-1 --title "Meet the quarterly refinement quota" --description ""
 ```
 
-Only the explicitly specified fields are modified and the rest are untouched. An empty string can be given for the description and is considered valid.
+Only the explicitly specified fields are modified and the rest are untouched. Use `--description ""` to clear a description. It is stored and returned in JSON as `null`. If a description during task creation is omitted, it is treated as `null` by default, and if a _falsy_ value is provided, then it's also interpreted as `null`.
 
 At least one flag is required and task titles cannot be blank. Archived tasks can be edited without unarchiving them. Supplying unchanged values does not change the modification timestamp.
 Use `--title="--example"` when a value begins with a dash.

@@ -291,7 +291,7 @@ Example: zinn task view MDR-1`,
 
 Change the supplied fields and preserve everything else.
 Use --priority none to clear priority.
-Provide at least one edit flag. Use --description "" for an empty description.
+Provide at least one edit flag. Use --description "" to clear the description.
 
 Repeat --add-label or --remove-label for multiple existing labels.
 Label names are matched case-insensitively.

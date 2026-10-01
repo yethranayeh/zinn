@@ -168,7 +168,7 @@ Example: zinn project view MDR`,
     help: `Usage: zinn project edit <project-key> [--name <text>] [--description <text>]
 
 Change the supplied project fields. At least one edit flag is required.
-Use --description "" to clear the description to an empty string.
+Use --description "" to clear the description.
 Omitted fields are preserved. Unchanged values leave the timestamp unchanged.
 
 Example: zinn project edit MDR --name "Macrodata Refinement"`,

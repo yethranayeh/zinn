@@ -17,7 +17,7 @@ test("labels preserve atomic edits, no-op timestamps, uniqueness, and cascade in
       const other = project.create({ key: "OTHER" }, actor);
       const bug = label.create({ name: " bug ", color: "red" }, actor);
       assert.equal(bug.name, "bug");
-      assert.equal(bug.description, "");
+      assert.equal(bug.description, null);
       const auth = label.create({ name: "auth" }, actor);
       assert.equal(auth.color, "white");
       assert.throws(() => label.create({ name: "bug" }, actor), /already exists/);

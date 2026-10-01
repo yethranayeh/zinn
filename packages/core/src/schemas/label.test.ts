@@ -9,7 +9,7 @@ test("label edits require a valid supplied field and normalize names", () => {
   });
   expect(labelEditSchema.parse({ labelName: "bug", description: "" })).toEqual({
     labelName: "bug",
-    description: "",
+    description: null,
   });
 
   for (const input of [

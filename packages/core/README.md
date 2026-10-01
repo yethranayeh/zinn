@@ -7,6 +7,12 @@ Shared logic for [zinn](https://github.com/yethranayeh/zinn)
 > There is no migration system yet. Instead, when a release changes the schema, Zinn will try to run as if everything is aligned with its current version.
 > If you have an established board, run `zinn backup` before upgrading.
 
+## Descriptions
+
+Projects, tasks, and labels store `description: string | null`. If a description is omitted during creation, it defaults to `null`. _Falsy_ strings are interpreted as `null`. Text containing a non-whitespace character is preserved exactly, including leading and trailing whitespace.
+
+Explicit `null`, `""` or whitespace-only input clears the description. Omitting it on edit leaves the current value unchanged. Normalization happens before change detection and activity recording, so clearing an already absent description writes nothing, records no activity, and leaves existing timestamps unchanged. Public create/edit schemas return normalized values, and their input types allow descriptions to be omitted.
+
 ## Task results
 
 Though the tasks do not natively carry thier `key` value in a column, public task reads and mutations return tasks with a derived `key`, like `APP-1`.

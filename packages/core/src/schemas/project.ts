@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { descriptionSchema } from "./description";
 
 const nameMessage = "Project name must contain printable text on a single line";
 export const invalidNameCharRegex = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
@@ -17,21 +18,21 @@ export const projectCreateSchema = z.strictObject({
       "Project key must start with a letter and contain only letters and numbers",
     ),
   name: projectNameSchema.optional(),
-  description: z.string().nullable().optional(),
+  description: descriptionSchema.default(null),
 });
 
 export const projectEditSchema = z
   .strictObject({
     projectKey: z.string(),
     name: projectNameSchema.optional(),
-    description: z.string().nullable().optional(),
+    description: descriptionSchema.optional(),
   })
   .refine(
     (value) => value.name !== undefined || value.description !== undefined,
     "Provide at least one field to edit: name or description",
   );
 
-export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
+export type ProjectCreateInput = z.input<typeof projectCreateSchema>;
 export type ProjectEditInput = z.infer<typeof projectEditSchema>;
 
 export function validateProjectInput<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {

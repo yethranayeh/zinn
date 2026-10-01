@@ -1045,7 +1045,7 @@ test("task view does not print a missing description as data", () => {
   });
 });
 
-test("human task output omits empty descriptions while JSON preserves them", () => {
+test("human task output omits empty descriptions while JSON returns null", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "EMPTY", "--name", "Empty description"], testDir);
 
@@ -1071,7 +1071,7 @@ test("human task output omits empty descriptions while JSON preserves them", () 
     );
 
     expect(JSON.parse(runZinn(["task", "list", "EMPTY", "--json"], testDir).stdout)).toEqual([
-      expect.objectContaining({ key: "EMPTY-1", description: "" }),
+      expect.objectContaining({ key: "EMPTY-1", description: null }),
     ]);
   });
 });
@@ -1990,7 +1990,7 @@ test("task edit preserves omitted fields and identity, and accepts empty descrip
     expect(after).toEqual({ ...before, title: "New title", updated_at: after.updated_at });
     expect(after.updated_at).toBeGreaterThan(1);
     expect(runZinn(["task", "edit", "EDIT-1", "--description", ""], dir).code).toBe(0);
-    expect(read().description).toBe("");
+    expect(read().description).toBeNull();
     expect(read().title).toBe("New title");
     withTestDb(dir, (db) => db.run("UPDATE task SET updated_at = 1"));
     expect(runZinn(["task", "edit", "EDIT-1", "--title", "New title", "--description", ""], dir).code).toBe(0);
@@ -2659,7 +2659,7 @@ test("label text output colors the name in a terminal and names the color when p
 
     const created = run("label", "create", "docs", "--color", "cyan", "--json").stdout;
     expect(created).not.toContain("\x1b[");
-    expect(JSON.parse(created)).toEqual({ name: "docs", color: "cyan", description: "" });
+    expect(JSON.parse(created)).toEqual({ name: "docs", color: "cyan", description: null });
 
     const listedJson = run("label", "list", "--json").stdout;
     expect(listedJson).not.toContain("\x1b[");
@@ -2954,6 +2954,39 @@ test("backup refuses when there is no database and does not create one", () => {
 });
 
 
+test("all CLI descriptions normalize blank input and preserve meaningful formatting", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = (...args: string[]) => runZinn(args, dir);
+    expect(run("project", "create", "APP").code).toBe(0);
+    const entities = [
+      { type: "project", create: ["EMPTY"], editKey: "EMPTY", read: ["project", "view", "EMPTY"] },
+      { type: "task", create: ["APP", "--title", "Empty"], editKey: "APP-1", read: ["task", "view", "APP-1"] },
+      { type: "label", create: ["empty"], editKey: "empty", read: ["label", "list"] },
+    ];
+
+    for (const entity of entities) {
+      const created = run(entity.type, "create", ...entity.create, "--description", " \n\t ", "--json");
+      expect(created.code).toBe(0);
+      expect(JSON.parse(created.stdout).description).toBeNull();
+      for (const clearInput of ["", " \n\t "]) {
+        const description = "  Details\n\tIndented  \n";
+        const edited = run(entity.type, "edit", entity.editKey, "--description", description, "--json");
+        expect(edited.code).toBe(0);
+        expect(JSON.parse(edited.stdout).description).toBe(description);
+        const cleared = run(entity.type, "edit", entity.editKey, "--description", clearInput, "--json");
+        expect(cleared.code).toBe(0);
+        expect(JSON.parse(cleared.stdout).description).toBeNull();
+      }
+      const result = JSON.parse(run(...entity.read, "--json").stdout);
+      expect((Array.isArray(result) ? result[0] : result).description).toBeNull();
+    }
+
+    expect(JSON.parse(run("project", "create", "OMITTED", "--json").stdout).description).toBeNull();
+    expect(JSON.parse(run("task", "create", "APP", "--title", "Omitted", "--json").stdout).description).toBeNull();
+    expect(JSON.parse(run("label", "create", "omitted", "--json").stdout).description).toBeNull();
+  });
+});
+
 test("project descriptions flow through creation, partial edits, view, list and clearing", () => {
   withIsolatedZinnDir((dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
@@ -2967,7 +3000,7 @@ test("project descriptions flow through creation, partial edits, view, list and 
     expect(JSON.parse(run("project", "edit", "DESC", "--name", "Renamed", "--json").stdout).description).toBe(description);
     expect(JSON.parse(run("project", "edit", "DESC", "--description", "Updated", "--json").stdout)).toEqual({ key: "DESC", name: "Renamed", description: "Updated" });
     expect(run("project", "edit", "DESC", "--description", "").stdout).toBe("DESC | Renamed\n");
-    expect(JSON.parse(run("project", "view", "DESC", "--json").stdout).description).toBe("");
+    expect(JSON.parse(run("project", "view", "DESC", "--json").stdout).description).toBeNull();
     expect(run("project", "edit", "DESC", "--description", "a", "--description", "b").code).toBe(1);
   });
 });

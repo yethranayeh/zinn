@@ -26,7 +26,7 @@ function formatLabel(presented: PresentedLabel) {
     ? styleOutputText(presented.color, presented.name)
     : `${presented.name} | ${presented.color}`;
 
-  if (presented.description.length === 0) {
+  if (presented.description == null) {
     return name;
   }
 
@@ -57,8 +57,10 @@ export const labelRouter = {
 
 Create a global label. Names preserve casing, but uniqueness is case-insensitive.
 Names are trimmed and cannot be blank.
-Description defaults to an empty string; color defaults to white.
-Colors: red, green, yellow, blue, magenta, cyan, white, gray.
+Description is optional.
+
+Color defaults to white.
+Valid colors: red, green, yellow, blue, magenta, cyan, white, gray.
 
 Example: zinn label create bug --description "Unexpected behavior" --color red`,
   },
@@ -96,7 +98,7 @@ List all global label definitions.`,
     help: `Usage: zinn label edit <name> [--name <text>] [--description <text>] [--color <color>]
 
 Change specified fields.
-Provide at least one edit flag. Use --description "" for an empty description.
+Provide at least one edit flag. Use --description "" to clear the description.
 
 Names are matched and kept unique case-insensitively while preserving their casing.
 Names are trimmed. Changing only the casing is allowed.
