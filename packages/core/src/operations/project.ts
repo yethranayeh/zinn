@@ -65,7 +65,7 @@ export const project = {
       });
 
       return createdProject;
-    })();
+    }).immediate();
   },
   edit: (input: ProjectEditInput, actor: Actor) => {
     const props = validateProjectInput(projectEditSchema, input);
@@ -107,7 +107,7 @@ export const project = {
       });
 
       return dbProject.update({ id: projectMatch.id, name, description, updated_at: now })!;
-    })();
+    }).immediate();
   },
   getAll: dbProject.getAll,
   delete: (key: string, actor: Actor) => {
@@ -149,7 +149,7 @@ export const project = {
 
       dbProject.deleteByKey(key);
       return projectMatch;
-    })();
+    }).immediate();
   },
   standardizeKey: standardizeProjectKey,
 };

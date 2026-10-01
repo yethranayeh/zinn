@@ -147,7 +147,7 @@ export const task = {
       });
 
       return attachTaskKey(createdTask, project.key);
-    })();
+    }).immediate();
   },
   getAll: (input: TaskListInput = {}) => {
     const props = validateTaskInput(taskListSchema, input);
@@ -289,7 +289,7 @@ export const task = {
       updateTaskSearchRecord(existing.id);
 
       return { ...editedTask, key: existing.key };
-    })();
+    }).immediate();
   },
   /**
    * Moves a task to another column in its project.
@@ -350,7 +350,7 @@ export const task = {
         })!,
         key: taskMatch.key,
       };
-    })();
+    }).immediate();
   },
   order: (props: TaskOrderProps, actor: Actor) => {
     const validActor = validateTaskInput(actorSchema, actor);
@@ -433,7 +433,7 @@ export const task = {
         })!,
         key: taskMatch.key,
       };
-    })();
+    }).immediate();
   },
   /**
    * Deletes a task. Its activity rows remain.
@@ -471,7 +471,7 @@ export const task = {
       dbSearch.removeTask(taskMatch.id);
       dbTask.deleteById(taskMatch.id);
       return taskMatch;
-    })();
+    }).immediate();
   },
   archive: (taskKey: string, actor: Actor) => {
     const validActor = validateTaskInput(actorSchema, actor);
@@ -495,7 +495,7 @@ export const task = {
         ...dbTask.update({ id: taskMatch.id, updated_at: now, archived_at: now })!,
         key: taskMatch.key,
       };
-    })();
+    }).immediate();
   },
   unarchive: (taskKey: string, actor: Actor) => {
     const validActor = validateTaskInput(actorSchema, actor);
@@ -527,7 +527,7 @@ export const task = {
         })!,
         key: taskMatch.key,
       };
-    })();
+    }).immediate();
   },
   /** Activity rows recorded for a task, oldest first. */
   activity: (taskKey: string) => dbActivity.getAllByEntity("task", getTaskByKey(taskKey).id),

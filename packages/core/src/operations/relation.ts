@@ -105,7 +105,7 @@ export const relation = {
       }
 
       return createdRelation;
-    })();
+    }).immediate();
   },
   /** Records the same relation_delete row on both tasks. */
   delete: (input: RelationDeleteInput, actor: Actor) => {
@@ -134,7 +134,7 @@ export const relation = {
 
       dbRelation.deleteById(relationMatch.id);
       return relationMatch;
-    })();
+    }).immediate();
   },
   getAll: getRelations,
 };

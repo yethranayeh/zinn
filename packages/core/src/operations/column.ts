@@ -69,7 +69,7 @@ export const column = {
       });
 
       return createdColumn;
-    })();
+    }).immediate();
   },
   edit: (input: ColumnEditInput, actor: Actor) => {
     const props = validateTaskInput(columnEditSchema, input);
@@ -100,7 +100,7 @@ export const column = {
       });
 
       return dbColumn.update({ id: columnMatch.id, name: props.name })!;
-    })();
+    }).immediate();
   },
   order: (input: ColumnOrderInput, actor: Actor) => {
     const props = validateTaskInput(columnOrderSchema, input);
@@ -164,6 +164,6 @@ export const column = {
           futureNextColumn?.column_order ?? null,
         ),
       })!;
-    })();
+    }).immediate();
   },
 };

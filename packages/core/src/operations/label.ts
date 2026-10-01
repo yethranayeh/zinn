@@ -46,7 +46,7 @@ export const label = {
       });
 
       return createdLabel;
-    })();
+    }).immediate();
   },
   /** Editing a global definition preserves attachments and does not edit attached tasks. */
   edit: (input: LabelEditInput, actor: Actor) => {
@@ -91,7 +91,7 @@ export const label = {
       });
 
       return dbLabel.update({ id: match.id, name, description, color })!;
-    })();
+    }).immediate();
   },
   getAll: dbLabel.getAll,
   getByName: (name: string) => {
@@ -127,6 +127,6 @@ export const label = {
       dbTask.updateLabelTasksTimestamp(match.id, now);
       dbLabel.deleteById(match.id);
       return match;
-    })();
+    }).immediate();
   },
 };

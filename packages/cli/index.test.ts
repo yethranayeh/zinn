@@ -1,6 +1,6 @@
 import { test, expect, afterAll } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 
@@ -87,6 +87,20 @@ function runZinnWithConfirmation(args: Array<string>, testDir = TEST_DIR) {
     stderr: proc.stderr.toString(),
     code: proc.exitCode,
   };
+}
+
+// Unlike runZinn's synchronous subprocess, this lets independent CLI writers overlap.
+async function runZinnAsync(args: Array<string>, testDir: string) {
+  const proc = Bun.spawn([process.execPath, CLI_PATH, ...args], {
+    env: { ...process.env, ZINN_DIR: testDir, AI_AGENT: "concurrency-test" },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [code, stdout, stderr] = await Promise.all([
+    proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text(),
+  ]);
+
+  return { code, stdout, stderr };
 }
 
 // ? Runs the CLI in a pseudo-terminal, so stdout is a TTY and text output is colored.
@@ -3020,5 +3034,172 @@ test("project description previews match task listings and JSON retains full tex
     expect(taskProject.description).toBe(description);
     expect(JSON.parse(run("project", "view", "PRE", "--json").stdout).description).toBe(description);
     expect(run("project", "edit", "PRE", "--description", " \n ").stdout).toBe("PRE | PRE\n");
+  });
+});
+
+// --- CONCURRENCY (ZINN-68)
+
+test("concurrent fresh initialization supports readers and project creators", async () => {
+  await withIsolatedZinnDirAsync(async (dir) => {
+    for (const operation of ["list", "create"]) {
+      for (let round = 0; round < 3; round++) {
+        const store = join(dir, `${operation}-${round}`);
+        const results = await Promise.all(Array.from({ length: 40 }, (_, index) =>
+          runZinnAsync(operation === "list"
+            ? ["project", "list", "--json"]
+            : ["project", "create", `P${index}`, "--json"], store),
+        ));
+
+        for (const result of results) {
+          expect(result.stderr).toBe("");
+          expect(result.code).toBe(0);
+        }
+        expect(readFileSync(join(store, "settings.json"), "utf8")).toBe("{}\n");
+        withTestDb(store, (db) => {
+          const expectedProjects = operation === "create" ? 40 : 0;
+          expect(db.query("SELECT COUNT(*) AS count FROM project").get()).toEqual({ count: expectedProjects });
+          expect(db.query("SELECT COUNT(*) AS count FROM project_column").get()).toEqual({ count: expectedProjects * 5 });
+          expect(db.query("SELECT COUNT(*) AS count FROM activity").get()).toEqual({ count: expectedProjects });
+          expect(db.query("PRAGMA integrity_check").all()).toEqual([{ integrity_check: "ok" }]);
+          expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
+        });
+      }
+    }
+  });
+}, 60_000);
+
+test("concurrent task and comment writes preserve results, counters, order, activity and search", async () => {
+  await withIsolatedZinnDirAsync(async (dir) => {
+    expect(runZinn(["project", "create", "BEN"], dir).code).toBe(0);
+    expect(runZinn(["task", "create", "BEN", "--title", "comment-target"], dir).code).toBe(0);
+    const taskKeys = ["BEN-1"];
+    const commentKeys: Array<string> = [];
+    const titles = ["comment-target"];
+    const comments: Array<string> = [];
+
+    for (let round = 0; round < 3; round++) {
+      const operations = [
+        ...Array.from({ length: 40 }, (_, index) => ({ kind: "task", token: `task${round}n${index}` })),
+        ...Array.from({ length: 40 }, (_, index) => ({ kind: "comment", token: `comment${round}n${index}` })),
+        ...Array.from({ length: 20 }, () => ({ kind: "read", token: "" })),
+      ];
+      const results = await Promise.all(operations.map(async ({ kind, token }) => {
+        const args = kind === "task" ? ["task", "create", "BEN", "--title", token, "--json"]
+          : kind === "comment" ? ["task", "comment", "create", "BEN-1", "--text", token, "--json"]
+          : ["task", "list", "BEN", "--json"];
+        return { kind, token, ...await runZinnAsync(args, dir) };
+      }));
+
+      for (const result of results) {
+        expect(result.stderr).toBe("");
+        expect(result.code).toBe(0);
+        const data = JSON.parse(result.stdout);
+        if (result.kind === "task") {
+          taskKeys.push(data.key);
+          titles.push(result.token);
+        } else if (result.kind === "comment") {
+          commentKeys.push(data.key);
+          comments.push(result.token);
+        } else {
+          expect(Array.isArray(data)).toBe(true);
+        }
+      }
+    }
+
+    expect(new Set(taskKeys).size).toBe(titles.length);
+    expect(new Set(commentKeys).size).toBe(comments.length);
+    withTestDb(dir, (db) => {
+      const tasks = db.query<{ id: string; number: number; title: string; task_order: string; comment_count: number }, []>(
+        "SELECT id, number, title, task_order, comment_count FROM task ORDER BY number",
+      ).all();
+      const storedComments = db.query<{ number: number; text: string }, []>(
+        "SELECT number, text FROM comment ORDER BY number",
+      ).all();
+      expect(tasks.map((task) => task.title).sort()).toEqual([...titles].sort());
+      expect(tasks.map((task) => task.number)).toEqual(Array.from({ length: titles.length }, (_, index) => index + 1));
+      expect(new Set(tasks.map((task) => task.task_order)).size).toBe(tasks.length);
+      expect(storedComments.map((comment) => comment.text).sort()).toEqual([...comments].sort());
+      expect(storedComments.map((comment) => comment.number)).toEqual(Array.from({ length: comments.length }, (_, index) => index + 1));
+      expect(tasks[0]!.comment_count).toBe(comments.length);
+      expect(db.query("SELECT task_count FROM project WHERE key = 'BEN'").get()).toEqual({ task_count: tasks.length });
+      expect(db.query("SELECT COUNT(*) AS count FROM activity WHERE entity_type = 'task' AND action = 'create'").get()).toEqual({ count: tasks.length });
+      expect(db.query("SELECT COUNT(*) AS count FROM activity WHERE action = 'comment_create'").get()).toEqual({ count: comments.length });
+      expect(db.query("SELECT COUNT(*) AS count FROM task_search").get()).toEqual({ count: tasks.length });
+
+      for (const task of tasks) {
+        expect(db.query("SELECT title FROM task_search WHERE task_id = ?").get(task.id)).toEqual({ title: task.title });
+      }
+      for (const token of comments) {
+        expect(db.query("SELECT task_id FROM task_search WHERE task_search MATCH ?").all(token)).toEqual([{ task_id: tasks[0]!.id }]);
+      }
+      expect(db.query("PRAGMA integrity_check").all()).toEqual([{ integrity_check: "ok" }]);
+      expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
+    });
+  });
+}, 60_000);
+
+test("a CLI writer waits for a held lock and succeeds after release", async () => {
+  await withIsolatedZinnDirAsync(async (dir) => {
+    expect(runZinn(["project", "create", "WAIT"], dir).code).toBe(0);
+    const db = new Database(join(dir, "data", "zinn.sqlite"));
+    db.run("BEGIN IMMEDIATE");
+    const began = performance.now();
+    const release = setTimeout(() => db.run("ROLLBACK"), 250);
+
+    try {
+      const result = await runZinnAsync(["task", "create", "WAIT", "--title", "waited", "--json"], dir);
+      expect(result.stderr).toBe("");
+      expect(result.code).toBe(0);
+      expect(JSON.parse(result.stdout).key).toBe("WAIT-1");
+      expect(performance.now() - began).toBeGreaterThanOrEqual(250);
+      expect(db.query("SELECT title FROM task").all()).toEqual([{ title: "waited" }]);
+    } finally {
+      clearTimeout(release);
+      if (db.inTransaction) {
+        db.run("ROLLBACK");
+      }
+      db.close();
+    }
+  });
+}, 45_000);
+
+test("persistent contention times out without a partial CLI mutation", async () => {
+  await withIsolatedZinnDirAsync(async (dir) => {
+    expect(runZinn(["project", "create", "LOCK"], dir).code).toBe(0);
+    const db = new Database(join(dir, "data", "zinn.sqlite"));
+    db.run("BEGIN IMMEDIATE");
+    const began = performance.now();
+
+    try {
+      const result = await runZinnAsync(["task", "create", "LOCK", "--title", "must not persist", "--json"], dir);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(JSON.parse(result.stderr).error.message).toContain("database is locked");
+      expect(performance.now() - began).toBeGreaterThanOrEqual(29_000);
+      expect(performance.now() - began).toBeLessThan(40_000);
+      expect(db.query("SELECT COUNT(*) AS count FROM task").get()).toEqual({ count: 0 });
+      expect(db.query("SELECT task_count FROM project WHERE key = 'LOCK'").get()).toEqual({ task_count: 0 });
+      expect(db.query("SELECT COUNT(*) AS count FROM task_search").get()).toEqual({ count: 0 });
+      expect(db.query("SELECT COUNT(*) AS count FROM activity").get()).toEqual({ count: 1 });
+    } finally {
+      db.run("ROLLBACK");
+      db.close();
+    }
+  });
+}, 45_000);
+
+test("CLI initialization errors expose the underlying message and code", () => {
+  withIsolatedZinnDir((dir) => {
+    mkdirSync(join(dir, "data"));
+    const contents = "not a SQLite database";
+    const path = join(dir, "data", "zinn.sqlite");
+    writeFileSync(path, contents);
+    const result = runZinn(["project", "list", "--json"], dir);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(JSON.parse(result.stderr).error.message).toContain("There was a problem initializing Zinn:");
+    expect(JSON.parse(result.stderr).error.message).toContain("file is not a database (SQLITE_NOTADB)");
+    expect(readFileSync(path, "utf8")).toBe(contents);
   });
 });

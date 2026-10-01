@@ -7,6 +7,16 @@ Shared logic for [zinn](https://github.com/yethranayeh/zinn)
 > There is no migration system yet. Instead, when a release changes the schema, Zinn will try to run as if everything is aligned with its current version.
 > If you have an established board, run `zinn backup` before upgrading.
 
+## Concurrent access
+
+Connections use WAL mode and a 30-second SQLite busy timeout, set before WAL and schema initialization. Core mutations use immediate transactions, acquiring the write lock before reading the state they will change.
+
+Initialization retries only `SQLITE_BUSY`, `SQLITE_BUSY_RECOVERY`, and `SQLITE_IOERR_TRUNCATE`, with at most five total attempts and 20/40/60/80 ms backoff. No new retry starts once one second has elapsed, so a long SQLite wait is not repeated. Failed initialization connections are closed.
+
+Errors retain their original cause and include its message and code. The busy timeout applies to each lock acquisition, not the whole operation. Mutations are not replayed after failure.
+
+Concurrent access is for processes on the same machine using a local filesystem. Initial directory/config creation tolerates concurrent callers and preserves existing settings.
+
 ## Descriptions
 
 Projects, tasks, and labels store `description: string | null`. If a description is omitted during creation, it defaults to `null`. _Falsy_ strings are interpreted as `null`. Text containing a non-whitespace character is preserved exactly, including leading and trailing whitespace.

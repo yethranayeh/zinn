@@ -61,7 +61,7 @@ export const comment = {
       });
 
       return createdComment;
-    })();
+    }).immediate();
   },
   edit: (input: CommentEditInput, actor: Actor) => {
     const props = validateTaskInput(commentEditSchema, input);
@@ -92,7 +92,7 @@ export const comment = {
       });
 
       return editedComment;
-    })();
+    }).immediate();
   },
   delete: (input: CommentDeleteInput, actor: Actor) => {
     const props = validateTaskInput(commentDeleteSchema, input);
@@ -112,6 +112,6 @@ export const comment = {
       updateTaskSearchRecord(existing.task_id);
 
       return existing;
-    })();
+    }).immediate();
   },
 };
