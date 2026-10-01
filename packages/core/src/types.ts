@@ -20,6 +20,7 @@ export type Project = {
   id: string;
   key: string;
   name: string;
+  description: string | null;
   task_count: number;
   created_at: number;
   updated_at: number;

@@ -12,17 +12,20 @@ import {
   validateUniqueOptions,
 } from "../lib";
 import { formatTaskList, presentTask } from "../presentation/task-presentation";
+import { formatDescriptionPreview } from "../presentation/description-presentation";
 import { currentActor } from "../actor";
 
-type PresentedProject = { key: string; name: string };
+type PresentedProject = { key: string; name: string; description: string | null };
 type PresentedProjectView = PresentedProject & { tasks: Array<PresentedTask> };
 
 function presentProject(projectMatch: PresentedProject): PresentedProject {
-  return { key: projectMatch.key, name: projectMatch.name };
+  return { key: projectMatch.key, name: projectMatch.name, description: projectMatch.description };
 }
 
-function formatProject(presented: PresentedProject) {
-  return `${presented.key} | ${presented.name}`;
+function formatProject(presented: PresentedProject, keyWidth = presented.key.length) {
+  const descriptionPreview = formatDescriptionPreview(presented.description);
+  const description = descriptionPreview.length > 0 ? ` | ${descriptionPreview}` : "";
+  return `${presented.key.padEnd(keyWidth)} | ${presented.name}${description}`;
 }
 
 type PresentedColumn = { project: string; name: string };
@@ -42,7 +45,7 @@ export const projectRouter = {
     run: (args: Array<string>) => {
       const { values, positionals, tokens } = parseArgs({
         args,
-        options: { name: { type: "string" } },
+        options: { name: { type: "string" }, description: { type: "string" } },
         allowPositionals: true,
         strict: true,
         tokens: true,
@@ -59,19 +62,23 @@ export const projectRouter = {
       validateUniqueOptions(tokens);
 
       try {
-        const createdProject = project.create({ key: projectKey, name: values.name }, currentActor());
+        const createdProject = project.create(
+          { key: projectKey, name: values.name, description: values.description },
+          currentActor(),
+        );
         output(presentProject(createdProject), formatProject);
       } catch (err: any) {
         quit(err?.message ?? "Something went wrong");
       }
     },
-    help: `Usage: zinn project create <project-key> [--name <text>]
+    help: `Usage: zinn project create <project-key> [--name <text>] [--description <text>]
 
 Create a project with the default columns.
 Project keys are stored in uppercase.
 
 An omitted name defaults to the uppercase project key.
 Names cannot be blank.
+Descriptions may contain multiple lines. If omitted, they are saved as null.
 
 Example: zinn project create MDR --name "Macrodata Refinement"`,
   },
@@ -85,14 +92,12 @@ Example: zinn project create MDR --name "Macrodata Refinement"`,
           0,
         );
 
-        return presentedProjects
-          .map((p) => `${p.key.padEnd(longestKeyLength)} | ${p.name}`)
-          .join("\n");
+        return presentedProjects.map((p) => formatProject(p, longestKeyLength)).join("\n");
       });
     },
     help: `Usage: zinn project list
 
-List projects and their keys.
+List projects, their keys, and truncated description previews.
 
 Example: zinn project list`,
   },
@@ -134,7 +139,7 @@ Example: zinn project view MDR`,
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
-        options: { name: { type: "string" } },
+        options: { name: { type: "string" }, description: { type: "string" } },
         allowPositionals: true,
         strict: true,
         tokens: true,
@@ -150,19 +155,21 @@ Example: zinn project view MDR`,
 
       validateUniqueOptions(tokens);
 
-      if (values.name === undefined) {
-        quit("Provide an edit flag: --name");
+      if (values.name === undefined && values.description === undefined) {
+        quit("Provide an edit flag: --name or --description");
       }
 
-      const editedProject = project.edit({ projectKey, name: values.name }, currentActor());
+      const editedProject = project.edit(
+        { projectKey, name: values.name, description: values.description },
+        currentActor(),
+      );
       output(presentProject(editedProject), formatProject);
     },
-    help: `Usage: zinn project edit <project-key> --name <text>
+    help: `Usage: zinn project edit <project-key> [--name <text>] [--description <text>]
 
-Change the project name.
-The --name flag is required.
-
-Unchanged names leave the modification timestamp unchanged.
+Change the supplied project fields. At least one edit flag is required.
+Use --description "" to clear the description to an empty string.
+Omitted fields are preserved. Unchanged values leave the timestamp unchanged.
 
 Example: zinn project edit MDR --name "Macrodata Refinement"`,
   },
@@ -332,10 +339,7 @@ Example: zinn project column edit MDR "In Progress" --name "Refining"`,
               quit(`Order direction "${direction}" does not accept a target column`);
             }
 
-            orderedColumn = column.order(
-              { projectKey, columnName, direction },
-              currentActor(),
-            );
+            orderedColumn = column.order({ projectKey, columnName, direction }, currentActor());
             break;
           }
           default:

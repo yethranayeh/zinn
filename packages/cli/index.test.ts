@@ -652,6 +652,7 @@ test("project view JSON contains project identity and a flat active-task array",
     expect(JSON.parse(viewedProject.stdout)).toEqual({
       key: "VIEW",
       name: "Project view",
+      description: null,
       tasks: [
         {
           key: "VIEW-1",
@@ -2280,7 +2281,7 @@ test("--json emits machine-readable output on read commands", () => {
 test("--json prints the created entity on write commands, wherever the flag is placed", () => {
   withIsolatedZinnDir((testDir) => {
     const project = runZinn(["project", "create", "--json", "WEB", "--name", "Web"], testDir);
-    expect(JSON.parse(project.stdout)).toEqual({ key: "WEB", name: "Web" });
+    expect(JSON.parse(project.stdout)).toEqual({ key: "WEB", name: "Web", description: null });
 
     const created = runZinn(["task", "create", "WEB", "--title", "Ship it", "--json"], testDir);
 
@@ -2409,9 +2410,9 @@ test("delete commands with --yes and --json print the deleted entity", () => {
     });
     expect(JSON.parse(run("label", "list", "--json").stdout)).toEqual([]);
 
-    expect(deleteJson("project", "delete", "GONE")).toEqual({ key: "GONE", name: "Gone" });
+    expect(deleteJson("project", "delete", "GONE")).toEqual({ key: "GONE", name: "Gone", description: null });
     expect(JSON.parse(run("project", "list", "--json").stdout)).toEqual([
-      { key: "WEB", name: "Web" },
+      { key: "WEB", name: "Web", description: null },
     ]);
   });
 });
@@ -2949,5 +2950,42 @@ test("backup refuses when there is no database and does not create one", () => {
     expect(result.stderr).toContain(`There is no Zinn database at ${join(dir, "data", "zinn.sqlite")} to back up`);
     expect(existsSync(join(dir, "data"))).toBe(false);
     expect(existsSync(join(dir, "backups"))).toBe(false);
+  });
+});
+
+
+test("project descriptions flow through creation, partial edits, view, list and clearing", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = (...args: string[]) => runZinn(args, dir);
+    const description = "Purpose\nMore context";
+    const created = run("project", "create", "DESC", "--description", description, "--json");
+    expect(created.code).toBe(0);
+    expect(JSON.parse(created.stdout)).toEqual({ key: "DESC", name: "DESC", description });
+    expect(run("project", "view", "DESC").stdout).toBe("DESC | DESC | Purpose More context\n");
+    expect(run("project", "list").stdout).toBe("DESC | DESC | Purpose More context\n");
+    expect(JSON.parse(run("project", "list", "--json").stdout)[0].description).toBe(description);
+    expect(JSON.parse(run("project", "edit", "DESC", "--name", "Renamed", "--json").stdout).description).toBe(description);
+    expect(JSON.parse(run("project", "edit", "DESC", "--description", "Updated", "--json").stdout)).toEqual({ key: "DESC", name: "Renamed", description: "Updated" });
+    expect(run("project", "edit", "DESC", "--description", "").stdout).toBe("DESC | Renamed\n");
+    expect(JSON.parse(run("project", "view", "DESC", "--json").stdout).description).toBe("");
+    expect(run("project", "edit", "DESC", "--description", "a", "--description", "b").code).toBe(1);
+  });
+});
+
+
+test("project description previews match task listings and JSON retains full text", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = (...args: string[]) => runZinn(args, dir);
+    const description = "  Context\n" + "x".repeat(200);
+    const taskProject = JSON.parse(run("project", "create", "PRE", "--description", description, "--json").stdout);
+    run("task", "create", "PRE", "--title", "Task", "--description", description);
+    const preview = run("task", "list", "PRE").stdout.trimEnd().split(" | ").at(-1)!;
+    expect(preview.endsWith("…")).toBe(true);
+    expect(run("project", "list").stdout).toBe(`PRE | PRE | ${preview}\n`);
+    expect(run("project", "view", "PRE").stdout.split("\n")[0]).toBe(`PRE | PRE | ${preview}`);
+    expect(run("project", "edit", "PRE", "--description", description).stdout).toBe(`PRE | PRE | ${preview}\n`);
+    expect(taskProject.description).toBe(description);
+    expect(JSON.parse(run("project", "view", "PRE", "--json").stdout).description).toBe(description);
+    expect(run("project", "edit", "PRE", "--description", " \n ").stdout).toBe("PRE | PRE\n");
   });
 });

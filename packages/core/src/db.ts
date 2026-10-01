@@ -17,6 +17,7 @@ function initDb() {
   id          TEXT PRIMARY KEY,
   key         TEXT NOT NULL UNIQUE,
   name        TEXT NOT NULL,
+  description TEXT,
   task_count  INTEGER NOT NULL DEFAULT 0,
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL,

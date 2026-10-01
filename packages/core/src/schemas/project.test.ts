@@ -16,7 +16,7 @@ test("project creation and editing share name validation and preserve supplied t
   });
 });
 
-test("project edits require a name and reject unsupported fields", () => {
+test("project edits require a field and reject unsupported fields", () => {
   for (const input of [
     { projectKey: "TEST" },
     { projectKey: "TEST", name: undefined },
@@ -26,4 +26,13 @@ test("project edits require a name and reject unsupported fields", () => {
   ]) {
     expect(() => validateProjectInput(projectEditSchema, input)).toThrow();
   }
+});
+
+
+test("project descriptions accept multiline text, null and empty strings", () => {
+  for (const description of ["Line one\nLine two", "", null]) {
+    expect(projectCreateSchema.parse({ key: "APP", description }).description).toBe(description);
+    expect(projectEditSchema.parse({ projectKey: "APP", description }).description).toBe(description);
+  }
+  expect(projectEditSchema.safeParse({ projectKey: "APP", description: 42 }).success).toBe(false);
 });

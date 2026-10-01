@@ -13,14 +13,16 @@ Set `ZINN_DIR` to use another Zinn directory and keep using the same value for c
 
 ## Start a project
 
-Create a project with a key or optionally provide a name:
+Create a project with a key and optionally provide a name and description:
 
 ```sh
-zinn project create MDR --name "Macrodata Refinement"
+zinn project create MDR --name "Macrodata Refinement" --description "Refine macrodata"
 ```
 
 Project keys are stored in **uppercase**. You can create a project without a project name, like `zinn project create MDR`, which will just default to having the key as the project name too.
 Intetionally empty or whitespace project names are rejected.
+
+Project descriptions are optional and may contain multiple lines. If a description is not provided, it is stored as `null`. Also, if you want to _empty_ an existing description, you can do so with `project edit --description ""`, which stores an empty string. Project list, view and mutation text show _truncated_ inline description previews. Project JSON includes `description`, including null and empty strings.
 
 Each project starts with _Backlog_, _TODO_, _In Progress_, _Review_, and _Done_ columns.
 
@@ -34,14 +36,16 @@ zinn project column list MDR
 
 `project view` prints the project and its unarchived tasks. It's the same list as you would get with `zinn task list <project-key>`.
 
-Rename a project:
+Edit a project:
 
 ```sh
 zinn project edit MDR --name "Macrodata Refinement (Morning Shift)"
+zinn project edit MDR --description "Meet the quarterly quota"
+zinn project edit MDR --description ""
 ```
 
-The `--name` flag is required. Names must contain printable text on a single line.
-Supplying the current name leaves the modification timestamp unchanged.
+At least one of `--name` or `--description` is required. Names must contain printable text on a single line.
+Only supplied fields change; unchanged values leave the modification timestamp unchanged.
 Use `--name="--example"` when a value begins with a dash.
 
 Add another column at the end of the board:

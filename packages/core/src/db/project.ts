@@ -28,15 +28,15 @@ export function getByKey(key: string) {
     .get({ $key: standardizedKey });
 }
 
-export function create({ key, name }: { key: string; name: string }) {
+export function create({ key, name, description = null }: { key: string; name: string; description?: string | null }) {
   const db = getDb();
 
   const query = db.query<
     Project,
-    Bind<Pick<Project, "id" | "key" | "name" | "created_at" | "updated_at">>
+    Bind<Pick<Project, "id" | "key" | "name" | "description" | "created_at" | "updated_at">>
   >(`INSERT INTO
-    ${DB_TABLE.project} (id, key, name, created_at, updated_at)
-    VALUES              ($id, $key, $name, $created_at, $updated_at)
+    ${DB_TABLE.project} (id, key, name, description, created_at, updated_at)
+    VALUES              ($id, $key, $name, $description, $created_at, $updated_at)
     RETURNING *;`);
 
   const time = Date.now();
@@ -46,6 +46,7 @@ export function create({ key, name }: { key: string; name: string }) {
     $id: randomUUIDv7(),
     $key: standardizedKey,
     $name: name,
+    $description: description,
     $created_at: time,
     $updated_at: time,
   });
@@ -72,12 +73,12 @@ export function deleteByKey(key: string) {
     .run({ $key: standardizedKey });
 }
 
-export function update(props: Pick<Project, "id" | "name" | "updated_at">) {
+export function update(props: Pick<Project, "id" | "name" | "description" | "updated_at">) {
   const db = getDb();
 
   return db
     .query<Project, Bind<typeof props>>(`UPDATE ${DB_TABLE.project}
-      SET name = $name, updated_at = $updated_at
+      SET name = $name, description = $description, updated_at = $updated_at
       WHERE id = $id RETURNING *`)
-    .get({ $id: props.id, $name: props.name, $updated_at: props.updated_at });
+    .get({ $id: props.id, $name: props.name, $description: props.description, $updated_at: props.updated_at });
 }

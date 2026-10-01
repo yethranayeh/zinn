@@ -1,1 +1,0 @@
-export const TASK_DESCRIPTION_PREVIEW_LENGTH = 80;

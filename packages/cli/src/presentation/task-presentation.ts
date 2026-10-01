@@ -2,22 +2,8 @@ import type { TaskPriority, TaskWithKey } from "@zinn-dev/core";
 
 import { column, task } from "@zinn-dev/core";
 
-import { TASK_DESCRIPTION_PREVIEW_LENGTH } from "../constant";
+import { formatDescriptionPreview } from "./description-presentation";
 import { styleOutputText } from "./color";
-
-function formatTaskDescriptionPreview(description: string | null) {
-  if (description == null) {
-    return "";
-  }
-
-  const normalizedDescription = description.replace(/\s+/g, " ").trim();
-
-  if (normalizedDescription.length <= TASK_DESCRIPTION_PREVIEW_LENGTH) {
-    return normalizedDescription;
-  }
-
-  return `${normalizedDescription.slice(0, TASK_DESCRIPTION_PREVIEW_LENGTH - 1).trimEnd()}…`;
-}
 
 export type PresentedTask = {
   key: string;
@@ -107,7 +93,7 @@ export function formatTaskList(
       const status = options.showsStatus
         ? ` | ${presentedTask.status.padEnd(longestStatusLength)}`
         : "";
-      const descriptionPreview = formatTaskDescriptionPreview(presentedTask.description);
+      const descriptionPreview = formatDescriptionPreview(presentedTask.description);
       const hasDescriptionPreview = descriptionPreview.length > 0;
       const description = hasDescriptionPreview ? ` | ${descriptionPreview}` : "";
       const priority = formatTaskPriorityMarker(presentedTask.priority);

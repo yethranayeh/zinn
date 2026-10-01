@@ -17,12 +17,19 @@ export const projectCreateSchema = z.strictObject({
       "Project key must start with a letter and contain only letters and numbers",
     ),
   name: projectNameSchema.optional(),
+  description: z.string().nullable().optional(),
 });
 
-export const projectEditSchema = z.strictObject({
-  projectKey: z.string(),
-  name: projectNameSchema,
-});
+export const projectEditSchema = z
+  .strictObject({
+    projectKey: z.string(),
+    name: projectNameSchema.optional(),
+    description: z.string().nullable().optional(),
+  })
+  .refine(
+    (value) => value.name !== undefined || value.description !== undefined,
+    "Provide at least one field to edit: name or description",
+  );
 
 export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
 export type ProjectEditInput = z.infer<typeof projectEditSchema>;

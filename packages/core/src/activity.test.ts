@@ -211,6 +211,7 @@ test("project, column, and label definition mutations record their own activity"
     assert.deepEqual(initialProjectActivity[0].changes, {
       key: "APP",
       name: "APP",
+      description: null,
       columns: column.getAllByProjectKey("APP").map(({ id, name }) => ({ id, name })),
     });
 
@@ -273,6 +274,7 @@ test("project deletion records one aggregate event with ordered columns and task
     assert.deepEqual(projectActivity.at(-1).changes, {
       key: "APP",
       name: "APP",
+      description: null,
       columns: expectedColumns,
       tasks: [
         { id: first.id, key: "APP-1", title: "First" },
@@ -283,5 +285,29 @@ test("project deletion records one aggregate event with ordered columns and task
     assert.deepEqual(dbActivity.getAllByEntity("task", second.id).map((row) => row.action), ["create", "archive"]);
     assert.deepEqual(dbActivity.getAllByEntity("column", extraColumn.id).map((row) => row.action), ["create", "order"]);
     assert.equal(project.getById(app.id), null);
+  `);
+});
+
+
+test("project description edits preserve omitted fields, skip no-ops and record only changes", () => {
+  runActivityCheck(`
+    const described = project.create({ key: "DESC", description: "Purpose\\nContext" }, human);
+    assert.equal(described.description, "Purpose\\nContext");
+    assert.equal(dbActivity.getAllByEntity("project", described.id)[0].changes.description, described.description);
+    const renamed = project.edit({ projectKey: "DESC", name: "Named" }, human);
+    assert.equal(renamed.description, described.description);
+    const edited = project.edit({ projectKey: "DESC", description: "New" }, human);
+    assert.equal(edited.name, "Named");
+    assert.deepEqual(dbActivity.getAllByEntity("project", described.id).at(-1).changes, { description: [described.description, "New"] });
+    const before = dbActivity.getAllByEntity("project", described.id);
+    assert.deepEqual(project.edit({ projectKey: "DESC", description: "New" }, human), edited);
+    assert.deepEqual(dbActivity.getAllByEntity("project", described.id), before);
+    assert.equal(project.edit({ projectKey: "DESC", description: "" }, human).description, "");
+    assert.equal(project.edit({ projectKey: "DESC", description: null }, human).description, null);
+    getDb().run("CREATE TRIGGER reject_description BEFORE UPDATE ON project BEGIN SELECT RAISE(ABORT, 'rejected'); END");
+    const beforeFailure = dbActivity.getAllByEntity("project", described.id);
+    assert.throws(() => project.edit({ projectKey: "DESC", description: "fail" }, human), /rejected/);
+    assert.deepEqual(dbActivity.getAllByEntity("project", described.id), beforeFailure);
+    assert.equal(project.getByKey("DESC").description, null);
   `);
 });

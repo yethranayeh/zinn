@@ -30,7 +30,11 @@ export const project = {
 
     return getDb().transaction(() => {
       const key = standardizeProjectKey(props.key);
-      const createdProject = dbProject.create({ key, name: props.name ?? key })!;
+      const createdProject = dbProject.create({
+        key,
+        name: props.name ?? key,
+        description: props.description,
+      })!;
       const defaultColumnNames = ["Backlog", "TODO", "In Progress", "Review", "Done"];
       const createdColumns: Array<{ id: string; name: string }> = [];
       let lastColumnOrder: string | null = null;
@@ -54,6 +58,7 @@ export const project = {
         changes: {
           key: createdProject.key,
           name: createdProject.name,
+          description: createdProject.description,
           columns: createdColumns,
         },
         createdAt: createdProject.created_at,
@@ -62,7 +67,6 @@ export const project = {
       return createdProject;
     })();
   },
-  /** Rename a project. Same name does not alter the timestamp */
   edit: (input: ProjectEditInput, actor: Actor) => {
     const props = validateProjectInput(projectEditSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
@@ -76,8 +80,21 @@ export const project = {
         );
       }
 
-      if (props.name === projectMatch.name) {
+      const name = props.name ?? projectMatch.name;
+      const description =
+        props.description === undefined ? projectMatch.description : props.description;
+      const isUnchanged = name === projectMatch.name && description === projectMatch.description;
+      if (isUnchanged) {
         return projectMatch;
+      }
+
+      const changes: Record<string, unknown> = {};
+      if (name !== projectMatch.name) {
+        changes.name = [projectMatch.name, name];
+      }
+
+      if (description !== projectMatch.description) {
+        changes.description = [projectMatch.description, description];
       }
 
       const now = Date.now();
@@ -85,11 +102,11 @@ export const project = {
         entityType: "project",
         entityId: projectMatch.id,
         action: "edit",
-        changes: { name: [projectMatch.name, props.name] },
+        changes,
         createdAt: now,
       });
 
-      return dbProject.update({ id: projectMatch.id, name: props.name, updated_at: now })!;
+      return dbProject.update({ id: projectMatch.id, name, description, updated_at: now })!;
     })();
   },
   getAll: dbProject.getAll,
@@ -116,7 +133,13 @@ export const project = {
         entityType: "project",
         entityId: projectMatch.id,
         action: "delete",
-        changes: { key: projectMatch.key, name: projectMatch.name, columns, tasks },
+        changes: {
+          key: projectMatch.key,
+          name: projectMatch.name,
+          description: projectMatch.description,
+          columns,
+          tasks,
+        },
         createdAt: Date.now(),
       });
 
