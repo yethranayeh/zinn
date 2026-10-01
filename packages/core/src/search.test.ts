@@ -64,6 +64,19 @@ test("words can match across title, description and comments of the same task", 
   `);
 });
 
+test("a phrase does not match across two comments", () => {
+  runSearchCheck(`
+    create("Across comments", null);
+    comment.create({ taskKey: "APP-1", text: "please sign" }, human);
+    comment.create({ taskKey: "APP-1", text: "in the morning" }, human);
+    create("Within a comment", null);
+    comment.create({ taskKey: "APP-2", text: "sign-in fails" }, human);
+
+    assert.deepEqual(keys("sign-in"), ["APP-2"]);
+    assert.deepEqual(keys("sign morning"), ["APP-1"], "words still match in separate comments");
+  `);
+});
+
 test("FTS syntax characters in the query are searched as text and never throw", () => {
   runSearchCheck(`
     create("Fix sign-in: retry (again)", 'Quote "this" AND NOT that*');

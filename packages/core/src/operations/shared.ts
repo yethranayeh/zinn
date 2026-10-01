@@ -84,6 +84,13 @@ export function findTaskByExactKey(query: string) {
   return findTaskByParsedKey(parsedKey).task;
 }
 
+/**
+ * Joins a task's comments in its search record, so phrase queries cannot match across comments.
+ * The tokenizer drops whitespace and punctuation, so the boundary needs a token of its own: U+E000
+ * The newlines keep it from merging with the neighboring words.
+ */
+const SEARCH_COMMENT_SEPARATOR = "\n\uE000\n";
+
 /** Rewrites a task's search row from its current title, description and comments. */
 export function updateTaskSearchRecord(taskId: string) {
   dbSearch.removeTask(taskId);
@@ -94,7 +101,7 @@ export function updateTaskSearchRecord(taskId: string) {
     taskId,
     title: taskMatch.title,
     description: taskMatch.description,
-    comments: comments.join("\n"),
+    comments: comments.join(SEARCH_COMMENT_SEPARATOR),
   });
 }
 
@@ -158,7 +165,11 @@ export type OrderPlacement =
  * The result is a position in the list without the moved item,
  *  so it equals `movedIndex` when the item would stay where it is.
  */
-export function getInsertionIndex(itemCount: number, movedIndex: number, placement: OrderPlacement) {
+export function getInsertionIndex(
+  itemCount: number,
+  movedIndex: number,
+  placement: OrderPlacement,
+) {
   const lastIndexWithoutMoved = itemCount - 1;
 
   switch (placement.direction) {
