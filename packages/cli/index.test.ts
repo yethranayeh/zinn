@@ -1344,12 +1344,12 @@ test("task move help documents destination placement", () => {
 
   expect(longHelp.code).toBe(0);
   expect(longHelp.stderr).toBe("");
-  expect(longHelp.stdout).toContain("Usage: zinn task move <task-key> <target-column>");
+  expect(longHelp.stdout).toContain("Usage: zinn task move <task-key>... <target-column>");
   expect(longHelp.stdout).toContain(
     "Moving a task to a different column lists it last in that column,",
   );
   expect(longHelp.stdout).toContain(
-    "Giving a task's current column as the target will not do anything.",
+    "Giving a task's current column as the target will not do anything, and a note says so.",
   );
   expect(longHelp.stdout).toContain(
     "Archived tasks must be unarchived before they can be moved.",
@@ -1438,6 +1438,97 @@ test("task move to the current column is a no-op", () => {
     );
 
     expect(after).toEqual(before);
+  });
+});
+
+test("task move takes several tasks, appends them in argument order, and notes no-ops", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "MANY"], testDir);
+    for (const title of ["one", "two", "three"]) {
+      runZinn(["task", "create", "MANY", "--title", title], testDir);
+    }
+    runZinn(["task", "move", "MANY-1", "In Progress"], testDir);
+
+    const result = runZinn(["task", "move", "MANY-3", "MANY-1", "MANY-2", "In Progress"], testDir);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe("MANY-3 | In Progress\nMANY-1 | In Progress\nMANY-2 | In Progress\n");
+    expect(result.stderr).toBe("MANY-1 was already in the In Progress column\n");
+    expect(runZinn(["task", "list", "MANY"], testDir).stdout).toMatch(
+      /^MANY-1[^\n]*\nMANY-3[^\n]*\nMANY-2[^\n]*\n$/,
+    );
+  });
+});
+
+test("task archive and unarchive take several tasks and note no-ops", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "SHELF"], testDir);
+    for (const title of ["one", "two", "three"]) {
+      runZinn(["task", "create", "SHELF", "--title", title], testDir);
+    }
+    runZinn(["task", "archive", "SHELF-2"], testDir);
+
+    const archived = runZinn(["task", "archive", "SHELF-1", "SHELF-2"], testDir);
+    expect(archived.code).toBe(0);
+    expect(archived.stdout).toBe(
+      "SHELF-1 | Archived | Backlog | one\nSHELF-2 | Archived | Backlog | two\n",
+    );
+    expect(archived.stderr).toBe("SHELF-2 was already archived\n");
+
+    const unarchived = runZinn(["task", "unarchive", "SHELF-2", "SHELF-3", "SHELF-1"], testDir);
+    expect(unarchived.code).toBe(0);
+    expect(unarchived.stderr).toBe("SHELF-3 was already active\n");
+    expect(runZinn(["task", "list", "SHELF"], testDir).stdout).toMatch(
+      /^SHELF-3[^\n]*\nSHELF-2[^\n]*\nSHELF-1[^\n]*\n$/,
+    );
+  });
+});
+
+test("task move, archive and unarchive change nothing when any task fails", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "ATOM"], testDir);
+    runZinn(["task", "create", "ATOM", "--title", "active"], testDir);
+    runZinn(["task", "create", "ATOM", "--title", "archived"], testDir);
+    runZinn(["task", "archive", "ATOM-2"], testDir);
+    const before = runZinn(["task", "list", "ATOM", "--all", "--json"], testDir).stdout;
+
+    const move = runZinn(["task", "move", "ATOM-1", "ATOM-2", "Done"], testDir);
+    expect(move.code).toBe(1);
+    expect(move.stderr).toContain('Archived task "ATOM-2" cannot be moved');
+
+    const archive = runZinn(["task", "archive", "ATOM-1", "ATOM-404"], testDir);
+    expect(archive.code).toBe(1);
+    expect(archive.stderr).toContain('Task "ATOM-404" does not exist');
+
+    const unarchive = runZinn(["task", "unarchive", "ATOM-2", "nope"], testDir);
+    expect(unarchive.code).toBe(1);
+    expect(unarchive.stderr).toContain('Invalid task key "nope"');
+
+    expect(runZinn(["task", "list", "ATOM", "--all", "--json"], testDir).stdout).toBe(before);
+  });
+});
+
+test("task move, archive and unarchive print an object for one task and an array for several with --json", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "SHAPE"], testDir);
+    runZinn(["task", "create", "SHAPE", "--title", "one"], testDir);
+    runZinn(["task", "create", "SHAPE", "--title", "two"], testDir);
+
+    const moveOne = JSON.parse(runZinn(["task", "move", "SHAPE-1", "Done", "--json"], testDir).stdout);
+    expect(moveOne).toMatchObject({ key: "SHAPE-1", column: "Done" });
+
+    const archiveMany = JSON.parse(
+      runZinn(["task", "archive", "SHAPE-1", "SHAPE-2", "--json"], testDir).stdout,
+    );
+    expect(archiveMany).toMatchObject([
+      { key: "SHAPE-1", status: "Archived" },
+      { key: "SHAPE-2", status: "Archived" },
+    ]);
+
+    const unarchiveOne = JSON.parse(
+      runZinn(["task", "unarchive", "SHAPE-2", "--json"], testDir).stdout,
+    );
+    expect(unarchiveOne).toMatchObject({ key: "SHAPE-2", status: "Active" });
   });
 });
 
@@ -1881,7 +1972,7 @@ test("task unarchive help documents restored placement", () => {
 
   expect(result.code).toBe(0);
   expect(result.stdout).toContain(
-    "Unarchive a task at the bottom of its previous column.",
+    "Unarchive tasks at the bottom of their previous columns, in the order given.",
   );
 });
 

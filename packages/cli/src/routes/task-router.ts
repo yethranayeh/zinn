@@ -1,4 +1,5 @@
 import type { RouteDef } from "../types";
+import type { PresentedTask } from "../presentation/task-presentation";
 
 import { parseArgs } from "node:util";
 import { task, project, positiveIntegerPattern, searchLimitMessage } from "@zinn-dev/core";
@@ -307,31 +308,44 @@ Example: zinn task edit MDR-1 --title "Meet the quarterly refinement quota"`,
   },
   move: {
     run: (args) => {
-      const [taskKey, targetColumn] = args;
+      const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
+      const taskKeys = positionals.slice(0, -1);
+      const targetColumn = positionals.at(-1);
 
-      if (taskKey == null) {
+      if (targetColumn == null) {
         quit("Task key must be specified");
       }
 
-      if (targetColumn == null) {
+      if (taskKeys.length === 0) {
         quit("Target column must be specified");
       }
 
-      const movedTask = task.move({ taskKey, targetColumn }, currentActor());
-      output(presentTask(movedTask), formatTaskMove);
+      const previousColumnIds = taskKeys.map((taskKey) => task.getByKey(taskKey).column_id);
+      const movedTasks = task.moveMany({ taskKeys, targetColumn }, currentActor());
+      const presentedTasks = movedTasks.map(presentTask);
+      outputTasks(presentedTasks, formatTaskMove);
+      presentedTasks.forEach((presentedTask, index) => {
+        if (movedTasks[index]!.column_id === previousColumnIds[index]) {
+          console.error(`${presentedTask.key} was already in the ${presentedTask.column} column`);
+        }
+      });
     },
-    help: `Usage: zinn task move <task-key> <target-column>
+    help: `Usage: zinn task move <task-key>... <target-column>
 
-Move a task to another column in its project.
+Move tasks to another column in their projects.
 Moving a task to a different column lists it last in that column,
-matching placement at the bottom of a visual kanban column.
+  matching placement at the bottom of a visual kanban column.
+Several tasks are moved in the order given, and each task's column is looked up in its own project.
 
-Prints the task's key and new column.
+Prints each task's key and new column.
 
 Giving a task's current column as the target will not do anything.
 Archived tasks must be unarchived before they can be moved.
+On bulk changes, if any task cannot be moved, the operation is aborted.
 
-Example: zinn task move MDR-1 "In Progress"`,
+With --json, one task prints an object and several print an array.
+
+Example: zinn task move MDR-1 MDR-2 "In Progress"`,
   },
   order: {
     run: (args) => {
@@ -387,37 +401,51 @@ Example: zinn task order MDR-2 before MDR-1`,
   },
   archive: {
     run: (args: Array<string>) => {
-      const taskKey = args[0];
+      const taskKeys = parseTaskKeys(args);
+      const wasArchived = taskKeys.map((taskKey) => task.getByKey(taskKey).archived_at != null);
+      const archivedTasks = task.archiveMany(taskKeys, currentActor()).map(presentTask);
 
-      if (taskKey == null) {
-        quit("Task key must be specified");
-      }
+      outputTasks(archivedTasks, formatTaskWithStatus);
 
-      const archivedTask = task.archive(taskKey, currentActor());
-      output(presentTask(archivedTask), formatTaskWithStatus);
+      archivedTasks.forEach((archivedTask, index) => {
+        if (wasArchived[index]) {
+          console.error(`${archivedTask.key} was already archived`);
+        }
+      });
     },
-    help: `Usage: zinn task archive <task-key>
+    help: `Usage: zinn task archive <task-key>...
 
-Archive a task so it no longer appears in active task lists.
+Archive tasks so they no longer appear in active task lists.
+Archiving an archived task does not do anything.
+On bulk changes, if any task cannot be archived, the operation is aborted.
 
-Example: zinn task archive MDR-1`,
+With --json, one task prints an object and several print an array.
+
+Example: zinn task archive MDR-1 MDR-2`,
   },
   unarchive: {
     run: (args: Array<string>) => {
-      const taskKey = args[0];
+      const taskKeys = parseTaskKeys(args);
+      const wasActive = taskKeys.map((taskKey) => task.getByKey(taskKey).archived_at == null);
+      const unarchivedTasks = task.unarchiveMany(taskKeys, currentActor()).map(presentTask);
 
-      if (taskKey == null) {
-        quit("Task key must be specified");
-      }
+      outputTasks(unarchivedTasks, formatTaskWithStatus);
 
-      const unarchivedTask = task.unarchive(taskKey, currentActor());
-      output(presentTask(unarchivedTask), formatTaskWithStatus);
+      unarchivedTasks.forEach((unarchivedTask, index) => {
+        if (wasActive[index]) {
+          console.error(`${unarchivedTask.key} was already active`);
+        }
+      });
     },
-    help: `Usage: zinn task unarchive <task-key>
+    help: `Usage: zinn task unarchive <task-key>...
 
-Unarchive a task at the bottom of its previous column.
+Unarchive tasks at the bottom of their previous columns, in the order given.
+Unarchiving an active task does not do anything.
+On bulk changes, if any task cannot be unarchived, the bulk operation is aborted.
 
-Example: zinn task unarchive MDR-1`,
+With --json, one task prints an object and several print an array.
+
+Example: zinn task unarchive MDR-1 MDR-2`,
   },
   delete: {
     run: (args: Array<string>) => {
@@ -482,6 +510,29 @@ Remove existing labels from a task. Label names are matched case-insensitively.`
     },
   },
 } satisfies RouteDef;
+
+function parseTaskKeys(args: Array<string>) {
+  const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
+
+  if (positionals.length === 0) {
+    quit("Task key must be specified");
+  }
+
+  return positionals;
+}
+
+/** Prints one task as an object, matching single-task commands, and several as an array. */
+function outputTasks(
+  presentedTasks: Array<PresentedTask>,
+  formatOne: (presentedTask: PresentedTask) => string,
+) {
+  if (presentedTasks.length === 1) {
+    output(presentedTasks[0]!, formatOne);
+    return;
+  }
+
+  output(presentedTasks, (tasks) => tasks.map(formatOne).join("\n"));
+}
 
 function parseTaskLabelArgs(args: string[]) {
   const { positionals } = parseArgs({ args, strict: true, allowPositionals: true });

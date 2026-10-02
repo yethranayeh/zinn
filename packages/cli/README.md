@@ -243,6 +243,14 @@ zinn task move MDR-1 "In Progress"
 A moved task appears at the bottom of its destination column. Moving it to its current column does nothing. Archived tasks must be unarchived before they can be moved.
 Moving prints only the task's key and new column, such as `MDR-1 | In Progress`, while `--json` prints the full task details.
 
+Move several tasks to a different column at once by giving their keys before the column. Tasks from different projects can be moved together, and each one's column is looked up in its own project:
+
+```sh
+zinn task move MDR-1 MDR-2 APP-4 "In Progress"
+```
+
+The tasks are moved in the order given, so they land at the bottom of the column in that order. If any task cannot be moved, for example because of an unknown key or an archived task, none are. A task that is already in the column is listed as usual, and a note goes to stderr, such as `MDR-2 was already in the In Progress column`. With `--json`, one task prints an object and several print an array.
+
 Change a task's position within its current column:
 
 ```sh
@@ -259,21 +267,25 @@ The task being reordered and the target of `before` or `after` must be active ta
 
 ## Archive and delete tasks
 
-Active tasks are shown by default. Archive a task to hide it from active lists, then list archived tasks or all tasks:
+Active tasks are shown by default. Archive one or more tasks to hide them from active lists, then list archived tasks or all tasks:
 
 ```sh
 zinn task archive MDR-1
+zinn task archive MDR-2 MDR-3
 zinn task list MDR --archived
 zinn task list MDR --all
 ```
 
 `--archived` and `--all` cannot be used together. In an `--all` listing, Zinn adds an Active or Archived status column.
 
-Unarchiving puts a task at the bottom of its previous column:
+Unarchiving puts a task at the bottom of its previous column. Several tasks are unarchived in the order given:
 
 ```sh
 zinn task unarchive MDR-1
+zinn task unarchive MDR-2 MDR-3
 ```
+
+Archiving or unarchiving several tasks is all or nothing, like moving them: if any task fails, for example because of an unknown key, none change. A task that is already archived, or already active when unarchiving, is listed as usual, and a note goes to stderr, such as `MDR-1 was already archived`. With `--json`, one task prints an object and several print an array.
 
 Delete a task permanently with `zinn task delete MDR-1`. It asks for confirmation before performing the action, unless `--yes` is used (see [Confirmations](#confirmations)).
 

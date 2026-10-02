@@ -352,6 +352,16 @@ export const task = {
       };
     }).immediate();
   },
+  moveMany: (
+    props: { taskKeys: Array<string>; targetColumn: string },
+    actor: Actor,
+  ): Array<TaskWithKey> => {
+    return getDb().transaction(() =>
+      props.taskKeys.map((taskKey) =>
+        task.move({ taskKey, targetColumn: props.targetColumn }, actor),
+      ),
+    ).immediate();
+  },
   order: (props: TaskOrderProps, actor: Actor) => {
     const validActor = validateTaskInput(actorSchema, actor);
     const { taskKey, direction } = props;
@@ -497,6 +507,11 @@ export const task = {
       };
     }).immediate();
   },
+  archiveMany: (taskKeys: Array<string>, actor: Actor): Array<TaskWithKey> => {
+    return getDb().transaction(() =>
+      taskKeys.map((taskKey) => task.archive(taskKey, actor)),
+    ).immediate();
+  },
   unarchive: (taskKey: string, actor: Actor) => {
     const validActor = validateTaskInput(actorSchema, actor);
 
@@ -529,6 +544,10 @@ export const task = {
       };
     }).immediate();
   },
-  /** Activity rows recorded for a task, oldest first. */
+  unarchiveMany: (taskKeys: Array<string>, actor: Actor): Array<TaskWithKey> => {
+    return getDb().transaction(() =>
+      taskKeys.map((taskKey) => task.unarchive(taskKey, actor)),
+    ).immediate();
+  },
   activity: (taskKey: string) => dbActivity.getAllByEntity("task", getTaskByKey(taskKey).id),
 };
