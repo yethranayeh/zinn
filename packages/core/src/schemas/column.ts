@@ -8,7 +8,7 @@ export const columnNameSchema = z
   .min(1, "Column name cannot be blank")
   .refine(
     (value) => !invalidNameCharRegex.test(value),
-    "Column name must contain printable text on a single line",
+    "Column name cannot contain line breaks or control characters",
   );
 export const columnCreateSchema = z.strictObject({
   projectKey: z.string(),

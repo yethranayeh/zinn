@@ -219,7 +219,7 @@ export const task = {
       return task.edit({ taskKey: props.taskKey, removeLabelNames: props.labelNames }, actor);
     },
   },
-  /** Edit supplied content fields, including on archived tasks. Unchanged edits are no-ops. */
+  /** Edit task content and label attachments, including on archived tasks. */
   edit: (input: TaskEditInput, actor: Actor) => {
     const props = validateTaskInput(taskEditSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);

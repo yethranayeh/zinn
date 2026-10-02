@@ -7,6 +7,14 @@ Shared logic for [zinn](https://github.com/yethranayeh/zinn)
 > There is no migration system yet. Instead, when a release changes the schema, Zinn will try to run as if everything is aligned with its current version.
 > If you have an established board, run `zinn backup` before upgrading.
 
+## Editing conventions
+
+Edit operations change only supplied fields; omitted fields retain their values. At least one edit field is required. Schemas normalize input before core compares it with stored values. A valid edit that leaves all values unchanged returns the existing entity without writing changes, advancing `updated_at`, or recording activity.
+
+Move, order, archive, unarchive, and task-label attachment operations also return without changes when the requested state is already satisfied. Creation is different: duplicate relation creation, for example, is an error.
+
+Project and column names reject blank text, control characters, and line separators. Column names are trimmed; project names preserve surrounding spaces. Label names are trimmed and cannot be blank; task titles cannot be blank. Labels and task titles do not currently enforce the project/column single-line rule.
+
 ## Concurrent access
 
 Connections use WAL mode and a 30-second SQLite busy timeout, set before WAL and schema initialization. Core mutations use immediate transactions, acquiring the write lock before reading the state they will change.
@@ -19,9 +27,9 @@ Concurrent access is for processes on the same machine using a local filesystem.
 
 ## Descriptions
 
-Projects, tasks, and labels store `description: string | null`. If a description is omitted during creation, it defaults to `null`. _Falsy_ strings are interpreted as `null`. Text containing a non-whitespace character is preserved exactly, including leading and trailing whitespace.
+Projects, tasks, and labels store `description: string | null`. If a description is omitted during creation, it defaults to `null`. Empty and whitespace-only strings normalize to `null`. Text containing a non-whitespace character is preserved exactly, including leading and trailing whitespace.
 
-Explicit `null`, `""` or whitespace-only input clears the description. Omitting it on edit leaves the current value unchanged. Normalization happens before change detection and activity recording, so clearing an already absent description writes nothing, records no activity, and leaves existing timestamps unchanged. Public create/edit schemas return normalized values, and their input types allow descriptions to be omitted.
+Explicit `null`, `""` or whitespace-only input clears the description. Clearing an already absent description follows the [editing conventions](#editing-conventions). Public create/edit schemas return normalized values, and their input types allow descriptions to be omitted.
 
 ## Task results
 
@@ -53,7 +61,7 @@ Project deletion produces one aggregate project activity row. Its snapshot conta
 Tasks store `priority: TaskPriority | null` and `TaskPriority` is `"low" | "medium" | "high" | "urgent"`.
 You can optionally provide a task priority during `create`, but by default it is `null`.
 
-Changing or clearing priority updates `updated_at`. If the current priority is given as the only edit value, `updated_at` does not change.
+Provide `null` to clear priority.
 
 ## Parent and child tasks
 

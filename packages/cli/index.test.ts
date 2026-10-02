@@ -355,7 +355,7 @@ test("project column create trims names and rejects invalid ones without writes"
     for (const [name, message] of [
       [" done ", `There is already a "done" column`],
       ["   ", "Column name cannot be blank"],
-      ["Next\nDone", "Column name must contain printable text on a single line"],
+      ["Next\nDone", "Column name cannot contain line breaks or control characters"],
     ]) {
       const result = runZinn(["project", "column", "create", "COL", name!], dir);
       expect(result.code).toBe(1);
@@ -421,7 +421,7 @@ test("project column edit rejects invalid requests without writes", () => {
       [["COL", "TODO", "--title", "Next"], "Unknown option"],
       [["COL", "TODO", "--name", "One", "--name", "Two"], "only be specified once"],
       [["COL", "TODO", "--name", "   "], "Column name cannot be blank"],
-      [["COL", "TODO", "--name", "Next\nDone"], "Column name must contain printable text on a single line"],
+      [["COL", "TODO", "--name", "Next\nDone"], "Column name cannot contain line breaks or control characters"],
       [["COL", "TODO", "--name", "done"], `There is already a "done" column`],
       [["COL", "Missing", "--name", "Next"], `Columns does not have a column named "Missing"`],
       [["NOPE", "TODO", "--name", "Next"], `Project with key "NOPE" does not exist!`],
@@ -727,7 +727,7 @@ test("project create rejects blank or non-single-line names", () => {
       const result = runZinn(["project", "create", "SAFE", "--name", invalidName], testDir);
 
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain("Project name must contain printable text on a single line");
+      expect(result.stderr).toContain("Project name cannot be blank or contain line breaks or control characters");
     }
   });
 });
@@ -2585,9 +2585,9 @@ test("project edit rejects invalid requests without writes", () => {
       [["EDIT", "--key", "NEW"], "Unknown option"],
       [["EDIT", "extra", "--name", "Name"], "Only one project key"],
       [["EDIT", "--name", "One", "--name", "Two"], "only be specified once"],
-      [["EDIT", "--name", ""], "printable text on a single line"],
-      [["EDIT", "--name", "   "], "printable text on a single line"],
-      [["EDIT", "--name", "Two\nlines"], "printable text on a single line"],
+      [["EDIT", "--name", ""], "blank or contain line breaks or control characters"],
+      [["EDIT", "--name", "   "], "blank or contain line breaks or control characters"],
+      [["EDIT", "--name", "Two\nlines"], "blank or contain line breaks or control characters"],
       [["MISSING", "--name", "Name"], "does not exist"],
     ];
     for (const [args, message] of cases) {

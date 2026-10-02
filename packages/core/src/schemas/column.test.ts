@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 
 import { columnCreateSchema, columnEditSchema, columnOrderSchema } from "./column";
 
-test("column names are trimmed and must be printable text on a single line", () => {
+test("column names are trimmed and reject blank text, line breaks and control characters", () => {
   expect(columnCreateSchema.parse({ projectKey: "app", name: " Next " })).toEqual({
     projectKey: "app",
     name: "Next",

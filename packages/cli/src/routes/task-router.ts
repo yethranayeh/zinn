@@ -290,14 +290,14 @@ Example: zinn task view MDR-1`,
     },
     help: `Usage: zinn task edit <task-key> [--title <text>] [--description <text>] [--priority {low|medium|high|urgent|none}] [--add-label <name>] [--remove-label <name>]
 
-Change the supplied fields and preserve everything else.
+Edit a task's title, description, priority, or label attachments.
 Use --priority none to clear priority.
 Provide at least one edit flag. Use --description "" to clear the description.
 
 Repeat --add-label or --remove-label for multiple existing labels.
 Label names are matched case-insensitively.
 Adding an attached label or removing an unattached label does not do anything.
-Archived tasks can be edited. Unchanged values leave the task unchanged.
+Archived tasks can be edited.
 
 The same label cannot be both added and removed.
 Titles cannot be blank.
@@ -339,7 +339,7 @@ Several tasks are moved in the order given, and each task's column is looked up 
 
 Prints each task's key and new column.
 
-Giving a task's current column as the target will not do anything.
+Giving a task's current column as the target will not do anything, and a note says so.
 Archived tasks must be unarchived before they can be moved.
 On bulk changes, if any task cannot be moved, the operation is aborted.
 

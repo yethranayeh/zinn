@@ -11,6 +11,16 @@ bun add --global @zinn-dev/cli
 Zinn stores projects and tasks in the shared local database at `~/.zinn/data/zinn.sqlite`.
 Set `ZINN_DIR` to use another Zinn directory and keep using the same value for commands that should share that database.
 
+## Editing conventions
+
+Edit commands change only the fields you supply; omitted fields keep their current values. At least one edit field is required. After input normalization, a valid edit that leaves all values unchanged succeeds without writing changes, updating modification timestamps, or recording activity.
+
+Move, order, archive, unarchive, and task-label attachment commands also succeed without changes when the requested state is already satisfied. This does not apply to creation: creating an existing relation, for example, is an error.
+
+Project and column names cannot be blank or contain line breaks or control characters, such as tabs. Column names are trimmed; project names retain surrounding spaces. Label names are trimmed and cannot be blank; task titles cannot be blank. Labels and task titles do not currently enforce the project/column single-line rule.
+
+Project, task, and label descriptions may contain multiple lines. Omitted descriptions on creation, empty strings, and whitespace-only strings are stored as `null`. Text containing a non-whitespace character is preserved exactly, including leading and trailing whitespace. Use `--description ""` on an edit to clear a description. JSON returns the full text or `null`.
+
 ## Concurrent access
 
 Commands on the same machine can share a database on a local filesystem. Zinn waits up to 30 seconds each time the database is locked by another command. If the lock is still held after that wait, the command fails. The command's total running time can exceed 30 seconds. Zinn also briefly retries specific initialization races internally. Initialization errors include the underlying message and code. Existing settings are preserved when several commands initialize the directory together.
@@ -24,9 +34,8 @@ zinn project create MDR --name "Macrodata Refinement" --description "Refine macr
 ```
 
 Project keys are stored in **uppercase**. You can create a project without a project name, like `zinn project create MDR`, which will just default to having the key as the project name too.
-Intetionally empty or whitespace project names are rejected.
 
-Project descriptions are optional and may contain multiple lines. An omitted, empty or whitespace-only description is stored as `null`. Text containing a non-whitespace character is preserved exactly, including leading and trailing whitespace; the same rule applies to task and label descriptions. Clear an existing description with `zinn project edit <project-key> --description ""`. Project list, view and mutation text show truncated inline description previews. Project JSON includes the full description or `null`.
+Project list, view and mutation text show truncated inline description previews. See [Editing conventions](#editing-conventions) for description storage and clearing.
 
 Each project starts with _Backlog_, _TODO_, _In Progress_, _Review_, and _Done_ columns.
 
@@ -48,8 +57,7 @@ zinn project edit MDR --description "Meet the quarterly quota"
 zinn project edit MDR --description ""
 ```
 
-At least one of `--name` or `--description` is required. Names must contain printable text on a single line.
-Only supplied fields change; unchanged values leave the modification timestamp unchanged.
+Provide `--name`, `--description`, or both.
 Use `--name="--example"` when a value begins with a dash.
 
 Add another column at the end of the board:
@@ -156,14 +164,14 @@ For adding or removing multiple labels at the same time, repeat `--label` on cre
 Each value is considered as the label name: `--label "needs review"`, so if you have commas, then they are considered parts of names.
 Label names preserve their stored casing, but matching and uniqueness are case-insensitive. For example, `BUG` can match to a label stored as `Bug`, `Bug` or `bug`, but all three canno exist at the same time as three different label entries. Changing only the casing of an existing label is allowed. Whitespace around label names is trimmed.
 
-Descriptions are `null` by default, and empty or whitespace-only strings are also interpreted as `null`. Clear a label description with `zinn label edit <name> --description ""`. Label colors default to white. Available colors are _red_, _green_, _yellow_, _blue_, _magenta_, _cyan_, _white_, and _gray_.
+Label colors default to white. Available colors are _red_, _green_, _yellow_, _blue_, _magenta_, _cyan_, _white_, and _gray_.
 
 `label create`, `label edit` and `label list` print each label name in its color. When color is off (see [Scripting and JSON output](#scripting-and-json-output)), they name the color instead, such as `bug | red | Broken`. `--json` output always shows the color as a value.
 
-`label edit` changes only the supplied name, color, or description. Renaming preserves every task attachment because attachments refer to the label's internal ID. Also, updating a label does not affect any tasks' timestamps that it is attached to.
+`label edit` accepts name, color, and description. Renaming preserves every task attachment because attachments refer to the label's internal ID. Updating a label definition does not affect attached tasks' timestamps.
 
 Task creation and edits apply content and label changes together, or roll back together on failure.
-Note that label changes also update the task's modification timestamp. Archived tasks can also have their labels edited.
+Changing a task's label attachments updates that task's modification timestamp. Archived tasks can also have their labels edited.
 
 Commands like `task view` and task mutation output show attached labels.
 
@@ -227,9 +235,9 @@ zinn task edit MDR-1 --description "Complete refinement before the waffle party"
 zinn task edit MDR-1 --title "Meet the quarterly refinement quota" --description ""
 ```
 
-Only the explicitly specified fields are modified and the rest are untouched. Use `--description ""` to clear a description. It is stored and returned in JSON as `null`. If a description during task creation is omitted, it is treated as `null` by default, and if a _falsy_ value is provided, then it's also interpreted as `null`.
+See [Editing conventions](#editing-conventions) for partial edits and clearing descriptions.
 
-At least one flag is required and task titles cannot be blank. Archived tasks can be edited without unarchiving them. Supplying unchanged values does not change the modification timestamp.
+Archived tasks can be edited without unarchiving them.
 Use `--title="--example"` when a value begins with a dash.
 
 ## Move and order tasks
@@ -353,7 +361,7 @@ zinn task edit MDR-1 --priority urgent
 zinn task edit MDR-1 --priority none
 ```
 
-Use `none` to clear priority. Omitting `--priority` on edits preserves it. Task lists show priority in a compact column after the board column: `-` for unassigned and `L`, `M`, `H`, or `U` for low, medium, high, or urgent. Task views show the full priority value. Priority does not affect board ordering.
+Use `none` to clear priority. Task lists show priority in a compact column after the board column: `-` for unassigned and `L`, `M`, `H`, or `U` for low, medium, high, or urgent. Task views show the full priority value. Priority does not affect board ordering.
 
 ## Activity
 

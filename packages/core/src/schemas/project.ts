@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { descriptionSchema } from "./description";
 
-const nameMessage = "Project name must contain printable text on a single line";
+const nameMessage = "Project name cannot be blank or contain line breaks or control characters";
 export const invalidNameCharRegex = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 
 export const projectNameSchema = z

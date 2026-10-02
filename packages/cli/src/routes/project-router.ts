@@ -169,7 +169,6 @@ Example: zinn project view MDR`,
 
 Change the supplied project fields. At least one edit flag is required.
 Use --description "" to clear the description.
-Omitted fields are preserved. Unchanged values leave the timestamp unchanged.
 
 Example: zinn project edit MDR --name "Macrodata Refinement"`,
   },
@@ -236,7 +235,7 @@ Example: zinn project delete MDR`,
       help: `Usage: zinn project column create <project-key> <column-name>
 
 Add a column at the end of a project's board.
-Names are trimmed, must contain printable text on a single line, and must be unique within the project regardless of casing.
+Names are trimmed, cannot be blank or contain line breaks or control characters, and must be unique within the project regardless of casing.
 
 Example: zinn project column create MDR "Boardlog"`,
     },
