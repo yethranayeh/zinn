@@ -67,8 +67,19 @@ export function formatTaskWithStatus(presented: PresentedTask) {
   return formatTask(presented, { showsStatus: true });
 }
 
-export function formatTaskMove(presented: PresentedTask) {
-  return `${presented.key} | ${formatTaskColumn(presented.column)}`;
+export function formatTaskMove(presented: PresentedTask, keyWidth = presented.key.length) {
+  return `${presented.key.padEnd(keyWidth)} | ${formatTaskColumn(presented.column)}`;
+}
+
+export function formatTaskMoveList(presentedTasks: Array<PresentedTask>) {
+  const longestKeyLength = presentedTasks.reduce(
+    (previousLength, currentTask) => Math.max(previousLength, currentTask.key.length),
+    0,
+  );
+
+  return presentedTasks
+    .map((presentedTask) => formatTaskMove(presentedTask, longestKeyLength))
+    .join("\n");
 }
 
 export function formatTaskList(
@@ -102,4 +113,8 @@ export function formatTaskList(
       return `${presentedTask.key.padEnd(longestKeyLength)}${status} | ${column} | ${priority} | ${presentedTask.title}${description}`;
     })
     .join("\n");
+}
+
+export function formatTaskListWithStatus(presentedTasks: Array<PresentedTask>) {
+  return formatTaskList(presentedTasks, { showsStatus: true });
 }

@@ -21,6 +21,15 @@ Project and column names cannot be blank or contain line breaks or control chara
 
 Project, task, and label descriptions may contain multiple lines. Omitted descriptions on creation, empty strings, and whitespace-only strings are stored as `null`. Text containing a non-whitespace character is preserved exactly, including leading and trailing whitespace. Use `--description ""` on an edit to clear a description. JSON returns the full text or `null`.
 
+## Changing tasks in bulk
+
+`task move`, `task archive` and `task unarchive` accept multiple task keys, so several tasks can be changed in one command:
+
+- Tasks are changed in the order given.
+- If any task fails, for example because of an unknown key, none change.
+- A task already in the requested state is listed as usual, with a note on stderr, such as `MDR-1 was already archived`. This includes a key given twice: by its second occurrence, the task is already in the requested state.
+- With `--json`, one task prints an object and several print an array. Each task has a `changed` field, which is `false` when the task was already in the requested state.
+
 ## Concurrent access
 
 Commands on the same machine can share a database on a local filesystem. Zinn waits up to 30 seconds each time the database is locked by another command. If the lock is still held after that wait, the command fails. The command's total running time can exceed 30 seconds. Zinn also briefly retries specific initialization races internally. Initialization errors include the underlying message and code. Existing settings are preserved when several commands initialize the directory together.
@@ -251,13 +260,13 @@ zinn task move MDR-1 "In Progress"
 A moved task appears at the bottom of its destination column. Moving it to its current column does nothing. Archived tasks must be unarchived before they can be moved.
 Moving prints only the task's key and new column, such as `MDR-1 | In Progress`, while `--json` prints the full task details.
 
-Move several tasks to a different column at once by giving their keys before the column. Tasks from different projects can be moved together, and each one's column is looked up in its own project:
+Move multiple tasks at once by giving their keys before the column. They land at the bottom of the column in the order given, unless of course a task was _already_ in that column, in which case they stay as they were. Tasks from different projects can be moved together, and each one's column is looked up in its own project:
 
 ```sh
 zinn task move MDR-1 MDR-2 APP-4 "In Progress"
 ```
 
-The tasks are moved in the order given, so they land at the bottom of the column in that order. If any task cannot be moved, for example because of an unknown key or an archived task, none are. A task that is already in the column is listed as usual, and a note goes to stderr, such as `MDR-2 was already in the In Progress column`. With `--json`, one task prints an object and several print an array.
+See [Changing tasks in bulk](#changing-tasks-in-bulk).
 
 Change a task's position within its current column:
 
@@ -286,14 +295,14 @@ zinn task list MDR --all
 
 `--archived` and `--all` cannot be used together. In an `--all` listing, Zinn adds an Active or Archived status column.
 
-Unarchiving puts a task at the bottom of its previous column. Several tasks are unarchived in the order given:
+Unarchiving puts a task at the bottom of its previous column:
 
 ```sh
 zinn task unarchive MDR-1
 zinn task unarchive MDR-2 MDR-3
 ```
 
-Archiving or unarchiving several tasks is all or nothing, like moving them: if any task fails, for example because of an unknown key, none change. A task that is already archived, or already active when unarchiving, is listed as usual, and a note goes to stderr, such as `MDR-1 was already archived`. With `--json`, one task prints an object and several print an array.
+Archive or unarchive multiple tasks by giving several keys. Unarchived tasks land in the order given. See [Changing tasks in bulk](#changing-tasks-in-bulk).
 
 Delete a task permanently with `zinn task delete MDR-1`. It asks for confirmation before performing the action, unless `--yes` is used (see [Confirmations](#confirmations)).
 

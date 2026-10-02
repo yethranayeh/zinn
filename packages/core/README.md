@@ -15,6 +15,14 @@ Move, order, archive, unarchive, and task-label attachment operations also retur
 
 Project and column names reject blank text, control characters, and line separators. Column names are trimmed; project names preserve surrounding spaces. Label names are trimmed and cannot be blank; task titles cannot be blank. Labels and task titles do not currently enforce the project/column single-line rule.
 
+## Bulk operations
+
+`task.moveMany`, `task.archiveMany` and `task.unarchiveMany` are the bulk forms of `task.move`, `task.archive` and `task.unarchive`. They all follow the same rules:
+
+- The singular operation is applied to each key in the order given.
+- Either all succeed or none do.
+- They return `{ task, changed }` for each key, in the same order. `changed` is `false` when that key was already in the requested state, including a key repeated earlier in the same call.
+
 ## Concurrent access
 
 Connections use WAL mode and a 30-second SQLite busy timeout, set before WAL and schema initialization. Core mutations use immediate transactions, acquiring the write lock before reading the state they will change.

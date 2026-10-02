@@ -8,6 +8,7 @@ export type {
 } from "./src/schemas/task";
 export type {
   TaskWithKey,
+  TaskChange,
   TaskPriority,
   TaskRelationType,
   Label,

@@ -66,7 +66,8 @@ test("bulk task operations log activity per task and roll back entirely when one
       const actions = (key) => task.activity(key).map((row) => row.action);
 
       const moved = task.moveMany({ taskKeys: ["APP-3", "OTHER-1", "APP-1"], targetColumn: "todo" }, actor);
-      assert.deepEqual(moved.map((t) => t.key), ["APP-3", "OTHER-1", "APP-1"]);
+      assert.deepEqual(moved.map((change) => change.task.key), ["APP-3", "OTHER-1", "APP-1"]);
+      assert.deepEqual(moved.map((change) => change.changed), [true, true, true]);
       assert.deepEqual(task.getAll({ projectKey: "app" }).map((t) => t.key), ["APP-2", "APP-3", "APP-1"]);
       assert.deepEqual(actions("APP-3"), ["create", "move"]);
       assert.deepEqual(actions("OTHER-1"), ["create", "move"]);
@@ -82,11 +83,13 @@ test("bulk task operations log activity per task and roll back entirely when one
       assert.deepEqual(actions("APP-1"), ["create", "move"]);
       assert.deepEqual(actions("APP-2"), ["create", "archive"]);
 
-      assert.deepEqual(task.archiveMany(["APP-1", "APP-2"], actor).map((t) => t.key), ["APP-1", "APP-2"]);
+      assert.deepEqual(task.archiveMany(["APP-1", "APP-2", "APP-1"], actor).map((change) => [change.task.key, change.changed]), [["APP-1", true], ["APP-2", false], ["APP-1", false]]);
       assert.deepEqual(actions("APP-1"), ["create", "move", "archive"]);
       assert.deepEqual(actions("APP-2"), ["create", "archive"]);
-      assert.deepEqual(task.unarchiveMany(["APP-2", "APP-1"], actor).map((t) => t.key), ["APP-2", "APP-1"]);
+      assert.deepEqual(task.unarchiveMany(["APP-2", "APP-1", "APP-3"], actor).map((change) => [change.task.key, change.changed]), [["APP-2", true], ["APP-1", true], ["APP-3", false]]);
       assert.deepEqual(task.getAll({ projectKey: "app" }).map((t) => t.key), ["APP-2", "APP-3", "APP-1"]);
+      assert.deepEqual(task.moveMany({ taskKeys: ["APP-2", "APP-2"], targetColumn: "Done" }, actor).map((change) => change.changed), [true, false]);
+      assert.deepEqual(actions("APP-2"), ["create", "archive", "unarchive", "move"]);
     `], { env: { ...process.env, ZINN_DIR: directory } });
     expect(result.stderr.toString()).toBe("");
     expect(result.exitCode).toBe(0);

@@ -1,3 +1,4 @@
+import type { TaskChange } from "@zinn-dev/core";
 import type { RouteDef } from "../types";
 import type { PresentedTask } from "../presentation/task-presentation";
 
@@ -17,7 +18,9 @@ import { currentActor } from "../actor";
 import {
   formatTask,
   formatTaskList,
+  formatTaskListWithStatus,
   formatTaskMove,
+  formatTaskMoveList,
   formatTaskWithStatus,
   presentTask,
 } from "../presentation/task-presentation";
@@ -320,30 +323,29 @@ Example: zinn task edit MDR-1 --title "Meet the quarterly refinement quota"`,
         quit("Target column must be specified");
       }
 
-      const previousColumnIds = taskKeys.map((taskKey) => task.getByKey(taskKey).column_id);
-      const movedTasks = task.moveMany({ taskKeys, targetColumn }, currentActor());
-      const presentedTasks = movedTasks.map(presentTask);
-      outputTasks(presentedTasks, formatTaskMove);
-      presentedTasks.forEach((presentedTask, index) => {
-        if (movedTasks[index]!.column_id === previousColumnIds[index]) {
-          console.error(`${presentedTask.key} was already in the ${presentedTask.column} column`);
-        }
-      });
+      const moves = task.moveMany({ taskKeys, targetColumn }, currentActor());
+      outputTaskChanges(
+        moves,
+        formatTaskMove,
+        formatTaskMoveList,
+        (movedTask) => `${movedTask.key} was already in the ${movedTask.column} column`,
+      );
     },
     help: `Usage: zinn task move <task-key>... <target-column>
 
 Move tasks to another column in their projects.
 Moving a task to a different column lists it last in that column,
-  matching placement at the bottom of a visual kanban column.
+matching placement at the bottom of a visual kanban column.
 Several tasks are moved in the order given, and each task's column is looked up in its own project.
 
 Prints each task's key and new column.
 
 Giving a task's current column as the target will not do anything, and a note says so.
 Archived tasks must be unarchived before they can be moved.
-On bulk changes, if any task cannot be moved, the operation is aborted.
+On bulk changes, if any task cannot be moved, the bulk operation is aborted.
 
 With --json, one task prints an object and several print an array.
+Each task's changed field is 'false' when it was already in the requested state.
 
 Example: zinn task move MDR-1 MDR-2 "In Progress"`,
   },
@@ -402,40 +404,36 @@ Example: zinn task order MDR-2 before MDR-1`,
   archive: {
     run: (args: Array<string>) => {
       const taskKeys = parseTaskKeys(args);
-      const wasArchived = taskKeys.map((taskKey) => task.getByKey(taskKey).archived_at != null);
-      const archivedTasks = task.archiveMany(taskKeys, currentActor()).map(presentTask);
-
-      outputTasks(archivedTasks, formatTaskWithStatus);
-
-      archivedTasks.forEach((archivedTask, index) => {
-        if (wasArchived[index]) {
-          console.error(`${archivedTask.key} was already archived`);
-        }
-      });
+      const archives = task.archiveMany(taskKeys, currentActor());
+      outputTaskChanges(
+        archives,
+        formatTaskWithStatus,
+        formatTaskListWithStatus,
+        (archivedTask) => `${archivedTask.key} was already archived`,
+      );
     },
     help: `Usage: zinn task archive <task-key>...
 
 Archive tasks so they no longer appear in active task lists.
 Archiving an archived task does not do anything.
-On bulk changes, if any task cannot be archived, the operation is aborted.
+On bulk changes, if any task cannot be archived, the bulk operation is aborted.
 
+Several tasks print as in 'task list --all'; see its help for the priority markers.
 With --json, one task prints an object and several print an array.
+Each task's changed field is 'false' when it was already in the requested state.
 
 Example: zinn task archive MDR-1 MDR-2`,
   },
   unarchive: {
     run: (args: Array<string>) => {
       const taskKeys = parseTaskKeys(args);
-      const wasActive = taskKeys.map((taskKey) => task.getByKey(taskKey).archived_at == null);
-      const unarchivedTasks = task.unarchiveMany(taskKeys, currentActor()).map(presentTask);
-
-      outputTasks(unarchivedTasks, formatTaskWithStatus);
-
-      unarchivedTasks.forEach((unarchivedTask, index) => {
-        if (wasActive[index]) {
-          console.error(`${unarchivedTask.key} was already active`);
-        }
-      });
+      const unarchives = task.unarchiveMany(taskKeys, currentActor());
+      outputTaskChanges(
+        unarchives,
+        formatTaskWithStatus,
+        formatTaskListWithStatus,
+        (unarchivedTask) => `${unarchivedTask.key} was already active`,
+      );
     },
     help: `Usage: zinn task unarchive <task-key>...
 
@@ -443,7 +441,9 @@ Unarchive tasks at the bottom of their previous columns, in the order given.
 Unarchiving an active task does not do anything.
 On bulk changes, if any task cannot be unarchived, the bulk operation is aborted.
 
+Several tasks print as in 'task list --all'; see its help for the priority markers.
 With --json, one task prints an object and several print an array.
+Each task's changed field is 'false' when it was already in the requested state.
 
 Example: zinn task unarchive MDR-1 MDR-2`,
   },
@@ -521,17 +521,32 @@ function parseTaskKeys(args: Array<string>) {
   return positionals;
 }
 
-/** Prints one task as an object, matching single-task commands, and several as an array. */
-function outputTasks(
-  presentedTasks: Array<PresentedTask>,
+/**
+ * Prints one task as an object for single-task commands, and several as an aligned list or array.
+ * JSON includes each task's `changed` flag, and each unchanged task also gets a note on stderr.
+ */
+function outputTaskChanges(
+  changes: Array<TaskChange>,
   formatOne: (presentedTask: PresentedTask) => string,
+  formatSeveral: (presentedTasks: Array<PresentedTask>) => string,
+  describeUnchanged: (presentedTask: PresentedTask) => string,
 ) {
-  if (presentedTasks.length === 1) {
-    output(presentedTasks[0]!, formatOne);
-    return;
+  const presentedChanges = changes.map((change) => ({
+    ...presentTask(change.task),
+    changed: change.changed,
+  }));
+
+  if (presentedChanges.length === 1) {
+    output(presentedChanges[0]!, formatOne);
+  } else {
+    output(presentedChanges, formatSeveral);
   }
 
-  output(presentedTasks, (tasks) => tasks.map(formatOne).join("\n"));
+  for (const presentedChange of presentedChanges) {
+    if (!presentedChange.changed) {
+      console.error(describeUnchanged(presentedChange));
+    }
+  }
 }
 
 function parseTaskLabelArgs(args: string[]) {
