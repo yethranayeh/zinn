@@ -2,12 +2,17 @@
 	"name": "zinn",
 	"private": true,
 	"workspaces": [
-		"packages/*"
+		"packages/*",
+		"docs"
 	],
 	"type": "module",
 	"scripts": {
 		"dev": "bun scripts/dev-cli.ts",
-		"dev:seed": "bun scripts/seed-dev.ts"
+		"dev:seed": "bun scripts/seed-dev.ts",
+		"docs:dev": "bun run --cwd docs dev",
+		"docs:build": "bun run --cwd docs build",
+		"docs:check": "bun run --cwd docs check",
+		"docs:preview": "bun run --cwd docs preview"
 	},
 	"devDependencies": {
 		"@types/bun": "latest",

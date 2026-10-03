@@ -1,0 +1,39 @@
+---
+import "../styles/global.css";
+
+interface Props {
+	title: string;
+	description: string;
+}
+
+const { title, description } = Astro.props;
+---
+
+<!doctype html>
+<html lang='en' class='bg-soot font-sans text-limestone scheme-dark [font-synthesis:none]'>
+	<head>
+		<meta charset='utf-8' />
+		<meta name='viewport' content='width=device-width, initial-scale=1' />
+		<meta name='theme-color' content='#1c1815' />
+		<meta name='description' content={description} />
+		<title>{title}</title>
+		<link rel='icon' href='/favicon.svg' type='image/svg+xml' />
+		<link rel='preload' href='/fonts/AlanSans.ttf' as='font' type='font/ttf' crossorigin />
+		<link rel='preload' href='/fonts/monoMMM_5.ttf' as='font' type='font/ttf' crossorigin />
+		{
+			import.meta.env.PROD && (
+				<script
+					is:inline
+					defer
+					src='https://cloud.umami.is/script.js'
+					data-website-id='2d789988-60f4-4ed7-80e1-c87cc64871d6'
+					data-domains='zinn.sh'
+					data-do-not-track='true'
+				/>
+			)
+		}
+	</head>
+	<body class='selection:bg-bronze selection:text-soot'>
+		<slot />
+	</body>
+</html>

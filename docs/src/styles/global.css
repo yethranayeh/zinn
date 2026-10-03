@@ -1,0 +1,48 @@
+@import "tailwindcss" source("../");
+
+@font-face {
+	font-family: "Alan Sans";
+	src: url("/fonts/AlanSans.ttf") format("truetype");
+	font-weight: 300 900;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "MonoMMM";
+	src: url("/fonts/monoMMM_5.ttf") format("truetype");
+	font-weight: 400;
+	font-display: swap;
+}
+
+@theme {
+	--color-limestone: #e8e0cc;
+	--color-bone: #d6cbb0;
+	--color-clay: #b4552f;
+	--color-cinnabar: #7b1e15;
+	--color-bronze: #c8963c;
+	--color-soot: #1c1815;
+	--color-pewter: #6e675c;
+	--font-sans: "Alan Sans", sans-serif;
+	--font-mono: "MonoMMM", monospace;
+}
+
+@layer base {
+	button,
+	a {
+		-webkit-tap-highlight-color: transparent;
+		touch-action: manipulation;
+	}
+
+	a {
+		text-underline-offset: 4px;
+	}
+
+	a:hover {
+		text-decoration: underline;
+	}
+
+	:focus-visible {
+		outline: 2px solid var(--color-bronze);
+		outline-offset: 6px;
+	}
+}

@@ -1,0 +1,11 @@
+---
+interface Props {
+	name: "external-link" | "copy" | "check";
+	class?: string;
+}
+const { name, class: className } = Astro.props;
+---
+
+<svg class:list={["shrink-0 fill-current", className ?? "size-4.5"]} viewBox='0 0 24 24' aria-hidden='true'>
+	<use href={`/icons.svg#${name}`}></use>
+</svg>
