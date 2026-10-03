@@ -3044,6 +3044,107 @@ test("FORCE_COLOR colors piped output and wins over NO_COLOR, while FORCE_COLOR=
   });
 });
 
+test("task rows color each attached label name by its label color, with plain separators and unchanged column widths", async () => {
+  await withIsolatedZinnDirAsync(async (dir) => {
+    runZinn(["label", "create", "bug", "--color", "red"], dir);
+    runZinn(["label", "create", "cli", "--color", "blue"], dir);
+    runZinn(["label", "create", "docs", "--color", "cyan"], dir);
+    runZinn(["project", "create", "TAGS", "--name", "Task labels"], dir);
+    runZinn(
+      ["task", "create", "TAGS", "--title", "Several labels", "--priority", "urgent", "--label", "docs", "--label", "bug", "--label", "cli"],
+      dir,
+    );
+    runZinn(["task", "create", "TAGS", "--title", "No labels"], dir);
+    runZinn(["task", "move", "TAGS-2", "Done"], dir);
+
+    // Labels are listed by name, and only the names are colored: the ", " joins and the " | " before them stay plain.
+    const coloredLabels = "\x1b[31mbug\x1b[39m, \x1b[34mcli\x1b[39m, \x1b[36mdocs\x1b[39m";
+    const coloredRows = [
+      `TAGS-1 | ${GRAY_BACKLOG} | U | Several labels | ${coloredLabels}`,
+      `TAGS-2 | \x1b[32m${"Done".padEnd("Backlog".length)}\x1b[39m | - | No labels`,
+      "",
+    ].join("\n");
+
+    expect((await runZinnInTerminal(["task", "list", "TAGS"], dir)).output).toBe(coloredRows);
+    expect(runZinn(["task", "list", "TAGS"], dir, { FORCE_COLOR: "1" }).stdout).toBe(coloredRows);
+    expect(runZinn(["task", "search", "Several", "TAGS"], dir, { FORCE_COLOR: "1" }).stdout).toBe(
+      `TAGS-1 | ${GRAY_BACKLOG} | U | Several labels | ${coloredLabels}\n`,
+    );
+    expect(runZinn(["project", "view", "TAGS"], dir, { FORCE_COLOR: "1" }).stdout).toContain(
+      `\n\n${coloredRows}`,
+    );
+    expect(runZinn(["task", "list", "TAGS", "--all"], dir, { FORCE_COLOR: "1" }).stdout).toContain(
+      `TAGS-1 | Active | ${GRAY_BACKLOG} | U | Several labels | ${coloredLabels}\n`,
+    );
+
+    // A label's color applies to every task that has the label.
+    runZinn(["label", "edit", "bug", "--color", "yellow"], dir);
+    expect(runZinn(["task", "list", "TAGS"], dir, { FORCE_COLOR: "1" }).stdout).toContain(
+      "\x1b[33mbug\x1b[39m, \x1b[34mcli\x1b[39m",
+    );
+  });
+});
+
+test("the Labels part of single-task output colors each label name by its label color", async () => {
+  await withIsolatedZinnDirAsync(async (dir) => {
+    runZinn(["label", "create", "bug", "--color", "red"], dir);
+    runZinn(["label", "create", "docs", "--color", "cyan"], dir);
+    runZinn(["project", "create", "TAGS"], dir);
+
+    const forceColor = { FORCE_COLOR: "1" };
+    const coloredLabels = "\x1b[31mbug\x1b[39m, \x1b[36mdocs\x1b[39m";
+
+    expect(
+      runZinn(["task", "create", "TAGS", "--title", "Tagged", "--label", "docs", "--label", "bug"], dir, forceColor).stdout,
+    ).toBe(`TAGS-1 | ${GRAY_BACKLOG} | Tagged | Labels: ${coloredLabels}\n`);
+    expect(runZinn(["task", "view", "TAGS-1"], dir, forceColor).stdout).toBe(
+      `TAGS-1 | ${GRAY_BACKLOG} | Tagged | Labels: ${coloredLabels}\n`,
+    );
+    expect((await runZinnInTerminal(["task", "view", "TAGS-1"], dir)).output).toBe(
+      `TAGS-1 | ${GRAY_BACKLOG} | Tagged | Labels: ${coloredLabels}\n`,
+    );
+    expect(runZinn(["task", "label", "remove", "TAGS-1", "bug"], dir, forceColor).stdout).toBe(
+      `TAGS-1 | ${GRAY_BACKLOG} | Tagged | Labels: \x1b[36mdocs\x1b[39m\n`,
+    );
+    expect(runZinn(["task", "label", "add", "TAGS-1", "bug"], dir, forceColor).stdout).toBe(
+      `TAGS-1 | ${GRAY_BACKLOG} | Tagged | Labels: ${coloredLabels}\n`,
+    );
+    expect(
+      runZinn(["task", "edit", "TAGS-1", "--title", "Retitled"], dir, forceColor).stdout,
+    ).toBe(`TAGS-1 | ${GRAY_BACKLOG} | Retitled | Labels: ${coloredLabels}\n`);
+  });
+});
+
+test("task text output names labels without color words when color is off, and JSON keeps plain label names", async () => {
+  await withIsolatedZinnDirAsync(async (dir) => {
+    runZinn(["label", "create", "bug", "--color", "red"], dir);
+    runZinn(["label", "create", "docs", "--color", "cyan"], dir);
+    runZinn(["project", "create", "TAGS"], dir);
+    runZinn(["task", "create", "TAGS", "--title", "Tagged", "--priority", "urgent", "--label", "docs", "--label", "bug"], dir);
+
+    const plainRow = "TAGS-1 | Backlog | U | Tagged | bug, docs\n";
+    const plainTask = "TAGS-1 | Backlog | Tagged | Priority: urgent | Labels: bug, docs\n";
+    const colorOff = { FORCE_COLOR: "0" };
+    const noColor = { NO_COLOR: "1" };
+
+    // Piped, with color forced off, and with NO_COLOR in a terminal all read alike, with no color words.
+    expect(runZinn(["task", "list", "TAGS"], dir).stdout).toBe(plainRow);
+    expect(runZinn(["task", "list", "TAGS"], dir, colorOff).stdout).toBe(plainRow);
+    expect((await runZinnInTerminal(["task", "list", "TAGS"], dir, noColor)).output).toBe(plainRow);
+    expect(runZinn(["task", "view", "TAGS-1"], dir).stdout).toBe(plainTask);
+    expect(runZinn(["task", "view", "TAGS-1"], dir, colorOff).stdout).toBe(plainTask);
+    expect((await runZinnInTerminal(["task", "view", "TAGS-1"], dir, noColor)).output).toBe(plainTask);
+
+    for (const args of [["task", "list", "TAGS", "--json"], ["task", "view", "TAGS-1", "--json"]]) {
+      for (const env of [{}, { FORCE_COLOR: "1" }] as Array<Record<string, string>>) {
+        const json = runZinn(args, dir, env).stdout;
+        expect(json).not.toContain("\x1b");
+        expect([JSON.parse(json)].flat()[0].labels).toEqual(["bug", "docs"]);
+      }
+    }
+  });
+});
+
 test("label namespaces and commands expose help without initializing storage", () => {
   withIsolatedZinnDir((dir) => {
     for (const args of [["label"], ["label", "create"], ["label", "edit"], ["label", "list"], ["label", "delete"], ["task", "label"], ["task", "label", "add"], ["task", "label", "remove"]]) {

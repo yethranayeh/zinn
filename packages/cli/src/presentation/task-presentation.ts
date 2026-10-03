@@ -1,8 +1,9 @@
-import type { TaskPriority, TaskWithKey } from "@zinn-dev/core";
+import type { LabelColor, TaskPriority, TaskWithKey } from "@zinn-dev/core";
 import type { RowCell } from "./row-layout";
 
-import { column, task } from "@zinn-dev/core";
+import { column, label, task } from "@zinn-dev/core";
 
+import { styleOutputText } from "./color";
 import { formatCell, formatRows } from "./row-layout";
 
 export type PresentedTask = {
@@ -16,6 +17,7 @@ export type PresentedTask = {
 };
 
 const EMPTY_CELL_MARKER = "-";
+const LABEL_NAME_SEPARATOR = ", ";
 
 function formatTaskPriorityMarker(priority: TaskPriority | null) {
   if (priority == null) {
@@ -38,6 +40,20 @@ function taskColumnCell(columnName: string): RowCell {
   return { text: columnName };
 }
 
+/**
+ * `PresentedTask` carries label names only, so JSON stays a list of names.
+ * Text output looks the colors up from the label definitions instead.
+ */
+function getLabelColorsByName() {
+  return new Map(label.getAll().map((labelMatch) => [labelMatch.name, labelMatch.color]));
+}
+
+function formatLabelNames(labelNames: Array<string>, labelColorsByName: Map<string, LabelColor>) {
+  return labelNames
+    .map((labelName) => styleOutputText(labelColorsByName.get(labelName)!, labelName))
+    .join(LABEL_NAME_SEPARATOR);
+}
+
 export function presentTask(taskMatch: TaskWithKey): PresentedTask {
   return {
     key: taskMatch.key,
@@ -58,7 +74,9 @@ export function formatTask(presented: PresentedTask, options: { showsStatus?: bo
 
   const priority = presented.priority == null ? "" : ` | Priority: ${presented.priority}`;
   const labelText =
-    presented.labels.length === 0 ? "" : ` | Labels: ${presented.labels.join(", ")}`;
+    presented.labels.length === 0
+      ? ""
+      : ` | Labels: ${formatLabelNames(presented.labels, getLabelColorsByName())}`;
 
   return `${presented.key}${status} | ${column} | ${presented.title}${description}${priority}${labelText}`;
 }
@@ -84,13 +102,18 @@ export function formatTaskList(
   presentedTasks: Array<PresentedTask>,
   options: { showsStatus?: boolean } = {},
 ) {
+  const labelColorsByName = getLabelColorsByName();
+
   return formatRows(
     presentedTasks.map((presentedTask) => {
       const statusCells: Array<RowCell> = options.showsStatus
         ? [{ text: presentedTask.status }]
         : [];
       const hasLabels = presentedTask.labels.length > 0;
-      const labels = hasLabels ? ` | ${presentedTask.labels.join(", ")}` : "";
+      // The last cell is never padded, so the color codes in its label names do not affect column widths.
+      const labels = hasLabels
+        ? ` | ${formatLabelNames(presentedTask.labels, labelColorsByName)}`
+        : "";
 
       return [
         { text: presentedTask.key },

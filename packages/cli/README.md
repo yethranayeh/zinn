@@ -184,7 +184,7 @@ Label colors default to white. Available colors are _red_, _green_, _yellow_, _b
 Task creation and edits apply content and label changes together, or roll back together on failure.
 Changing a task's label attachments updates that task's modification timestamp. Archived tasks can also have their labels edited.
 
-Commands like `task list`, `task view` and task mutation output show attached labels.
+Commands like `task list`, `task view` and task mutation output show attached labels, printing each label name in its color (see [Scripting and JSON output](#scripting-and-json-output) for when color appears). `--json` output lists a task's labels as names.
 
 `zinn label delete urgent` asks for confirmation, then deletes the definition and removes it from every task. Declining confirmation leaves the label and its attachments unchanged. `--yes` skips the confirmation (see [Confirmations](#confirmations)).
 Use `task label remove` to remove a label attachment from one task instead. Task/project deletion cleans up label attachments, but does not affect labels themselves.
