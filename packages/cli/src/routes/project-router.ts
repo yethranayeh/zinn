@@ -13,6 +13,7 @@ import {
 } from "../lib";
 import { formatTaskList, presentTask } from "../presentation/task-presentation";
 import { formatDescriptionPreview } from "../presentation/description-presentation";
+import { formatRows } from "../presentation/row-layout";
 import { currentActor } from "../actor";
 
 type PresentedProject = { key: string; name: string; description: string | null };
@@ -22,10 +23,19 @@ function presentProject(projectMatch: PresentedProject): PresentedProject {
   return { key: projectMatch.key, name: projectMatch.name, description: projectMatch.description };
 }
 
-function formatProject(presented: PresentedProject, keyWidth = presented.key.length) {
-  const descriptionPreview = formatDescriptionPreview(presented.description);
-  const description = descriptionPreview.length > 0 ? ` | ${descriptionPreview}` : "";
-  return `${presented.key.padEnd(keyWidth)} | ${presented.name}${description}`;
+function formatProject(presented: PresentedProject) {
+  return formatProjectList([presented]);
+}
+
+function formatProjectList(presentedProjects: Array<PresentedProject>) {
+  return formatRows(
+    presentedProjects.map((presented) => {
+      const descriptionPreview = formatDescriptionPreview(presented.description);
+      const description = descriptionPreview.length > 0 ? ` | ${descriptionPreview}` : "";
+
+      return [{ text: presented.key }, { text: `${presented.name}${description}` }];
+    }),
+  );
 }
 
 type PresentedColumn = { project: string; name: string };
@@ -86,14 +96,7 @@ Example: zinn project create MDR --name "Macrodata Refinement"`,
     run: () => {
       const projects = project.getAll();
 
-      output(projects.map(presentProject), (presentedProjects) => {
-        const longestKeyLength = presentedProjects.reduce(
-          (prev, current) => Math.max(prev, current.key.length),
-          0,
-        );
-
-        return presentedProjects.map((p) => formatProject(p, longestKeyLength)).join("\n");
-      });
+      output(projects.map(presentProject), formatProjectList);
     },
     help: `Usage: zinn project list
 

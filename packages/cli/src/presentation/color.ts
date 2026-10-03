@@ -1,6 +1,6 @@
 import { styleText } from "node:util";
 
-type StyleFormat = Parameters<typeof styleText>[0];
+export type StyleFormat = Parameters<typeof styleText>[0];
 
 /**
  * Bun's styleText emits ANSI even when stdout is piped or NO_COLOR is set, so Zinn decides when to color.

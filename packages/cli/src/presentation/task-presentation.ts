@@ -1,9 +1,10 @@
 import type { TaskPriority, TaskWithKey } from "@zinn-dev/core";
+import type { RowCell } from "./row-layout";
 
 import { column, task } from "@zinn-dev/core";
 
 import { formatDescriptionPreview } from "./description-presentation";
-import { styleOutputText } from "./color";
+import { formatCell, formatRows } from "./row-layout";
 
 export type PresentedTask = {
   key: string;
@@ -23,19 +24,17 @@ function formatTaskPriorityMarker(priority: TaskPriority | null) {
   return priority[0]!.toUpperCase();
 }
 
-export function formatTaskColumn(columnName: string, width = columnName.length) {
-  const paddedColumnName = columnName.padEnd(width);
-
+function taskColumnCell(columnName: string): RowCell {
   // TODO: Derive column colors from column roles once roles exist instead of relying on names.
   if (columnName === "Backlog") {
-    return styleOutputText("gray", paddedColumnName);
+    return { text: columnName, style: "gray" };
   }
 
   if (columnName === "Done") {
-    return styleOutputText("green", paddedColumnName);
+    return { text: columnName, style: "green" };
   }
 
-  return paddedColumnName;
+  return { text: columnName };
 }
 
 export function presentTask(taskMatch: TaskWithKey): PresentedTask {
@@ -52,7 +51,7 @@ export function presentTask(taskMatch: TaskWithKey): PresentedTask {
 
 export function formatTask(presented: PresentedTask, options: { showsStatus?: boolean } = {}) {
   const status = options.showsStatus ? ` | ${presented.status}` : "";
-  const column = formatTaskColumn(presented.column);
+  const column = formatCell(taskColumnCell(presented.column));
   const hasDescription = presented.description != null && presented.description.length > 0;
   const description = hasDescription ? ` | ${presented.description}` : "";
 
@@ -67,52 +66,41 @@ export function formatTaskWithStatus(presented: PresentedTask) {
   return formatTask(presented, { showsStatus: true });
 }
 
-export function formatTaskMove(presented: PresentedTask, keyWidth = presented.key.length) {
-  return `${presented.key.padEnd(keyWidth)} | ${formatTaskColumn(presented.column)}`;
+export function formatTaskMove(presented: PresentedTask) {
+  return formatTaskMoveList([presented]);
 }
 
 export function formatTaskMoveList(presentedTasks: Array<PresentedTask>) {
-  const longestKeyLength = presentedTasks.reduce(
-    (previousLength, currentTask) => Math.max(previousLength, currentTask.key.length),
-    0,
+  return formatRows(
+    presentedTasks.map((presentedTask) => [
+      { text: presentedTask.key },
+      taskColumnCell(presentedTask.column),
+    ]),
   );
-
-  return presentedTasks
-    .map((presentedTask) => formatTaskMove(presentedTask, longestKeyLength))
-    .join("\n");
 }
 
 export function formatTaskList(
   presentedTasks: Array<PresentedTask>,
   options: { showsStatus?: boolean } = {},
 ) {
-  const longestKeyLength = presentedTasks.reduce(
-    (previousLength, currentTask) => Math.max(previousLength, currentTask.key.length),
-    0,
-  );
-  const longestColumnNameLength = presentedTasks.reduce(
-    (previousLength, currentTask) => Math.max(previousLength, currentTask.column.length),
-    0,
-  );
-  const longestStatusLength = presentedTasks.reduce(
-    (previousLength, currentTask) => Math.max(previousLength, currentTask.status.length),
-    0,
-  );
-
-  return presentedTasks
-    .map((presentedTask) => {
-      const status = options.showsStatus
-        ? ` | ${presentedTask.status.padEnd(longestStatusLength)}`
-        : "";
+  return formatRows(
+    presentedTasks.map((presentedTask) => {
+      const statusCells: Array<RowCell> = options.showsStatus
+        ? [{ text: presentedTask.status }]
+        : [];
       const descriptionPreview = formatDescriptionPreview(presentedTask.description);
       const hasDescriptionPreview = descriptionPreview.length > 0;
       const description = hasDescriptionPreview ? ` | ${descriptionPreview}` : "";
-      const priority = formatTaskPriorityMarker(presentedTask.priority);
-      const column = formatTaskColumn(presentedTask.column, longestColumnNameLength);
 
-      return `${presentedTask.key.padEnd(longestKeyLength)}${status} | ${column} | ${priority} | ${presentedTask.title}${description}`;
-    })
-    .join("\n");
+      return [
+        { text: presentedTask.key },
+        ...statusCells,
+        taskColumnCell(presentedTask.column),
+        { text: formatTaskPriorityMarker(presentedTask.priority) },
+        { text: `${presentedTask.title}${description}` },
+      ];
+    }),
+  );
 }
 
 export function formatTaskListWithStatus(presentedTasks: Array<PresentedTask>) {
