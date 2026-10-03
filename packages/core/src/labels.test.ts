@@ -3,6 +3,38 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+test("global and attached labels sort alphabetically without case differences, with accented letters beside their base letters", () => {
+  const directory = mkdtempSync(join(tmpdir(), "zinn-label-order-"));
+  try {
+    const result = Bun.spawnSync([process.execPath, "--eval", `
+      import { strict as assert } from "node:assert";
+      import { project, task, label } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
+      const actor = { name: "Test Human", email: null, kind: "human" };
+      const app = project.create({ key: "APP" }, actor);
+      const names = ["Äther", "Groom", "Azure", "äpfel", "CLI", "bug"];
+      for (const name of names) {
+        label.create({ name }, actor);
+      }
+      const created = task.create({ project_id: app.id, title: "Tagged", labelNames: names }, actor);
+      const expected = ["äpfel", "Äther", "Azure", "bug", "CLI", "Groom"];
+      assert.deepEqual(label.getAll().map(entry => entry.name), expected);
+      assert.deepEqual(task.label.getAll(created.key).map(entry => entry.name), expected);
+      assert.equal(label.getByName("ÄPFEL").name, "äpfel");
+      assert.throws(() => label.create({ name: "ÄPFEL" }, actor), /already exists/);
+
+      label.edit({ labelName: "äther", name: "äther" }, actor);
+      label.edit({ labelName: "äpfel", name: "Äpfel" }, actor);
+      const recased = ["Äpfel", "äther", "Azure", "bug", "CLI", "Groom"];
+      assert.deepEqual(label.getAll().map(entry => entry.name), recased);
+      assert.deepEqual(task.label.getAll(created.key).map(entry => entry.name), recased);
+    `], { env: { ...process.env, ZINN_DIR: directory } });
+    expect(result.stderr.toString()).toBe("");
+    expect(result.exitCode).toBe(0);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("labels preserve atomic edits, no-op timestamps, uniqueness, and cascade integrity", () => {
   const directory = mkdtempSync(join(tmpdir(), "zinn-labels-"));
   try {

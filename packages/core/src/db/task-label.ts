@@ -2,13 +2,15 @@ import type { Task, Label } from "../types";
 
 import { getDb } from "../db";
 import { DB_TABLE } from "../constant";
+import { compareNames } from "../lib";
 
 export function getAllByTaskId(taskId: string) {
   return getDb()
     .query<Label, [string]>(`SELECT label.* FROM ${DB_TABLE.label} AS label
     INNER JOIN ${DB_TABLE.taskLabel} AS attachment ON attachment.label_id = label.id
-    WHERE attachment.task_id = ? ORDER BY label.name`)
-    .all(taskId);
+    WHERE attachment.task_id = ?`)
+    .all(taskId)
+    .sort(compareNames);
 }
 
 export function create(taskId: string, labelId: string) {

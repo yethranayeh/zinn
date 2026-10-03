@@ -4,10 +4,11 @@ import { randomUUIDv7 } from "bun";
 
 import { DB_TABLE } from "../constant";
 import { getDb } from "../db";
+import { compareNames } from "../lib";
 
 export function getAll() {
   const db = getDb();
-  return db.query<Label, []>(`SELECT * FROM ${DB_TABLE.label} ORDER BY name`).all();
+  return db.query<Label, []>(`SELECT * FROM ${DB_TABLE.label}`).all().sort(compareNames);
 }
 
 export function getById(labelId: string) {
