@@ -1,4 +1,5 @@
 import type { CommentWithKey } from "@zinn-dev/core";
+import type { RowCell } from "../presentation/row-layout";
 import type { RouteDef } from "../types";
 
 import { parseArgs } from "node:util";
@@ -12,6 +13,7 @@ import {
   validateUniqueOptions,
 } from "../lib";
 import { currentActor } from "../actor";
+import { formatRows } from "../presentation/row-layout";
 
 type PresentedComment = Pick<CommentWithKey, "key" | "text" | "created_at" | "updated_at">;
 
@@ -44,23 +46,25 @@ function formatCommentCreatedAt(createdAt: number) {
   );
 }
 
-export function formatComment(
-  commentMatch: PresentedComment,
-  options: { showsCreatedAt?: boolean } = {},
-) {
-  const createdAt = options.showsCreatedAt
-    ? ` | ${formatCommentCreatedAt(commentMatch.created_at)}`
-    : "";
-  const prefix = `${commentMatch.key}${createdAt} | `;
-  const continuationIndent = " ".repeat(prefix.length);
-  const text = commentMatch.text.split(/\r?\n/).join(`\n${continuationIndent}`);
-  return `${prefix}${text}`;
+function commentRow(commentMatch: PresentedComment, options: { showsCreatedAt: boolean }) {
+  const createdAtCells: Array<RowCell> = options.showsCreatedAt
+    ? [{ text: formatCommentCreatedAt(commentMatch.created_at) }]
+    : [];
+
+  return [{ text: commentMatch.key }, ...createdAtCells, { text: commentMatch.text }];
+}
+
+export function formatComment(commentMatch: PresentedComment) {
+  return formatRows([commentRow(commentMatch, { showsCreatedAt: false })], {
+    indentsContinuationLines: true,
+  });
 }
 
 export function formatComments(comments: Array<PresentedComment>) {
-  return comments
-    .map((commentMatch) => formatComment(commentMatch, { showsCreatedAt: true }))
-    .join("\n");
+  return formatRows(
+    comments.map((commentMatch) => commentRow(commentMatch, { showsCreatedAt: true })),
+    { indentsContinuationLines: true },
+  );
 }
 
 function parseTextArgs(args: Array<string>, entityName: "task" | "comment") {

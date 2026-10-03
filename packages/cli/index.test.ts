@@ -1298,6 +1298,55 @@ test("task comments can be created, listed, edited, viewed, and deleted", () => 
   });
 });
 
+test("comment lists pad the key so #1 lines up with #10 and keep continuation lines under the text", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "PAD"], testDir);
+    runZinn(["task", "create", "PAD", "--title", "Many comments"], testDir);
+
+    const createComment = (number: number) => {
+      const isMultiline = number === 1 || number === 10;
+      const text = isMultiline ? `Comment ${number}\nsecond line` : `Comment ${number}`;
+
+      return runZinn(["task", "comment", "create", "PAD-1", "--text", text], testDir);
+    };
+    for (let number = 1; number <= 9; number += 1) {
+      createComment(number);
+    }
+    const tenth = createComment(10);
+    withTestDb(testDir, (db) => {
+      db.run("UPDATE comment SET created_at = ?", [Date.UTC(2026, 8, 25, 18, 7)]);
+    });
+
+    // One comment on its own has nothing to line up with and prints no timestamp.
+    expect(tenth.stdout).toBe("PAD-1#10 | Comment 10\n           second line\n");
+
+    const timestamp = "2026-09-25 20:07 +02:00";
+    // Later lines start under the text of the first line, after the padded key.
+    const textIndent = " ".repeat(`PAD-1#10 | ${timestamp} | `.length);
+    const listed = runZinn(["task", "comment", "list", "PAD-1"], testDir, { TZ: "Europe/Berlin" }).stdout;
+    expect(listed).toBe(
+      [
+        `PAD-1#1  | ${timestamp} | Comment 1`,
+        `${textIndent}second line`,
+        `PAD-1#2  | ${timestamp} | Comment 2`,
+        `PAD-1#3  | ${timestamp} | Comment 3`,
+        `PAD-1#4  | ${timestamp} | Comment 4`,
+        `PAD-1#5  | ${timestamp} | Comment 5`,
+        `PAD-1#6  | ${timestamp} | Comment 6`,
+        `PAD-1#7  | ${timestamp} | Comment 7`,
+        `PAD-1#8  | ${timestamp} | Comment 8`,
+        `PAD-1#9  | ${timestamp} | Comment 9`,
+        `PAD-1#10 | ${timestamp} | Comment 10`,
+        `${textIndent}second line`,
+        "",
+      ].join("\n"),
+    );
+
+    const viewed = runZinn(["task", "view", "PAD-1"], testDir, { TZ: "Europe/Berlin" }).stdout;
+    expect(viewed).toContain(`\n\nComments:\n${listed}`);
+  });
+});
+
 test("task comment commands validate their inputs without partial writes", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "NOTE"], testDir);
@@ -2655,17 +2704,17 @@ test("relation commands show directional and symmetric links, including archived
       expect(created.stdout).toContain("OTHER-1");
     }
     const outgoing = run("task", "relation", "list", "APP-1");
-    expect(outgoing.stdout).toContain("Depends on | OTHER-1 | Original");
+    expect(outgoing.stdout).toContain("Depends on   | OTHER-1 | Original");
     expect(outgoing.stdout).toContain("Duplicate of | OTHER-1 | Original");
-    expect(outgoing.stdout).toContain("Parent | OTHER-1 | Original");
+    expect(outgoing.stdout).toContain("Parent       | OTHER-1 | Original");
     const incoming = run("task", "relation", "list", "OTHER-1");
-    expect(incoming.stdout).toContain("Subtask | APP-1 | Copy");
+    expect(incoming.stdout).toContain("Subtask        | APP-1 | Copy");
     expect(incoming.stdout).toContain("Depended on by | APP-1 | Copy");
-    expect(incoming.stdout).toContain("Duplicated by | APP-1 | Copy");
-    expect(incoming.stdout).toContain("Related to | APP-1 | Copy");
+    expect(incoming.stdout).toContain("Duplicated by  | APP-1 | Copy");
+    expect(incoming.stdout).toContain("Related to     | APP-1 | Copy");
     expect(run("task", "relation", "create", "OTHER-1", "APP-1", "--type", "related").stderr).toContain("already exists");
     run("task", "archive", "OTHER-1");
-    expect(run("task", "view", "APP-1").stdout).toContain("Parent | OTHER-1 | Original | Archived");
+    expect(run("task", "view", "APP-1").stdout).toContain("Parent       | OTHER-1 | Original | Archived");
     const viewed = JSON.parse(run("task", "view", "APP-1", "--json").stdout);
     expect(viewed.relations).toContainEqual({
       type: "subtask", direction: "outgoing",
@@ -2673,8 +2722,39 @@ test("relation commands show directional and symmetric links, including archived
     });
     expect(run("task", "relation", "create", "OTHER-1", "APP-1", "--type", "subtask").stderr).toContain("cycle");
     expect(run("task", "relation", "delete", "APP-1", "OTHER-1", "--type", "subtask").code).toBe(0);
-    expect(run("task", "view", "APP-1").stdout).not.toContain("Parent |");
+    expect(run("task", "view", "APP-1").stdout).not.toContain("Parent");
     expect(run("task", "relation", "create", "OTHER-1", "APP-1", "--type", "dependency").code).toBe(0);
+  });
+});
+
+test("relation list pads the relation label and task key so titles line up, and marks archived tasks", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = (...args: string[]) => runZinn(args, dir);
+    run("project", "create", "APP");
+    run("project", "create", "LONGER");
+    run("task", "create", "APP", "--title", "Copy");
+    run("task", "create", "APP", "--title", "Plan");
+    run("task", "create", "APP", "--title", "Review");
+    run("task", "create", "LONGER", "--title", "Original");
+    run("task", "archive", "APP-2");
+    run("task", "relation", "create", "APP-1", "LONGER-1", "--type", "dependency");
+    run("task", "relation", "create", "APP-1", "APP-2", "--type", "related");
+    run("task", "relation", "create", "APP-3", "APP-1", "--type", "dependency");
+
+    // Relations come back in no promised order, so compare the lines sorted.
+    const expectedLines = [
+      "Depends on     | LONGER-1 | Original",
+      "Related to     | APP-2    | Plan | Archived",
+      "Depended on by | APP-3    | Review",
+    ];
+    const listed = run("task", "relation", "list", "APP-1").stdout;
+    expect(listed.trimEnd().split("\n").sort()).toEqual([...expectedLines].sort());
+
+    const viewed = run("task", "view", "APP-1").stdout;
+    expect(viewed).toContain("\n\nRelations:\n");
+    for (const line of expectedLines) {
+      expect(viewed).toContain(`${line}\n`);
+    }
   });
 });
 
@@ -2737,7 +2817,7 @@ test("global label workflows support repeated create/edit flags and preserve tas
     }
     expect(run("label", "create", "BUG").stderr).toContain("already exists");
     expect(run("label", "create", "invalid", "--color", "purple").code).toBe(1);
-    expect(run("label", "list").stdout).toContain("bug | red | Details");
+    expect(run("label", "list").stdout).toContain(`${"bug".padEnd("needs review, soon".length)} | red | Details`);
     const created = run("task", "create", "APP", "--title", "Login", "--description", "", "--label", "BUG", "--label", "AUTH");
     expect(created.code).toBe(0);
     expect(created.stdout).toContain("Labels: auth, bug");
@@ -2788,11 +2868,11 @@ test("label text output colors the name in a terminal and names the color when p
 
     const listed = run("label", "list").stdout;
     expect(listed).not.toContain("\x1b[");
-    for (const line of ["bug | red | Broken", "chore | gray", "later | white"]) {
+    for (const line of ["bug   | red   | Broken", "chore | gray", "later | white"]) {
       expect(listed).toContain(`${line}\n`);
     }
     const listedInTerminal = (await runZinnInTerminal(["label", "list"], dir)).output;
-    expect(listedInTerminal).toContain("\x1b[31mbug\x1b[39m | Broken\n");
+    expect(listedInTerminal).toContain("\x1b[31mbug  \x1b[39m | Broken\n");
     for (const colorName of ["red", "white", "gray"]) {
       expect(listedInTerminal).not.toContain(colorName);
     }
@@ -2804,6 +2884,50 @@ test("label text output colors the name in a terminal and names the color when p
     const listedJson = run("label", "list", "--json").stdout;
     expect(listedJson).not.toContain("\x1b[");
     expect(JSON.parse(listedJson)).toContainEqual({ name: "bug", color: "red", description: "Broken" });
+  });
+});
+
+test("label list pads names and color words so descriptions line up, with no cell for a missing description", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = (...args: string[]) => runZinn(args, dir);
+    run("label", "create", "bug", "--color", "red", "--description", "Broken");
+    run("label", "create", "chore", "--color", "magenta");
+    run("label", "create", "documentation", "--color", "gray", "--description", "Docs");
+
+    // The color word of the label without a description ends its row, and still sets the column's width.
+    expect(run("label", "list").stdout).toBe(
+      [
+        "bug           | red     | Broken",
+        "chore         | magenta",
+        "documentation | gray    | Docs",
+        "",
+      ].join("\n"),
+    );
+
+    // A single label has nothing to line up with.
+    expect(run("label", "edit", "documentation", "--description", "Guides").stdout).toBe(
+      "documentation | gray | Guides\n",
+    );
+  });
+});
+
+test("label list pads a colored name by its plain text, so color codes do not shift the descriptions", async () => {
+  await withIsolatedZinnDirAsync(async (dir) => {
+    runZinn(["label", "create", "bug", "--color", "red", "--description", "Broken"], dir);
+    runZinn(["label", "create", "chore", "--color", "gray"], dir);
+    runZinn(["label", "create", "documentation", "--color", "blue", "--description", "Docs"], dir);
+
+    // The name of a label without a description ends its row, so it is not padded.
+    const expected =
+      [
+        `\x1b[31m${"bug".padEnd("documentation".length)}\x1b[39m | Broken`,
+        "\x1b[90mchore\x1b[39m",
+        "\x1b[34mdocumentation\x1b[39m | Docs",
+        "",
+      ].join("\n");
+
+    expect((await runZinnInTerminal(["label", "list"], dir)).output).toBe(expected);
+    expect(runZinn(["label", "list"], dir, { FORCE_COLOR: "1" }).stdout).toBe(expected);
   });
 });
 

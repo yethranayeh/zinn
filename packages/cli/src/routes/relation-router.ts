@@ -5,6 +5,7 @@ import { parseArgs } from "node:util";
 import { relation, relationCreateSchema, task } from "@zinn-dev/core";
 import { output, quit, validatePositionalCount, validateUniqueOptions } from "../lib";
 import { currentActor } from "../actor";
+import { formatRows } from "../presentation/row-layout";
 
 type PresentedRelation = {
   type: TaskRelationType;
@@ -38,8 +39,8 @@ export function presentRelations(taskMatch: TaskWithKey): Array<PresentedRelatio
 }
 
 export function formatRelations(relations: Array<PresentedRelation>) {
-  return relations
-    .map((entry) => {
+  return formatRows(
+    relations.map((entry) => {
       const isOutgoing = entry.direction === "outgoing";
 
       let label: string;
@@ -63,9 +64,13 @@ export function formatRelations(relations: Array<PresentedRelation>) {
       }
 
       const archived = entry.task.status === "Archived" ? " | Archived" : "";
-      return `${label} | ${entry.task.key} | ${entry.task.title}${archived}`;
-    })
-    .join("\n");
+      return [
+        { text: label },
+        { text: entry.task.key },
+        { text: `${entry.task.title}${archived}` },
+      ];
+    }),
+  );
 }
 
 type PresentedRelationChange = { type: TaskRelationType; source: string; target: string };

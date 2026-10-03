@@ -1,4 +1,5 @@
 import type { Label } from "@zinn-dev/core";
+import type { RowCell } from "../presentation/row-layout";
 import type { RouteDef } from "../types";
 
 import { parseArgs } from "node:util";
@@ -12,7 +13,8 @@ import {
   validateUniqueOptions,
 } from "../lib";
 import { currentActor } from "../actor";
-import { isColorEnabled, styleOutputText } from "../presentation/color";
+import { isColorEnabled } from "../presentation/color";
+import { formatRows } from "../presentation/row-layout";
 
 type PresentedLabel = Omit<Label, "id">;
 
@@ -21,16 +23,26 @@ function presentLabel(labelMatch: Label): PresentedLabel {
 }
 
 function formatLabel(presented: PresentedLabel) {
-  // The colored name shows the color; without color, the color is named instead.
-  const name = isColorEnabled()
-    ? styleOutputText(presented.color, presented.name)
-    : `${presented.name} | ${presented.color}`;
+  return formatLabelList([presented]);
+}
 
-  if (presented.description == null) {
-    return name;
-  }
+function formatLabelList(presentedLabels: Array<PresentedLabel>) {
+  return formatRows(
+    presentedLabels.map((presented) => {
+      const descriptionCells: Array<RowCell> =
+        presented.description == null ? [] : [{ text: presented.description }];
 
-  return `${name} | ${presented.description}`;
+      /**
+       * The colored name shows the color, and if the environment
+       *  does not support color, it is explicitly printed instead
+       */
+      if (isColorEnabled()) {
+        return [{ text: presented.name, style: presented.color }, ...descriptionCells];
+      }
+
+      return [{ text: presented.name }, { text: presented.color }, ...descriptionCells];
+    }),
+  );
 }
 
 export const labelRouter = {
@@ -67,7 +79,7 @@ Example: zinn label create bug --description "Unexpected behavior" --color red`,
   list: {
     run: (args) => {
       parseArgs({ args, strict: true, allowPositionals: false });
-      output(label.getAll().map(presentLabel), (labels) => labels.map(formatLabel).join("\n"));
+      output(label.getAll().map(presentLabel), formatLabelList);
     },
     help: `Usage: zinn label list
 
