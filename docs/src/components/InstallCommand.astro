@@ -4,41 +4,44 @@ import Icon from "./Icon.astro";
 const command = "bun add -g @zinn-dev/cli";
 ---
 
-<div class='group/install relative' data-install>
-	<div class='border-y border-pewter py-6 md:pr-14'>
-		<div class='space-y-2 text-sm leading-relaxed md:text-xl md:whitespace-nowrap'>
-			<code class='block group-data-[copied]/install:text-bone/70'
-				><span
-					class='mr-1.5 inline-block w-[2ch] text-bronze select-none group-data-[copied]/install:invisible md:mr-2.5'
-					aria-hidden='true'>$</span
-				>{command}</code
-			>
-			<code class='block text-bone/70 group-data-[copied]/install:text-limestone'
-				><span
-					class='invisible mr-1.5 inline-block w-[2ch] text-bronze select-none group-data-[copied]/install:visible md:mr-2.5'
-					aria-hidden='true'>&gt;_</span
-				>zinn --help</code
-			>
+<div class='group/install' data-install>
+	<div
+		class='relative bg-soot px-4 py-5 text-limestone scheme-dark selection:bg-limestone! selection:text-soot! md:px-5'>
+		<div class='md:pr-14'>
+			<div class='space-y-2 text-xs leading-relaxed whitespace-nowrap sm:text-sm md:text-xl'>
+				<code class='block group-data-[copied]/install:text-bone/70'
+					><span
+						class='mr-1.5 inline-block w-[2ch] text-bronze select-none group-data-[copied]/install:invisible md:mr-2.5'
+						aria-hidden='true'>$</span
+					>{command}</code
+				>
+				<code class='block text-bone/70 group-data-[copied]/install:text-limestone'
+					><span
+						class='invisible mr-1.5 inline-block w-[2ch] text-bronze select-none group-data-[copied]/install:visible md:mr-2.5'
+						aria-hidden='true'>&gt;_</span
+					>zinn --help</code
+				>
+			</div>
 		</div>
+		<button
+			class='mt-2.5 ml-auto flex min-h-11 w-fit cursor-pointer items-center justify-center gap-2 p-2.5 font-mono text-xs hover:bg-limestone/8 focus-visible:outline-offset-2 md:absolute md:top-5 md:right-5 md:mt-0 md:w-11'
+			type='button'
+			data-copy={command}
+			hidden
+			aria-label='Copy installation command'
+			title='Copy command'>
+			<Icon name='copy' class='size-6 group-data-[copied]/install:hidden' />
+			<Icon name='check' class='hidden size-6 group-data-[copied]/install:block' />
+			<span class='md:hidden'>COPY</span>
+		</button>
 	</div>
-	<button
-		class='mt-2.5 ml-auto flex min-h-11 w-fit cursor-pointer items-center justify-center gap-2 p-2.5 font-mono text-xs hover:bg-limestone/8 md:absolute md:top-6 md:right-0 md:mt-0 md:w-11'
-		type='button'
-		data-copy={command}
-		hidden
-		aria-label='Copy installation command'
-		title='Copy command'>
-		<Icon name='copy' class='size-6 group-data-[copied]/install:hidden' />
-		<Icon name='check' class='hidden size-6 group-data-[copied]/install:block' />
-		<span class='md:hidden'>COPY</span>
-	</button>
-	<div class='mt-2.5 flex min-h-11 items-center justify-between gap-4'>
-		<p class='text-xs leading-normal text-bone'>
+	<div class='mt-3.5'>
+		<p class='text-xs leading-normal'>
 			Experimental and highly unstable. Requires <a class='underline' href='https://bun.sh/'>Bun</a>.
 		</p>
 	</div>
 	<p
-		class='sr-only text-xs leading-normal text-bone data-[error]:not-sr-only data-[error]:mt-2'
+		class='sr-only text-xs leading-normal data-[error]:not-sr-only data-[error]:mt-2'
 		data-copy-feedback
 		role='status'
 		aria-live='polite'

@@ -10,11 +10,11 @@ const { title, description } = Astro.props;
 ---
 
 <!doctype html>
-<html lang='en' class='bg-soot font-sans text-limestone scheme-dark [font-synthesis:none]'>
+<html lang='en' class='bg-limestone font-sans text-soot scheme-light [font-synthesis:none]'>
 	<head>
 		<meta charset='utf-8' />
 		<meta name='viewport' content='width=device-width, initial-scale=1' />
-		<meta name='theme-color' content='#1c1815' />
+		<meta name='theme-color' content='#e8e0cc' />
 		<meta name='description' content={description} />
 		<title>{title}</title>
 		<link rel='icon' href='/favicon.svg' type='image/svg+xml' />
@@ -33,7 +33,7 @@ const { title, description } = Astro.props;
 			)
 		}
 	</head>
-	<body class='selection:bg-bronze selection:text-soot'>
+	<body class='selection:bg-soot selection:text-limestone'>
 		<slot />
 	</body>
 </html>
