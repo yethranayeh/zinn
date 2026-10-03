@@ -1118,7 +1118,7 @@ test("human task output omits empty descriptions while JSON returns null", () =>
       ["task", "create", "EMPTY", "--title", "Empty description", "--description", ""],
       testDir,
     );
-    expect(created.stdout).toBe(`EMPTY-1 | Backlog | Empty description\n`);
+    expect(created.stdout).toBe(`EMPTY-1 | Backlog | - | Empty description\n`);
 
     expect(runZinn(["task", "list", "EMPTY"], testDir).stdout).toBe(
       `EMPTY-1 | Backlog | - | Empty description\n`,
@@ -1132,7 +1132,7 @@ test("human task output omits empty descriptions while JSON returns null", () =>
 
     runZinn(["task", "edit", "EMPTY-1", "--description", "Visible"], testDir);
     expect(runZinn(["task", "edit", "EMPTY-1", "--description", ""], testDir).stdout).toBe(
-      `EMPTY-1 | Backlog | Empty description\n`,
+      `EMPTY-1 | Backlog | - | Empty description\n`,
     );
 
     expect(JSON.parse(runZinn(["task", "list", "EMPTY", "--json"], testDir).stdout)).toEqual([
@@ -1149,7 +1149,7 @@ test("task move, list and view color workflow column names only in a terminal, w
 
     const moved = await runZinnInTerminal(["task", "move", "COLOR-2", "Done"], testDir);
     expect(moved.code).toBe(0);
-    expect(moved.output).toBe(`COLOR-2 | ${GREEN_DONE}\n`);
+    expect(moved.output).toBe(`COLOR-2 | ${GREEN_DONE} | - | finished\n`);
 
     expect((await runZinnInTerminal(["task", "list", "COLOR"], testDir)).output).toBe(
       [
@@ -1170,7 +1170,9 @@ test("task move, list and view color workflow column names only in a terminal, w
       ["COLOR-1 | Backlog | - | waiting", "COLOR-2 | Done    | - | finished", ""].join("\n"),
     );
     expect(runZinn(["task", "view", "COLOR-2"], testDir).stdout).toBe("COLOR-2 | Done | finished\n");
-    expect(runZinn(["task", "move", "COLOR-2", "Done"], testDir).stdout).toBe("COLOR-2 | Done\n");
+    expect(runZinn(["task", "move", "COLOR-2", "Done"], testDir).stdout).toBe(
+      "COLOR-2 | Done | - | finished\n",
+    );
 
     const listedJson = runZinn(["task", "list", "COLOR", "--json"], testDir).stdout;
     expect(listedJson).not.toContain("\x1b");
@@ -1529,7 +1531,7 @@ test("task move to the current column is a no-op", () => {
 
     const result = runZinn(["task", "move", "STILL-1", "Backlog"], testDir);
     expect(result.code).toBe(0);
-    expect(result.stdout).toBe(`STILL-1 | Backlog\n`);
+    expect(result.stdout).toBe(`STILL-1 | Backlog | - | still task\n`);
 
     const after = withTestDb(testDir, (db) =>
       db.query<{ column_id: string; task_order: string; updated_at: number }, []>(
@@ -1552,7 +1554,9 @@ test("task move takes several tasks, appends them in argument order, and notes n
     const result = runZinn(["task", "move", "MANY-3", "MANY-1", "MANY-2", "In Progress"], testDir);
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toBe("MANY-3 | In Progress\nMANY-1 | In Progress\nMANY-2 | In Progress\n");
+    expect(result.stdout).toBe(
+      "MANY-3 | In Progress | - | three\nMANY-1 | In Progress | - | one\nMANY-2 | In Progress | - | two\n",
+    );
     expect(result.stderr).toBe("MANY-1 was already in the In Progress column\n");
     expect(runZinn(["task", "list", "MANY"], testDir).stdout).toMatch(
       /^MANY-1[^\n]*\nMANY-3[^\n]*\nMANY-2[^\n]*\n$/,
@@ -1593,7 +1597,9 @@ test("task move, archive and unarchive align several tasks and note repeated key
 
     const moved = runZinn(["task", "move", "A-1", "LONG-1", "A-1", "Done"], testDir);
     expect(moved.code).toBe(0);
-    expect(moved.stdout).toBe("A-1    | Done\nLONG-1 | Done\nA-1    | Done\n");
+    expect(moved.stdout).toBe(
+      "A-1    | Done | - | short key\nLONG-1 | Done | - | long key\nA-1    | Done | - | short key\n",
+    );
     expect(moved.stderr).toBe("A-1 was already in the Done column\n");
 
     const archived = runZinn(["task", "archive", "A-1", "LONG-1", "A-1"], testDir);
@@ -1666,7 +1672,7 @@ test("task move, archive and unarchive print an object for one task and an array
   });
 });
 
-test("task move prints only the key and new column, while --json returns the full task", () => {
+test("task move prints the task row, while --json returns the full task", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["label", "create", "urgent"], testDir);
     runZinn(["project", "create", "BRIEF"], testDir);
@@ -1677,7 +1683,8 @@ test("task move prints only the key and new column, while --json returns the ful
 
     const moved = runZinn(["task", "move", "BRIEF-1", "In Progress"], testDir);
     expect(moved.code).toBe(0);
-    expect(moved.stdout).toBe("BRIEF-1 | In Progress\n");
+    expect(moved.stdout).toBe("BRIEF-1 | In Progress | H | Detailed task | urgent\n");
+    expect(runZinn(["task", "list", "BRIEF"], testDir).stdout).toBe(moved.stdout);
 
     const movedJson = runZinn(["task", "move", "BRIEF-1", "Review", "--json"], testDir);
     expect(movedJson.code).toBe(0);
@@ -1687,6 +1694,118 @@ test("task move prints only the key and new column, while --json returns the ful
       column: "Review",
       title: "Detailed task",
       description: "Hidden from move output",
+      priority: "high",
+      labels: ["urgent"],
+      changed: true,
+    });
+  });
+});
+
+test("task archive and unarchive print the same row with status for one task and for several", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["label", "create", "urgent"], testDir);
+    runZinn(["project", "create", "ROW"], testDir);
+    runZinn(["task", "create", "ROW", "--title", "one"], testDir);
+    runZinn(
+      ["task", "create", "ROW", "--title", "two", "--description", "Not in rows", "--priority", "high", "--label", "urgent"],
+      testDir,
+    );
+
+    const archivedOne = runZinn(["task", "archive", "ROW-2"], testDir);
+    expect(archivedOne.stdout).toBe("ROW-2 | Archived | Backlog | H | two | urgent\n");
+
+    const unarchivedOne = runZinn(["task", "unarchive", "ROW-2"], testDir);
+    expect(unarchivedOne.stdout).toBe("ROW-2 | Active | Backlog | H | two | urgent\n");
+
+    const archivedSeveral = runZinn(["task", "archive", "ROW-1", "ROW-2"], testDir);
+    expect(archivedSeveral.stdout).toBe(
+      "ROW-1 | Archived | Backlog | - | one\nROW-2 | Archived | Backlog | H | two | urgent\n",
+    );
+    expect(archivedSeveral.stdout).toBe(runZinn(["task", "list", "ROW", "--all"], testDir).stdout);
+
+    const unarchivedSeveral = runZinn(["task", "unarchive", "ROW-1", "ROW-2"], testDir);
+    expect(unarchivedSeveral.stdout).toBe(
+      "ROW-1 | Active | Backlog | - | one\nROW-2 | Active | Backlog | H | two | urgent\n",
+    );
+    expect(unarchivedSeveral.stdout).toBe(runZinn(["task", "list", "ROW", "--all"], testDir).stdout);
+  });
+});
+
+test("task move prints the same row for one task and for several, as task list shows it", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "ROW"], testDir);
+    runZinn(["task", "create", "ROW", "--title", "one", "--priority", "low"], testDir);
+    runZinn(["task", "create", "ROW", "--title", "two"], testDir);
+
+    const movedOne = runZinn(["task", "move", "ROW-1", "Done"], testDir);
+    expect(movedOne.stdout).toBe("ROW-1 | Done | L | one\n");
+
+    const movedSeveral = runZinn(["task", "move", "ROW-2", "ROW-1", "In Progress"], testDir);
+    expect(movedSeveral.stdout).toBe("ROW-2 | In Progress | - | two\nROW-1 | In Progress | L | one\n");
+    expect(movedSeveral.stdout).toBe(runZinn(["task", "list", "ROW"], testDir).stdout);
+  });
+});
+
+test("task delete prints the task row after Deleted, or after Deletion cancelled for when declined", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["label", "create", "urgent"], testDir);
+    runZinn(["project", "create", "ROW"], testDir);
+    runZinn(
+      ["task", "create", "ROW", "--title", "one", "--description", "Not in rows", "--priority", "high", "--label", "urgent"],
+      testDir,
+    );
+    const row = "ROW-1 | Backlog | H | one | urgent\n";
+
+    // ? runZinn gives no stdin, so without --yes the prompt is declined.
+    const cancelled = runZinn(["task", "delete", "ROW-1"], testDir);
+    expect(cancelled.code).toBe(0);
+    expect(cancelled.stdout).toEndWith(`Deletion cancelled for ${row}`);
+    expect(runZinn(["task", "list", "ROW"], testDir).stdout).toBe(row);
+
+    const deleted = runZinn(["task", "delete", "ROW-1", "--yes"], testDir);
+    expect(deleted.code).toBe(0);
+    expect(deleted.stdout).toBe(`Deleted ${row}`);
+    expect(runZinn(["task", "list", "ROW"], testDir).stdout).toBe("");
+  });
+});
+
+test("task write commands print JSON with the full task details, unchanged by the row output", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["label", "create", "urgent"], testDir);
+    runZinn(["project", "create", "ROW"], testDir);
+
+    const created = runZinn(
+      ["task", "create", "ROW", "--title", "one", "--description", "Full text", "--priority", "high", "--label", "urgent", "--json"],
+      testDir,
+    );
+    expect(JSON.parse(created.stdout)).toEqual({
+      key: "ROW-1",
+      status: "Active",
+      column: "Backlog",
+      title: "one",
+      description: "Full text",
+      priority: "high",
+      labels: ["urgent"],
+    });
+
+    const edited = runZinn(["task", "edit", "ROW-1", "--title", "uno", "--json"], testDir);
+    expect(JSON.parse(edited.stdout)).toEqual({
+      key: "ROW-1",
+      status: "Active",
+      column: "Backlog",
+      title: "uno",
+      description: "Full text",
+      priority: "high",
+      labels: ["urgent"],
+    });
+
+    const archived = runZinn(["task", "archive", "ROW-1", "--json"], testDir);
+    expect(JSON.parse(archived.stdout)).toEqual({
+      key: "ROW-1",
+      status: "Archived",
+      column: "Backlog",
+      title: "uno",
+      description: "Full text",
       priority: "high",
       labels: ["urgent"],
       changed: true,
@@ -2301,28 +2420,30 @@ test("task mutations print the resulting entity", () => {
     runZinn(["project", "create", "LIFE", "--name", "Responsive"], testDir);
 
     expect(runZinn(["task", "create", "LIFE", "--title", "First", "--description", "Description"], testDir).stdout).toBe(
-      `LIFE-1 | Backlog | First | Description\n`,
+      `LIFE-1 | Backlog | - | First\n`,
     );
     runZinn(["task", "create", "LIFE", "--title", "Second"], testDir);
     expect(
       runZinn(["task", "edit", "life-1", "--title", "Updated"], testDir).stdout,
-    ).toBe(`LIFE-1 | Backlog | Updated | Description\n`);
-    expect(runZinn(["task", "move", "LIFE-1", "TODO"], testDir).stdout).toBe("LIFE-1 | TODO\n");
+    ).toBe(`LIFE-1 | Backlog | - | Updated\n`);
+    expect(runZinn(["task", "move", "LIFE-1", "TODO"], testDir).stdout).toBe(
+      "LIFE-1 | TODO | - | Updated\n",
+    );
     runZinn(["task", "move", "LIFE-2", "TODO"], testDir);
     expect(runZinn(["task", "order", "LIFE-2", "top"], testDir).stdout).toBe(
-      "LIFE-2 | TODO | Second\n",
+      "LIFE-2 | TODO | - | Second\n",
     );
     expect(runZinn(["task", "archive", "LIFE-1"], testDir).stdout).toBe(
-      "LIFE-1 | Archived | TODO | Updated | Description\n",
+      "LIFE-1 | Archived | TODO | - | Updated\n",
     );
     expect(runZinn(["task", "unarchive", "LIFE-1"], testDir).stdout).toBe(
-      "LIFE-1 | Active | TODO | Updated | Description\n",
+      "LIFE-1 | Active | TODO | - | Updated\n",
     );
     expect(runZinnWithConfirmation(["task", "delete", "LIFE-1"], testDir).stdout).toContain(
-      "Deleted LIFE-1 | TODO | Updated | Description",
+      "Deleted LIFE-1 | TODO | - | Updated",
     );
     expect(runZinn(["task", "delete", "LIFE-2"], testDir).stdout).toContain(
-      "Deletion cancelled for LIFE-2 | TODO | Second",
+      "Deletion cancelled for LIFE-2 | TODO | - | Second",
     );
   });
 });
@@ -2620,7 +2741,7 @@ test("--yes deletes without asking for confirmation", () => {
     const result = runZinn(["task", "delete", "WEB-1", "--yes"], testDir);
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toBe(`Deleted WEB-1 | Backlog | Ship it\n`);
+    expect(result.stdout).toBe(`Deleted WEB-1 | Backlog | - | Ship it\n`);
     expect(runZinn(["task", "list", "WEB"], testDir).stdout).toBe("");
   });
 });
@@ -2891,7 +3012,7 @@ test("global label workflows support repeated create/edit flags and preserve tas
     expect(run("label", "list").stdout).toContain(`${"bug".padEnd("needs review, soon".length)} | red | Details`);
     const created = run("task", "create", "APP", "--title", "Login", "--description", "", "--label", "BUG", "--label", "AUTH");
     expect(created.code).toBe(0);
-    expect(created.stdout).toContain("Labels: auth, bug");
+    expect(created.stdout).toBe("APP-1 | Backlog | - | Login | auth, bug\n");
     const editedLabel = run("label", "edit", " BUG ", "--name", " defect ", "--color", "blue", "--description", "");
     expect(editedLabel.code).toBe(0);
     expect(editedLabel.stdout).toBe("defect | blue\n");
@@ -2906,8 +3027,12 @@ test("global label workflows support repeated create/edit flags and preserve tas
     expect(run("task", "edit", "APP-1", "--title", "Must not change", "--add-label", "unknown").code).toBe(1);
     expect(run("task", "view", "APP-1").stdout).toContain("Changed");
     expect(run("task", "edit", "APP-1", "--add-label", "BUG", "--remove-label", "bug").code).toBe(1);
-    expect(run("task", "label", "add", "APP-1", "DEFECT").stdout).toContain("Labels: auth, defect, needs review, soon");
-    expect(run("task", "label", "remove", "APP-1", "AUTH", "dEfEcT").stdout).toContain("Labels: needs review, soon");
+    expect(run("task", "label", "add", "APP-1", "DEFECT").stdout).toBe(
+      "APP-1 | Backlog | - | Changed | auth, defect, needs review, soon\n",
+    );
+    expect(run("task", "label", "remove", "APP-1", "AUTH", "dEfEcT").stdout).toBe(
+      "APP-1 | Backlog | - | Changed | needs review, soon\n",
+    );
     expect(runZinnWithConfirmation(["label", "delete", "NEEDS REVIEW, SOON"], dir).code).toBe(0);
     expect(run("task", "view", "APP-1").stdout).not.toContain("Labels:");
     expect(run("label", "list").stdout).toContain("auth");
@@ -3085,7 +3210,7 @@ test("task rows color each attached label name by its label color, with plain se
   });
 });
 
-test("the Labels part of single-task output colors each label name by its label color", async () => {
+test("label names in task write rows and in task view are colored by their label color", async () => {
   await withIsolatedZinnDirAsync(async (dir) => {
     runZinn(["label", "create", "bug", "--color", "red"], dir);
     runZinn(["label", "create", "docs", "--color", "cyan"], dir);
@@ -3096,7 +3221,7 @@ test("the Labels part of single-task output colors each label name by its label 
 
     expect(
       runZinn(["task", "create", "TAGS", "--title", "Tagged", "--label", "docs", "--label", "bug"], dir, forceColor).stdout,
-    ).toBe(`TAGS-1 | ${GRAY_BACKLOG} | Tagged | Labels: ${coloredLabels}\n`);
+    ).toBe(`TAGS-1 | ${GRAY_BACKLOG} | - | Tagged | ${coloredLabels}\n`);
     expect(runZinn(["task", "view", "TAGS-1"], dir, forceColor).stdout).toBe(
       `TAGS-1 | ${GRAY_BACKLOG} | Tagged | Labels: ${coloredLabels}\n`,
     );
@@ -3104,14 +3229,14 @@ test("the Labels part of single-task output colors each label name by its label 
       `TAGS-1 | ${GRAY_BACKLOG} | Tagged | Labels: ${coloredLabels}\n`,
     );
     expect(runZinn(["task", "label", "remove", "TAGS-1", "bug"], dir, forceColor).stdout).toBe(
-      `TAGS-1 | ${GRAY_BACKLOG} | Tagged | Labels: \x1b[36mdocs\x1b[39m\n`,
+      `TAGS-1 | ${GRAY_BACKLOG} | - | Tagged | \x1b[36mdocs\x1b[39m\n`,
     );
     expect(runZinn(["task", "label", "add", "TAGS-1", "bug"], dir, forceColor).stdout).toBe(
-      `TAGS-1 | ${GRAY_BACKLOG} | Tagged | Labels: ${coloredLabels}\n`,
+      `TAGS-1 | ${GRAY_BACKLOG} | - | Tagged | ${coloredLabels}\n`,
     );
     expect(
       runZinn(["task", "edit", "TAGS-1", "--title", "Retitled"], dir, forceColor).stdout,
-    ).toBe(`TAGS-1 | ${GRAY_BACKLOG} | Retitled | Labels: ${coloredLabels}\n`);
+    ).toBe(`TAGS-1 | ${GRAY_BACKLOG} | - | Retitled | ${coloredLabels}\n`);
   });
 });
 
@@ -3268,7 +3393,7 @@ test("priority persists across CLI creation, editing, listing, clearing, and no-
     for (const priority of ["low", "medium", "high", "urgent"]) {
       const created = runZinn(["task", "create", "PRI", "--title", priority, "--priority", priority], directory);
       expect(created.code).toBe(0);
-      expect(created.stdout).toContain(`Priority: ${priority}`);
+      expect(created.stdout).toContain(`| Backlog | ${priority[0]!.toUpperCase()} | ${priority}`);
     }
     expect(runZinn(["task", "list", "PRI"], directory).stdout).toBe(
       [
@@ -3289,7 +3414,9 @@ test("priority persists across CLI creation, editing, listing, clearing, and no-
     withTestDb(directory, (db) => {
       expect(db.query<{ updated_at: number }, []>("SELECT updated_at FROM task WHERE number = 1").get()!.updated_at).toBe(1);
     });
-    expect(runZinn(["task", "edit", "PRI-1", "--title", "Renamed"], directory).stdout).toContain("Priority: high");
+    expect(runZinn(["task", "edit", "PRI-1", "--title", "Renamed"], directory).stdout).toBe(
+      "PRI-1 | Backlog | H | Renamed\n",
+    );
     expect(runZinn(["task", "list", "PRI"], directory).stdout).toContain(
       `PRI-1 | Backlog | H | Renamed`,
     );

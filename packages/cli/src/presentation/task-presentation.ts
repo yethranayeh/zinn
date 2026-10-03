@@ -66,8 +66,7 @@ export function presentTask(taskMatch: TaskWithKey): PresentedTask {
   };
 }
 
-export function formatTask(presented: PresentedTask, options: { showsStatus?: boolean } = {}) {
-  const status = options.showsStatus ? ` | ${presented.status}` : "";
+export function formatTask(presented: PresentedTask) {
   const column = formatCell(taskColumnCell(presented.column));
   const hasDescription = presented.description != null && presented.description.length > 0;
   const description = hasDescription ? ` | ${presented.description}` : "";
@@ -78,24 +77,11 @@ export function formatTask(presented: PresentedTask, options: { showsStatus?: bo
       ? ""
       : ` | Labels: ${formatLabelNames(presented.labels, getLabelColorsByName())}`;
 
-  return `${presented.key}${status} | ${column} | ${presented.title}${description}${priority}${labelText}`;
+  return `${presented.key} | ${column} | ${presented.title}${description}${priority}${labelText}`;
 }
 
-export function formatTaskWithStatus(presented: PresentedTask) {
-  return formatTask(presented, { showsStatus: true });
-}
-
-export function formatTaskMove(presented: PresentedTask) {
-  return formatTaskMoveList([presented]);
-}
-
-export function formatTaskMoveList(presentedTasks: Array<PresentedTask>) {
-  return formatRows(
-    presentedTasks.map((presentedTask) => [
-      { text: presentedTask.key },
-      taskColumnCell(presentedTask.column),
-    ]),
-  );
+export function formatTaskRow(presented: PresentedTask) {
+  return formatTaskList([presented]);
 }
 
 export function formatTaskList(

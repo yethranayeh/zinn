@@ -19,9 +19,7 @@ import {
   formatTask,
   formatTaskList,
   formatTaskListWithStatus,
-  formatTaskMove,
-  formatTaskMoveList,
-  formatTaskWithStatus,
+  formatTaskRow,
   presentTask,
 } from "../presentation/task-presentation";
 
@@ -69,7 +67,7 @@ export const taskRouter = {
         },
         currentActor(),
       );
-      output(presentTask(createdTask), formatTask);
+      output(presentTask(createdTask), formatTaskRow);
     },
     help: `Usage: zinn task create <project-key> --title <text> [--description <text>] [--priority {low|medium|high|urgent|none}] [--label <name>]
 
@@ -292,7 +290,7 @@ Example: zinn task view MDR-1`,
         currentActor(),
       );
 
-      output(presentTask(editedTask), formatTask);
+      output(presentTask(editedTask), formatTaskRow);
     },
     help: `Usage: zinn task edit <task-key> [--title <text>] [--description <text>] [--priority {low|medium|high|urgent|none}] [--add-label <name>] [--remove-label <name>]
 
@@ -329,8 +327,7 @@ Example: zinn task edit MDR-1 --title "Meet the quarterly refinement quota"`,
       const moves = task.moveMany({ taskKeys, targetColumn }, currentActor());
       outputTaskChanges(
         moves,
-        formatTaskMove,
-        formatTaskMoveList,
+        formatTaskList,
         (movedTask) => `${movedTask.key} was already in the ${movedTask.column} column`,
       );
     },
@@ -341,7 +338,7 @@ Moving a task to a different column lists it last in that column,
 matching placement at the bottom of a visual kanban column.
 Several tasks are moved in the order given, and each task's column is looked up in its own project.
 
-Prints each task's key and new column.
+Prints each task as a row, as in 'task list'.
 
 Giving a task's current column as the target will not do anything, and a note says so.
 Archived tasks must be unarchived before they can be moved.
@@ -376,7 +373,7 @@ Example: zinn task move MDR-1 MDR-2 "In Progress"`,
           }
 
           const orderedTask = task.order({ taskKey, direction, targetTaskKey }, currentActor());
-          output(presentTask(orderedTask), formatTask);
+          output(presentTask(orderedTask), formatTaskRow);
           return;
         }
         case "top":
@@ -388,7 +385,7 @@ Example: zinn task move MDR-1 MDR-2 "In Progress"`,
           }
 
           const orderedTask = task.order({ taskKey, direction }, currentActor());
-          output(presentTask(orderedTask), formatTask);
+          output(presentTask(orderedTask), formatTaskRow);
           return;
         }
         default:
@@ -410,7 +407,6 @@ Example: zinn task order MDR-2 before MDR-1`,
       const archives = task.archiveMany(taskKeys, currentActor());
       outputTaskChanges(
         archives,
-        formatTaskWithStatus,
         formatTaskListWithStatus,
         (archivedTask) => `${archivedTask.key} was already archived`,
       );
@@ -421,7 +417,7 @@ Archive tasks so they no longer appear in active task lists.
 Archiving an archived task does not do anything.
 On bulk changes, if any task cannot be archived, the bulk operation is aborted.
 
-Several tasks print as in 'task list --all'. Check its help output for what each row shows.
+Each task prints as a row, as in 'task list --all'. Check its help output for what each row shows.
 With --json, one task prints an object and several print an array.
 Each task's changed field is 'false' when it was already in the requested state.
 
@@ -433,7 +429,6 @@ Example: zinn task archive MDR-1 MDR-2`,
       const unarchives = task.unarchiveMany(taskKeys, currentActor());
       outputTaskChanges(
         unarchives,
-        formatTaskWithStatus,
         formatTaskListWithStatus,
         (unarchivedTask) => `${unarchivedTask.key} was already active`,
       );
@@ -444,7 +439,7 @@ Unarchive tasks at the bottom of their previous columns, in the order given.
 Unarchiving an active task does not do anything.
 On bulk changes, if any task cannot be unarchived, the bulk operation is aborted.
 
-Several tasks print as in 'task list --all'. Check its help output for what each row shows.
+Each task prints as a row, as in 'task list --all'. Check its help output for what each row shows.
 With --json, one task prints an object and several print an array.
 Each task's changed field is 'false' when it was already in the requested state.
 
@@ -474,9 +469,9 @@ Example: zinn task unarchive MDR-1 MDR-2`,
 
         if (canDelete) {
           task.delete(taskKey, currentActor());
-          output(presented, (t) => `Deleted ${formatTask(t)}`);
+          output(presented, (t) => `Deleted ${formatTaskRow(t)}`);
         } else {
-          output(presented, (t) => `Deletion cancelled for ${formatTask(t)}`);
+          output(presented, (t) => `Deletion cancelled for ${formatTaskRow(t)}`);
         }
       } catch (err: any) {
         quit(err?.message ?? "Something went wrong");
@@ -495,7 +490,7 @@ Example: zinn task delete MDR-1`,
     add: {
       run: (args) => {
         const props = parseTaskLabelArgs(args);
-        output(presentTask(task.label.add(props, currentActor())), formatTask);
+        output(presentTask(task.label.add(props, currentActor())), formatTaskRow);
       },
       help: `Usage: zinn task label add <task-key> <label-name>...
 
@@ -505,7 +500,7 @@ Already attached labels are unchanged.`,
     remove: {
       run: (args) => {
         const props = parseTaskLabelArgs(args);
-        output(presentTask(task.label.remove(props, currentActor())), formatTask);
+        output(presentTask(task.label.remove(props, currentActor())), formatTaskRow);
       },
       help: `Usage: zinn task label remove <task-key> <label-name>...
 
@@ -525,13 +520,12 @@ function parseTaskKeys(args: Array<string>) {
 }
 
 /**
- * Prints one task as an object for single-task commands, and several as an aligned list or array.
+ * Prints the changed tasks as rows, or as JSON: an object for one task and an array for several.
  * JSON includes each task's `changed` flag, and each unchanged task also gets a note on stderr.
  */
 function outputTaskChanges(
   changes: Array<TaskChange>,
-  formatOne: (presentedTask: PresentedTask) => string,
-  formatSeveral: (presentedTasks: Array<PresentedTask>) => string,
+  formatTasks: (presentedTasks: Array<PresentedTask>) => string,
   describeUnchanged: (presentedTask: PresentedTask) => string,
 ) {
   const presentedChanges = changes.map((change) => ({
@@ -540,9 +534,9 @@ function outputTaskChanges(
   }));
 
   if (presentedChanges.length === 1) {
-    output(presentedChanges[0]!, formatOne);
+    output(presentedChanges[0]!, (presentedChange) => formatTasks([presentedChange]));
   } else {
-    output(presentedChanges, formatSeveral);
+    output(presentedChanges, formatTasks);
   }
 
   for (const presentedChange of presentedChanges) {

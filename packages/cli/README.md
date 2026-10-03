@@ -124,6 +124,8 @@ The list follows the project's column order and the task order within each colum
 
 Each row shows the task's key, column, priority marker, title, and labels, such as `MDR-1 | TODO | H | Refine the numbers | bug, cli`. Preview lists _do not_ contain the descriptions. To see everything, `task view` should be used.
 
+Commands that change a task, such as `task create`, `task edit` and `task move`, print the task as the same row. Commands that take several tasks print one row each. With `--json`, they print the full task details.
+
 Use `--label <name>` to list tasks with a label. You can provide multiple `--label` flags to refine your filter further down to more specific task results. Label names matching ignores casing. An unknown label causes an error to be raised.
 
 ## Search tasks
@@ -260,7 +262,7 @@ zinn task move MDR-1 "In Progress"
 ```
 
 A moved task appears at the bottom of its destination column. Moving it to its current column does nothing. Archived tasks must be unarchived before they can be moved.
-Moving prints only the task's key and new column, such as `MDR-1 | In Progress`, while `--json` prints the full task details.
+Moving prints the task's row, such as `MDR-1 | In Progress | H | Refine the numbers | bug, cli`.
 
 Move multiple tasks at once by giving their keys before the column. They land at the bottom of the column in the order given, unless of course a task was _already_ in that column, in which case they stay as they were. Tasks from different projects can be moved together, and each one's column is looked up in its own project:
 
@@ -295,7 +297,7 @@ zinn task list MDR --archived
 zinn task list MDR --all
 ```
 
-`--archived` and `--all` cannot be used together. In an `--all` listing, Zinn adds an Active or Archived status column.
+`--archived` and `--all` cannot be used together. In an `--all` listing, Zinn adds an Active or Archived status column. `task archive` and `task unarchive` print each task's row with the same status column.
 
 Unarchiving puts a task at the bottom of its previous column:
 
@@ -306,7 +308,7 @@ zinn task unarchive MDR-2 MDR-3
 
 Archive or unarchive multiple tasks by giving several keys. Unarchived tasks land in the order given. See [Changing tasks in bulk](#changing-tasks-in-bulk).
 
-Delete a task permanently with `zinn task delete MDR-1`. It asks for confirmation before performing the action, unless `--yes` is used (see [Confirmations](#confirmations)).
+Delete a task permanently with `zinn task delete MDR-1`. It asks for confirmation before performing the action, unless `--yes` is used (see [Confirmations](#confirmations)). It prints `Deleted ` followed by the task's row, or `Deletion cancelled for ` followed by the row when the confirmation is declined.
 
 ## Back up the database
 
