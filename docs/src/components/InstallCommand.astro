@@ -25,15 +25,16 @@ const command = "bun add -g @zinn-dev/cli";
 				>
 			</div>
 		</div>
+
 		<button
-			class='mt-2.5 ml-auto flex min-h-11 w-fit cursor-pointer items-center justify-center gap-2 p-2.5 font-mono text-xs hover:bg-limestone/8 focus-visible:outline-offset-2 md:absolute md:top-5 md:right-5 md:mt-0 md:w-11'
+			class='absolute top-auto right-2 bottom-0 flex min-h-11 w-fit cursor-pointer items-center justify-center gap-2 p-2.5 font-mono text-xs hover:bg-limestone/8 focus-visible:outline-offset-2 md:top-5 md:bottom-auto md:right-5 md:mt-0 md:w-11'
 			type='button'
 			data-copy={command}
 			hidden
 			aria-label='Copy installation command'
 			title='Copy command'>
-			<Icon name='copy' class='size-6 group-data-[copied]/install:hidden' />
-			<Icon name='check' class='hidden size-6 group-data-[copied]/install:block' />
+			<Icon name='copy' class='size-4 md:size-6 group-data-[copied]/install:hidden' />
+			<Icon name='check' class='hidden size-4 md:size-6 group-data-[copied]/install:block' />
 			<span class='md:hidden'>COPY</span>
 		</button>
 	</div>
