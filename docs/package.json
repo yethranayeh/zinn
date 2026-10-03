@@ -16,6 +16,7 @@
 	"devDependencies": {
 		"@astrojs/check": "^0.9.10",
 		"@tailwindcss/vite": "^4.3.3",
-		"typescript": "^5"
+		"typescript": "^5",
+		"wrangler": "4.147.0"
 	}
 }
