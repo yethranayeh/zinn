@@ -58,6 +58,10 @@ Internally, the DB functions still return task rows without `key`. Relation look
 
 The index is an FTS5 table, `task_search`, with one row per task, kept in sync by the core operations that change a task's title, description, or comments.
 
+## Column task counts
+
+`column.getTaskCountsByProjectKey(projectKey)` returns `{ columns, archivedTaskCount }` without loading the tasks. `columns` holds `{ column, taskCount }` for every column of the project in board order, where `taskCount` counts unarchived tasks and is `0` for an empty column. `archivedTaskCount` is the project's archived tasks across all columns. The project must exist.
+
 ## Activity
 
 Mutations that change tasks, projects, columns, global label definitions, relations, or comments require an actor and write activity in the same transaction.

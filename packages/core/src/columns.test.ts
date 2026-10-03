@@ -110,3 +110,47 @@ test("column orders move only the moved column and skip no-op writes", () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("column task counts cover each column in board order, with archived tasks in one total", () => {
+  const directory = mkdtempSync(join(tmpdir(), "zinn-columns-"));
+  try {
+    const result = Bun.spawnSync([process.execPath, "--eval", `
+      import { strict as assert } from "node:assert";
+      import { project, column, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
+      const actor = { name: "Test Human", email: null, kind: "human" };
+      const app = project.create({ key: "APP", name: "App" }, actor);
+      const other = project.create({ key: "OTHER" }, actor);
+      const counts = () => {
+        const { columns, archivedTaskCount } = column.getTaskCountsByProjectKey("app");
+        return { columns: columns.map(entry => [entry.column.name, entry.taskCount]), archivedTaskCount };
+      };
+
+      assert.deepEqual(counts(), {
+        columns: [["Backlog", 0], ["TODO", 0], ["In Progress", 0], ["Review", 0], ["Done", 0]],
+        archivedTaskCount: 0,
+      });
+
+      for (const title of ["One", "Two", "Three", "Four", "Five"]) {
+        task.create({ project_id: app.id, title, description: null }, actor);
+      }
+      task.create({ project_id: other.id, title: "Elsewhere", description: null }, actor);
+      task.move({ taskKey: "APP-2", targetColumn: "Done" }, actor);
+      task.move({ taskKey: "APP-3", targetColumn: "Done" }, actor);
+      task.move({ taskKey: "APP-4", targetColumn: "Review" }, actor);
+      task.archive("APP-3", actor);
+      task.archive("APP-5", actor);
+      column.order({ projectKey: "APP", columnName: "Done", direction: "first" }, actor);
+
+      assert.deepEqual(counts(), {
+        columns: [["Done", 1], ["Backlog", 1], ["TODO", 0], ["In Progress", 0], ["Review", 1]],
+        archivedTaskCount: 2,
+      });
+      assert.deepEqual(column.getTaskCountsByProjectKey("APP").columns.map(entry => entry.column), column.getAllByProjectKey("APP"));
+      assert.throws(() => column.getTaskCountsByProjectKey("nope"), /Project with key "NOPE" does not exist!/);
+    `], { env: { ...process.env, ZINN_DIR: directory } });
+    expect(result.stderr.toString()).toBe("");
+    expect(result.exitCode).toBe(0);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

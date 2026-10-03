@@ -1,9 +1,9 @@
 import type { RouteDef } from "../types";
-import type { PresentedTask } from "../presentation/task-presentation";
+import type { PresentedColumnTaskCount } from "../presentation/column-presentation";
 
 import { parseArgs } from "node:util";
 
-import { column, project, task } from "@zinn-dev/core";
+import { column, project } from "@zinn-dev/core";
 import {
   confirmAction,
   output,
@@ -11,26 +11,36 @@ import {
   validatePositionalCount,
   validateUniqueOptions,
 } from "../lib";
-import { formatTaskList, presentTask } from "../presentation/task-presentation";
+import { formatColumnTaskCounts } from "../presentation/column-presentation";
 import { formatDescriptionPreview } from "../presentation/description-presentation";
 import { formatCellSeparator, formatRows } from "../presentation/row-layout";
+import { formatSection } from "../presentation/section";
 import { currentActor } from "../actor";
 
 type PresentedProject = { key: string; name: string; description: string | null };
-type PresentedProjectView = PresentedProject & { tasks: Array<PresentedTask> };
+type PresentedProjectView = PresentedProject & {
+  columns: Array<PresentedColumnTaskCount>;
+  archivedTaskCount: number;
+};
+type ProjectRowOptions = { showsDescriptionPreview?: boolean };
 
 function presentProject(projectMatch: PresentedProject): PresentedProject {
   return { key: projectMatch.key, name: projectMatch.name, description: projectMatch.description };
 }
 
-function formatProject(presented: PresentedProject) {
-  return formatProjectList([presented]);
+function formatProject(presented: PresentedProject, options: ProjectRowOptions = {}) {
+  return formatProjectList([presented], options);
 }
 
-function formatProjectList(presentedProjects: Array<PresentedProject>) {
+function formatProjectList(
+  presentedProjects: Array<PresentedProject>,
+  { showsDescriptionPreview = true }: ProjectRowOptions = {},
+) {
   return formatRows(
     presentedProjects.map((presented) => {
-      const descriptionPreview = formatDescriptionPreview(presented.description);
+      const descriptionPreview = showsDescriptionPreview
+        ? formatDescriptionPreview(presented.description)
+        : "";
       const description =
         descriptionPreview.length > 0 ? `${formatCellSeparator()}${descriptionPreview}` : "";
 
@@ -121,21 +131,36 @@ Example: zinn project list`,
         quit(`Project with key "${project.standardizeKey(projectKey)}" does not exist!`);
       }
 
+      const taskCounts = column.getTaskCountsByProjectKey(projectMatch.key);
       const presentedProject: PresentedProjectView = {
         ...presentProject(projectMatch),
-        tasks: task.getAll({ projectKey, archive: "active" }).map(presentTask),
+        columns: taskCounts.columns.map((columnCount) => ({
+          name: columnCount.column.name,
+          taskCount: columnCount.taskCount,
+        })),
+        archivedTaskCount: taskCounts.archivedTaskCount,
       };
 
       output(presentedProject, (viewedProject) => {
-        const projectHeader = formatProject(viewedProject);
-        const taskList = formatTaskList(viewedProject.tasks);
+        // The full description follows as its own section, so the row leaves out the preview.
+        const sections = [formatProject(viewedProject, { showsDescriptionPreview: false })];
 
-        return taskList.length === 0 ? projectHeader : `${projectHeader}\n\n${taskList}`;
+        if (viewedProject.description != null) {
+          sections.push(formatSection("Description", viewedProject.description));
+        }
+
+        const columnTaskCounts = formatColumnTaskCounts(viewedProject.columns, {
+          archivedTaskCount: viewedProject.archivedTaskCount,
+        });
+        sections.push(formatSection("Columns", columnTaskCounts));
+
+        return sections.join("\n\n");
       });
     },
     help: `Usage: zinn project view <project-key>
 
-Show a project and its active tasks in board order.
+Show a project with its description and the number of tasks in each column.
+The description prints in full, keeping its line breaks. Archived tasks are counted as one total.
 
 Example: zinn project view MDR`,
   },

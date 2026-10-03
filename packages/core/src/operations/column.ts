@@ -9,6 +9,7 @@ import { generateKeyBetween } from "fractional-indexing";
 import { getDb } from "../db";
 import * as dbProject from "../db/project";
 import * as dbColumn from "../db/column";
+import * as dbTask from "../db/task";
 
 import { standardizeProjectKey } from "../lib";
 import { columnCreateSchema, columnEditSchema, columnOrderSchema } from "../schemas/column";
@@ -40,6 +41,25 @@ function requireColumnByName(project: Project, projectColumns: Array<Column>, na
 export const column = {
   getById: dbColumn.getById,
   getAllByProjectKey: (key: string) => requireProjectColumns(key).projectColumns,
+  getTaskCountsByProjectKey: (key: string) => {
+    const { project, projectColumns } = requireProjectColumns(key);
+    const activeCountsByColumnId = new Map(
+      dbTask.countByColumnId(project.id, "active").map((row) => [row.column_id, row.task_count]),
+    );
+
+    /** Unarchived tasks are counted per column, in board order. Archived tasks are counted only in the project-wide total. */
+    const archivedTaskCount = dbTask
+      .countByColumnId(project.id, "archived")
+      .reduce((total, row) => total + row.task_count, 0);
+
+    return {
+      columns: projectColumns.map((columnMatch) => ({
+        column: columnMatch,
+        taskCount: activeCountsByColumnId.get(columnMatch.id) ?? 0,
+      })),
+      archivedTaskCount,
+    };
+  },
   create: (input: ColumnCreateInput, actor: Actor) => {
     const props = validateTaskInput(columnCreateSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);

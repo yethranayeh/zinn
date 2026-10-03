@@ -89,6 +89,24 @@ export function getAllByColumnId(columnId: string, archive: TaskArchiveFilter = 
     .all({ $column_id: columnId });
 }
 
+/** One row per column that has matching tasks. Columns without any matches are left out. */
+export function countByColumnId(projectId: string, archive: TaskArchiveFilter = "active") {
+  const db = getDb();
+  const archiveCondition = getArchiveCondition(archive);
+  const archiveClause = archiveCondition == null ? "" : `AND ${archiveCondition}`;
+
+  return db
+    .query<
+      { column_id: string; task_count: number },
+      Bind<Pick<Task, "project_id">>
+    >(`SELECT column_id, COUNT(*) AS task_count
+    FROM ${DB_TABLE.task}
+    WHERE project_id = $project_id
+      ${archiveClause}
+    GROUP BY column_id`)
+    .all({ $project_id: projectId });
+}
+
 export function getLastByColumnId(columnId: string) {
   const db = getDb();
   return db

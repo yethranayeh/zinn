@@ -44,7 +44,7 @@ zinn project create MDR --name "Macrodata Refinement" --description "Refine macr
 
 Project keys are stored in **uppercase**. You can create a project without a project name, like `zinn project create MDR`, which will just default to having the key as the project name too.
 
-Project list, view and mutation text show truncated inline description previews. See [Editing conventions](#editing-conventions) for description storage and clearing.
+Project list and mutation text show truncated inline description previews, while `project view` prints the description in full. See [Editing conventions](#editing-conventions) for description storage and clearing.
 
 Each project starts with _Backlog_, _TODO_, _In Progress_, _Review_, and _Done_ columns.
 
@@ -56,7 +56,7 @@ zinn project view MDR
 zinn project column list MDR
 ```
 
-`project view` prints the project and its unarchived tasks. It's the same list as you would get with `zinn task list <project-key>`.
+`project view` prints the project with its full description and the number of unarchived tasks in each column. Archived tasks are counted as one total. Use `zinn task list <project-key>` to list the tasks themselves.
 
 Edit a project:
 

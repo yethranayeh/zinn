@@ -4,6 +4,7 @@ import type { RowCell } from "./row-layout";
 import { column, label, task } from "@zinn-dev/core";
 
 import { styleOutputText } from "./color";
+import { columnNameCell } from "./column-presentation";
 import { formatCellSeparator, formatRows } from "./row-layout";
 
 export type PresentedTask = {
@@ -25,19 +26,6 @@ function taskPriorityCell(priority: TaskPriority | null): RowCell {
   }
 
   return { text: priority[0]!.toUpperCase() };
-}
-
-function taskColumnCell(columnName: string): RowCell {
-  // TODO: Derive column colors from column roles once roles exist instead of relying on names.
-  if (columnName === "Backlog") {
-    return { text: columnName, style: "gray" };
-  }
-
-  if (columnName === "Done") {
-    return { text: columnName, style: "green" };
-  }
-
-  return { text: columnName };
 }
 
 /**
@@ -90,7 +78,7 @@ export function formatTaskList(
       return [
         { text: presentedTask.key },
         ...statusCells,
-        taskColumnCell(presentedTask.column),
+        columnNameCell(presentedTask.column),
         taskPriorityCell(presentedTask.priority),
         { text: `${presentedTask.title}${labels}` },
       ];

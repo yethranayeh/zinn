@@ -602,87 +602,95 @@ test("project list does not retain a deleted project", () => {
   });
 });
 
-test("project view prints the project followed by the same active tasks as task list", () => {
+test("project view prints the full description and unarchived task counts per column, with archived tasks as one total", () => {
   withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "VIEW", "--name", "Project view"], testDir);
-    runZinn(
-      [
-        "task",
-        "create",
-        "VIEW",
-        "--title",
-        "Backlog task",
-        "--description",
-        "Backlog description",
-        "--priority",
-        "high",
-      ],
-      testDir,
-    );
-    runZinn(["task", "create", "VIEW", "--title", "TODO task"], testDir);
-    runZinn(["task", "move", "VIEW-2", "TODO"], testDir);
-    runZinn(["task", "create", "VIEW", "--title", "Archived task"], testDir);
-    runZinn(["task", "archive", "VIEW-3"], testDir);
+    const run = (...args: Array<string>) => runZinn(args, testDir);
+    const description = "Refine the numbers\n  Keep the quota";
+    run("project", "create", "VIEW", "--name", "Project view", "--description", description);
+    run("project", "create", "OTHER");
+    run("task", "create", "OTHER", "--title", "Elsewhere");
+    for (const title of ["Backlog task", "First done", "Second done", "Archived task"]) {
+      run("task", "create", "VIEW", "--title", title, "--description", "Task description");
+    }
+    run("task", "move", "VIEW-2", "VIEW-3", "Done");
+    run("task", "archive", "VIEW-4");
 
-    const listedTasks = runZinn(["task", "list", "VIEW"], testDir);
-    const viewedProject = runZinn(["project", "view", "view"], testDir);
+    const viewedProject = run("project", "view", "view");
 
     expect(viewedProject.code).toBe(0);
     expect(viewedProject.stderr).toBe("");
-    expect(viewedProject.stdout).toBe(`VIEW | Project view\n\n${listedTasks.stdout}`);
-    expect(viewedProject.stdout).not.toContain("Archived task");
+    expect(viewedProject.stdout).toBe(
+      [
+        "VIEW | Project view",
+        "",
+        "Description:",
+        "Refine the numbers",
+        "  Keep the quota",
+        "",
+        "Columns:",
+        "Backlog     | 1",
+        "TODO        | 0",
+        "In Progress | 0",
+        "Review      | 0",
+        "Done        | 2",
+        "Archived    | 1",
+        "",
+      ].join("\n"),
+    );
   });
 });
 
-test("project view prints an empty project without inventing task output", () => {
+test("project view leaves out the Description section and Archived row when there is nothing to show", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "EMPTY", "--name", "Empty project"], testDir);
 
     expect(runZinn(["project", "view", "EMPTY"], testDir).stdout).toBe(
-      "EMPTY | Empty project\n",
+      [
+        "EMPTY | Empty project",
+        "",
+        "Columns:",
+        "Backlog     | 0",
+        "TODO        | 0",
+        "In Progress | 0",
+        "Review      | 0",
+        "Done        | 0",
+        "",
+      ].join("\n"),
     );
   });
 });
 
-test("project view JSON contains project identity and a flat active-task array", () => {
+test("project view JSON contains the project, per-column task counts in board order and the archived total", () => {
   withIsolatedZinnDir((testDir) => {
-    runZinn(["label", "create", "ready", "--color", "green"], testDir);
-    runZinn(["project", "create", "VIEW", "--name", "Project view"], testDir);
-    runZinn(
-      [
-        "task",
-        "create",
-        "VIEW",
-        "--title",
-        "Visible task",
-        "--description",
-        "Full description",
-        "--priority",
-        "urgent",
-        "--label",
-        "ready",
-      ],
-      testDir,
-    );
+    const run = (...args: Array<string>) => runZinn(args, testDir);
+    run("project", "create", "VIEW", "--name", "Project view", "--description", "Full\ndescription");
+    run("task", "create", "VIEW", "--title", "Visible task");
+    run("task", "create", "VIEW", "--title", "Review task");
+    run("task", "move", "VIEW-2", "Review");
+    run("project", "column", "order", "VIEW", "Review", "first");
 
-    const viewedProject = runZinn(["project", "view", "VIEW", "--json"], testDir);
+    const expectedColumns = [
+      { name: "Review", taskCount: 1 },
+      { name: "Backlog", taskCount: 1 },
+      { name: "TODO", taskCount: 0 },
+      { name: "In Progress", taskCount: 0 },
+      { name: "Done", taskCount: 0 },
+    ];
+    const viewedProject = run("project", "view", "VIEW", "--json");
 
     expect(viewedProject.code).toBe(0);
     expect(JSON.parse(viewedProject.stdout)).toEqual({
       key: "VIEW",
       name: "Project view",
-      description: null,
-      tasks: [
-        {
-          key: "VIEW-1",
-          status: "Active",
-          column: "Backlog",
-          title: "Visible task",
-          description: "Full description",
-          priority: "urgent",
-          labels: ["ready"],
-        },
-      ],
+      description: "Full\ndescription",
+      columns: expectedColumns,
+      archivedTaskCount: 0,
+    });
+
+    run("task", "archive", "VIEW-1");
+    expect(JSON.parse(run("project", "view", "VIEW", "--json").stdout)).toMatchObject({
+      columns: [expectedColumns[0], { name: "Backlog", taskCount: 0 }, ...expectedColumns.slice(2)],
+      archivedTaskCount: 1,
     });
   });
 });
@@ -906,7 +914,7 @@ test("task list leaves a long multi-line description to task view, which prints 
   });
 });
 
-test("task rows in lists, project view and bulk archive output leave descriptions out, while JSON keeps them", () => {
+test("task rows in lists and bulk archive output leave descriptions out, while JSON keeps them", () => {
   withIsolatedZinnDir((testDir) => {
     const run = (...args: Array<string>) => runZinn(args, testDir);
     const descriptions = ["First hidden description", "Second hidden description"];
@@ -916,7 +924,6 @@ test("task rows in lists, project view and bulk archive output leave description
 
     const rowOutputs = [
       run("task", "list", "ROWS"),
-      run("project", "view", "ROWS"),
       run("task", "archive", "ROWS-1", "ROWS-2"),
       run("task", "list", "ROWS", "--all"),
       run("task", "unarchive", "ROWS-1", "ROWS-2"),
@@ -3289,9 +3296,6 @@ test("task rows color each attached label name by its label color, with dimmed s
     expect(runZinn(["task", "search", "Several", "TAGS"], dir, { FORCE_COLOR: "1" }).stdout).toBe(
       `TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}U${DIM_SEPARATOR}Several labels${DIM_SEPARATOR}${coloredLabels}\n`,
     );
-    expect(runZinn(["project", "view", "TAGS"], dir, { FORCE_COLOR: "1" }).stdout).toContain(
-      `\n\n${coloredRows}`,
-    );
     expect(runZinn(["task", "list", "TAGS", "--all"], dir, { FORCE_COLOR: "1" }).stdout).toContain(
       `TAGS-1${DIM_SEPARATOR}Active${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}U${DIM_SEPARATOR}Several labels${DIM_SEPARATOR}${coloredLabels}\n`,
     );
@@ -3432,6 +3436,63 @@ test("task view bolds its section headings and dims the separators and comment t
     expect(run({}, "task", "view", "MDR-1").stdout).toBe(piped);
     expect(run({ NO_COLOR: "1" }, "task", "view", "MDR-1").stdout).toBe(piped);
     expect(run({ FORCE_COLOR: "1" }, "task", "view", "MDR-1", "--json").stdout).not.toContain("\x1b");
+  });
+});
+
+test("project view bolds its section headings, dims the separators and colors column names as task rows do, and project list dims the separator before a preview", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = (env: Record<string, string>, ...args: Array<string>) => runZinn(args, dir, env);
+    run({}, "project", "create", "MDR", "--name", "Macrodata", "--description", "First line.\nSecond line.");
+    run({}, "task", "create", "MDR", "--title", "Waiting");
+    run({}, "task", "create", "MDR", "--title", "Finished");
+    run({}, "task", "create", "MDR", "--title", "Shelved");
+    run({}, "task", "move", "MDR-2", "Done");
+    run({}, "task", "archive", "MDR-3");
+
+    // Column names are padded inside their color codes, to the plain width of the widest name.
+    const columnWidth = "In Progress".length;
+    expect(run({ FORCE_COLOR: "1" }, "project", "view", "MDR").stdout).toBe(
+      [
+        `MDR${DIM_SEPARATOR}Macrodata`,
+        "",
+        bold("Description:"),
+        "First line.",
+        "Second line.",
+        "",
+        bold("Columns:"),
+        `\x1b[90m${"Backlog".padEnd(columnWidth)}\x1b[39m${DIM_SEPARATOR}1`,
+        `${"TODO".padEnd(columnWidth)}${DIM_SEPARATOR}0`,
+        `In Progress${DIM_SEPARATOR}0`,
+        `${"Review".padEnd(columnWidth)}${DIM_SEPARATOR}0`,
+        `\x1b[32m${"Done".padEnd(columnWidth)}\x1b[39m${DIM_SEPARATOR}1`,
+        `${"Archived".padEnd(columnWidth)}${DIM_SEPARATOR}1`,
+        "",
+      ].join("\n"),
+    );
+    expect(run({ FORCE_COLOR: "1" }, "project", "list").stdout).toBe(
+      `MDR${DIM_SEPARATOR}Macrodata${DIM_SEPARATOR}First line. Second line.\n`,
+    );
+
+    expect(run({}, "project", "view", "MDR").stdout).toBe(
+      [
+        "MDR | Macrodata",
+        "",
+        "Description:",
+        "First line.",
+        "Second line.",
+        "",
+        "Columns:",
+        "Backlog     | 1",
+        "TODO        | 0",
+        "In Progress | 0",
+        "Review      | 0",
+        "Done        | 1",
+        "Archived    | 1",
+        "",
+      ].join("\n"),
+    );
+    expect(run({}, "project", "list").stdout).toBe("MDR | Macrodata | First line. Second line.\n");
+    expect(run({ FORCE_COLOR: "1" }, "project", "view", "MDR", "--json").stdout).not.toContain("\x1b");
   });
 });
 
@@ -3813,7 +3874,7 @@ test("project descriptions flow through creation, partial edits, view, list and 
     const created = run("project", "create", "DESC", "--description", description, "--json");
     expect(created.code).toBe(0);
     expect(JSON.parse(created.stdout)).toEqual({ key: "DESC", name: "DESC", description });
-    expect(run("project", "view", "DESC").stdout).toBe("DESC | DESC | Purpose More context\n");
+    expect(run("project", "view", "DESC").stdout).toStartWith(`DESC | DESC\n\nDescription:\n${description}\n\nColumns:\n`);
     expect(run("project", "list").stdout).toBe("DESC | DESC | Purpose More context\n");
     expect(JSON.parse(run("project", "list", "--json").stdout)[0].description).toBe(description);
     expect(JSON.parse(run("project", "edit", "DESC", "--name", "Renamed", "--json").stdout).description).toBe(description);
@@ -3825,7 +3886,7 @@ test("project descriptions flow through creation, partial edits, view, list and 
 });
 
 
-test("project rows show truncated description previews, task rows leave descriptions out, and JSON retains full text", () => {
+test("project list and write rows show truncated description previews, project view and JSON keep full text, and task rows leave descriptions out", () => {
   withIsolatedZinnDir((dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
     const description = "  Context\n" + "x".repeat(200);
@@ -3835,7 +3896,7 @@ test("project rows show truncated description previews, task rows leave descript
     run("task", "create", "PRE", "--title", "Task", "--description", description);
     expect(run("task", "list", "PRE").stdout).toBe("PRE-1 | Backlog | - | Task\n");
     expect(run("project", "list").stdout).toBe(`PRE | PRE | ${preview}\n`);
-    expect(run("project", "view", "PRE").stdout).toBe(`PRE | PRE | ${preview}\n\nPRE-1 | Backlog | - | Task\n`);
+    expect(run("project", "view", "PRE").stdout).toStartWith(`PRE | PRE\n\nDescription:\n${description}\n\nColumns:\n`);
     expect(run("project", "edit", "PRE", "--description", description).stdout).toBe(`PRE | PRE | ${preview}\n`);
     expect(taskProject.description).toBe(description);
     expect(JSON.parse(run("project", "view", "PRE", "--json").stdout).description).toBe(description);
