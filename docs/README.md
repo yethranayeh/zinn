@@ -20,6 +20,38 @@ Canonical and social URLs always use `https://zinn.sh/`. Astro's [sitemap integr
 
 The shared layout emits Open Graph and Twitter metadata using `public/social/zinn.png`, and the homepage includes factual `WebSite` structured data. The social image uses the self-hosted Alan Sans and MonoMMM fonts.
 
+## Deployment
+
+Production uses Cloudflare Workers Static Assets, configured in `wrangler.jsonc` as `zinn-sh`, with the custom domain `zinn.sh`.
+
+From the repository root, deployment can be made with:
+
+```sh
+bun run docs:deploy
+```
+
+This builds with `PUBLIC_SITE_ENV=production` and uploads `docs/dist` using the pinned Wrangler dependency.
+
+From `docs/`, the equivalent command is `bun run deploy`.
+
+Run `bunx wrangler login` for CF login from `docs/` for authentication.
+
+For a separate preview, run from `docs/`:
+
+```sh
+PUBLIC_SITE_ENV=preview bun run build
+bunx wrangler deploy --name custom-preview-deploy-name
+```
+
+To restore an earlier production deployment, run from `docs/`:
+
+```sh
+bunx wrangler versions list
+bunx wrangler rollback <version-id>
+```
+
+Choose the version ID of a known working deployment. [Cloudflare rollback](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/) restores that deployed version.
+
 ## Analytics
 
 Only builds with `PUBLIC_SITE_ENV=production` include the Umami Cloud script and website ID. Custom events also require the `zinn.sh` hostname and respect **Do Not Track**. The tracker uses the same domain and DNT restrictions.
