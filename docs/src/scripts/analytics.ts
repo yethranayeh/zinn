@@ -1,3 +1,5 @@
+import { isProductionSite } from "../config/site";
+
 type WebsiteEvent = "github-click" | "npm-click" | "install-copy";
 
 declare global {
@@ -8,7 +10,8 @@ declare global {
 
 export function trackEvent(event: WebsiteEvent): void {
   const trackingAllowed =
-    import.meta.env.PROD && window.location.hostname === "zinn.sh" && navigator.doNotTrack !== "1";
+    isProductionSite && window.location.hostname === "zinn.sh" && navigator.doNotTrack !== "1";
+
   if (!trackingAllowed) {
     return;
   }

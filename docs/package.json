@@ -9,6 +9,7 @@
 		"preview": "bun --bun astro preview --host 127.0.0.1"
 	},
 	"dependencies": {
+		"@astrojs/sitemap": "3.7.4",
 		"astro": "^7.3.5",
 		"tailwindcss": "^4.3.3"
 	},

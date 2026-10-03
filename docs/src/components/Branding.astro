@@ -1,0 +1,15 @@
+---
+interface Props {
+	linked?: boolean;
+}
+
+const { linked = false } = Astro.props;
+const Tag = linked ? "a" : "p";
+---
+
+<Tag
+	class='block w-fit text-xl font-semibold tracking-[-2px]'
+	href={linked ? "/" : undefined}
+	aria-label={linked ? "Zinn homepage" : undefined}>
+	Z<span class='text-cinnabar tracking-[-3px]'>I</span><span class='tracking-[-4px]'>NN</span>
+</Tag>

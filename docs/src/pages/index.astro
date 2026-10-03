@@ -1,39 +1,32 @@
 ---
-import BaseLayout from "../layouts/BaseLayout.astro";
+import PageLayout from "../layouts/PageLayout.astro";
 import InstallCommand from "../components/InstallCommand.astro";
 import Icon from "../components/Icon.astro";
 ---
 
-<BaseLayout
+<PageLayout
 	title='Zinn | A kanban workflow in the terminal'
-	description='Zinn is an experimental command-line kanban tool. Manage projects and tasks locally in your terminal. Requires Bun.'>
-	<main class='flex min-h-svh flex-col px-6 pt-8 pb-6 md:px-12 md:pt-10 md:pb-8 lg:px-24'>
-		<header>
-			<h1 class='text-xl font-semibold tracking-[-2px]'>
-				Z<span class='text-cinnabar tracking-[-3px]'>I</span><span class='tracking-[-4px]'>NN</span>
-			</h1>
-		</header>
-		<div class='my-auto w-full max-w-3xl pt-16 pb-14 md:pt-24 md:pb-16 2xl:ml-32'>
-			<p class='mb-9 max-w-xl text-3xl leading-tight tracking-tight sm:text-4xl md:mb-12 md:text-5xl'>
-				A kanban workflow<br />in the <span class='text-cinnabar'>terminal.</span>
-			</p>
-			<InstallCommand />
-			<nav class='mt-6 flex items-center gap-7 font-mono text-xs leading-normal' aria-label='Zinn links'>
-				<a
-					class='inline-flex items-center gap-2 py-2'
-					href='https://github.com/yethranayeh/zinn'
-					data-site-event='github-click'>GitHub <Icon name='external-link' class='size-4.5' /></a
-				>
-				<a
-					class='inline-flex items-center gap-2 py-2'
-					href='https://www.npmjs.com/package/@zinn-dev/cli'
-					data-site-event='npm-click'>npm <Icon name='external-link' class='size-4.5' /></a
-				>
-			</nav>
-		</div>
-		<footer class='mt-auto'><span class='font-mono text-xs tracking-widest'>zinn.sh</span></footer>
-	</main>
-</BaseLayout>
+	description='Zinn is an experimental command-line kanban tool. Manage projects and tasks locally in your terminal. Requires Bun.'
+	linkHome={false}>
+	<h1 class='mb-9 max-w-xl text-3xl leading-tight tracking-tight sm:text-4xl md:mb-12 md:text-5xl'>
+		A kanban workflow<br />in the <span class='text-cinnabar'>terminal</span>.
+	</h1>
+	<InstallCommand />
+	<nav class='mt-6 flex items-center gap-7 font-mono text-xs leading-normal' aria-label='Zinn links'>
+		<a
+			class='inline-flex items-center gap-2 py-2'
+			href='https://github.com/yethranayeh/zinn'
+			aria-label='Zinn source on GitHub'
+			data-site-event='github-click'>GitHub <Icon name='external-link' class='size-4.5' /></a
+		>
+		<a
+			class='inline-flex items-center gap-2 py-2'
+			href='https://www.npmjs.com/package/@zinn-dev/cli'
+			aria-label='Zinn CLI package on npm'
+			data-site-event='npm-click'>npm <Icon name='external-link' class='size-4.5' /></a
+		>
+	</nav>
+</PageLayout>
 
 <script>
 	import { trackEvent } from "../scripts/analytics";
