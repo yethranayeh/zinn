@@ -1,7 +1,7 @@
 {
 	"name": "@zinn-dev/cli",
 	"version": "0.37.0",
-	"description": "A kanban workflow in the terminal.",
+	"description": "A kanban workflow in the terminal. Experimental.",
 	"license": "MIT",
 	"bugs": {
 		"url": "https://github.com/yethranayeh/zinn/issues"

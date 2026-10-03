@@ -3,9 +3,9 @@
 Shared logic for [zinn](https://github.com/yethranayeh/zinn)
 
 > [!IMPORTANT]
-> Zinn is in rapid development, and this package's API and database schema _can_ and **will** change between versions.
-> There is no migration system yet. Instead, when a release changes the schema, Zinn will try to run as if everything is aligned with its current version.
-> If you have an established board, run `zinn backup` before upgrading.
+> **Experimental.** This package's API and database schema _can_ and **will** change between versions.
+> Zinn does not upgrade existing databases. On a database created by an older version, reads may still work, but writes that touch a changed table fail, for example with `table project has no column named description`.
+> Run `zinn backup` before upgrading.
 
 ## Editing conventions
 

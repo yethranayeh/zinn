@@ -2,6 +2,11 @@
 
 The `zinn` command-line interface. Requires [Bun](https://bun.sh).
 
+> [!IMPORTANT]
+> **Experimental.** Commands, output and the database schema _can_ and **will** change between releases.
+> Zinn does not upgrade existing databases. On a database created by an older version, reads may still work, but writes that touch a changed table fail, for example with `table project has no column named description`.
+> Run `zinn backup` before upgrading.
+
 ## Install
 
 ```sh

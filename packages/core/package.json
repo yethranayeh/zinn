@@ -1,7 +1,7 @@
 {
 	"name": "@zinn-dev/core",
 	"version": "0.26.0",
-	"description": "Shared logic for zinn, a kanban workflow in the terminal.",
+	"description": "Shared logic for zinn, a kanban workflow in the terminal. Experimental.",
 	"license": "MIT",
 	"bugs": {
 		"url": "https://github.com/yethranayeh/zinn/issues"

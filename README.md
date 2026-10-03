@@ -3,9 +3,9 @@
 A kanban workflow in the terminal.
 
 > [!IMPORTANT]
-> Zinn is in rapid development, so commands, output and the database schema _can_ and **will** change between releases.
-> There is no migration system yet. Instead, when a release changes the schema, Zinn will try to run as if everything is aligned with its current version.
-> If you have an established board, run `zinn backup` before upgrading.
+> **Experimental.** Commands, output and the database schema _can_ and **will** change between releases.
+> Zinn does not upgrade existing databases. On a database created by an older version, reads may still work, but writes that touch a changed table fail, for example with `table project has no column named description`.
+> Run `zinn backup` before upgrading.
 
 ## Install
 
