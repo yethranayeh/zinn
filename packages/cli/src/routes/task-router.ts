@@ -16,7 +16,6 @@ import { formatRelations, presentRelations, relationRouter } from "./relation-ro
 import { commentRouter, formatComments, presentComments } from "./comment-router";
 import { currentActor } from "../actor";
 import {
-  formatTask,
   formatTaskList,
   formatTaskListWithStatus,
   formatTaskRow,
@@ -219,8 +218,12 @@ Example: zinn task search "refinement quota" MDR --limit 5`,
       output(viewedTask, (t) => {
         const relations = formatRelations(t.relations);
         const comments = formatComments(t.comments);
-        const formattedTask = formatTask(t);
-        const sections = [formattedTask];
+        const isArchived = t.status === "Archived";
+        const sections = [formatTaskList([t], { showsStatus: isArchived })];
+
+        if (t.description != null) {
+          sections.push(`Description:\n${t.description}`);
+        }
 
         if (relations.length > 0) {
           sections.push(`Relations:\n${relations}`);
@@ -235,7 +238,8 @@ Example: zinn task search "refinement quota" MDR --limit 5`,
     },
     help: `Usage: zinn task view <task-key>
 
-Show a task with its current column, description, priority, labels, relations, and comments.
+Show a task with its description, relations, and comments.
+A section is shown when the task has that content. The description prints in full, keeping its line breaks.
 
 Example: zinn task view MDR-1`,
   },
@@ -338,8 +342,6 @@ Moving a task to a different column lists it last in that column,
 matching placement at the bottom of a visual kanban column.
 Several tasks are moved in the order given, and each task's column is looked up in its own project.
 
-Prints each task as a row, as in 'task list'.
-
 Giving a task's current column as the target will not do anything, and a note says so.
 Archived tasks must be unarchived before they can be moved.
 On bulk changes, if any task cannot be moved, the bulk operation is aborted.
@@ -417,7 +419,6 @@ Archive tasks so they no longer appear in active task lists.
 Archiving an archived task does not do anything.
 On bulk changes, if any task cannot be archived, the bulk operation is aborted.
 
-Each task prints as a row, as in 'task list --all'. Check its help output for what each row shows.
 With --json, one task prints an object and several print an array.
 Each task's changed field is 'false' when it was already in the requested state.
 
@@ -439,7 +440,6 @@ Unarchive tasks at the bottom of their previous columns, in the order given.
 Unarchiving an active task does not do anything.
 On bulk changes, if any task cannot be unarchived, the bulk operation is aborted.
 
-Each task prints as a row, as in 'task list --all'. Check its help output for what each row shows.
 With --json, one task prints an object and several print an array.
 Each task's changed field is 'false' when it was already in the requested state.
 

@@ -4,7 +4,7 @@ import type { RowCell } from "./row-layout";
 import { column, label, task } from "@zinn-dev/core";
 
 import { styleOutputText } from "./color";
-import { formatCell, formatRows } from "./row-layout";
+import { formatRows } from "./row-layout";
 
 export type PresentedTask = {
   key: string;
@@ -64,20 +64,6 @@ export function presentTask(taskMatch: TaskWithKey): PresentedTask {
     priority: taskMatch.priority,
     labels: task.label.getAll(taskMatch.key).map((label) => label.name),
   };
-}
-
-export function formatTask(presented: PresentedTask) {
-  const column = formatCell(taskColumnCell(presented.column));
-  const hasDescription = presented.description != null && presented.description.length > 0;
-  const description = hasDescription ? ` | ${presented.description}` : "";
-
-  const priority = presented.priority == null ? "" : ` | Priority: ${presented.priority}`;
-  const labelText =
-    presented.labels.length === 0
-      ? ""
-      : ` | Labels: ${formatLabelNames(presented.labels, getLabelColorsByName())}`;
-
-  return `${presented.key} | ${column} | ${presented.title}${description}${priority}${labelText}`;
 }
 
 export function formatTaskRow(presented: PresentedTask) {
