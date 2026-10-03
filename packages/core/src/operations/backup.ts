@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -25,7 +26,8 @@ export const backup = {
      * Colons (:) are replaced to avoid illegal naming issues in filesystems
      */
     const timestamp = new Date().toISOString().slice(0, 19).replaceAll(":", "-");
-    const path = join(BACKUP_DIR, `${timestamp}Z-${client}-${version}.sqlite`);
+    const suffix = randomUUID().split("-")[0];
+    const path = join(BACKUP_DIR, `${timestamp}Z-${client}-${version}-${suffix}.sqlite`);
 
     dbBackup.create(path);
 

@@ -317,7 +317,7 @@ It is recommended to save a copy of the database before installing a new version
 zinn backup
 ```
 
-The copy goes to `~/.zinn/backups/` (or `backups/` in `ZINN_DIR`), in a file named after the UTC time and the CLI version that made it, like `2026-09-29T12-30-05Z-cli-0.32.0.sqlite`. It is a single file with every change made so far, and it is safe to take while Zinn is in use. Existing backups are never overwritten. With `--json`, the command prints `{ "path": "..." }`. It fails when there is no database yet.
+The copy goes to `~/.zinn/backups/` (or `backups/` in `ZINN_DIR`), in a file named after the UTC time and the CLI version that made it, with an eight-character random suffix to distinguish backups made at the same time, like `2026-09-29T12-30-05Z-cli-0.32.0-b38178c0.sqlite`. It is a single file with every change made so far, and it is safe to take while Zinn is in use. Existing backups are never overwritten. With `--json`, the command prints `{ "path": "..." }`. It fails when there is no database yet.
 
 ## Scripting and JSON output
 

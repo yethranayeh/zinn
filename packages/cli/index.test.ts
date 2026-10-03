@@ -3581,7 +3581,8 @@ test("backup saves a copy of the database named with the UTC time and CLI versio
     const { path } = JSON.parse(result.stdout) as { path: string };
     expect(dirname(path)).toBe(join(dir, "backups"));
     expect(basename(path)).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z-/);
-    expect(basename(path)).toEndWith(`Z-cli-${packageJson.version}.sqlite`);
+    expect(basename(path)).toContain(`Z-cli-${packageJson.version}-`);
+    expect(basename(path)).toMatch(/-[0-9a-f]{8}\.sqlite$/);
 
     const backupDb = new Database(path, { readonly: true });
     try {
@@ -3601,6 +3602,30 @@ test("backup refuses when there is no database and does not create one", () => {
     expect(result.stderr).toContain(`There is no Zinn database at ${join(dir, "data", "zinn.sqlite")} to back up`);
     expect(existsSync(join(dir, "data"))).toBe(false);
     expect(existsSync(join(dir, "backups"))).toBe(false);
+  });
+});
+
+test("simultaneous backup commands create distinct valid snapshots", async () => {
+  await withIsolatedZinnDirAsync(async (dir) => {
+    expect(runZinn(["project", "create", "BAK"], dir).code).toBe(0);
+    expect(runZinn(["task", "create", "BAK", "--title", "Saved"], dir).code).toBe(0);
+
+    const results = await Promise.all(Array.from({ length: 4 }, () => runZinnAsync(["backup", "--json"], dir)));
+    const paths = new Set<string>();
+    for (const result of results) {
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe("");
+      const { path } = JSON.parse(result.stdout) as { path: string };
+      expect(paths.has(path)).toBe(false);
+      paths.add(path);
+      const snapshot = new Database(path, { readonly: true });
+      try {
+        expect(snapshot.query("SELECT title FROM task").all()).toEqual([{ title: "Saved" }]);
+        expect(snapshot.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
+      } finally {
+        snapshot.close();
+      }
+    }
   });
 });
 

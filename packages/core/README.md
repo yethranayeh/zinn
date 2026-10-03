@@ -79,6 +79,6 @@ Cross-project and archived tasks are supported. Creation and removal use the exi
 
 ## Backups
 
-`backup.create({ client, version })` saves a copy of the database to `backups/` in the Zinn directory and returns `{ path }`. The file is named `<UTC time>-<client>-<version>.sqlite`, for example `2026-09-29T12-30-05Z-cli-0.32.0.sqlite`. `client` and `version` identify the program using core that makes the backup, such as the CLI and its package version.
+`backup.create({ client, version })` saves a copy of the database to `backups/` in the Zinn directory and returns `{ path }`. The file is named `<UTC time>-<client>-<version>-<suffix>.sqlite`, for example `2026-09-29T12-30-05Z-cli-0.32.0-b38178c0.sqlite`. `client` and `version` identify the program using core that makes the backup, such as the CLI and its package version. The suffix is the first eight hexadecimal characters of a random UUID and distinguishes backups made at the same time.
 
 The copy is made with SQLite's `VACUUM INTO`, so it is a single file that includes changes still in the WAL file. It throws when there is no database, instead of creating one, and when the file already exists. It records no activity.
