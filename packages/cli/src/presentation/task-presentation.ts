@@ -4,7 +4,7 @@ import type { RowCell } from "./row-layout";
 import { column, label, task } from "@zinn-dev/core";
 
 import { styleOutputText } from "./color";
-import { formatRows } from "./row-layout";
+import { formatCellSeparator, formatRows } from "./row-layout";
 
 export type PresentedTask = {
   key: string;
@@ -19,12 +19,12 @@ export type PresentedTask = {
 const EMPTY_CELL_MARKER = "-";
 const LABEL_NAME_SEPARATOR = ", ";
 
-function formatTaskPriorityMarker(priority: TaskPriority | null) {
+function taskPriorityCell(priority: TaskPriority | null): RowCell {
   if (priority == null) {
-    return EMPTY_CELL_MARKER;
+    return { text: EMPTY_CELL_MARKER, style: "dim" };
   }
 
-  return priority[0]!.toUpperCase();
+  return { text: priority[0]!.toUpperCase() };
 }
 
 function taskColumnCell(columnName: string): RowCell {
@@ -82,16 +82,16 @@ export function formatTaskList(
         ? [{ text: presentedTask.status }]
         : [];
       const hasLabels = presentedTask.labels.length > 0;
-      // The last cell is never padded, so the color codes in its label names do not affect column widths.
+      // The last cell is never padded, so the color codes in its separator and label names do not affect column widths.
       const labels = hasLabels
-        ? ` | ${formatLabelNames(presentedTask.labels, labelColorsByName)}`
+        ? `${formatCellSeparator()}${formatLabelNames(presentedTask.labels, labelColorsByName)}`
         : "";
 
       return [
         { text: presentedTask.key },
         ...statusCells,
         taskColumnCell(presentedTask.column),
-        { text: formatTaskPriorityMarker(presentedTask.priority) },
+        taskPriorityCell(presentedTask.priority),
         { text: `${presentedTask.title}${labels}` },
       ];
     }),

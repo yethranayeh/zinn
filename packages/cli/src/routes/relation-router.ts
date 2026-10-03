@@ -5,7 +5,7 @@ import { parseArgs } from "node:util";
 import { relation, relationCreateSchema, task } from "@zinn-dev/core";
 import { output, quit, validatePositionalCount, validateUniqueOptions } from "../lib";
 import { currentActor } from "../actor";
-import { formatRows } from "../presentation/row-layout";
+import { formatCellSeparator, formatRows } from "../presentation/row-layout";
 
 type PresentedRelation = {
   type: TaskRelationType;
@@ -63,7 +63,7 @@ export function formatRelations(relations: Array<PresentedRelation>) {
         }
       }
 
-      const archived = entry.task.status === "Archived" ? " | Archived" : "";
+      const archived = entry.task.status === "Archived" ? `${formatCellSeparator()}Archived` : "";
       return [
         { text: label },
         { text: entry.task.key },

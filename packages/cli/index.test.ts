@@ -22,6 +22,11 @@ const TEST_DIR = mkdtempSync(PREFIX);
 const CLI_PATH = join(import.meta.dir, "index.ts");
 const GRAY_BACKLOG = "\x1b[90mBacklog\x1b[39m";
 const GREEN_DONE = "\x1b[32mDone\x1b[39m";
+// ? Chrome (separators, empty markers, timestamps) is dimmed, never colored: SGR 2 on, SGR 22 off.
+const DIM_SEPARATOR = "\x1b[2m | \x1b[22m";
+const DIM_EMPTY_PRIORITY = "\x1b[2m-\x1b[22m";
+const dim = (text: string) => `\x1b[2m${text}\x1b[22m`;
+const bold = (text: string) => `\x1b[1m${text}\x1b[22m`;
 
 afterAll(() => {
   if (!TEST_DIR.startsWith(PREFIX)) {
@@ -1234,12 +1239,12 @@ test("task move, list and view color workflow column names only in a terminal, w
 
     const moved = await runZinnInTerminal(["task", "move", "COLOR-2", "Done"], testDir);
     expect(moved.code).toBe(0);
-    expect(moved.output).toBe(`COLOR-2 | ${GREEN_DONE} | - | finished\n`);
+    expect(moved.output).toBe(`COLOR-2${DIM_SEPARATOR}${GREEN_DONE}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}finished\n`);
 
     expect((await runZinnInTerminal(["task", "list", "COLOR"], testDir)).output).toBe(
       [
-        `COLOR-1 | ${GRAY_BACKLOG} | - | waiting`,
-        `COLOR-2 | \x1b[32m${"Done".padEnd("Backlog".length)}\x1b[39m | - | finished`,
+        `COLOR-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}waiting`,
+        `COLOR-2${DIM_SEPARATOR}\x1b[32m${"Done".padEnd("Backlog".length)}\x1b[39m${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}finished`,
         "",
       ].join("\n"),
     );
@@ -3157,7 +3162,7 @@ test("label text output colors the name in a terminal and names the color when p
       expect(listed).toContain(`${line}\n`);
     }
     const listedInTerminal = (await runZinnInTerminal(["label", "list"], dir)).output;
-    expect(listedInTerminal).toContain("\x1b[31mbug  \x1b[39m | Broken\n");
+    expect(listedInTerminal).toContain(`\x1b[31mbug  \x1b[39m${DIM_SEPARATOR}Broken\n`);
     for (const colorName of ["red", "white", "gray"]) {
       expect(listedInTerminal).not.toContain(colorName);
     }
@@ -3205,9 +3210,9 @@ test("label list pads a colored name by its plain text, so color codes do not sh
     // The name of a label without a description ends its row, so it is not padded.
     const expected =
       [
-        `\x1b[31m${"bug".padEnd("documentation".length)}\x1b[39m | Broken`,
+        `\x1b[31m${"bug".padEnd("documentation".length)}\x1b[39m${DIM_SEPARATOR}Broken`,
         "\x1b[90mchore\x1b[39m",
-        "\x1b[34mdocumentation\x1b[39m | Docs",
+        `\x1b[34mdocumentation\x1b[39m${DIM_SEPARATOR}Docs`,
         "",
       ].join("\n");
 
@@ -3232,7 +3237,7 @@ test("NO_COLOR turns color off in a terminal, so text output reads as it does wh
 
     // An empty NO_COLOR counts as unset.
     expect((await runZinnInTerminal(["label", "list"], dir, { NO_COLOR: "" })).output).toBe(
-      "\x1b[31mbug\x1b[39m | Broken\n",
+      `\x1b[31mbug\x1b[39m${DIM_SEPARATOR}Broken\n`,
     );
   });
 });
@@ -3243,9 +3248,9 @@ test("FORCE_COLOR colors piped output and wins over NO_COLOR, while FORCE_COLOR=
     runZinn(["task", "create", "FORCE", "--title", "waiting"], dir);
     runZinn(["label", "create", "bug", "--color", "red", "--description", "Broken"], dir);
 
-    const coloredLabel = "\x1b[31mbug\x1b[39m | Broken\n";
+    const coloredLabel = `\x1b[31mbug\x1b[39m${DIM_SEPARATOR}Broken\n`;
     expect(runZinn(["task", "list", "FORCE"], dir, { FORCE_COLOR: "1" }).stdout).toBe(
-      `FORCE-1 | ${GRAY_BACKLOG} | - | waiting\n`,
+      `FORCE-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}waiting\n`,
     );
     expect(runZinn(["label", "list"], dir, { FORCE_COLOR: "1", NO_COLOR: "1" }).stdout).toBe(coloredLabel);
 
@@ -3258,7 +3263,7 @@ test("FORCE_COLOR colors piped output and wins over NO_COLOR, while FORCE_COLOR=
   });
 });
 
-test("task rows color each attached label name by its label color, with plain separators and unchanged column widths", async () => {
+test("task rows color each attached label name by its label color, with dimmed separators and unchanged column widths", async () => {
   await withIsolatedZinnDirAsync(async (dir) => {
     runZinn(["label", "create", "bug", "--color", "red"], dir);
     runZinn(["label", "create", "cli", "--color", "blue"], dir);
@@ -3271,24 +3276,24 @@ test("task rows color each attached label name by its label color, with plain se
     runZinn(["task", "create", "TAGS", "--title", "No labels"], dir);
     runZinn(["task", "move", "TAGS-2", "Done"], dir);
 
-    // Labels are listed by name, and only the names are colored: the ", " joins and the " | " before them stay plain.
+    // Labels are listed by name, and only the names are colored: the ", " joins stay plain, and the " | " before them is dimmed like the others.
     const coloredLabels = "\x1b[31mbug\x1b[39m, \x1b[34mcli\x1b[39m, \x1b[36mdocs\x1b[39m";
     const coloredRows = [
-      `TAGS-1 | ${GRAY_BACKLOG} | U | Several labels | ${coloredLabels}`,
-      `TAGS-2 | \x1b[32m${"Done".padEnd("Backlog".length)}\x1b[39m | - | No labels`,
+      `TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}U${DIM_SEPARATOR}Several labels${DIM_SEPARATOR}${coloredLabels}`,
+      `TAGS-2${DIM_SEPARATOR}\x1b[32m${"Done".padEnd("Backlog".length)}\x1b[39m${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}No labels`,
       "",
     ].join("\n");
 
     expect((await runZinnInTerminal(["task", "list", "TAGS"], dir)).output).toBe(coloredRows);
     expect(runZinn(["task", "list", "TAGS"], dir, { FORCE_COLOR: "1" }).stdout).toBe(coloredRows);
     expect(runZinn(["task", "search", "Several", "TAGS"], dir, { FORCE_COLOR: "1" }).stdout).toBe(
-      `TAGS-1 | ${GRAY_BACKLOG} | U | Several labels | ${coloredLabels}\n`,
+      `TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}U${DIM_SEPARATOR}Several labels${DIM_SEPARATOR}${coloredLabels}\n`,
     );
     expect(runZinn(["project", "view", "TAGS"], dir, { FORCE_COLOR: "1" }).stdout).toContain(
       `\n\n${coloredRows}`,
     );
     expect(runZinn(["task", "list", "TAGS", "--all"], dir, { FORCE_COLOR: "1" }).stdout).toContain(
-      `TAGS-1 | Active | ${GRAY_BACKLOG} | U | Several labels | ${coloredLabels}\n`,
+      `TAGS-1${DIM_SEPARATOR}Active${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}U${DIM_SEPARATOR}Several labels${DIM_SEPARATOR}${coloredLabels}\n`,
     );
 
     // A label's color applies to every task that has the label.
@@ -3310,22 +3315,160 @@ test("label names in task write rows and in task view are colored by their label
 
     expect(
       runZinn(["task", "create", "TAGS", "--title", "Tagged", "--label", "docs", "--label", "bug"], dir, forceColor).stdout,
-    ).toBe(`TAGS-1 | ${GRAY_BACKLOG} | - | Tagged | ${coloredLabels}\n`);
+    ).toBe(`TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}Tagged${DIM_SEPARATOR}${coloredLabels}\n`);
     expect(runZinn(["task", "view", "TAGS-1"], dir, forceColor).stdout).toBe(
-      `TAGS-1 | ${GRAY_BACKLOG} | - | Tagged | ${coloredLabels}\n`,
+      `TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}Tagged${DIM_SEPARATOR}${coloredLabels}\n`,
     );
     expect((await runZinnInTerminal(["task", "view", "TAGS-1"], dir)).output).toBe(
-      `TAGS-1 | ${GRAY_BACKLOG} | - | Tagged | ${coloredLabels}\n`,
+      `TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}Tagged${DIM_SEPARATOR}${coloredLabels}\n`,
     );
     expect(runZinn(["task", "label", "remove", "TAGS-1", "bug"], dir, forceColor).stdout).toBe(
-      `TAGS-1 | ${GRAY_BACKLOG} | - | Tagged | \x1b[36mdocs\x1b[39m\n`,
+      `TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}Tagged${DIM_SEPARATOR}\x1b[36mdocs\x1b[39m\n`,
     );
     expect(runZinn(["task", "label", "add", "TAGS-1", "bug"], dir, forceColor).stdout).toBe(
-      `TAGS-1 | ${GRAY_BACKLOG} | - | Tagged | ${coloredLabels}\n`,
+      `TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}Tagged${DIM_SEPARATOR}${coloredLabels}\n`,
     );
     expect(
       runZinn(["task", "edit", "TAGS-1", "--title", "Retitled"], dir, forceColor).stdout,
-    ).toBe(`TAGS-1 | ${GRAY_BACKLOG} | - | Retitled | ${coloredLabels}\n`);
+    ).toBe(`TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}Retitled${DIM_SEPARATOR}${coloredLabels}\n`);
+  });
+});
+
+test("task rows dim the separators and the empty priority marker, whether or not the task has a priority or labels", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["label", "create", "bug", "--color", "red"], dir);
+    runZinn(["project", "create", "DIM"], dir);
+    runZinn(["task", "create", "DIM", "--title", "Both", "--priority", "high", "--label", "bug"], dir);
+    runZinn(["task", "create", "DIM", "--title", "Priority only", "--priority", "low"], dir);
+    runZinn(["task", "create", "DIM", "--title", "Labels only", "--label", "bug"], dir);
+    runZinn(["task", "create", "DIM", "--title", "Neither"], dir);
+
+    const forceColor = { FORCE_COLOR: "1" };
+    const backlog = GRAY_BACKLOG;
+    const red = "\x1b[31mbug\x1b[39m";
+    // Priority letters stay plain; only the "-" that stands for no priority is dimmed.
+    const dimmedRows = [
+      `DIM-1${DIM_SEPARATOR}${backlog}${DIM_SEPARATOR}H${DIM_SEPARATOR}Both${DIM_SEPARATOR}${red}`,
+      `DIM-2${DIM_SEPARATOR}${backlog}${DIM_SEPARATOR}L${DIM_SEPARATOR}Priority only`,
+      `DIM-3${DIM_SEPARATOR}${backlog}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}Labels only${DIM_SEPARATOR}${red}`,
+      `DIM-4${DIM_SEPARATOR}${backlog}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}Neither`,
+      "",
+    ].join("\n");
+    const plainRows = [
+      "DIM-1 | Backlog | H | Both | bug",
+      "DIM-2 | Backlog | L | Priority only",
+      "DIM-3 | Backlog | - | Labels only | bug",
+      "DIM-4 | Backlog | - | Neither",
+      "",
+    ].join("\n");
+
+    expect(runZinn(["task", "list", "DIM"], dir, forceColor).stdout).toBe(dimmedRows);
+    expect(runZinn(["task", "list", "DIM"], dir).stdout).toBe(plainRows);
+    expect(runZinn(["task", "list", "DIM"], dir, { NO_COLOR: "1" }).stdout).toBe(plainRows);
+    expect(runZinn(["task", "view", "DIM-3"], dir, forceColor).stdout).toBe(
+      dimmedRows.split("\n")[2] + "\n",
+    );
+    expect(runZinn(["task", "view", "DIM-3"], dir).stdout).toBe("DIM-3 | Backlog | - | Labels only | bug\n");
+  });
+});
+
+test("task view bolds its section headings and dims the separators and comment timestamps, and reads plain when piped", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = (env: Record<string, string>, ...args: Array<string>) =>
+      runZinn(args, dir, { TZ: "Europe/Berlin", ...env });
+    run({}, "project", "create", "MDR");
+    run({}, "label", "create", "bug", "--color", "red");
+    run({}, "label", "create", "cli", "--color", "blue");
+    run({}, "task", "create", "MDR", "--title", "Refine the numbers", "--description", "First line.\nSecond line.", "--priority", "high", "--label", "cli", "--label", "bug");
+    run({}, "task", "create", "MDR", "--title", "Check the totals");
+    run({}, "task", "relation", "create", "MDR-1", "MDR-2", "--type", "dependency");
+    run({}, "task", "comment", "create", "MDR-1", "--text", "Ready for review");
+    run({}, "task", "comment", "create", "MDR-1", "--text", "Line one\nLine two");
+    withTestDb(dir, (db) => {
+      db.run("UPDATE comment SET created_at = ?, updated_at = ? WHERE number = 1", [Date.UTC(2026, 8, 25, 17, 42), Date.UTC(2026, 8, 25, 17, 42)]);
+      db.run("UPDATE comment SET created_at = ?, updated_at = ? WHERE number = 2", [Date.UTC(2026, 8, 25, 18, 7), Date.UTC(2026, 8, 25, 18, 7)]);
+    });
+
+    // Later lines of a comment start under its text, so the indent counts the plain widths of the cells before it.
+    const textIndent = " ".repeat("MDR-1#1 | 2026-09-25 19:42 +02:00 | ".length);
+    const colored = run({ FORCE_COLOR: "1" }, "task", "view", "MDR-1");
+
+    expect(colored.stderr).toBe("");
+    expect(colored.stdout).toBe(
+      [
+        `MDR-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}H${DIM_SEPARATOR}Refine the numbers${DIM_SEPARATOR}\x1b[31mbug\x1b[39m, \x1b[34mcli\x1b[39m`,
+        "",
+        bold("Description:"),
+        "First line.",
+        "Second line.",
+        "",
+        bold("Relations:"),
+        `Depends on${DIM_SEPARATOR}MDR-2${DIM_SEPARATOR}Check the totals`,
+        "",
+        bold("Comments:"),
+        `MDR-1#1${DIM_SEPARATOR}${dim("2026-09-25 19:42 +02:00")}${DIM_SEPARATOR}Ready for review`,
+        `MDR-1#2${DIM_SEPARATOR}${dim("2026-09-25 20:07 +02:00")}${DIM_SEPARATOR}Line one`,
+        `${textIndent}Line two`,
+        "",
+      ].join("\n"),
+    );
+
+    const piped = [
+      "MDR-1 | Backlog | H | Refine the numbers | bug, cli",
+      "",
+      "Description:",
+      "First line.",
+      "Second line.",
+      "",
+      "Relations:",
+      "Depends on | MDR-2 | Check the totals",
+      "",
+      "Comments:",
+      "MDR-1#1 | 2026-09-25 19:42 +02:00 | Ready for review",
+      "MDR-1#2 | 2026-09-25 20:07 +02:00 | Line one",
+      `${textIndent}Line two`,
+      "",
+    ].join("\n");
+    expect(run({}, "task", "view", "MDR-1").stdout).toBe(piped);
+    expect(run({ NO_COLOR: "1" }, "task", "view", "MDR-1").stdout).toBe(piped);
+    expect(run({ FORCE_COLOR: "1" }, "task", "view", "MDR-1", "--json").stdout).not.toContain("\x1b");
+  });
+});
+
+test("comment lists dim the separators and timestamps, while a single comment has no timestamp to dim", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "NOTE"], dir);
+    runZinn(["task", "create", "NOTE", "--title", "Commented task"], dir);
+    runZinn(["task", "comment", "create", "NOTE-1", "--text", "First comment"], dir);
+    runZinn(["task", "comment", "create", "NOTE-1", "--text", "Second comment"], dir);
+    withTestDb(dir, (db) => {
+      db.run("UPDATE comment SET created_at = ? WHERE number = 1", [Date.UTC(2026, 8, 24, 9, 5)]);
+      db.run("UPDATE comment SET created_at = ? WHERE number = 2", [Date.UTC(2026, 8, 25, 17, 42)]);
+    });
+
+    const env = { TZ: "Europe/Berlin" };
+    const colored = runZinn(["task", "comment", "list", "NOTE-1"], dir, { ...env, FORCE_COLOR: "1" });
+    expect(colored.stdout).toBe(
+      [
+        `NOTE-1#1${DIM_SEPARATOR}${dim("2026-09-24 11:05 +02:00")}${DIM_SEPARATOR}First comment`,
+        `NOTE-1#2${DIM_SEPARATOR}${dim("2026-09-25 19:42 +02:00")}${DIM_SEPARATOR}Second comment`,
+        "",
+      ].join("\n"),
+    );
+    expect(runZinn(["task", "comment", "list", "NOTE-1"], dir, env).stdout).toBe(
+      [
+        "NOTE-1#1 | 2026-09-24 11:05 +02:00 | First comment",
+        "NOTE-1#2 | 2026-09-25 19:42 +02:00 | Second comment",
+        "",
+      ].join("\n"),
+    );
+
+    expect(
+      runZinn(["task", "comment", "edit", "NOTE-1#2", "--text", "Edited"], dir, { FORCE_COLOR: "1" }).stdout,
+    ).toBe(`NOTE-1#2${DIM_SEPARATOR}Edited\n`);
+    expect(runZinn(["task", "comment", "edit", "NOTE-1#2", "--text", "Edited again"], dir).stdout).toBe(
+      "NOTE-1#2 | Edited again\n",
+    );
   });
 });
 

@@ -17,6 +17,13 @@ export function formatCell(cell: RowCell, width = cell.text.length) {
   return styleOutputText(cell.style, paddedText);
 }
 
+/**
+ * Rows that join extra text onto their last cell, such as a task's labels, put one there too, which is why it is exported.
+ */
+export function formatCellSeparator() {
+  return styleOutputText("dim", CELL_SEPARATOR);
+}
+
 function indentContinuationLines(text: string, indentWidth: number) {
   return text.split(LINE_BREAK_PATTERN).join(`\n${" ".repeat(indentWidth)}`);
 }
@@ -64,7 +71,7 @@ export function formatRows(
             text: indentContinuationLines(cell.text, lastCellStartColumn),
           });
         })
-        .join(CELL_SEPARATOR);
+        .join(formatCellSeparator());
     })
     .join("\n");
 }

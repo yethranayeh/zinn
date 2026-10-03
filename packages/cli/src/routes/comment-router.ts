@@ -48,7 +48,7 @@ function formatCommentCreatedAt(createdAt: number) {
 
 function commentRow(commentMatch: PresentedComment, options: { showsCreatedAt: boolean }) {
   const createdAtCells: Array<RowCell> = options.showsCreatedAt
-    ? [{ text: formatCommentCreatedAt(commentMatch.created_at) }]
+    ? [{ text: formatCommentCreatedAt(commentMatch.created_at), style: "dim" }]
     : [];
 
   return [{ text: commentMatch.key }, ...createdAtCells, { text: commentMatch.text }];

@@ -15,6 +15,7 @@ import {
 import { formatRelations, presentRelations, relationRouter } from "./relation-router";
 import { commentRouter, formatComments, presentComments } from "./comment-router";
 import { currentActor } from "../actor";
+import { formatSection } from "../presentation/section";
 import {
   formatTaskList,
   formatTaskListWithStatus,
@@ -222,15 +223,15 @@ Example: zinn task search "refinement quota" MDR --limit 5`,
         const sections = [formatTaskList([t], { showsStatus: isArchived })];
 
         if (t.description != null) {
-          sections.push(`Description:\n${t.description}`);
+          sections.push(formatSection("Description", t.description));
         }
 
         if (relations.length > 0) {
-          sections.push(`Relations:\n${relations}`);
+          sections.push(formatSection("Relations", relations));
         }
 
         if (comments.length > 0) {
-          sections.push(`Comments:\n${comments}`);
+          sections.push(formatSection("Comments", comments));
         }
 
         return sections.join("\n\n");

@@ -13,7 +13,7 @@ import {
 } from "../lib";
 import { formatTaskList, presentTask } from "../presentation/task-presentation";
 import { formatDescriptionPreview } from "../presentation/description-presentation";
-import { formatRows } from "../presentation/row-layout";
+import { formatCellSeparator, formatRows } from "../presentation/row-layout";
 import { currentActor } from "../actor";
 
 type PresentedProject = { key: string; name: string; description: string | null };
@@ -31,7 +31,8 @@ function formatProjectList(presentedProjects: Array<PresentedProject>) {
   return formatRows(
     presentedProjects.map((presented) => {
       const descriptionPreview = formatDescriptionPreview(presented.description);
-      const description = descriptionPreview.length > 0 ? ` | ${descriptionPreview}` : "";
+      const description =
+        descriptionPreview.length > 0 ? `${formatCellSeparator()}${descriptionPreview}` : "";
 
       return [{ text: presented.key }, { text: `${presented.name}${description}` }];
     }),
@@ -47,7 +48,7 @@ function presentColumn(columnMatch: { project_id: string; name: string }): Prese
 }
 
 function formatColumn(presented: PresentedColumn) {
-  return `${presented.project} | ${presented.name}`;
+  return formatRows([[{ text: presented.project }, { text: presented.name }]]);
 }
 
 export const projectRouter = {
