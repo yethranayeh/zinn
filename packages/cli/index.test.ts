@@ -859,9 +859,9 @@ test("task list renders every project's tasks once and aligns unequal key widths
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
     expect(lines).toHaveLength(2);
-    expect(lines).toContain(`A-1       | Backlog | - | short task | short description`);
+    expect(lines).toContain(`A-1       | Backlog | - | short task`);
     expect(lines).toContain(
-      `LONGKEY-1 | Backlog | - | long task | long description`,
+      `LONGKEY-1 | Backlog | - | long task`,
     );
   });
 });
@@ -879,11 +879,10 @@ test("task list does not print a missing description as data", () => {
   });
 });
 
-test("task list renders an 80-character single-line description preview", () => {
+test("task list leaves a long multi-line description to task view, which prints it in full", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "PREVIEW", "--name", "Description preview"], testDir);
     const description = `${"A".repeat(40)}\n\t${"B".repeat(50)}`;
-    const expectedPreview = `${"A".repeat(40)} ${"B".repeat(38)}…`;
 
     runZinn(
       ["task", "create", "PREVIEW", "--title", "long description", "--description", description],
@@ -894,14 +893,40 @@ test("task list renders an 80-character single-line description preview", () => 
     const viewResult = runZinn(["task", "view", "PREVIEW-1"], testDir);
 
     expect(listResult.code).toBe(0);
-    expect(listResult.stdout).toBe(
-      `PREVIEW-1 | Backlog | - | long description | ${expectedPreview}\n`,
-    );
-    expect(expectedPreview.length).toBe(80);
+    expect(listResult.stdout).toBe(`PREVIEW-1 | Backlog | - | long description\n`);
     expect(viewResult.code).toBe(0);
     expect(viewResult.stdout).toBe(
       `PREVIEW-1 | Backlog | long description | ${description}\n`,
     );
+  });
+});
+
+test("task rows in lists, project view and bulk archive output leave descriptions out, while JSON keeps them", () => {
+  withIsolatedZinnDir((testDir) => {
+    const run = (...args: Array<string>) => runZinn(args, testDir);
+    const descriptions = ["First hidden description", "Second hidden description"];
+    run("project", "create", "ROWS");
+    run("task", "create", "ROWS", "--title", "First", "--description", descriptions[0]!);
+    run("task", "create", "ROWS", "--title", "Second", "--description", descriptions[1]!);
+
+    const rowOutputs = [
+      run("task", "list", "ROWS"),
+      run("project", "view", "ROWS"),
+      run("task", "archive", "ROWS-1", "ROWS-2"),
+      run("task", "list", "ROWS", "--all"),
+      run("task", "unarchive", "ROWS-1", "ROWS-2"),
+    ];
+
+    for (const rowOutput of rowOutputs) {
+      expect(rowOutput.code).toBe(0);
+      expect(rowOutput.stdout).toContain("ROWS-1");
+      expect(rowOutput.stdout).not.toContain("hidden description");
+    }
+
+    const listedJson = JSON.parse(run("task", "list", "ROWS", "--json").stdout);
+    const archivedJson = JSON.parse(run("task", "archive", "ROWS-1", "ROWS-2", "--json").stdout);
+    expect(listedJson.map((entry: { description: string }) => entry.description)).toEqual(descriptions);
+    expect(archivedJson.map((entry: { description: string }) => entry.description)).toEqual(descriptions);
   });
 });
 
@@ -1029,6 +1054,32 @@ test("project-scoped task list aligns one- and two-digit task numbers", () => {
     expect(lines).toHaveLength(10);
     expect(lines).toContain(`TEN-1  | Backlog | - | task 1`);
     expect(lines).toContain(`TEN-10 | Backlog | - | task 10`);
+  });
+});
+
+test("task list prints labels after the title, and a task without labels ends at its title", () => {
+  withIsolatedZinnDir((testDir) => {
+    const run = (...args: Array<string>) => runZinn(args, testDir);
+    run("project", "create", "TAGS");
+    run("label", "create", "bug");
+    run("label", "create", "cli");
+    run("label", "create", "docs");
+    run("task", "create", "TAGS", "--title", "No labels");
+    run("task", "create", "TAGS", "--title", "One label", "--label", "bug");
+    run("task", "create", "TAGS", "--title", "Several labels", "--label", "bug", "--label", "cli", "--label", "docs");
+
+    const result = run("task", "list", "TAGS");
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe(
+      [
+        "TAGS-1 | Backlog | - | No labels",
+        "TAGS-2 | Backlog | - | One label | bug",
+        "TAGS-3 | Backlog | - | Several labels | bug, cli, docs",
+        "",
+      ].join("\n"),
+    );
   });
 });
 
@@ -1958,7 +2009,7 @@ test("task archive hides a task from active lists without deleting it", () => {
     expect(runZinn(["task", "archive", "aRcH-1"], testDir).code).toBe(0);
     expect(runZinn(["task", "list", "ARCH"], testDir).stdout).toBe("");
     expect(runZinn(["task", "list", "ARCH", "--archived"], testDir).stdout).toContain(
-      "ARCH-1 | In Progress | - | kept task | kept description",
+      "ARCH-1 | In Progress | - | kept task",
     );
     expect(runZinn(["task", "list", "--all", "ARCH"], testDir).stdout).toContain("kept task");
     expect(runZinn(["task", "view", "ARCH-1"], testDir).stdout).toContain("kept task");
@@ -2304,7 +2355,7 @@ test("task search prints matches in task list rows and JSON shape", () => {
     expect(result.stderr).toBe("");
     expect(result.stdout).toBe(
       [
-        `FIND-1 | Backlog | H | Refine the numbers | Quarterly quota`,
+        `FIND-1 | Backlog | H | Refine the numbers`,
         `FIND-2 | Backlog | - | Unrelated`,
         "",
       ].join("\n"),
@@ -2313,6 +2364,26 @@ test("task search prints matches in task list rows and JSON shape", () => {
     const listed = JSON.parse(run("task", "list", "FIND", "--json").stdout);
     const searched = JSON.parse(run("task", "search", "refine quota", "--json").stdout);
     expect(searched).toEqual([listed[0]]);
+  });
+});
+
+test("task search finds a description-only match and prints its plain task row", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = (...args: Array<string>) => runZinn(args, dir);
+    const description = "Quarterly refinement checklist";
+    run("project", "create", "SEEK");
+    run("label", "create", "ops");
+    run("task", "create", "SEEK", "--title", "Calibrate sensors", "--description", description, "--label", "ops");
+    run("task", "create", "SEEK", "--title", "Unrelated");
+
+    const result = run("task", "search", "checklist");
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("SEEK-1 | Backlog | - | Calibrate sensors | ops\n");
+
+    expect(JSON.parse(run("task", "search", "checklist", "--json").stdout)).toEqual([
+      expect.objectContaining({ key: "SEEK-1", description, labels: ["ops"] }),
+    ]);
   });
 });
 
@@ -3270,16 +3341,17 @@ test("project descriptions flow through creation, partial edits, view, list and 
 });
 
 
-test("project description previews match task listings and JSON retains full text", () => {
+test("project rows show truncated description previews, task rows leave descriptions out, and JSON retains full text", () => {
   withIsolatedZinnDir((dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
     const description = "  Context\n" + "x".repeat(200);
+    const preview = `Context ${"x".repeat(71)}…`;
+    expect(preview).toHaveLength(80);
     const taskProject = JSON.parse(run("project", "create", "PRE", "--description", description, "--json").stdout);
     run("task", "create", "PRE", "--title", "Task", "--description", description);
-    const preview = run("task", "list", "PRE").stdout.trimEnd().split(" | ").at(-1)!;
-    expect(preview.endsWith("…")).toBe(true);
+    expect(run("task", "list", "PRE").stdout).toBe("PRE-1 | Backlog | - | Task\n");
     expect(run("project", "list").stdout).toBe(`PRE | PRE | ${preview}\n`);
-    expect(run("project", "view", "PRE").stdout.split("\n")[0]).toBe(`PRE | PRE | ${preview}`);
+    expect(run("project", "view", "PRE").stdout).toBe(`PRE | PRE | ${preview}\n\nPRE-1 | Backlog | - | Task\n`);
     expect(run("project", "edit", "PRE", "--description", description).stdout).toBe(`PRE | PRE | ${preview}\n`);
     expect(taskProject.description).toBe(description);
     expect(JSON.parse(run("project", "view", "PRE", "--json").stdout).description).toBe(description);

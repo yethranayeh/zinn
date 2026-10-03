@@ -122,6 +122,8 @@ zinn task view MDR-1
 
 The list follows the project's column order and the task order within each column. Without a project key, projects are listed one after another, sorted by key.
 
+Each row shows the task's key, column, priority marker, title, and labels, such as `MDR-1 | TODO | H | Refine the numbers | bug, cli`. Preview lists _do not_ contain the descriptions. To see everything, `task view` should be used.
+
 Use `--label <name>` to list tasks with a label. You can provide multiple `--label` flags to refine your filter further down to more specific task results. Label names matching ignores casing. An unknown label causes an error to be raised.
 
 ## Search tasks
@@ -182,7 +184,7 @@ Label colors default to white. Available colors are _red_, _green_, _yellow_, _b
 Task creation and edits apply content and label changes together, or roll back together on failure.
 Changing a task's label attachments updates that task's modification timestamp. Archived tasks can also have their labels edited.
 
-Commands like `task view` and task mutation output show attached labels.
+Commands like `task list`, `task view` and task mutation output show attached labels.
 
 `zinn label delete urgent` asks for confirmation, then deletes the definition and removes it from every task. Declining confirmation leaves the label and its attachments unchanged. `--yes` skips the confirmation (see [Confirmations](#confirmations)).
 Use `task label remove` to remove a label attachment from one task instead. Task/project deletion cleans up label attachments, but does not affect labels themselves.

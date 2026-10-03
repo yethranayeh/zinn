@@ -120,7 +120,10 @@ Example: zinn task create MDR --title "Refine the numbers" --description "Meet t
 List active tasks by default.
 Use --archived to list archived tasks or --all to list both.
 Use --label to filter for tasks with a specific label, no case-sensitivity is applied for matching.
+
+Each row shows a task's key, column, priority marker, title, and labels. --all adds an Active or Archived status after the key.
 Priority markers: - unassigned, L low, M medium, H high, U urgent.
+Use 'task view' to see a task's full details, including its description.
 
 Example: zinn task list MDR --label cli`,
   },
@@ -418,7 +421,7 @@ Archive tasks so they no longer appear in active task lists.
 Archiving an archived task does not do anything.
 On bulk changes, if any task cannot be archived, the bulk operation is aborted.
 
-Several tasks print as in 'task list --all'; see its help for the priority markers.
+Several tasks print as in 'task list --all'. Check its help output for what each row shows.
 With --json, one task prints an object and several print an array.
 Each task's changed field is 'false' when it was already in the requested state.
 
@@ -441,7 +444,7 @@ Unarchive tasks at the bottom of their previous columns, in the order given.
 Unarchiving an active task does not do anything.
 On bulk changes, if any task cannot be unarchived, the bulk operation is aborted.
 
-Several tasks print as in 'task list --all'; see its help for the priority markers.
+Several tasks print as in 'task list --all'. Check its help output for what each row shows.
 With --json, one task prints an object and several print an array.
 Each task's changed field is 'false' when it was already in the requested state.
 

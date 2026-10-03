@@ -3,7 +3,6 @@ import type { RowCell } from "./row-layout";
 
 import { column, task } from "@zinn-dev/core";
 
-import { formatDescriptionPreview } from "./description-presentation";
 import { formatCell, formatRows } from "./row-layout";
 
 export type PresentedTask = {
@@ -16,9 +15,11 @@ export type PresentedTask = {
   labels: Array<string>;
 };
 
+const EMPTY_CELL_MARKER = "-";
+
 function formatTaskPriorityMarker(priority: TaskPriority | null) {
   if (priority == null) {
-    return "-";
+    return EMPTY_CELL_MARKER;
   }
 
   return priority[0]!.toUpperCase();
@@ -88,16 +89,15 @@ export function formatTaskList(
       const statusCells: Array<RowCell> = options.showsStatus
         ? [{ text: presentedTask.status }]
         : [];
-      const descriptionPreview = formatDescriptionPreview(presentedTask.description);
-      const hasDescriptionPreview = descriptionPreview.length > 0;
-      const description = hasDescriptionPreview ? ` | ${descriptionPreview}` : "";
+      const hasLabels = presentedTask.labels.length > 0;
+      const labels = hasLabels ? ` | ${presentedTask.labels.join(", ")}` : "";
 
       return [
         { text: presentedTask.key },
         ...statusCells,
         taskColumnCell(presentedTask.column),
         { text: formatTaskPriorityMarker(presentedTask.priority) },
-        { text: `${presentedTask.title}${description}` },
+        { text: `${presentedTask.title}${labels}` },
       ];
     }),
   );
