@@ -35,6 +35,12 @@ const { text, command } = Astro.props;
 		object-fit: fill;
 	}
 
+	canvas {
+		inset: -1px;
+		width: calc(100% + 2px);
+		height: calc(100% + 2px);
+	}
+
 	[data-superwhite-ready] :global(.superwhite-video),
 	[data-superwhite-ready] canvas {
 		display: var(--superwhite-display, block);
@@ -60,19 +66,22 @@ const { text, command } = Astro.props;
 
 		function drawCutout() {
 			const { width, height } = text.getBoundingClientRect();
+			const canvasWidth = width + 2;
+			const canvasHeight = height + 2;
 			const style = getComputedStyle(text);
 			const scale = window.devicePixelRatio;
-			canvas.width = Math.ceil(width * scale);
-			canvas.height = Math.ceil(height * scale);
-			context.scale(scale, scale);
+			canvas.width = Math.ceil(canvasWidth * scale);
+			canvas.height = Math.ceil(canvasHeight * scale);
 
 			context.fillStyle = style.getPropertyValue("--color-soot").trim();
-			context.fillRect(0, 0, width, height);
+			context.fillRect(0, 0, canvas.width, canvas.height);
+			context.setTransform(canvas.width / canvasWidth, 0, 0, canvas.height / canvasHeight, 0, 0);
+			context.translate(1, 1);
 			context.globalCompositeOperation = "destination-out";
 			context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
 			const metrics = context.measureText(text.textContent!);
-			const baseline = (height - metrics.fontBoundingBoxAscent - metrics.fontBoundingBoxDescent) / 2
-				+ metrics.fontBoundingBoxAscent;
+			const baseline =
+				(height - metrics.fontBoundingBoxAscent - metrics.fontBoundingBoxDescent) / 2 + metrics.fontBoundingBoxAscent;
 			context.fillText(text.textContent!, 0, baseline);
 		}
 
