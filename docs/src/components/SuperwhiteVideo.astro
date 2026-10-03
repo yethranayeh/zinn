@@ -1,0 +1,18 @@
+---
+interface Props {
+	class?: string;
+}
+
+const { class: className } = Astro.props;
+// Original HDR asset from dtinth/superwhite
+---
+
+<video
+	class={className}
+	src='/superwhite.mp4'
+	poster='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAQAAAAA3iMLMAAAAAXNSR0IArs4c6QAAAA5JREFUeNpj+P+fgRQEAP1OH+HeyHWXAAAAAElFTkSuQmCC'
+	muted
+	autoplay
+	playsinline
+	loop
+	aria-hidden='true'></video>

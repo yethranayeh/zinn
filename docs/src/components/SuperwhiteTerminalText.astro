@@ -1,0 +1,96 @@
+---
+import SuperwhiteVideo from "./SuperwhiteVideo.astro";
+
+interface Props {
+	text: string;
+	command: "install" | "help";
+}
+
+const { text, command } = Astro.props;
+---
+
+<span class='superwhite-text' data-superwhite-command={command}>
+	<SuperwhiteVideo class='superwhite-video' />
+	<canvas aria-hidden='true'></canvas>
+	<span class='command-text'>{text}</span>
+</span>
+
+<style>
+	.superwhite-text {
+		position: relative;
+		display: inline-block;
+	}
+
+	.superwhite-text :global(.superwhite-video),
+	canvas {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
+		display: none;
+	}
+
+	.superwhite-text :global(.superwhite-video) {
+		object-fit: fill;
+	}
+
+	[data-superwhite-ready] :global(.superwhite-video),
+	[data-superwhite-ready] canvas {
+		display: var(--superwhite-display, block);
+	}
+
+	.command-text {
+		position: relative;
+		display: inline-block;
+	}
+
+	[data-superwhite-ready] .command-text {
+		color: var(--superwhite-ink, transparent);
+	}
+</style>
+
+<script>
+	for (const element of document.querySelectorAll<HTMLElement>("[data-superwhite-command]")) {
+		const text = element.querySelector<HTMLElement>(".command-text")!;
+		const canvas = element.querySelector<HTMLCanvasElement>("canvas")!;
+		const video = element.querySelector<HTMLVideoElement>("video")!;
+		const context = canvas.getContext("2d")!;
+		let fontReady = false;
+
+		function drawCutout() {
+			const { width, height } = text.getBoundingClientRect();
+			const style = getComputedStyle(text);
+			const scale = window.devicePixelRatio;
+			canvas.width = Math.ceil(width * scale);
+			canvas.height = Math.ceil(height * scale);
+			context.scale(scale, scale);
+
+			context.fillStyle = style.getPropertyValue("--color-soot").trim();
+			context.fillRect(0, 0, width, height);
+			context.globalCompositeOperation = "destination-out";
+			context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+			const metrics = context.measureText(text.textContent!);
+			const baseline = (height - metrics.fontBoundingBoxAscent - metrics.fontBoundingBoxDescent) / 2
+				+ metrics.fontBoundingBoxAscent;
+			context.fillText(text.textContent!, 0, baseline);
+		}
+
+		function reveal() {
+			if (fontReady && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+				element.setAttribute("data-superwhite-ready", "");
+			}
+		}
+
+		video.addEventListener("loadeddata", reveal);
+		video.addEventListener("canplaythrough", () => {
+			video.currentTime = 0;
+		});
+		document.fonts.ready.then(() => {
+			drawCutout();
+			fontReady = true;
+			reveal();
+			new ResizeObserver(drawCutout).observe(text);
+		});
+	}
+</script>
