@@ -197,9 +197,17 @@ function withSqliteErrors<T>(driver: SqliteDriver, action: () => T): T {
 
 type Placeholders = { names: Set<string>; positionalCount: number };
 
-const QUOTES = new Set(["'", '"', "`"]);
+const QUOTES = new Set(["'", "`"]);
 const IDENTIFIER_CHARACTER = /[\w$\u0080-\uffff]/;
 const PLACEHOLDER_NAME = /[A-Za-z0-9_]+/y;
+/**
+ * SQLite reads a parameter name as every identifier character: letters, digits, `_`, `$` and any
+ *  non-ASCII character, plus TCL-style `::` and `(...)` suffixes after a `$` or other prefix.
+ * The scanner reads only letters, digits and `_`, so a name followed by any of these would be
+ *  recorded shorter than SQLite reads it.
+ * @link https://github.com/sqlite/sqlite/blob/master/src/tokenize.c (sqlite3GetToken, CC_DOLLAR)
+ */
+const NAME_CONTINUATION = /[$\u0080-\uffff(]|::/y;
 const DIGIT = /[0-9]/;
 
 function skipPast(sql: string, from: number, terminator: string) {
@@ -229,8 +237,11 @@ function skipQuoted(sql: string, start: number) {
   return sql.length;
 }
 
-/** Reads `$name` and `?` placeholders, skipping string literals, quoted identifiers and comments. */
-function scanPlaceholders(sql: string): Placeholders {
+/**
+ * Reads `$name` and `?` placeholders, skipping string literals, quoted identifiers and comments.
+ * Throws on SQL whose parameters it cannot read exactly as SQLite does, and on double quotes.
+ */
+export function scanPlaceholders(sql: string): Placeholders {
   const names = new Set<string>();
   let positionalCount = 0;
   let index = 0;
@@ -238,6 +249,16 @@ function scanPlaceholders(sql: string): Placeholders {
   while (index < sql.length) {
     const character = sql[index]!;
     const next = sql[index + 1];
+
+    // Bun's SQLite accepts a double-quoted name that matches no column as a string literal,
+    //  so a misspelled column or an index on "nope" succeeds silently. Node's SQLite refuses it.
+    // Refusing every double quote here makes both runtimes strict.
+    // https://www.sqlite.org/quirks.html#dblquote
+    if (character === '"') {
+      throw new TypeError(
+        `Double quotes are not supported in SQL: use single quotes for strings, and [name] or backticks for an identifier that needs quoting: ${sql}`,
+      );
+    }
 
     if (QUOTES.has(character)) {
       index = skipQuoted(sql, index);
@@ -277,6 +298,14 @@ function scanPlaceholders(sql: string): Placeholders {
       PLACEHOLDER_NAME.lastIndex = index + 1;
       const name = PLACEHOLDER_NAME.exec(sql)?.[0];
 
+      NAME_CONTINUATION.lastIndex = index + 1 + (name?.length ?? 0);
+
+      if (NAME_CONTINUATION.test(sql)) {
+        throw new TypeError(
+          `SQL parameter names may only use letters, digits and _: ${sql.slice(index, NAME_CONTINUATION.lastIndex)} in ${sql}`,
+        );
+      }
+
       if (name != null) {
         if (character !== "$") {
           throw new TypeError(`Only $name SQL parameters are supported, not ${character}${name}`);
@@ -303,9 +332,14 @@ export function isNamedBindings(value: unknown): value is NamedBindings {
   );
 }
 
+/** Both runtimes store NaN as NULL and Infinity as a REAL that reads back as text 'Inf'. */
+function isNonFiniteNumber(value: unknown) {
+  return typeof value === "number" && !Number.isFinite(value);
+}
+
 /**
  * Binding is strict on both drivers. Every named placeholder needs a value, no other names are
- *  accepted, `undefined` is never bound (`null` is), and positional counts must match.
+ *  accepted, `undefined`, NaN and Infinity are never bound (`null` is), and positional counts must match.
  * These errors carry no SQLite code, so nothing treats them as retriable SQLite failures.
  */
 function bind(placeholders: Placeholders, params: Array<unknown>): DriverArgs {
@@ -324,6 +358,11 @@ function bind(placeholders: Placeholders, params: Array<unknown>): DriverArgs {
 
     if (params.includes(undefined)) {
       throw new TypeError("SQL parameters cannot be undefined; use null for NULL");
+    }
+
+    const nonFinite = params.find(isNonFiniteNumber);
+    if (nonFinite !== undefined) {
+      throw new TypeError(`SQL parameters cannot be ${nonFinite}; SQLite cannot store it`);
     }
 
     return params as Array<SqliteValue>;
@@ -348,6 +387,10 @@ function bind(placeholders: Placeholders, params: Array<unknown>): DriverArgs {
 
     if (value === undefined) {
       throw new TypeError(`SQL parameter ${name} is undefined; use null for NULL`);
+    }
+
+    if (isNonFiniteNumber(value)) {
+      throw new TypeError(`SQL parameter ${name} is ${value}; SQLite cannot store it`);
     }
   }
 

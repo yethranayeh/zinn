@@ -122,12 +122,78 @@ export function defineContractChecks(test: DefineTest, adapter: Adapter) {
 
   test("placeholders inside literals, quoted identifiers and comments are not parameters", () => {
     withDatabase(adapter, (db) => {
-      const statement = db.query(`SELECT 'it''s $text ?' AS "$quoted?", ? AS [bracket $name ?]
+      const statement = db.query(`SELECT 'it''s $text ?' AS [$quoted?], ? AS [bracket $name ?]
         -- $line ?
         /* $block ? */`);
 
       assert.throws(() => statement.get(), isBindingError);
       assert.deepEqual(statement.get(7), { "$quoted?": "it's $text ?", "bracket $name ?": 7 });
+    });
+  });
+
+  test("double quotes are refused outside literals and comments", () => {
+    withDatabase(adapter, (db) => {
+      db.exec("CREATE TABLE item (name TEXT)");
+
+      assert.throws(() => db.query(`SELECT "name" FROM item`), isBindingError);
+      assert.throws(() => db.query(`SELECT "nope" FROM item`), isBindingError);
+      assert.throws(() => db.query(`SELECT 1 AS "alias"`), isBindingError);
+      assert.throws(() => db.query(`CREATE INDEX i ON item("nope")`), isBindingError);
+      assert.throws(() => db.query(`SELECT 'a' -- note\n, "b"`), isBindingError);
+
+      assert.deepEqual(
+        db
+          .query(`SELECT 'say "hi"' AS [quoted "name"], 'it''s "x"' AS \`back"tick\` -- "comment"
+            /* "block" */`)
+          .get(),
+        { 'quoted "name"': 'say "hi"', 'back"tick': `it's "x"` },
+      );
+
+      // A double quote inside a bound value is data, as in an FTS5 phrase query.
+      db.exec("CREATE VIRTUAL TABLE search USING fts5(body)");
+      db.query("INSERT INTO search (body) VALUES (?)").run("hello brave world");
+      const match = db.query<{ body: string }>("SELECT body FROM search WHERE search MATCH ?");
+      assert.deepEqual(match.get('"hello brave"'), { body: "hello brave world" });
+    });
+  });
+
+  test("parameter names the scanner cannot read exactly are refused", () => {
+    withDatabase(adapter, (db) => {
+      for (const sql of [
+        "SELECT $a$b",
+        "SELECT $na\u00efve",
+        "SELECT $\u00e9",
+        "SELECT $a::b",
+        "SELECT $::a",
+        "SELECT $a(x)",
+        "SELECT $$",
+      ]) {
+        assert.throws(() => db.query(sql), isBindingError, sql);
+      }
+
+      assert.deepEqual(db.query("SELECT $a_1 AS a, $A2 AS b").get({ $a_1: 1, $A2: 2 }), {
+        a: 1,
+        b: 2,
+      });
+      assert.deepEqual(db.query("SELECT ($a)+1 AS a, $b || 'x' AS b").get({ $a: 1, $b: "y" }), {
+        a: 2,
+        b: "yx",
+      });
+    });
+  });
+
+  test("NaN and Infinity are refused when binding", () => {
+    withDatabase(adapter, (db) => {
+      const positional = db.query("SELECT ? AS value");
+      const named = db.query("SELECT $value AS value");
+
+      for (const value of [NaN, Infinity, -Infinity]) {
+        assert.throws(() => positional.get(value), isBindingError, `${value}`);
+        assert.throws(() => named.get({ $value: value }), isBindingError, `${value}`);
+      }
+
+      assert.deepEqual(positional.get(1.5), { value: 1.5 });
+      assert.deepEqual(named.get({ $value: Number.MAX_VALUE }), { value: Number.MAX_VALUE });
     });
   });
 
