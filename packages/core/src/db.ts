@@ -11,6 +11,13 @@ let db: Database | null = null;
 const BUSY_TIMEOUT_MS = 30_000;
 const INITIALIZATION_RETRY_BUDGET_MS = 1_000;
 const INITIALIZATION_ATTEMPTS = 5;
+/**
+ * In WAL mode, synchronous NORMAL skips the fsync on each commit, so a power loss or OS crash
+ *  can undo the last commits that were reported as done. FULL syncs the WAL on every commit.
+ * Node's SQLite already defaults to FULL; the SQLite that Bun uses on macOS defaults to NORMAL.
+ * @link https://www.sqlite.org/pragma.html#pragma_synchronous
+ */
+const SYNCHRONOUS_FULL = "FULL";
 
 function initDb() {
   const db = openDatabase(DB_PATH);
@@ -19,6 +26,7 @@ function initDb() {
     // Arm waiting before WAL setup and schema creation can encounter another process.
     db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS};`);
     db.exec("PRAGMA journal_mode = WAL;");
+    db.exec(`PRAGMA synchronous = ${SYNCHRONOUS_FULL};`);
     db.exec("PRAGMA foreign_keys = true;");
     // TODO: https://bun.com/docs/runtime/sqlite#wal-sidecar-file-cleanup macOS does not auto cleanup
 

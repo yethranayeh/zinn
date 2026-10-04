@@ -66,8 +66,9 @@ function runInitializationCheck(failure: ControlledFailure, failures: number, de
         const cached = getDb() === db;
         const timeout = db.query("PRAGMA busy_timeout").get().timeout;
         const foreignKeys = db.query("PRAGMA foreign_keys").get().foreign_keys;
+        const synchronous = db.query("PRAGMA synchronous").get().synchronous;
         db.close();
-        console.log(JSON.stringify({ ok: true, opened, closed, cached, timeout, foreignKeys }));
+        console.log(JSON.stringify({ ok: true, opened, closed, cached, timeout, foreignKeys, synchronous }));
       } catch (error) {
         const normalized = error.cause instanceof SqliteError;
         console.log(JSON.stringify({
@@ -95,7 +96,7 @@ test.each([
   { code: "SQLITE_IOERR_TRUNCATE", errno: 1546 },
 ])("initialization recovers from $code and closes failed connections", (failure) => {
   expect(runInitializationCheck(failure, 1)).toEqual({
-    ok: true, opened: 2, closed: 2, cached: true, timeout: 30_000, foreignKeys: 1,
+    ok: true, opened: 2, closed: 2, cached: true, timeout: 30_000, foreignKeys: 1, synchronous: 2,
   });
 });
 
