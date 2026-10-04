@@ -1,6 +1,11 @@
 import { isProductionSite } from "../config/site";
 
-type WebsiteEvent = "github-click" | "npm-click" | "install-copy";
+type WebsiteEvent =
+  | "github-click"
+  | "npm-click"
+  | "install-copy"
+  | "twitter-click"
+  | "bluesky-click";
 
 declare global {
   interface Window {
