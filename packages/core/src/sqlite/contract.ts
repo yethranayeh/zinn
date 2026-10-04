@@ -43,6 +43,27 @@ function isBindingError(error: unknown) {
   return error instanceof TypeError && !(error instanceof SqliteError) && !("code" in error);
 }
 
+/** An error the wrapper raises for a database it will not use, with no SQLite or driver code. */
+function isStateError(error: unknown, message: string) {
+  return (
+    error instanceof Error &&
+    !(error instanceof SqliteError) &&
+    !("code" in error) &&
+    error.message === message
+  );
+}
+
+function isClosedError(error: unknown) {
+  return isStateError(error, "The database is closed");
+}
+
+function isTransactionLostError(error: unknown) {
+  return isStateError(
+    error,
+    "SQLite rolled back this transaction after an earlier error, so no more statements can run in it",
+  );
+}
+
 function assertSqliteError(error: unknown, code: string, errcode: number) {
   assert.ok(error instanceof SqliteError);
   assert.equal(error.code, code);
@@ -324,6 +345,48 @@ export function defineContractChecks(test: DefineTest, adapter: Adapter) {
     });
   });
 
+  test("after SQLite rolls back a transaction by itself, nothing runs in it until it ends", () => {
+    withDatabase(adapter, (db) => {
+      db.exec("CREATE TABLE item (value BLOB)");
+      const pageCount = db.query<{ page_count: number }>("PRAGMA page_count").get()!.page_count;
+      db.exec(`PRAGMA max_page_count = ${pageCount + 2}`);
+      const insert = db.query("INSERT INTO item VALUES (?)");
+
+      assert.throws(
+        () =>
+          db
+            .transaction(() => {
+              insert.run("outer");
+              assert.throws(
+                () =>
+                  db
+                    .transaction(() => {
+                      db.query("INSERT INTO item VALUES (randomblob(1000000))").run();
+                    })
+                    .immediate(),
+                (error) => assertSqliteError(error, "SQLITE_FULL", 13),
+              );
+
+              // Without the guard, these would run outside any transaction and commit one by one.
+              assert.throws(() => insert.run("after"), isTransactionLostError);
+              assert.throws(() => db.query("SELECT 1").get(), isTransactionLostError);
+              assert.throws(() => db.exec("SELECT 1"), isTransactionLostError);
+              assert.throws(
+                () => db.transaction(() => insert.run("nested after")).immediate(),
+                isTransactionLostError,
+              );
+            })
+            .immediate(),
+        isTransactionLostError,
+      );
+
+      assert.equal(db.inTransaction, false);
+      assert.equal(count(db, "item"), 0);
+      insert.run("later");
+      assert.equal(count(db, "item"), 1);
+    });
+  });
+
   test("when ROLLBACK also fails, the original error is thrown and the rollback error kept", () => {
     const rollbackFailure = new Error("rollback failed");
     let failRollback = true;
@@ -457,6 +520,23 @@ export function defineContractChecks(test: DefineTest, adapter: Adapter) {
     const db = adapter.openDatabase(":memory:");
     db.close();
     assert.doesNotThrow(() => db.close());
+  });
+
+  test("using a closed database throws the same error on both runtimes", () => {
+    const db = adapter.openDatabase(":memory:");
+    db.exec("CREATE TABLE item (value INTEGER)");
+    const select = db.query("SELECT * FROM item");
+    const insert = db.query("INSERT INTO item VALUES (?)");
+    db.close();
+
+    assert.throws(() => select.get(), isClosedError);
+    assert.throws(() => select.all(), isClosedError);
+    assert.throws(() => insert.run(1), isClosedError);
+    assert.throws(() => db.query("SELECT * FROM item"), isClosedError);
+    assert.throws(() => db.query("SELECT 1"), isClosedError);
+    assert.throws(() => db.exec("SELECT 1"), isClosedError);
+    assert.throws(() => db.inTransaction, isClosedError);
+    assert.throws(() => db.transaction(() => 1).immediate(), isClosedError);
   });
 
   test("query_only and read-only connections refuse writes", () => {

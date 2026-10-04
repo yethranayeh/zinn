@@ -401,26 +401,36 @@ export class Statement<Row, Params extends Array<unknown>> {
   private readonly driver: SqliteDriver;
   private readonly statement: DriverStatement;
   private readonly placeholders: Placeholders;
+  private readonly assertUsable: () => void;
 
-  constructor(driver: SqliteDriver, connection: DriverConnection, sql: string) {
+  constructor(
+    driver: SqliteDriver,
+    connection: DriverConnection,
+    sql: string,
+    assertUsable: () => void,
+  ) {
     this.driver = driver;
+    this.assertUsable = assertUsable;
     this.placeholders = scanPlaceholders(sql);
     this.statement = withSqliteErrors(driver, () => connection.prepare(sql));
   }
 
   /** The first row, or null when there is none. */
   get(...params: Params): Row | null {
+    this.assertUsable();
     const args = bind(this.placeholders, params);
     const row = withSqliteErrors(this.driver, () => this.statement.get(...args));
     return (row ?? null) as Row | null;
   }
 
   all(...params: Params): Array<Row> {
+    this.assertUsable();
     const args = bind(this.placeholders, params);
     return withSqliteErrors(this.driver, () => this.statement.all(...args)) as Array<Row>;
   }
 
   run(...params: Params): void {
+    this.assertUsable();
     const args = bind(this.placeholders, params);
     withSqliteErrors(this.driver, () => this.statement.run(...args));
   }
@@ -440,20 +450,48 @@ export class Database {
   private readonly connection: DriverConnection;
   private readonly statements = new Map<string, Statement<unknown, Array<unknown>>>();
   private isClosed = false;
+  /** How many transaction() calls are running, the outermost included. */
+  private transactionDepth = 0;
 
   constructor(driver: SqliteDriver, connection: DriverConnection) {
     this.driver = driver;
     this.connection = connection;
   }
 
+  /** Each driver throws its own error after close; this one is the same on both. */
+  private assertOpen() {
+    if (this.isClosed) {
+      throw new Error("The database is closed");
+    }
+  }
+
+  /**
+   * Some errors, such as SQLITE_FULL, make SQLite roll back the whole transaction by itself.
+   * A callback that catches such an error and goes on would run its next statements outside
+   *  any transaction, each committing on its own.
+   * So until the transaction() call that lost its transaction returns, every statement throws.
+   * @link https://www.sqlite.org/lang_transaction.html#response_to_errors_within_a_transaction
+   */
+  private readonly assertUsable = () => {
+    this.assertOpen();
+
+    const isTransactionLost = this.transactionDepth > 0 && !this.connection.inTransaction;
+    if (isTransactionLost) {
+      throw new Error(
+        "SQLite rolled back this transaction after an earlier error, so no more statements can run in it",
+      );
+    }
+  };
+
   /** Prepares a statement once per SQL string and reuses it afterwards. */
   query<Row = unknown, Params extends SqliteParams = SqliteParams>(
     sql: string,
   ): Statement<Row, StatementParams<Params>> {
+    this.assertUsable();
     let statement = this.statements.get(sql);
 
     if (statement == null) {
-      statement = new Statement(this.driver, this.connection, sql);
+      statement = new Statement(this.driver, this.connection, sql, this.assertUsable);
       this.statements.set(sql, statement);
     }
 
@@ -462,11 +500,13 @@ export class Database {
 
   /** Runs one or more statements without bindings, such as PRAGMA, BEGIN, COMMIT and ROLLBACK. */
   exec(sql: string) {
+    this.assertUsable();
     withSqliteErrors(this.driver, () => this.connection.exec(sql));
   }
 
   /** Whether the connection is inside a transaction, as SQLite reports it. */
   get inTransaction() {
+    this.assertOpen();
     return this.connection.inTransaction;
   }
 
@@ -485,6 +525,7 @@ export class Database {
    * `transaction(fn).immediate()` runs fn inside BEGIN IMMEDIATE and commits.
    * Inside another transaction it runs in a savepoint instead.
    * If fn or COMMIT fails, an open transaction is rolled back and the original error is rethrown.
+   * If SQLite rolled the transaction back by itself, statements throw until this call returns.
    */
   transaction<T>(fn: () => T) {
     return { immediate: () => this.runTransaction(fn) };
@@ -493,6 +534,7 @@ export class Database {
   private runTransaction<T>(fn: () => T): T {
     const isNested = this.inTransaction;
     this.exec(isNested ? `SAVEPOINT ${NESTED_TRANSACTION_SAVEPOINT}` : "BEGIN IMMEDIATE");
+    this.transactionDepth++;
 
     try {
       const result = fn();
@@ -517,6 +559,8 @@ export class Database {
       }
 
       throw error;
+    } finally {
+      this.transactionDepth--;
     }
   }
 }
