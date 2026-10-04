@@ -14,14 +14,14 @@ export function getAllByTaskId(taskId: string) {
 }
 
 export function create(taskId: string, labelId: string) {
-  return getDb()
+  getDb()
     .query(`INSERT INTO ${DB_TABLE.taskLabel} (task_id, label_id)
     VALUES (?, ?) ON CONFLICT (task_id, label_id) DO NOTHING`)
     .run(taskId, labelId);
 }
 
 export function deleteByIds(taskId: string, labelId: string) {
-  return getDb()
+  getDb()
     .query(`DELETE FROM ${DB_TABLE.taskLabel}
     WHERE task_id = ? AND label_id = ?`)
     .run(taskId, labelId);

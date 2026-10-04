@@ -31,9 +31,9 @@ test("column renames keep identity and tasks, reject duplicates, and skip no-op 
       assert.throws(() => column.edit({ projectKey: "nope", columnName: "Done", name: "Later" }, actor), /Project with key "NOPE" does not exist!/);
       assert.equal(column.edit({ projectKey: "OTHER", columnName: "Done", name: "NEXT UP" }, actor).name, "NEXT UP");
 
-      db.run("CREATE TRIGGER fail_column_update BEFORE UPDATE ON project_column BEGIN SELECT RAISE(ABORT, 'column written'); END");
+      db.exec("CREATE TRIGGER fail_column_update BEFORE UPDATE ON project_column BEGIN SELECT RAISE(ABORT, 'column written'); END");
       assert.deepEqual(column.edit({ projectKey: "APP", columnName: "next up", name: " NEXT UP " }, actor), { ...todo, name: "NEXT UP" });
-      db.run("DROP TRIGGER fail_column_update");
+      db.exec("DROP TRIGGER fail_column_update");
 
       assert.throws(() => column.create({ projectKey: "APP", name: "next up" }, actor), /There is already a "next up" column/);
       assert.throws(() => column.create({ projectKey: "APP", name: " next up " }, actor), /There is already a "next up" column/);
@@ -86,7 +86,7 @@ test("column orders move only the moved column and skip no-op writes", () => {
       assert.deepEqual(names(), ["Done", "Review", "In Progress", "TODO", "Backlog"]);
 
       const rowsBeforeNoOps = column.getAllByProjectKey("APP");
-      db.run("CREATE TRIGGER fail_column_update BEFORE UPDATE ON project_column BEGIN SELECT RAISE(ABORT, 'column written'); END");
+      db.exec("CREATE TRIGGER fail_column_update BEFORE UPDATE ON project_column BEGIN SELECT RAISE(ABORT, 'column written'); END");
       for (const [columnName, direction, targetColumnName] of [
         ["Done", "first"], ["Done", "previous"], ["Backlog", "last"], ["Backlog", "next"],
         ["Review", "before", "In Progress"], ["In Progress", "after", "review"],
@@ -95,7 +95,7 @@ test("column orders move only the moved column and skip no-op writes", () => {
         const unchanged = order(columnName, direction, targetColumnName);
         assert.deepEqual(unchanged, rowsBeforeNoOps.find(row => row.id === unchanged.id));
       }
-      db.run("DROP TRIGGER fail_column_update");
+      db.exec("DROP TRIGGER fail_column_update");
       assert.deepEqual(column.getAllByProjectKey("APP"), rowsBeforeNoOps);
 
       assert.throws(() => order("missing", "first"), /App does not have a column named "missing"/);

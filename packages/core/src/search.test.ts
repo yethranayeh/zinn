@@ -261,7 +261,7 @@ test("a task missing from the index, as in an older database, is indexed when it
   runSearchCheck(`
     create("Legacy task", null);
     comment.create({ taskKey: "APP-1", text: "old remark" }, human);
-    getDb().run("DELETE FROM task_search");
+    getDb().exec("DELETE FROM task_search");
     assert.deepEqual(keys("legacy"), []);
 
     comment.create({ taskKey: "APP-1", text: "new remark" }, human);

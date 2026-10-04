@@ -10,23 +10,21 @@ type StoredActivity = Omit<Activity, "changes"> & { changes: string | null };
 export function create(props: Omit<Activity, "id">) {
   const db = getDb();
 
-  return db
-    .query<never, Bind<StoredActivity>>(
-      `INSERT INTO
+  db.query<never, Bind<StoredActivity>>(
+    `INSERT INTO
     ${DB_TABLE.activity} (id, created_at, actor_name, actor_email, actor_kind, entity_type, entity_id, action, changes)
     VALUES               ($id, $created_at, $actor_name, $actor_email, $actor_kind, $entity_type, $entity_id, $action, $changes);`,
-    )
-    .run({
-      $id: randomUUIDv7(),
-      $created_at: props.created_at,
-      $actor_name: props.actor_name,
-      $actor_email: props.actor_email,
-      $actor_kind: props.actor_kind,
-      $entity_type: props.entity_type,
-      $entity_id: props.entity_id,
-      $action: props.action,
-      $changes: props.changes == null ? null : JSON.stringify(props.changes),
-    });
+  ).run({
+    $id: randomUUIDv7(),
+    $created_at: props.created_at,
+    $actor_name: props.actor_name,
+    $actor_email: props.actor_email,
+    $actor_kind: props.actor_kind,
+    $entity_type: props.entity_type,
+    $entity_id: props.entity_id,
+    $action: props.action,
+    $changes: props.changes == null ? null : JSON.stringify(props.changes),
+  });
 }
 
 export function getAllByEntity(entityType: ActivityEntityType, entityId: string): Array<Activity> {

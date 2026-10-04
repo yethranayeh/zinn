@@ -53,7 +53,7 @@ export function update(props: Label) {
 export function deleteById(id: string) {
   const db = getDb();
 
-  return db
-    .query<never, Bind<Pick<Label, "id">>>(`DELETE FROM ${DB_TABLE.label} WHERE id = $id;`)
-    .run({ $id: id });
+  db.query<never, Bind<Pick<Label, "id">>>(`DELETE FROM ${DB_TABLE.label} WHERE id = $id;`).run({
+    $id: id,
+  });
 }

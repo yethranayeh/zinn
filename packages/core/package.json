@@ -19,6 +19,12 @@
 	"private": false,
 	"type": "module",
 	"module": "index.ts",
+	"imports": {
+		"#sqlite": {
+			"bun": "./src/sqlite/bun.ts",
+			"default": "./src/sqlite/node.ts"
+		}
+	},
 	"exports": {
 		".": {
 			"types": "./index.ts",

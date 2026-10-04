@@ -19,16 +19,16 @@ test("same-time backups preserve earlier snapshots and include uncheckpointed WA
 
       setSystemTime(new Date("2026-10-03T12:30:05Z"));
       const db = getDb();
-      db.run("PRAGMA wal_autocheckpoint = 0");
-      db.run("CREATE TABLE backup_test (value INTEGER)");
-      db.run("INSERT INTO backup_test VALUES (0)");
+      db.exec("PRAGMA wal_autocheckpoint = 0");
+      db.exec("CREATE TABLE backup_test (value INTEGER)");
+      db.exec("INSERT INTO backup_test VALUES (0)");
       const input = { client: "test", version: "1.2.3" };
       const first = backup.create(input).path;
       const firstBytes = readFileSync(first);
       const paths = new Set([first]);
 
       for (let value = 1; value <= 20; value++) {
-        db.run("UPDATE backup_test SET value = ?", [value]);
+        db.query("UPDATE backup_test SET value = ?").run(value);
         assert.ok(existsSync(DB_PATH + "-wal"));
         const { path } = backup.create(input);
         assert.ok(basename(path).startsWith("2026-10-03T12-30-05Z-test-1.2.3-"));

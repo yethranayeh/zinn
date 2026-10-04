@@ -9,7 +9,7 @@ export function addTask(entry: {
   description: string | null;
   comments: string;
 }) {
-  return getDb()
+  getDb()
     .query(`INSERT INTO ${DB_TABLE.taskSearch} (task_id, title, description, comments)
     VALUES ($taskId, $title, $description, $comments);`)
     .run({
@@ -21,7 +21,7 @@ export function addTask(entry: {
 }
 
 export function removeTask(taskId: string) {
-  return getDb()
+  getDb()
     .query(`DELETE FROM ${DB_TABLE.taskSearch} WHERE task_id = $taskId;`)
     .run({ $taskId: taskId });
 }

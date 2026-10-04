@@ -28,7 +28,15 @@ export function getByKey(key: string) {
     .get({ $key: standardizedKey });
 }
 
-export function create({ key, name, description = null }: { key: string; name: string; description?: string | null }) {
+export function create({
+  key,
+  name,
+  description = null,
+}: {
+  key: string;
+  name: string;
+  description?: string | null;
+}) {
   const db = getDb();
 
   const query = db.query<
@@ -68,9 +76,7 @@ export function deleteByKey(key: string) {
   const db = getDb();
 
   const standardizedKey = standardizeProjectKey(key);
-  return db
-    .query(`DELETE FROM ${DB_TABLE.project} WHERE key = $key;`)
-    .run({ $key: standardizedKey });
+  db.query(`DELETE FROM ${DB_TABLE.project} WHERE key = $key;`).run({ $key: standardizedKey });
 }
 
 export function update(props: Pick<Project, "id" | "name" | "description" | "updated_at">) {
@@ -80,5 +86,10 @@ export function update(props: Pick<Project, "id" | "name" | "description" | "upd
     .query<Project, Bind<typeof props>>(`UPDATE ${DB_TABLE.project}
       SET name = $name, description = $description, updated_at = $updated_at
       WHERE id = $id RETURNING *`)
-    .get({ $id: props.id, $name: props.name, $description: props.description, $updated_at: props.updated_at });
+    .get({
+      $id: props.id,
+      $name: props.name,
+      $description: props.description,
+      $updated_at: props.updated_at,
+    });
 }

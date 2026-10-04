@@ -6,7 +6,7 @@ import { getDb } from "../db";
 export function getById(id: string) {
   const db = getDb();
   return db
-    .query<Column, Partial<Bind<Pick<Column, "id">>>>(`SELECT * FROM ${DB_TABLE.projectColumn}
+    .query<Column, Bind<Pick<Column, "id">>>(`SELECT * FROM ${DB_TABLE.projectColumn}
     WHERE id = $id`)
     .get({ $id: id });
 }
@@ -14,10 +14,7 @@ export function getById(id: string) {
 export function getAllByProjectId(projectId: string) {
   const db = getDb();
   return db
-    .query<
-      Column,
-      Partial<Bind<Pick<Column, "project_id">>>
-    >(`SELECT * FROM ${DB_TABLE.projectColumn}
+    .query<Column, Bind<Pick<Column, "project_id">>>(`SELECT * FROM ${DB_TABLE.projectColumn}
     WHERE project_id = $project_id
     ORDER BY column_order`)
     .all({ $project_id: projectId });

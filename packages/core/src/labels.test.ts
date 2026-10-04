@@ -81,17 +81,17 @@ test("labels preserve atomic edits, no-op timestamps, uniqueness, and cascade in
       assert.throws(() => task.edit({ taskKey: first.key, addLabelNames: ["DEFECT"], removeLabelNames: [" defect "] }, actor));
       assert.deepEqual(task.getByKey(first.key), unchanged);
       // Force failure after the task counter and row have been written.
-      db.run("CREATE TRIGGER fail_attachment BEFORE INSERT ON task_label BEGIN SELECT RAISE(ABORT, 'attachment failed'); END");
+      db.exec("CREATE TRIGGER fail_attachment BEFORE INSERT ON task_label BEGIN SELECT RAISE(ABORT, 'attachment failed'); END");
       assert.throws(() => task.create({ project_id: app.id, title: "Rollback", description: null, labelNames: ["defect"] }, actor), /attachment failed/);
       assert.equal(project.getById(app.id).task_count, 1);
       assert.equal(task.getAll({ projectKey: "APP" }).length, 1);
-      db.run("DROP TRIGGER fail_attachment");
+      db.exec("DROP TRIGGER fail_attachment");
       // Force failure after attachment changes but before the task update finishes.
-      db.run("CREATE TRIGGER fail_update BEFORE UPDATE ON task BEGIN SELECT RAISE(ABORT, 'update failed'); END");
+      db.exec("CREATE TRIGGER fail_update BEFORE UPDATE ON task BEGIN SELECT RAISE(ABORT, 'update failed'); END");
       assert.throws(() => task.edit({ taskKey: first.key, title: "Rollback", removeLabelNames: ["auth"] }, actor), /update failed/);
       assert.deepEqual(task.label.getAll(first.key).map(l => l.name), ["auth", "defect"]);
       assert.equal(task.getByKey(first.key).title, "First");
-      db.run("DROP TRIGGER fail_update");
+      db.exec("DROP TRIGGER fail_update");
       db.query("UPDATE task SET updated_at = 1 WHERE id = ?").run(first.id);
       const edited = task.edit({ taskKey: first.key, title: "Edited", removeLabelNames: ["auth"] }, actor);
       assert.ok(edited.updated_at > 1);

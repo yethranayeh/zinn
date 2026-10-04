@@ -1,6 +1,10 @@
-import { Database } from "bun:sqlite";
+import type { Database } from "./sqlite/database";
+
+import { openDatabase } from "#sqlite";
+
 import { DB_PATH, DB_TABLE } from "./constant";
 import { ensureConfigSetup } from "./config";
+import { attachSuppressed, SqliteError } from "./sqlite/database";
 
 let db: Database | null = null;
 
@@ -9,14 +13,13 @@ const INITIALIZATION_RETRY_BUDGET_MS = 1_000;
 const INITIALIZATION_ATTEMPTS = 5;
 
 function initDb() {
-  // TODO: turn on strict mode, and refactor `$` prefixes: https://bun.com/docs/runtime/sqlite#strict-true-lets-you-bind-values-without-prefixes
-  const db = new Database(DB_PATH, { create: true });
+  const db = openDatabase(DB_PATH);
 
   try {
     // Arm waiting before WAL setup and schema creation can encounter another process.
-    db.run(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS};`);
-    db.run("PRAGMA journal_mode = WAL;");
-    db.run("PRAGMA foreign_keys = true;");
+    db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS};`);
+    db.exec("PRAGMA journal_mode = WAL;");
+    db.exec("PRAGMA foreign_keys = true;");
     // TODO: https://bun.com/docs/runtime/sqlite#wal-sidecar-file-cleanup macOS does not auto cleanup
 
     // --- PROJECT TABLE
@@ -118,7 +121,12 @@ function initDb() {
 
     return db;
   } catch (err) {
-    db.close();
+    try {
+      db.close();
+    } catch (closeError) {
+      attachSuppressed(err, closeError);
+    }
+
     throw err;
   }
 }
@@ -134,7 +142,8 @@ export function getDb() {
           db = initDb();
           break;
         } catch (err) {
-          const code = (err as NodeJS.ErrnoException).code;
+          // Binding and API errors are not SqliteErrors, so they are never retried.
+          const code = err instanceof SqliteError ? err.code : null;
           const isTransientStartupError =
             code === "SQLITE_BUSY" ||
             code === "SQLITE_BUSY_RECOVERY" ||

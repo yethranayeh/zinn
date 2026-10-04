@@ -86,15 +86,18 @@ test("project.incrementTaskCounterById returns null for an unknown id", () => {
 test("project.deleteByKey removes a project regardless of key casing", () => {
   const created = project.create({ key: "GONE", name: "Gone" })!;
 
-  const result = project.deleteByKey("gone");
+  project.deleteByKey("gone");
 
-  expect(result.changes).toBe(1);
   expect(project.getByKey("GONe")).toBeNull();
   expect(project.getById(created.id)).toBeNull();
 });
 
 test("project.deleteByKey doesn't do anything for nonexistent project", () => {
-  expect(project.deleteByKey("void").changes).toBe(0);
+  const before = project.getAll();
+
+  project.deleteByKey("void");
+
+  expect(project.getAll()).toEqual(before);
 });
 
 function createTask(title: string) {

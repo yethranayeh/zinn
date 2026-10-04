@@ -49,7 +49,7 @@ test("comments have stable per-task keys", () => {
     assert.deepEqual(comment.getAll("APP-1").map((entry) => entry.key), ["APP-1#1", "APP-1#2"]);
 
     // Listing follows comment numbers even when storage IDs disagree.
-    getDb().run("UPDATE comment SET id = '00000000-0000-7000-8000-000000000000' WHERE id = ?", [second.id]);
+    getDb().query("UPDATE comment SET id = '00000000-0000-7000-8000-000000000000' WHERE id = ?").run(second.id);
     assert.deepEqual(comment.getAll("APP-1").map((entry) => entry.key), ["APP-1#1", "APP-1#2"]);
 
     comment.delete({ commentKey: "APP-1#2" }, human);
@@ -63,7 +63,7 @@ test("comment mutations update task activity atomically and no-op edits stay unc
   runCommentCheck(`
     task.create({ project_id: app.id, title: "First", description: null }, human);
     const db = getDb();
-    db.run("UPDATE task SET updated_at = 1 WHERE number = 1");
+    db.exec("UPDATE task SET updated_at = 1 WHERE number = 1");
     const created = comment.create({ taskKey: "APP-1", text: "Original" }, human);
     assert.equal(task.getByKey("APP-1").updated_at, 1);
     assert.deepEqual(task.activity("APP-1").at(-1).changes, {
@@ -95,9 +95,9 @@ test("comment mutations update task activity atomically and no-op edits stay unc
     });
     assert.equal(task.getByKey("APP-1").updated_at, 1);
 
-    db.run("CREATE TRIGGER fail_comment BEFORE INSERT ON comment BEGIN SELECT RAISE(ABORT, 'comment failed'); END");
+    db.exec("CREATE TRIGGER fail_comment BEFORE INSERT ON comment BEGIN SELECT RAISE(ABORT, 'comment failed'); END");
     assert.throws(() => comment.create({ taskKey: "APP-1", text: "Failure" }, human), /comment failed/);
-    db.run("DROP TRIGGER fail_comment");
+    db.exec("DROP TRIGGER fail_comment");
     const afterFailure = comment.create({ taskKey: "APP-1", text: "After failure" }, human);
     assert.equal(afterFailure.key, "APP-1#2");
   `);

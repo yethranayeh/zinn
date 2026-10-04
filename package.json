@@ -9,6 +9,7 @@
 	"scripts": {
 		"dev": "bun scripts/dev-cli.ts",
 		"dev:seed": "bun scripts/seed-dev.ts",
+		"test:node": "node --test packages/core/src/sqlite/node.check.ts",
 		"docs:dev": "bun run --cwd docs dev",
 		"docs:build": "bun run --cwd docs build",
 		"docs:check": "bun run --cwd docs check",

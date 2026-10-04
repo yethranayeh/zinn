@@ -180,39 +180,39 @@ test("failed mutations leave no activity behind", () => {
     const later = column.create({ projectKey: "APP", name: "Later" }, human);
     const bug = label.create({ name: "bug" }, human);
     const db = getDb();
-    db.run("CREATE TRIGGER fail_activity BEFORE INSERT ON activity BEGIN SELECT RAISE(ABORT, 'activity failed'); END");
+    db.exec("CREATE TRIGGER fail_activity BEFORE INSERT ON activity BEGIN SELECT RAISE(ABORT, 'activity failed'); END");
     assert.throws(() => project.create({ key: "OTHER" }, human), /activity failed/);
     assert.equal(project.getByKey("OTHER"), null);
     assert.throws(() => label.create({ name: "docs" }, human), /activity failed/);
     assert.equal(label.getByName("docs") == null, true);
-    db.run("DROP TRIGGER fail_activity");
+    db.exec("DROP TRIGGER fail_activity");
 
-    db.run("CREATE TRIGGER fail_update BEFORE UPDATE ON task BEGIN SELECT RAISE(ABORT, 'update failed'); END");
+    db.exec("CREATE TRIGGER fail_update BEFORE UPDATE ON task BEGIN SELECT RAISE(ABORT, 'update failed'); END");
     assert.throws(() => task.edit({ taskKey: "APP-1", title: "Nope" }, human), /update failed/);
     assert.throws(() => task.move({ taskKey: "APP-1", targetColumn: "Done" }, human), /update failed/);
     assert.throws(() => task.archive("APP-1", human), /update failed/);
-    db.run("DROP TRIGGER fail_update");
+    db.exec("DROP TRIGGER fail_update");
     assert.throws(() => task.edit({ taskKey: "APP-1", addLabelNames: ["missing"] }, human), /does not exist/);
     assert.deepEqual(actions("APP-1"), ["create"]);
 
-    db.run("CREATE TRIGGER fail_project_update BEFORE UPDATE ON project BEGIN SELECT RAISE(ABORT, 'project update failed'); END");
+    db.exec("CREATE TRIGGER fail_project_update BEFORE UPDATE ON project BEGIN SELECT RAISE(ABORT, 'project update failed'); END");
     assert.throws(() => project.edit({ projectKey: "APP", name: "Nope" }, human), /project update failed/);
-    db.run("DROP TRIGGER fail_project_update");
+    db.exec("DROP TRIGGER fail_project_update");
     assert.deepEqual(dbActivity.getAllByEntity("project", app.id).map((row) => row.action), ["create"]);
 
-    db.run("CREATE TRIGGER fail_column_update BEFORE UPDATE ON project_column BEGIN SELECT RAISE(ABORT, 'column update failed'); END");
+    db.exec("CREATE TRIGGER fail_column_update BEFORE UPDATE ON project_column BEGIN SELECT RAISE(ABORT, 'column update failed'); END");
     assert.throws(() => column.edit({ projectKey: "APP", columnName: "Later", name: "Nope" }, human), /column update failed/);
-    db.run("DROP TRIGGER fail_column_update");
+    db.exec("DROP TRIGGER fail_column_update");
     assert.deepEqual(dbActivity.getAllByEntity("column", later.id).map((row) => row.action), ["create"]);
 
-    db.run("CREATE TRIGGER fail_label_update BEFORE UPDATE ON label BEGIN SELECT RAISE(ABORT, 'label update failed'); END");
+    db.exec("CREATE TRIGGER fail_label_update BEFORE UPDATE ON label BEGIN SELECT RAISE(ABORT, 'label update failed'); END");
     assert.throws(() => label.edit({ labelName: "bug", name: "Nope" }, human), /label update failed/);
-    db.run("DROP TRIGGER fail_label_update");
+    db.exec("DROP TRIGGER fail_label_update");
     assert.deepEqual(dbActivity.getAllByEntity("label", bug.id).map((row) => row.action), ["create"]);
 
-    db.run("CREATE TRIGGER fail_project_delete BEFORE DELETE ON project BEGIN SELECT RAISE(ABORT, 'project delete failed'); END");
+    db.exec("CREATE TRIGGER fail_project_delete BEFORE DELETE ON project BEGIN SELECT RAISE(ABORT, 'project delete failed'); END");
     assert.throws(() => project.delete("APP", human), /project delete failed/);
-    db.run("DROP TRIGGER fail_project_delete");
+    db.exec("DROP TRIGGER fail_project_delete");
     assert.equal(project.getById(app.id).key, "APP");
     assert.deepEqual(dbActivity.getAllByEntity("project", app.id).map((row) => row.action), ["create"]);
   `);
@@ -384,7 +384,7 @@ test("project description edits preserve omitted fields, skip no-ops and record 
     assert.deepEqual(dbActivity.getAllByEntity("project", described.id), before);
     assert.equal(project.edit({ projectKey: "DESC", description: "" }, human).description, null);
     assert.equal(project.edit({ projectKey: "DESC", description: null }, human).description, null);
-    getDb().run("CREATE TRIGGER reject_description BEFORE UPDATE ON project BEGIN SELECT RAISE(ABORT, 'rejected'); END");
+    getDb().exec("CREATE TRIGGER reject_description BEFORE UPDATE ON project BEGIN SELECT RAISE(ABORT, 'rejected'); END");
     const beforeFailure = dbActivity.getAllByEntity("project", described.id);
     assert.throws(() => project.edit({ projectKey: "DESC", description: "fail" }, human), /rejected/);
     assert.deepEqual(dbActivity.getAllByEntity("project", described.id), beforeFailure);

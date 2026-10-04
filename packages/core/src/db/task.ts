@@ -184,7 +184,7 @@ export function update(props: TaskUpdateParams) {
   }
 
   return db
-    .prepare<Task, TaskUpdateBindings>(`UPDATE ${DB_TABLE.task}
+    .query<Task, TaskUpdateBindings>(`UPDATE ${DB_TABLE.task}
     SET ${setClauses.join(",\n        ")}
     WHERE id = $id
     RETURNING *;`)
@@ -194,9 +194,9 @@ export function update(props: TaskUpdateParams) {
 export function deleteById(taskId: string) {
   const db = getDb();
 
-  return db
-    .query<never, Bind<Pick<Task, "id">>>(`DELETE FROM ${DB_TABLE.task} WHERE id = $id;`)
-    .run({ $id: taskId });
+  db.query<never, Bind<Pick<Task, "id">>>(`DELETE FROM ${DB_TABLE.task} WHERE id = $id;`).run({
+    $id: taskId,
+  });
 }
 
 export function incrementCommentCounterById(taskId: string) {
@@ -209,7 +209,7 @@ export function incrementCommentCounterById(taskId: string) {
 }
 
 export function updateLabelTasksTimestamp(labelId: string, updatedAt: number) {
-  return getDb()
+  getDb()
     .query(`UPDATE ${DB_TABLE.task} SET updated_at = ? WHERE id IN
     (SELECT task_id FROM ${DB_TABLE.taskLabel} WHERE label_id = ?)`)
     .run(updatedAt, labelId);

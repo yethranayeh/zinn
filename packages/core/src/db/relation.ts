@@ -83,9 +83,7 @@ export function create(props: Omit<CreateTaskRelationInput, "id" | "created_at">
 export function deleteById(id: string) {
   const db = getDb();
 
-  return db
-    .query<never, Bind<Pick<TaskRelation, "id">>>(
-      `DELETE FROM ${DB_TABLE.task_relations} WHERE id = $id;`,
-    )
-    .run({ $id: id });
+  db.query<never, Bind<Pick<TaskRelation, "id">>>(
+    `DELETE FROM ${DB_TABLE.task_relations} WHERE id = $id;`,
+  ).run({ $id: id });
 }

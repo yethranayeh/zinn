@@ -57,7 +57,7 @@ export function update(props: Pick<Comment, "id" | "text" | "updated_at">) {
 export function deleteById(id: string) {
   const db = getDb();
 
-  return db
-    .query<never, Bind<Pick<Comment, "id">>>(`DELETE FROM ${DB_TABLE.comment} WHERE id = $id;`)
-    .run({ $id: id });
+  db.query<never, Bind<Pick<Comment, "id">>>(`DELETE FROM ${DB_TABLE.comment} WHERE id = $id;`).run(
+    { $id: id },
+  );
 }
