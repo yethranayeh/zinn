@@ -1,9 +1,7 @@
 ---
 import Icon from "./Icon.astro";
 import SuperwhiteTerminalText from "./SuperwhiteTerminalText.astro";
-import SuperwhiteVideo from "./SuperwhiteVideo.astro";
-
-const command = "bun add -g @zinn-dev/cli";
+import { installCommand as command } from "../config/site";
 ---
 
 <div class='group/install' data-install>
@@ -41,7 +39,9 @@ const command = "bun add -g @zinn-dev/cli";
 
 	<div class='mt-3.5'>
 		<p class='text-xs leading-normal'>
-			Experimental<span data-nosnippet> and highly unstable</span>. Requires <a class='underline' href='https://bun.sh/'>Bun</a>.
+			Experimental<span data-nosnippet> and highly unstable</span>. Requires <a class='underline' href='https://bun.sh/'
+				>Bun</a
+			>.
 		</p>
 	</div>
 	<p

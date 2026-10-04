@@ -3,12 +3,12 @@ import PageLayout from "../layouts/PageLayout.astro";
 import InstallCommand from "../components/InstallCommand.astro";
 import Icon from "../components/Icon.astro";
 
-import { projectLinks } from "../config/site";
+import { homepage, projectLinks } from "../config/site";
 ---
 
 <PageLayout
-	title='Zinn | A kanban workflow in the terminal'
-	description='Zinn is an experimental command-line kanban tool. Manage projects and tasks locally in your terminal. Requires Bun.'
+	title={homepage.title}
+	description={homepage.description}
 	linkHome={false}>
 	<h1 class='mb-9 max-w-xl text-3xl leading-tight tracking-tight sm:text-4xl md:mb-12 md:text-5xl'>
 		A kanban workflow<br />in the <span class='text-cinnabar'>terminal</span>.
