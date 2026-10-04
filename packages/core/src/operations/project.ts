@@ -22,13 +22,15 @@ export const project = {
   create: (input: ProjectCreateInput, actor: Actor) => {
     const props = validateProjectInput(projectCreateSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
-    const existingProject = dbProject.getByKey(props.key);
-
-    if (existingProject != null) {
-      throw new Error(`Project with key "${existingProject.key}" already exists!`);
-    }
 
     return getDb().transaction(() => {
+      // Checked inside the transaction, so another process cannot add the key in between.
+      const existingProject = dbProject.getByKey(props.key);
+
+      if (existingProject != null) {
+        throw new Error(`Project with key "${existingProject.key}" already exists!`);
+      }
+
       const key = standardizeProjectKey(props.key);
       const createdProject = dbProject.create({
         key,
