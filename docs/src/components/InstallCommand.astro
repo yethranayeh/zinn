@@ -6,9 +6,9 @@ import { installCommand as command } from "../config/site";
 
 <div class='group/install' data-install>
 	<div
-		class='relative bg-soot px-4 py-5 text-limestone scheme-dark selection:bg-limestone! selection:text-soot! md:px-5'>
+		class='relative bg-soot px-3 md:px-4 py-4 md:py-5 text-limestone scheme-dark selection:bg-limestone! selection:text-soot! md:px-5'>
 		<div class='md:pr-14'>
-			<div class='space-y-2 text-xs leading-relaxed whitespace-nowrap sm:text-sm md:text-xl'>
+			<div class='space-y-2 text-sm leading-relaxed whitespace-nowrap md:text-xl'>
 				<code class='block group-data-[copied]/install:text-bone/70'
 					><span
 						class='mr-1.5 inline-block w-[2ch] text-bronze select-none group-data-[copied]/install:invisible md:mr-2.5'
@@ -25,7 +25,7 @@ import { installCommand as command } from "../config/site";
 		</div>
 
 		<button
-			class='absolute top-auto right-2 bottom-0 flex min-h-11 w-fit cursor-pointer items-center justify-center gap-2 p-2.5 font-mono text-xs hover:bg-limestone/8 focus-visible:outline-offset-2 md:top-5 md:bottom-auto md:right-5 md:mt-0 md:w-11'
+			class='absolute top-auto right-0 md:right-2 bottom-0 flex md:min-h-11 w-fit cursor-pointer items-center justify-center gap-2 p-2.5 font-mono text-xs hover:bg-limestone/8 focus-visible:outline-offset-2 md:top-5 md:bottom-auto md:right-5 md:mt-0 md:w-11'
 			type='button'
 			data-copy={command}
 			hidden
@@ -39,9 +39,7 @@ import { installCommand as command } from "../config/site";
 
 	<div class='mt-3.5'>
 		<p class='text-xs leading-normal'>
-			Experimental<span data-nosnippet> and highly unstable</span>. Requires <a class='underline' href='https://bun.sh/'
-				>Bun</a
-			>.
+			Experimental. Requires <a class='underline' href='https://bun.sh/'>Bun</a>.
 		</p>
 	</div>
 	<p
