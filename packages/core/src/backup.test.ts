@@ -11,11 +11,11 @@ test("same-time backups preserve earlier snapshots and include uncheckpointed WA
       import { strict as assert } from "node:assert";
       import { setSystemTime } from "bun:test";
       import { Database } from "bun:sqlite";
-      import { existsSync, readFileSync } from "node:fs";
+      import { existsSync, readdirSync, readFileSync } from "node:fs";
       import { basename } from "node:path";
       import { backup } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
       import { getDb } from ${JSON.stringify(new URL("./db.ts", import.meta.url).pathname)};
-      import { DB_PATH } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
+      import { BACKUP_DIR, DB_PATH } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
 
       setSystemTime(new Date("2026-10-03T12:30:05Z"));
       const db = getDb();
@@ -44,6 +44,7 @@ test("same-time backups preserve earlier snapshots and include uncheckpointed WA
         }
       }
 
+      assert.deepEqual(readdirSync(BACKUP_DIR).sort(), [...paths].map((path) => basename(path)).sort());
       assert.deepEqual(readFileSync(first), firstBytes);
       const original = new Database(first, { readonly: true });
       try {
