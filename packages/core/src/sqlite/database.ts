@@ -176,11 +176,23 @@ export class SqliteError extends Error {
   }
 }
 
-/** Keeps a cleanup failure reachable without replacing the error that caused the cleanup. */
+/**
+ * Keeps a cleanup failure reachable without replacing the error that caused the cleanup.
+ * A later cleanup failure, such as a failed ROLLBACK followed by another failed step,
+ *  is attached to the earlier one, so neither replaces the other.
+ */
 export function attachSuppressed(error: unknown, suppressed: unknown) {
-  if (error instanceof Error) {
-    Object.assign(error, { suppressed });
+  if (!(error instanceof Error)) {
+    return;
   }
+
+  const earlier = (error as { suppressed?: unknown }).suppressed;
+  if (earlier instanceof Error) {
+    attachSuppressed(earlier, suppressed);
+    return;
+  }
+
+  Object.assign(error, { suppressed });
 }
 
 function withSqliteErrors<T>(driver: SqliteDriver, action: () => T): T {
