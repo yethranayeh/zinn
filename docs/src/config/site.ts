@@ -4,6 +4,8 @@ export const isProductionSite =
 export const projectLinks = {
   github: "https://github.com/yethranayeh/zinn",
   npm: "https://www.npmjs.com/package/@zinn-dev/cli",
+  twitter: "https://x.com/zinndotsh",
+  bluesky: "https://bsky.app/profile/zinn.sh",
   license: "https://raw.githubusercontent.com/yethranayeh/zinn/refs/heads/main/LICENSE",
 };
 

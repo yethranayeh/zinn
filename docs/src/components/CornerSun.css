@@ -1,0 +1,10 @@
+.halftone-mask {
+	mask: url("/art/halftone-ramp.svg") repeat-x;
+	mask-size: 86px 128px;
+}
+
+@media (min-width: 768px) {
+	.halftone-mask {
+		mask-size: 128px 192px;
+	}
+}

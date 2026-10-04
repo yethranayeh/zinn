@@ -1,0 +1,17 @@
+.reading-frame::before {
+	content: "";
+	position: absolute;
+	top: -5px;
+	left: -5px;
+	right: -5px;
+	height: 9px;
+	background:
+		linear-gradient(var(--color-soot), var(--color-soot)) left 4px top / 1px 9px no-repeat,
+		linear-gradient(var(--color-soot), var(--color-soot)) left center / 9px 1px no-repeat,
+		linear-gradient(var(--color-soot), var(--color-soot)) right 4px top / 1px 9px no-repeat,
+		linear-gradient(var(--color-soot), var(--color-soot)) right center / 9px 1px no-repeat;
+	pointer-events: none;
+}
+.reading-frame.frame-start::before {
+	clip-path: inset(4px 0 0);
+}

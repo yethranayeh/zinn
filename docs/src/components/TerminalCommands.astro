@@ -1,0 +1,13 @@
+---
+interface Props {
+	label: string;
+	commands: string[];
+}
+const { label, commands } = Astro.props;
+---
+
+<pre
+	class='command-block mb-6 max-w-full overflow-x-auto bg-soot p-5 text-[13px] leading-[1.8] text-limestone selection:bg-limestone selection:text-soot md:p-6 md:text-[14px]'
+	tabindex='0'
+	role='region'
+	aria-label={label}><code>{commands.map((command, index) => <Fragment>{index > 0 ? "\n\n" : ""}<span class='text-bronze select-none' aria-hidden='true'>$ </span>{command}</Fragment>)}</code></pre>

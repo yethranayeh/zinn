@@ -15,10 +15,42 @@ ${installCommand}
 zinn --help
 \`\`\`
 
-## Links
+## A board in your terminal
 
-- [GitHub](${projectLinks.github})
-- [npm](${projectLinks.npm})
+Zinn is an Experimental kanban task manager for the terminal.
+
+Organize work into projects, columns and tasks. Manage it from the command line, with descriptions, priorities, labels and comments to keep the detail close. Projects and tasks are stored in a local SQLite database.
+
+For developers who already work in the terminal, the board is another command away. Scripts and agents can read and write tasks using the CLI's JSON output.
+
+## Start a project. Move the work.
+
+Create a project, add a task, then move it into In Progress. Each project begins with Backlog, TODO, In Progress, Review and Done columns, which you can rename or extend.
+
+Use descriptions for scope, comments for updates and labels and priorities to organize tasks. Connect work with related, dependency, duplicate and subtask relations. Search titles, descriptions and comments, and archive tasks when they no longer belong in the active list.
+
+\`\`\`sh
+zinn project create DEMO --name "Release work"
+zinn task create DEMO --title "Write release notes" --priority high
+zinn task move DEMO-1 "In Progress"
+zinn task list DEMO --json
+\`\`\`
+
+Add \`--json\` to any command for a single JSON document on stdout. Empty lists return \`[]\`; errors go to stderr as JSON with exit code 1. Use \`--yes\` to skip confirmation prompts in scripts and agent workflows.
+
+## Keep the work local
+
+The default database is \`~/.zinn/data/zinn.sqlite\`. Set \`ZINN_DIR\` to use another directory, keeping the same value across commands.
+
+\`zinn backup\` saves a database snapshot. Zinn does not upgrade existing databases between releases; back up before upgrading.
+
+[Read the database backup instructions](${projectLinks.github}/blob/main/packages/cli/README.md#back-up-the-database).
+
+## Take the next command
+
+Read the [first-project guide](${projectLinks.github}/blob/main/packages/cli/README.md#start-a-project), browse the [Zinn source on GitHub](${projectLinks.github}) or find the [Zinn CLI package on npm](${projectLinks.npm}).
+
+[Twitter](${projectLinks.twitter}) · [Bluesky](${projectLinks.bluesky})
 `;
   return new Response(markdown, { headers: { "Content-Type": "text/markdown; charset=utf-8" } });
 };

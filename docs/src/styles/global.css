@@ -1,4 +1,6 @@
 @import "tailwindcss" source("../");
+@import "../components/ReadingSection.css";
+@import "../components/CornerSun.css";
 
 @font-face {
 	font-family: "Alan Sans";
