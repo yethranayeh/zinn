@@ -1,0 +1,78 @@
+---
+interface Props {
+	href: string;
+}
+
+const { href } = Astro.props;
+const activeClasses = [
+	"group-data-[phase=0]/cue:opacity-100",
+	"group-data-[phase=1]/cue:opacity-100",
+	"group-data-[phase=2]/cue:opacity-100"
+];
+---
+
+<a
+	href={href}
+	class='group/cue mx-auto flex min-h-11 min-w-11 items-center justify-center py-2'
+	aria-label='Explore the workflow below'
+	title='Explore the workflow below'
+	data-scroll-cue
+	data-phase='0'>
+	<span class='flex flex-col [&_svg+svg]:-mt-0.5' aria-hidden='true'>
+		{
+			activeClasses.map((activeClass) => (
+				<svg
+					class:list={["h-2.5 w-5 shrink-0 fill-none stroke-current opacity-50", activeClass]}
+					viewBox='0 0 20 10'
+					stroke-width='2'>
+					<path d='M1 1L10 8L19 1' />
+				</svg>
+			))
+		}
+	</span>
+</a>
+
+<script>
+	for (const cue of document.querySelectorAll<HTMLAnchorElement>("[data-scroll-cue]")) {
+		const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+		let animationTimer: ReturnType<typeof setInterval>;
+		let phase = 0;
+		let isHovered = false;
+		let isFocused = false;
+
+		function updatePlayback() {
+			clearInterval(animationTimer);
+			if (reducedMotion.matches || document.hidden) {
+				return;
+			}
+			const isInteracting = isHovered || isFocused;
+			animationTimer = setInterval(
+				() => {
+					phase = (phase + 1) % 3;
+					cue.dataset.phase = String(phase);
+				},
+				isInteracting ? 500 : 1000
+			);
+		}
+
+		cue.addEventListener("pointerenter", () => {
+			isHovered = true;
+			updatePlayback();
+		});
+		cue.addEventListener("pointerleave", () => {
+			isHovered = false;
+			updatePlayback();
+		});
+		cue.addEventListener("focus", () => {
+			isFocused = true;
+			updatePlayback();
+		});
+		cue.addEventListener("blur", () => {
+			isFocused = false;
+			updatePlayback();
+		});
+		reducedMotion.addEventListener("change", updatePlayback);
+		document.addEventListener("visibilitychange", updatePlayback);
+		updatePlayback();
+	}
+</script>
