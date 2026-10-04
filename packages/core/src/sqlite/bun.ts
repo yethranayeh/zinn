@@ -5,7 +5,8 @@ import { openWith } from "./database.ts";
 
 export const driver: SqliteDriver = {
   connect(path, options) {
-    const db = new BunDatabase(path, options.readonly ? { readonly: true } : { create: true });
+    const access = options.readonly ? { readonly: true } : { create: true };
+    const db = new BunDatabase(path, { ...access, safeIntegers: true });
 
     return {
       /**

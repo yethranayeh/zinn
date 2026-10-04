@@ -141,6 +141,40 @@ export function defineContractChecks(test: DefineTest, adapter: Adapter) {
     });
   });
 
+  test("integers read back as numbers, and one beyond the safe range throws instead of rounding", () => {
+    withDatabase(adapter, (db) => {
+      assert.deepEqual(
+        db
+          .query(
+            "SELECT 9007199254740991 AS max, -9007199254740991 AS min, 5 AS small, 2.5 AS real, NULL AS none, COUNT(*) AS count",
+          )
+          .get(),
+        {
+          max: Number.MAX_SAFE_INTEGER,
+          min: Number.MIN_SAFE_INTEGER,
+          small: 5,
+          real: 2.5,
+          none: null,
+          count: 1,
+        },
+      );
+
+      const isIntegerRangeError = (error: unknown) =>
+        error instanceof RangeError && !("code" in error) && error.message.includes("column big");
+
+      for (const big of ["9007199254740992", "-9007199254740992", "9223372036854775807"]) {
+        const statement = db.query(`SELECT 1 AS small, ${big} AS big`);
+        assert.throws(() => statement.get(), isIntegerRangeError, big);
+        assert.throws(() => statement.all(), isIntegerRangeError, big);
+      }
+
+      // A bigint binds exactly, and reading it as text keeps every digit.
+      assert.deepEqual(db.query("SELECT CAST(? AS TEXT) AS text").get(9007199254740993n), {
+        text: "9007199254740993",
+      });
+    });
+  });
+
   test("placeholders inside literals, quoted identifiers and comments are not parameters", () => {
     withDatabase(adapter, (db) => {
       const statement = db.query(`SELECT 'it''s $text ?' AS [$quoted?], ? AS [bracket $name ?]

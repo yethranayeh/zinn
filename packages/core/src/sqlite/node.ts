@@ -51,6 +51,7 @@ export const driver: SqliteDriver = {
     return {
       prepare(sql) {
         const statement = db.prepare(sql);
+        statement.setReadBigInts(true);
 
         return {
           get: (...args) => toPlainRow(statement.get(...nodeArgs(args))),

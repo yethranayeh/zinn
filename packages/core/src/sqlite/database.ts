@@ -19,6 +19,7 @@ export type DriverStatement = {
 };
 
 export type DriverConnection = {
+  /** Its statements read INTEGER values as bigint, so none is rounded before the wrapper sees it. */
   prepare(sql: string): DriverStatement;
   /** Runs one or more statements without bindings. */
   exec(sql: string): void;
@@ -397,6 +398,35 @@ function bind(placeholders: Placeholders, params: Array<unknown>): DriverArgs {
   return [named];
 }
 
+const MAX_SAFE_INTEGER = BigInt(Number.MAX_SAFE_INTEGER);
+const MIN_SAFE_INTEGER = BigInt(Number.MIN_SAFE_INTEGER);
+
+/**
+ * Turns the bigint INTEGER values of a row into numbers, in place.
+ * One that a number cannot hold exactly throws, where bun:sqlite would round it to a nearby number.
+ * @link https://bun.com/docs/runtime/sqlite#safeintegers-true
+ */
+function toNumbers(row: Record<string, unknown>) {
+  for (const column in row) {
+    const value = row[column];
+
+    if (typeof value !== "bigint") {
+      continue;
+    }
+
+    const isSafe = value >= MIN_SAFE_INTEGER && value <= MAX_SAFE_INTEGER;
+    if (!isSafe) {
+      throw new RangeError(
+        `The integer ${value} in column ${column} is too large for a JavaScript number; select it as text instead`,
+      );
+    }
+
+    row[column] = Number(value);
+  }
+
+  return row;
+}
+
 export class Statement<Row, Params extends Array<unknown>> {
   private readonly driver: SqliteDriver;
   private readonly statement: DriverStatement;
@@ -420,13 +450,14 @@ export class Statement<Row, Params extends Array<unknown>> {
     this.assertUsable();
     const args = bind(this.placeholders, params);
     const row = withSqliteErrors(this.driver, () => this.statement.get(...args));
-    return (row ?? null) as Row | null;
+    return row == null ? null : (toNumbers(row as Record<string, unknown>) as Row);
   }
 
   all(...params: Params): Array<Row> {
     this.assertUsable();
     const args = bind(this.placeholders, params);
-    return withSqliteErrors(this.driver, () => this.statement.all(...args)) as Array<Row>;
+    const rows = withSqliteErrors(this.driver, () => this.statement.all(...args));
+    return rows.map((row) => toNumbers(row as Record<string, unknown>)) as Array<Row>;
   }
 
   run(...params: Params): void {
