@@ -2,6 +2,8 @@
 import PageLayout from "../layouts/PageLayout.astro";
 import InstallCommand from "../components/InstallCommand.astro";
 import Icon from "../components/Icon.astro";
+
+import { projectLinks } from "../config/site";
 ---
 
 <PageLayout
@@ -15,13 +17,13 @@ import Icon from "../components/Icon.astro";
 	<nav class='mt-6 flex items-center gap-7 font-mono text-xs leading-normal' aria-label='Zinn links'>
 		<a
 			class='inline-flex items-center gap-2 py-2'
-			href='https://github.com/yethranayeh/zinn'
+			href={projectLinks.github}
 			aria-label='Zinn source on GitHub'
 			data-site-event='github-click'>GitHub <Icon name='external-link' class='size-4.5' /></a
 		>
 		<a
 			class='inline-flex items-center gap-2 py-2'
-			href='https://www.npmjs.com/package/@zinn-dev/cli'
+			href={projectLinks.npm}
 			aria-label='Zinn CLI package on npm'
 			data-site-event='npm-click'>npm <Icon name='external-link' class='size-4.5' /></a
 		>

@@ -1,6 +1,6 @@
 ---
 import "../styles/global.css";
-import { isProductionSite } from "../config/site";
+import { isProductionSite, projectLinks } from "../config/site";
 
 interface Props {
 	title: string;
@@ -21,6 +21,19 @@ const website = {
 	description,
 	inLanguage: "en"
 };
+const softwareApplication = {
+	"@context": "https://schema.org",
+	"@type": "SoftwareApplication",
+	name: "Zinn",
+	url: Astro.site?.href,
+	description,
+	applicationCategory: "DeveloperApplication",
+	softwareRequirements: "Bun",
+	isAccessibleForFree: true,
+	license: projectLinks.license,
+	sameAs: [projectLinks.github, projectLinks.npm]
+};
+const homepageStructuredData = [website, softwareApplication];
 ---
 
 <!doctype html>
@@ -50,9 +63,11 @@ const website = {
 		<meta name='twitter:image' content={socialImageUrl.href} />
 		<meta name='twitter:image:alt' content={socialImageAlt} />
 		{
-			Astro.url.pathname === "/" && !noindex && (
-				<script type='application/ld+json' is:inline set:html={JSON.stringify(website).replaceAll("<", "\\u003c")} />
-			)
+			Astro.url.pathname === "/" &&
+				!noindex &&
+				homepageStructuredData.map((data) => (
+					<script type='application/ld+json' is:inline set:html={JSON.stringify(data).replaceAll("<", "\\u003c")} />
+				))
 		}
 		<link rel='icon' href='/favicon.svg' type='image/svg+xml' />
 		<link rel='preload' href='/fonts/AlanSans.ttf' as='font' type='font/ttf' crossorigin />
