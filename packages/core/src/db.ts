@@ -4,39 +4,21 @@ import { openDatabase } from "#sqlite";
 
 import { DB_PATH, DB_TABLE } from "./constant";
 import { ensureConfigSetup } from "./config";
+import { applyConnectionSettings } from "./connection";
 import { attachSuppressed, SqliteError } from "./sqlite/database";
 
 let db: Database | null = null;
 
-const BUSY_TIMEOUT_MS = 30_000;
 const INITIALIZATION_RETRY_BUDGET_MS = 1_000;
 const INITIALIZATION_ATTEMPTS = 5;
-/**
- * In WAL mode, synchronous NORMAL skips the fsync on each commit, so a power loss or OS crash
- *  can undo the last commits that were reported as done. FULL syncs the WAL on every commit.
- * Node's SQLite already defaults to FULL; the SQLite that Bun uses on macOS defaults to NORMAL.
- * @link https://www.sqlite.org/pragma.html#pragma_synchronous
- */
-const SYNCHRONOUS_FULL = "FULL";
-/**
- * On macOS, fsync hands data to the drive, which may still hold it in a volatile cache,
- *  so a power loss can undo commits even with synchronous FULL.
- * fullfsync makes SQLite use F_FULLFSYNC, which waits until the drive has stored the data,
- *  for every sync including checkpoints. Other platforms ignore it.
- * Measured on an internal Apple SSD on 2026-10-04: about 0.75 ms more per write command.
- * @link https://www.sqlite.org/pragma.html#pragma_fullfsync
- */
-const FULLFSYNC_ON = "ON";
 
 function initDb() {
   const db = openDatabase(DB_PATH);
 
   try {
     // Arm waiting before WAL setup and schema creation can encounter another process.
-    db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS};`);
+    applyConnectionSettings(db);
     db.exec("PRAGMA journal_mode = WAL;");
-    db.exec(`PRAGMA synchronous = ${SYNCHRONOUS_FULL};`);
-    db.exec(`PRAGMA fullfsync = ${FULLFSYNC_ON};`);
     db.exec("PRAGMA foreign_keys = true;");
     // TODO: https://bun.com/docs/runtime/sqlite#wal-sidecar-file-cleanup macOS does not auto cleanup
 

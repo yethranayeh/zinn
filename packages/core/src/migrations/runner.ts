@@ -32,7 +32,7 @@ function countRows(db: Database, table: string) {
  * @link https://www.sqlite.org/pragma.html#pragma_foreign_keys
  * @link https://www.sqlite.org/lang_droptable.html
  */
-function withForeignKeysOff(db: Database, action: () => void) {
+export function withForeignKeysOff<T>(db: Database, action: () => T): T {
   const previous = readForeignKeys(db);
   db.exec("PRAGMA foreign_keys = OFF");
 
@@ -47,8 +47,9 @@ function withForeignKeysOff(db: Database, action: () => void) {
     }
   };
 
+  let result: T;
   try {
-    action();
+    result = action();
   } catch (error) {
     try {
       restore();
@@ -60,6 +61,7 @@ function withForeignKeysOff(db: Database, action: () => void) {
   }
 
   restore();
+  return result;
 }
 
 function applyMigration(db: Database, migration: Migration) {
@@ -90,39 +92,77 @@ function assertForeignKeys(db: Database) {
   }
 }
 
-/**
- * Runs, in one BEGIN IMMEDIATE transaction with foreign keys off: start, which returns the
- *  version the database is at, then every migration after that version, the checks and the
- *  version bump. A failure rolls back whatever ran and is thrown as it was; nothing is retried.
- */
-function runUpgrade(db: Database, migrations: ReadonlyArray<Migration>, start: () => number) {
-  assertMigrationOrder(migrations);
-
+/** Foreign keys can only be switched off outside a transaction, and the upgrade needs them off. */
+export function assertOutsideTransaction(db: Database) {
   if (db.inTransaction) {
     throw new Error(
       "The schema upgrade must start outside a transaction, since SQLite cannot switch foreign keys off inside one",
     );
   }
+}
+
+/** Refuses an unmarked database (version 0) and any DB that is newer than the migrations can reach. */
+export function assertUpgradable(version: number, migrations: ReadonlyArray<Migration>) {
+  const targetVersion = latestVersion(migrations);
+  const isSupported = version >= BASELINE_VERSION && version <= targetVersion;
+
+  if (!isSupported) {
+    throw new Error(
+      `Only schema versions ${BASELINE_VERSION} to ${targetVersion} can be upgraded, and this database has version ${version}`,
+    );
+  }
+}
+
+/**
+ * Runs every migration after `startVersion`,
+ *  handles the foreign key check and the version bump,
+ *  and returns whether it changed anything.
+ * The caller begins one with foreign keys off, then commits it,
+ *  or rolls it back when this throws.
+ */
+export function applyPendingMigrations(
+  db: Database,
+  migrations: ReadonlyArray<Migration>,
+  startVersion: number,
+) {
+  /**
+   * Outside a transaction each step would commit on its own,
+   *  and with foreign keys on, dropping a table to rebuild it empties its child tables.
+   */
+  const isReady = db.inTransaction && readForeignKeys(db) === 0;
+  if (!isReady) {
+    throw new Error("Migrations must run inside a transaction begun with foreign keys off");
+  }
 
   const targetVersion = latestVersion(migrations);
+  const pending = migrations.filter((migration) => migration.version > startVersion);
+  const isCurrent = pending.length === 0 && readSchemaVersion(db) === targetVersion;
+
+  if (isCurrent) {
+    return false;
+  }
+
+  for (const migration of pending) {
+    applyMigration(db, migration);
+  }
+
+  assertForeignKeys(db);
+  // The version is an integer from the checked registry.
+  db.exec(`PRAGMA user_version = ${targetVersion}`);
+  return true;
+}
+
+/**
+ * Runs, in one BEGIN IMMEDIATE transaction with foreign keys off
+ * A failure rolls back whatever ran and is thrown as it was and nothing is retried.
+ */
+function runUpgrade(db: Database, migrations: ReadonlyArray<Migration>, start: () => number) {
+  assertMigrationOrder(migrations);
+  assertOutsideTransaction(db);
 
   withForeignKeysOff(db, () => {
     db.transaction(() => {
-      const startVersion = start();
-      const pending = migrations.filter((migration) => migration.version > startVersion);
-      const isCurrent = pending.length === 0 && readSchemaVersion(db) === targetVersion;
-
-      if (isCurrent) {
-        return;
-      }
-
-      for (const migration of pending) {
-        applyMigration(db, migration);
-      }
-
-      assertForeignKeys(db);
-      // PRAGMA takes no bound parameters; the version is an integer from the checked registry.
-      db.exec(`PRAGMA user_version = ${targetVersion}`);
+      applyPendingMigrations(db, migrations, start());
     }).immediate();
   });
 }
@@ -135,15 +175,7 @@ function runUpgrade(db: Database, migrations: ReadonlyArray<Migration>, start: (
 export function upgradeSchema(db: Database, migrations: ReadonlyArray<Migration> = MIGRATIONS) {
   runUpgrade(db, migrations, () => {
     const version = readSchemaVersion(db);
-    const targetVersion = latestVersion(migrations);
-    const isSupported = version >= BASELINE_VERSION && version <= targetVersion;
-
-    if (!isSupported) {
-      throw new Error(
-        `Only schema versions ${BASELINE_VERSION} to ${targetVersion} can be upgraded, and this database has version ${version}`,
-      );
-    }
-
+    assertUpgradable(version, migrations);
     return version;
   });
 }

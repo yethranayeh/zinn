@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { openDatabase } from "#sqlite";
 
-import { createSchema } from "./runner";
+import { createSchema, readSchemaVersion } from "./runner";
 
 type SchemaObject = { type: string; name: string; tbl_name: string; sql: string | null };
 
@@ -77,4 +77,37 @@ export function count(db: Database, table: string) {
 
 export function foreignKeys(db: Database) {
   return db.query<{ foreign_keys: number }>("PRAGMA foreign_keys").get()!.foreign_keys;
+}
+
+/** The schema, version and every row, to compare a database before and after a failed upgrade. */
+export function snapshot(db: Database) {
+  const schema = schemaObjects(db);
+  const tables = schema.filter(({ type, name }) => type === "table" && !name.startsWith("sqlite_"));
+  const rows = Object.fromEntries(
+    tables.map(({ name }) => [name, db.query(`SELECT * FROM ${name}`).all()]),
+  );
+
+  return { version: readSchemaVersion(db), schema, rows };
+}
+
+/** The baseline task table, rebuilt the way SQLite documents. */
+export function rebuildTask(db: Database) {
+  db.exec(`
+    CREATE TABLE new_task (
+      id             TEXT PRIMARY KEY,
+      project_id     TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+      column_id      TEXT NOT NULL REFERENCES project_column(id),
+      number         INTEGER NOT NULL,
+      title          TEXT NOT NULL,
+      description    TEXT,
+      priority       TEXT,
+      task_order     TEXT,
+      comment_count  INTEGER NOT NULL DEFAULT 0,
+      created_at     INTEGER NOT NULL,
+      updated_at     INTEGER NOT NULL,
+      archived_at    INTEGER);
+    INSERT INTO new_task SELECT * FROM task;
+    DROP TABLE task;
+    ALTER TABLE new_task RENAME TO task;
+  `);
 }

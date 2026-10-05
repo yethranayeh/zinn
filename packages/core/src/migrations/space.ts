@@ -103,6 +103,15 @@ function readStructureBytes(db: Database, tables: ReadonlyArray<string>) {
   }
 }
 
+/** The file the connection's main database lives in, or null for an in-memory database. */
+export function readDatabaseFile(db: Database) {
+  const file = db
+    .query<{ file: string }>("SELECT file FROM pragma_database_list WHERE name = 'main'")
+    .get()?.file;
+
+  return file == null || file === "" ? null : file;
+}
+
 /** Reads the sizes of what the migrations after the database's version still have to do. */
 export function measureSpace(
   db: Database,
@@ -139,11 +148,9 @@ export function measureSpace(
   const commentCount = readNumber(db, "SELECT COUNT(*) AS value FROM comment");
   const separatorBytes = (commentCount - commentedTasks) * SEPARATOR_BYTES;
 
-  const mainPath = db
-    .query<{ file: string }>("SELECT file FROM pragma_database_list WHERE name = 'main'")
-    .get()?.file;
+  const mainPath = readDatabaseFile(db);
   const allocatedMainBytes =
-    mainPath == null || mainPath === ""
+    mainPath == null
       ? 0
       : fileSize(mainPath, (path) => (statSync(path).blocks ?? 0) * STAT_BLOCK_BYTES);
 

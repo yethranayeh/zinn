@@ -12,8 +12,10 @@ import { createSchema, readSchemaVersion, upgradeSchema } from "./runner";
 import {
   count,
   foreignKeys,
+  rebuildTask,
   schemaObjects,
   seedBaseline,
+  snapshot,
   withDatabase,
   withDirectory,
 } from "./testing";
@@ -48,17 +50,6 @@ function withFailingExec(failures: Map<string, Error>, check: (db: Database) => 
   withDatabase(check, (path) => openWith(driver, path));
 }
 
-/** The schema, version and every row, to compare a database before and after a failed upgrade. */
-function snapshot(db: Database) {
-  const schema = schemaObjects(db);
-  const tables = schema.filter(({ type, name }) => type === "table" && !name.startsWith("sqlite_"));
-  const rows = Object.fromEntries(
-    tables.map(({ name }) => [name, db.query(`SELECT * FROM ${name}`).all()]),
-  );
-
-  return { version: readSchemaVersion(db), schema, rows };
-}
-
 function migration(version: number, apply: (db: Database) => void, rebuilds: Array<string> = []) {
   const calls = { count: 0 };
   const definition: Migration = {
@@ -72,28 +63,6 @@ function migration(version: number, apply: (db: Database) => void, rebuilds: Arr
   };
 
   return Object.assign(definition, { calls });
-}
-
-/** The baseline task table, rebuilt the way SQLite documents. */
-function rebuildTask(db: Database) {
-  db.exec(`
-    CREATE TABLE new_task (
-      id             TEXT PRIMARY KEY,
-      project_id     TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
-      column_id      TEXT NOT NULL REFERENCES project_column(id),
-      number         INTEGER NOT NULL,
-      title          TEXT NOT NULL,
-      description    TEXT,
-      priority       TEXT,
-      task_order     TEXT,
-      comment_count  INTEGER NOT NULL DEFAULT 0,
-      created_at     INTEGER NOT NULL,
-      updated_at     INTEGER NOT NULL,
-      archived_at    INTEGER);
-    INSERT INTO new_task SELECT * FROM task;
-    DROP TABLE task;
-    ALTER TABLE new_task RENAME TO task;
-  `);
 }
 
 const CHILD_TABLES = ["task_relations", "task_label", "comment"];
