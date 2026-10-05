@@ -1,6 +1,6 @@
 import { test, expect, afterAll } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 
@@ -180,7 +180,7 @@ test("root help supports -h and --help and lists commands", () => {
   expect(longHelp.stdout).toContain("project {create|list|view|edit|delete}");
   expect(longHelp.stdout).toContain("task {create|list|search|view|edit|move|order|archive|unarchive|delete}");
   expect(longHelp.stdout).toContain("task comment {create|list|edit|delete}");
-  expect(longHelp.stdout).toContain("\n  backup\n");
+  expect(longHelp.stdout).toContain("\n  backup\n  migrate\n");
   expect(longHelp.stdout).toContain("-v, --version  Show version");
   expect(shortHelp).toEqual(longHelp);
 });
@@ -253,6 +253,7 @@ test("every command help exits cleanly instead of running the command", () => {
     ["task", "comment", "edit"],
     ["task", "comment", "delete"],
     ["backup"],
+    ["migrate"],
   ];
 
   for (const command of commands) {
@@ -3803,6 +3804,101 @@ test("backup refuses when there is no database and does not create one", () => {
     expect(result.code).toBe(1);
     expect(result.stderr).toContain(`There is no Zinn database at ${join(dir, "data", "zinn.sqlite")} to back up`);
     expect(existsSync(join(dir, "data"))).toBe(false);
+    expect(existsSync(join(dir, "backups"))).toBe(false);
+  });
+});
+
+// --- MIGRATE
+
+// ? Rows, schema and version, to prove a refused migrate wrote nothing.
+function databaseSnapshot(dir: string) {
+  return withTestDb(dir, (db) => ({
+    version: db.query("PRAGMA user_version").get(),
+    schema: db.query("SELECT type, name, sql FROM sqlite_schema ORDER BY name").all(),
+    projects: db.query("SELECT * FROM project").all(),
+    tasks: db.query("SELECT * FROM task").all(),
+  }));
+}
+
+function createBoard(dir: string, version: number) {
+  runZinn(["project", "create", "MIG"], dir);
+  runZinn(["task", "create", "MIG", "--title", "Kept"], dir);
+  withTestDb(dir, (db) => db.run(`PRAGMA user_version = ${version}`));
+}
+
+test("migrate refuses when there is no database and creates no files", () => {
+  withIsolatedZinnDir((dir) => {
+    const result = runZinn(["migrate"], dir);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("There is no Zinn database with data");
+    expect(result.stderr).not.toContain("Backups taken before");
+    expect(readdirSync(dir)).toEqual([]);
+  });
+});
+
+test("migrate refuses an empty database", () => {
+  withIsolatedZinnDir((dir) => {
+    mkdirSync(join(dir, "data"));
+    new Database(join(dir, "data", "zinn.sqlite")).close();
+    const before = readFileSync(join(dir, "data", "zinn.sqlite"));
+    const result = runZinn(["migrate"], dir);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("There is no Zinn database with data");
+    expect(readFileSync(join(dir, "data", "zinn.sqlite"))).toEqual(before);
+    expect(existsSync(join(dir, "backups"))).toBe(false);
+  });
+});
+
+test("migrate refuses an unmarked database, with or without --allow-legacy-read, and changes nothing", () => {
+  withIsolatedZinnDir((dir) => {
+    createBoard(dir, 0);
+    const before = databaseSnapshot(dir);
+    const result = runZinn(["migrate", "--json"], dir);
+
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stderr).error.message).toContain("has no schema version");
+    expect(JSON.parse(result.stderr).error.message).toContain("adopted as version 1");
+    expect(runZinn(["migrate", "--allow-legacy-read"], dir).code).toBe(1);
+    expect(databaseSnapshot(dir)).toEqual(before);
+    expect(existsSync(join(dir, "backups"))).toBe(false);
+  });
+});
+
+test("migrate refuses a newer database and reports both versions and the CLI version", () => {
+  withIsolatedZinnDir((dir) => {
+    createBoard(dir, 9);
+    const before = databaseSnapshot(dir);
+    const result = runZinn(["migrate"], dir);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("schema version 9");
+    expect(result.stderr).toContain(`cli ${packageJson.version}) reaches only version 1`);
+    expect(result.stderr).not.toContain("Backups taken before");
+    expect(databaseSnapshot(dir)).toEqual(before);
+    expect(existsSync(join(dir, "backups"))).toBe(false);
+  });
+});
+
+test("migrate on a current database is a no-op with no backup", () => {
+  withIsolatedZinnDir((dir) => {
+    createBoard(dir, 1);
+    const before = databaseSnapshot(dir);
+
+    const result = runZinn(["migrate", "--json"], dir);
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toEqual({
+      databasePath: join(dir, "data", "zinn.sqlite"),
+      previousVersion: 1,
+      finalVersion: 1,
+      changed: false,
+      backupPath: null,
+    });
+    expect(runZinn(["migrate"], dir).stdout).toBe("The database is already at schema version 1\n");
+    expect(databaseSnapshot(dir)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
   });
 });

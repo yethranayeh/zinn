@@ -34,6 +34,8 @@ export type {
   CommentEditInput,
 } from "./src/schemas/comment";
 export type { BackupCreateInput } from "./src/operations/backup";
+export type { MigrateResult } from "./src/migrations/migrate";
+export type { LockWait } from "./src/migrations/upgrade";
 
 export {
   labelCreateSchema,
@@ -62,3 +64,6 @@ export { comment } from "./src/operations/comment";
 export { relation } from "./src/operations/relation";
 export { label } from "./src/operations/label";
 export { backup } from "./src/operations/backup";
+export { migrate } from "./src/operations/migrate";
+export { MigrationRefusedError } from "./src/migrations/migrate";
+export { BACKUP_DIR } from "./src/constant";

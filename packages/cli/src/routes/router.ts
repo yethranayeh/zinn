@@ -12,7 +12,9 @@ function toCommand(args: Array<string>) {
 
 // Groups sibling commands into one line, e.g. "  comment {create|list|edit|delete}".
 // A command without siblings is not a choice, so it gets no braces, e.g. "  backup".
+// Top-level commands in the root help are unrelated to each other, so each gets its own line.
 function formatCommands(parsedRoutes: Array<ParsedRoute>, prefix: string) {
+  const isRootHelp = prefix === "";
   const siblingsByParent = new Map<string, Array<string>>();
   for (const { command } of parsedRoutes) {
     if (!command.startsWith(prefix)) {
@@ -25,9 +27,14 @@ function formatCommands(parsedRoutes: Array<ParsedRoute>, prefix: string) {
   }
 
   return [...siblingsByParent]
-    .map(([parent, siblings]) => {
+    .flatMap(([parent, siblings]) => {
+      const isTopLevel = isRootHelp && parent === "";
+      if (isTopLevel) {
+        return siblings.map((command) => `  ${command}`);
+      }
+
       const commands = siblings.length === 1 ? siblings[0] : `{${siblings.join("|")}}`;
-      return `  ${parent === "" ? "" : `${parent} `}${commands}`;
+      return [`  ${parent === "" ? "" : `${parent} `}${commands}`];
     })
     .join("\n");
 }
