@@ -9,9 +9,11 @@ import type {
   TaskRelation,
   TaskWithKey,
 } from "../types";
-import { projectKeyPattern } from "../schemas/project";
 import type { Actor } from "../schemas/actor";
+
+import { projectKeyPattern } from "../schemas/project";
 import { positiveIntegerPattern } from "../schemas/task";
+import { assembleSearchEntry } from "../search-entry";
 
 import * as dbProject from "../db/project";
 import * as dbTask from "../db/task";
@@ -84,25 +86,14 @@ export function findTaskByExactKey(query: string) {
   return findTaskByParsedKey(parsedKey).task;
 }
 
-/**
- * Joins a task's comments in its search record, so phrase queries cannot match across comments.
- * The tokenizer drops whitespace and punctuation, so the boundary needs a token of its own: U+E000
- * The newlines keep it from merging with the neighboring words.
- */
-const SEARCH_COMMENT_SEPARATOR = "\n\uE000\n";
-
 /** Rewrites a task's search row from its current title, description and comments. */
 export function updateTaskSearchRecord(taskId: string) {
   dbSearch.removeTask(taskId);
 
   const taskMatch = dbTask.getById(taskId)!;
   const comments = dbComment.getAllByTaskId(taskId).map((commentMatch) => commentMatch.text);
-  dbSearch.addTask({
-    taskId,
-    title: taskMatch.title,
-    description: taskMatch.description,
-    comments: comments.join(SEARCH_COMMENT_SEPARATOR),
-  });
+
+  dbSearch.addTask(assembleSearchEntry(taskMatch, comments));
 }
 
 export function attachTaskKey(task: Task, projectKey?: string): TaskWithKey {

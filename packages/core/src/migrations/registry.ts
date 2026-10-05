@@ -12,6 +12,8 @@ export type Migration = {
    * The runner requires each to hold as many rows afterwards as before.
    */
   rebuilds: ReadonlyArray<string>;
+  /** Whether `apply` calls `regenerateSearch`. */
+  regeneratesSearch?: boolean;
   /**
    * Runs inside the runner's transaction, with foreign keys off.
    * It uses only the connection it is given: the `db/*` helpers open their own through `getDb()`

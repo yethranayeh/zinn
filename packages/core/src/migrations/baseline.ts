@@ -7,6 +7,15 @@ import type { Database } from "../sqlite/database";
  */
 export const BASELINE_VERSION = 1;
 
+/** Shared with `regenerateSearch`. */
+export const TASK_SEARCH_DEFINITION = `CREATE VIRTUAL TABLE task_search USING fts5(
+      task_id UNINDEXED,
+      title,
+      description,
+      comments,
+      tokenize = 'unicode61 remove_diacritics 2'
+    );`;
+
 /**
  * The baseline `CREATE` statements of `initDb` in **db.ts** during schema version implementation.
  * Databases already at the baseline do not run them again,
@@ -76,13 +85,7 @@ const BASELINE_STATEMENTS = [
       UNIQUE (task_id, number)
     );`,
 
-  `CREATE VIRTUAL TABLE task_search USING fts5(
-      task_id UNINDEXED,
-      title,
-      description,
-      comments,
-      tokenize = 'unicode61 remove_diacritics 2'
-    );`,
+  TASK_SEARCH_DEFINITION,
 
   `CREATE TABLE activity (
     id          TEXT PRIMARY KEY,
