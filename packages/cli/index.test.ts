@@ -2897,9 +2897,8 @@ test("delete commands with --yes and --json print the deleted entity", () => {
   });
 });
 
-// #TODO(build): the exit-code table from NOTES.md ("Output contract", still
-// #TODO open) — distinct nonzero codes for not-found vs invalid-input vs DB
-// #TODO error. Everything currently exits 1 via `quit`, so the tests above
+// #TODO(build): distinct nonzero exit codes for not-found vs invalid-input vs
+// #TODO DB error. Everything currently exits 1 via `quit`, so the tests above
 // #TODO cannot distinguish "project missing" from "wrong number of args".
 test.todo("failure classes have distinct exit codes", () => {
   expect(runZinn(["project", "delete", "NOSUCH"]).code).toBe(4); // ? not found
@@ -2908,7 +2907,7 @@ test.todo("failure classes have distinct exit codes", () => {
 
 // #TODO(refactor): `quit()` calls `process.exit`, so a handler cannot be called
 // #TODO in-process without taking the runner down — every case here pays a
-// #TODO subprocess spawn for it. NOTES.md records the fix: handlers throw,
+// #TODO subprocess spawn for it. ZINN-1 tracks the fix: handlers throw,
 // #TODO `index.ts` catches and exits. Then the router/handler layer gets fast
 // #TODO in-process unit tests and this file shrinks to a thin smoke suite.
 test.todo("handlers throw instead of exiting, so they can be tested in-process", async () => {

@@ -9,7 +9,7 @@
  *  reached a user, and command latency.
  *
  * Two races from first use run alongside: many first commands on a new ZINN_DIR at once, and many
- *  `project create` commands for the same key (packages/core/NOTES.md asks for this one).
+ *  `project create` commands for the same key.
  */
 import type { Options, ScenarioResult } from "../harness.ts";
 
