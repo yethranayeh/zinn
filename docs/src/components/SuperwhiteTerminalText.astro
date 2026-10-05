@@ -92,9 +92,7 @@ const { text, command } = Astro.props;
 		}
 
 		video.addEventListener("loadeddata", reveal);
-		video.addEventListener("canplaythrough", () => {
-			video.currentTime = 0;
-		});
+		video.addEventListener("canplay", reveal);
 		document.fonts.ready.then(() => {
 			drawCutout();
 			fontReady = true;
