@@ -14,6 +14,12 @@ process.env.ZINN_DIR = TEST_DIR;
 const project = await import("./project");
 const column = await import("./column");
 const task = await import("./task");
+const { MAIN_DIR } = await import("../constant");
+
+// Core reads ZINN_DIR once, on first import, so an earlier import would redirect these writes.
+if (MAIN_DIR !== TEST_DIR) {
+  throw new Error(`Refusing to run: core resolved its directory to "${MAIN_DIR}", not this test's "${TEST_DIR}"`);
+}
 
 afterAll(() => {
   if (!TEST_DIR.startsWith(PREFIX)) {
