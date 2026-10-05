@@ -66,7 +66,7 @@ function initDb() {
     number         INTEGER NOT NULL,
     title          TEXT NOT NULL,
     description    TEXT,
-    priority       TEXT CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+    priority       TEXT,
     task_order     TEXT,
     comment_count  INTEGER NOT NULL DEFAULT 0,
     created_at     INTEGER NOT NULL,
@@ -78,9 +78,7 @@ function initDb() {
     id              TEXT PRIMARY KEY,
     source_task_id  TEXT NOT NULL REFERENCES ${DB_TABLE.task}(id) ON DELETE CASCADE,
     target_task_id  TEXT NOT NULL REFERENCES ${DB_TABLE.task}(id) ON DELETE CASCADE,
-    relation_type   TEXT NOT NULL CHECK (
-      relation_type IN ('related', 'dependency', 'duplicate', 'subtask')
-    ),
+    relation_type   TEXT NOT NULL,
     created_at      INTEGER NOT NULL,
 
     UNIQUE (source_task_id, target_task_id, relation_type),
@@ -91,7 +89,7 @@ function initDb() {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
       description TEXT,
-      color TEXT NOT NULL CHECK (color IN ('red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white', 'gray'))
+      color TEXT NOT NULL
     );`).run();
 
     // --- TASK LABEL RECORDS
@@ -127,14 +125,10 @@ function initDb() {
     created_at  INTEGER NOT NULL,
     actor_name  TEXT NOT NULL,
     actor_email TEXT,
-    actor_kind  TEXT NOT NULL CHECK (actor_kind IN ('human', 'agent')),
-    entity_type TEXT NOT NULL CHECK (entity_type IN ('task', 'project', 'column', 'label')),
+    actor_kind  TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
     entity_id   TEXT NOT NULL,
-    action      TEXT NOT NULL CHECK (action IN (
-      'create', 'edit', 'move', 'order', 'archive', 'unarchive', 'delete',
-      'relation_create', 'relation_delete',
-      'comment_create', 'comment_edit', 'comment_delete'
-    )),
+    action      TEXT NOT NULL,
     changes     TEXT);`).run();
 
     return db;

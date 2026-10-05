@@ -3725,7 +3725,6 @@ test("priority persists across CLI creation, editing, listing, clearing, and no-
       const row = db.query<{ priority: string | null; archived_at: number | null }, []>("SELECT priority, archived_at FROM task WHERE number = 1").get()!;
       expect(row.priority).toBeNull();
       expect(row.archived_at).not.toBeNull();
-      expect(() => db.run("UPDATE task SET priority = 'critical'")).toThrow();
     });
   });
 });
