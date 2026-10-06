@@ -42,9 +42,9 @@ Add \`--json\` to any command for a single JSON document on stdout. Empty lists 
 
 The default database is \`~/.zinn/data/zinn.sqlite\`. Set \`ZINN_DIR\` to use another directory, keeping the same value across commands.
 
-\`zinn backup\` saves a database snapshot. Zinn does not upgrade existing databases between releases; back up before upgrading.
+\`zinn backup\` saves a database snapshot. A newer Zinn upgrades an older database, and \`zinn migrate\` runs that upgrade after saving a backup.
 
-[Read the database backup instructions](${projectLinks.github}/blob/main/packages/cli/README.md#back-up-the-database).
+Read the [database backup](${projectLinks.github}/blob/main/packages/cli/README.md#back-up-the-database) and [database upgrade](${projectLinks.github}/blob/main/packages/cli/README.md#upgrade-the-database) instructions.
 
 ## Take the next command
 

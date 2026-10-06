@@ -4,7 +4,7 @@ Shared logic for [zinn](https://github.com/yethranayeh/zinn)
 
 > [!IMPORTANT]
 > **Experimental.** This package's API and database schema _can_ and **will** change between versions.
-> Zinn does not upgrade existing databases. On a database created by an older version, reads may still work, but writes that touch a changed table fail, for example with `table project has no column named description`.
+> A newer Zinn upgrades an older database. Read ([how](#opening-and-upgrading-the-database)).
 > Run `zinn backup` before upgrading.
 
 ## Editing conventions
@@ -80,6 +80,14 @@ Provide `null` to clear priority.
 `relation.create({ sourceTaskKey: "APP-2", targetTaskKey: "APP-1", relation_type: "subtask" }, actor)` makes the source a child of the target. Each task has at most one parent and any number of children. A nested type of relationship is allowed, so a task can have both a parent and a child. Remove the old relation before assigning another parent.
 
 Cross-project and archived tasks are supported. Creation and removal use the existing relation activity records on both tasks. Task deletion removes links, preserving connected tasks. Moving or archiving a parent does not change its children.
+
+## Opening and upgrading the database
+
+The database records a schema version. A client calls `configureDatabase(policy)` once, before the first operation, and core opens the database when an operation first needs it. The policy names the client (`client`, `version` and `executable`, which appear in diagnostics and in backup file names), its `release` mode (read it with `readReleaseMode`), and whether it `allowsLegacyRead`. It can also pass `onWait`, called once when an upgrade waits for another writer, and `onLegacyRead`, called once with the database's path, version and latest version when a database without a schema version opens for reading. Core never prints or prompts, so the client renders both.
+
+- A database without a schema version throws `UnmarkedDatabaseError` before anything is created or changed, unless `allowsLegacyRead` is set. With it, the database opens read-only and a change throws `ReadOnlyDatabaseError` with reason `"unmarked"`. Reads are best effort and may fail or omit data.
+- A database with a newer schema version than core reaches opens read-only, with reason `"newer"`.
+- An older database is upgraded when it is opened, with a backup saved first, when core and the client both run from published releases, or when the database is not the default one. Otherwise it opens read-only, with reason `"older"`, until `migrate.run({ client, version, onWait })` upgrades it and returns `{ databasePath, previousVersion, finalVersion, changed, backupPath }`. `migrate.run` throws `MigrationRefusedError` without attempting anything when there is no database with data, when it has no schema version, or when it is newer.
 
 ## Backups
 

@@ -4,7 +4,7 @@ The `zinn` command-line interface. Requires [Bun](https://bun.sh).
 
 > [!IMPORTANT]
 > **Experimental.** Commands, output and the database schema _can_ and **will** change between releases.
-> Zinn does not upgrade existing databases. On a database created by an older version, reads may still work, but writes that touch a changed table fail, for example with `table project has no column named description`.
+> A newer Zinn upgrades an older database. Read ([how](#upgrade-the-database)).
 > Run `zinn backup` before upgrading.
 
 ## Install
@@ -323,6 +323,32 @@ zinn backup
 ```
 
 The copy goes to `~/.zinn/backups/` (or `backups/` in `ZINN_DIR`), in a file named after the UTC time and the CLI version that made it, with an eight-character random suffix to distinguish backups made at the same time, like `2026-09-29T12-30-05Z-cli-0.32.0-b38178c0.sqlite`. It is a single file with every change made so far, and it is safe to take while Zinn is in use. Existing backups are never overwritten. With `--json`, the command prints `{ "path": "..." }`. It fails when there is no database yet.
+
+## Upgrade the database
+
+The database records a schema version, and a newer Zinn upgrades an older database to its own version. The upgrade is applied completely or not at all, and a backup is saved first, in the same folder as `zinn backup`.
+
+A published release of Zinn upgrades the database by itself the first time it opens it. Run `zinn migrate` to upgrade it yourself, for example right after installing a newer Zinn, or when Zinn refuses a change because the database is older. A build run from a source checkout refuses changes to the default database, `~/.zinn`, until you do:
+
+```sh
+zinn migrate
+```
+
+The command saves a backup, upgrades the database and reports the backup's path with the schema versions before and after. When the database is already up to date, it changes nothing and saves no backup. With `--json`, it prints `{ "databasePath": "...", "previousVersion": 1, "finalVersion": 2, "changed": true, "backupPath": "..." }`, where `backupPath` is `null` when nothing changed.
+
+If the upgrade fails, the database is unchanged. The backups taken before each attempt stay in `~/.zinn/backups/` (or `backups/` in `ZINN_DIR`). The command fails without attempting anything when there is no database with data yet, when the database has no schema version, or when it is newer than your Zinn.
+
+A database with a newer schema version than your Zinn can be read, but changes are refused. Use a newer Zinn to change it.
+
+### Databases without a schema version
+
+A database created before Zinn recorded schema versions has none. Zinn refuses to open it, and `zinn migrate` does not upgrade it. Add `--allow-legacy-read` to a command to read it anyway:
+
+```sh
+zinn task list MDR --allow-legacy-read
+```
+
+Reads are best effort and may fail or omit data, and Zinn warns about it on stderr once per command. The flag never lets a command change the database, and it applies only to the command that carries it. Like `--json`, it can go anywhere in the command, except after `--`, where it is treated as a regular argument. `zinn backup` works on such a database without the flag.
 
 ## Scripting and JSON output
 

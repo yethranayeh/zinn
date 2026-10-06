@@ -26,6 +26,8 @@ export type OpenPolicy = {
   allowsLegacyRead: boolean;
   /** Called once when an automatic upgrade starts waiting for another writer. */
   onWait?: (wait: LockWait) => void;
+  /** Called once, when a database without a schema version is opened. */
+  onLegacyRead?: (facts: DatabaseFacts) => void;
 };
 
 /** Used until a client calls configureDatabase, as in tests and scripts. */

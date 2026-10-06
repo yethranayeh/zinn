@@ -36,7 +36,7 @@ export type {
 export type { BackupCreateInput } from "./src/operations/backup";
 export type { MigrateResult } from "./src/migrations/migrate";
 export type { LockWait } from "./src/migrations/upgrade";
-export type { OpenPolicy, ReadOnlyReason } from "./src/migrations/open-policy";
+export type { DatabaseFacts, OpenPolicy, ReadOnlyReason } from "./src/migrations/open-policy";
 export type { ReleaseMode } from "./src/release";
 
 export {

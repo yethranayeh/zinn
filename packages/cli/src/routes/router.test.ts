@@ -1,6 +1,7 @@
 import type { Command, RouteDef } from "../types";
 
 import { test, expect, mock, spyOn } from "bun:test";
+import { isLegacyReadAllowed, setLegacyReadAllowed } from "../lib";
 import { createRouter, parseRoutes } from "./router";
 
 const mockCommand: Command = { run: mock(() => {}), help: `` };
@@ -92,4 +93,26 @@ test("a help request never runs a command even when its help is empty", () => {
   } finally {
     info.mockRestore();
   }
+});
+
+test("--allow-legacy-read before a -- is taken out of the arguments and allows legacy reads", () => {
+  const run = mock(() => {});
+  const router = createRouter({ foo: { run, help: "" } });
+
+  try {
+    router.route(["foo", "--allow-legacy-read", "--", "literal"]);
+    expect(run).toHaveBeenCalledWith(["--", "literal"]);
+    expect(isLegacyReadAllowed()).toBe(true);
+  } finally {
+    setLegacyReadAllowed(false);
+  }
+});
+
+test("--allow-legacy-read after a -- stays command input and allows nothing", () => {
+  const run = mock(() => {});
+  const router = createRouter({ foo: { run, help: "" } });
+
+  router.route(["foo", "--", "--allow-legacy-read"]);
+  expect(run).toHaveBeenCalledWith(["--", "--allow-legacy-read"]);
+  expect(isLegacyReadAllowed()).toBe(false);
 });

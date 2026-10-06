@@ -4,7 +4,7 @@ A kanban workflow in the terminal.
 
 > [!IMPORTANT]
 > **Experimental.** Commands, output and the database schema _can_ and **will** change between releases.
-> Zinn does not upgrade existing databases. On a database created by an older version, reads may still work, but writes that touch a changed table fail, for example with `table project has no column named description`.
+> A newer Zinn upgrades an older database. Read ([how](#upgrading-the-database)).
 > Run `zinn backup` before upgrading.
 
 ## Install
@@ -102,6 +102,12 @@ Use the same `ZINN_DIR` value on later commands to access that database.
 ## Backups
 
 Run `zinn backup` to save a copy of the database to `~/.zinn/backups/` (or `backups/` in `ZINN_DIR`), in a file named after the UTC time and the CLI version that made it. It is recommended that you make a backup before upgrading Zinn, you know, just in case.
+
+## Upgrading the database
+
+The database records a schema version, and a newer Zinn upgrades an older database to its own version. The upgrade is applied completely or not at all, after a backup is saved. A published release does it by itself the first time it opens the database. When Zinn refuses a change because the database is older, as it does for `~/.zinn` when run from a source checkout, or when you want to upgrade right after installing a newer Zinn, run `zinn migrate`. It prints the backup it saved and the versions before and after, or does nothing when the database is already up to date. If the upgrade fails, the database is unchanged and the backups stay in the backups folder.
+
+A database that has no schema version is refused unless the command carries `--allow-legacy-read`, which tries to read it as much as it can, without changing anything in there. See [Upgrade the database](packages/cli/README.md#upgrade-the-database) in the CLI README.
 
 ## Development data
 

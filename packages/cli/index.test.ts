@@ -3937,6 +3937,119 @@ test("an unmarked database is refused, for reads and writes, and left unchanged"
   });
 });
 
+// --- LEGACY READS (ZINN-119)
+
+const LEGACY_FLAG = "--allow-legacy-read";
+
+function warningLines(stderr: string) {
+  return stderr.split("\n").filter((line) => line.includes("no schema version"));
+}
+
+test("--allow-legacy-read reads an unmarked database with one warning on stderr, each invocation needing it again", () => {
+  withIsolatedZinnDir((dir) => {
+    createBoard(dir, 0);
+    const before = databaseSnapshot(dir);
+    const databasePath = join(dir, "data", "zinn.sqlite");
+
+    for (const args of [["task", "list", "MIG", LEGACY_FLAG], [LEGACY_FLAG, "project", "list"], ["task", "view", "MIG-1", LEGACY_FLAG]]) {
+      const allowed = runZinn(args, dir);
+      expect(allowed.code).toBe(0);
+      expect(allowed.stdout).toContain("MIG");
+      expect(warningLines(allowed.stderr)).toHaveLength(1);
+      expect(allowed.stderr).toContain(databasePath);
+    }
+
+    const refused = runZinn(["task", "list", "MIG"], dir);
+    expect(refused.code).toBe(1);
+    expect(refused.stdout).toBe("");
+    expect(refused.stderr).toContain(LEGACY_FLAG);
+    expect(databaseSnapshot(dir)).toEqual(before);
+  });
+});
+
+test("--allow-legacy-read with --json keeps stdout parseable and refusals as a JSON error", () => {
+  withIsolatedZinnDir((dir) => {
+    createBoard(dir, 0);
+
+    const allowed = runZinn(["task", "list", "MIG", "--json", LEGACY_FLAG], dir);
+    expect(allowed.code).toBe(0);
+    expect(JSON.parse(allowed.stdout)).toHaveLength(1);
+    expect(warningLines(allowed.stderr)).toHaveLength(1);
+
+    const refused = runZinn(["task", "list", "MIG", "--json"], dir);
+    expect(refused.code).toBe(1);
+    expect(refused.stdout).toBe("");
+    expect(JSON.parse(refused.stderr).error.message).toContain(LEGACY_FLAG);
+  });
+});
+
+test("a --allow-legacy-read after -- is command input, so the database stays refused", () => {
+  withIsolatedZinnDir((dir) => {
+    createBoard(dir, 0);
+    const before = databaseSnapshot(dir);
+    const result = runZinn(["task", "search", "--", LEGACY_FLAG], dir);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("has no schema version");
+    expect(result.stderr).not.toContain("Warning:");
+    expect(databaseSnapshot(dir)).toEqual(before);
+  });
+});
+
+test("--allow-legacy-read never lets a command change an unmarked database", () => {
+  withIsolatedZinnDir((dir) => {
+    createBoard(dir, 0);
+    const before = databaseSnapshot(dir);
+    const attempts = [
+      ["task", "create", "MIG", "--title", "Refused"],
+      ["task", "edit", "MIG-1", "--title", "Refused"],
+      ["task", "delete", "MIG-1", "--yes"],
+      ["project", "create", "NEW"],
+    ];
+
+    for (const args of attempts) {
+      const result = runZinn([...args, LEGACY_FLAG], dir);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain("is read-only");
+      expect(result.stderr).toContain("open for reading only");
+    }
+    expect(databaseSnapshot(dir)).toEqual(before);
+    expect(existsSync(join(dir, "backups"))).toBe(false);
+  });
+});
+
+test("--allow-legacy-read does not warn about a database that has a schema version", () => {
+  withIsolatedZinnDir((dir) => {
+    createBoard(dir, 1);
+    const current = runZinn(["task", "list", "MIG", LEGACY_FLAG], dir);
+    expect(current.code).toBe(0);
+    expect(current.stderr).toBe("");
+
+    withTestDb(dir, (db) => db.run("PRAGMA user_version = 9"));
+    const newer = runZinn(["task", "list", "MIG", LEGACY_FLAG], dir);
+    expect(newer.code).toBe(0);
+    expect(newer.stderr).toBe("");
+  });
+});
+
+test("help, --version and backup need no --allow-legacy-read for an unmarked database", () => {
+  withIsolatedZinnDir((dir) => {
+    createBoard(dir, 0);
+    const before = databaseSnapshot(dir);
+
+    expect(runZinn(["--help"], dir).stdout).toContain(LEGACY_FLAG);
+    expect(runZinn(["--version"], dir).code).toBe(0);
+
+    const backup = runZinn(["backup", "--json"], dir);
+    expect(backup.code).toBe(0);
+    expect(backup.stderr).toBe("");
+    expect(existsSync(JSON.parse(backup.stdout).path)).toBe(true);
+    expect(databaseSnapshot(dir)).toEqual(before);
+  });
+});
+
 test("help and --version open no database, not even one that core refuses", () => {
   withIsolatedZinnDir((dir) => {
     const commands = [["--version"], ["--help"], ["task", "--help"], ["task", "create", "--help"]];

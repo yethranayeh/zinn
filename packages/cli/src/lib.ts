@@ -1,11 +1,12 @@
 import type { parseArgs } from "node:util";
 
-import { assertWritable, ReadOnlyDatabaseError } from "@zinn-dev/core";
+import { assertWritable, ReadOnlyDatabaseError, UnmarkedDatabaseError } from "@zinn-dev/core";
 
 type ParsedTokens = NonNullable<ReturnType<typeof parseArgs>["tokens"]>;
 type OutputMode = "text" | "json";
 
 let outputMode: OutputMode = "text";
+let legacyReadAllowed = false;
 
 export function setOutputMode(mode: OutputMode) {
   outputMode = mode;
@@ -13,6 +14,18 @@ export function setOutputMode(mode: OutputMode) {
 
 export function isJsonFlag(flag: string) {
   return flag === "--json";
+}
+
+export function isAllowLegacyReadFlag(flag: string) {
+  return flag === "--allow-legacy-read";
+}
+
+export function setLegacyReadAllowed(allowed: boolean) {
+  legacyReadAllowed = allowed;
+}
+
+export function isLegacyReadAllowed() {
+  return legacyReadAllowed;
 }
 
 export function output<T>(data: T, transformToString: (data: T) => string) {
@@ -49,6 +62,10 @@ export function failureMessage(error: any, fallback: string) {
   const isOlderReadOnly = error instanceof ReadOnlyDatabaseError && error.reason === "older";
   if (isOlderReadOnly) {
     return `${error.message}. Run \`zinn migrate\` to upgrade it.`;
+  }
+
+  if (error instanceof UnmarkedDatabaseError) {
+    return `${error.message}. Add --allow-legacy-read to read it anyway.`;
   }
 
   return error?.message ?? fallback;

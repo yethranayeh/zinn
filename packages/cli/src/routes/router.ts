@@ -1,6 +1,14 @@
 import type { Command, ParsedRoute, RouteDef } from "../types";
 
-import { failureMessage, isHelpFlag, isJsonFlag, quit, setOutputMode } from "../lib";
+import {
+  failureMessage,
+  isAllowLegacyReadFlag,
+  isHelpFlag,
+  isJsonFlag,
+  quit,
+  setLegacyReadAllowed,
+  setOutputMode,
+} from "../lib";
 
 function getIsRunnable(obj: any): obj is Command {
   return Object.hasOwn(obj, "run");
@@ -76,10 +84,16 @@ function route(parsedRoutes: Array<ParsedRoute>, rawArgs: Array<string>) {
   const separatorIndex = rawArgs.indexOf("--");
   const routableArgs = separatorIndex === -1 ? rawArgs : rawArgs.slice(0, separatorIndex);
   const passthroughArgs = separatorIndex === -1 ? [] : rawArgs.slice(separatorIndex);
-  const filteredRoutableArgs = routableArgs.filter((arg) => !isJsonFlag(arg));
+  const filteredRoutableArgs = routableArgs.filter(
+    (arg) => !isJsonFlag(arg) && !isAllowLegacyReadFlag(arg),
+  );
 
-  if (filteredRoutableArgs.length !== routableArgs.length) {
+  if (routableArgs.some(isJsonFlag)) {
     setOutputMode("json");
+  }
+
+  if (routableArgs.some(isAllowLegacyReadFlag)) {
+    setLegacyReadAllowed(true);
   }
 
   const args = [...filteredRoutableArgs, ...passthroughArgs];

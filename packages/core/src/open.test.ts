@@ -405,6 +405,38 @@ test("an unmarked database is refused, for reads and writes, unless the client a
   });
 });
 
+/** A child that reports every onLegacyRead call, after listing projects and trying a write. */
+function legacyReadReportScript() {
+  return `
+    ${coreSetup({ allowsLegacyRead: true })}
+    const legacyReads = [];
+    core.configureDatabase({ ...${JSON.stringify(TEST_CLIENT)}, release: "source", allowsLegacyRead: true, onLegacyRead: (facts) => legacyReads.push(facts) });
+    core.project.getAll();
+    core.project.getAll();
+    try { core.project.create({ key: "NEW" }, actor); } catch {}
+    console.log(JSON.stringify({ legacyReads }));
+  `;
+}
+
+test("core reports an unmarked database opened for reading once, and no other state", () => {
+  withHome((home) => {
+    const mainDir = join(home, ".zinn");
+    createDatabase(mainDir, UNMARKED_VERSION);
+
+    expect(runChild({ home }, legacyReadReportScript()).legacyReads).toEqual([
+      { databasePath: databasePath(mainDir), version: UNMARKED_VERSION, latestVersion: 1 },
+    ]);
+  });
+
+  for (const version of [1, NEWER_VERSION]) {
+    withHome((home) => {
+      createDatabase(join(home, ".zinn"), version);
+
+      expect(runChild({ home }, legacyReadReportScript()).legacyReads).toEqual([]);
+    });
+  }
+});
+
 test("an unmarked database missing tables gets none created, even when a write is attempted", () => {
   withHome((home) => {
     const mainDir = join(home, ".zinn");

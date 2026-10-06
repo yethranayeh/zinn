@@ -22,6 +22,7 @@ Options:
   -h, --help  Show help
   -v, --version  Show version
   --json      Print command output as JSON
+  --allow-legacy-read  Read a database without a schema version, best effort and read-only
 
 Commands:
 ${router.commands}
