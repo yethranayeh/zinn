@@ -1,6 +1,6 @@
 import type { Command, ParsedRoute, RouteDef } from "../types";
 
-import { isHelpFlag, isJsonFlag, quit, setOutputMode } from "../lib";
+import { failureMessage, isHelpFlag, isJsonFlag, quit, setOutputMode } from "../lib";
 
 function getIsRunnable(obj: any): obj is Command {
   return Object.hasOwn(obj, "run");
@@ -130,8 +130,10 @@ function route(parsedRoutes: Array<ParsedRoute>, rawArgs: Array<string>) {
     match.run(commandArgs);
   } catch (err: any) {
     quit(
-      err?.message ??
+      failureMessage(
+        err,
         `Something went wrong while running "${match.command}" with args: ${commandArgs.join(",")}`,
+      ),
     );
   }
 }

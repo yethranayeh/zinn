@@ -18,6 +18,10 @@
 	},
 	"private": false,
 	"type": "module",
+	"scripts": {
+		"prepack": "bun ../../scripts/release-stamp.ts write",
+		"postpack": "bun ../../scripts/release-stamp.ts remove"
+	},
 	"module": "index.ts",
 	"imports": {
 		"#sqlite": {
@@ -34,7 +38,8 @@
 	"files": [
 		"index.ts",
 		"src",
-		"LICENSE"
+		"LICENSE",
+		"release-stamp.json"
 	],
 	"publishConfig": {
 		"access": "public"

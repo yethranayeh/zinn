@@ -6,7 +6,7 @@ import type { OrderPlacement } from "./shared";
 import { randomUUIDv7 } from "bun";
 import { generateKeyBetween } from "fractional-indexing";
 
-import { getDb } from "../db";
+import { writeTransaction } from "../db";
 import * as dbProject from "../db/project";
 import * as dbColumn from "../db/column";
 import * as dbTask from "../db/task";
@@ -64,8 +64,10 @@ export const column = {
     const props = validateTaskInput(columnCreateSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb().transaction(() => {
-      const { project, projectColumns: allProjectColumns } = requireProjectColumns(props.projectKey);
+    return writeTransaction(() => {
+      const { project, projectColumns: allProjectColumns } = requireProjectColumns(
+        props.projectKey,
+      );
       const existingColumn = findByName(allProjectColumns, props.name);
 
       if (existingColumn != null) {
@@ -89,13 +91,13 @@ export const column = {
       });
 
       return createdColumn;
-    }).immediate();
+    });
   },
   edit: (input: ColumnEditInput, actor: Actor) => {
     const props = validateTaskInput(columnEditSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb().transaction(() => {
+    return writeTransaction(() => {
       const { project, projectColumns } = requireProjectColumns(props.projectKey);
       const { columnMatch } = requireColumnByName(project, projectColumns, props.columnName);
 
@@ -120,13 +122,13 @@ export const column = {
       });
 
       return dbColumn.update({ id: columnMatch.id, name: props.name })!;
-    }).immediate();
+    });
   },
   order: (input: ColumnOrderInput, actor: Actor) => {
     const props = validateTaskInput(columnOrderSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb().transaction(() => {
+    return writeTransaction(() => {
       const { project, projectColumns } = requireProjectColumns(props.projectKey);
       const { columnMatch, columnIndex } = requireColumnByName(
         project,
@@ -184,6 +186,6 @@ export const column = {
           futureNextColumn?.column_order ?? null,
         ),
       })!;
-    }).immediate();
+    });
   },
 };

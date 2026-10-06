@@ -6,6 +6,7 @@ import { parseArgs } from "node:util";
 import { column, project } from "@zinn-dev/core";
 import {
   confirmAction,
+  failureMessage,
   output,
   quit,
   validatePositionalCount,
@@ -89,7 +90,7 @@ export const projectRouter = {
         );
         output(presentProject(createdProject), formatProject);
       } catch (err: any) {
-        quit(err?.message ?? "Something went wrong");
+        quit(failureMessage(err, "Something went wrong"));
       }
     },
     help: `Usage: zinn project create <project-key> [--name <text>] [--description <text>]
@@ -234,7 +235,7 @@ Example: zinn project edit MDR --name "Macrodata Refinement"`,
           output(presentProject(projectMatch), (p) => `Deletion cancelled for ${formatProject(p)}`);
         }
       } catch (err: any) {
-        quit(err?.message ?? "Something went wrong");
+        quit(failureMessage(err, "Something went wrong"));
       }
     },
     help: `Usage: zinn project delete <project-key> [--yes]
@@ -258,7 +259,7 @@ Example: zinn project delete MDR`,
           const createdColumn = column.create({ projectKey, name: columnName }, currentActor());
           output(presentColumn(createdColumn), formatColumn);
         } catch (err: any) {
-          quit(err?.message ?? "Something went wrong");
+          quit(failureMessage(err, "Something went wrong"));
         }
       },
       help: `Usage: zinn project column create <project-key> <column-name>

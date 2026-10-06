@@ -12,7 +12,7 @@ import type { OrderPlacement } from "./shared";
 import { randomUUIDv7 } from "bun";
 import { generateKeyBetween } from "fractional-indexing";
 
-import { getDb } from "../db";
+import { writeTransaction } from "../db";
 import { taskLabelSchema } from "../schemas/label";
 
 import * as dbProject from "../db/project";
@@ -188,61 +188,59 @@ export const task = {
     const task = validateTaskInput(taskCreateSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb()
-      .transaction(() => {
-        const labels = resolveLabels(task.labelNames ?? []);
-        const project = dbProject.getById(task.project_id);
-        const counter = dbProject.incrementTaskCounterById(task.project_id);
+    return writeTransaction(() => {
+      const labels = resolveLabels(task.labelNames ?? []);
+      const project = dbProject.getById(task.project_id);
+      const counter = dbProject.incrementTaskCounterById(task.project_id);
 
-        if (project == null || counter == null) {
-          throw new Error(
-            `Project's next task number could not be retrieved  (ID:${task.project_id})`,
-          );
-        }
+      if (project == null || counter == null) {
+        throw new Error(
+          `Project's next task number could not be retrieved  (ID:${task.project_id})`,
+        );
+      }
 
-        const initialColumn = dbColumn.getAllByProjectId(task.project_id)[0];
-        if (initialColumn == null) {
-          throw new Error(`Project "${project.key}" does not have any columns`);
-        }
+      const initialColumn = dbColumn.getAllByProjectId(task.project_id)[0];
+      if (initialColumn == null) {
+        throw new Error(`Project "${project.key}" does not have any columns`);
+      }
 
-        const lastTask = dbTask.getLastByColumnId(initialColumn.id);
-        const order = generateKeyBetween(lastTask?.task_order ?? null, null);
+      const lastTask = dbTask.getLastByColumnId(initialColumn.id);
+      const order = generateKeyBetween(lastTask?.task_order ?? null, null);
 
-        const now = Date.now();
-        const createdTask = dbTask.create({
-          id: randomUUIDv7(),
-          project_id: task.project_id,
-          column_id: initialColumn.id,
-          number: counter.task_count,
-          title: task.title,
-          description: task.description,
-          task_order: order,
-          priority: task.priority ?? null,
-          created_at: now,
-          updated_at: now,
-        })!;
+      const now = Date.now();
+      const createdTask = dbTask.create({
+        id: randomUUIDv7(),
+        project_id: task.project_id,
+        column_id: initialColumn.id,
+        number: counter.task_count,
+        title: task.title,
+        description: task.description,
+        task_order: order,
+        priority: task.priority ?? null,
+        created_at: now,
+        updated_at: now,
+      })!;
 
-        for (const label of labels) {
-          dbTaskLabel.create(createdTask.id, label.id);
-        }
-        updateTaskSearchRecord(createdTask.id);
+      for (const label of labels) {
+        dbTaskLabel.create(createdTask.id, label.id);
+      }
+      updateTaskSearchRecord(createdTask.id);
 
-        recordTaskActivity(validActor, {
-          taskId: createdTask.id,
-          action: "create",
-          changes: {
-            title: createdTask.title,
-            description: createdTask.description,
-            priority: createdTask.priority,
-            column: { id: initialColumn.id, name: initialColumn.name },
-            labels: labels.map((label) => label.name),
-          },
-          createdAt: now,
-        });
+      recordTaskActivity(validActor, {
+        taskId: createdTask.id,
+        action: "create",
+        changes: {
+          title: createdTask.title,
+          description: createdTask.description,
+          priority: createdTask.priority,
+          column: { id: initialColumn.id, name: initialColumn.name },
+          labels: labels.map((label) => label.name),
+        },
+        createdAt: now,
+      });
 
-        return attachTaskKey(createdTask, project.key);
-      })
-      .immediate();
+      return attachTaskKey(createdTask, project.key);
+    });
   },
   getAll: (input: TaskListInput = {}) => {
     const props = validateTaskInput(taskListSchema, input);
@@ -318,82 +316,76 @@ export const task = {
   edit: (input: TaskEditInput, actor: Actor) => {
     const props = validateTaskInput(taskEditSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
-    return getDb()
-      .transaction(() => {
-        const existing = getTaskByKey(props.taskKey);
-        const additions = resolveLabels(props.addLabelNames ?? []);
-        const removals = resolveLabels(props.removeLabelNames ?? []);
-        const existingLabelIds = new Set(
-          dbTaskLabel.getAllByTaskId(existing.id).map((label) => label.id),
-        );
-        const labelsToAdd = additions.filter((label) => !existingLabelIds.has(label.id));
-        const labelsToRemove = removals.filter((label) => existingLabelIds.has(label.id));
-        const areLabelsUnchanged = labelsToAdd.length === 0 && labelsToRemove.length === 0;
-        const isTitleUnchanged = props.title === undefined || props.title === existing.title;
-        const isDescriptionUnchanged =
-          props.description === undefined || props.description === existing.description;
 
-        const isPriorityUnchanged =
-          props.priority === undefined || props.priority === existing.priority;
+    return writeTransaction(() => {
+      const existing = getTaskByKey(props.taskKey);
+      const additions = resolveLabels(props.addLabelNames ?? []);
+      const removals = resolveLabels(props.removeLabelNames ?? []);
+      const existingLabelIds = new Set(
+        dbTaskLabel.getAllByTaskId(existing.id).map((label) => label.id),
+      );
+      const labelsToAdd = additions.filter((label) => !existingLabelIds.has(label.id));
+      const labelsToRemove = removals.filter((label) => existingLabelIds.has(label.id));
+      const areLabelsUnchanged = labelsToAdd.length === 0 && labelsToRemove.length === 0;
+      const isTitleUnchanged = props.title === undefined || props.title === existing.title;
+      const isDescriptionUnchanged =
+        props.description === undefined || props.description === existing.description;
 
-        if (
-          isTitleUnchanged &&
-          isDescriptionUnchanged &&
-          isPriorityUnchanged &&
-          areLabelsUnchanged
-        ) {
-          return existing;
-        }
+      const isPriorityUnchanged =
+        props.priority === undefined || props.priority === existing.priority;
 
-        for (const label of labelsToAdd) {
-          dbTaskLabel.create(existing.id, label.id);
-        }
+      if (isTitleUnchanged && isDescriptionUnchanged && isPriorityUnchanged && areLabelsUnchanged) {
+        return existing;
+      }
 
-        for (const label of labelsToRemove) {
-          dbTaskLabel.deleteByIds(existing.id, label.id);
-        }
+      for (const label of labelsToAdd) {
+        dbTaskLabel.create(existing.id, label.id);
+      }
 
-        const changes: Record<string, unknown> = {};
-        if (!isTitleUnchanged) {
-          changes.title = [existing.title, props.title];
-        }
+      for (const label of labelsToRemove) {
+        dbTaskLabel.deleteByIds(existing.id, label.id);
+      }
 
-        if (!isDescriptionUnchanged) {
-          changes.description = [existing.description, props.description];
-        }
+      const changes: Record<string, unknown> = {};
+      if (!isTitleUnchanged) {
+        changes.title = [existing.title, props.title];
+      }
 
-        if (!isPriorityUnchanged) {
-          changes.priority = [existing.priority, props.priority];
-        }
+      if (!isDescriptionUnchanged) {
+        changes.description = [existing.description, props.description];
+      }
 
-        if (!areLabelsUnchanged) {
-          changes.labels = {
-            added: labelsToAdd.map((label) => label.name),
-            removed: labelsToRemove.map((label) => label.name),
-          };
-        }
+      if (!isPriorityUnchanged) {
+        changes.priority = [existing.priority, props.priority];
+      }
 
-        const now = Date.now();
-        recordTaskActivity(validActor, {
-          taskId: existing.id,
-          action: "edit",
-          changes,
-          createdAt: now,
-        });
+      if (!areLabelsUnchanged) {
+        changes.labels = {
+          added: labelsToAdd.map((label) => label.name),
+          removed: labelsToRemove.map((label) => label.name),
+        };
+      }
 
-        const editedTask = dbTask.update({
-          id: existing.id,
-          title: props.title,
-          description: props.description,
-          priority: props.priority,
-          updated_at: now,
-        })!;
+      const now = Date.now();
+      recordTaskActivity(validActor, {
+        taskId: existing.id,
+        action: "edit",
+        changes,
+        createdAt: now,
+      });
 
-        updateTaskSearchRecord(existing.id);
+      const editedTask = dbTask.update({
+        id: existing.id,
+        title: props.title,
+        description: props.description,
+        priority: props.priority,
+        updated_at: now,
+      })!;
 
-        return { ...editedTask, key: existing.key };
-      })
-      .immediate();
+      updateTaskSearchRecord(existing.id);
+
+      return { ...editedTask, key: existing.key };
+    });
   },
   /**
    * Moves a task to another column in its project.
@@ -406,9 +398,7 @@ export const task = {
   move: (props: { taskKey: string; targetColumn: string }, actor: Actor) => {
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb()
-      .transaction(() => moveTask(props, validActor).task)
-      .immediate();
+    return writeTransaction(() => moveTask(props, validActor).task);
   },
   moveMany: (
     props: { taskKeys: Array<string>; targetColumn: string },
@@ -416,100 +406,94 @@ export const task = {
   ): Array<TaskChange> => {
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb()
-      .transaction(() =>
-        props.taskKeys.map((taskKey) =>
-          moveTask({ taskKey, targetColumn: props.targetColumn }, validActor),
-        ),
-      )
-      .immediate();
+    return writeTransaction(() =>
+      props.taskKeys.map((taskKey) =>
+        moveTask({ taskKey, targetColumn: props.targetColumn }, validActor),
+      ),
+    );
   },
   order: (props: TaskOrderProps, actor: Actor) => {
     const validActor = validateTaskInput(actorSchema, actor);
     const { taskKey, direction } = props;
 
-    return getDb()
-      .transaction(() => {
-        const taskMatch = getTaskByKey(taskKey);
+    return writeTransaction(() => {
+      const taskMatch = getTaskByKey(taskKey);
 
-        if (taskMatch.archived_at != null) {
-          throw new Error(`Archived task "${taskKey}" cannot be reordered`);
-        }
+      if (taskMatch.archived_at != null) {
+        throw new Error(`Archived task "${taskKey}" cannot be reordered`);
+      }
 
-        const allTasks = dbTask.getAllByColumnId(taskMatch.column_id);
-        const taskIndex = allTasks.findIndex((candidate) => candidate.id === taskMatch.id);
-        const otherTasks = allTasks.filter((candidate) => candidate.id !== taskMatch.id);
-        let placement: OrderPlacement;
+      const allTasks = dbTask.getAllByColumnId(taskMatch.column_id);
+      const taskIndex = allTasks.findIndex((candidate) => candidate.id === taskMatch.id);
+      const otherTasks = allTasks.filter((candidate) => candidate.id !== taskMatch.id);
+      let placement: OrderPlacement;
 
-        switch (direction) {
-          case "top":
-          case "up":
-          case "down":
-          case "bottom":
-            placement = { direction: neutralTaskDirections[direction] };
-            break;
-          case "before":
-          case "after": {
-            const targetTask = getTaskByKey(props.targetTaskKey);
+      switch (direction) {
+        case "top":
+        case "up":
+        case "down":
+        case "bottom":
+          placement = { direction: neutralTaskDirections[direction] };
+          break;
+        case "before":
+        case "after": {
+          const targetTask = getTaskByKey(props.targetTaskKey);
 
-            if (targetTask.id === taskMatch.id) {
-              return taskMatch;
-            }
-
-            if (targetTask.project_id !== taskMatch.project_id) {
-              throw new Error(
-                `Tasks "${taskKey}" and "${props.targetTaskKey}" must be in the same project`,
-              );
-            }
-
-            if (targetTask.column_id !== taskMatch.column_id) {
-              throw new Error(
-                `Tasks "${taskKey}" and "${props.targetTaskKey}" must be in the same column`,
-              );
-            }
-
-            if (targetTask.archived_at != null) {
-              throw new Error(
-                `Archived task "${props.targetTaskKey}" cannot be an ordering target`,
-              );
-            }
-
-            const targetIndex = allTasks.findIndex((candidate) => candidate.id === targetTask.id);
-            placement = { direction, targetIndex };
-            break;
+          if (targetTask.id === taskMatch.id) {
+            return taskMatch;
           }
+
+          if (targetTask.project_id !== taskMatch.project_id) {
+            throw new Error(
+              `Tasks "${taskKey}" and "${props.targetTaskKey}" must be in the same project`,
+            );
+          }
+
+          if (targetTask.column_id !== taskMatch.column_id) {
+            throw new Error(
+              `Tasks "${taskKey}" and "${props.targetTaskKey}" must be in the same column`,
+            );
+          }
+
+          if (targetTask.archived_at != null) {
+            throw new Error(`Archived task "${props.targetTaskKey}" cannot be an ordering target`);
+          }
+
+          const targetIndex = allTasks.findIndex((candidate) => candidate.id === targetTask.id);
+          placement = { direction, targetIndex };
+          break;
         }
+      }
 
-        const insertionIndex = getInsertionIndex(allTasks.length, taskIndex, placement);
+      const insertionIndex = getInsertionIndex(allTasks.length, taskIndex, placement);
 
-        if (insertionIndex === taskIndex) {
-          return taskMatch;
-        }
+      if (insertionIndex === taskIndex) {
+        return taskMatch;
+      }
 
-        const futurePrevTask = otherTasks[insertionIndex - 1] ?? null;
-        const futureNextTask = otherTasks[insertionIndex] ?? null;
-        const now = Date.now();
+      const futurePrevTask = otherTasks[insertionIndex - 1] ?? null;
+      const futureNextTask = otherTasks[insertionIndex] ?? null;
+      const now = Date.now();
 
-        recordTaskActivity(validActor, {
-          taskId: taskMatch.id,
-          action: "order",
-          changes: null,
-          createdAt: now,
-        });
+      recordTaskActivity(validActor, {
+        taskId: taskMatch.id,
+        action: "order",
+        changes: null,
+        createdAt: now,
+      });
 
-        return {
-          ...dbTask.update({
-            id: taskMatch.id,
-            task_order: generateKeyBetween(
-              futurePrevTask?.task_order ?? null,
-              futureNextTask?.task_order ?? null,
-            ),
-            updated_at: now,
-          })!,
-          key: taskMatch.key,
-        };
-      })
-      .immediate();
+      return {
+        ...dbTask.update({
+          id: taskMatch.id,
+          task_order: generateKeyBetween(
+            futurePrevTask?.task_order ?? null,
+            futureNextTask?.task_order ?? null,
+          ),
+          updated_at: now,
+        })!,
+        key: taskMatch.key,
+      };
+    });
   },
   /**
    * Deletes a task. Its activity rows remain.
@@ -519,65 +503,55 @@ export const task = {
   delete: (taskKey: string, actor: Actor) => {
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb()
-      .transaction(() => {
-        const taskMatch = getTaskByKey(taskKey);
-        const now = Date.now();
+    return writeTransaction(() => {
+      const taskMatch = getTaskByKey(taskKey);
+      const now = Date.now();
 
-        for (const relationMatch of dbRelation.getAllByTaskId(taskMatch.id)) {
-          const otherTaskId =
-            relationMatch.source_task_id === taskMatch.id
-              ? relationMatch.target_task_id
-              : relationMatch.source_task_id;
-
-          recordTaskActivity(validActor, {
-            taskId: otherTaskId,
-            action: "relation_delete",
-            changes: describeRelation(relationMatch),
-            createdAt: now,
-          });
-        }
+      for (const relationMatch of dbRelation.getAllByTaskId(taskMatch.id)) {
+        const otherTaskId =
+          relationMatch.source_task_id === taskMatch.id
+            ? relationMatch.target_task_id
+            : relationMatch.source_task_id;
 
         recordTaskActivity(validActor, {
-          taskId: taskMatch.id,
-          action: "delete",
-          changes: { key: taskMatch.key, title: taskMatch.title },
+          taskId: otherTaskId,
+          action: "relation_delete",
+          changes: describeRelation(relationMatch),
           createdAt: now,
         });
+      }
 
-        dbSearch.removeTask(taskMatch.id);
-        dbTask.deleteById(taskMatch.id);
-        return taskMatch;
-      })
-      .immediate();
+      recordTaskActivity(validActor, {
+        taskId: taskMatch.id,
+        action: "delete",
+        changes: { key: taskMatch.key, title: taskMatch.title },
+        createdAt: now,
+      });
+
+      dbSearch.removeTask(taskMatch.id);
+      dbTask.deleteById(taskMatch.id);
+      return taskMatch;
+    });
   },
   archive: (taskKey: string, actor: Actor) => {
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb()
-      .transaction(() => archiveTask(taskKey, validActor).task)
-      .immediate();
+    return writeTransaction(() => archiveTask(taskKey, validActor).task);
   },
   archiveMany: (taskKeys: Array<string>, actor: Actor): Array<TaskChange> => {
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb()
-      .transaction(() => taskKeys.map((taskKey) => archiveTask(taskKey, validActor)))
-      .immediate();
+    return writeTransaction(() => taskKeys.map((taskKey) => archiveTask(taskKey, validActor)));
   },
   unarchive: (taskKey: string, actor: Actor) => {
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb()
-      .transaction(() => unarchiveTask(taskKey, validActor).task)
-      .immediate();
+    return writeTransaction(() => unarchiveTask(taskKey, validActor).task);
   },
   unarchiveMany: (taskKeys: Array<string>, actor: Actor): Array<TaskChange> => {
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb()
-      .transaction(() => taskKeys.map((taskKey) => unarchiveTask(taskKey, validActor)))
-      .immediate();
+    return writeTransaction(() => taskKeys.map((taskKey) => unarchiveTask(taskKey, validActor)));
   },
   activity: (taskKey: string) => dbActivity.getAllByEntity("task", getTaskByKey(taskKey).id),
 };

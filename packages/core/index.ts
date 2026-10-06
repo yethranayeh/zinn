@@ -36,6 +36,8 @@ export type {
 export type { BackupCreateInput } from "./src/operations/backup";
 export type { MigrateResult } from "./src/migrations/migrate";
 export type { LockWait } from "./src/migrations/upgrade";
+export type { OpenPolicy, ReadOnlyReason } from "./src/migrations/open-policy";
+export type { ReleaseMode } from "./src/release";
 
 export {
   labelCreateSchema,
@@ -66,4 +68,7 @@ export { label } from "./src/operations/label";
 export { backup } from "./src/operations/backup";
 export { migrate } from "./src/operations/migrate";
 export { MigrationRefusedError } from "./src/migrations/migrate";
+export { assertWritable, configureDatabase } from "./src/db";
+export { ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./src/migrations/open-policy";
+export { readReleaseMode } from "./src/release";
 export { BACKUP_DIR } from "./src/constant";

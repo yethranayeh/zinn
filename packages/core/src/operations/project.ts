@@ -7,7 +7,7 @@ import { validateTaskInput } from "../schemas/task";
 import { randomUUIDv7 } from "bun";
 import { generateKeyBetween } from "fractional-indexing";
 
-import { getDb } from "../db";
+import { writeTransaction } from "../db";
 import * as dbProject from "../db/project";
 import * as dbColumn from "../db/column";
 import * as dbTask from "../db/task";
@@ -23,7 +23,7 @@ export const project = {
     const props = validateProjectInput(projectCreateSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb().transaction(() => {
+    return writeTransaction(() => {
       // Checked inside the transaction, so another process cannot add the key in between.
       const existingProject = dbProject.getByKey(props.key);
 
@@ -67,13 +67,13 @@ export const project = {
       });
 
       return createdProject;
-    }).immediate();
+    });
   },
   edit: (input: ProjectEditInput, actor: Actor) => {
     const props = validateProjectInput(projectEditSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb().transaction(() => {
+    return writeTransaction(() => {
       const projectMatch = dbProject.getByKey(props.projectKey);
 
       if (projectMatch == null) {
@@ -109,13 +109,13 @@ export const project = {
       });
 
       return dbProject.update({ id: projectMatch.id, name, description, updated_at: now })!;
-    }).immediate();
+    });
   },
   getAll: dbProject.getAll,
   delete: (key: string, actor: Actor) => {
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb().transaction(() => {
+    return writeTransaction(() => {
       const projectMatch = dbProject.getByKey(key);
 
       if (projectMatch == null) {
@@ -151,7 +151,7 @@ export const project = {
 
       dbProject.deleteByKey(key);
       return projectMatch;
-    }).immediate();
+    });
   },
   standardizeKey: standardizeProjectKey,
 };

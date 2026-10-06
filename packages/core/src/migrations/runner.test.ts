@@ -405,7 +405,7 @@ test("a fresh database gets the baseline and every migration, ending at the late
   });
 });
 
-test("the baseline is the schema getDb() creates today, and getDb() still leaves it unmarked", () => {
+test("getDb() creates a fresh database at the baseline schema and version", () => {
   withDirectory((directory) => {
     const modulePath = JSON.stringify(fileURLToPath(new URL("../db.ts", import.meta.url)));
     const result = Bun.spawnSync([process.execPath, "--eval", `
@@ -420,7 +420,7 @@ test("the baseline is the schema getDb() creates today, and getDb() still leaves
     expect(result.stderr.toString()).toBe("");
     expect(result.exitCode).toBe(0);
     const initialized = JSON.parse(result.stdout.toString());
-    expect(initialized.version).toBe(0);
+    expect(initialized.version).toBe(BASELINE_VERSION);
 
     withDatabase((db) => {
       createSchema(db, []);

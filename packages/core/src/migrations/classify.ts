@@ -1,3 +1,4 @@
+import type { Database } from "../sqlite/database";
 import type { Migration } from "./registry";
 
 import { existsSync } from "node:fs";
@@ -25,47 +26,19 @@ export type DatabaseClassification = {
   latestVersion: number;
 };
 
-function readObjectCountAndVersion(databasePath: string) {
-  const db = openDatabase(databasePath);
-  let found;
-
-  try {
-    applyConnectionSettings(db);
-
-    const objectCount = db
-      .query<{ count: number }>("SELECT COUNT(*) AS count FROM sqlite_schema")
-      .get()!.count;
-
-    found = { objectCount, version: readSchemaVersion(db) };
-  } catch (error) {
-    try {
-      db.close();
-    } catch (closeError) {
-      attachSuppressed(error, closeError);
-    }
-
-    throw error;
-  }
-
-  db.close();
-  return found;
-}
-
 /**
- * Reports what state the database at `databasePath` is in, without creating a file, a table or a row.
- * A file that is not there is "absent", and nothing opens it.
+ * Reports the state of the database behind an open connection, without writing to it.
+ * A connection always has a file or memory behind it, so the state is never "absent".
  */
-export function classifyDatabase(
-  databasePath: string,
+export function classifyConnection(
+  db: Database,
   migrations: ReadonlyArray<Migration> = MIGRATIONS,
 ): DatabaseClassification {
   const latest = latestVersion(migrations);
-
-  if (!existsSync(databasePath)) {
-    return { state: "absent", version: 0, latestVersion: latest };
-  }
-
-  const { objectCount, version } = readObjectCountAndVersion(databasePath);
+  const objectCount = db
+    .query<{ count: number }>("SELECT COUNT(*) AS count FROM sqlite_schema")
+    .get()!.count;
+  const version = readSchemaVersion(db);
 
   const state = ((): DatabaseState => {
     if (version === 0) {
@@ -80,4 +53,36 @@ export function classifyDatabase(
   })();
 
   return { state, version, latestVersion: latest };
+}
+
+/**
+ * Reports what state the database at `databasePath` is in, without creating a file, a table or a row.
+ * A file that is not there is "absent", and nothing opens it.
+ */
+export function classifyDatabase(
+  databasePath: string,
+  migrations: ReadonlyArray<Migration> = MIGRATIONS,
+): DatabaseClassification {
+  if (!existsSync(databasePath)) {
+    return { state: "absent", version: 0, latestVersion: latestVersion(migrations) };
+  }
+
+  const db = openDatabase(databasePath);
+  let classification;
+
+  try {
+    applyConnectionSettings(db);
+    classification = classifyConnection(db, migrations);
+  } catch (error) {
+    try {
+      db.close();
+    } catch (closeError) {
+      attachSuppressed(error, closeError);
+    }
+
+    throw error;
+  }
+
+  db.close();
+  return classification;
 }

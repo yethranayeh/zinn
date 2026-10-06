@@ -1,5 +1,7 @@
 import type { parseArgs } from "node:util";
 
+import { assertWritable, ReadOnlyDatabaseError } from "@zinn-dev/core";
+
 type ParsedTokens = NonNullable<ReturnType<typeof parseArgs>["tokens"]>;
 type OutputMode = "text" | "json";
 
@@ -26,7 +28,11 @@ export function output<T>(data: T, transformToString: (data: T) => string) {
   }
 }
 
+/** Asks before a change that cannot be undone, unless --yes already confirmed it. */
 export function confirmAction(message: string, isPreconfirmed: boolean) {
+  // Throws on a read-only database, to avoid asking for confirmation to an already refused action
+  assertWritable();
+
   if (isPreconfirmed) {
     return true;
   }
@@ -36,6 +42,16 @@ export function confirmAction(message: string, isPreconfirmed: boolean) {
   }
 
   return confirm(message);
+}
+
+/** The message to report for a failed command, or fallback when the error has none. */
+export function failureMessage(error: any, fallback: string) {
+  const isOlderReadOnly = error instanceof ReadOnlyDatabaseError && error.reason === "older";
+  if (isOlderReadOnly) {
+    return `${error.message}. Run \`zinn migrate\` to upgrade it.`;
+  }
+
+  return error?.message ?? fallback;
 }
 
 export function quit(reason: string): never {

@@ -2,7 +2,7 @@ import type { CommentWithKey } from "../types";
 import type { CommentCreateInput, CommentDeleteInput, CommentEditInput } from "../schemas/comment";
 import type { Actor } from "../schemas/actor";
 
-import { getDb } from "../db";
+import { writeTransaction } from "../db";
 
 import * as dbTask from "../db/task";
 import * as dbComment from "../db/comment";
@@ -35,7 +35,7 @@ export const comment = {
     const props = validateTaskInput(commentCreateSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb().transaction(() => {
+    return writeTransaction(() => {
       const taskMatch = getTaskByKey(props.taskKey);
       const counter = dbTask.incrementCommentCounterById(taskMatch.id);
 
@@ -61,13 +61,13 @@ export const comment = {
       });
 
       return createdComment;
-    }).immediate();
+    });
   },
   edit: (input: CommentEditInput, actor: Actor) => {
     const props = validateTaskInput(commentEditSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb().transaction(() => {
+    return writeTransaction(() => {
       const existing = getCommentByKey(props.commentKey);
 
       if (existing.text === props.text) {
@@ -92,13 +92,13 @@ export const comment = {
       });
 
       return editedComment;
-    }).immediate();
+    });
   },
   delete: (input: CommentDeleteInput, actor: Actor) => {
     const props = validateTaskInput(commentDeleteSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb().transaction(() => {
+    return writeTransaction(() => {
       const existing = getCommentByKey(props.commentKey);
       const now = Date.now();
 
@@ -112,6 +112,6 @@ export const comment = {
       updateTaskSearchRecord(existing.task_id);
 
       return existing;
-    }).immediate();
+    });
   },
 };

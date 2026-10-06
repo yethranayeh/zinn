@@ -3,10 +3,9 @@ import type { Command } from "../types";
 import { parseArgs } from "node:util";
 import { BACKUP_DIR, migrate, MigrationRefusedError } from "@zinn-dev/core";
 
+import { reportLockWait } from "../database";
 import { output } from "../lib";
 import packageJson from "../../package.json";
-
-const MS_PER_SECOND = 1000;
 
 export const migrateCommand = {
   run: (args) => {
@@ -16,11 +15,7 @@ export const migrateCommand = {
       const result = migrate.run({
         client: "cli",
         version: packageJson.version,
-        onWait: ({ budgetMs }) => {
-          console.error(
-            `Another process is using the database. Waiting up to ${budgetMs / MS_PER_SECOND} seconds for it to finish.`,
-          );
-        },
+        onWait: reportLockWait,
       });
 
       output(result, (r) =>

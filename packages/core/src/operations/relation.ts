@@ -2,7 +2,7 @@ import type { TaskRelation, TaskWithKey } from "../types";
 import type { RelationCreateInput, RelationDeleteInput } from "../schemas/relation";
 import type { Actor } from "../schemas/actor";
 
-import { getDb } from "../db";
+import { writeTransaction } from "../db";
 
 import * as dbTask from "../db/task";
 import * as dbRelation from "../db/relation";
@@ -72,7 +72,7 @@ export const relation = {
     const props = validateTaskInput(relationCreateSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb().transaction(() => {
+    return writeTransaction(() => {
       const resolved = resolveRelationTaskIds(props);
       const relationMatch = dbRelation.getByTaskIdsAndType(resolved);
 
@@ -105,14 +105,14 @@ export const relation = {
       }
 
       return createdRelation;
-    }).immediate();
+    });
   },
   /** Records the same relation_delete row on both tasks. */
   delete: (input: RelationDeleteInput, actor: Actor) => {
     const props = validateTaskInput(relationDeleteSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb().transaction(() => {
+    return writeTransaction(() => {
       const resolved = resolveRelationTaskIds(props);
       const relationMatch = dbRelation.getByTaskIdsAndType(resolved);
 
@@ -134,7 +134,7 @@ export const relation = {
 
       dbRelation.deleteById(relationMatch.id);
       return relationMatch;
-    }).immediate();
+    });
   },
   getAll: getRelations,
 };

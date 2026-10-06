@@ -7,6 +7,7 @@ import { task, project, positiveIntegerPattern, searchLimitMessage } from "@zinn
 
 import {
   confirmAction,
+  failureMessage,
   output,
   quit,
   validatePositionalCount,
@@ -475,7 +476,7 @@ Example: zinn task unarchive MDR-1 MDR-2`,
           output(presented, (t) => `Deletion cancelled for ${formatTaskRow(t)}`);
         }
       } catch (err: any) {
-        quit(err?.message ?? "Something went wrong");
+        quit(failureMessage(err, "Something went wrong"));
       }
     },
     help: `Usage: zinn task delete <task-key> [--yes]

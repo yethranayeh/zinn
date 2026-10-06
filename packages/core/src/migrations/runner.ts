@@ -13,6 +13,11 @@ import { assertMigrationOrder, latestVersion, MIGRATIONS } from "./registry";
 /** SQLite's default `user_version`, which no Zinn version writes, making it an **unmarked** DB. */
 const UNMARKED_VERSION = 0;
 
+/** Thrown when fresh creation finds the database no longer empty, such as when another process created it first. */
+export class SchemaNotEmptyError extends Error {
+  override name = "SchemaNotEmptyError";
+}
+
 export function readSchemaVersion(db: Database) {
   return db.query<{ user_version: number }>("PRAGMA user_version").get()!.user_version;
 }
@@ -190,7 +195,7 @@ export function createSchema(db: Database, migrations: ReadonlyArray<Migration> 
     const isEmpty = objectCount === 0 && version === UNMARKED_VERSION;
 
     if (!isEmpty) {
-      throw new Error(
+      throw new SchemaNotEmptyError(
         `A schema can only be created in an empty database, and this one has ${objectCount} schema objects and version ${version}`,
       );
     }

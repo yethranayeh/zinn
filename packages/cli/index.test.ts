@@ -3575,24 +3575,6 @@ test("label namespaces and commands expose help without initializing storage", (
   });
 });
 
-test("opening an existing board adds label storage without losing task data", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "KEEP"], dir);
-    runZinn(["task", "create", "KEEP", "--title", "Existing task"], dir);
-    withTestDb(dir, (db) => {
-      db.run("DROP TABLE task_label");
-      db.run("DROP TABLE label");
-    });
-    expect(runZinn(["label", "create", "bug"], dir).code).toBe(0);
-    expect(runZinn(["task", "label", "add", "KEEP-1", "bug"], dir).code).toBe(0);
-    expect(runZinn(["task", "view", "KEEP-1"], dir).stdout).toBe(
-      "KEEP-1 | Backlog | - | Existing task | bug\n",
-    );
-    expect(runZinnWithConfirmation(["task", "delete", "KEEP-1"], dir).code).toBe(0);
-    expect(runZinn(["label", "list"], dir).stdout).toContain("bug");
-  });
-});
-
 test("label deletion confirms global removal and cancellation preserves attachments and timestamps", () => {
   withIsolatedZinnDir((dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
@@ -3900,6 +3882,78 @@ test("migrate on a current database is a no-op with no backup", () => {
     expect(runZinn(["migrate"], dir).stdout).toBe("The database is already at schema version 1\n");
     expect(databaseSnapshot(dir)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
+  });
+});
+
+// --- READ-ONLY DATABASES (ZINN-118)
+
+test("a newer database refuses changes, naming both versions and this CLI, while reads still work", () => {
+  withIsolatedZinnDir((dir) => {
+    createBoard(dir, 9);
+    const before = databaseSnapshot(dir);
+
+    const list = runZinn(["task", "list", "MIG"], dir);
+    expect(list.code).toBe(0);
+    expect(list.stdout).toContain("Kept");
+
+    const created = runZinn(["task", "create", "MIG", "--title", "Refused"], dir);
+    expect(created.code).toBe(1);
+    expect(created.stdout).toBe("");
+    expect(created.stderr).toContain(`The database at ${join(dir, "data", "zinn.sqlite")} is read-only`);
+    expect(created.stderr).toContain("schema version 9");
+    expect(created.stderr).toContain("reaches only version 1");
+    expect(created.stderr).toContain(`cli ${packageJson.version}, run from ${CLI_PATH}`);
+    expect(databaseSnapshot(dir)).toEqual(before);
+    expect(existsSync(join(dir, "backups"))).toBe(false);
+  });
+});
+
+test("task delete on a read-only database refuses before asking for confirmation", () => {
+  withIsolatedZinnDir((dir) => {
+    createBoard(dir, 9);
+    const before = databaseSnapshot(dir);
+    const result = runZinnWithConfirmation(["task", "delete", "MIG-1"], dir);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("is read-only");
+    expect(databaseSnapshot(dir)).toEqual(before);
+  });
+});
+
+test("an unmarked database is refused, for reads and writes, and left unchanged", () => {
+  withIsolatedZinnDir((dir) => {
+    createBoard(dir, 0);
+    const before = databaseSnapshot(dir);
+
+    for (const args of [["task", "list", "MIG"], ["task", "create", "MIG", "--title", "Refused"]]) {
+      const result = runZinn(args, dir);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain(`The database at ${join(dir, "data", "zinn.sqlite")} has no schema version`);
+    }
+    expect(databaseSnapshot(dir)).toEqual(before);
+    expect(existsSync(join(dir, "backups"))).toBe(false);
+  });
+});
+
+test("help and --version open no database, not even one that core refuses", () => {
+  withIsolatedZinnDir((dir) => {
+    const commands = [["--version"], ["--help"], ["task", "--help"], ["task", "create", "--help"]];
+
+    for (const args of commands) {
+      expect(runZinn(args, dir).code).toBe(0);
+    }
+    expect(readdirSync(dir)).toEqual([]);
+
+    createBoard(dir, 0);
+    const before = databaseSnapshot(dir);
+    for (const args of commands) {
+      const result = runZinn(args, dir);
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe("");
+    }
+    expect(databaseSnapshot(dir)).toEqual(before);
   });
 });
 

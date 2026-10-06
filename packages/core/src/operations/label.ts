@@ -1,7 +1,7 @@
 import type { LabelCreateInput, LabelDeleteInput, LabelEditInput } from "../schemas/label";
 import type { Actor } from "../schemas/actor";
 
-import { getDb } from "../db";
+import { writeTransaction } from "../db";
 import { labelCreateSchema, labelDeleteSchema, labelEditSchema } from "../schemas/label";
 
 import * as dbTask from "../db/task";
@@ -22,7 +22,7 @@ export const label = {
     const props = validateTaskInput(labelCreateSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb().transaction(() => {
+    return writeTransaction(() => {
       if (findLabelByName(props.name) != null) {
         throw new Error(`A label with name "${props.name}" already exists`);
       }
@@ -46,18 +46,17 @@ export const label = {
       });
 
       return createdLabel;
-    }).immediate();
+    });
   },
   /** Editing a global definition preserves attachments and does not edit attached tasks. */
   edit: (input: LabelEditInput, actor: Actor) => {
     const props = validateTaskInput(labelEditSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb().transaction(() => {
+    return writeTransaction(() => {
       const match = resolveLabels([props.labelName])[0]!;
       const name = props.name ?? match.name;
-      const description =
-        props.description === undefined ? match.description : props.description;
+      const description = props.description === undefined ? match.description : props.description;
       const color = props.color ?? match.color;
 
       const isUnchanged =
@@ -91,7 +90,7 @@ export const label = {
       });
 
       return dbLabel.update({ id: match.id, name, description, color })!;
-    }).immediate();
+    });
   },
   getAll: dbLabel.getAll,
   getByName: (name: string) => {
@@ -103,7 +102,7 @@ export const label = {
     const props = validateTaskInput(labelDeleteSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return getDb().transaction(() => {
+    return writeTransaction(() => {
       const match = resolveLabels([props.name])[0]!;
       const now = Date.now();
 
@@ -127,6 +126,6 @@ export const label = {
       dbTask.updateLabelTasksTimestamp(match.id, now);
       dbLabel.deleteById(match.id);
       return match;
-    }).immediate();
+    });
   },
 };

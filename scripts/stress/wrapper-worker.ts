@@ -26,7 +26,6 @@ const adapter =
     ? await import("../../packages/core/src/sqlite/bun.ts")
     : await import("../../packages/core/src/sqlite/node.ts");
 
-// The same settings Zinn's initDb uses, in the same order (packages/core/src/db.ts).
 const BUSY_TIMEOUT_MS = 30_000;
 // Commits that span many WAL frames, so a kill can land between frames of one transaction.
 const LARGE_PAYLOAD_CHANCE = 0.01;
@@ -77,7 +76,11 @@ function describeError(error: unknown) {
 
 // getDb() retries these startup failures (packages/core/src/db.ts, ZINN-68). open() mirrors that policy,
 //  so an error that still gets through is one Zinn would show its user.
-const STARTUP_RETRY_CODES = new Set(["SQLITE_BUSY", "SQLITE_BUSY_RECOVERY", "SQLITE_IOERR_TRUNCATE"]);
+const STARTUP_RETRY_CODES = new Set([
+  "SQLITE_BUSY",
+  "SQLITE_BUSY_RECOVERY",
+  "SQLITE_IOERR_TRUNCATE",
+]);
 const STARTUP_ATTEMPTS = 5;
 const STARTUP_RETRY_BUDGET_MS = 1_000;
 const STARTUP_BACKOFF_MS = 20;
@@ -94,7 +97,8 @@ function open() {
     } catch (error) {
       const code = error instanceof SqliteError ? error.code : null;
       const isTransient = code != null && STARTUP_RETRY_CODES.has(code);
-      const isExhausted = attempt >= STARTUP_ATTEMPTS || performance.now() - began >= STARTUP_RETRY_BUDGET_MS;
+      const isExhausted =
+        attempt >= STARTUP_ATTEMPTS || performance.now() - began >= STARTUP_RETRY_BUDGET_MS;
 
       if (!isTransient || isExhausted) {
         throw error;
@@ -139,10 +143,14 @@ function initialize(db: Database) {
     FOREIGN KEY (worker, seq) REFERENCES transfer (worker, seq));`);
 
   openStep = "accounts";
-  const accountCount = db.query<{ count: number }>("SELECT COUNT(*) AS count FROM account").get()!.count;
+  const accountCount = db
+    .query<{ count: number }>("SELECT COUNT(*) AS count FROM account")
+    .get()!.count;
   if (accountCount < ACCOUNT_COUNT) {
     db.transaction(() => {
-      const insert = db.query<unknown, [number, number]>("INSERT OR IGNORE INTO account (id, balance) VALUES (?, ?)");
+      const insert = db.query<unknown, [number, number]>(
+        "INSERT OR IGNORE INTO account (id, balance) VALUES (?, ?)",
+      );
       for (let id = 1; id <= ACCOUNT_COUNT; id++) {
         insert.run(id, INITIAL_BALANCE);
       }
@@ -151,8 +159,14 @@ function initialize(db: Database) {
 }
 
 function move(db: Database, fromId: number, toId: number, amount: number) {
-  db.query<unknown, [number, number]>("UPDATE account SET balance = balance - ? WHERE id = ?").run(amount, fromId);
-  db.query<unknown, [number, number]>("UPDATE account SET balance = balance + ? WHERE id = ?").run(amount, toId);
+  db.query<unknown, [number, number]>("UPDATE account SET balance = balance - ? WHERE id = ?").run(
+    amount,
+    fromId,
+  );
+  db.query<unknown, [number, number]>("UPDATE account SET balance = balance + ? WHERE id = ?").run(
+    amount,
+    toId,
+  );
 }
 
 function pickAccounts() {
@@ -193,7 +207,9 @@ function runNested(db: Database, seq: number, depth: number) {
 
 function runTransfer(db: Database, seq: number, announceLock: boolean) {
   const { fromId, toId, amount } = pickAccounts();
-  const payloadLength = random.chance(LARGE_PAYLOAD_CHANCE) ? LARGE_PAYLOAD_CHARACTERS : random.integer(SMALL_PAYLOAD_CHARACTERS.min, SMALL_PAYLOAD_CHARACTERS.max);
+  const payloadLength = random.chance(LARGE_PAYLOAD_CHANCE)
+    ? LARGE_PAYLOAD_CHARACTERS
+    : random.integer(SMALL_PAYLOAD_CHARACTERS.min, SMALL_PAYLOAD_CHARACTERS.max);
   const payload = random.text(payloadLength);
 
   db.transaction(() => {
@@ -211,7 +227,11 @@ function runTransfer(db: Database, seq: number, announceLock: boolean) {
 }
 
 function nextSequence(db: Database) {
-  const row = db.query<{ value: number | null }, [string]>("SELECT MAX(seq) AS value FROM transfer WHERE worker = ?").get(worker);
+  const row = db
+    .query<{ value: number | null }, [string]>(
+      "SELECT MAX(seq) AS value FROM transfer WHERE worker = ?",
+    )
+    .get(worker);
   return (row?.value ?? 0) + 1;
 }
 
@@ -219,7 +239,11 @@ function runCrashMode() {
   let db = open();
   console.log("ready");
 
-  for (let count = 0, seq = nextSequence(db); count < MAX_TRANSACTIONS_PER_PROCESS; count++, seq++) {
+  for (
+    let count = 0, seq = nextSequence(db);
+    count < MAX_TRANSACTIONS_PER_PROCESS;
+    count++, seq++
+  ) {
     runTransfer(db, seq, false);
     appendFileSync(values.log!, `${seq}\n`);
 
@@ -265,7 +289,9 @@ function runContendMode() {
       appendFileSync(values.log!, `ack ${seq}\n`);
       console.log(`ACK ${seq} ${Math.round(performance.now() - began)}`);
     } catch (error) {
-      console.log(`ERR ${describeError(error)} (${runtime}, during ${phase === "open" ? `open: ${openStep}` : phase})`);
+      console.log(
+        `ERR ${describeError(error)} (${runtime}, during ${phase === "open" ? `open: ${openStep}` : phase})`,
+      );
       // A failed open leaves no usable connection; the next transaction opens a new one.
       remainingOnConnection = 0;
     }
@@ -289,8 +315,12 @@ function runReadMode() {
   while (!existsSync(values["stop-file"]!) && reads < MAX_TRANSACTIONS_PER_PROCESS) {
     try {
       db.exec("BEGIN");
-      const total = db.query<{ total: number }>("SELECT SUM(balance) AS total FROM account").get()!.total;
-      const discarded = db.query<{ count: number }>("SELECT COUNT(*) AS count FROM step WHERE kept = 0").get()!.count;
+      const total = db
+        .query<{ total: number }>("SELECT SUM(balance) AS total FROM account")
+        .get()!.total;
+      const discarded = db
+        .query<{ count: number }>("SELECT COUNT(*) AS count FROM step WHERE kept = 0")
+        .get()!.count;
       db.exec("COMMIT");
       reads++;
 
