@@ -1,14 +1,9 @@
-import { test, expect, afterAll } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { test, expect } from "bun:test";
 
 import type { Task } from "../types";
 
-const TEMP_DIR_ROOT = tmpdir();
-const PREFIX = join(TEMP_DIR_ROOT, "zinntest-");
-const TEST_DIR = mkdtempSync(PREFIX);
-process.env.ZINN_DIR = TEST_DIR;
+// ? The test preload already ran this; importing it also isolates a run without the preload.
+import { TEST_RUN_DIR } from "../../../../scripts/test-isolation";
 
 // ? Dynamic so env is set before `MAIN_DIR` constant is initialized.
 const project = await import("./project");
@@ -16,18 +11,10 @@ const column = await import("./column");
 const task = await import("./task");
 const { MAIN_DIR } = await import("../constant");
 
-// Core reads ZINN_DIR once, on first import, so an earlier import would redirect these writes.
-if (MAIN_DIR !== TEST_DIR) {
-  throw new Error(`Refusing to run: core resolved its directory to "${MAIN_DIR}", not this test's "${TEST_DIR}"`);
+// Core reads ZINN_DIR once, on first import, so an earlier import without the preload would redirect these writes.
+if (MAIN_DIR !== TEST_RUN_DIR) {
+  throw new Error(`Refusing to run: core resolved its directory to "${MAIN_DIR}", not this run's "${TEST_RUN_DIR}"`);
 }
-
-afterAll(() => {
-  if (!TEST_DIR.startsWith(PREFIX)) {
-    throw new Error(`Refusing to delete "${TEST_DIR}": not a ${PREFIX}* directory`);
-  }
-
-  rmSync(TEST_DIR, { recursive: true, force: true });
-});
 
 test("project.create can establish a project", () => {
   const created = project.create({ key: "WIP", name: "Work In Progress" });

@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const PREFIX = join(tmpdir(), "zinn-test-run-");
-const TEST_RUN_DIR = mkdtempSync(PREFIX);
+/** This run's directory, shared by every test that loads core in the test process. */
+export const TEST_RUN_DIR = mkdtempSync(PREFIX);
 
 process.env.ZINN_DIR = TEST_RUN_DIR;
 
