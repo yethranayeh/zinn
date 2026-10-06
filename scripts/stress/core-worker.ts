@@ -10,6 +10,8 @@
  *            Prints LOCK <seq> right after BEGIN IMMEDIATE succeeds, so the parent can kill it
  *            while it holds the write lock.
  *   seed     fills a project with tasks, then exits (scenario crash-backup).
+ *   seed-linked  like seed, and every task also gets comments, labels and relations, so a rebuilt
+ *            task table has child rows to keep (the migration scenarios).
  */
 import type { Actor } from "../../packages/core/index.ts";
 import type { Database } from "../../packages/core/src/sqlite/database.ts";
@@ -22,7 +24,12 @@ import { getDb } from "../../packages/core/src/db.ts";
 import { SqliteError } from "../../packages/core/src/sqlite/database.ts";
 
 import { createRandom, type Random } from "./random.ts";
-import { CONTEND_PROJECT_KEY, CRASH_PROJECT_KEY, SEED_PROJECT_KEY, type Expectation } from "./workload.ts";
+import {
+  CONTEND_PROJECT_KEY,
+  CRASH_PROJECT_KEY,
+  SEED_PROJECT_KEY,
+  type Expectation,
+} from "./workload.ts";
 import { maxActivityRowid, snapshotLabel, snapshotProject, snapshotTask } from "./zinn-checks.ts";
 
 const actor: Actor = { name: "stress-worker", email: null, kind: "agent" };
@@ -31,7 +38,16 @@ const actor: Actor = { name: "stress-worker", email: null, kind: "agent" };
 const MAX_ACTIVE_TASKS = 60;
 const MAX_LABELS = 6;
 const MAX_COMMENTS_PER_TASK = 12;
-const LABEL_COLORS = ["red", "green", "yellow", "blue", "magenta", "cyan", "white", "gray"] as const;
+const LABEL_COLORS = [
+  "red",
+  "green",
+  "yellow",
+  "blue",
+  "magenta",
+  "cyan",
+  "white",
+  "gray",
+] as const;
 const DIRECTIONS = ["top", "up", "down", "bottom"] as const;
 const RELATION_TYPES = ["related", "dependency", "duplicate", "subtask"] as const;
 
@@ -67,7 +83,9 @@ type TaskRow = { id: string; number: number; archived_at: number | null; column_
 
 function readTasks(db: Database, projectId: string) {
   return db
-    .query<TaskRow, [string]>("SELECT id, number, archived_at, column_id FROM task WHERE project_id = ? ORDER BY number")
+    .query<TaskRow, [string]>(
+      "SELECT id, number, archived_at, column_id FROM task WHERE project_id = ? ORDER BY number",
+    )
     .all(projectId);
 }
 
@@ -88,9 +106,13 @@ function planCrashOperation(db: Database, marker: string, rng: Random): PlannedO
   const tasks = readTasks(db, projectMatch.id);
   const activeTasks = tasks.filter((candidate) => candidate.archived_at == null);
   const archivedTasks = tasks.filter((candidate) => candidate.archived_at != null);
-  const labels = db.query<{ id: string; name: string }>("SELECT id, name FROM label ORDER BY name").all();
+  const labels = db
+    .query<{ id: string; name: string }>("SELECT id, name FROM label ORDER BY name")
+    .all();
   const columns = db
-    .query<{ id: string; name: string }, [string]>("SELECT id, name FROM project_column WHERE project_id = ? ORDER BY column_order")
+    .query<{ id: string; name: string }, [string]>(
+      "SELECT id, name FROM project_column WHERE project_id = ? ORDER BY column_order",
+    )
     .all(projectMatch.id);
   const keyOf = (candidate: { number: number }) => `${CRASH_PROJECT_KEY}-${candidate.number}`;
   const isCrowded = activeTasks.length > MAX_ACTIVE_TASKS;
@@ -115,7 +137,8 @@ function planCrashOperation(db: Database, marker: string, rng: Random): PlannedO
     projectEdit: 2,
   });
 
-  const pickTask = (candidates: Array<TaskRow>) => (candidates.length === 0 ? null : rng.pick(candidates));
+  const pickTask = (candidates: Array<TaskRow>) =>
+    candidates.length === 0 ? null : rng.pick(candidates);
 
   switch (operationName) {
     case "create": {
@@ -128,7 +151,12 @@ function planCrashOperation(db: Database, marker: string, rng: Random): PlannedO
         expect: { kind: "task-title", taskId: null, title },
         run: () =>
           task.create(
-            { project_id: projectMatch.id, title, description: rng.text(rng.integer(0, 400)), labelNames },
+            {
+              project_id: projectMatch.id,
+              title,
+              description: rng.text(rng.integer(0, 400)),
+              labelNames,
+            },
             actor,
           ),
         createdTaskId: (result) => (result as { id: string }).id,
@@ -145,7 +173,11 @@ function planCrashOperation(db: Database, marker: string, rng: Random): PlannedO
         touchTasks: [target.id],
         touchLabels: [],
         expect: { kind: "task-title", taskId: target.id, title },
-        run: () => task.edit({ taskKey: keyOf(target), title, description: rng.text(rng.integer(0, 400)) }, actor),
+        run: () =>
+          task.edit(
+            { taskKey: keyOf(target), title, description: rng.text(rng.integer(0, 400)) },
+            actor,
+          ),
       };
     }
     case "move": {
@@ -188,7 +220,8 @@ function planCrashOperation(db: Database, marker: string, rng: Random): PlannedO
         touchTasks: [target.id],
         touchLabels: [],
         expect: { kind: "task-archived", taskId: target.id, archived: isArchive },
-        run: () => (isArchive ? task.archive(keyOf(target), actor) : task.unarchive(keyOf(target), actor)),
+        run: () =>
+          isArchive ? task.archive(keyOf(target), actor) : task.unarchive(keyOf(target), actor),
       };
     }
     case "delete": {
@@ -198,7 +231,10 @@ function planCrashOperation(db: Database, marker: string, rng: Random): PlannedO
       }
       // Deleting a task cascades its relations, which changes the other tasks' snapshots too.
       const counterparts = db
-        .query<{ id: string }, [string, string, string]>(`SELECT CASE WHEN source_task_id = ? THEN target_task_id ELSE source_task_id END AS id
+        .query<
+          { id: string },
+          [string, string, string]
+        >(`SELECT CASE WHEN source_task_id = ? THEN target_task_id ELSE source_task_id END AS id
         FROM task_relations WHERE source_task_id = ? OR target_task_id = ?`)
         .all(target.id, target.id, target.id)
         .map((row) => row.id);
@@ -216,7 +252,9 @@ function planCrashOperation(db: Database, marker: string, rng: Random): PlannedO
         return null;
       }
       const commentCount = db
-        .query<{ count: number }, [string]>("SELECT COUNT(*) AS count FROM comment WHERE task_id = ?")
+        .query<{ count: number }, [string]>(
+          "SELECT COUNT(*) AS count FROM comment WHERE task_id = ?",
+        )
         .get(target.id)!.count;
       if (commentCount >= MAX_COMMENTS_PER_TASK) {
         return null;
@@ -233,7 +271,10 @@ function planCrashOperation(db: Database, marker: string, rng: Random): PlannedO
     case "commentEdit":
     case "commentDelete": {
       const commented = db
-        .query<{ task_id: string; task_number: number; number: number }, [string]>(`SELECT comment.task_id, task.number AS task_number, comment.number
+        .query<
+          { task_id: string; task_number: number; number: number },
+          [string]
+        >(`SELECT comment.task_id, task.number AS task_number, comment.number
         FROM comment JOIN task ON task.id = comment.task_id WHERE task.project_id = ?`)
         .all(projectMatch.id);
       if (commented.length === 0) {
@@ -266,7 +307,12 @@ function planCrashOperation(db: Database, marker: string, rng: Random): PlannedO
         return null;
       }
       const attached = new Set(
-        db.query<{ label_id: string }, [string]>("SELECT label_id FROM task_label WHERE task_id = ?").all(target.id).map((row) => row.label_id),
+        db
+          .query<{ label_id: string }, [string]>(
+            "SELECT label_id FROM task_label WHERE task_id = ?",
+          )
+          .all(target.id)
+          .map((row) => row.label_id),
       );
       const isAdd = operationName === "labelAdd";
       const candidates = labels.filter((candidate) => attached.has(candidate.id) !== isAdd);
@@ -292,18 +338,37 @@ function planCrashOperation(db: Database, marker: string, rng: Random): PlannedO
       const relationType = rng.pick(RELATION_TYPES);
       // Symmetric relations are stored with the smaller id first (operations/relation.ts).
       const isSwapped = relationType === "related" && source.id > target.id;
-      const stored = isSwapped ? `${relationType}:${target.id}>${source.id}` : `${relationType}:${source.id}>${target.id}`;
+      const stored = isSwapped
+        ? `${relationType}:${target.id}>${source.id}`
+        : `${relationType}:${source.id}>${target.id}`;
       return {
         name: operationName,
         touchTasks: [source.id, target.id],
         touchLabels: [],
         expect: { kind: "relation", relation: stored, exists: true },
-        run: () => relation.create({ sourceTaskKey: keyOf(source), targetTaskKey: keyOf(target), relation_type: relationType }, actor),
+        run: () =>
+          relation.create(
+            {
+              sourceTaskKey: keyOf(source),
+              targetTaskKey: keyOf(target),
+              relation_type: relationType,
+            },
+            actor,
+          ),
       };
     }
     case "relationDelete": {
       const relations = db
-        .query<{ source_task_id: string; target_task_id: string; relation_type: (typeof RELATION_TYPES)[number]; source_number: number; target_number: number }, [string]>(`SELECT relation.source_task_id, relation.target_task_id, relation.relation_type,
+        .query<
+          {
+            source_task_id: string;
+            target_task_id: string;
+            relation_type: (typeof RELATION_TYPES)[number];
+            source_number: number;
+            target_number: number;
+          },
+          [string]
+        >(`SELECT relation.source_task_id, relation.target_task_id, relation.relation_type,
           source.number AS source_number, target.number AS target_number
         FROM task_relations AS relation
         JOIN task AS source ON source.id = relation.source_task_id
@@ -318,7 +383,11 @@ function planCrashOperation(db: Database, marker: string, rng: Random): PlannedO
         name: operationName,
         touchTasks: [chosen.source_task_id, chosen.target_task_id],
         touchLabels: [],
-        expect: { kind: "relation", relation: `${chosen.relation_type}:${chosen.source_task_id}>${chosen.target_task_id}`, exists: false },
+        expect: {
+          kind: "relation",
+          relation: `${chosen.relation_type}:${chosen.source_task_id}>${chosen.target_task_id}`,
+          exists: false,
+        },
         run: () =>
           relation.delete(
             {
@@ -374,7 +443,16 @@ function runCrashMode() {
 
   // The first run creates the project. It is logged like any other operation.
   if (project.getByKey(CRASH_PROJECT_KEY) == null) {
-    appendLog({ t: "begin", run: runNumber, seq: 0, op: "projectCreate", marker: "setup", touchTasks: [], touchLabels: [], expect: { kind: "none" } });
+    appendLog({
+      t: "begin",
+      run: runNumber,
+      seq: 0,
+      op: "projectCreate",
+      marker: "setup",
+      touchTasks: [],
+      touchLabels: [],
+      expect: { kind: "none" },
+    });
     project.create({ key: CRASH_PROJECT_KEY, name: "Crash" }, actor);
     appendLog({
       t: "ack",
@@ -413,7 +491,13 @@ function runCrashMode() {
     } catch (error) {
       // Domain refusals (a subtask cycle, an existing relation) are expected now and then.
       // They must leave no trace, which the parent checks.
-      appendLog({ t: "fail", run: runNumber, seq, code: sqliteCode(error), error: String((error as Error).message) });
+      appendLog({
+        t: "fail",
+        run: runNumber,
+        seq,
+        code: sqliteCode(error),
+        error: String((error as Error).message),
+      });
       continue;
     }
 
@@ -462,7 +546,9 @@ function runContendMode() {
     db = getDb();
   } catch (error) {
     const cause = (error as Error).cause;
-    console.log(`INITERR ${sqliteCode(cause) ?? "none"} ${String((error as Error).message).replaceAll("\n", " ")}`);
+    console.log(
+      `INITERR ${sqliteCode(cause) ?? "none"} ${String((error as Error).message).replaceAll("\n", " ")}`,
+    );
     process.exit(1);
   }
 
@@ -474,9 +560,15 @@ function runContendMode() {
   for (seq = 1; seq <= MAX_OPERATIONS_PER_PROCESS; seq++) {
     const marker = `${lane}r${runNumber}s${seq}`;
     const ownTasks = db
-      .query<{ number: number; id: string }, [string, string]>("SELECT number, id FROM task WHERE project_id = ? AND title LIKE ? ORDER BY number")
+      .query<{ number: number; id: string }, [string, string]>(
+        "SELECT number, id FROM task WHERE project_id = ? AND title LIKE ? ORDER BY number",
+      )
       .all(projectMatch.id, `${lane}r%`);
-    const operationName = random.weighted({ create: 4, comment: 4, edit: ownTasks.length > 0 ? 2 : 0 });
+    const operationName = random.weighted({
+      create: 4,
+      comment: 4,
+      edit: ownTasks.length > 0 ? 2 : 0,
+    });
     const target = operationName === "edit" ? random.pick(ownTasks) : null;
     const text = `${marker} ${operationName}`;
 
@@ -486,18 +578,31 @@ function runContendMode() {
     try {
       let key: string;
       if (operationName === "create") {
-        key = task.create({ project_id: projectMatch.id, title: text, description: random.text(200) }, actor).key;
+        key = task.create(
+          { project_id: projectMatch.id, title: text, description: random.text(200) },
+          actor,
+        ).key;
       } else if (operationName === "comment") {
         key = comment.create({ taskKey: sharedTaskKey, text }, actor).key;
       } else {
-        key = task.edit({ taskKey: `${CONTEND_PROJECT_KEY}-${target!.number}`, title: text }, actor).key;
+        key = task.edit(
+          { taskKey: `${CONTEND_PROJECT_KEY}-${target!.number}`, title: text },
+          actor,
+        ).key;
       }
 
       appendLog({ t: "ack", seq, op: operationName, marker, key, taskId: target?.id ?? null });
       console.log(`ACK ${seq} ${Math.round(performance.now() - began)}`);
     } catch (error) {
-      appendLog({ t: "fail", seq, code: sqliteCode(error), error: String((error as Error).message) });
-      console.log(`ERR ${sqliteCode(error) ?? "none"} ${String((error as Error).message).replaceAll("\n", " ")} (during ${operationName})`);
+      appendLog({
+        t: "fail",
+        seq,
+        code: sqliteCode(error),
+        error: String((error as Error).message),
+      });
+      console.log(
+        `ERR ${sqliteCode(error) ?? "none"} ${String((error as Error).message).replaceAll("\n", " ")} (during ${operationName})`,
+      );
     }
   }
 }
@@ -513,9 +618,65 @@ function runSeedMode() {
   db.transaction(() => {
     for (let index = 1; index <= taskCount; index++) {
       task.create(
-        { project_id: projectMatch.id, title: `seeded ${index}`, description: random.text(random.integer(200, 1200)) },
+        {
+          project_id: projectMatch.id,
+          title: `seeded ${index}`,
+          description: random.text(random.integer(200, 1200)),
+        },
         actor,
       );
+    }
+  }).immediate();
+
+  console.log("done");
+}
+
+function runSeedLinkedMode() {
+  const taskCount = Number(values.tasks);
+  const db = getDb();
+  const labelNames = ["alpha", "beta", "gamma"];
+
+  project.create({ key: SEED_PROJECT_KEY, name: "Linked source" }, actor);
+  const projectMatch = project.getByKey(SEED_PROJECT_KEY)!;
+
+  db.transaction(() => {
+    const keys: Array<string> = [];
+
+    for (const name of labelNames) {
+      label.create({ name, color: random.pick(LABEL_COLORS) }, actor);
+    }
+
+    for (let index = 1; index <= taskCount; index++) {
+      const created = task.create(
+        {
+          project_id: projectMatch.id,
+          title: `seeded ${index}`,
+          description: random.text(random.integer(100, 600)),
+        },
+        actor,
+      );
+
+      for (let commentIndex = 0; commentIndex < random.integer(0, 3); commentIndex++) {
+        comment.create(
+          { taskKey: created.key, text: `note ${index}.${commentIndex} ${random.text(80)}` },
+          actor,
+        );
+      }
+      if (random.chance(0.4)) {
+        task.label.add({ taskKey: created.key, labelNames: [random.pick(labelNames)] }, actor);
+      }
+      if (keys.length > 0 && random.chance(0.3)) {
+        relation.create(
+          {
+            sourceTaskKey: created.key,
+            targetTaskKey: random.pick(keys),
+            relation_type: random.pick(RELATION_TYPES.filter((type) => type !== "subtask")),
+          },
+          actor,
+        );
+      }
+
+      keys.push(created.key);
     }
   }).immediate();
 
@@ -528,6 +689,8 @@ if (mode === "crash") {
   runContendMode();
 } else if (mode === "seed") {
   runSeedMode();
+} else if (mode === "seed-linked") {
+  runSeedLinkedMode();
 } else {
   throw new Error(`Unknown mode: ${mode}`);
 }

@@ -4,7 +4,16 @@
  */
 import type { Subprocess } from "bun";
 
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statfsSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  statfsSync,
+  statSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 
@@ -104,7 +113,9 @@ function assertNotLive(path: string) {
   for (const live of [LIVE_ZINN_DIR, LIVE_BACKUP_DIR]) {
     const liveResolved = resolveExisting(live);
     if (isInside(resolved, liveResolved) || isInside(liveResolved, resolved)) {
-      throw new Error(`Refusing to use ${resolved}: it overlaps the live Zinn data at ${liveResolved}`);
+      throw new Error(
+        `Refusing to use ${resolved}: it overlaps the live Zinn data at ${liveResolved}`,
+      );
     }
   }
 }
@@ -136,7 +147,9 @@ export class RunDirectory {
     assertNotLive(resolved);
 
     if (!isInside(resolved, this.root) || resolved === this.root) {
-      throw new Error(`Refusing to use ${resolved}: it is outside the harness directory ${this.root}`);
+      throw new Error(
+        `Refusing to use ${resolved}: it is outside the harness directory ${this.root}`,
+      );
     }
   }
 
@@ -182,7 +195,9 @@ export function directorySize(directory: string): number {
 }
 
 export function formatBytes(bytes: number) {
-  return bytes >= 1024 ** 2 ? `${(bytes / 1024 ** 2).toFixed(1)} MiB` : `${(bytes / 1024).toFixed(1)} KiB`;
+  return bytes >= 1024 ** 2
+    ? `${(bytes / 1024 ** 2).toFixed(1)} MiB`
+    : `${(bytes / 1024).toFixed(1)} KiB`;
 }
 
 export function sleep(milliseconds: number) {
@@ -202,10 +217,15 @@ export class Child {
   readonly exited: Promise<number | null>;
   private readonly listeners = new Set<LineListener>();
 
-  constructor(command: Array<string>, zinnDirectory: string, timeoutMs: number) {
+  constructor(
+    command: Array<string>,
+    zinnDirectory: string,
+    timeoutMs: number,
+    extraEnvironment: Record<string, string> = {},
+  ) {
     this.process = Bun.spawn(command, {
       cwd: REPO_ROOT,
-      env: { ...process.env, ZINN_DIR: zinnDirectory },
+      env: { ...process.env, ...extraEnvironment, ZINN_DIR: zinnDirectory },
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
@@ -302,8 +322,13 @@ export class Child {
 }
 
 /** Runs a command to completion and returns its exit code, stdout, stderr and duration. */
-export async function runToCompletion(command: Array<string>, zinnDirectory: string, timeoutMs: number) {
-  const child = new Child(command, zinnDirectory, timeoutMs);
+export async function runToCompletion(
+  command: Array<string>,
+  zinnDirectory: string,
+  timeoutMs: number,
+  extraEnvironment: Record<string, string> = {},
+) {
+  const child = new Child(command, zinnDirectory, timeoutMs, extraEnvironment);
   const exitCode = await child.exited;
 
   return {

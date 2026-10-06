@@ -8,8 +8,9 @@
  * Options:
  *   --scenario <name>[,<name>...]  default: all (see SCENARIOS below)
  *   --seed <n>                     fixes the operation mix and kill schedule; OS scheduling still varies
- *   --kills <n>                    SIGKILLs per crash scenario and per kill scenario (default 30)
- *   --processes <n>                concurrent processes in the concurrency scenarios (default 6)
+ *   --kills <n>                    SIGKILLs per crash scenario and per kill scenario (default 30); also scales
+ *                                  the migrate-* scenarios' rounds (one per 6) and migrate-kill iterations (one per 3)
+ *   --processes <n>                concurrent processes in the concurrency and migrate-* scenarios (default 6)
  *   --commands <n>                 CLI commands per process in concurrency-cli (default 20)
  *   --transactions <n>             transactions per writer in concurrency-mixed (default 300)
  *   --seed-tasks <n>               tasks in the database crash-backup interrupts (default 3000)
@@ -27,15 +28,33 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 
 import { openDatabase } from "../../packages/core/src/sqlite/bun.ts";
-import { DEFAULT_OPTIONS, NODE_COMMAND, reproduceCommand, RunDirectory, runToCompletion } from "./harness.ts";
+import {
+  DEFAULT_OPTIONS,
+  NODE_COMMAND,
+  reproduceCommand,
+  RunDirectory,
+  runToCompletion,
+} from "./harness.ts";
 import { runConcurrencyCli } from "./scenarios/concurrency-cli.ts";
 import { runConcurrencyKillCore, runConcurrencyKillMixed } from "./scenarios/concurrency-kill.ts";
 import { runConcurrencyMixed } from "./scenarios/concurrency-mixed.ts";
 import { runCrashCore } from "./scenarios/crash-core.ts";
 import { runCrashBackup, runCrashInit } from "./scenarios/crash-startup.ts";
 import { runCrashWrapper } from "./scenarios/crash-wrapper.ts";
+import {
+  runMigrateCreateRace,
+  runMigrateKill,
+  runMigrateLockTimeout,
+  runMigrateOpenRace,
+  runMigrateRace,
+  runMigrateSizing,
+} from "./scenarios/migrations.ts";
 
-type Scenario = (options: Options, run: RunDirectory, reproduce: string) => Promise<ScenarioResult | Array<ScenarioResult>>;
+type Scenario = (
+  options: Options,
+  run: RunDirectory,
+  reproduce: string,
+) => Promise<ScenarioResult | Array<ScenarioResult>>;
 
 const SCENARIOS: Record<string, Scenario> = {
   "crash-core": runCrashCore,
@@ -46,6 +65,12 @@ const SCENARIOS: Record<string, Scenario> = {
   "concurrency-mixed": runConcurrencyMixed,
   "concurrency-kill-core": runConcurrencyKillCore,
   "concurrency-kill-mixed": runConcurrencyKillMixed,
+  "migrate-open-race": runMigrateOpenRace,
+  "migrate-race": runMigrateRace,
+  "migrate-lock-timeout": runMigrateLockTimeout,
+  "migrate-kill": runMigrateKill,
+  "migrate-sizing": runMigrateSizing,
+  "migrate-create-race": runMigrateCreateRace,
 };
 
 const SEED_LIMIT = 2 ** 31;
@@ -69,11 +94,14 @@ function parseOptions(): Options {
   const scenarios = values.scenario == null ? Object.keys(SCENARIOS) : values.scenario.split(",");
   for (const scenario of scenarios) {
     if (SCENARIOS[scenario] == null) {
-      throw new Error(`Unknown scenario "${scenario}". Known: ${Object.keys(SCENARIOS).join(", ")}`);
+      throw new Error(
+        `Unknown scenario "${scenario}". Known: ${Object.keys(SCENARIOS).join(", ")}`,
+      );
     }
   }
 
-  const number = (value: string | undefined, fallback: number) => (value == null ? fallback : Number(value));
+  const number = (value: string | undefined, fallback: number) =>
+    value == null ? fallback : Number(value);
 
   return {
     scenarios,
@@ -94,7 +122,9 @@ async function describeEnvironment(run: RunDirectory) {
   const bunPath = join(directory, "bun.sqlite");
   const db = openDatabase(bunPath);
   db.exec("PRAGMA journal_mode = WAL");
-  const bunVersion = db.query<{ version: string }>("SELECT sqlite_version() AS version").get()!.version;
+  const bunVersion = db
+    .query<{ version: string }>("SELECT sqlite_version() AS version")
+    .get()!.version;
   const bunSynchronous = db.query<{ synchronous: number }>("PRAGMA synchronous").get()!.synchronous;
   db.close();
 
@@ -131,7 +161,9 @@ async function main() {
       for (const result of Array.isArray(outcome) ? outcome : [outcome]) {
         results.push(result);
         const status = result.failures.length === 0 ? "ok" : `${result.failures.length} FAILURE(S)`;
-        console.log(`${result.name}: ${result.iterations} iterations, ${status} (${((performance.now() - scenarioBegan) / 1000).toFixed(1)} s)`);
+        console.log(
+          `${result.name}: ${result.iterations} iterations, ${status} (${((performance.now() - scenarioBegan) / 1000).toFixed(1)} s)`,
+        );
         for (const note of result.notes) {
           console.log(`  ${note}`);
         }
@@ -147,10 +179,14 @@ async function main() {
     const failures = results.flatMap((result) => result.failures);
     const keepsAnything = options.keep || failures.some((failure) => failure.keptDirectory != null);
 
-    console.log(`\n== summary (seed ${options.seed}, ${((performance.now() - began) / 1000).toFixed(0)} s)`);
+    console.log(
+      `\n== summary (seed ${options.seed}, ${((performance.now() - began) / 1000).toFixed(0)} s)`,
+    );
     for (const result of results) {
       const kinds = [...new Set(result.failures.map((failure) => failure.kind))].join("; ");
-      console.log(`${result.name.padEnd(24)} ${String(result.iterations).padStart(6)} iterations  ${result.failures.length} failures${kinds ? `  (${kinds})` : ""}`);
+      console.log(
+        `${result.name.padEnd(24)} ${String(result.iterations).padStart(6)} iterations  ${result.failures.length} failures${kinds ? `  (${kinds})` : ""}`,
+      );
     }
 
     if (keepsAnything) {
