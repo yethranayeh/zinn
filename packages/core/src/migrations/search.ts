@@ -3,9 +3,13 @@ import type { Database } from "../sqlite/database";
 import { assembleSearchEntry } from "../search-entry";
 import { TASK_SEARCH_DEFINITION } from "./baseline";
 
-/** Recreates `task_search` and fills it from every task and its comments, archived ones included. */
+/**
+ * Recreates `task_search` and fills it from every task and its comments, archived ones included.
+ * Returns the number of tasks indexed.
+ */
 export function regenerateSearch(db: Database) {
-  db.exec("DROP TABLE task_search");
+  // A missing index is created, not refused: an older database without one could otherwise neither upgrade nor reindex.
+  db.exec("DROP TABLE IF EXISTS task_search");
   db.exec(TASK_SEARCH_DEFINITION);
 
   const tasks = db
@@ -32,4 +36,6 @@ export function regenerateSearch(db: Database) {
       $comments: entry.comments,
     });
   }
+
+  return tasks.length;
 }

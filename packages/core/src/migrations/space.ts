@@ -7,6 +7,8 @@ import type { Database } from "../sqlite/database";
 import type { Migration } from "./registry";
 
 import { statfsSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname } from "node:path";
 
 import { SEARCH_COMMENT_SEPARATOR } from "../search-entry";
 import { readSchemaVersion } from "./runner";
@@ -112,6 +114,17 @@ export function readDatabaseFile(db: Database) {
   return file == null || file === "" ? null : file;
 }
 
+/** The file the connection's main database lives in. Throws for a database with no file, such as an in-memory one. */
+export function requireDatabaseFile(db: Database, operation: string) {
+  const databasePath = readDatabaseFile(db);
+
+  if (databasePath == null) {
+    throw new Error(`The ${operation} needs the database's file, and this database has no file`);
+  }
+
+  return databasePath;
+}
+
 /** The measurements that depend only on the database's system files */
 export type FileMeasurements = Pick<
   SpaceMeasurements,
@@ -139,6 +152,32 @@ export function measureFiles(db: Database): FileMeasurements {
   };
 }
 
+/** Reads the size of the current search index. Without dbstat, the whole database's size stands in for it. */
+function measureSearchIndex(db: Database, databaseBytes: number) {
+  return readStructureBytes(db, SEARCH_SHADOW_TABLES) ?? databaseBytes;
+}
+
+/** Reads the size of the text the search index is built from. */
+function measureSearchSource(
+  db: Database,
+): Pick<SpaceMeasurements, "searchSourceBytes" | "taskCount"> {
+  // length(CAST(x AS BLOB)) counts bytes, not characters. Separators come from comment rows, not task.comment_count.
+  const textBytes = readNumber(
+    db,
+    `SELECT (SELECT COALESCE(SUM(length(CAST(id AS BLOB)) + length(CAST(title AS BLOB))
+        + COALESCE(length(CAST(description AS BLOB)), 0)), 0) FROM task)
+      + (SELECT COALESCE(SUM(length(CAST(text AS BLOB))), 0) FROM comment) AS value`,
+  );
+  const commentedTasks = readNumber(db, "SELECT COUNT(DISTINCT task_id) AS value FROM comment");
+  const commentCount = readNumber(db, "SELECT COUNT(*) AS value FROM comment");
+  const separatorBytes = (commentCount - commentedTasks) * SEPARATOR_BYTES;
+
+  return {
+    searchSourceBytes: textBytes + separatorBytes,
+    taskCount: readNumber(db, "SELECT COUNT(*) AS value FROM task"),
+  };
+}
+
 /** Reads the sizes of what the migrations after the database's version still have to do. */
 export function measureSpace(
   db: Database,
@@ -154,34 +193,33 @@ export function measureSpace(
   const rebuildsTables = rebuiltTables.length > 0;
   const regeneratesSearch = pending.some((migration) => migration.regeneratesSearch === true);
 
-  // Without dbstat, the whole database's size stands in for the rebuilt tables and for the search index.
+  // Without dbstat, the whole database's size stands in for the rebuilt tables.
   const tableBytes = rebuiltTables.map((table) => readStructureBytes(db, [table]));
   const rebuiltTableBytes = tableBytes.includes(null)
     ? databaseBytes
     : tableBytes.reduce<number>((total, bytes) => total + (bytes ?? 0), 0);
-  const searchIndexBytes = regeneratesSearch
-    ? (readStructureBytes(db, SEARCH_SHADOW_TABLES) ?? databaseBytes)
-    : 0;
-
-  // length(CAST(x AS BLOB)) counts bytes, not characters. Separators come from comment rows, not task.comment_count.
-  const textBytes = readNumber(
-    db,
-    `SELECT (SELECT COALESCE(SUM(length(CAST(id AS BLOB)) + length(CAST(title AS BLOB))
-        + COALESCE(length(CAST(description AS BLOB)), 0)), 0) FROM task)
-      + (SELECT COALESCE(SUM(length(CAST(text AS BLOB))), 0) FROM comment) AS value`,
-  );
-  const commentedTasks = readNumber(db, "SELECT COUNT(DISTINCT task_id) AS value FROM comment");
-  const commentCount = readNumber(db, "SELECT COUNT(*) AS value FROM comment");
-  const separatorBytes = (commentCount - commentedTasks) * SEPARATOR_BYTES;
 
   return {
     ...files,
     rebuildsTables,
     rebuiltTableBytes,
     regeneratesSearch,
-    searchIndexBytes,
-    searchSourceBytes: textBytes + separatorBytes,
-    taskCount: readNumber(db, "SELECT COUNT(*) AS value FROM task"),
+    searchIndexBytes: regeneratesSearch ? measureSearchIndex(db, databaseBytes) : 0,
+    ...measureSearchSource(db),
+  };
+}
+
+/** Reads the sizes for regenerating search on its own, outside a migration. */
+export function measureSearchRegeneration(db: Database): SpaceMeasurements {
+  const files = measureFiles(db);
+
+  return {
+    ...files,
+    rebuildsTables: false,
+    rebuiltTableBytes: 0,
+    regeneratesSearch: true,
+    searchIndexBytes: measureSearchIndex(db, files.databaseBytes),
+    ...measureSearchSource(db),
   };
 }
 
@@ -262,7 +300,25 @@ export function readFreeSpace(path: string): FreeSpace | null {
   }
 }
 
-export type SpacePaths = { database: string; backup: string; temporary: string };
+/** The directories whose free space work on the database needs. `backup` is left out when the work saves no backup. */
+export type SpacePaths = { database: string; backup?: string; temporary: string };
+
+/**
+ * SQLite writes its temporary files to `SQLITE_TMPDIR` when set, otherwise to the system's
+ *  temporary directory.
+ * @link https://www.sqlite.org/tempfiles.html#temporary_file_storage_locations
+ */
+function temporaryDirectory() {
+  return process.env.SQLITE_TMPDIR ?? tmpdir();
+}
+
+export function spacePathsFor(databasePath: string, backupDirectory?: string): SpacePaths {
+  return {
+    database: dirname(databasePath),
+    backup: backupDirectory,
+    temporary: temporaryDirectory(),
+  };
+}
 
 /**
  * Throws when a filesystem lacks the space, naming its path and the bytes required and available.
@@ -277,6 +333,11 @@ export function assertFreeSpace(
 
   for (const key of ["database", "backup", "temporary"] as const) {
     const path = paths[key];
+
+    if (path == null) {
+      continue;
+    }
+
     const space = read(path);
 
     if (space == null) {

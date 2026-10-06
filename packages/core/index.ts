@@ -36,6 +36,7 @@ export type {
 export type { BackupCreateInput, BackupRestoreInput } from "./src/operations/backup";
 export type { MigrateResult } from "./src/migrations/migrate";
 export type { RestoreResult } from "./src/migrations/restore";
+export type { ReindexResult } from "./src/migrations/reindex";
 export type { LockWait } from "./src/migrations/upgrade";
 export type { DatabaseFacts, OpenPolicy, ReadOnlyReason } from "./src/migrations/open-policy";
 export type { ReleaseMode } from "./src/release";
@@ -68,6 +69,7 @@ export { relation } from "./src/operations/relation";
 export { label } from "./src/operations/label";
 export { backup } from "./src/operations/backup";
 export { migrate } from "./src/operations/migrate";
+export { reindex } from "./src/operations/reindex";
 export { MigrationRefusedError } from "./src/migrations/migrate";
 export { RestoreRefusedError } from "./src/migrations/restore";
 export { assertWritable, configureDatabase } from "./src/db";

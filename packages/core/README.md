@@ -58,6 +58,8 @@ Internally, the DB functions still return task rows without `key`. Relation look
 
 The index is an FTS5 table, `task_search`, with one row per task, kept in sync by the core operations that change a task's title, description, or comments.
 
+`reindex.run({ onWait })` recreates `task_search` and fills it from the task and comment records, archived tasks included, then returns `{ databasePath, taskCount }`. It runs in one write transaction after a free-space check, so it applies completely or not at all, and it changes nothing else: no backup is saved and no activity is recorded. It throws when there is no database, and opens the database like any change, so a database that opens read-only throws `ReadOnlyDatabaseError`. `onWait` is called once when it waits for another writer.
+
 ## Column task counts
 
 `column.getTaskCountsByProjectKey(projectKey)` returns `{ columns, archivedTaskCount }` without loading the tasks. `columns` holds `{ column, taskCount }` for every column of the project in board order, where `taskCount` counts unarchived tasks and is `0` for an empty column. `archivedTaskCount` is the project's archived tasks across all columns. The project must exist.

@@ -3,12 +3,12 @@
  *  inside one write transaction on a connection that holds SQLite's write lock.
  * The database file and its -wal and -shm files stay where they are, so moving or replacing them
  *  while another process has the file open would lose that process's writes.
- * @link https://www.sqlite.org/howtocorrupt.html (section 2.4)
+ * @link https://www.sqlite.org/howtocorrupt.html
  */
 import type { BackupCreateInput } from "../db/backup";
 import type { Database } from "../sqlite/database";
 import type { Migration } from "./registry";
-import type { FreeSpace, SpacePaths } from "./space";
+import type { FreeSpace } from "./space";
 import type { LockOptions } from "./upgrade";
 
 import { existsSync, mkdirSync } from "node:fs";
@@ -28,10 +28,11 @@ import {
   assertFreeSpace,
   estimateRequiredFree,
   measureFiles,
-  readDatabaseFile,
   readFreeSpace,
+  requireDatabaseFile,
+  spacePathsFor,
 } from "./space";
-import { temporaryDirectory, withMigrationLock } from "./upgrade";
+import { withMigrationLock } from "./upgrade";
 
 /** The name the backup is attached under while it is copied. */
 const SOURCE_SCHEMA = "restore_source";
@@ -406,16 +407,8 @@ export function restoreBackup(
     ...lock
   }: RestoreOptions,
 ): RestoreResult {
-  const databasePath = readDatabaseFile(db);
-  if (databasePath == null) {
-    throw new Error("The restore backs up the database file first, and this database has no file");
-  }
-
-  const spacePaths: SpacePaths = {
-    database: dirname(databasePath),
-    backup: backup.directory,
-    temporary: temporaryDirectory(),
-  };
+  const databasePath = requireDatabaseFile(db, "restore");
+  const spacePaths = spacePathsFor(databasePath, backup.directory);
   const sourceUri = `${pathToFileURL(resolve(checked.path)).href}?mode=ro`;
   db.query(`ATTACH DATABASE $uri AS ${SOURCE_SCHEMA}`).run({ $uri: sourceUri });
 

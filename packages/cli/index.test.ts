@@ -255,6 +255,7 @@ test("every command help exits cleanly instead of running the command", () => {
     ["backup"],
     ["restore"],
     ["migrate"],
+    ["reindex"],
   ];
 
   for (const command of commands) {
@@ -4065,6 +4066,118 @@ test("migrate on a current database is a no-op with no backup", () => {
     expect(runZinn(["migrate"], dir).stdout).toBe("The database is already at schema version 1\n");
     expect(databaseSnapshot(dir)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
+  });
+});
+
+// --- REINDEX (ZINN-49)
+
+test("reindex rebuilds a missing search index from the tasks and comments, archived ones included", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "IDX"], dir);
+    runZinn(["task", "create", "IDX", "--title", "Widget login"], dir);
+    runZinn(["task", "create", "IDX", "--title", "Gadget export"], dir);
+    runZinn(["task", "comment", "create", "IDX-1", "--text", "Needs a spinner"], dir);
+    runZinn(["task", "archive", "IDX-2"], dir);
+    const before = databaseSnapshot(dir);
+    withTestDb(dir, (db) => db.run("DROP TABLE task_search"));
+
+    expect(runZinn(["task", "search", "spinner"], dir).code).toBe(1);
+
+    const result = runZinn(["reindex", "--json"], dir);
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toEqual({
+      databasePath: join(realpathSync(dir), "data", "zinn.sqlite"),
+      taskCount: 2,
+    });
+    expect(runZinn(["task", "search", "spinner"], dir).stdout).toContain("IDX-1");
+    expect(runZinn(["task", "search", "gadget", "--archived"], dir).stdout).toContain("IDX-2");
+    expect(databaseSnapshot(dir)).toEqual(before);
+    expect(existsSync(join(dir, "backups"))).toBe(false);
+
+    expect(runZinn(["reindex"], dir).stdout).toBe("Rebuilt the search index from 2 tasks\n");
+  });
+});
+
+test("a missing search index points search and index-updating writes at reindex, changing nothing", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "IDX"], dir);
+    runZinn(["task", "create", "IDX", "--title", "Widget login"], dir);
+    withTestDb(dir, (db) => db.run("DROP TABLE task_search"));
+    const countRows = () =>
+      withTestDb(dir, (db) =>
+        db.query("SELECT (SELECT COUNT(*) FROM comment) AS comments, (SELECT COUNT(*) FROM activity) AS activities").get(),
+      );
+    const before = { snapshot: databaseSnapshot(dir), rows: countRows() };
+
+    for (const args of [
+      ["task", "search", "widget"],
+      ["task", "create", "IDX", "--title", "Refused"],
+      ["task", "comment", "create", "IDX-1", "--text", "Refused"],
+    ]) {
+      const plain = runZinn(args, dir);
+      expect(plain.code).toBe(1);
+      expect(plain.stdout).toBe("");
+      expect(plain.stderr).toBe("no such table: task_search. Run `zinn reindex` to rebuild the search index.\n");
+
+      const json = runZinn([...args, "--json"], dir);
+      expect(json.code).toBe(1);
+      expect(json.stdout).toBe("");
+      expect(JSON.parse(json.stderr).error.message).toBe(
+        "no such table: task_search. Run `zinn reindex` to rebuild the search index.",
+      );
+    }
+    expect({ snapshot: databaseSnapshot(dir), rows: countRows() }).toEqual(before);
+  });
+});
+
+test("a missing table other than the search index gets no reindex hint", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "IDX"], dir);
+    withTestDb(dir, (db) => db.run("DROP TABLE task_label; DROP TABLE label"));
+    const result = runZinn(["label", "list"], dir);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("no such table: label");
+    expect(result.stderr).not.toContain("reindex");
+  });
+});
+
+test("reindex refuses when there is no database and creates no files", () => {
+  withIsolatedZinnDir((dir) => {
+    const result = runZinn(["reindex"], dir);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain(`There is no Zinn database at ${join(dir, "data", "zinn.sqlite")}`);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+});
+
+test("reindex refuses an empty database file and leaves it empty", () => {
+  withIsolatedZinnDir((dir) => {
+    const databasePath = join(dir, "data", "zinn.sqlite");
+    mkdirSync(dirname(databasePath));
+    writeFileSync(databasePath, "");
+    const result = runZinn(["reindex"], dir);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain(`There is no Zinn database at ${databasePath}`);
+    expect(readdirSync(dirname(databasePath))).toEqual(["zinn.sqlite"]);
+    expect(readFileSync(databasePath).length).toBe(0);
+  });
+});
+
+test("reindex refuses a newer database and leaves it unchanged", () => {
+  withIsolatedZinnDir((dir) => {
+    createBoard(dir, 9);
+    const before = databaseSnapshot(dir);
+    const result = runZinn(["reindex"], dir);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("is read-only");
+    expect(result.stderr).toContain("schema version 9");
+    expect(databaseSnapshot(dir)).toEqual(before);
   });
 });
 

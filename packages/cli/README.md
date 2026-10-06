@@ -156,7 +156,13 @@ Note that by default only the active tasks are searched.
 
 Results use the same rows and `--json` shape as `task list`. A search with no results prints nothing and exits successfully. Put `--` before a query that begins with a dash: `zinn task search -- -flag`.
 
-Search uses an index that Zinn keeps up to date as tasks and comments change.
+Search uses an index that Zinn keeps up to date as tasks and comments change. `zinn reindex` rebuilds it from the tasks and their comments, archived tasks included:
+
+```sh
+zinn reindex
+```
+
+Only the index changes, completely or not at all, so no backup is saved. With `--json`, it prints `{ "databasePath": "...", "taskCount": 12 }`. The command fails without changing anything when there is no database yet, or when Zinn refuses changes to the database, such as one with a newer schema version (see [Upgrade the database](#upgrade-the-database)).
 
 ## Labels
 

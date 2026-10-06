@@ -6,11 +6,9 @@
 import type { BackupCreateInput } from "../db/backup";
 import type { Database } from "../sqlite/database";
 import type { Migration } from "./registry";
-import type { FreeSpace, SpacePaths } from "./space";
+import type { FreeSpace } from "./space";
 
 import { mkdirSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname } from "node:path";
 
 import * as dbBackup from "../db/backup";
 import { SqliteError } from "../sqlite/database";
@@ -26,8 +24,9 @@ import {
   assertFreeSpace,
   estimateRequiredFree,
   measureSpace,
-  readDatabaseFile,
   readFreeSpace,
+  requireDatabaseFile,
+  spacePathsFor,
 } from "./space";
 
 /**
@@ -178,15 +177,6 @@ export type UpgradeResult = {
 };
 
 /**
- * SQLite writes its temporary files to `SQLITE_TMPDIR` when set, otherwise to the system's
- *  temporary directory.
- * @link https://www.sqlite.org/tempfiles.html#temporary_file_storage_locations
- */
-export function temporaryDirectory() {
-  return process.env.SQLITE_TMPDIR ?? tmpdir();
-}
-
-/**
  * Brings the database behind db to the latest schema version, backing it up first.
  * Under the write lock, with foreign keys off, it rereads the version, and
  *  a "current" or "newer" database is released untouched, with no backup.
@@ -209,19 +199,9 @@ export function upgradeDatabase(
 ): UpgradeResult {
   assertMigrationOrder(migrations);
 
-  const databasePath = readDatabaseFile(db);
-  if (databasePath == null) {
-    throw new Error(
-      "The schema upgrade backs up the database file first, and this database has no file",
-    );
-  }
-
+  const databasePath = requireDatabaseFile(db, "schema upgrade");
   const targetVersion = latestVersion(migrations);
-  const spacePaths: SpacePaths = {
-    database: dirname(databasePath),
-    backup: backup.directory,
-    temporary: temporaryDirectory(),
-  };
+  const spacePaths = spacePathsFor(databasePath, backup.directory);
 
   return withForeignKeysOff(db, () =>
     withMigrationLock(db, databasePath, lock, (): UpgradeResult => {

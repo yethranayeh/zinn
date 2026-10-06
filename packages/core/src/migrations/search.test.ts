@@ -90,6 +90,18 @@ test("a fresh database and a store that skips the version end in the same state"
   });
 });
 
+test("an upgrade that regenerates search recreates a missing index", () => {
+  withDatabase((db) => {
+    seedWithArchivedTask(db);
+    db.exec("DROP TABLE task_search");
+
+    upgradeSchema(db, [regeneratingMigration()]);
+
+    expect(readSchemaVersion(db)).toBe(2);
+    expect(matches(db, "first OR second OR third")).toEqual(["t1", "t2", "t3"]);
+  });
+});
+
 test("regeneration leaves source rows, IDs, timestamps, allocators and activity unchanged", () => {
   withDatabase((db) => {
     seedWithArchivedTask(db);

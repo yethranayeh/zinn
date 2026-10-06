@@ -201,6 +201,21 @@ test("unknown free space names the path and the required bytes", () => {
   );
 });
 
+test("work that saves no backup reads no backup directory", () => {
+  const { backup: _, ...withoutBackup } = PATHS;
+  const readPaths: Array<string> = [];
+  const read = (path: string) => {
+    readPaths.push(path);
+    return space(512, 1);
+  };
+
+  // 1000 + 300 rounds up to 1536.
+  expect(() => assertFreeSpace(withoutBackup, { ...REQUIRED, backup: 0 }, read)).toThrow(
+    "Not enough free disk space at /db, /tmp: 1536 bytes are required and 512 are available",
+  );
+  expect(readPaths).toEqual(["/db", "/tmp"]);
+});
+
 test("the default reader reports the free space of a real directory", () => {
   withDirectory((directory) => {
     const real = readFreeSpace(directory)!;

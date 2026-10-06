@@ -73,6 +73,10 @@ export function failureMessage(error: any, fallback: string) {
     return `${error.message}. Add --allow-legacy-read to read it anyway.`;
   }
 
+  if (error?.message === "no such table: task_search") {
+    return `${error.message}. Run \`zinn reindex\` to rebuild the search index.`;
+  }
+
   return error?.message ?? fallback;
 }
 
