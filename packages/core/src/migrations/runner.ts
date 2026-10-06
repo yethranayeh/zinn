@@ -85,14 +85,14 @@ function applyMigration(db: Database, migration: Migration) {
   }
 }
 
-/** With foreign keys off, nothing else stops a migration from leaving rows that point nowhere. */
-function assertForeignKeys(db: Database) {
+/** With foreign keys off, nothing else stops a migration or a restore from leaving rows that point nowhere. */
+export function assertForeignKeys(db: Database, operation = "schema upgrade") {
   const violations = db.query<{ table: string; parent: string }>("PRAGMA foreign_key_check").all();
 
   if (violations.length > 0) {
     const links = new Set(violations.map(({ table, parent }) => `${table} to ${parent}`));
     throw new Error(
-      `The schema upgrade would leave ${violations.length} rows whose foreign keys point to missing rows (${[...links].join(", ")})`,
+      `The ${operation} would leave ${violations.length} rows whose foreign keys point to missing rows (${[...links].join(", ")})`,
     );
   }
 }

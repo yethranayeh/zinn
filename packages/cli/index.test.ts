@@ -1,6 +1,6 @@
 import { test, expect, afterAll } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 
@@ -180,7 +180,7 @@ test("root help supports -h and --help and lists commands", () => {
   expect(longHelp.stdout).toContain("project {create|list|view|edit|delete}");
   expect(longHelp.stdout).toContain("task {create|list|search|view|edit|move|order|archive|unarchive|delete}");
   expect(longHelp.stdout).toContain("task comment {create|list|edit|delete}");
-  expect(longHelp.stdout).toContain("\n  backup\n  migrate\n");
+  expect(longHelp.stdout).toContain("\n  backup\n  restore\n  migrate\n");
   expect(longHelp.stdout).toContain("-v, --version  Show version");
   expect(shortHelp).toEqual(longHelp);
 });
@@ -253,6 +253,7 @@ test("every command help exits cleanly instead of running the command", () => {
     ["task", "comment", "edit"],
     ["task", "comment", "delete"],
     ["backup"],
+    ["restore"],
     ["migrate"],
   ];
 
@@ -3787,6 +3788,188 @@ test("backup refuses when there is no database and does not create one", () => {
     expect(result.stderr).toContain(`There is no Zinn database at ${join(dir, "data", "zinn.sqlite")} to back up`);
     expect(existsSync(join(dir, "data"))).toBe(false);
     expect(existsSync(join(dir, "backups"))).toBe(false);
+  });
+});
+
+// --- RESTORE
+
+// ? A backup of a fresh store holding one task, made by the CLI, in its own directory.
+function backupWithTask(dir: string, title: string) {
+  runZinn(["project", "create", "RST"], dir);
+  runZinn(["task", "create", "RST", "--title", title], dir);
+  return (JSON.parse(runZinn(["backup", "--json"], dir).stdout) as { path: string }).path;
+}
+
+function taskTitles(dir: string) {
+  return withTestDb(dir, (db) => db.query("SELECT title FROM task ORDER BY number").all());
+}
+
+function backupFiles(dir: string) {
+  return existsSync(join(dir, "backups")) ? readdirSync(join(dir, "backups")).sort() : [];
+}
+
+test("restore replaces the board after confirmation and saves the replaced board as a backup", () => {
+  withIsolatedZinnDir((dir) => {
+    const path = backupWithTask(dir, "Kept");
+    runZinn(["task", "create", "RST", "--title", "Later"], dir);
+
+    const result = runZinnWithConfirmation(["restore", path], dir);
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain(`Replace the database at ${join(dir, "data", "zinn.sqlite")} with the backup ${path}?`);
+    expect(result.stdout).toContain(`Restored the board from ${path} at schema version 1. The board it replaced was saved to ${join(dir, "backups")}/`);
+    expect(taskTitles(dir)).toEqual([{ title: "Kept" }]);
+
+    const saved = backupFiles(dir).map((name) => join(dir, "backups", name)).filter((file) => file !== path);
+    expect(saved).toHaveLength(1);
+    const savedDb = new Database(saved[0]!, { readonly: true });
+    try {
+      expect(savedDb.query("SELECT title FROM task ORDER BY number").all()).toEqual([{ title: "Kept" }, { title: "Later" }]);
+    } finally {
+      savedDb.close();
+    }
+  });
+});
+
+test("restore keeps the board when confirmation is declined", () => {
+  withIsolatedZinnDir((dir) => {
+    const path = backupWithTask(dir, "Kept");
+    runZinn(["task", "create", "RST", "--title", "Later"], dir);
+    const backupsBefore = backupFiles(dir);
+
+    // ? runZinn gives no stdin, so the prompt is declined.
+    const result = runZinn(["restore", path], dir);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain(`Restore cancelled. The database at ${join(dir, "data", "zinn.sqlite")} is unchanged`);
+    expect(taskTitles(dir)).toEqual([{ title: "Kept" }, { title: "Later" }]);
+    expect(backupFiles(dir)).toEqual(backupsBefore);
+  });
+});
+
+test("restore with --json needs --yes, and with it prints the restore result", () => {
+  withIsolatedZinnDir((dir) => {
+    const path = backupWithTask(dir, "Kept");
+    runZinn(["task", "create", "RST", "--title", "Later"], dir);
+    const backupsBefore = backupFiles(dir);
+
+    const refused = runZinn(["restore", path, "--json"], dir);
+    expect(refused.code).toBe(1);
+    expect(JSON.parse(refused.stderr)).toEqual({
+      error: { message: "Commands that ask for confirmation need --yes when used with --json" },
+    });
+    expect(taskTitles(dir)).toEqual([{ title: "Kept" }, { title: "Later" }]);
+    expect(backupFiles(dir)).toEqual(backupsBefore);
+
+    const result = runZinn(["restore", path, "--yes", "--json"], dir);
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    const restored = JSON.parse(result.stdout);
+    expect(restored).toEqual({
+      databasePath: realpathSync(join(dir, "data", "zinn.sqlite")),
+      previousVersion: 1,
+      restoredVersion: 1,
+      backupPath: expect.any(String),
+    });
+    expect(dirname(restored.backupPath)).toBe(join(dir, "backups"));
+    expect(existsSync(restored.backupPath)).toBe(true);
+    expect(taskTitles(dir)).toEqual([{ title: "Kept" }]);
+  });
+});
+
+test("restore refuses a file that is not a backup it can restore, printing why and changing nothing", () => {
+  withIsolatedZinnDir((dir) => {
+    withIsolatedZinnDir((newerDir) => {
+      createBoard(dir, 1);
+      const before = databaseSnapshot(dir);
+      const textFile = join(newerDir, "notes.sqlite");
+      writeFileSync(textFile, "not a database");
+      const newer = backupWithTask(newerDir, "From the future");
+      withTestDb(newerDir, (db) => db.run("PRAGMA user_version = 9"));
+      const newerBackup = (JSON.parse(runZinn(["backup", "--json"], newerDir).stdout) as { path: string }).path;
+
+      const notDatabase = runZinn(["restore", textFile, "--yes"], dir);
+      expect(notDatabase.code).toBe(1);
+      expect(notDatabase.stdout).toBe("");
+      expect(notDatabase.stderr).toBe(
+        `The file at ${textFile} is damaged or is not a SQLite database (file is not a database), so nothing was restored\n`,
+      );
+
+      // ? Without --yes, the refusal comes before the prompt.
+      const newerResult = runZinn(["restore", newerBackup], dir);
+      expect(newerResult.code).toBe(1);
+      expect(newerResult.stdout).toBe("");
+      expect(newerResult.stderr).toContain(`The backup at ${newerBackup} has schema version 9`);
+      expect(newerResult.stderr).toContain(`It was made by cli ${packageJson.version}; restore it with that version or a newer one`);
+      expect(newerResult.stderr).not.toContain("Backups taken before");
+
+      const missing = runZinn(["restore", join(newerDir, "missing.sqlite"), "--yes", "--json"], dir);
+      expect(missing.code).toBe(1);
+      expect(JSON.parse(missing.stderr).error.message).toBe(`There is no file at ${join(newerDir, "missing.sqlite")} to restore`);
+
+      expect(databaseSnapshot(dir)).toEqual(before);
+      expect(existsSync(join(dir, "backups"))).toBe(false);
+      expect(newer).not.toBe(newerBackup);
+    });
+  });
+});
+
+test("a refused restore onto a store with no database creates nothing", () => {
+  withIsolatedZinnDir((dir) => {
+    withIsolatedZinnDir((otherDir) => {
+      const textFile = join(otherDir, "notes.sqlite");
+      writeFileSync(textFile, "not a database");
+
+      expect(runZinn(["restore", textFile, "--yes"], dir).code).toBe(1);
+      expect(runZinn(["restore", textFile], dir).code).toBe(1);
+      expect(readdirSync(dir)).toEqual([]);
+    });
+  });
+});
+
+test("restore onto a store with no database creates it from the backup", () => {
+  withIsolatedZinnDir((dir) => {
+    withIsolatedZinnDir((sourceDir) => {
+      const path = backupWithTask(sourceDir, "Kept");
+
+      const result = runZinn(["restore", path, "--yes"], dir);
+
+      expect(result.code).toBe(0);
+      expect(result.stdout).toBe(`Restored the board from ${path} at schema version 1. There was no board to save\n`);
+      expect(existsSync(join(dir, "settings.json"))).toBe(true);
+      expect(runZinn(["task", "list", "RST"], dir).stdout).toContain("Kept");
+    });
+  });
+});
+
+test("restore works on newer and unmarked databases, without --allow-legacy-read", () => {
+  withIsolatedZinnDir((sourceDir) => {
+    const path = backupWithTask(sourceDir, "Kept");
+
+    for (const version of [9, 0]) {
+      withIsolatedZinnDir((dir) => {
+        createBoard(dir, version);
+
+        const result = runZinn(["restore", path, "--yes", "--json"], dir);
+
+        expect(result.code).toBe(0);
+        expect(result.stderr).toBe("");
+        expect(JSON.parse(result.stdout)).toMatchObject({ previousVersion: version, restoredVersion: 1 });
+        expect(runZinn(["task", "list", "RST"], dir).stdout).toContain("Kept");
+        expect(backupFiles(dir)).toHaveLength(1);
+      });
+    }
+  });
+});
+
+test("restore needs exactly one backup path", () => {
+  withIsolatedZinnDir((dir) => {
+    const result = runZinn(["restore", "--yes"], dir);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("Specify the backup file to restore");
+    expect(readdirSync(dir)).toEqual([]);
   });
 });
 

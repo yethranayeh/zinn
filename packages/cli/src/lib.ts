@@ -46,6 +46,11 @@ export function confirmAction(message: string, isPreconfirmed: boolean) {
   // Throws on a read-only database, to avoid asking for confirmation to an already refused action
   assertWritable();
 
+  return askConfirmation(message, isPreconfirmed);
+}
+
+/** Like confirmAction, without opening the database, for commands that bypass the open policy. */
+export function askConfirmation(message: string, isPreconfirmed: boolean) {
   if (isPreconfirmed) {
     return true;
   }

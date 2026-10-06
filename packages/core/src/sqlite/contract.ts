@@ -9,6 +9,7 @@ import { strict as assert } from "node:assert";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { openWith, sqliteCodeName, SqliteError } from "./database.ts";
 
@@ -658,6 +659,47 @@ export function defineContractChecks(test: DefineTest, adapter: Adapter) {
         assert.deepEqual(snapshot.query("PRAGMA integrity_check").get(), { integrity_check: "ok" });
       } finally {
         snapshot.close();
+      }
+    });
+  });
+
+  test("a file attached through a mode=ro URI is readable, refuses writes, and can be detached after a write transaction", () => {
+    withDirectory((directory) => {
+      // A ? or # in a path would start the URI's query or fragment, so the URL encodes them.
+      const sourcePath = join(directory, "source ?#.sqlite");
+      const source = adapter.openDatabase(sourcePath);
+
+      try {
+        source.exec(
+          "CREATE TABLE item (value INTEGER); INSERT INTO item VALUES (1); PRAGMA user_version = 7;",
+        );
+      } finally {
+        source.close();
+      }
+
+      const db = adapter.openDatabase(join(directory, "contract.sqlite"));
+
+      try {
+        db.query("ATTACH DATABASE $uri AS source").run({
+          $uri: `${pathToFileURL(sourcePath).href}?mode=ro`,
+        });
+        assert.deepEqual(db.query("PRAGMA source.user_version").get(), { user_version: 7 });
+
+        db.transaction(() => {
+          db.exec("CREATE TABLE copy AS SELECT value FROM source.item");
+          assert.throws(
+            () => db.exec("INSERT INTO source.item VALUES (2)"),
+            (error) => assertSqliteError(error, "SQLITE_READONLY", 8),
+          );
+        }).immediate();
+
+        db.exec("DETACH DATABASE source");
+        assert.deepEqual(db.query("SELECT value FROM copy").all(), [{ value: 1 }]);
+        assert.deepEqual(db.query("SELECT name FROM pragma_database_list").all(), [
+          { name: "main" },
+        ]);
+      } finally {
+        db.close();
       }
     });
   });

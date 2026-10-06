@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { closeSync, fsyncSync, mkdirSync, openSync, renameSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { openDatabase } from "#sqlite";
 
@@ -24,6 +24,12 @@ export type BackupCreateInput = {
  * @link https://www.sqlite.org/lang_vacuum.html#vacuuminto
  */
 const PARTIAL_BACKUP_SUFFIX = ".partial";
+/**
+ * The file name `create` gives a backup: `<time>Z-<client>-<version>-<suffix>.sqlite`.
+ * The client ends before the first hyphen followed by a digit, where the version starts.
+ */
+const BACKUP_FILE_NAME =
+  /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z-(?<client>.+?)-(?<version>\d.*)-[0-9a-f]{8}\.sqlite$/;
 
 function syncToDisk(path: string) {
   // Read/write, because apparently Windows only flushes a file opened for writing.
@@ -99,4 +105,15 @@ export function create(
   renameSync(partialPath, path);
 
   return { path };
+}
+
+/** The client and version named in a backup's file name, or null when `create` did not name the file. */
+export function readBackupFileName(path: string): BackupCreateInput | null {
+  const match = BACKUP_FILE_NAME.exec(basename(path))?.groups;
+
+  if (match?.client == null || match.version == null) {
+    return null;
+  }
+
+  return { client: match.client, version: match.version };
 }

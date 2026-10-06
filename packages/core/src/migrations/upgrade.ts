@@ -71,11 +71,16 @@ function pause(milliseconds: number) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
-function lockTimeoutError(databasePath: string, waitedMs: number, cause: unknown) {
+function lockTimeoutError(
+  databasePath: string,
+  operation: string,
+  waitedMs: number,
+  cause: unknown,
+) {
   const seconds = (waitedMs / MS_PER_SECOND).toFixed(1);
 
   return new Error(
-    `Waited ${seconds} seconds for another writer to finish with the database at ${databasePath}, so this schema upgrade stopped and applied no changes. Retry once the other writer finishes.`,
+    `Waited ${seconds} seconds for another writer to finish with the database at ${databasePath}, so this ${operation} stopped and applied no changes. Retry once the other writer finishes.`,
     { cause },
   );
 }
@@ -90,7 +95,14 @@ function lockTimeoutError(databasePath: string, waitedMs: number, cause: unknown
 export function withMigrationLock<T>(
   db: Database,
   databasePath: string,
-  { budgetMs = MIGRATION_LOCK_BUDGET_MS, onWait }: LockOptions,
+  {
+    budgetMs = MIGRATION_LOCK_BUDGET_MS,
+    onWait,
+    operation = "schema upgrade",
+  }: LockOptions & {
+    /** What the timeout error says stopped. */
+    operation?: string;
+  },
   work: () => T,
 ): T {
   assertOutsideTransaction(db);
@@ -107,7 +119,7 @@ export function withMigrationLock<T>(
       const remainingMs = budgetMs - waitedMs;
 
       if (isWaiting && remainingMs <= 0) {
-        throw lockTimeoutError(databasePath, waitedMs, lastBusyError);
+        throw lockTimeoutError(databasePath, operation, waitedMs, lastBusyError);
       }
 
       setBusyTimeout(db, isWaiting ? remainingMs : NO_WAIT_MS);
@@ -170,7 +182,7 @@ export type UpgradeResult = {
  *  temporary directory.
  * @link https://www.sqlite.org/tempfiles.html#temporary_file_storage_locations
  */
-function temporaryDirectory() {
+export function temporaryDirectory() {
   return process.env.SQLITE_TMPDIR ?? tmpdir();
 }
 

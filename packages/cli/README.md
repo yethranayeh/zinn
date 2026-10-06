@@ -324,6 +324,20 @@ zinn backup
 
 The copy goes to `~/.zinn/backups/` (or `backups/` in `ZINN_DIR`), in a file named after the UTC time and the CLI version that made it, with an eight-character random suffix to distinguish backups made at the same time, like `2026-09-29T12-30-05Z-cli-0.32.0-b38178c0.sqlite`. It is a single file with every change made so far, and it is safe to take while Zinn is in use. Existing backups are never overwritten. With `--json`, the command prints `{ "path": "..." }`. It fails when there is no database yet.
 
+## Restore the database
+
+Put back the board from a backup file, such as one saved by `zinn backup` or by an upgrade:
+
+```sh
+zinn restore ~/.zinn/backups/2026-09-29T12-30-05Z-cli-0.32.0-b38178c0.sqlite
+```
+
+The command asks for confirmation, unless `--yes` is used (see [Confirmations](#confirmations)). It saves the current board as a backup first, in the same folder as `zinn backup`, then replaces the board with the backup's, completely or not at all. Restoring onto a missing database creates it. With `--json`, it prints `{ "databasePath": "...", "previousVersion": 1, "restoredVersion": 1, "backupPath": "..." }`, where `backupPath` is the saved copy of the replaced board, or `null` when there was no board to save.
+
+A backup with an older schema version is restored at that version, and Zinn then upgrades it like any older database (see [Upgrade the database](#upgrade-the-database)). The restore works whatever the version of the database it replaces, so you can go back to an older Zinn and restore the backup an upgrade saved.
+
+The command fails without changing anything when the backup has a newer schema version than your Zinn (the error names the Zinn version that made the backup, when its file name carries one), when it has no schema version, when it is damaged, or when it is not a Zinn database. If the restore fails after that, the database is unchanged, and the backups taken before each attempt stay in `~/.zinn/backups/` (or `backups/` in `ZINN_DIR`).
+
 ## Upgrade the database
 
 The database records a schema version, and a newer Zinn upgrades an older database to its own version. The upgrade is applied completely or not at all, and a backup is saved first, in the same folder as `zinn backup`.
@@ -367,15 +381,15 @@ Text output is mainly for _visual_ consumption. Colors appear only when the outp
 
 ### Confirmations
 
-Commands like `project delete`, `task delete`, etc. ask for confirmation before deleting. Use `--yes` to skip the prompt:
+Commands like `project delete`, `task delete`, etc. ask for confirmation before deleting, and `restore` asks before replacing the board. Use `--yes` to skip the prompt:
 
 ```sh
 zinn task delete MDR-1 --yes
 zinn task delete MDR-1 --yes --json
 ```
 
-- With `--json`, `--yes` is **required**. Without it, the command exits with an error and deletes nothing.
-- When nothing answers the prompt, as in CI or with input redirected from an empty source, a delete without `--yes` counts as declined: it prints `Deletion cancelled …` and exits with code 0. Scripts that delete should always use `--yes`.
+- With `--json`, `--yes` is **required**. Without it, the command exits with an error and changes nothing.
+- When nothing answers the prompt, as in CI or with input redirected from an empty source, a command without `--yes` counts as declined: it prints `Deletion cancelled …` (or `Restore cancelled …`) and exits with code 0. Scripts that delete or restore should always use `--yes`.
 - `task relation delete` is consider a low consequence action, so it never asks for confirmation and does not accept `--yes`.
 
 ## Help

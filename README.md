@@ -103,6 +103,8 @@ Use the same `ZINN_DIR` value on later commands to access that database.
 
 Run `zinn backup` to save a copy of the database to `~/.zinn/backups/` (or `backups/` in `ZINN_DIR`), in a file named after the UTC time and the CLI version that made it. It is recommended that you make a backup before upgrading Zinn, you know, just in case.
 
+Run `zinn restore <path>` to put back the board from a backup file. It saves the current board as a backup first, and asks for confirmation unless `--yes` is used. See [Restore the database](packages/cli/README.md#restore-the-database) in the CLI README.
+
 ## Upgrading the database
 
 The database records a schema version, and a newer Zinn upgrades an older database to its own version. The upgrade is applied completely or not at all, after a backup is saved. A published release does it by itself the first time it opens the database. When Zinn refuses a change because the database is older, as it does for `~/.zinn` when run from a source checkout, or when you want to upgrade right after installing a newer Zinn, run `zinn migrate`. It prints the backup it saved and the versions before and after, or does nothing when the database is already up to date. If the upgrade fails, the database is unchanged and the backups stay in the backups folder.

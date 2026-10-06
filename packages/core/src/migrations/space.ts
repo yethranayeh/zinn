@@ -112,6 +112,33 @@ export function readDatabaseFile(db: Database) {
   return file == null || file === "" ? null : file;
 }
 
+/** The measurements that depend only on the database's system files */
+export type FileMeasurements = Pick<
+  SpaceMeasurements,
+  "pageSize" | "databaseBytes" | "allocatedMainBytes" | "walBytes" | "shmBytes"
+>;
+
+/** Reads the sizes of the database file and its -wal and -shm files */
+export function measureFiles(db: Database): FileMeasurements {
+  const pageSize = readNumber(db, "SELECT page_size AS value FROM pragma_page_size");
+  const databaseBytes =
+    pageSize * readNumber(db, "SELECT page_count AS value FROM pragma_page_count");
+
+  const mainPath = readDatabaseFile(db);
+  const allocatedMainBytes =
+    mainPath == null
+      ? 0
+      : fileSize(mainPath, (path) => (statSync(path).blocks ?? 0) * STAT_BLOCK_BYTES);
+
+  return {
+    pageSize,
+    databaseBytes,
+    allocatedMainBytes,
+    walBytes: mainPath ? fileSize(`${mainPath}-wal`, (path) => statSync(path).size) : 0,
+    shmBytes: mainPath ? fileSize(`${mainPath}-shm`, (path) => statSync(path).size) : 0,
+  };
+}
+
 /** Reads the sizes of what the migrations after the database's version still have to do. */
 export function measureSpace(
   db: Database,
@@ -119,9 +146,8 @@ export function measureSpace(
 ): SpaceMeasurements {
   const version = readSchemaVersion(db);
   const pending = migrations.filter((migration) => migration.version > version);
-  const pageSize = readNumber(db, "SELECT page_size AS value FROM pragma_page_size");
-  const databaseBytes =
-    pageSize * readNumber(db, "SELECT page_count AS value FROM pragma_page_count");
+  const files = measureFiles(db);
+  const { databaseBytes } = files;
 
   // A table rebuilt by two migrations is copied twice, so it counts twice.
   const rebuiltTables = pending.flatMap((migration) => [...migration.rebuilds]);
@@ -148,24 +174,14 @@ export function measureSpace(
   const commentCount = readNumber(db, "SELECT COUNT(*) AS value FROM comment");
   const separatorBytes = (commentCount - commentedTasks) * SEPARATOR_BYTES;
 
-  const mainPath = readDatabaseFile(db);
-  const allocatedMainBytes =
-    mainPath == null
-      ? 0
-      : fileSize(mainPath, (path) => (statSync(path).blocks ?? 0) * STAT_BLOCK_BYTES);
-
   return {
-    pageSize,
-    databaseBytes,
+    ...files,
     rebuildsTables,
     rebuiltTableBytes,
     regeneratesSearch,
     searchIndexBytes,
     searchSourceBytes: textBytes + separatorBytes,
     taskCount: readNumber(db, "SELECT COUNT(*) AS value FROM task"),
-    allocatedMainBytes,
-    walBytes: mainPath ? fileSize(`${mainPath}-wal`, (path) => statSync(path).size) : 0,
-    shmBytes: mainPath ? fileSize(`${mainPath}-shm`, (path) => statSync(path).size) : 0,
   };
 }
 

@@ -93,14 +93,14 @@ const workflowCommands = [
 					keeping the same value across commands.
 				</p>
 				<p>
-					<code>zinn backup</code> saves a database snapshot. A newer Zinn upgrades an older database, and <code
-						>zinn migrate</code
-					> runs that upgrade after saving a backup.
+					<code>zinn backup</code> saves a database snapshot, and <code>zinn restore</code> puts one back after saving the
+					current board. A newer Zinn upgrades an older database, and <code>zinn migrate</code> runs that upgrade after saving
+					a backup.
 				</p>
 				<p>
-					Read the <a href={`${documentation}#back-up-the-database`}>database backup</a> and <a
-						href={`${documentation}#upgrade-the-database`}>database upgrade</a
-					> instructions.
+					Read the <a href={`${documentation}#back-up-the-database`}>database backup</a>, <a
+						href={`${documentation}#restore-the-database`}>database restore</a
+					> and <a href={`${documentation}#upgrade-the-database`}>database upgrade</a> instructions.
 				</p>
 			</Prose>
 		</ReadingSection>

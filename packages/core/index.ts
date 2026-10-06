@@ -33,8 +33,9 @@ export type {
   CommentDeleteInput,
   CommentEditInput,
 } from "./src/schemas/comment";
-export type { BackupCreateInput } from "./src/operations/backup";
+export type { BackupCreateInput, BackupRestoreInput } from "./src/operations/backup";
 export type { MigrateResult } from "./src/migrations/migrate";
+export type { RestoreResult } from "./src/migrations/restore";
 export type { LockWait } from "./src/migrations/upgrade";
 export type { DatabaseFacts, OpenPolicy, ReadOnlyReason } from "./src/migrations/open-policy";
 export type { ReleaseMode } from "./src/release";
@@ -68,7 +69,8 @@ export { label } from "./src/operations/label";
 export { backup } from "./src/operations/backup";
 export { migrate } from "./src/operations/migrate";
 export { MigrationRefusedError } from "./src/migrations/migrate";
+export { RestoreRefusedError } from "./src/migrations/restore";
 export { assertWritable, configureDatabase } from "./src/db";
 export { ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./src/migrations/open-policy";
 export { readReleaseMode } from "./src/release";
-export { BACKUP_DIR } from "./src/constant";
+export { BACKUP_DIR, DB_PATH } from "./src/constant";
