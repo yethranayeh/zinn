@@ -227,14 +227,14 @@ test("a default-database fixture resolves inside the test's HOME, and ZINN_DIR s
   });
 });
 
-test("a missing default database is created at the latest version, with settings.json", () => {
+test("a missing default database is created at the latest version, without a settings file", () => {
   withHome((home) => {
     const mainDir = join(home, ".zinn");
 
     expect(runChild({ home }, openScript({}))).toEqual({ projects: [], wrote: true });
     expect(readDatabase(mainDir).version).toBe(1);
     expect(projectKeys(mainDir)).toEqual(["NEW"]);
-    expect(existsSync(join(mainDir, "settings.json"))).toBe(true);
+    expect(existsSync(join(mainDir, "settings.json"))).toBe(false);
   });
 });
 

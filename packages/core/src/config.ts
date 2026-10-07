@@ -1,17 +1,10 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { DATA_DIR, CONFIG_PATH, defaultConfig } from "./constant";
+import { mkdirSync } from "node:fs";
+import { DATA_DIR } from "./constant";
 
-export function ensureConfigSetup() {
+/**
+ * Creates the data directory and any missing parents.
+ * `recursive` so that a directory that already exists is not an error.
+ */
+export function ensureDataDirectory() {
   mkdirSync(DATA_DIR, { recursive: true });
-
-  try {
-    writeFileSync(CONFIG_PATH, JSON.stringify(defaultConfig) + "\n", {
-      encoding: "utf-8",
-      flag: "wx",
-    });
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
-      throw err;
-    }
-  }
 }

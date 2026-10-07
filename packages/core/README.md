@@ -31,7 +31,7 @@ Initialization retries only `SQLITE_BUSY`, `SQLITE_BUSY_RECOVERY`, and `SQLITE_I
 
 Errors retain their original cause and include its message and code. The busy timeout applies to each lock acquisition, not the whole operation. Mutations are not replayed after failure.
 
-Concurrent access is for processes on the same machine using a local filesystem. Initial directory/config creation tolerates concurrent callers and preserves existing settings.
+Concurrent access is for processes on the same machine using a local filesystem. Initial directory creation tolerates concurrent callers.
 
 ## Descriptions
 

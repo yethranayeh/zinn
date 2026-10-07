@@ -37,7 +37,7 @@ Project, task, and label descriptions may contain multiple lines. Omitted descri
 
 ## Concurrent access
 
-Commands on the same machine can share a database on a local filesystem. Zinn waits up to 30 seconds each time the database is locked by another command. If the lock is still held after that wait, the command fails. The command's total running time can exceed 30 seconds. Zinn also briefly retries specific initialization races internally. Initialization errors include the underlying message and code. Existing settings are preserved when several commands initialize the directory together.
+Commands on the same machine can share a database on a local filesystem. Zinn waits up to 30 seconds each time the database is locked by another command. If the lock is still held after that wait, the command _fails_. The command's total running time can exceed 30 seconds. Zinn also briefly retries specific initialization races internally. Initialization errors include the underlying message and code.
 
 ## Start a project
 

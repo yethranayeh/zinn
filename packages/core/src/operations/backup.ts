@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 import * as dbBackup from "../db/backup";
-import { ensureConfigSetup } from "../config";
+import { ensureDataDirectory } from "../config";
 import { BACKUP_DIR, DB_PATH } from "../constant";
 import { classifyDatabase } from "../migrations/classify";
 import { MIGRATIONS } from "../migrations/registry";
@@ -43,9 +43,9 @@ export const backup = {
       onWait,
     });
 
-    // A store the restore creates gets the same files as one created by opening it.
+    // A store the restore creates gets the same data directory as one created by opening it.
     if (isNewStore) {
-      ensureConfigSetup();
+      ensureDataDirectory();
     }
 
     return result;

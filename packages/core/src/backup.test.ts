@@ -69,9 +69,10 @@ test("restore puts a backup's board back through the public operations, and its 
   try {
     const result = Bun.spawnSync([process.execPath, "--eval", `
       import { strict as assert } from "node:assert";
-      import { existsSync, readdirSync } from "node:fs";
+      import { existsSync, readdirSync, writeFileSync } from "node:fs";
+      import { join } from "node:path";
       import { backup, comment, project, RestoreRefusedError, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
-      import { BACKUP_DIR, CONFIG_PATH } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
+      import { BACKUP_DIR, MAIN_DIR } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
 
       const human = { name: "Test Human", email: "human@example.com", kind: "human" };
       const build = { client: "test", version: "1.2.3" };
@@ -91,7 +92,9 @@ test("restore puts a backup's board back through the public operations, and its 
       const boardBeforeRestore = keys();
 
       // A file that is not a backup changes nothing.
-      assert.throws(() => backup.restore({ ...build, path: CONFIG_PATH }), RestoreRefusedError);
+      const notABackup = join(MAIN_DIR, "notes.txt");
+      writeFileSync(notABackup, "not a backup");
+      assert.throws(() => backup.restore({ ...build, path: notABackup }), RestoreRefusedError);
       assert.deepEqual(keys(), boardBeforeRestore);
 
       const restored = backup.restore({ ...build, path: saved });
@@ -120,7 +123,7 @@ test("restore puts a backup's board back through the public operations, and its 
   }
 });
 
-test("restore onto a store with no database creates it, with its settings file and no backup of a replaced board", () => {
+test("restore onto a store with no database creates it, with no backup of a replaced board", () => {
   const source = mkdtempSync(join(tmpdir(), "zinn-restore-source-"));
   const target = mkdtempSync(join(tmpdir(), "zinn-restore-target-"));
   const run = (directory: string, script: string) =>
@@ -128,7 +131,7 @@ test("restore onto a store with no database creates it, with its settings file a
       import { strict as assert } from "node:assert";
       import { existsSync, readdirSync } from "node:fs";
       import { backup, project, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
-      import { BACKUP_DIR, CONFIG_PATH, DB_PATH } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
+      import { BACKUP_DIR, DB_PATH } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
       const human = { name: "Test Human", email: "human@example.com", kind: "human" };
       const build = { client: "test", version: "1.2.3" };
       ${script}
@@ -148,7 +151,6 @@ test("restore onto a store with no database creates it, with its settings file a
       const result = backup.restore({ ...build, path: ${JSON.stringify(backupPath)} });
       assert.equal(result.backupPath, null);
       assert.equal(result.previousVersion, 0);
-      assert.ok(existsSync(CONFIG_PATH));
       assert.deepEqual(readdirSync(BACKUP_DIR), []);
       assert.deepEqual(task.getAll().map((entry) => entry.title), ["Kept"]);
     `);

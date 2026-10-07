@@ -4065,7 +4065,6 @@ test("restore onto a store with no database creates it from the backup", () => {
 
       expect(result.code).toBe(0);
       expect(result.stdout).toBe(`Restored the board from ${path} at schema version 1. There was no board to save\n`);
-      expect(existsSync(join(dir, "settings.json"))).toBe(true);
       expect(runZinn(["task", "list", "RST"], dir).stdout).toContain("Kept");
     });
   });
@@ -4605,7 +4604,6 @@ test("concurrent fresh initialization supports readers and project creators", as
           expect(result.stderr).toBe("");
           expect(result.code).toBe(0);
         }
-        expect(readFileSync(join(store, "settings.json"), "utf8")).toBe("{}\n");
         withTestDb(store, (db) => {
           const expectedProjects = operation === "create" ? 40 : 0;
           expect(db.query("SELECT COUNT(*) AS count FROM project").get()).toEqual({ count: expectedProjects });

@@ -12,7 +12,7 @@ import { existsSync } from "node:fs";
 import { openDatabase } from "#sqlite";
 
 import { BACKUP_DIR, DB_PATH, DEFAULT_MAIN_DIR, MAIN_DIR } from "./constant";
-import { ensureConfigSetup } from "./config";
+import { ensureDataDirectory } from "./config";
 import { applyConnectionSettings } from "./connection";
 import { classifyConnection } from "./migrations/classify";
 import {
@@ -191,9 +191,9 @@ export function getDb() {
     let connection: Database | null = null;
 
     try {
-      // **settings.json** is written only for a store this creates.
+      // The data directory is created only for a store that does not exist yet.
       if (!existsSync(DB_PATH)) {
-        ensureConfigSetup();
+        ensureDataDirectory();
       }
 
       const opened = openWithRetries();

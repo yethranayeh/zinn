@@ -22,7 +22,7 @@
  */
 import type { Options, ScenarioResult } from "../harness.ts";
 
-import { copyFileSync, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { readSchemaVersion } from "../../../packages/core/src/migrations/runner.ts";
@@ -1012,7 +1012,7 @@ export async function runMigrateCreateRace(
   const durations: Array<number> = [];
 
   for (let round = 0; round < roundsFor(options); round++) {
-    // The directory does not exist yet, so the first commands also race to create it and settings.json.
+    // The directory does not exist yet, so the first commands also race to create it.
     const zinnDirectory = join(run.root, `${scenario}-${round}`);
     run.assertIsolated(zinnDirectory);
     const eventsDirectory = run.create(`${scenario}-events`);
@@ -1075,10 +1075,6 @@ export async function runMigrateCreateRace(
         problems.push(
           `${noisy.length} processes printed on stderr, first: ${noisy[0]!.stderr.trim().slice(0, 200)}`,
         );
-      }
-      const settings = readFileSync(join(zinnDirectory, "settings.json"), "utf8");
-      if (settings !== "{}\n") {
-        problems.push(`settings.json holds ${JSON.stringify(settings)}`);
       }
 
       const acknowledged = commands.filter(

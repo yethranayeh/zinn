@@ -2,8 +2,8 @@
  * Scenarios for the sensitive moments outside ordinary operations, both through the real CLI:
  *
  *   crash-init    SIGKILL the very first command on a new ZINN_DIR, at a random moment between process
- *                 start and exit: directory and settings.json creation, file creation, WAL setup and
- *                 schema creation. Then check what was left and that the next commands work.
+ *                 start and exit: directory creation, file creation, WAL setup and schema
+ *                 creation. Then check what was left and that the next commands work.
  *   crash-backup  SIGKILL `zinn backup` (VACUUM INTO) at a random moment. Then check what was left in
  *                 the backups directory, whether the source is intact, and whether the next backup works.
  *                 Core writes `<name>.sqlite.partial` and renames it when complete, so a kill may leave
@@ -12,7 +12,7 @@
  */
 import type { Options, ScenarioResult } from "../harness.ts";
 
-import { existsSync, mkdirSync, copyFileSync, openSync, readSync, closeSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, copyFileSync, openSync, readSync, closeSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { openDatabase } from "../../../packages/core/src/sqlite/bun.ts";
@@ -55,22 +55,15 @@ function errorCode(error: unknown) {
 
 /** Describes what an interrupted first command left behind, before anything else opens it. */
 function describeInitLeftovers(zinnDirectory: string, imageDirectory: string) {
-  const settingsPath = join(zinnDirectory, "settings.json");
   const databasePath = join(zinnDirectory, "data", "zinn.sqlite");
-  let settings = "no settings.json";
-
-  if (existsSync(settingsPath)) {
-    const content = readFileSync(settingsPath, "utf8");
-    settings = content === "{}\n" ? "settings.json ok" : content.length === 0 ? "settings.json EMPTY" : "settings.json other";
-  }
 
   if (!existsSync(databasePath)) {
-    return `${settings}, no database`;
+    return "no database";
   }
 
   const size = statSync(databasePath).size;
   if (size === 0) {
-    return `${settings}, empty database file`;
+    return "empty database file";
   }
 
   // Inspect a copy, so recovery here does not change what the next command sees.
@@ -90,10 +83,10 @@ function describeInitLeftovers(zinnDirectory: string, imageDirectory: string) {
       const projects = tables.has("project")
         ? db.query<{ count: number }>("SELECT COUNT(*) AS count FROM project").get()!.count
         : 0;
-      return `${settings}, ${present}/${ZINN_TABLES.length} tables, ${projects} project(s)`;
+      return `${present}/${ZINN_TABLES.length} tables, ${projects} project(s)`;
     });
   } catch (error) {
-    return `${settings}, database unreadable (${errorCode(error)})`;
+    return `database unreadable (${errorCode(error)})`;
   }
 }
 
@@ -158,11 +151,6 @@ export async function runCrashInit(options: Options, run: RunDirectory, reproduc
         problems.push("database header is not a SQLite header");
       } else if (header[WRITE_VERSION_OFFSET] !== WAL_WRITE_VERSION) {
         problems.push(`database is not in WAL mode (write version ${header[WRITE_VERSION_OFFSET]})`);
-      }
-
-      const settings = readFileSync(join(zinnDirectory, "settings.json"), "utf8");
-      if (settings !== "{}\n") {
-        problems.push(`settings.json holds ${JSON.stringify(settings)} after later commands, not "{}\\n"`);
       }
 
       if (problems.length > 0) {
