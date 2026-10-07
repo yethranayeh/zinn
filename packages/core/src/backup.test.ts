@@ -15,9 +15,9 @@ test("same-time backups preserve earlier snapshots and include uncheckpointed WA
       import { basename } from "node:path";
       import { backup } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
       import { getDb } from ${JSON.stringify(new URL("./db.ts", import.meta.url).pathname)};
-      import { storage } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
+      import { getStorage } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
 
-      const { backupDirectory, databasePath } = storage();
+      const { backupDirectory, databasePath } = getStorage();
       setSystemTime(new Date("2026-10-03T12:30:05Z"));
       const db = getDb();
       db.exec("PRAGMA wal_autocheckpoint = 0");
@@ -73,9 +73,9 @@ test("restore puts a backup's board back through the public operations, and its 
       import { existsSync, readdirSync, writeFileSync } from "node:fs";
       import { join } from "node:path";
       import { backup, comment, project, RestoreRefusedError, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
-      import { storage } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
+      import { getStorage } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
 
-      const { backupDirectory, directory } = storage();
+      const { backupDirectory, directory } = getStorage();
       const human = { name: "Test Human", email: "human@example.com", kind: "human" };
       const build = { client: "test", version: "1.2.3" };
       const keys = (archive = "all") => task.getAll({ archive }).map((entry) => entry.key);
@@ -133,8 +133,8 @@ test("restore onto a store with no database creates it, with no backup of a repl
       import { strict as assert } from "node:assert";
       import { existsSync, readdirSync } from "node:fs";
       import { backup, project, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
-      import { storage } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
-      const { backupDirectory, databasePath } = storage();
+      import { getStorage } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
+      const { backupDirectory, databasePath } = getStorage();
       const human = { name: "Test Human", email: "human@example.com", kind: "human" };
       const build = { client: "test", version: "1.2.3" };
       ${script}

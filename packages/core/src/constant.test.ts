@@ -21,8 +21,8 @@ function resolveMainDir(environment: Record<string, string | undefined>) {
   }
 
   const result = Bun.spawnSync([process.execPath, "--eval", `
-    const { storage } = await import(${constantModule});
-    console.log(storage().directory);
+    const { getStorage } = await import(${constantModule});
+    console.log(getStorage().directory);
   `], { env: childEnvironment });
 
   return { code: result.exitCode, stdout: result.stdout.toString().trim(), stderr: result.stderr.toString() };
@@ -104,8 +104,8 @@ test("importing core resolves nothing, so a ZINN_DIR set after the import is the
     const result = Bun.spawnSync([process.execPath, "--eval", `
       const core = await import(${coreModule});
       process.env.ZINN_DIR = ${JSON.stringify(later)};
-      const { directory, source } = core.storage();
-      console.log(JSON.stringify({ directory, source, sameOnReuse: core.storage() === core.storage() }));
+      const { directory, source } = core.getStorage();
+      console.log(JSON.stringify({ directory, source, sameOnReuse: core.getStorage() === core.getStorage() }));
     `], { env: { ...childEnvironment, NODE_ENV: "test", HOME: USER_HOME } });
 
     expect(result.stderr.toString()).toBe("");

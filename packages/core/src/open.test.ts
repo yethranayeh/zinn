@@ -85,8 +85,8 @@ function childCommand(location: Location, script: string) {
     process.execPath,
     "--eval",
     `
-      const { storage } = await import(${modulePath("./constant.ts")});
-      const { directory, databasePath } = storage();
+      const { getStorage } = await import(${modulePath("./constant.ts")});
+      const { directory, databasePath } = getStorage();
       const isTestProcessDefaultDir = databasePath.startsWith(${JSON.stringify(TEST_PROCESS_DEFAULT_DIR)});
       if (directory !== ${JSON.stringify(mainDirOf(location))} || isTestProcessDefaultDir) {
         console.log(JSON.stringify({ wrongFolder: directory }));
