@@ -3792,6 +3792,44 @@ test("backup refuses when there is no database and does not create one", () => {
   });
 });
 
+test("backup refuses a zero-byte database file without creating backups", () => {
+  withIsolatedZinnDir((dir) => {
+    const databasePath = join(dir, "data", "zinn.sqlite");
+    mkdirSync(dirname(databasePath));
+    writeFileSync(databasePath, "");
+
+    const result = runZinn(["backup"], dir);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain(`There is no Zinn database at ${databasePath} to back up`);
+    expect(readdirSync(dirname(databasePath))).toEqual(["zinn.sqlite"]);
+    expect(readFileSync(databasePath).length).toBe(0);
+    expect(existsSync(join(dir, "backups"))).toBe(false);
+  });
+});
+
+test("backup refuses a database header with no tables without creating backups", () => {
+  withIsolatedZinnDir((dir) => {
+    const databasePath = join(dir, "data", "zinn.sqlite");
+    mkdirSync(dirname(databasePath));
+    const db = new Database(databasePath);
+    db.exec("PRAGMA user_version = 0");
+    db.close();
+    const before = readFileSync(databasePath);
+    expect(before.length).toBeGreaterThan(0);
+
+    const result = runZinn(["backup"], dir);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain(`There is no Zinn database at ${databasePath} to back up`);
+    expect(readdirSync(dirname(databasePath))).toEqual(["zinn.sqlite"]);
+    expect(readFileSync(databasePath)).toEqual(before);
+    expect(existsSync(join(dir, "backups"))).toBe(false);
+  });
+});
+
 // --- RESTORE
 
 // ? A backup of a fresh store holding one task, made by the CLI, in its own directory.

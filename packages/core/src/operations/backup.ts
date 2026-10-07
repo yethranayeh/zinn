@@ -7,6 +7,7 @@ import { resolve } from "node:path";
 import * as dbBackup from "../db/backup";
 import { ensureConfigSetup } from "../config";
 import { BACKUP_DIR, DB_PATH } from "../constant";
+import { classifyDatabase } from "../migrations/classify";
 import { MIGRATIONS } from "../migrations/registry";
 import { checkBackup, restoreDatabase } from "../migrations/restore";
 
@@ -20,7 +21,9 @@ export type BackupRestoreInput = BackupCreateInput & {
 export type { BackupCreateInput };
 export const backup = {
   create: (input: BackupCreateInput) => {
-    if (!existsSync(DB_PATH)) {
+    const { state } = classifyDatabase(DB_PATH);
+
+    if (state === "absent" || state === "empty") {
       throw new Error(`There is no Zinn database at ${DB_PATH} to back up`);
     }
 
