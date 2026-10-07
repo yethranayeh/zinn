@@ -1,6 +1,6 @@
 import { test, expect, afterAll } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 
@@ -26,6 +26,7 @@ const GREEN_DONE = "\x1b[32mDone\x1b[39m";
 const DIM_SEPARATOR = "\x1b[2m | \x1b[22m";
 const DIM_EMPTY_PRIORITY = "\x1b[2m-\x1b[22m";
 const dim = (text: string) => `\x1b[2m${text}\x1b[22m`;
+const SECTION_RULE = "-".repeat(60);
 const bold = (text: string) => `\x1b[1m${text}\x1b[22m`;
 
 afterAll(() => {
@@ -114,6 +115,7 @@ async function runZinnInTerminal(
   args: Array<string>,
   testDir = TEST_DIR,
   additionalEnv: Record<string, string> = {},
+  columns = 200,
 ) {
   const decoder = new TextDecoder();
   const terminalClosed = Promise.withResolvers<void>();
@@ -122,7 +124,7 @@ async function runZinnInTerminal(
   const proc = Bun.spawn(["bun", CLI_PATH, ...args], {
     env: { ...process.env, ...additionalEnv, ZINN_DIR: testDir },
     terminal: {
-      cols: 200,
+      cols: columns,
       data: (_terminal, data) => {
         output += decoder.decode(data, { stream: true });
       },
@@ -912,7 +914,7 @@ test("task list leaves a long multi-line description to task view, which prints 
     expect(listResult.stdout).toBe(`PREVIEW-1 | Backlog | - | long description\n`);
     expect(viewResult.code).toBe(0);
     expect(viewResult.stdout).toBe(
-      `PREVIEW-1 | Backlog | - | long description\n\nDescription:\n${description}\n`,
+      `PREVIEW-1 | Backlog | - | long description\n\n${SECTION_RULE}\nDescription:\n${description}\n`,
     );
   });
 });
@@ -1108,7 +1110,7 @@ test("task view resolves a case-insensitive key and prints its canonical form", 
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.stdout).toBe(
-      `VIEW-1 | Backlog | - | visible task\n\nDescription:\nvisible description\n`,
+      `VIEW-1 | Backlog | - | visible task\n\n${SECTION_RULE}\nDescription:\nvisible description\n`,
     );
   });
 });
@@ -1138,13 +1140,16 @@ test("task view prints the task row followed by Description, Relations, and Comm
       [
         "MDR-1 | In Progress | H | Refine the numbers | bug, cli",
         "",
+        SECTION_RULE,
         "Description:",
         "First line of the description.",
         "Second line.",
         "",
+        SECTION_RULE,
         "Relations:",
         "Depends on | MDR-2 | Check the totals",
         "",
+        SECTION_RULE,
         "Comments:",
         "MDR-1#1 | 2026-09-25 19:42 +02:00 | Ready for review",
         "",
@@ -1186,8 +1191,38 @@ test("task view leaves out the Description section for a task without a descript
 
     runZinn(["task", "relation", "create", "NONE-1", "NONE-2", "--type", "related"], testDir);
     expect(runZinn(["task", "view", "NONE-1"], testDir).stdout).toBe(
-      `NONE-1 | Backlog | - | title only\n\nRelations:\nRelated to | NONE-2 | other task\n`,
+      `NONE-1 | Backlog | - | title only\n\n${SECTION_RULE}\nRelations:\nRelated to | NONE-2 | other task\n`,
     );
+  });
+});
+
+test("task view sizes section rules to the terminal even when color is disabled", async () => {
+  await withIsolatedZinnDirAsync(async (dir) => {
+    runZinn(["project", "create", "W"], dir);
+    const description = "中文 🧑‍🌾\n  Keep this indentation";
+    runZinn(["task", "create", "W", "--title", "Width", "--description", description], dir);
+    runZinn(["task", "create", "W", "--title", "Other"], dir);
+    runZinn(["task", "relation", "create", "W-1", "W-2", "--type", "related"], dir);
+    runZinn(["task", "comment", "create", "W-1", "--text", "A comment"], dir);
+
+    const colorEnvironments: Array<Record<string, string>> = [
+      { FORCE_COLOR: "1" },
+      { NO_COLOR: "1", FORCE_COLOR: "0" },
+    ];
+    for (const columns of [20, 80, 160]) {
+      for (const env of colorEnvironments) {
+        const result = await runZinnInTerminal(["task", "view", "W-1"], dir, env, columns);
+        expect(result.code).toBe(0);
+        const rule = "-".repeat(columns);
+        const expectedRule = env.FORCE_COLOR === "1" ? dim(rule) : rule;
+        const rules = result.output.split("\n").filter((line) => line === expectedRule);
+        expect(rules).toHaveLength(3);
+        expect(result.output).toContain(description);
+      }
+    }
+
+    const piped = runZinn(["task", "view", "W-1"], dir, { COLUMNS: "160", FORCE_COLOR: "0" });
+    expect(piped.stdout.split("\n").filter((line) => line === SECTION_RULE)).toHaveLength(3);
   });
 });
 
@@ -1201,11 +1236,11 @@ test("task view of an archived task prints its task list --all row, with Archive
 
     const archivedRow = "MDR-1 | Archived | Backlog | H | Refine the numbers | bug";
     expect(run("task", "list", "MDR", "--all").stdout).toBe(`${archivedRow}\n`);
-    expect(run("task", "view", "MDR-1").stdout).toBe(`${archivedRow}\n\nDescription:\nShelved\n`);
+    expect(run("task", "view", "MDR-1").stdout).toBe(`${archivedRow}\n\n${SECTION_RULE}\nDescription:\nShelved\n`);
 
     run("task", "unarchive", "MDR-1");
     expect(run("task", "view", "MDR-1").stdout).toBe(
-      "MDR-1 | Backlog | H | Refine the numbers | bug\n\nDescription:\nShelved\n",
+      `MDR-1 | Backlog | H | Refine the numbers | bug\n\n${SECTION_RULE}\nDescription:\nShelved\n`,
     );
   });
 });
@@ -1406,7 +1441,7 @@ test("task comments can be created, listed, edited, viewed, and deleted", () => 
       TZ: "Europe/Berlin",
     });
     expect(viewed.stdout).toContain(
-      "\n\nComments:\n" +
+      `\n\n${SECTION_RULE}\nComments:\n` +
         "NOTE-1#1 | 2026-09-24 11:05 +02:00 | First comment\n" +
         "NOTE-1#2 | 2026-09-25 19:42 +02:00 | Edited second\n",
     );
@@ -1496,7 +1531,7 @@ test("comment lists pad the key so #1 lines up with #10 and keep continuation li
     );
 
     const viewed = runZinn(["task", "view", "PAD-1"], testDir, { TZ: "Europe/Berlin" }).stdout;
-    expect(viewed).toContain(`\n\nComments:\n${listed}`);
+    expect(viewed).toContain(`\n\n${SECTION_RULE}\nComments:\n${listed}`);
   });
 });
 
@@ -2484,7 +2519,7 @@ test("task edit rejects invalid requests without partial writes", () => {
       expect(result.stdout).toBe("");
     }
     expect(runZinn(["task", "view", "EDIT-1"], dir).stdout).toBe(
-      "EDIT-1 | Backlog | - | Original\n\nDescription:\nDescription\n",
+      `EDIT-1 | Backlog | - | Original\n\n${SECTION_RULE}\nDescription:\nDescription\n`,
     );
   });
 });
@@ -3044,7 +3079,7 @@ test("relation list pads the relation label and task key so titles line up, and 
     expect(listed.trimEnd().split("\n").sort()).toEqual([...expectedLines].sort());
 
     const viewed = run("task", "view", "APP-1").stdout;
-    expect(viewed).toContain("\n\nRelations:\n");
+    expect(viewed).toContain(`\n\n${SECTION_RULE}\nRelations:\n`);
     for (const line of expectedLines) {
       expect(viewed).toContain(`${line}\n`);
     }
@@ -3404,13 +3439,16 @@ test("task view bolds its section headings and dims the separators and comment t
       [
         `MDR-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}H${DIM_SEPARATOR}Refine the numbers${DIM_SEPARATOR}\x1b[31mbug\x1b[39m, \x1b[34mcli\x1b[39m`,
         "",
+        dim(SECTION_RULE),
         bold("Description:"),
         "First line.",
         "Second line.",
         "",
+        dim(SECTION_RULE),
         bold("Relations:"),
         `Depends on${DIM_SEPARATOR}MDR-2${DIM_SEPARATOR}Check the totals`,
         "",
+        dim(SECTION_RULE),
         bold("Comments:"),
         `MDR-1#1${DIM_SEPARATOR}${dim("2026-09-25 19:42 +02:00")}${DIM_SEPARATOR}Ready for review`,
         `MDR-1#2${DIM_SEPARATOR}${dim("2026-09-25 20:07 +02:00")}${DIM_SEPARATOR}Line one`,
@@ -3422,13 +3460,16 @@ test("task view bolds its section headings and dims the separators and comment t
     const piped = [
       "MDR-1 | Backlog | H | Refine the numbers | bug, cli",
       "",
+      SECTION_RULE,
       "Description:",
       "First line.",
       "Second line.",
       "",
+      SECTION_RULE,
       "Relations:",
       "Depends on | MDR-2 | Check the totals",
       "",
+      SECTION_RULE,
       "Comments:",
       "MDR-1#1 | 2026-09-25 19:42 +02:00 | Ready for review",
       "MDR-1#2 | 2026-09-25 20:07 +02:00 | Line one",
@@ -3846,6 +3887,54 @@ function taskTitles(dir: string) {
 function backupFiles(dir: string) {
   return existsSync(join(dir, "backups")) ? readdirSync(join(dir, "backups")).sort() : [];
 }
+
+test("restore explains recovery from damaged task and comment pages without changing the database", () => {
+  for (const table of ["task", "comment"]) {
+    withIsolatedZinnDir((dir) => {
+      const path = backupWithTask(dir, "Kept");
+      const databasePath = join(dir, "data", "zinn.sqlite");
+      const { pageSize, rootPage } = withTestDb(dir, (db) => {
+        db.run("PRAGMA wal_checkpoint(TRUNCATE)");
+        return {
+          pageSize: (db.query("PRAGMA page_size").get() as { page_size: number }).page_size,
+          rootPage: (db.query("SELECT rootpage FROM sqlite_schema WHERE name = ?").get(table) as { rootpage: number }).rootpage,
+        };
+      });
+      const damaged = readFileSync(databasePath);
+      const pageOffset = (rootPage - 1) * pageSize;
+      damaged.fill(0, pageOffset, pageOffset + pageSize);
+      writeFileSync(databasePath, damaged);
+      const previousBackups = backupFiles(dir);
+
+      const result = runZinn(["restore", path, "--yes"], dir);
+
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("database disk image is malformed");
+      expect(result.stderr).toContain(`The database at ${databasePath} is damaged. Nothing was changed.`);
+      expect(result.stderr).toContain("Close every program that has the database open");
+      expect(result.stderr).toContain(`Move ${databasePath}, ${databasePath}-wal and ${databasePath}-shm out of the data folder`);
+      expect(result.stderr).toContain("Run the same zinn restore command again");
+      expect(result.stderr).not.toContain("Backups taken before each restore attempt");
+      expect(readFileSync(databasePath)).toEqual(damaged);
+      expect(backupFiles(dir)).toEqual(previousBackups);
+
+      const saved = join(dir, "damaged");
+      mkdirSync(saved);
+      for (const suffix of ["", "-wal", "-shm"]) {
+        const file = `${databasePath}${suffix}`;
+        if (existsSync(file)) {
+          renameSync(file, join(saved, `zinn.sqlite${suffix}`));
+        }
+      }
+
+      const recovered = runZinn(["restore", path, "--yes"], dir);
+      expect(recovered.code).toBe(0);
+      expect(recovered.stderr).toBe("");
+      expect(taskTitles(dir)).toEqual([{ title: "Kept" }]);
+      expect(readFileSync(join(saved, "zinn.sqlite"))).toEqual(damaged);
+    });
+  }
+});
 
 test("restore replaces the board after confirmation and saves the replaced board as a backup", () => {
   withIsolatedZinnDir((dir) => {

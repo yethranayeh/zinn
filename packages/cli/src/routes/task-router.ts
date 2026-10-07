@@ -24,8 +24,6 @@ import {
   presentTask,
 } from "../presentation/task-presentation";
 
-const limitPattern = new RegExp(`^${positiveIntegerPattern}$`);
-
 export const taskRouter = {
   create: {
     run: (args) => {
@@ -158,6 +156,7 @@ Example: zinn task list MDR --label cli`,
       }
 
       const archive = values.all ? "all" : values.archived ? "archived" : "active";
+      const limitPattern = new RegExp(`^${positiveIntegerPattern}$`);
 
       if (values.limit !== undefined && !limitPattern.test(values.limit)) {
         quit(searchLimitMessage);
@@ -218,21 +217,29 @@ Example: zinn task search "refinement quota" MDR --limit 5`,
       };
 
       output(viewedTask, (t) => {
+        const MIN_SECTION_SEPARATOR_WIDTH = 60;
+
+        const terminalWidth = process.stdout.columns;
+        const hasTerminalWidth = process.stdout.isTTY === true && terminalWidth > 0;
+
+        const sectionOptions = {
+          separatorWidth: hasTerminalWidth ? terminalWidth : MIN_SECTION_SEPARATOR_WIDTH,
+        };
         const relations = formatRelations(t.relations);
         const comments = formatComments(t.comments);
         const isArchived = t.status === "Archived";
         const sections = [formatTaskList([t], { showsStatus: isArchived })];
 
         if (t.description != null) {
-          sections.push(formatSection("Description", t.description));
+          sections.push(formatSection("Description", t.description, sectionOptions));
         }
 
         if (relations.length > 0) {
-          sections.push(formatSection("Relations", relations));
+          sections.push(formatSection("Relations", relations, sectionOptions));
         }
 
         if (comments.length > 0) {
-          sections.push(formatSection("Comments", comments));
+          sections.push(formatSection("Comments", comments, sectionOptions));
         }
 
         return sections.join("\n\n");
