@@ -52,9 +52,24 @@ export const restoreCommand = {
     } catch (error) {
       // A refusal attempted nothing, so only a failed restore points at the backups.
       if (!(error instanceof RestoreRefusedError)) {
-        console.error(
-          `The database is unchanged. Backups taken before each restore attempt are kept in ${BACKUP_DIR}.`,
-        );
+        const isDamagedDatabase =
+          error instanceof Error &&
+          "code" in error &&
+          typeof error.code === "string" &&
+          error.code.startsWith("SQLITE_CORRUPT");
+
+        if (isDamagedDatabase) {
+          console.error(
+            `The database at ${DB_PATH} is damaged. Nothing was changed. To restore it:\n` +
+              `1. Close every program that has the database open.\n` +
+              `2. Move ${DB_PATH}, ${DB_PATH}-wal and ${DB_PATH}-shm out of the data folder, keeping any that exist together. Keep these files; do not delete them.\n` +
+              `3. Run the same zinn restore command again to create the database from the backup.`,
+          );
+        } else {
+          console.error(
+            `The database is unchanged. Backups taken before each restore attempt are kept in ${BACKUP_DIR}.`,
+          );
+        }
       }
 
       throw error;

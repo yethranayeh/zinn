@@ -342,7 +342,9 @@ The command asks for confirmation, unless `--yes` is used (see [Confirmations](#
 
 A backup with an older schema version is restored at that version, and Zinn then upgrades it like any older database (see [Upgrade the database](#upgrade-the-database)). The restore works whatever the version of the database it replaces, so you can go back to an older Zinn and restore the backup an upgrade saved.
 
-The command fails without changing anything when the backup has a newer schema version than your Zinn (the error names the Zinn version that made the backup, when its file name carries one), when it has no schema version, when it is damaged, or when it is not a Zinn database. If the restore fails after that, the database is unchanged, and the backups taken before each attempt stay in `~/.zinn/backups/` (or `backups/` in `ZINN_DIR`).
+The command fails without changing anything when the backup has a newer schema version than your Zinn (the error names the Zinn version that made the backup if its file name carries one), when it has no schema version, when it is **damaged**, or when it is not a Zinn database. If the restore fails after that, the database is unchanged, and any backup saved before the attempt stays in `~/.zinn/backups/` (or `backups/` in `ZINN_DIR`).
+
+If the database being replaced is damaged, restore leaves it unchanged and prints recovery steps.
 
 ## Upgrade the database
 
