@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { readSchemaVersion } from "../../packages/core/src/migrations/runner.ts";
 import { snapshot } from "../../packages/core/src/migrations/testing.ts";
 import { CLI_ENTRY, CORE_WORKER, runToCompletion, sleep } from "./harness.ts";
-import { MIGRATION_EVENTS, type MigrationEvent, STRESS_MIGRATION } from "./stress-migration.ts";
+import { MIGRATION_EVENTS, STRESS_MIGRATION } from "./stress-migration.ts";
 import { checkZinnInvariants, openForChecks, withDatabase } from "./zinn-checks.ts";
 
 export const MIGRATION_PRELOAD = join(import.meta.dir, "migration-preload.ts");
@@ -108,44 +108,87 @@ export type StoreRows = {
   rows: Record<string, Array<string>>;
 };
 
-/** The version, the schema and every table's rows as sorted strings, without the search index's internal tables. */
-export function readRows(db: Database): StoreRows {
+/** Logical rows without FTS shadow tables; exact snapshots also include schema SQL and rowids. */
+export function readRows(db: Database, exact = false): StoreRows {
   const { version, schema, rows } = snapshot(db);
   const tables = Object.keys(rows).filter((table) => !table.startsWith(SEARCH_SHADOW_PREFIX));
+  const rowidTables = exact
+    ? new Set(
+        db
+          .query<{ name: string }>(
+            "SELECT name FROM pragma_table_list WHERE schema = 'main' AND wr = 0",
+          )
+          .all()
+          .map(({ name }) => name),
+      )
+    : new Set<string>();
 
   return {
     version,
     schema: schema
       .filter((object) => !object.name.startsWith(SEARCH_SHADOW_PREFIX))
-      .map((object) => `${object.type} ${object.name}`)
+      .map((object) => (exact ? JSON.stringify(object) : `${object.type} ${object.name}`))
       .sort(),
     rows: Object.fromEntries(
-      tables.map((table) => [table, rows[table]!.map((row) => JSON.stringify(row)).sort()]),
+      tables.map((table) => {
+        const found = rowidTables.has(table)
+          ? db.query(`SELECT rowid AS __rowid, * FROM ${table}`).all()
+          : rows[table]!;
+        return [table, found.map((row) => JSON.stringify(row)).sort()];
+      }),
     ),
   };
 }
 
-// Task creates add rows to these tables, and rewrite the other two (the counter, the search row).
+// Creates add task/activity rows and rewrite search; the project counter is compared separately.
 const GROWING_BY_CREATES = new Set(["task", "activity"]);
-const REWRITTEN_BY_CREATES = new Set(["project", "task_search"]);
+const REWRITTEN_BY_CREATES = new Set(["task_search"]);
 
 /**
  * Compares a store with the older rows it came from. Every table must hold exactly the older rows,
- *  except that with `allowsNewRows` (ordinary writers ran too) the tables a task create changes may
- *  have more: older rows must all still be there, and invariants cover the rewritten ones.
+ *  except that task creates and, with `allowsComments`, comment creates may add rows and increment
+ *  counters. Older content must remain; invariants check counters and rewritten search rows.
  */
-export function compareWithOlder(before: StoreRows, after: StoreRows, allowsNewRows: boolean) {
+export function compareWithOlder(
+  before: StoreRows,
+  after: StoreRows,
+  allowsNewRows: boolean,
+  allowsComments = false,
+) {
   const problems: Array<string> = [];
 
   for (const [table, oldRows] of Object.entries(before.rows)) {
     const newRows = after.rows[table];
+    const rewritesSearch =
+      (allowsNewRows && REWRITTEN_BY_CREATES.has(table)) ||
+      (allowsComments && table === "task_search");
+    const addsRows =
+      (allowsNewRows && GROWING_BY_CREATES.has(table)) ||
+      (allowsComments && ["task", "comment", "activity"].includes(table));
     if (newRows == null) {
       problems.push(`table ${table} is gone`);
-    } else if (allowsNewRows && REWRITTEN_BY_CREATES.has(table)) {
+    } else if (allowsNewRows && table === "project") {
+      const withoutCounter = (row: string) => {
+        const { task_count, ...unchanged } = JSON.parse(row);
+        return JSON.stringify(unchanged);
+      };
+      const oldFields = oldRows.map(withoutCounter).sort();
+      const newFields = newRows.map(withoutCounter).sort();
+      if (JSON.stringify(oldFields) !== JSON.stringify(newFields)) {
+        problems.push("project fields other than task_count changed");
+      }
+    } else if (rewritesSearch) {
       continue;
-    } else if (allowsNewRows && GROWING_BY_CREATES.has(table)) {
-      const present = new Set(newRows);
-      const lost = oldRows.filter((row) => !present.has(row));
+    } else if (addsRows) {
+      const normalize = (row: string) => {
+        if (allowsComments && table === "task") {
+          const { comment_count, ...unchanged } = JSON.parse(row);
+          return JSON.stringify(unchanged);
+        }
+        return row;
+      };
+      const present = new Set(newRows.map(normalize));
+      const lost = oldRows.filter((row) => !present.has(normalize(row)));
       if (lost.length > 0) {
         problems.push(
           `${lost.length} older ${table} row(s) changed or are missing, first ${lost[0]!.slice(0, 160)}`,
@@ -167,13 +210,30 @@ export function compareWithOlder(before: StoreRows, after: StoreRows, allowsNewR
   return problems;
 }
 
+/** Exact logical equality, including extra tables and schema objects. */
+export function compareStores(before: StoreRows, after: StoreRows) {
+  const problems = compareWithOlder(before, after, false);
+  if (before.version !== after.version) {
+    problems.push(`schema version ${after.version}, expected ${before.version}`);
+  }
+  if (JSON.stringify(before.schema) !== JSON.stringify(after.schema)) {
+    problems.push("schema definitions differ");
+  }
+  const extraTables = Object.keys(after.rows).filter((table) => !(table in before.rows));
+  if (extraTables.length > 0) {
+    problems.push(`extra tables: ${extraTables.join(", ")}`);
+  }
+  return problems;
+}
+
 /**
  * Opens every file in the backups directory read-only: a final-name file must be a complete database
- *  at the older version holding exactly the older rows. Leftover `.partial` files are reported by name.
+ *  at the older version holding the older rows. Unfinished files are allowed only when requested.
  */
 export function checkBackups(
   zinnDirectory: string,
   before: StoreRows,
+  { allowsPartial = false, exact = false } = {},
 ): { names: Array<string>; problems: Array<string> } {
   const directory = backupDirectoryOf(zinnDirectory);
   const names = existsSync(directory) ? readdirSync(directory).sort() : [];
@@ -181,6 +241,11 @@ export function checkBackups(
 
   for (const name of names) {
     if (!name.endsWith(".sqlite")) {
+      const isPartial =
+        name.endsWith(".sqlite.partial") || name.endsWith(".sqlite.partial-journal");
+      if (allowsPartial && isPartial) {
+        continue;
+      }
       problems.push(`backup directory holds ${name}, which is not a finished backup`);
       continue;
     }
@@ -191,7 +256,7 @@ export function checkBackups(
         for (const problem of found) {
           problems.push(`backup ${name}: ${problem}`);
         }
-        return readRows(db);
+        return readRows(db, exact);
       });
 
       if (rows.version !== before.version) {
@@ -199,7 +264,9 @@ export function checkBackups(
           `backup ${name} has schema version ${rows.version}, expected ${before.version}`,
         );
       }
-      for (const problem of compareWithOlder(before, rows, false)) {
+      for (const problem of exact
+        ? compareStores(before, rows)
+        : compareWithOlder(before, rows, false)) {
         problems.push(`backup ${name}: ${problem}`);
       }
     } catch (error) {
@@ -248,9 +315,12 @@ export function checkSearchIndex(db: Database, taskCount: number) {
   }
 }
 
-export type MigrationEventRecord = { at: number; pid: number; event: MigrationEvent };
+export type MigrationEventRecord = { at: number; pid: number; event: string };
 
-export function readEvents(eventsFile: string): Array<MigrationEventRecord> {
+export function readEvents(
+  eventsFile: string,
+  acceptedEvents: ReadonlyArray<string> = MIGRATION_EVENTS,
+): Array<MigrationEventRecord> {
   if (!existsSync(eventsFile)) {
     return [];
   }
@@ -260,17 +330,22 @@ export function readEvents(eventsFile: string): Array<MigrationEventRecord> {
     .filter((line) => line.length > 0)
     .map((line) => {
       const [at, pid, event] = line.split(" ");
-      return { at: Number(at), pid: Number(pid), event: event as MigrationEvent };
+      return { at: Number(at), pid: Number(pid), event: event! };
     })
-    .filter((record) => MIGRATION_EVENTS.includes(record.event));
+    .filter((record) => acceptedEvents.includes(record.event));
 }
 
 /** Resolves true once the event has been logged by some process, false when the wait times out. */
-export async function waitForEvent(eventsFile: string, event: MigrationEvent, timeoutMs: number) {
+export async function waitForEvent(
+  eventsFile: string,
+  event: string,
+  timeoutMs: number,
+  acceptedEvents: ReadonlyArray<string> = MIGRATION_EVENTS,
+) {
   const began = performance.now();
 
   while (performance.now() - began < timeoutMs) {
-    if (readEvents(eventsFile).some((record) => record.event === event)) {
+    if (readEvents(eventsFile, acceptedEvents).some((record) => record.event === event)) {
       return true;
     }
     await sleep(EVENT_POLL_MS);

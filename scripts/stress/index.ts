@@ -49,6 +49,7 @@ import {
   runMigrateRace,
   runMigrateSizing,
 } from "./scenarios/migrations.ts";
+import { runRestoreConcurrentWriter, runRestoreKill } from "./scenarios/restores.ts";
 
 type Scenario = (
   options: Options,
@@ -71,6 +72,8 @@ const SCENARIOS: Record<string, Scenario> = {
   "migrate-kill": runMigrateKill,
   "migrate-sizing": runMigrateSizing,
   "migrate-create-race": runMigrateCreateRace,
+  "restore-kill": runRestoreKill,
+  "restore-concurrent-writer": runRestoreConcurrentWriter,
 };
 
 const SEED_LIMIT = 2 ** 31;
