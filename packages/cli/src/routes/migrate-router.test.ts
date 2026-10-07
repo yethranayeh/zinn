@@ -1,5 +1,5 @@
 import { expect, spyOn, test } from "bun:test";
-import { BACKUP_DIR, migrate } from "@zinn-dev/core";
+import { migrate, getStorage } from "@zinn-dev/core";
 
 import { migrateCommand } from "./migrate-router";
 
@@ -16,7 +16,9 @@ test("a failed upgrade names the backup folder on stderr and rethrows the origin
   try {
     expect(() => migrateCommand.run([])).toThrow(failure);
     expect(stderr.mock.calls).toEqual([
-      [`The database is unchanged. Backups taken before each upgrade attempt are kept in ${BACKUP_DIR}.`],
+      [
+        `The database is unchanged. Backups taken before each upgrade attempt are kept in ${getStorage().backupDirectory}.`,
+      ],
     ]);
   } finally {
     run.mockRestore();
@@ -25,5 +27,5 @@ test("a failed upgrade names the backup folder on stderr and rethrows the origin
 });
 
 test("the backup folder is inside the isolated test directory", () => {
-  expect(BACKUP_DIR.startsWith(process.env.ZINN_DIR!)).toBe(true);
+  expect(getStorage().backupDirectory.startsWith(process.env.ZINN_DIR!)).toBe(true);
 });

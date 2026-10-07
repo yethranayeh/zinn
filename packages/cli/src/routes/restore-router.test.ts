@@ -1,5 +1,5 @@
 import { expect, spyOn, test } from "bun:test";
-import { BACKUP_DIR, backup, RestoreRefusedError } from "@zinn-dev/core";
+import { backup, RestoreRefusedError, getStorage } from "@zinn-dev/core";
 
 import { restoreCommand } from "./restore-router";
 
@@ -15,7 +15,9 @@ test("restore keeps the general hint for damaged search index internals and reth
   try {
     expect(() => restoreCommand.run(["backup.sqlite", "--yes"])).toThrow(failure);
     expect(stderr.mock.calls).toEqual([
-      [`The database is unchanged. Backups taken before each restore attempt are kept in ${BACKUP_DIR}.`],
+      [
+        `The database is unchanged. Backups taken before each restore attempt are kept in ${getStorage().backupDirectory}.`,
+      ],
     ]);
   } finally {
     restore.mockRestore();

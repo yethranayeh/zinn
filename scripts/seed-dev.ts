@@ -5,13 +5,14 @@ import { selectDevelopmentDatabase } from "./dev-environment";
 const developmentDirectory = selectDevelopmentDatabase();
 
 const expectedDatabasePath = join(developmentDirectory, "data", "zinn.sqlite");
-const { DB_PATH } = await import("../packages/core/src/constant.ts");
+const { getStorage: storage } = await import("../packages/core/src/constant.ts");
+const { databasePath } = storage();
 
-if (DB_PATH !== expectedDatabasePath) {
-  throw new Error(`Refusing to reset unexpected database path: ${DB_PATH}`);
+if (databasePath !== expectedDatabasePath) {
+  throw new Error(`Refusing to reset unexpected database path: ${databasePath}`);
 }
 
-for (const databaseFile of [DB_PATH, `${DB_PATH}-wal`, `${DB_PATH}-shm`]) {
+for (const databaseFile of [databasePath, `${databasePath}-wal`, `${databasePath}-shm`]) {
   rmSync(databaseFile, { force: true });
 }
 
@@ -118,7 +119,7 @@ relation.create({ sourceTaskKey: "APP-9", targetTaskKey: "APP-8", relation_type:
 relation.create({ sourceTaskKey: "APP-10", targetTaskKey: "APP-8", relation_type: "subtask" }, seedAgent);
 relation.create({ sourceTaskKey: "APP-11", targetTaskKey: "APP-9", relation_type: "subtask" }, seedAgent);
 
-console.info(`Reset and seeded the development Zinn database at ${DB_PATH}`);
+console.info(`Reset and seeded the development Zinn database at ${databasePath}`);
 console.info("Run `bun run dev -- task list` to inspect it.");
 console.info("Run `bun run dev -- task view APP-3` or `bun run dev -- task relation list APP-3` to inspect relations.");
 console.info("Run `bun run dev -- task view APP-8` or `bun run dev -- task relation list APP-8` to inspect the subtask hierarchy.");

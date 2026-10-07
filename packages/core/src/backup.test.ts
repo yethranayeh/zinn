@@ -15,8 +15,9 @@ test("same-time backups preserve earlier snapshots and include uncheckpointed WA
       import { basename } from "node:path";
       import { backup } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
       import { getDb } from ${JSON.stringify(new URL("./db.ts", import.meta.url).pathname)};
-      import { BACKUP_DIR, DB_PATH } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
+      import { storage } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
 
+      const { backupDirectory, databasePath } = storage();
       setSystemTime(new Date("2026-10-03T12:30:05Z"));
       const db = getDb();
       db.exec("PRAGMA wal_autocheckpoint = 0");
@@ -29,7 +30,7 @@ test("same-time backups preserve earlier snapshots and include uncheckpointed WA
 
       for (let value = 1; value <= 20; value++) {
         db.query("UPDATE backup_test SET value = ?").run(value);
-        assert.ok(existsSync(DB_PATH + "-wal"));
+        assert.ok(existsSync(databasePath + "-wal"));
         const { path } = backup.create(input);
         assert.ok(basename(path).startsWith("2026-10-03T12-30-05Z-test-1.2.3-"));
         assert.match(basename(path), /-[0-9a-f]{8}\\.sqlite$/);
@@ -44,7 +45,7 @@ test("same-time backups preserve earlier snapshots and include uncheckpointed WA
         }
       }
 
-      assert.deepEqual(readdirSync(BACKUP_DIR).sort(), [...paths].map((path) => basename(path)).sort());
+      assert.deepEqual(readdirSync(backupDirectory).sort(), [...paths].map((path) => basename(path)).sort());
       assert.deepEqual(readFileSync(first), firstBytes);
       const original = new Database(first, { readonly: true });
       try {
@@ -72,8 +73,9 @@ test("restore puts a backup's board back through the public operations, and its 
       import { existsSync, readdirSync, writeFileSync } from "node:fs";
       import { join } from "node:path";
       import { backup, comment, project, RestoreRefusedError, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
-      import { BACKUP_DIR, MAIN_DIR } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
+      import { storage } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
 
+      const { backupDirectory, directory } = storage();
       const human = { name: "Test Human", email: "human@example.com", kind: "human" };
       const build = { client: "test", version: "1.2.3" };
       const keys = (archive = "all") => task.getAll({ archive }).map((entry) => entry.key);
@@ -92,7 +94,7 @@ test("restore puts a backup's board back through the public operations, and its 
       const boardBeforeRestore = keys();
 
       // A file that is not a backup changes nothing.
-      const notABackup = join(MAIN_DIR, "notes.txt");
+      const notABackup = join(directory, "notes.txt");
       writeFileSync(notABackup, "not a backup");
       assert.throws(() => backup.restore({ ...build, path: notABackup }), RestoreRefusedError);
       assert.deepEqual(keys(), boardBeforeRestore);
@@ -113,7 +115,7 @@ test("restore puts a backup's board back through the public operations, and its 
 
       backup.restore({ ...build, path: restored.backupPath });
       assert.deepEqual(keys(), boardBeforeRestore);
-      assert.ok(readdirSync(BACKUP_DIR).length === 3);
+      assert.ok(readdirSync(backupDirectory).length === 3);
     `], { env: { ...process.env, ZINN_DIR: directory } });
 
     expect(result.stderr.toString()).toBe("");
@@ -131,7 +133,8 @@ test("restore onto a store with no database creates it, with no backup of a repl
       import { strict as assert } from "node:assert";
       import { existsSync, readdirSync } from "node:fs";
       import { backup, project, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
-      import { BACKUP_DIR, DB_PATH } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
+      import { storage } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
+      const { backupDirectory, databasePath } = storage();
       const human = { name: "Test Human", email: "human@example.com", kind: "human" };
       const build = { client: "test", version: "1.2.3" };
       ${script}
@@ -147,11 +150,11 @@ test("restore onto a store with no database creates it, with no backup of a repl
     const backupPath = made.stdout.toString().trim();
 
     const restored = run(target, `
-      assert.equal(existsSync(DB_PATH), false);
+      assert.equal(existsSync(databasePath), false);
       const result = backup.restore({ ...build, path: ${JSON.stringify(backupPath)} });
       assert.equal(result.backupPath, null);
       assert.equal(result.previousVersion, 0);
-      assert.deepEqual(readdirSync(BACKUP_DIR), []);
+      assert.deepEqual(readdirSync(backupDirectory), []);
       assert.deepEqual(task.getAll().map((entry) => entry.title), ["Kept"]);
     `);
     expect(restored.stderr.toString()).toBe("");

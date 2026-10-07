@@ -11,14 +11,14 @@ import { existsSync } from "node:fs";
 
 import { openDatabase } from "#sqlite";
 
-import { BACKUP_DIR, DB_PATH, DEFAULT_MAIN_DIR, MAIN_DIR } from "./constant";
+import { getStorage } from "./constant";
 import { ensureDataDirectory } from "./config";
 import { applyConnectionSettings } from "./connection";
 import { classifyConnection } from "./migrations/classify";
 import {
   decideOpen,
   DEFAULT_OPEN_POLICY,
-  isDefaultDatabase,
+  isProtectedStorage,
   ReadOnlyDatabaseError,
   UnmarkedDatabaseError,
 } from "./migrations/open-policy";
@@ -65,7 +65,7 @@ function prepare(connection: Database): Prepared {
   const classification = classifyConnection(connection, MIGRATIONS);
   const decision = decideOpen({
     state: classification.state,
-    isDefaultDatabase: () => isDefaultDatabase(MAIN_DIR, DEFAULT_MAIN_DIR),
+    isDefaultDatabase: () => isProtectedStorage(getStorage()),
     coreRelease: readCoreReleaseMode(),
     clientRelease: policy.release,
     allowsLegacyRead: policy.allowsLegacyRead,
@@ -82,7 +82,7 @@ function prepare(connection: Database): Prepared {
 }
 
 function openConnection() {
-  const connection = openDatabase(DB_PATH);
+  const connection = openDatabase(getStorage().databasePath);
 
   try {
     // Arm waiting before reading the state or switching to WAL can encounter another process.
@@ -134,7 +134,7 @@ function openWithRetries() {
  */
 function settle(connection: Database, prepared: Prepared): typeof readOnly {
   const facts: DatabaseFacts = {
-    databasePath: DB_PATH,
+    databasePath: getStorage().databasePath,
     version: prepared.version,
     latestVersion: prepared.latestVersion,
   };
@@ -170,7 +170,11 @@ function settle(connection: Database, prepared: Prepared): typeof readOnly {
       }
     case "upgrade": {
       const { status, previousVersion } = upgradeDatabase(connection, {
-        backup: { directory: BACKUP_DIR, client: policy.client, version: policy.version },
+        backup: {
+          directory: getStorage().backupDirectory,
+          client: policy.client,
+          version: policy.version,
+        },
         migrations: MIGRATIONS,
         onWait: policy.onWait,
       });
@@ -188,11 +192,13 @@ function settle(connection: Database, prepared: Prepared): typeof readOnly {
 
 export function getDb() {
   if (db == null) {
+    // Resolved outside the try, so a refused folder is reported as it is, not as a problem initializing Zinn.
+    const { databasePath } = getStorage();
     let connection: Database | null = null;
 
     try {
       // The data directory is created only for a store that does not exist yet.
-      if (!existsSync(DB_PATH)) {
+      if (!existsSync(databasePath)) {
         ensureDataDirectory();
       }
 

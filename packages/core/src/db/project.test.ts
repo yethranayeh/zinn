@@ -5,15 +5,16 @@ import type { Task } from "../types";
 // ? The test preload already ran this; importing it also isolates a run without the preload.
 import { TEST_RUN_DIR } from "../../../../scripts/test-isolation";
 
-// ? Dynamic so env is set before `MAIN_DIR` constant is initialized.
 const project = await import("./project");
 const column = await import("./column");
 const task = await import("./task");
-const { MAIN_DIR } = await import("../constant");
+const { getStorage: storage } = await import("../constant");
 
-// Core reads ZINN_DIR once, on first import, so an earlier import without the preload would redirect these writes.
-if (MAIN_DIR !== TEST_RUN_DIR) {
-  throw new Error(`Refusing to run: core resolved its directory to "${MAIN_DIR}", not this run's "${TEST_RUN_DIR}"`);
+// Core reads ZINN_DIR once, on first use, so an earlier use without the preload would redirect these writes.
+if (storage().directory !== TEST_RUN_DIR) {
+  throw new Error(
+    `Refusing to run: core resolved its directory to "${storage().directory}", not this run's "${TEST_RUN_DIR}"`,
+  );
 }
 
 test("project.create can establish a project", () => {

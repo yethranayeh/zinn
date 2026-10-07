@@ -2,6 +2,7 @@
  * Decides how core opens a database, from its state, the build and the client's policy.
  * A database core cannot change safely opens read-only, or not at all, before anything writes to it.
  */
+import type { Storage } from "../constant";
 import type { ReleaseMode } from "../release";
 import type { DatabaseState } from "./classify";
 import type { LockWait } from "./upgrade";
@@ -106,6 +107,18 @@ export function isDefaultDatabase(mainDir: string, defaultMainDir: string) {
 
     return true;
   }
+}
+
+/**
+ * Whether a source checkout opens the store's older database read-only, leaving the upgrade to an explicit migration.
+ * Every store is protected except a `ZINN_DIR` store that does not reach the default folder.
+ */
+export function isProtectedStorage({ source, directory, defaultDirectory }: Storage) {
+  if (source !== "env") {
+    return true;
+  }
+
+  return isDefaultDatabase(directory, defaultDirectory);
 }
 
 export type DatabaseFacts = {

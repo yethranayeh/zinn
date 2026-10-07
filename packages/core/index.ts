@@ -75,4 +75,4 @@ export { RestoreRefusedError } from "./src/migrations/restore";
 export { assertWritable, configureDatabase } from "./src/db";
 export { ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./src/migrations/open-policy";
 export { readReleaseMode } from "./src/release";
-export { BACKUP_DIR, DB_PATH } from "./src/constant";
+export { getStorage } from "./src/constant";

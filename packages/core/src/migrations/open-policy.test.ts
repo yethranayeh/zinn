@@ -6,7 +6,8 @@ import { expect, test } from "bun:test";
 import { mkdirSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 
-import { decideOpen, isDefaultDatabase } from "./open-policy";
+import { resolveStorage } from "../constant";
+import { decideOpen, isDefaultDatabase, isProtectedStorage } from "./open-policy";
 import { withDirectory } from "./testing";
 
 type Row = {
@@ -100,5 +101,28 @@ test("without the default folder, another folder does not hold the default datab
     mkdirSync(other);
 
     expect(isDefaultDatabase(other, join(home, ".zinn"))).toBe(false);
+  });
+});
+
+test("a default store is protected, even before its folder exists", () => {
+  withDirectory((home) => {
+    expect(isProtectedStorage(resolveStorage({ env: {}, home }))).toBe(true);
+  });
+});
+
+test("a ZINN_DIR store is protected only when it reaches the default folder", () => {
+  withDirectory((home) => {
+    const defaultDir = join(home, ".zinn");
+    const other = join(home, "other");
+    const link = join(home, "link");
+    mkdirSync(defaultDir);
+    mkdirSync(other);
+    symlinkSync(defaultDir, link);
+    const isProtected = (zinnDir: string) =>
+      isProtectedStorage(resolveStorage({ env: { ZINN_DIR: zinnDir }, home }));
+
+    expect(isProtected(defaultDir)).toBe(true);
+    expect(isProtected(link)).toBe(true);
+    expect(isProtected(other)).toBe(false);
   });
 });

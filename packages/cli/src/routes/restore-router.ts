@@ -2,7 +2,7 @@ import type { Command } from "../types";
 
 import { parseArgs } from "node:util";
 import { resolve } from "node:path";
-import { BACKUP_DIR, backup, DB_PATH, RestoreRefusedError } from "@zinn-dev/core";
+import { backup, RestoreRefusedError, getStorage } from "@zinn-dev/core";
 
 import { reportLockWait } from "../database";
 import { askConfirmation, output, validatePositionalCount, validateUniqueOptions } from "../lib";
@@ -23,6 +23,7 @@ export const restoreCommand = {
     validatePositionalCount(positionals, 1, "Specify the backup file to restore");
 
     const path = resolve(positionals[0]!);
+    const { databasePath, backupDirectory } = getStorage();
     const isPreconfirmed = values.yes === true;
 
     // A backup that would be refused is refused before the prompt.
@@ -31,12 +32,12 @@ export const restoreCommand = {
     }
 
     const isConfirmed = askConfirmation(
-      `Replace the database at ${DB_PATH} with the backup ${path}? Its current board is saved to ${BACKUP_DIR} first.`,
+      `Replace the database at ${databasePath} with the backup ${path}? Its current board is saved to ${backupDirectory} first.`,
       isPreconfirmed,
     );
 
     if (!isConfirmed) {
-      output(null, () => `Restore cancelled. The database at ${DB_PATH} is unchanged`);
+      output(null, () => `Restore cancelled. The database at ${databasePath} is unchanged`);
       return;
     }
 
@@ -60,14 +61,14 @@ export const restoreCommand = {
 
         if (isDamagedDatabase) {
           console.error(
-            `The database at ${DB_PATH} is damaged. Nothing was changed. To restore it:\n` +
+            `The database at ${databasePath} is damaged. Nothing was changed. To restore it:\n` +
               `1. Close every program that has the database open.\n` +
-              `2. Move ${DB_PATH}, ${DB_PATH}-wal and ${DB_PATH}-shm out of the data folder, keeping any that exist together. Keep these files; do not delete them.\n` +
+              `2. Move ${databasePath}, ${databasePath}-wal and ${databasePath}-shm out of the data folder, keeping any that exist together. Keep these files; do not delete them.\n` +
               `3. Run the same zinn restore command again to create the database from the backup.`,
           );
         } else {
           console.error(
-            `The database is unchanged. Backups taken before each restore attempt are kept in ${BACKUP_DIR}.`,
+            `The database is unchanged. Backups taken before each restore attempt are kept in ${backupDirectory}.`,
           );
         }
       }

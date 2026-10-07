@@ -1,6 +1,6 @@
 /**
  * How getDb() opens each kind of database (ZINN-118), run in child processes,
- *  since core resolves its folder from HOME and ZINN_DIR once, when it is first imported.
+ *  since core resolves its folder from HOME and ZINN_DIR once, when it is first used.
  * Default-database fixtures live in a temporary HOME with ZINN_DIR unset. Each child checks
  *  where core resolved its folder and exits before opening anything if it is not the expected one.
  * Older databases come from a test-only version 2 that the child puts in place of the shipped,
@@ -85,10 +85,11 @@ function childCommand(location: Location, script: string) {
     process.execPath,
     "--eval",
     `
-      const { DB_PATH, MAIN_DIR } = await import(${modulePath("./constant.ts")});
-      const isTestProcessDefaultDir = DB_PATH.startsWith(${JSON.stringify(TEST_PROCESS_DEFAULT_DIR)});
-      if (MAIN_DIR !== ${JSON.stringify(mainDirOf(location))} || isTestProcessDefaultDir) {
-        console.log(JSON.stringify({ wrongFolder: MAIN_DIR }));
+      const { storage } = await import(${modulePath("./constant.ts")});
+      const { directory, databasePath } = storage();
+      const isTestProcessDefaultDir = databasePath.startsWith(${JSON.stringify(TEST_PROCESS_DEFAULT_DIR)});
+      if (directory !== ${JSON.stringify(mainDirOf(location))} || isTestProcessDefaultDir) {
+        console.log(JSON.stringify({ wrongFolder: directory }));
         process.exit(${WRONG_FOLDER_EXIT});
       }
       ${script}
@@ -215,14 +216,14 @@ function projectKeys(mainDir: string) {
 test("a default-database fixture resolves inside the test's HOME, and ZINN_DIR still overrides it", () => {
   withHome((home) => {
     const defaultDir = join(home, ".zinn");
-    expect(runChild({ home }, `console.log(JSON.stringify({ DB_PATH, MAIN_DIR }));`)).toEqual({
+    expect(runChild({ home }, `console.log(JSON.stringify({ DB_PATH: databasePath, MAIN_DIR: directory }));`)).toEqual({
       DB_PATH: databasePath(defaultDir),
       MAIN_DIR: defaultDir,
     });
 
     const isolated = join(home, "isolated");
     expect(
-      runChild({ home, zinnDir: isolated }, `console.log(JSON.stringify({ MAIN_DIR }));`),
+      runChild({ home, zinnDir: isolated }, `console.log(JSON.stringify({ MAIN_DIR: directory }));`),
     ).toEqual({ MAIN_DIR: isolated });
   });
 });
