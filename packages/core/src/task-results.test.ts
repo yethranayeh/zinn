@@ -125,3 +125,45 @@ test("task lists across projects follow project key, column order, and task orde
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("task create places a task last in the named column and a bad column saves nothing", () => {
+  const directory = mkdtempSync(join(tmpdir(), "zinn-task-results-"));
+  try {
+    const result = Bun.spawnSync([process.execPath, "--eval", `
+      import { strict as assert } from "node:assert";
+      import { project, column, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
+      import { getDb } from ${JSON.stringify(new URL("./db.ts", import.meta.url).pathname)};
+      import * as dbTask from ${JSON.stringify(new URL("./db/task.ts", import.meta.url).pathname)};
+      const actor = { name: "Test Human", email: null, kind: "human" };
+      const app = project.create({ key: "APP", name: "App" }, actor);
+      const [backlog, , inProgress] = column.getAllByProjectKey("APP");
+      const count = (table) => getDb().query("SELECT COUNT(*) AS n FROM " + table).get().n;
+
+      const first = task.create({ project_id: app.id, title: "First", description: null }, actor);
+      assert.equal(first.column_id, backlog.id);
+      const second = task.create({ project_id: app.id, title: "Second", description: null, columnName: "in progress" }, actor);
+      const third = task.create({ project_id: app.id, title: "Third", description: null, columnName: "IN PROGRESS" }, actor);
+      assert.equal(second.column_id, inProgress.id);
+      assert.deepEqual(dbTask.getAllByColumnId(inProgress.id).map((t) => t.id), [second.id, third.id]);
+      assert.deepEqual(dbTask.getAllByColumnId(backlog.id).map((t) => t.id), [first.id]);
+
+      assert.deepEqual(task.activity(third.key).map((row) => row.action), ["create"]);
+      assert.deepEqual(task.activity(third.key)[0].changes.column, { id: inProgress.id, name: "In Progress" });
+
+      const tasksBefore = count("task");
+      const activityBefore = count("activity");
+      assert.throws(
+        () => task.create({ project_id: app.id, title: "Lost", description: null, columnName: "Nowhere" }, actor),
+        /App does not have a column named "Nowhere"/,
+      );
+      assert.equal(count("task"), tasksBefore);
+      assert.equal(count("activity"), activityBefore);
+      assert.equal(project.getById(app.id).task_count, 3);
+      assert.equal(task.create({ project_id: app.id, title: "Fourth", description: null }, actor).key, "APP-4");
+    `], { env: { ...process.env, ZINN_DIR: directory } });
+    expect(result.stderr.toString()).toBe("");
+    expect(result.exitCode).toBe(0);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

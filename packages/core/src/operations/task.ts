@@ -40,8 +40,8 @@ import {
   recordTaskActivity,
   updateTaskSearchRecord,
   describeRelation,
-  findByName,
   getInsertionIndex,
+  requireColumnByName,
   resolveDescription,
 } from "./shared";
 
@@ -96,14 +96,9 @@ function moveTask(props: { taskKey: string; targetColumn: string }, actor: Actor
     throw new Error(`Archived task "${props.taskKey}" cannot be moved`);
   }
 
+  const projectMatch = dbProject.getById(taskMatch.project_id)!;
   const projectColumns = dbColumn.getAllByProjectId(taskMatch.project_id);
-  const columnMatch = findByName(projectColumns, props.targetColumn);
-
-  if (columnMatch == null) {
-    // TODO: maybe a `did you mean` type of fuzzy check for misspelllings
-    const projectMatch = dbProject.getById(taskMatch.project_id)!;
-    throw new Error(`${projectMatch.name} does not have a column named "${props.targetColumn}"`);
-  }
+  const { columnMatch } = requireColumnByName(projectMatch, projectColumns, props.targetColumn);
 
   if (columnMatch.id === taskMatch.column_id) {
     return { task: taskMatch, changed: false };
@@ -200,7 +195,11 @@ export const task = {
         );
       }
 
-      const initialColumn = dbColumn.getAllByProjectId(task.project_id)[0];
+      const projectColumns = dbColumn.getAllByProjectId(task.project_id);
+      const initialColumn =
+        task.columnName === undefined
+          ? projectColumns[0]
+          : requireColumnByName(project, projectColumns, task.columnName).columnMatch;
       if (initialColumn == null) {
         throw new Error(`Project "${project.key}" does not have any columns`);
       }

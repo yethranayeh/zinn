@@ -1,4 +1,3 @@
-import type { Column, Project } from "../types";
 import type { ColumnCreateInput, ColumnEditInput, ColumnOrderInput } from "../schemas/column";
 import type { Actor } from "../schemas/actor";
 import type { OrderPlacement } from "./shared";
@@ -16,7 +15,7 @@ import { columnCreateSchema, columnEditSchema, columnOrderSchema } from "../sche
 import { actorSchema } from "../schemas/actor";
 import { validateTaskInput } from "../schemas/task";
 
-import { findByName, getInsertionIndex, recordActivity } from "./shared";
+import { findByName, getInsertionIndex, recordActivity, requireColumnByName } from "./shared";
 
 function requireProjectColumns(projectKey: string) {
   const project = dbProject.getByKey(projectKey);
@@ -26,16 +25,6 @@ function requireProjectColumns(projectKey: string) {
   }
 
   return { project, projectColumns: dbColumn.getAllByProjectId(project.id) };
-}
-
-function requireColumnByName(project: Project, projectColumns: Array<Column>, name: string) {
-  const columnMatch = findByName(projectColumns, name);
-
-  if (columnMatch == null) {
-    throw new Error(`${project.name} does not have a column named "${name}"`);
-  }
-
-  return { columnMatch, columnIndex: projectColumns.indexOf(columnMatch) };
 }
 
 export const column = {

@@ -19,6 +19,7 @@ export const taskCreateSchema = z.strictObject({
   description: descriptionSchema.default(null),
   priority: taskPrioritySchema.nullable().optional(),
   labelNames: z.array(labelNameSchema).optional(),
+  columnName: z.string().optional(),
 });
 
 export const taskEditSchema = z

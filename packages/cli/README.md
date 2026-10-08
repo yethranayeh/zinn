@@ -156,6 +156,12 @@ zinn task create MDR --title "Refine 75% of the numbers"
 zinn task create MDR --title "Review the employee handbook" --description "Prepare for a 75% Dance Experience"
 ```
 
+`--column <name>` starts the task at the bottom of a specific column. The column name matching is case insensitive:
+
+```sh
+zinn task create MDR --title "Compile the Lexington letters" --column "In Progress"
+```
+
 Tasks are created with keys such as `MDR-1`. List active tasks, optionally limited to one project, or view one task:
 
 ```sh

@@ -35,6 +35,7 @@ export const taskRouter = {
           description: { type: "string" },
           priority: { type: "string" },
           label: { type: "string", multiple: true },
+          column: { type: "string" },
         },
         allowPositionals: true,
         strict: true,
@@ -64,20 +65,24 @@ export const taskRouter = {
           description: values.description ?? null,
           priority: parsePriority(values.priority),
           labelNames: values.label,
+          columnName: values.column,
         },
         currentActor(),
       );
       output(presentTask(createdTask), formatTaskRow);
     },
-    help: `Usage: zinn task create <project-key> --title <text> [--description <text>] [--priority {low|medium|high|urgent|none}] [--label <name>]
+    help: `Usage: zinn task create <project-key> --title <text> [--description <text>] [--priority {low|medium|high|urgent|none}] [--label <name>] [--column <name>]
 
-Create a task in the project's first column.
+Create a task at the bottom of a column. Without --column, it starts in the project's first column.
+Column names are matched case-insensitively. An unknown column is an error and creates nothing.
 Priority defaults to none (unassigned).
 Repeat --label to attach multiple existing labels. Unknown labels are errors.
 Label names are matched case-insensitively.
 Titles cannot be blank. Use --title="--example" for text beginning with a dash.
 
-Example: zinn task create MDR --title "Refine the numbers" --description "Meet the quarterly quota" --label urgent`,
+Examples:
+  zinn task create MDR --title "Refine the numbers" --description "Meet the quarterly quota" --label urgent
+  zinn task create MDR --title "Review the numbers" --column "In Progress"`,
   },
   list: {
     run: (args) => {

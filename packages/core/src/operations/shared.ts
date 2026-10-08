@@ -2,9 +2,11 @@ import type {
   Activity,
   ActivityAction,
   ActivityEntityType,
+  Column,
   Comment,
   CommentWithKey,
   Label,
+  Project,
   Task,
   TaskRelation,
   TaskWithKey,
@@ -148,6 +150,17 @@ export function resolveLabels(names: Array<string>) {
 
 export function findByName<T extends { name: string }>(matches: Array<T>, name: string) {
   return matches.find((match) => match.name.toLowerCase() === name.toLowerCase());
+}
+
+export function requireColumnByName(project: Project, projectColumns: Array<Column>, name: string) {
+  const columnMatch = findByName(projectColumns, name);
+
+  if (columnMatch == null) {
+    // TODO: maybe a `did you mean` type of fuzzy check for misspelllings
+    throw new Error(`${project.name} does not have a column named "${name}"`);
+  }
+
+  return { columnMatch, columnIndex: projectColumns.indexOf(columnMatch) };
 }
 
 export type OrderPlacement =

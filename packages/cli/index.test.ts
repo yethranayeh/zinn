@@ -805,6 +805,50 @@ test("task create attaches the task to its project's first ordered column", () =
   });
 });
 
+test("task create --column places the task last in the named column, matched case-insensitively", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "COLS", "--name", "Columns"], testDir);
+
+    const first = runZinn(["task", "create", "COLS", "--title", "first", "--column", "in progress"], testDir);
+    const second = runZinn(["task", "create", "COLS", "--title", "second", "--column", "IN PROGRESS"], testDir);
+
+    expect(first.code).toBe(0);
+    expect(first.stdout).toContain("COLS-1 | In Progress | - | first");
+    expect(second.code).toBe(0);
+    expect(second.stdout).toContain("COLS-2 | In Progress | - | second");
+
+    withTestDb(testDir, (db) => {
+      const titles = db
+        .query<{ title: string }, []>("SELECT title FROM task ORDER BY task_order")
+        .all()
+        .map((row) => row.title);
+
+      expect(titles).toEqual(["first", "second"]);
+    });
+  });
+});
+
+test("task create --column rejects an unknown column and creates nothing", () => {
+  withIsolatedZinnDir((testDir) => {
+    runZinn(["project", "create", "BADCOL", "--name", "Bad column"], testDir);
+
+    const rejected = runZinn(["task", "create", "BADCOL", "--title", "nowhere", "--column", "Nowhere"], testDir);
+    const repeated = runZinn(
+      ["task", "create", "BADCOL", "--title", "twice", "--column", "Done", "--column", "TODO"],
+      testDir,
+    );
+
+    expect(rejected.code).toBe(1);
+    expect(rejected.stderr).toContain('Bad column does not have a column named "Nowhere"');
+    expect(repeated.code).toBe(1);
+    expect(repeated.stderr).toContain('Option "--column" can only be specified once');
+    expect(runZinn(["task", "list", "BADCOL"], testDir).stdout).toBe("");
+    expect(runZinn(["task", "create", "BADCOL", "--title", "real"], testDir).stdout).toContain(
+      "BADCOL-1 | Backlog | - | real",
+    );
+  });
+});
+
 test("task ordering starts independently in each column", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "ALPHA", "--name", "Alpha"], testDir);
