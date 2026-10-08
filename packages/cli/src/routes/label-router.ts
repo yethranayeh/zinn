@@ -12,6 +12,7 @@ import {
   validatePositionalCount,
   validateUniqueOptions,
 } from "../lib";
+import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit";
 import { currentActor } from "../actor";
 import { isColorEnabled } from "../presentation/color";
 import { formatRows } from "../presentation/row-layout";
@@ -92,6 +93,7 @@ List all global label definitions.`,
         options: {
           name: { type: "string" },
           description: { type: "string" },
+          ...textEditOptions,
           color: { type: "string" },
         },
         allowPositionals: true,
@@ -102,21 +104,30 @@ List all global label definitions.`,
       validatePositionalCount(positionals, 1, "Exactly one label name is required");
       validateUniqueOptions(tokens);
 
-      const input = labelEditSchema.parse({ labelName: positionals[0], ...values });
+      const input = labelEditSchema.parse({
+        labelName: positionals[0],
+        name: values.name,
+        description: resolveTextEdit(values.description, values, "--description"),
+        color: values.color,
+      });
       const edited = label.edit(input, currentActor());
 
       output(presentLabel(edited), formatLabel);
     },
-    help: `Usage: zinn label edit <name> [--name <text>] [--description <text>] [--color <color>]
+    help: `Usage: zinn label edit <name> [--name <text>] [--description <text> ${textEditUsage}] [--color <color>]
 
 Change specified fields.
 Provide at least one edit flag. Use --description "" to clear the description.
+
+${textEditHelp("--description")}
 
 Names are matched and kept unique case-insensitively while preserving their casing.
 Names are trimmed. Changing only the casing is allowed.
 Editing does not affect task attachments or task timestamps.
 
-Example: zinn label edit bug --name defect --color yellow`,
+Examples:
+  zinn label edit bug --name defect --color yellow
+  zinn label edit bug --description "Reported by users." --append`,
   },
   delete: {
     run: (args) => {

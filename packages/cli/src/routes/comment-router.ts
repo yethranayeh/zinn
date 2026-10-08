@@ -12,6 +12,7 @@ import {
   validatePositionalCount,
   validateUniqueOptions,
 } from "../lib";
+import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit";
 import { currentActor } from "../actor";
 import { formatRows } from "../presentation/row-layout";
 
@@ -67,7 +68,7 @@ export function formatComments(comments: Array<PresentedComment>) {
   );
 }
 
-function parseTextArgs(args: Array<string>, entityName: "task" | "comment") {
+function parseTextArgs(args: Array<string>) {
   const { values, positionals, tokens } = parseArgs({
     args,
     options: { text: { type: "string" } },
@@ -76,7 +77,7 @@ function parseTextArgs(args: Array<string>, entityName: "task" | "comment") {
     tokens: true,
   });
 
-  validatePositionalCount(positionals, 1, `Exactly one ${entityName} key is required`);
+  validatePositionalCount(positionals, 1, "Exactly one task key is required");
   validateUniqueOptions(tokens);
 
   if (values.text === undefined) {
@@ -86,10 +87,30 @@ function parseTextArgs(args: Array<string>, entityName: "task" | "comment") {
   return { key: positionals[0]!, text: values.text };
 }
 
+function parseCommentEditArgs(args: Array<string>) {
+  const { values, positionals, tokens } = parseArgs({
+    args,
+    options: { text: { type: "string" }, ...textEditOptions },
+    allowPositionals: true,
+    strict: true,
+    tokens: true,
+  });
+
+  validatePositionalCount(positionals, 1, "Exactly one comment key is required");
+  validateUniqueOptions(tokens);
+
+  const text = resolveTextEdit(values.text, values, "--text");
+  if (text === undefined) {
+    quit("Comment text must be specified with --text");
+  }
+
+  return { key: positionals[0]!, text };
+}
+
 export const commentRouter = {
   create: {
     run: (args) => {
-      const props = parseTextArgs(args, "task");
+      const props = parseTextArgs(args);
       const created = comment.create({ taskKey: props.key, text: props.text }, currentActor());
       output(presentComment(created), formatComment);
     },
@@ -114,15 +135,19 @@ Example: zinn task comment list MDR-1`,
   },
   edit: {
     run: (args) => {
-      const props = parseTextArgs(args, "comment");
+      const props = parseCommentEditArgs(args);
       const edited = comment.edit({ commentKey: props.key, text: props.text }, currentActor());
       output(presentComment(edited), formatComment);
     },
-    help: `Usage: zinn task comment edit <comment-key> --text <text>
+    help: `Usage: zinn task comment edit <comment-key> --text <text> ${textEditUsage}
 
 Replace a comment's text. Comment text cannot be blank.
 
-Example: zinn task comment edit MDR-1#2 --text "Approved"`,
+${textEditHelp("--text")}
+
+Examples:
+  zinn task comment edit MDR-1#2 --text "Approved"
+  zinn task comment edit MDR-1#2 --text "Also approved." --append`,
   },
   delete: {
     run: (args) => {

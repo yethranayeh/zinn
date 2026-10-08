@@ -1,6 +1,11 @@
 import type { parseArgs } from "node:util";
 
-import { assertWritable, ReadOnlyDatabaseError, UnmarkedDatabaseError } from "@zinn-dev/core";
+import {
+  assertWritable,
+  ReadOnlyDatabaseError,
+  TextEditMatchError,
+  UnmarkedDatabaseError,
+} from "@zinn-dev/core";
 
 type ParsedTokens = NonNullable<ReturnType<typeof parseArgs>["tokens"]>;
 type OutputMode = "text" | "json";
@@ -71,6 +76,10 @@ export function failureMessage(error: any, fallback: string) {
 
   if (error instanceof UnmarkedDatabaseError) {
     return `${error.message}. Add --allow-legacy-read to read it anyway.`;
+  }
+
+  if (error instanceof TextEditMatchError && error.matchCount > 1) {
+    return `${error.message} Use --all to replace every match.`;
   }
 
   if (error?.message === "no such table: task_search") {

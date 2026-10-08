@@ -49,6 +49,23 @@ Project and column names cannot be blank or contain line breaks or control chara
 
 Project, task, and label descriptions may contain multiple lines. Omitted descriptions on creation, empty strings, and whitespace-only strings are stored as `null`. Text containing a non-whitespace character is preserved exactly, including leading and trailing whitespace. Use `--description ""` on an edit to clear a description. JSON returns the full text or `null`.
 
+To change part of a description, or of a comment's text, `--append` and `--replacing` modify how `--description` (or `--text` on `task comment edit`) is applied to the stored text:
+
+```sh
+zinn task edit MDR-1 --description "Bring waffles." --append
+zinn task edit MDR-1 --description "new sentence" --replacing "old sentence"
+zinn project edit MDR --description "database" --replacing "board" --all
+```
+
+Flags:
+
+- `--append` adds the text as a new paragraph,
+- `--replacing <old>` replaces the one place where `<old>` appears, matching exactly and respecting case.
+- `--all` replaces every match.
+
+A command with no match, or with several matches and no `--all`, fails without changing anything.
+An empty text with `--replacing` deletes the match. The two flags cannot be combined.
+
 ## Changing tasks in bulk
 
 `task move`, `task archive` and `task unarchive` accept multiple task keys, so several tasks can be changed in one command:

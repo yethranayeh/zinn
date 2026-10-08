@@ -4803,3 +4803,202 @@ test("an invalid zinn.local.json fails the command with the file's path, without
     expect(readdirSync(repository).sort()).toEqual([".git", "zinn.local.json"]);
   });
 });
+
+// --- PARTIAL TEXT EDITS (ZINN-177)
+
+// ? Creates project APP with task APP-1, label bug and comment APP-1#1, all with the given text.
+function seedEditableText(dir: string, text: string) {
+  const run = (...args: string[]) => runZinn(args, dir);
+  expect(run("project", "create", "APP", "--description", text).code).toBe(0);
+  expect(run("task", "create", "APP", "--title", "Task", "--description", text).code).toBe(0);
+  expect(run("label", "create", "bug", "--description", text).code).toBe(0);
+  expect(run("task", "comment", "create", "APP-1", "--text", text).code).toBe(0);
+
+  return run;
+}
+
+const storedTextOf = (dir: string) =>
+  withTestDb(dir, (db) => ({
+    project: db.query<{ text: string | null }, []>("SELECT description AS text FROM project").get()!.text,
+    task: db.query<{ text: string | null }, []>("SELECT description AS text FROM task").get()!.text,
+    label: db.query<{ text: string | null }, []>("SELECT description AS text FROM label").get()!.text,
+    comment: db.query<{ text: string }, []>("SELECT text FROM comment").get()!.text,
+  }));
+
+test("--append adds a paragraph to a task description and to a comment's text", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = seedEditableText(dir, "First.\n");
+
+    expect(run("task", "edit", "APP-1", "--description", "Second.", "--append").code).toBe(0);
+    expect(run("task", "comment", "edit", "APP-1#1", "--text", "More.", "--append").code).toBe(0);
+
+    expect(storedTextOf(dir)).toMatchObject({ task: "First.\n\nSecond.", comment: "First.\n\nMore." });
+  });
+});
+
+test("--replacing swaps one passage in a project description and in a label description", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = seedEditableText(dir, "old sentence, kept");
+
+    expect(run("project", "edit", "APP", "--description", "new", "--replacing", "old sentence").code).toBe(0);
+    expect(run("label", "edit", "bug", "--description", "fresh", "--replacing", "old sentence").code).toBe(0);
+
+    expect(storedTextOf(dir)).toMatchObject({ project: "new, kept", label: "fresh, kept" });
+  });
+});
+
+test("--replacing --all replaces every match and prints the edited object as any edit does", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = seedEditableText(dir, "board and board");
+
+    const edited = run("project", "edit", "APP", "--description", "database", "--replacing", "board", "--all");
+    expect(edited.code).toBe(0);
+    expect(edited.stdout).toContain("database and database");
+    expect(storedTextOf(dir).project).toBe("database and database");
+
+    const comment = run("task", "comment", "edit", "APP-1#1", "--text", "x", "--replacing", "board", "--all");
+    expect(comment.code).toBe(0);
+    expect(comment.stdout).toContain("x and x");
+  });
+});
+
+test("--replacing with several matches and no --all fails with the --all hint and changes nothing", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = seedEditableText(dir, "dup dup");
+    const before = storedTextOf(dir);
+
+    const attempts = [
+      run("task", "edit", "APP-1", "--description", "x", "--replacing", "dup"),
+      run("project", "edit", "APP", "--description", "x", "--replacing", "dup"),
+      run("task", "comment", "edit", "APP-1#1", "--text", "x", "--replacing", "dup"),
+    ];
+
+    for (const attempt of attempts) {
+      expect(attempt.code).toBe(1);
+      expect(attempt.stdout).toBe("");
+      expect(attempt.stderr).toContain("matches 2 places");
+      expect(attempt.stderr).toEndWith(" Use --all to replace every match.\n");
+    }
+    expect(storedTextOf(dir)).toEqual(before);
+  });
+});
+
+test("--replacing with no match fails without the --all hint and changes nothing", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = seedEditableText(dir, "Some Text");
+    const before = storedTextOf(dir);
+
+    const attempts = [
+      run("task", "edit", "APP-1", "--description", "x", "--replacing", "some text"),
+      run("label", "edit", "bug", "--description", "x", "--replacing", "absent"),
+    ];
+
+    for (const attempt of attempts) {
+      expect(attempt.code).toBe(1);
+      expect(attempt.stderr).toContain("The text to replace was not found in");
+      expect(attempt.stderr).not.toContain("--all");
+    }
+    expect(storedTextOf(dir)).toEqual(before);
+  });
+});
+
+test("an empty text with --replacing deletes the match", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = seedEditableText(dir, "keep\nstale line\n");
+
+    expect(run("task", "edit", "APP-1", "--description", "", "--replacing", "stale line\n").code).toBe(0);
+    expect(run("task", "comment", "edit", "APP-1#1", "--text", "", "--replacing", "\nstale line").code).toBe(0);
+
+    expect(storedTextOf(dir)).toMatchObject({ task: "keep\n", comment: "keep\n" });
+  });
+});
+
+test("a modifier edit with --json carries the full resulting text", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = seedEditableText(dir, "One.");
+
+    const task = JSON.parse(run("task", "edit", "APP-1", "--description", "Two.", "--append", "--json").stdout);
+    const comment = JSON.parse(run("task", "comment", "edit", "APP-1#1", "--text", "Two.", "--append", "--json").stdout);
+
+    expect(task.description).toBe("One.\n\nTwo.");
+    expect(comment.text).toBe("One.\n\nTwo.");
+  });
+});
+
+test("a match error with --json uses the usual error shape, with the hint for several matches", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = seedEditableText(dir, "dup dup");
+
+    const several = run("task", "edit", "APP-1", "--description", "x", "--replacing", "dup", "--json");
+    const none = run("task", "edit", "APP-1", "--description", "x", "--replacing", "absent", "--json");
+
+    expect(several.code).toBe(1);
+    expect(JSON.parse(several.stderr)).toEqual({
+      error: {
+        message:
+          "The text to replace matches 2 places in APP-1's description. Include more of the surrounding text so it matches one place. Use --all to replace every match.",
+      },
+    });
+    expect(JSON.parse(none.stderr)).toEqual({
+      error: { message: "The text to replace was not found in APP-1's description." },
+    });
+  });
+});
+
+test("the text-edit flags are usage errors without the text flag or in an invalid combination", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = seedEditableText(dir, "text");
+    const before = storedTextOf(dir);
+
+    const cases: Array<[Array<string>, string]> = [
+      [["task", "edit", "APP-1", "--append"], 'Option "--append" needs "--description"'],
+      [["project", "edit", "APP", "--name", "New", "--replacing", "a"], 'Option "--replacing" needs "--description"'],
+      [["label", "edit", "bug", "--color", "red", "--append"], 'Option "--append" needs "--description"'],
+      [["task", "comment", "edit", "APP-1#1", "--replacing", "a"], 'Option "--replacing" needs "--text"'],
+      [["task", "edit", "APP-1", "--description", "x", "--all"], 'Option "--all" needs "--replacing"'],
+      [["task", "comment", "edit", "APP-1#1", "--text", "x", "--all"], 'Option "--all" needs "--replacing"'],
+      [["task", "edit", "APP-1", "--description", "x", "--append", "--replacing", "t"], 'Option "--append" cannot be used with "--replacing"'],
+      [["task", "comment", "edit", "APP-1#1", "--text", "x", "--append", "--replacing", "t"], 'Option "--append" cannot be used with "--replacing"'],
+    ];
+
+    for (const [args, message] of cases) {
+      const result = run(...args);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toBe(`${message}\n`);
+    }
+    expect(storedTextOf(dir)).toEqual(before);
+    expect(JSON.parse(run("task", "edit", "APP-1", "--append", "--json").stderr)).toEqual({
+      error: { message: 'Option "--append" needs "--description"' },
+    });
+  });
+});
+
+test("core's value rules for the text-edit flags surface as plain messages", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = seedEditableText(dir, "text");
+
+    const blankAppend = run("task", "edit", "APP-1", "--description", " ", "--append");
+    const emptyFind = run("task", "edit", "APP-1", "--description", "x", "--replacing", "");
+    const blankComment = run("task", "comment", "edit", "APP-1#1", "--text", "", "--replacing", "text");
+
+    expect(blankAppend.stderr).toBe("Text to append cannot be blank\n");
+    expect(emptyFind.stderr).toBe("Text to find cannot be empty\n");
+    expect(blankComment.stderr).toBe("Comment text cannot be blank\n");
+  });
+});
+
+test("the text-edit flags are limited to the edit commands and listed in their help", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = seedEditableText(dir, "text");
+
+    expect(run("task", "create", "APP", "--title", "T", "--append").code).toBe(1);
+    expect(run("task", "comment", "create", "APP-1", "--text", "x", "--append").code).toBe(1);
+
+    for (const command of [["task", "edit"], ["project", "edit"], ["label", "edit"], ["task", "comment", "edit"]]) {
+      const help = run(...command, "--help").stdout;
+      expect(help).toContain("[--append|--replacing <old> [--all]]");
+      expect(help).toContain("--append");
+    }
+  });
+});

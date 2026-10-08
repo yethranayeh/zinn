@@ -13,6 +13,7 @@ import {
   validatePositionalCount,
   validateUniqueOptions,
 } from "../lib";
+import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit";
 import { formatRelations, presentRelations, relationRouter } from "./relation-router";
 import { commentRouter, formatComments, presentComments } from "./comment-router";
 import { currentActor } from "../actor";
@@ -259,6 +260,7 @@ Example: zinn task view MDR-1`,
         options: {
           title: { type: "string" },
           description: { type: "string" },
+          ...textEditOptions,
           priority: { type: "string" },
           "add-label": { type: "string", multiple: true },
           "remove-label": { type: "string", multiple: true },
@@ -278,9 +280,11 @@ Example: zinn task view MDR-1`,
 
       validateUniqueOptions(tokens, ["add-label", "remove-label"]);
 
+      const description = resolveTextEdit(values.description, values, "--description");
+
       const hasEditFlags =
         values.title !== undefined ||
-        values.description !== undefined ||
+        description !== undefined ||
         values.priority !== undefined ||
         values["add-label"] !== undefined ||
         values["remove-label"] !== undefined;
@@ -295,7 +299,7 @@ Example: zinn task view MDR-1`,
         {
           taskKey,
           title: values.title,
-          description: values.description,
+          description,
           priority: parsePriority(values.priority),
           addLabelNames: values["add-label"],
           removeLabelNames: values["remove-label"],
@@ -305,11 +309,13 @@ Example: zinn task view MDR-1`,
 
       output(presentTask(editedTask), formatTaskRow);
     },
-    help: `Usage: zinn task edit <task-key> [--title <text>] [--description <text>] [--priority {low|medium|high|urgent|none}] [--add-label <name>] [--remove-label <name>]
+    help: `Usage: zinn task edit <task-key> [--title <text>] [--description <text> ${textEditUsage}] [--priority {low|medium|high|urgent|none}] [--add-label <name>] [--remove-label <name>]
 
 Edit a task's title, description, priority, or label attachments.
 Use --priority none to clear priority.
 Provide at least one edit flag. Use --description "" to clear the description.
+
+${textEditHelp("--description")}
 
 Repeat --add-label or --remove-label for multiple existing labels.
 Label names are matched case-insensitively.
@@ -321,7 +327,9 @@ Titles cannot be blank.
 
 Use --title="--example" for text beginning with a dash.
 
-Example: zinn task edit MDR-1 --title "Meet the quarterly refinement quota"`,
+Examples:
+  zinn task edit MDR-1 --title "Meet the quarterly refinement quota"
+  zinn task edit MDR-1 --description "Bring waffles." --append`,
   },
   move: {
     run: (args) => {

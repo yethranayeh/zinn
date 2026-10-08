@@ -12,6 +12,7 @@ import {
   validatePositionalCount,
   validateUniqueOptions,
 } from "../lib";
+import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit";
 import { formatColumnTaskCounts } from "../presentation/column-presentation";
 import { formatDescriptionPreview } from "../presentation/description-presentation";
 import { formatCellSeparator, formatRows } from "../presentation/row-layout";
@@ -169,7 +170,7 @@ Example: zinn project view MDR`,
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
-        options: { name: { type: "string" }, description: { type: "string" } },
+        options: { name: { type: "string" }, description: { type: "string" }, ...textEditOptions },
         allowPositionals: true,
         strict: true,
         tokens: true,
@@ -185,22 +186,28 @@ Example: zinn project view MDR`,
 
       validateUniqueOptions(tokens);
 
-      if (values.name === undefined && values.description === undefined) {
+      const description = resolveTextEdit(values.description, values, "--description");
+
+      if (values.name === undefined && description === undefined) {
         quit("Provide an edit flag: --name or --description");
       }
 
       const editedProject = project.edit(
-        { projectKey, name: values.name, description: values.description },
+        { projectKey, name: values.name, description },
         currentActor(),
       );
       output(presentProject(editedProject), formatProject);
     },
-    help: `Usage: zinn project edit <project-key> [--name <text>] [--description <text>]
+    help: `Usage: zinn project edit <project-key> [--name <text>] [--description <text> ${textEditUsage}]
 
 Change the supplied project fields. At least one edit flag is required.
 Use --description "" to clear the description.
 
-Example: zinn project edit MDR --name "Macrodata Refinement"`,
+${textEditHelp("--description")}
+
+Examples:
+  zinn project edit MDR --name "Macrodata Refinement"
+  zinn project edit MDR --description "database" --replacing "board" --all`,
   },
   delete: {
     run: (args: Array<string>) => {

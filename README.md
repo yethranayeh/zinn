@@ -41,7 +41,7 @@ Run `zinn --help` to see every command, `zinn task --help` to browse task comman
 
 Running `zinn` without a command shows help.
 
-Edits change only supplied fields. Valid edits that leave values unchanged succeed without changing modification timestamps or recording activity. See the [editing conventions](packages/cli/README.md#editing-conventions) for shared rules, description clearing, and naming requirements.
+Edits change only supplied fields. Valid edits that leave values unchanged succeed without changing modification timestamps or recording activity. See the [editing conventions](packages/cli/README.md#editing-conventions) for shared rules, description clearing, changing part of a description, and naming requirements.
 
 ## Task search
 

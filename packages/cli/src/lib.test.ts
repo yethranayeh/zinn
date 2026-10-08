@@ -1,7 +1,7 @@
 import type { OpenPolicy } from "@zinn-dev/core";
 
 import { expect, test } from "bun:test";
-import { ReadOnlyDatabaseError, UnmarkedDatabaseError } from "@zinn-dev/core";
+import { ReadOnlyDatabaseError, TextEditMatchError, UnmarkedDatabaseError } from "@zinn-dev/core";
 
 import { failureMessage } from "./lib";
 
@@ -57,4 +57,14 @@ test("an unmarked database opened for reading refuses changes without pointing a
   const error = readOnlyError("unmarked");
 
   expect(failureMessage(error, FALLBACK)).toBe(error.message);
+});
+
+test("a text edit that matches several places points at --all, and one that matches none does not", () => {
+  const several = new TextEditMatchError(3, "ZINN-1's description");
+  const none = new TextEditMatchError(0, "ZINN-1's description");
+
+  expect(failureMessage(several, FALLBACK)).toBe(
+    `${several.message} Use --all to replace every match.`,
+  );
+  expect(failureMessage(none, FALLBACK)).toBe(none.message);
 });
