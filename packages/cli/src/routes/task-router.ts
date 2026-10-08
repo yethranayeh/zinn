@@ -245,7 +245,9 @@ Example: zinn task search "refinement quota" MDR --limit 5`,
         const relations = formatRelations(t.relations);
         const comments = formatComments(t.comments);
         const isArchived = t.status === "Archived";
-        const sections = [formatTaskList([t], { showsStatus: isArchived })];
+        const sections = [
+          formatTaskList([t], { showsStatus: isArchived, showsFullPriority: true }),
+        ];
 
         if (t.description != null) {
           sections.push(formatSection("Description", t.description, sectionOptions));

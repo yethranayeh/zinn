@@ -1299,7 +1299,7 @@ test("task view prints the task row followed by Description, Relations, and Comm
     expect(viewed.stderr).toBe("");
     expect(viewed.stdout).toBe(
       [
-        "MDR-1 | In Progress | H | Refine the numbers | bug, cli",
+        "MDR-1 | In Progress | High | Refine the numbers | bug, cli",
         "",
         SECTION_RULE,
         "Description:",
@@ -1387,7 +1387,7 @@ test("task view sizes section rules to the terminal even when color is disabled"
   });
 });
 
-test("task view of an archived task prints its task list --all row, with Archived after the key", () => {
+test("task view of an archived task shows Archived after the key and full priority", () => {
   withIsolatedZinnDir((testDir) => {
     const run = (...args: Array<string>) => runZinn(args, testDir);
     run("project", "create", "MDR");
@@ -1397,11 +1397,11 @@ test("task view of an archived task prints its task list --all row, with Archive
 
     const archivedRow = "MDR-1 | Archived | Backlog | H | Refine the numbers | bug";
     expect(run("task", "list", "MDR", "--all").stdout).toBe(`${archivedRow}\n`);
-    expect(run("task", "view", "MDR-1").stdout).toBe(`${archivedRow}\n\n${SECTION_RULE}\nDescription:\nShelved\n`);
+    expect(run("task", "view", "MDR-1").stdout).toBe(`MDR-1 | Archived | Backlog | High | Refine the numbers | bug\n\n${SECTION_RULE}\nDescription:\nShelved\n`);
 
     run("task", "unarchive", "MDR-1");
     expect(run("task", "view", "MDR-1").stdout).toBe(
-      `MDR-1 | Backlog | H | Refine the numbers | bug\n\n${SECTION_RULE}\nDescription:\nShelved\n`,
+      `MDR-1 | Backlog | High | Refine the numbers | bug\n\n${SECTION_RULE}\nDescription:\nShelved\n`,
     );
   });
 });
@@ -3608,7 +3608,7 @@ test("task view bolds its section headings and dims the separators and comment t
     expect(colored.stderr).toBe("");
     expect(colored.stdout).toBe(
       [
-        `MDR-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}H${DIM_SEPARATOR}Refine the numbers${DIM_SEPARATOR}\x1b[31mbug\x1b[39m, \x1b[34mcli\x1b[39m`,
+        `MDR-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}High${DIM_SEPARATOR}Refine the numbers${DIM_SEPARATOR}\x1b[31mbug\x1b[39m, \x1b[34mcli\x1b[39m`,
         "",
         dim(SECTION_RULE),
         bold("Description:"),
@@ -3629,7 +3629,7 @@ test("task view bolds its section headings and dims the separators and comment t
     );
 
     const piped = [
-      "MDR-1 | Backlog | H | Refine the numbers | bug, cli",
+      "MDR-1 | Backlog | High | Refine the numbers | bug, cli",
       "",
       SECTION_RULE,
       "Description:",
@@ -3755,6 +3755,7 @@ test("task text output names labels without color words when color is off, and J
     runZinn(["task", "create", "TAGS", "--title", "Tagged", "--priority", "urgent", "--label", "docs", "--label", "bug"], dir);
 
     const plainRow = "TAGS-1 | Backlog | U | Tagged | bug, docs\n";
+    const detailRow = "TAGS-1 | Backlog | Urgent | Tagged | bug, docs\n";
     const colorOff = { FORCE_COLOR: "0" };
     const noColor = { NO_COLOR: "1" };
 
@@ -3762,9 +3763,9 @@ test("task text output names labels without color words when color is off, and J
     expect(runZinn(["task", "list", "TAGS"], dir).stdout).toBe(plainRow);
     expect(runZinn(["task", "list", "TAGS"], dir, colorOff).stdout).toBe(plainRow);
     expect((await runZinnInTerminal(["task", "list", "TAGS"], dir, noColor)).output).toBe(plainRow);
-    expect(runZinn(["task", "view", "TAGS-1"], dir).stdout).toBe(plainRow);
-    expect(runZinn(["task", "view", "TAGS-1"], dir, colorOff).stdout).toBe(plainRow);
-    expect((await runZinnInTerminal(["task", "view", "TAGS-1"], dir, noColor)).output).toBe(plainRow);
+    expect(runZinn(["task", "view", "TAGS-1"], dir).stdout).toBe(detailRow);
+    expect(runZinn(["task", "view", "TAGS-1"], dir, colorOff).stdout).toBe(detailRow);
+    expect((await runZinnInTerminal(["task", "view", "TAGS-1"], dir, noColor)).output).toBe(detailRow);
 
     for (const args of [["task", "list", "TAGS", "--json"], ["task", "view", "TAGS-1", "--json"]]) {
       for (const env of [{}, { FORCE_COLOR: "1" }] as Array<Record<string, string>>) {
@@ -3878,10 +3879,14 @@ test("priority persists across CLI creation, editing, listing, clearing, and no-
     withTestDb(directory, (db) => {
       expect(db.query<{ priority: string | null }, []>("SELECT priority FROM task").get()!.priority).toBeNull();
     });
-    for (const priority of ["low", "medium", "high", "urgent"]) {
+    for (const [index, priority] of ["low", "medium", "high", "urgent"].entries()) {
       const created = runZinn(["task", "create", "PRI", "--title", priority, "--priority", priority], directory);
       expect(created.code).toBe(0);
       expect(created.stdout).toContain(`| Backlog | ${priority[0]!.toUpperCase()} | ${priority}`);
+      const taskKey = `PRI-${index + 2}`;
+      const viewed = runZinn(["task", "view", taskKey], directory);
+      expect(viewed.stdout).toBe(`${taskKey} | Backlog | ${priority[0]!.toUpperCase()}${priority.slice(1)} | ${priority}\n`);
+      expect(JSON.parse(runZinn(["task", "view", taskKey, "--json"], directory).stdout).priority).toBe(priority);
     }
     expect(runZinn(["task", "list", "PRI"], directory).stdout).toBe(
       [
@@ -3908,7 +3913,7 @@ test("priority persists across CLI creation, editing, listing, clearing, and no-
     expect(runZinn(["task", "list", "PRI"], directory).stdout).toContain(
       `PRI-1 | Backlog | H | Renamed`,
     );
-    expect(runZinn(["task", "view", "PRI-1"], directory).stdout).toBe("PRI-1 | Backlog | H | Renamed\n");
+    expect(runZinn(["task", "view", "PRI-1"], directory).stdout).toBe("PRI-1 | Backlog | High | Renamed\n");
     expect(JSON.parse(runZinn(["task", "list", "PRI", "--json"], directory).stdout)[0].priority).toBe(
       "high",
     );

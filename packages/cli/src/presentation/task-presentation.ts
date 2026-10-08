@@ -20,12 +20,13 @@ export type PresentedTask = {
 const EMPTY_CELL_MARKER = "-";
 const LABEL_NAME_SEPARATOR = ", ";
 
-function taskPriorityCell(priority: TaskPriority | null): RowCell {
+function taskPriorityCell(priority: TaskPriority | null, showsFullPriority: boolean): RowCell {
   if (priority == null) {
     return { text: EMPTY_CELL_MARKER, style: "dim" };
   }
 
-  return { text: priority[0]!.toUpperCase() };
+  const priorityInitial = priority[0]!.toUpperCase();
+  return { text: showsFullPriority ? `${priorityInitial}${priority.slice(1)}` : priorityInitial };
 }
 
 /**
@@ -60,7 +61,7 @@ export function formatTaskRow(presented: PresentedTask) {
 
 export function formatTaskList(
   presentedTasks: Array<PresentedTask>,
-  options: { showsStatus?: boolean } = {},
+  options: { showsStatus?: boolean; showsFullPriority?: boolean } = {},
 ) {
   const labelColorsByName = getLabelColorsByName();
 
@@ -79,7 +80,7 @@ export function formatTaskList(
         { text: presentedTask.key },
         ...statusCells,
         columnNameCell(presentedTask.column),
-        taskPriorityCell(presentedTask.priority),
+        taskPriorityCell(presentedTask.priority, options.showsFullPriority ?? false),
         { text: `${presentedTask.title}${labels}` },
       ];
     }),
