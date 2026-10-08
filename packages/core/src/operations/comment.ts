@@ -17,6 +17,7 @@ import {
   attachCommentKey,
   updateTaskSearchRecord,
   recordTaskActivity,
+  resolveCommentText,
 } from "./shared";
 
 function describeComment(comment: CommentWithKey) {
@@ -69,14 +70,15 @@ export const comment = {
 
     return writeTransaction(() => {
       const existing = getCommentByKey(props.commentKey);
+      const text = resolveCommentText(props.text, existing.text, `comment ${existing.key}`);
 
-      if (existing.text === props.text) {
+      if (existing.text === text) {
         return existing;
       }
 
       const now = Date.now();
       const editedComment = {
-        ...dbComment.update({ id: existing.id, text: props.text, updated_at: now })!,
+        ...dbComment.update({ id: existing.id, text, updated_at: now })!,
         key: existing.key,
       };
       updateTaskSearchRecord(existing.task_id);

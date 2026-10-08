@@ -42,6 +42,7 @@ import {
   describeRelation,
   findByName,
   getInsertionIndex,
+  resolveDescription,
 } from "./shared";
 
 function getSearchMatchExpression(query: string) {
@@ -328,8 +329,16 @@ export const task = {
       const labelsToRemove = removals.filter((label) => existingLabelIds.has(label.id));
       const areLabelsUnchanged = labelsToAdd.length === 0 && labelsToRemove.length === 0;
       const isTitleUnchanged = props.title === undefined || props.title === existing.title;
+      const description =
+        props.description === undefined
+          ? undefined
+          : resolveDescription(
+              props.description,
+              existing.description,
+              `${existing.key}'s description`,
+            );
       const isDescriptionUnchanged =
-        props.description === undefined || props.description === existing.description;
+        description === undefined || description === existing.description;
 
       const isPriorityUnchanged =
         props.priority === undefined || props.priority === existing.priority;
@@ -352,7 +361,7 @@ export const task = {
       }
 
       if (!isDescriptionUnchanged) {
-        changes.description = [existing.description, props.description];
+        changes.description = [existing.description, description];
       }
 
       if (!isPriorityUnchanged) {
@@ -377,7 +386,7 @@ export const task = {
       const editedTask = dbTask.update({
         id: existing.id,
         title: props.title,
-        description: props.description,
+        description,
         priority: props.priority,
         updated_at: now,
       })!;

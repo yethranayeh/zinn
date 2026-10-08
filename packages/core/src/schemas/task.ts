@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { labelNameSchema } from "./label";
-import { descriptionSchema } from "./description";
+import { descriptionSchema, descriptionEditSchema } from "./description";
 
 export const positiveIntegerPattern = "[1-9]\\d{0,14}";
 
@@ -25,7 +25,7 @@ export const taskEditSchema = z
   .strictObject({
     taskKey: z.string(),
     title: taskTitleSchema.optional(),
-    description: descriptionSchema.optional(),
+    description: descriptionEditSchema.optional(),
     priority: taskPrioritySchema.nullable().optional(),
     addLabelNames: z.array(labelNameSchema).optional(),
     removeLabelNames: z.array(labelNameSchema).optional(),

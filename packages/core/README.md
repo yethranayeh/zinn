@@ -39,6 +39,17 @@ Projects, tasks, and labels store `description: string | null`. If a description
 
 Explicit `null`, `""` or whitespace-only input clears the description. Clearing an already absent description follows the [editing conventions](#editing-conventions). Public create/edit schemas return normalized values, and their input types allow descriptions to be omitted.
 
+## Partial text edits
+
+On edits, the `description` of a task, project or label and the `text` of a comment take either the full text or one edit object, applied to the stored text inside the edit's write transaction:
+
+- `{ append: text }` adds `text` as a new paragraph. The existing text's trailing line breaks are dropped and one blank line separates the two. Appending to an absent description sets it to `text`. `text` cannot be blank.
+- `{ find, replace, all? }` replaces the exact, case-sensitive text `find` (not a pattern, with no whitespace or line-ending folding). `find` cannot be empty and `replace` may be `""` to delete the match. Without `all`, `find` must match exactly one place; with `all`, every non-overlapping match is replaced. No match, including on an absent description, fails the edit.
+
+Unknown fields, or `append` together with `find`, are rejected. The given text is a fragment, so blank handling applies to the result: a description that ends up blank becomes `null`, and a comment that ends up blank is rejected. A result equal to the current text follows the [editing conventions](#editing-conventions); activity records the full text before and after.
+
+A `find` that matches no place or several places throws `TextEditMatchError` with `matchCount` and `target` (what was being edited, such as `APP-1's description`), leaving the text unchanged.
+
 ## Task results
 
 Though the tasks do not natively carry thier `key` value in a column, public task reads and mutations return tasks with a derived `key`, like `APP-1`.

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { descriptionSchema } from "./description";
+import { descriptionSchema, descriptionEditSchema } from "./description";
 
 const nameMessage = "Project name cannot be blank or contain line breaks or control characters";
 export const invalidNameCharRegex = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
@@ -25,7 +25,7 @@ export const projectEditSchema = z
   .strictObject({
     projectKey: z.string(),
     name: projectNameSchema.optional(),
-    description: descriptionSchema.optional(),
+    description: descriptionEditSchema.optional(),
   })
   .refine(
     (value) => value.name !== undefined || value.description !== undefined,

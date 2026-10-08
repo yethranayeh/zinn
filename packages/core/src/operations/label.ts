@@ -11,7 +11,13 @@ import * as dbLabel from "../db/label";
 import { validateTaskInput } from "../schemas/task";
 import { actorSchema } from "../schemas/actor";
 
-import { findByName, resolveLabels, recordActivity, recordTaskActivity } from "./shared";
+import {
+  findByName,
+  resolveLabels,
+  resolveDescription,
+  recordActivity,
+  recordTaskActivity,
+} from "./shared";
 
 function findLabelByName(name: string) {
   return findByName(dbLabel.getAll(), name);
@@ -56,7 +62,14 @@ export const label = {
     return writeTransaction(() => {
       const match = resolveLabels([props.labelName])[0]!;
       const name = props.name ?? match.name;
-      const description = props.description === undefined ? match.description : props.description;
+      const description =
+        props.description === undefined
+          ? match.description
+          : resolveDescription(
+              props.description,
+              match.description,
+              `label ${match.name}'s description`,
+            );
       const color = props.color ?? match.color;
 
       const isUnchanged =

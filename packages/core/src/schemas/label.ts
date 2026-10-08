@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { descriptionSchema } from "./description";
+import { descriptionSchema, descriptionEditSchema } from "./description";
 
 export const labelNameSchema = z.string().trim().min(1, "Label name cannot be blank");
 export const labelColorSchema = z.enum([
@@ -21,7 +21,7 @@ export const labelEditSchema = z
   .strictObject({
     labelName: labelNameSchema,
     name: labelNameSchema.optional(),
-    description: descriptionSchema.optional(),
+    description: descriptionEditSchema.optional(),
     color: labelColorSchema.optional(),
   })
   .refine(

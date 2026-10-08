@@ -10,7 +10,11 @@ import type {
   TaskWithKey,
 } from "../types";
 import type { Actor } from "../schemas/actor";
+import type { TextEdit } from "../schemas/text-edit";
 
+import { descriptionSchema } from "../schemas/description";
+import { commentTextSchema } from "../schemas/comment";
+import { validateTaskInput } from "../schemas/task";
 import { projectKeyPattern } from "../schemas/project";
 import { positiveIntegerPattern } from "../schemas/task";
 import { assembleSearchEntry } from "../search-entry";
@@ -238,4 +242,64 @@ export function describeRelation(
     source: { id: source.id, key: source.key },
     target: { id: target.id, key: target.key },
   };
+}
+
+/** Thrown when the text to replace does not match exactly one place, so nothing was changed. */
+export class TextEditMatchError extends Error {
+  override name = "TextEditMatchError";
+  readonly matchCount: number;
+  readonly target: string;
+
+  constructor(matchCount: number, target: string) {
+    super(
+      matchCount === 0
+        ? `The text to replace was not found in ${target}.`
+        : `The text to replace matches ${matchCount} places in ${target}. Include more of the surrounding text so it matches one place.`,
+    );
+    this.matchCount = matchCount;
+    this.target = target;
+  }
+}
+
+const PARAGRAPH_BREAK = "\n\n";
+const trailingLineBreaksRegex = /[\r\n]+$/;
+
+/** Applies one edit to the stored text. `target` names the text in a match error. */
+export function applyTextEdit(current: string | null, edit: TextEdit, target: string) {
+  if ("append" in edit) {
+    const existingText = (current ?? "").replace(trailingLineBreaksRegex, "");
+    return existingText.length === 0 ? edit.append : existingText + PARAGRAPH_BREAK + edit.append;
+  }
+
+  // Splitting matches the text literally, so `$` patterns in the replacement stay as written.
+  const parts = (current ?? "").split(edit.find);
+  const matchCount = parts.length - 1;
+  const isAmbiguous = matchCount > 1 && edit.all !== true;
+  if (matchCount === 0 || isAmbiguous) {
+    throw new TextEditMatchError(matchCount, target);
+  }
+
+  return parts.join(edit.replace);
+}
+
+/** The description that an edit input leads to. An edit object is applied to the current one. */
+export function resolveDescription(
+  input: string | null | TextEdit,
+  current: string | null,
+  target: string,
+) {
+  if (input === null || typeof input === "string") {
+    return input;
+  }
+
+  return descriptionSchema.parse(applyTextEdit(current, input, target));
+}
+
+/** The comment text an edit input leads to; an edit object is applied to the current text. */
+export function resolveCommentText(input: string | TextEdit, current: string, target: string) {
+  if (typeof input === "string") {
+    return input;
+  }
+
+  return validateTaskInput(commentTextSchema, applyTextEdit(current, input, target));
 }

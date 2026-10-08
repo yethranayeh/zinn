@@ -33,6 +33,7 @@ export type {
   CommentDeleteInput,
   CommentEditInput,
 } from "./src/schemas/comment";
+export type { TextEdit } from "./src/schemas/text-edit";
 export type { BackupCreateInput, BackupRestoreInput } from "./src/operations/backup";
 export type { MigrateResult } from "./src/migrations/migrate";
 export type { RestoreResult } from "./src/migrations/restore";
@@ -58,6 +59,7 @@ export {
   searchLimitMessage,
 } from "./src/schemas/task";
 export { relationCreateSchema, relationDeleteSchema } from "./src/schemas/relation";
+export { textEditSchema } from "./src/schemas/text-edit";
 export { actorSchema } from "./src/schemas/actor";
 export { commentCreateSchema, commentDeleteSchema, commentEditSchema } from "./src/schemas/comment";
 
@@ -70,6 +72,7 @@ export { label } from "./src/operations/label";
 export { backup } from "./src/operations/backup";
 export { migrate } from "./src/operations/migrate";
 export { reindex } from "./src/operations/reindex";
+export { TextEditMatchError } from "./src/operations/shared";
 export { MigrationRefusedError } from "./src/migrations/migrate";
 export { RestoreRefusedError } from "./src/migrations/restore";
 export { assertWritable, configureDatabase } from "./src/db";

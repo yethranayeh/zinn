@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { fullTextOrPartialEdit } from "./text-edit";
+
 const commentTextMessage = "Comment text cannot be blank";
 
 export const commentTextSchema = z
@@ -13,7 +15,7 @@ export const commentCreateSchema = z.strictObject({
 
 export const commentEditSchema = z.strictObject({
   commentKey: z.string(),
-  text: commentTextSchema,
+  text: fullTextOrPartialEdit(commentTextSchema),
 });
 
 export const commentDeleteSchema = z.strictObject({ commentKey: z.string() });

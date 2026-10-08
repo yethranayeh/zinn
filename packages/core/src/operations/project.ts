@@ -14,7 +14,7 @@ import * as dbTask from "../db/task";
 import * as dbSearch from "../db/search";
 
 import { standardizeProjectKey } from "../lib";
-import { attachTaskKey, recordActivity } from "./shared";
+import { attachTaskKey, recordActivity, resolveDescription } from "./shared";
 
 export const project = {
   getById: dbProject.getById,
@@ -84,7 +84,13 @@ export const project = {
 
       const name = props.name ?? projectMatch.name;
       const description =
-        props.description === undefined ? projectMatch.description : props.description;
+        props.description === undefined
+          ? projectMatch.description
+          : resolveDescription(
+              props.description,
+              projectMatch.description,
+              `project ${projectMatch.key}'s description`,
+            );
       const isUnchanged = name === projectMatch.name && description === projectMatch.description;
       if (isUnchanged) {
         return projectMatch;
