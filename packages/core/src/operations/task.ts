@@ -32,6 +32,7 @@ import {
 } from "../schemas/task";
 import { actorSchema } from "../schemas/actor";
 
+import { relation } from "./relation";
 import {
   getTaskByKey,
   findTaskByExactKey,
@@ -67,6 +68,20 @@ function filterTasksByLabels<T extends Pick<Task, "id">>(
   );
 
   return tasks.filter((taskMatch) => taskIdsByLabel.every((taskIds) => taskIds.has(taskMatch.id)));
+}
+
+type NewTaskRelation = NonNullable<TaskCreateInput["relations"]>[number];
+
+/** Keeps one request per relation type and target task, so a repeated target counts once. */
+function uniqueRelationRequests(requests: Array<NewTaskRelation>) {
+  const uniqueRequests = new Map<string, NewTaskRelation>();
+
+  for (const request of requests) {
+    const target = getTaskByKey(request.targetTaskKey);
+    uniqueRequests.set(`${request.relation_type}:${target.id}`, request);
+  }
+
+  return [...uniqueRequests.values()];
 }
 
 type TaskOrderProps =
@@ -239,7 +254,13 @@ export const task = {
         createdAt: now,
       });
 
-      return attachTaskKey(createdTask, project.key);
+      const createdTaskWithKey = attachTaskKey(createdTask, project.key);
+
+      for (const request of uniqueRelationRequests(task.relations ?? [])) {
+        relation.create({ sourceTaskKey: createdTaskWithKey.key, ...request }, validActor);
+      }
+
+      return createdTaskWithKey;
     });
   },
   getAll: (input: TaskListInput = {}) => {

@@ -849,6 +849,123 @@ test("task create --column rejects an unknown column and creates nothing", () =>
   });
 });
 
+test("task create relation flags relate the new task to existing tasks, from the new task's side", () => {
+  withIsolatedZinnDir((testDir) => {
+    const run = (...args: string[]) => runZinn(args, testDir);
+    run("project", "create", "APP", "--name", "App");
+    run("project", "create", "OTHER", "--name", "Other");
+    for (const title of ["Epic", "Prerequisite", "Sibling", "Original"]) {
+      run("task", "create", "APP", "--title", title);
+    }
+    run("task", "create", "OTHER", "--title", "Elsewhere");
+
+    const created = run(
+      "task", "create", "APP", "--title", "Child",
+      "--parent", "app-1", "--depends-on", "APP-2", "--depends-on", "OTHER-1",
+      "--duplicate-of", "APP-4", "--related", "APP-3",
+    );
+
+    expect(created.code).toBe(0);
+    expect(created.stdout).toBe("APP-5 | Backlog | - | Child\n");
+
+    const childRelations = run("task", "relation", "list", "APP-5").stdout;
+    expect(childRelations).toMatch(/Parent\s+\|\s+APP-1\s+\|\s+Epic/);
+    expect(childRelations).toMatch(/Depends on\s+\|\s+APP-2\s+\|\s+Prerequisite/);
+    expect(childRelations).toMatch(/Depends on\s+\|\s+OTHER-1\s+\|\s+Elsewhere/);
+    expect(childRelations).toMatch(/Duplicate of\s+\|\s+APP-4\s+\|\s+Original/);
+    expect(childRelations).toMatch(/Related to\s+\|\s+APP-3\s+\|\s+Sibling/);
+    expect(run("task", "relation", "list", "APP-1").stdout).toMatch(/Subtask\s+\|\s+APP-5\s+\|\s+Child/);
+    expect(run("task", "relation", "list", "APP-2").stdout).toMatch(/Depended on by\s+\|\s+APP-5\s+\|\s+Child/);
+    expect(run("task", "relation", "list", "APP-4").stdout).toMatch(/Duplicated by\s+\|\s+APP-5\s+\|\s+Child/);
+    expect(run("task", "view", "APP-5").stdout).toMatch(/Parent\s+\|\s+APP-1\s+\|\s+Epic/);
+
+    withTestDb(testDir, (db) => {
+      const actionsOf = (key: string) =>
+        db
+          .query<{ action: string }, [string]>(
+            `SELECT activity.action FROM activity
+             JOIN task ON task.id = activity.entity_id
+             JOIN project ON project.id = task.project_id
+             WHERE activity.entity_type = 'task' AND project.key || '-' || task.number = ?
+             ORDER BY activity.id`,
+          )
+          .all(key)
+          .map((row) => row.action);
+
+      expect(actionsOf("APP-5")).toEqual([
+        "create", "relation_create", "relation_create", "relation_create", "relation_create", "relation_create",
+      ]);
+      expect(actionsOf("APP-1")).toEqual(["create", "relation_create"]);
+      expect(actionsOf("OTHER-1")).toEqual(["create", "relation_create"]);
+    });
+  });
+});
+
+test("task create counts a repeated relation target once and keeps different relation types to it", () => {
+  withIsolatedZinnDir((testDir) => {
+    const run = (...args: string[]) => runZinn(args, testDir);
+    run("project", "create", "APP", "--name", "App");
+    run("task", "create", "APP", "--title", "Target");
+
+    const created = run(
+      "task", "create", "APP", "--title", "Source",
+      "--depends-on", "APP-1", "--depends-on", "app-1", "--related", "APP-1", "--related", "APP-1",
+    );
+    const relations = run("task", "relation", "list", "APP-2").stdout.trimEnd().split("\n");
+
+    expect(created.code).toBe(0);
+    expect(relations).toHaveLength(2);
+    expect(relations[0]).toMatch(/Depends on\s+\|\s+APP-1\s+\|\s+Target/);
+    expect(relations[1]).toMatch(/Related to\s+\|\s+APP-1\s+\|\s+Target/);
+  });
+});
+
+test("task create rejects a missing, malformed or repeated relation target and creates nothing", () => {
+  withIsolatedZinnDir((testDir) => {
+    const run = (...args: string[]) => runZinn(args, testDir);
+    run("project", "create", "APP", "--name", "App");
+    run("task", "create", "APP", "--title", "Epic");
+    run("task", "create", "APP", "--title", "Other epic");
+    const countRows = () =>
+      withTestDb(testDir, (db) =>
+        db
+          .query(
+            "SELECT (SELECT COUNT(*) FROM task) AS tasks, (SELECT COUNT(*) FROM activity) AS activities, (SELECT COUNT(*) FROM task_relations) AS relations",
+          )
+          .get(),
+      );
+    const before = countRows();
+
+    const missing = run("task", "create", "APP", "--title", "Lost", "--parent", "APP-1", "--depends-on", "APP-99");
+    const missingProject = run("task", "create", "APP", "--title", "Lost", "--related", "NOPE-1");
+    const malformed = run("task", "create", "APP", "--title", "Lost", "--depends-on", "APP-1", "--related", "nope");
+    const secondParent = run("task", "create", "APP", "--title", "Lost", "--parent", "APP-1", "--parent", "APP-2");
+    const secondDuplicate = run("task", "create", "APP", "--title", "Lost", "--duplicate-of", "APP-1", "--duplicate-of", "APP-2");
+
+    expect(missing.code).toBe(1);
+    expect(missing.stderr).toContain('Task "APP-99" does not exist');
+    expect(missingProject.code).toBe(1);
+    expect(missingProject.stderr).toContain('Project with key "NOPE" does not exist');
+    expect(malformed.code).toBe(1);
+    expect(malformed.stderr).toContain('Invalid task key "nope"');
+    expect(secondParent.code).toBe(1);
+    expect(secondParent.stderr).toContain('Option "--parent" can only be specified once');
+    expect(secondDuplicate.code).toBe(1);
+    expect(secondDuplicate.stderr).toContain('Option "--duplicate-of" can only be specified once');
+    expect(countRows()).toEqual(before);
+    expect(run("task", "create", "APP", "--title", "Real").stdout).toBe("APP-3 | Backlog | - | Real\n");
+  });
+});
+
+test("task create help lists the relation flags", () => {
+  const help = runZinn(["task", "create", "--help"]);
+
+  expect(help.code).toBe(0);
+  for (const flag of ["--parent <task-key>", "--depends-on <task-key>", "--duplicate-of <task-key>", "--related <task-key>"]) {
+    expect(help.stdout).toContain(flag);
+  }
+});
+
 test("task ordering starts independently in each column", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "ALPHA", "--name", "Alpha"], testDir);

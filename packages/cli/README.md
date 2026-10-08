@@ -268,6 +268,12 @@ Use `zinn task relation create APP-2 APP-1 --type subtask` to make APP-2 a child
 
 Remove the existing subtask relation before assigning a different parent. Moving or archiving a parent does not change its children, and deleting a parent removes its child relations while retaining child task data.
 
+`task create` can relate the new task with `--parent`, `--depends-on`, `--duplicate-of` and `--related`. Repeat `--depends-on` and `--related` to relate several tasks:
+
+```sh
+zinn task create MDR --title "Sort the files" --parent MDR-1 --depends-on MDR-2
+```
+
 Remove a relation with `zinn task relation delete MDR-1 MDR-2 --type dependency`, using its original direction for `dependency`, `duplicate`, and `subtask`. For `related`, order does not matter.
 Note that a deletion happens _without_ confirmation.
 

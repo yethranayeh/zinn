@@ -1,4 +1,4 @@
-import type { TaskChange } from "@zinn-dev/core";
+import type { TaskChange, TaskRelationType } from "@zinn-dev/core";
 import type { RouteDef } from "../types";
 import type { PresentedTask } from "../presentation/task-presentation";
 
@@ -36,6 +36,10 @@ export const taskRouter = {
           priority: { type: "string" },
           label: { type: "string", multiple: true },
           column: { type: "string" },
+          parent: { type: "string" },
+          "depends-on": { type: "string", multiple: true },
+          "duplicate-of": { type: "string" },
+          related: { type: "string", multiple: true },
         },
         allowPositionals: true,
         strict: true,
@@ -53,7 +57,7 @@ export const taskRouter = {
       if (values.title === undefined) {
         quit("A task needs at least a title: use --title");
       }
-      validateUniqueOptions(tokens, ["label"]);
+      validateUniqueOptions(tokens, ["label", "depends-on", "related"]);
       const projectMatch = project.getByKey(projectKey);
       if (projectMatch == null) {
         quit(`Project with key "${project.standardizeKey(projectKey)}" does not exist`);
@@ -66,12 +70,13 @@ export const taskRouter = {
           priority: parsePriority(values.priority),
           labelNames: values.label,
           columnName: values.column,
+          relations: parseNewTaskRelations(values),
         },
         currentActor(),
       );
       output(presentTask(createdTask), formatTaskRow);
     },
-    help: `Usage: zinn task create <project-key> --title <text> [--description <text>] [--priority {low|medium|high|urgent|none}] [--label <name>] [--column <name>]
+    help: `Usage: zinn task create <project-key> --title <text> [--description <text>] [--priority {low|medium|high|urgent|none}] [--label <name>] [--column <name>] [--parent <task-key>] [--depends-on <task-key>] [--duplicate-of <task-key>] [--related <task-key>]
 
 Create a task at the bottom of a column. Without --column, it starts in the project's first column.
 Column names are matched case-insensitively. An unknown column is an error and creates nothing.
@@ -80,9 +85,15 @@ Repeat --label to attach multiple existing labels. Unknown labels are errors.
 Label names are matched case-insensitively.
 Titles cannot be blank. Use --title="--example" for text beginning with a dash.
 
+Relations are set from the new task's perspective: it becomes a subtask of --parent, depends on --depends-on,
+is a duplicate of --duplicate-of, and is related to --related.
+Repeat --depends-on and --related to name several tasks.
+A target task that does not exist causes an error, and task creation is aborted.
+
 Examples:
   zinn task create MDR --title "Refine the numbers" --description "Meet the quarterly quota" --label urgent
-  zinn task create MDR --title "Review the numbers" --column "In Progress"`,
+  zinn task create MDR --title "Review the numbers" --column "In Progress"
+  zinn task create MDR --title "Sort the files" --parent MDR-1 --depends-on MDR-2`,
   },
   list: {
     run: (args) => {
@@ -574,6 +585,27 @@ function parseTaskLabelArgs(args: string[]) {
     quit("Provide a task key and at least one label name");
   }
   return { taskKey: positionals[0]!, labelNames: positionals.slice(1) };
+}
+
+type NewTaskRelationFlags = {
+  parent?: string;
+  "depends-on"?: Array<string>;
+  "duplicate-of"?: string;
+  related?: Array<string>;
+};
+
+// The new task is the source of each relation, so a flag names the type from its point of view.
+function parseNewTaskRelations(flags: NewTaskRelationFlags) {
+  const targetsByType: Array<[TaskRelationType, Array<string>]> = [
+    ["subtask", flags.parent === undefined ? [] : [flags.parent]],
+    ["dependency", flags["depends-on"] ?? []],
+    ["duplicate", flags["duplicate-of"] === undefined ? [] : [flags["duplicate-of"]]],
+    ["related", flags.related ?? []],
+  ];
+
+  return targetsByType.flatMap(([relation_type, targetTaskKeys]) =>
+    targetTaskKeys.map((targetTaskKey) => ({ relation_type, targetTaskKey })),
+  );
 }
 
 function parsePriority(value: string | undefined) {

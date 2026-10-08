@@ -167,3 +167,172 @@ test("task create places a task last in the named column and a bad column saves 
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("task create saves requested relations with the new task as source and records them like relation create", () => {
+  const directory = mkdtempSync(join(tmpdir(), "zinn-task-results-"));
+  try {
+    const result = Bun.spawnSync([process.execPath, "--eval", `
+      import { strict as assert } from "node:assert";
+      import { project, task, relation } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
+      const actor = { name: "Test Human", email: null, kind: "human" };
+      const app = project.create({ key: "APP", name: "App" }, actor);
+      const other = project.create({ key: "OTHER", name: "Other" }, actor);
+      task.create({ project_id: app.id, title: "Parent", description: null }, actor);
+      task.create({ project_id: app.id, title: "Needed", description: null }, actor);
+      task.create({ project_id: other.id, title: "Original", description: null }, actor);
+      const linked = (key) => relation.getAll(key, { include: { tasks: true } })
+        .map((r) => [r.relation_type, r.source.key, r.target.key])
+        .sort();
+
+      const created = task.create({
+        project_id: app.id,
+        title: "Child",
+        description: null,
+        relations: [
+          { relation_type: "subtask", targetTaskKey: "APP-1" },
+          { relation_type: "dependency", targetTaskKey: "app-2" },
+          { relation_type: "duplicate", targetTaskKey: "OTHER-1" },
+          { relation_type: "related", targetTaskKey: "APP-2" },
+        ],
+      }, actor);
+      assert.equal(created.key, "APP-3");
+      assert.deepEqual(linked("APP-3"), [
+        ["dependency", "APP-3", "APP-2"],
+        ["duplicate", "APP-3", "OTHER-1"],
+        ["related", "APP-2", "APP-3"],
+        ["subtask", "APP-3", "APP-1"],
+      ]);
+
+      const childActions = task.activity("APP-3").map((row) => row.action);
+      assert.deepEqual(childActions, ["create", "relation_create", "relation_create", "relation_create", "relation_create"]);
+      assert.deepEqual(Object.keys(task.activity("APP-3")[0].changes), ["title", "description", "priority", "column", "labels"]);
+      const parentRow = task.activity("APP-1").at(-1);
+      assert.equal(parentRow.action, "relation_create");
+      assert.deepEqual(parentRow.changes, task.activity("APP-3")[1].changes);
+      assert.equal(parentRow.changes.type, "subtask");
+      assert.equal(parentRow.changes.source.key, "APP-3");
+      assert.equal(task.activity("OTHER-1").at(-1).action, "relation_create");
+
+      const plain = task.create({ project_id: app.id, title: "Plain", description: null }, actor);
+      assert.deepEqual(relation.getAll(plain.key), []);
+      assert.deepEqual(task.activity(plain.key).map((row) => row.action), ["create"]);
+    `], { env: { ...process.env, ZINN_DIR: directory } });
+    expect(result.stderr.toString()).toBe("");
+    expect(result.exitCode).toBe(0);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("task create ignores a repeated relation target but keeps different relation types to one task", () => {
+  const directory = mkdtempSync(join(tmpdir(), "zinn-task-results-"));
+  try {
+    const result = Bun.spawnSync([process.execPath, "--eval", `
+      import { strict as assert } from "node:assert";
+      import { project, task, relation } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
+      const actor = { name: "Test Human", email: null, kind: "human" };
+      const app = project.create({ key: "APP", name: "App" }, actor);
+      task.create({ project_id: app.id, title: "First", description: null }, actor);
+      task.create({ project_id: app.id, title: "Second", description: null }, actor);
+
+      const created = task.create({
+        project_id: app.id,
+        title: "Third",
+        description: null,
+        relations: [
+          { relation_type: "dependency", targetTaskKey: "APP-1" },
+          { relation_type: "dependency", targetTaskKey: "APP-1" },
+          { relation_type: "dependency", targetTaskKey: "app-1" },
+          { relation_type: "related", targetTaskKey: "APP-2" },
+          { relation_type: "related", targetTaskKey: "APP-2" },
+          { relation_type: "dependency", targetTaskKey: "APP-2" },
+        ],
+      }, actor);
+
+      const stored = relation.getAll(created.key, { include: { tasks: true } })
+        .map((r) => [r.relation_type, r.source.key, r.target.key])
+        .sort();
+      assert.deepEqual(stored, [
+        ["dependency", "APP-3", "APP-1"],
+        ["dependency", "APP-3", "APP-2"],
+        ["related", "APP-2", "APP-3"],
+      ]);
+      assert.deepEqual(
+        task.activity("APP-3").map((row) => row.action),
+        ["create", "relation_create", "relation_create", "relation_create"],
+      );
+    `], { env: { ...process.env, ZINN_DIR: directory } });
+    expect(result.stderr.toString()).toBe("");
+    expect(result.exitCode).toBe(0);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("task create with a bad relation target or a broken relation rule saves nothing and uses no task number", () => {
+  const directory = mkdtempSync(join(tmpdir(), "zinn-task-results-"));
+  try {
+    const result = Bun.spawnSync([process.execPath, "--eval", `
+      import { strict as assert } from "node:assert";
+      import { project, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
+      import { getDb } from ${JSON.stringify(new URL("./db.ts", import.meta.url).pathname)};
+      const actor = { name: "Test Human", email: null, kind: "human" };
+      const app = project.create({ key: "APP", name: "App" }, actor);
+      task.create({ project_id: app.id, title: "First", description: null }, actor);
+      task.create({ project_id: app.id, title: "Second", description: null }, actor);
+      const count = (table) => getDb().query("SELECT COUNT(*) AS n FROM " + table).get().n;
+      const snapshot = () => ({
+        tasks: count("task"),
+        activity: count("activity"),
+        relations: count("task_relations"),
+        taskCount: project.getById(app.id).task_count,
+        firstActivity: task.activity("APP-1").length,
+        secondActivity: task.activity("APP-2").length,
+      });
+      const before = snapshot();
+      const createWith = (relations) => () => task.create({ project_id: app.id, title: "Lost", description: null, relations }, actor);
+
+      // A valid relation ahead of the bad one is rolled back with everything else.
+      assert.throws(
+        createWith([
+          { relation_type: "subtask", targetTaskKey: "APP-1" },
+          { relation_type: "dependency", targetTaskKey: "APP-99" },
+        ]),
+        /Task "APP-99" does not exist/,
+      );
+      assert.deepEqual(snapshot(), before);
+
+      assert.throws(
+        createWith([
+          { relation_type: "related", targetTaskKey: "APP-2" },
+          { relation_type: "dependency", targetTaskKey: "not a key" },
+        ]),
+        /Invalid task key "not a key"/,
+      );
+      assert.deepEqual(snapshot(), before);
+
+      assert.throws(createWith([{ relation_type: "related", targetTaskKey: "NOPE-1" }]), /Project with key "NOPE" does not exist/);
+      assert.deepEqual(snapshot(), before);
+
+      // The relation rules of relation create apply: a task has one parent.
+      assert.throws(
+        createWith([
+          { relation_type: "subtask", targetTaskKey: "APP-1" },
+          { relation_type: "subtask", targetTaskKey: "APP-2" },
+        ]),
+        /already has a parent/,
+      );
+      assert.deepEqual(snapshot(), before);
+
+      assert.throws(createWith([{ relation_type: "bogus", targetTaskKey: "APP-1" }]));
+      assert.deepEqual(snapshot(), before);
+
+      const next = task.create({ project_id: app.id, title: "Real", description: null }, actor);
+      assert.equal(next.key, "APP-3");
+    `], { env: { ...process.env, ZINN_DIR: directory } });
+    expect(result.stderr.toString()).toBe("");
+    expect(result.exitCode).toBe(0);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

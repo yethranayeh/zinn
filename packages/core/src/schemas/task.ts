@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { labelNameSchema } from "./label";
 import { descriptionSchema, descriptionEditSchema } from "./description";
+import { relationTypeSchema } from "./relation";
 
 export const positiveIntegerPattern = "[1-9]\\d{0,14}";
 
@@ -20,6 +21,10 @@ export const taskCreateSchema = z.strictObject({
   priority: taskPrioritySchema.nullable().optional(),
   labelNames: z.array(labelNameSchema).optional(),
   columnName: z.string().optional(),
+  // The new task is the source and targetTaskKey the target, as in relation create.
+  relations: z
+    .array(z.strictObject({ relation_type: relationTypeSchema, targetTaskKey: z.string() }))
+    .optional(),
 });
 
 export const taskEditSchema = z
