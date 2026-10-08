@@ -88,26 +88,49 @@ Comments also appear in `task view`. See the [CLI documentation](packages/cli/RE
 
 ## Data location
 
-Zinn stores its shared local database at `~/.zinn/data/zinn.sqlite`. Every Zinn project on your machine uses that database by default, regardless of the current working directory.
+Zinn stores its shared local database at `~/.zinn/data/zinn.sqlite`. Every Zinn project on your machine uses that database unless `ZINN_DIR` or a settings file points elsewhere.
 
-Set `ZINN_DIR` to keep the settings and database under another existing parent directory. For example:
+Set `ZINN_DIR` to use another Zinn folder, with the same layout as `~/.zinn`. For example:
 
 ```sh
 mkdir -p "./.zinn-local"
 ZINN_DIR="./.zinn-local" zinn project list
 ```
 
-Use the same `ZINN_DIR` value on later commands to access that database.
+Use the same `ZINN_DIR` value on later commands to access that database. A relative `ZINN_DIR` stays relative to the current folder.
+
+### Settings files
+
+A settings file can choose the Zinn folder without `ZINN_DIR`:
+
+- `~/.zinn/settings.json` is the global file. When `ZINN_DIR` is set, it is `settings.json` in that folder.
+- `zinn.local.json` is the per-codebase file. Zinn uses the nearest one, from the current folder up to the Git root, or only the current folder outside a Git repository.
+
+`zinn.local.json` is personal: it holds paths from one machine, so it is not meant to be committed. Zinn reads it whether or not git ignores it. It is merged over the global file, field by field. A missing file is fine, and Zinn creates no settings file.
+
+Both are plain JSON, without comments:
+
+```json
+{
+	"storage": {
+		"directory": "~/work/zinn-data"
+	}
+}
+```
+
+`storage.directory` names a Zinn folder, with `data/zinn.sqlite` and `backups/` inside. The first of these that is set decides where the database is: `ZINN_DIR`, `storage.directory` in `zinn.local.json`, `storage.directory` in the global `settings.json`, then `~/.zinn`. A relative `storage.directory` is relative to the folder of the file that sets it, and a leading `~` or `~/` means your home folder. The file may also carry a `$schema` string, which Zinn ignores.
+
+An unknown key, a value of the wrong type or invalid JSON stops every command with an error that names the file. See the [CLI documentation](packages/cli/README.md#settings-files).
 
 ## Backups
 
-Run `zinn backup` to save a copy of the database to `~/.zinn/backups/` (or `backups/` in `ZINN_DIR`), in a file named after the UTC time and the CLI version that made it. It is recommended that you make a backup before upgrading Zinn, you know, just in case.
+Run `zinn backup` to save a copy of the database to the `backups/` folder next to `data/`, in a file named after the UTC time and the CLI version that made it. It is recommended that you make a backup before upgrading Zinn, you know, just in case.
 
 Run `zinn restore <path>` to put back the board from a backup file. It saves the current board as a backup first, and asks for confirmation unless `--yes` is used. See [Restore the database](packages/cli/README.md#restore-the-database) in the CLI README.
 
 ## Upgrading the database
 
-The database records a schema version, and a newer Zinn upgrades an older database to its own version. The upgrade is applied completely or not at all, after a backup is saved. A published release does it by itself the first time it opens the database. When Zinn refuses a change because the database is older, as it does for `~/.zinn` when run from a source checkout, or when you want to upgrade right after installing a newer Zinn, run `zinn migrate`. It prints the backup it saved and the versions before and after, or does nothing when the database is already up to date. If the upgrade fails, the database is unchanged and the backups stay in the backups folder.
+The database records a schema version, and a newer Zinn upgrades an older database to its own version. The upgrade is applied completely or not at all, after a backup is saved. A published release does it by itself the first time it opens the database. When Zinn refuses a change because the database is older, as a source checkout does for any database except one chosen by `ZINN_DIR`, or when you want to upgrade right after installing a newer Zinn, run `zinn migrate`. It prints the backup it saved and the versions before and after, or does nothing when the database is already up to date. If the upgrade fails, the database is unchanged and the backups stay in the backups folder.
 
 A database that has no schema version is refused unless the command carries `--allow-legacy-read`, which tries to read it as much as it can, without changing anything in there. See [Upgrade the database](packages/cli/README.md#upgrade-the-database) in the CLI README.
 
@@ -128,7 +151,7 @@ The sample board includes three projects, shared labels, tasks in different work
 bun /path/to/zinn/scripts/dev-cli.ts task list
 ```
 
-The usual `zinn` commands continue to use the default global database at `~/.zinn` (or a `ZINN_DIR` if provided).
+The usual `zinn` commands continue to use the database that `ZINN_DIR` or your settings files choose, or `~/.zinn`.
 
 ## Packages
 

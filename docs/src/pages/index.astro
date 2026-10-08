@@ -89,18 +89,23 @@ const workflowCommands = [
 			<Prose>
 				<h2 id='storage-heading'>Keep the work local</h2>
 				<p>
-					The default database is <code>~/.zinn/data/zinn.sqlite</code>. Set <code>ZINN_DIR</code> to use another directory,
-					keeping the same value across commands.
+					The default database is <code>~/.zinn/data/zinn.sqlite</code>. Set <code>storage.directory</code> in a codebase's
+					<code>zinn.local.json</code> or in <code>~/.zinn/settings.json</code> to keep it elsewhere. <code
+						>ZINN_DIR</code
+					>
+					overrides both for the commands that carry it.
 				</p>
 				<p>
 					<code>zinn backup</code> saves a database snapshot, and <code>zinn restore</code> puts one back after saving the
-					current board. A newer Zinn upgrades an older database, and <code>zinn migrate</code> runs that upgrade after saving
-					a backup.
+					current database. A newer Zinn upgrades an older database, and <code>zinn migrate</code> runs that upgrade after
+					saving a backup.
 				</p>
 				<p>
-					Read the <a href={`${documentation}#back-up-the-database`}>database backup</a>, <a
-						href={`${documentation}#restore-the-database`}>database restore</a
-					> and <a href={`${documentation}#upgrade-the-database`}>database upgrade</a> instructions.
+					Read the <a href={`${documentation}#settings-files`}>settings files</a>, <a
+						href={`${documentation}#back-up-the-database`}>database backup</a
+					>, <a href={`${documentation}#restore-the-database`}>database restore</a> and <a
+						href={`${documentation}#upgrade-the-database`}>database upgrade</a
+					> instructions.
 				</p>
 			</Prose>
 		</ReadingSection>

@@ -14,7 +14,30 @@ bun add --global @zinn-dev/cli
 ```
 
 Zinn stores projects and tasks in the shared local database at `~/.zinn/data/zinn.sqlite`.
-Set `ZINN_DIR` to use another Zinn directory and keep using the same value for commands that should share that database.
+Set `ZINN_DIR` to use another Zinn directory and keep using the same value for commands that should share that database. A relative `ZINN_DIR` stays relative to the current folder. A settings file can also choose the directory (see [Settings files](#settings-files)).
+
+## Settings files
+
+Zinn reads two optional settings files:
+
+- `settings.json` in the Zinn directory (`~/.zinn`, or `ZINN_DIR` when it is set) holds the global settings.
+- `zinn.local.json` holds the settings for one codebase. Zinn uses the nearest one, from the current folder up to the Git root. Outside a Git repository it checks only the current folder.
+
+`zinn.local.json` is personal, since it holds paths from one machine, and is not meant to be committed. Zinn reads it whether or not git ignores it. It is merged over the global file, field by field. A missing file is fine, and Zinn creates no settings file.
+
+The files are plain JSON, without comments:
+
+```json
+{
+	"storage": {
+		"directory": "~/work/zinn-data"
+	}
+}
+```
+
+`$schema` (a string, ignored by Zinn) and `storage.directory` are the only fields. An unknown key, a value of the wrong type or invalid JSON stops every command with an error that names the file. Zinn does not fall back to the defaults.
+
+`storage.directory` names a Zinn directory with the same layout as `ZINN_DIR`: `data/zinn.sqlite` and `backups/`. The first of these that is set decides the directory: `ZINN_DIR`, `storage.directory` in `zinn.local.json`, `storage.directory` in the global `settings.json`, then `~/.zinn`. A relative path is relative to the folder of the file that sets it. A leading `~` or `~/` means your home folder.
 
 ## Editing conventions
 
@@ -328,7 +351,7 @@ It is recommended to save a copy of the database before installing a new version
 zinn backup
 ```
 
-The copy goes to `~/.zinn/backups/` (or `backups/` in `ZINN_DIR`), in a file named after the UTC time and the CLI version that made it, with an eight-character random suffix to distinguish backups made at the same time, like `2026-09-29T12-30-05Z-cli-0.32.0-b38178c0.sqlite`. It is a single file with every change made so far, and it is safe to take while Zinn is in use. Existing backups are never overwritten. With `--json`, the command prints `{ "path": "..." }`. It fails when there is no database yet.
+The copy goes to the `backups/` folder next to `data/`, in a file named after the UTC time and the CLI version that made it, with an eight-character random suffix to distinguish backups made at the same time, like `2026-09-29T12-30-05Z-cli-0.32.0-b38178c0.sqlite`. It is a single file with every change made so far, and it is safe to take while Zinn is in use. Existing backups are never overwritten. With `--json`, the command prints `{ "path": "..." }`. It fails when there is no database yet.
 
 ## Restore the database
 
@@ -342,7 +365,7 @@ The command asks for confirmation, unless `--yes` is used (see [Confirmations](#
 
 A backup with an older schema version is restored at that version, and Zinn then upgrades it like any older database (see [Upgrade the database](#upgrade-the-database)). The restore works whatever the version of the database it replaces, so you can go back to an older Zinn and restore the backup an upgrade saved.
 
-The command fails without changing anything when the backup has a newer schema version than your Zinn (the error names the Zinn version that made the backup if its file name carries one), when it has no schema version, when it is **damaged**, or when it is not a Zinn database. If the restore fails after that, the database is unchanged, and any backup saved before the attempt stays in `~/.zinn/backups/` (or `backups/` in `ZINN_DIR`).
+The command fails without changing anything when the backup has a newer schema version than your Zinn (the error names the Zinn version that made the backup if its file name carries one), when it has no schema version, when it is **damaged**, or when it is not a Zinn database. If the restore fails after that, the database is unchanged, and any backup saved before the attempt stays in the `backups/` folder.
 
 If the database being replaced is damaged, restore leaves it unchanged and prints recovery steps.
 
@@ -350,7 +373,7 @@ If the database being replaced is damaged, restore leaves it unchanged and print
 
 The database records a schema version, and a newer Zinn upgrades an older database to its own version. The upgrade is applied completely or not at all, and a backup is saved first, in the same folder as `zinn backup`.
 
-A published release of Zinn upgrades the database by itself the first time it opens it. Run `zinn migrate` to upgrade it yourself, for example right after installing a newer Zinn, or when Zinn refuses a change because the database is older. A build run from a source checkout refuses changes to the default database, `~/.zinn`, until you do:
+A published release of Zinn upgrades the database by itself the first time it opens it. Run `zinn migrate` to upgrade it yourself, for example right after installing a newer Zinn, or when Zinn refuses a change because the database is older. A build run from a source checkout upgrades only a `ZINN_DIR` database by itself, and refuses changes to any other older database until you do:
 
 ```sh
 zinn migrate
@@ -358,7 +381,7 @@ zinn migrate
 
 The command saves a backup, upgrades the database and reports the backup's path with the schema versions before and after. When the database is already up to date, it changes nothing and saves no backup. With `--json`, it prints `{ "databasePath": "...", "previousVersion": 1, "finalVersion": 2, "changed": true, "backupPath": "..." }`, where `backupPath` is `null` when nothing changed.
 
-If the upgrade fails, the database is unchanged. The backups taken before each attempt stay in `~/.zinn/backups/` (or `backups/` in `ZINN_DIR`). The command fails without attempting anything when there is no database with data yet, when the database has no schema version, or when it is newer than your Zinn.
+If the upgrade fails, the database is unchanged. The backups taken before each attempt stay in the `backups/` folder. The command fails without attempting anything when there is no database with data yet, when the database has no schema version, or when it is newer than your Zinn.
 
 A database with a newer schema version than your Zinn can be read, but changes are refused. Use a newer Zinn to change it.
 
