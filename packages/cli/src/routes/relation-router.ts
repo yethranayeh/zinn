@@ -2,15 +2,16 @@ import type { TaskRelationType, TaskWithKey } from "@zinn-dev/core";
 import type { RouteDef } from "../types";
 
 import { parseArgs } from "node:util";
-import { relation, relationCreateSchema, task } from "@zinn-dev/core";
+import { column, relation, relationCreateSchema, task } from "@zinn-dev/core";
 import { output, quit, validatePositionalCount, validateUniqueOptions } from "../lib";
 import { currentActor } from "../actor";
 import { formatCellSeparator, formatRows } from "../presentation/row-layout";
+import { columnNameCell } from "../presentation/column-presentation";
 
 type PresentedRelation = {
   type: TaskRelationType;
   direction: "outgoing" | "incoming" | null;
-  task: { key: string; title: string; status: "Active" | "Archived" };
+  task: { key: string; column: string; title: string; status: "Active" | "Archived" };
 };
 
 export function presentRelations(taskMatch: TaskWithKey): Array<PresentedRelation> {
@@ -31,6 +32,7 @@ export function presentRelations(taskMatch: TaskWithKey): Array<PresentedRelatio
       direction,
       task: {
         key: other.key,
+        column: column.getById(other.column_id)!.name,
         title: other.title,
         status: other.archived_at == null ? "Active" : "Archived",
       },
@@ -67,6 +69,7 @@ export function formatRelations(relations: Array<PresentedRelation>) {
       return [
         { text: label },
         { text: entry.task.key },
+        columnNameCell(entry.task.column),
         { text: `${entry.task.title}${archived}` },
       ];
     }),
@@ -153,7 +156,7 @@ Example: zinn task relation create APP-1 APP-2 --type dependency`,
     },
     help: `Usage: zinn task relation list <task-key>
 
-Show incoming and outgoing relations with connected task keys and titles.
+Show incoming and outgoing relations with connected task keys, columns and titles.
 Archived connected tasks are included and marked Archived.
 An empty list prints nothing.
 

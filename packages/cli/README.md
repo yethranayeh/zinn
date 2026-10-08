@@ -262,7 +262,7 @@ zinn task relation list MDR-1
 Relations do not automatically move, complete, or archive tasks.
 Tasks from separate projects can be related to each other. Tasks can also be related to archived tasks.
 
-`task view` a task's existing relations.
+`task view` and `task relation list` show a task's existing relations with connected task keys, columns and titles.
 
 Use `zinn task relation create APP-2 APP-1 --type subtask` to make APP-2 a child of APP-1. Each task can have at most one parent and any number of subtasks. A nested type of relationship is allowed, so a task can have both a parent and a child. Parents are also just ordinary tasks, including tasks in other projects or archived tasks. Relation list and task view show **Parent** on the child and **Subtask** on the parent.
 

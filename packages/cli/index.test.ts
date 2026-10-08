@@ -869,15 +869,15 @@ test("task create relation flags relate the new task to existing tasks, from the
     expect(created.stdout).toBe("APP-5 | Backlog | - | Child\n");
 
     const childRelations = run("task", "relation", "list", "APP-5").stdout;
-    expect(childRelations).toMatch(/Parent\s+\|\s+APP-1\s+\|\s+Epic/);
-    expect(childRelations).toMatch(/Depends on\s+\|\s+APP-2\s+\|\s+Prerequisite/);
-    expect(childRelations).toMatch(/Depends on\s+\|\s+OTHER-1\s+\|\s+Elsewhere/);
-    expect(childRelations).toMatch(/Duplicate of\s+\|\s+APP-4\s+\|\s+Original/);
-    expect(childRelations).toMatch(/Related to\s+\|\s+APP-3\s+\|\s+Sibling/);
-    expect(run("task", "relation", "list", "APP-1").stdout).toMatch(/Subtask\s+\|\s+APP-5\s+\|\s+Child/);
-    expect(run("task", "relation", "list", "APP-2").stdout).toMatch(/Depended on by\s+\|\s+APP-5\s+\|\s+Child/);
-    expect(run("task", "relation", "list", "APP-4").stdout).toMatch(/Duplicated by\s+\|\s+APP-5\s+\|\s+Child/);
-    expect(run("task", "view", "APP-5").stdout).toMatch(/Parent\s+\|\s+APP-1\s+\|\s+Epic/);
+    expect(childRelations).toMatch(/Parent\s+\|\s+APP-1\s+\|\s+Backlog\s+\|\s+Epic/);
+    expect(childRelations).toMatch(/Depends on\s+\|\s+APP-2\s+\|\s+Backlog\s+\|\s+Prerequisite/);
+    expect(childRelations).toMatch(/Depends on\s+\|\s+OTHER-1\s+\|\s+Backlog\s+\|\s+Elsewhere/);
+    expect(childRelations).toMatch(/Duplicate of\s+\|\s+APP-4\s+\|\s+Backlog\s+\|\s+Original/);
+    expect(childRelations).toMatch(/Related to\s+\|\s+APP-3\s+\|\s+Backlog\s+\|\s+Sibling/);
+    expect(run("task", "relation", "list", "APP-1").stdout).toMatch(/Subtask\s+\|\s+APP-5\s+\|\s+Backlog\s+\|\s+Child/);
+    expect(run("task", "relation", "list", "APP-2").stdout).toMatch(/Depended on by\s+\|\s+APP-5\s+\|\s+Backlog\s+\|\s+Child/);
+    expect(run("task", "relation", "list", "APP-4").stdout).toMatch(/Duplicated by\s+\|\s+APP-5\s+\|\s+Backlog\s+\|\s+Child/);
+    expect(run("task", "view", "APP-5").stdout).toMatch(/Parent\s+\|\s+APP-1\s+\|\s+Backlog\s+\|\s+Epic/);
 
     withTestDb(testDir, (db) => {
       const actionsOf = (key: string) =>
@@ -915,8 +915,8 @@ test("task create counts a repeated relation target once and keeps different rel
 
     expect(created.code).toBe(0);
     expect(relations).toHaveLength(2);
-    expect(relations[0]).toMatch(/Depends on\s+\|\s+APP-1\s+\|\s+Target/);
-    expect(relations[1]).toMatch(/Related to\s+\|\s+APP-1\s+\|\s+Target/);
+    expect(relations[0]).toMatch(/Depends on\s+\|\s+APP-1\s+\|\s+Backlog\s+\|\s+Target/);
+    expect(relations[1]).toMatch(/Related to\s+\|\s+APP-1\s+\|\s+Backlog\s+\|\s+Target/);
   });
 });
 
@@ -1308,7 +1308,7 @@ test("task view prints the task row followed by Description, Relations, and Comm
         "",
         SECTION_RULE,
         "Relations:",
-        "Depends on | MDR-2 | Check the totals",
+        "Depends on | MDR-2 | Backlog | Check the totals",
         "",
         SECTION_RULE,
         "Comments:",
@@ -1329,7 +1329,7 @@ test("task view prints the task row followed by Description, Relations, and Comm
         {
           type: "dependency",
           direction: "outgoing",
-          task: { key: "MDR-2", title: "Check the totals", status: "Active" },
+          task: { key: "MDR-2", column: "Backlog", title: "Check the totals", status: "Active" },
         },
       ],
       comments: [
@@ -1352,7 +1352,7 @@ test("task view leaves out the Description section for a task without a descript
 
     runZinn(["task", "relation", "create", "NONE-1", "NONE-2", "--type", "related"], testDir);
     expect(runZinn(["task", "view", "NONE-1"], testDir).stdout).toBe(
-      `NONE-1 | Backlog | - | title only\n\n${SECTION_RULE}\nRelations:\nRelated to | NONE-2 | other task\n`,
+      `NONE-1 | Backlog | - | title only\n\n${SECTION_RULE}\nRelations:\nRelated to | NONE-2 | Backlog | other task\n`,
     );
   });
 });
@@ -2991,7 +2991,7 @@ test("--json combines a task and its relations into one document on task view", 
       {
         type: "dependency",
         direction: "outgoing",
-        task: { key: "WEB-1", title: "API", status: "Active" },
+        task: { key: "WEB-1", column: "Backlog", title: "API", status: "Active" },
       },
     ]);
   });
@@ -3193,21 +3193,21 @@ test("relation commands show directional and symmetric links, including archived
       expect(created.stdout).toContain("OTHER-1");
     }
     const outgoing = run("task", "relation", "list", "APP-1");
-    expect(outgoing.stdout).toContain("Depends on   | OTHER-1 | Original");
-    expect(outgoing.stdout).toContain("Duplicate of | OTHER-1 | Original");
-    expect(outgoing.stdout).toContain("Parent       | OTHER-1 | Original");
+    expect(outgoing.stdout).toContain("Depends on   | OTHER-1 | Backlog | Original");
+    expect(outgoing.stdout).toContain("Duplicate of | OTHER-1 | Backlog | Original");
+    expect(outgoing.stdout).toContain("Parent       | OTHER-1 | Backlog | Original");
     const incoming = run("task", "relation", "list", "OTHER-1");
-    expect(incoming.stdout).toContain("Subtask        | APP-1 | Copy");
-    expect(incoming.stdout).toContain("Depended on by | APP-1 | Copy");
-    expect(incoming.stdout).toContain("Duplicated by  | APP-1 | Copy");
-    expect(incoming.stdout).toContain("Related to     | APP-1 | Copy");
+    expect(incoming.stdout).toContain("Subtask        | APP-1 | Backlog | Copy");
+    expect(incoming.stdout).toContain("Depended on by | APP-1 | Backlog | Copy");
+    expect(incoming.stdout).toContain("Duplicated by  | APP-1 | Backlog | Copy");
+    expect(incoming.stdout).toContain("Related to     | APP-1 | Backlog | Copy");
     expect(run("task", "relation", "create", "OTHER-1", "APP-1", "--type", "related").stderr).toContain("already exists");
     run("task", "archive", "OTHER-1");
-    expect(run("task", "view", "APP-1").stdout).toContain("Parent       | OTHER-1 | Original | Archived");
+    expect(run("task", "view", "APP-1").stdout).toContain("Parent       | OTHER-1 | Backlog | Original | Archived");
     const viewed = JSON.parse(run("task", "view", "APP-1", "--json").stdout);
     expect(viewed.relations).toContainEqual({
       type: "subtask", direction: "outgoing",
-      task: { key: "OTHER-1", title: "Original", status: "Archived" },
+      task: { key: "OTHER-1", column: "Backlog", title: "Original", status: "Archived" },
     });
     expect(run("task", "relation", "create", "OTHER-1", "APP-1", "--type", "subtask").stderr).toContain("cycle");
     expect(run("task", "relation", "delete", "APP-1", "OTHER-1", "--type", "subtask").code).toBe(0);
@@ -3216,7 +3216,7 @@ test("relation commands show directional and symmetric links, including archived
   });
 });
 
-test("relation list pads the relation label and task key so titles line up, and marks archived tasks", () => {
+test("relation list aligns and colors connected columns, and marks archived tasks", () => {
   withIsolatedZinnDir((dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
     run("project", "create", "APP");
@@ -3225,6 +3225,9 @@ test("relation list pads the relation label and task key so titles line up, and 
     run("task", "create", "APP", "--title", "Plan");
     run("task", "create", "APP", "--title", "Review");
     run("task", "create", "LONGER", "--title", "Original");
+    run("task", "move", "LONGER-1", "Done");
+    expect(run("project", "column", "create", "APP", "Verification").code).toBe(0);
+    expect(run("task", "move", "APP-3", "Verification").code).toBe(0);
     run("task", "archive", "APP-2");
     run("task", "relation", "create", "APP-1", "LONGER-1", "--type", "dependency");
     run("task", "relation", "create", "APP-1", "APP-2", "--type", "related");
@@ -3232,12 +3235,19 @@ test("relation list pads the relation label and task key so titles line up, and 
 
     // Relations come back in no promised order, so compare the lines sorted.
     const expectedLines = [
-      "Depends on     | LONGER-1 | Original",
-      "Related to     | APP-2    | Plan | Archived",
-      "Depended on by | APP-3    | Review",
+      "Depends on     | LONGER-1 | Done         | Original",
+      "Related to     | APP-2    | Backlog      | Plan | Archived",
+      "Depended on by | APP-3    | Verification | Review",
     ];
     const listed = run("task", "relation", "list", "APP-1").stdout;
     expect(listed.trimEnd().split("\n").sort()).toEqual([...expectedLines].sort());
+    const colored = runZinn(["task", "relation", "list", "APP-1"], dir, { FORCE_COLOR: "1" }).stdout;
+    expect(colored).toContain("\x1b[32mDone        \x1b[39m");
+    expect(colored).toContain("\x1b[90mBacklog     \x1b[39m");
+    expect(colored).toContain(`${DIM_SEPARATOR}Verification${DIM_SEPARATOR}`);
+    expect(runZinn(["task", "relation", "list", "APP-1"], dir, { NO_COLOR: "1" }).stdout).toBe(listed);
+    const json = JSON.parse(run("task", "relation", "list", "APP-1", "--json").stdout);
+    expect(json.find((entry: { task: { key: string } }) => entry.task.key === "LONGER-1").task.column).toBe("Done");
 
     const viewed = run("task", "view", "APP-1").stdout;
     expect(viewed).toContain(`\n\n${SECTION_RULE}\nRelations:\n`);
@@ -3607,7 +3617,7 @@ test("task view bolds its section headings and dims the separators and comment t
         "",
         dim(SECTION_RULE),
         bold("Relations:"),
-        `Depends on${DIM_SEPARATOR}MDR-2${DIM_SEPARATOR}Check the totals`,
+        `Depends on${DIM_SEPARATOR}MDR-2${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}Check the totals`,
         "",
         dim(SECTION_RULE),
         bold("Comments:"),
@@ -3628,7 +3638,7 @@ test("task view bolds its section headings and dims the separators and comment t
       "",
       SECTION_RULE,
       "Relations:",
-      "Depends on | MDR-2 | Check the totals",
+      "Depends on | MDR-2 | Backlog | Check the totals",
       "",
       SECTION_RULE,
       "Comments:",
