@@ -58,7 +58,7 @@ Internally, the DB functions still return task rows without `key`. Relation look
 
 ## Task search
 
-`task.getAll({ projectKey?, archive?, labelNames? })` lists tasks in board order. `labelNames` requires every specified global label; names are case-insensitive and unknown names are errors.
+`task.getAll({ projectKey?, archive?, labelNames?, columnName? })` lists tasks in board order. `labelNames` requires every specified global label. Names are case-insensitive and unknown names are errors. `columnName` filters by an exact column name, ignoring case, within the requested project or across projects. Projects without that column contribute no tasks. Column, label and archive filters apply together. When no match is found, `[]` is returned.
 
 `task.search({ query, projectKey?, archive?, limit?, labelNames? })` searches task titles, descriptions, and comments. It returns `{ tasks, hiddenArchivedCount }`, where `tasks` are tasks with keys.
 

@@ -103,6 +103,7 @@ Examples:
           archived: { type: "boolean" },
           all: { type: "boolean" },
           label: { type: "string", multiple: true },
+          column: { type: "string" },
         },
         allowPositionals: true,
         strict: true,
@@ -123,17 +124,24 @@ Examples:
 
       const archive = values.all ? "all" : values.archived ? "archived" : "active";
 
-      const tasks = task.getAll({ projectKey, archive, labelNames: values.label });
+      const tasks = task.getAll({
+        projectKey,
+        archive,
+        labelNames: values.label,
+        columnName: values.column,
+      });
 
       output(tasks.map(presentTask), (presentedTasks) =>
         formatTaskList(presentedTasks, { showsStatus: values.all }),
       );
     },
-    help: `Usage: zinn task list [<project-key>] [--archived|--all] [--label <name>]
+    help: `Usage: zinn task list [<project-key>] [--archived|--all] [--label <name>] [--column <name>]
 
 List active tasks by default.
 Use --archived to list archived tasks or --all to list both.
 Use --label to filter for tasks with a specific label, no case-sensitivity is applied for matching.
+Use --column to filter by an exact column name without case sensitivty.
+Column, label and archive filters can be combined together. No matches print nothing, or return [] for --json, and exit successfully.
 
 Each row shows a task's key, column, priority marker, title, and labels. --all adds an Active or Archived status after the key.
 Priority markers: - unassigned, L low, M medium, H high, U urgent.

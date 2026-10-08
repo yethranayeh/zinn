@@ -126,6 +126,61 @@ test("task lists across projects follow project key, column order, and task orde
   }
 });
 
+test("column filtering narrows ordered project and global lists together with labels and archive status", () => {
+  const directory = mkdtempSync(join(tmpdir(), "zinn-column-filter-"));
+  try {
+    const result = Bun.spawnSync([process.execPath, "--eval", `
+      import { strict as assert } from "node:assert";
+      import { project, column, task, label } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
+      const actor = { name: "Test Human", email: null, kind: "human" };
+      const later = project.create({ key: "BBB" }, actor);
+      const earlier = project.create({ key: "AAA" }, actor);
+      const missing = project.create({ key: "CCC" }, actor);
+      column.edit({ projectKey: "CCC", columnName: "In Progress", name: "Working" }, actor);
+      label.create({ name: "CLI" }, actor);
+      label.create({ name: "Groom" }, actor);
+      const create = (projectId, title, columnName, labelNames = []) => task.create({
+        project_id: projectId, title, columnName, labelNames,
+      }, actor);
+      create(later.id, "Archived", "In Progress", ["CLI", "Groom"]);
+      create(later.id, "Both", "In Progress", ["CLI", "Groom"]);
+      create(later.id, "CLI only", "In Progress", ["CLI"]);
+      create(later.id, "Backlog", "Backlog", ["CLI", "Groom"]);
+      create(earlier.id, "Earlier", "In Progress", ["CLI", "Groom"]);
+      create(missing.id, "Different column", "Working", ["CLI", "Groom"]);
+      task.archive("BBB-1", actor);
+      task.order({ taskKey: "BBB-3", direction: "top" }, actor);
+      const keys = (props) => task.getAll(props).map((row) => row.key);
+      assert.deepEqual(keys({ columnName: "IN PROGRESS" }), ["AAA-1", "BBB-3", "BBB-2"]);
+      assert.deepEqual(keys({ projectKey: "bbb", columnName: "in progress" }), ["BBB-3", "BBB-2"]);
+      for (const projectKey of [undefined, "BBB"]) {
+        for (const archive of ["active", "archived", "all"]) {
+          const props = { projectKey, archive, labelNames: ["cli", "GROOM"] };
+          const unfiltered = task.getAll(props);
+          assert.deepEqual(
+            task.getAll({ ...props, columnName: "In Progress" }),
+            unfiltered.filter((row) => row.key !== "BBB-4" && row.key !== "CCC-1"),
+          );
+        }
+      }
+      assert.deepEqual(keys({ columnName: "In Progress", archive: "archived" }), ["BBB-1"]);
+      assert.deepEqual(keys({ columnName: "In Progress", archive: "all" }), ["AAA-1", "BBB-3", "BBB-2", "BBB-1"]);
+      for (const projectKey of [undefined, "BBB", "CCC"]) {
+        for (const columnName of ["Nowhere", "Review", "Progress", " In Progress "]) {
+          assert.deepEqual(task.getAll({ projectKey, columnName, archive: "all" }), []);
+        }
+      }
+      assert.deepEqual(keys({ projectKey: "CCC", columnName: "In Progress" }), []);
+      assert.throws(() => task.getAll({ columnName: "Nowhere", labelNames: ["missing"] }), /label/);
+      assert.throws(() => task.getAll({ projectKey: "NOPE", columnName: "Nowhere" }), /does not exist/);
+    `], { env: { ...process.env, ZINN_DIR: directory } });
+    expect(result.stderr.toString()).toBe("");
+    expect(result.exitCode).toBe(0);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("task create places a task last in the named column and a bad column saves nothing", () => {
   const directory = mkdtempSync(join(tmpdir(), "zinn-task-results-"));
   try {

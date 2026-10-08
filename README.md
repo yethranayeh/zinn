@@ -24,11 +24,13 @@ zinn project create MDR --name "Macrodata Refinement"
 zinn task create MDR --title "Refine 75% of the numbers" --description "Qualify for a Music Experience"
 zinn task list MDR
 zinn task list MDR --label CLI --label Groom
+zinn task list MDR --column Review
 zinn project view MDR
 zinn task view MDR-1
 ```
 
 A new project starts with Backlog, TODO, In Progress, Review, and Done columns.
+Use `task list --column <name>` to filter by column across projects, or supply a project key to limit the filter to that project. Column names are matced exactly while _ignoring_ case. Column, label and archive filters can be composed for a detailed filter.
 Move work through those columns and archive it when it no longer belongs in the active list:
 
 ```sh

@@ -170,6 +170,8 @@ Tasks are created with keys such as `MDR-1`. List active tasks, optionally limit
 zinn task list
 zinn task list MDR
 zinn task list MDR --label CLI --label Groom
+zinn task list MDR --column "In Progress"
+zinn task list --column Done --all
 zinn task view MDR-1
 ```
 
@@ -180,6 +182,8 @@ Each row shows the task's key, column, priority marker, title, and labels, such 
 `task view` prints the description in full, keeping its line breaks.
 
 Use `--label <name>` to list tasks with a label. You can provide multiple `--label` flags to refine your filter further down to more specific task results. Label names matching ignores casing. An unknown label causes an error to be raised.
+
+Use `--column <name>` once to filter by an exact column name, ignoring case. Without a project key, it looks to match every project that has the specified column name. Column, label and archive filters are comibned together. If there are no matches, then nothing is printed in standard mode, but `--json` mode would return `[]`, and exit successfully.
 
 ## Search tasks
 

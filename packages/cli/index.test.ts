@@ -1031,6 +1031,51 @@ test("task list on an empty database exits cleanly without output", () => {
   });
 });
 
+test("task list --column filters project and global results with labels and archive flags", () => {
+  withIsolatedZinnDir((testDir) => {
+    const run = (...args: Array<string>) => runZinn(args, testDir);
+    const keys = (...args: Array<string>) => {
+      const result = run("task", "list", ...args, "--json");
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe("");
+      return JSON.parse(result.stdout).map((row: { key: string }) => row.key);
+    };
+    expect(run("project", "create", "AAA").code).toBe(0);
+    expect(run("project", "create", "BBB").code).toBe(0);
+    expect(run("label", "create", "CLI").code).toBe(0);
+    expect(run("label", "create", "Groom").code).toBe(0);
+    expect(run("task", "create", "AAA", "--title", "Both", "--column", "In Progress", "--label", "CLI", "--label", "Groom").code).toBe(0);
+    expect(run("task", "create", "AAA", "--title", "CLI only", "--column", "In Progress", "--label", "CLI").code).toBe(0);
+    expect(run("task", "create", "AAA", "--title", "Elsewhere", "--label", "CLI", "--label", "Groom").code).toBe(0);
+    expect(run("task", "create", "BBB", "--title", "Archived", "--column", "In Progress", "--label", "CLI", "--label", "Groom").code).toBe(0);
+    expect(run("task", "archive", "BBB-1").code).toBe(0);
+
+    expect(keys("--column", "IN PROGRESS")).toEqual(["AAA-1", "AAA-2"]);
+    expect(keys("AAA", "--column", "in progress", "--label", "cli", "--label", "GROOM")).toEqual(["AAA-1"]);
+    expect(keys("--column", "In Progress", "--archived", "--label", "CLI", "--label", "Groom")).toEqual(["BBB-1"]);
+    expect(keys("--column", "In Progress", "--all", "--label", "CLI", "--label", "Groom")).toEqual(["AAA-1", "BBB-1"]);
+    const unfiltered = JSON.parse(run("task", "list", "--all", "--json").stdout);
+    const filtered = JSON.parse(run("task", "list", "--column", "In Progress", "--all", "--json").stdout);
+    expect(filtered).toEqual(unfiltered.filter((row: { column: string }) => row.column === "In Progress"));
+    const text = run("task", "list", "AAA", "--column", "In Progress");
+    expect(text.code).toBe(0);
+    expect(text.stdout).toContain("AAA-1");
+    expect(text.stdout).toContain("AAA-2");
+    expect(text.stdout).not.toContain("AAA-3");
+
+    for (const scope of [[], ["AAA"]]) {
+      for (const name of ["Nowhere", "Review", "Progress"]) {
+        expect(keys(...scope, "--column", name)).toEqual([]);
+        expect(run("task", "list", ...scope, "--column", name)).toEqual({ stdout: "", stderr: "", code: 0 });
+      }
+    }
+    const repeated = run("task", "list", "--column", "Review", "--column", "Done");
+    expect(repeated.code).toBe(1);
+    expect(repeated.stderr).toContain('Option "--column" can only be specified once');
+    expect(run("task", "list", "--help").stdout).toContain("[--column <name>]");
+  });
+});
+
 test("task list renders every project's tasks once and aligns unequal key widths", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "a", "--name", "Short"], testDir);

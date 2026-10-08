@@ -64,6 +64,7 @@ export const taskArchiveFilterSchema = z.enum(["active", "archived", "all"]);
 
 export const taskListSchema = z.strictObject({
   projectKey: z.string().optional(),
+  columnName: z.string().optional(),
   archive: taskArchiveFilterSchema.optional(),
   labelNames: z.array(labelNameSchema).optional(),
 });

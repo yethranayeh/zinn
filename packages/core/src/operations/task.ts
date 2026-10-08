@@ -43,6 +43,7 @@ import {
   describeRelation,
   getInsertionIndex,
   requireColumnByName,
+  findByName,
   resolveDescription,
 } from "./shared";
 
@@ -68,6 +69,24 @@ function filterTasksByLabels<T extends Pick<Task, "id">>(
   );
 
   return tasks.filter((taskMatch) => taskIdsByLabel.every((taskIds) => taskIds.has(taskMatch.id)));
+}
+
+function filterTasksByColumn(tasks: Array<Task>, columnName?: string) {
+  if (columnName === undefined) {
+    return tasks;
+  }
+
+  const projectIds = new Set(tasks.map((taskMatch) => taskMatch.project_id));
+  const matchingColumnIds = new Set<string>();
+
+  for (const projectId of projectIds) {
+    const columnMatch = findByName(dbColumn.getAllByProjectId(projectId), columnName);
+    if (columnMatch !== undefined) {
+      matchingColumnIds.add(columnMatch.id);
+    }
+  }
+
+  return tasks.filter((taskMatch) => matchingColumnIds.has(taskMatch.column_id));
 }
 
 type NewTaskRelation = NonNullable<TaskCreateInput["relations"]>[number];
@@ -268,7 +287,9 @@ export const task = {
 
     if (props.projectKey == null) {
       const taskMatches = filterTasksByLabels(dbTask.getAll(props.archive), props.labelNames);
-      return taskMatches.map((taskMatch) => attachTaskKey(taskMatch));
+      return filterTasksByColumn(taskMatches, props.columnName).map((taskMatch) =>
+        attachTaskKey(taskMatch),
+      );
     }
 
     const taskProject = dbProject.getByKey(props.projectKey);
@@ -281,7 +302,9 @@ export const task = {
       dbTask.getAllByProjectId(taskProject.id, props.archive),
       props.labelNames,
     );
-    return taskMatches.map((taskMatch) => attachTaskKey(taskMatch, taskProject.key));
+    return filterTasksByColumn(taskMatches, props.columnName).map((taskMatch) =>
+      attachTaskKey(taskMatch, taskProject.key),
+    );
   },
   getByKey: getTaskByKey,
   search: (input: TaskSearchInput) => {
