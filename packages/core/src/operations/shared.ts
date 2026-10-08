@@ -17,8 +17,7 @@ import type { TextEdit } from "../schemas/text-edit";
 import { descriptionSchema } from "../schemas/description";
 import { commentTextSchema } from "../schemas/comment";
 import { validateTaskInput } from "../schemas/task";
-import { projectKeyPattern } from "../schemas/project";
-import { positiveIntegerPattern } from "../schemas/task";
+import { parseTaskKey, positiveIntegerPattern } from "../schemas/task";
 import { assembleSearchEntry } from "../search-entry";
 
 import * as dbProject from "../db/project";
@@ -30,17 +29,7 @@ import * as dbComment from "../db/comment";
 
 import { standardizeProjectKey } from "../lib";
 
-const taskKeyRegex = new RegExp(`^(${projectKeyPattern})-(${positiveIntegerPattern})$`);
 const commentKeyRegex = new RegExp(`^([^#]+)#(${positiveIntegerPattern})$`);
-
-function parseTaskKey(taskKey: string) {
-  const taskKeyMatch = taskKeyRegex.exec(taskKey);
-  if (taskKeyMatch == null) {
-    return null;
-  }
-
-  return { projectKey: taskKeyMatch[1]!, taskNumber: Number(taskKeyMatch[2]) };
-}
 
 type ParsedTaskKey = { projectKey: string; taskNumber: number };
 

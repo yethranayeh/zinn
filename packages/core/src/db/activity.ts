@@ -7,6 +7,10 @@ import { getDb } from "../db";
 
 type StoredActivity = Omit<Activity, "changes"> & { changes: string | null };
 
+function parseActivity(row: StoredActivity): Activity {
+  return { ...row, changes: row.changes == null ? null : JSON.parse(row.changes) };
+}
+
 export function create(props: Omit<Activity, "id">) {
   const db = getDb();
 
@@ -37,5 +41,56 @@ export function getAllByEntity(entityType: ActivityEntityType, entityId: string)
     ORDER BY id ASC`,
     )
     .all({ $entityType: entityType, $entityId: entityId })
-    .map((row) => ({ ...row, changes: row.changes == null ? null : JSON.parse(row.changes) }));
+    .map(parseActivity);
+}
+
+export function getAll(): Array<Activity> {
+  return getDb()
+    .query<StoredActivity>(`SELECT * FROM ${DB_TABLE.activity} ORDER BY created_at DESC, id DESC`)
+    .all()
+    .map(parseActivity);
+}
+
+export function getIds(): Array<string> {
+  return getDb()
+    .query<{ id: string }>(`SELECT id FROM ${DB_TABLE.activity}`)
+    .all()
+    .map((row) => row.id);
+}
+
+export function getByIdPrefix(hexPrefix: string): Array<Activity> {
+  return getDb()
+    .query<StoredActivity, [string]>(
+      `SELECT * FROM ${DB_TABLE.activity}
+    WHERE LOWER(REPLACE(id, '-', '')) LIKE ?
+    ORDER BY id ASC`,
+    )
+    .all(`${hexPrefix}%`)
+    .map(parseActivity);
+}
+
+export function getTaskDeletionEvents(): Array<Activity> {
+  return getDb()
+    .query<StoredActivity>(
+      `SELECT * FROM ${DB_TABLE.activity}
+    WHERE action = 'delete' AND entity_type IN ('task', 'project')
+    ORDER BY created_at DESC, id DESC`,
+    )
+    .all()
+    .map(parseActivity);
+}
+
+export function getAllForTasks(
+  taskIds: Array<string>,
+  projectDeletionIds: Array<string>,
+): Array<Activity> {
+  return getDb()
+    .query<StoredActivity, [string, string]>(
+      `SELECT * FROM ${DB_TABLE.activity}
+    WHERE (entity_type = 'task' AND entity_id IN (SELECT value FROM json_each(?)))
+      OR id IN (SELECT value FROM json_each(?))
+    ORDER BY created_at DESC, id DESC`,
+    )
+    .all(JSON.stringify(taskIds), JSON.stringify(projectDeletionIds))
+    .map(parseActivity);
 }

@@ -34,6 +34,8 @@ export type {
   CommentEditInput,
 } from "./src/schemas/comment";
 export type { TextEdit } from "./src/schemas/text-edit";
+export type { ActivityListInput } from "./src/schemas/activity";
+export type { ActivityTaskIdentity } from "./src/operations/activity";
 export type { BackupCreateInput, BackupRestoreInput } from "./src/operations/backup";
 export type { MigrateResult } from "./src/migrations/migrate";
 export type { RestoreResult } from "./src/migrations/restore";
@@ -61,11 +63,19 @@ export {
 export { relationCreateSchema, relationDeleteSchema } from "./src/schemas/relation";
 export { textEditSchema } from "./src/schemas/text-edit";
 export { actorSchema } from "./src/schemas/actor";
+export {
+  activityIdSchema,
+  activityListSchema,
+  activityTaskKeySchema,
+  activityLimitMessage,
+  minimumActivityIdLength,
+} from "./src/schemas/activity";
 export { commentCreateSchema, commentDeleteSchema, commentEditSchema } from "./src/schemas/comment";
 
 export { project } from "./src/operations/project";
 export { column } from "./src/operations/column";
 export { task } from "./src/operations/task";
+export { activity } from "./src/operations/activity";
 export { comment } from "./src/operations/comment";
 export { relation } from "./src/operations/relation";
 export { label } from "./src/operations/label";

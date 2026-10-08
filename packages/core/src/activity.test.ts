@@ -8,13 +8,17 @@ function runActivityCheck(script: string) {
   try {
     const result = Bun.spawnSync([process.execPath, "--eval", `
       import { strict as assert } from "node:assert";
-      import { project, column, task, relation, label } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
+      import { project, column, task, relation, label, activity } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
       import * as dbActivity from ${JSON.stringify(new URL("./db/activity.ts", import.meta.url).pathname)};
       import { getDb } from ${JSON.stringify(new URL("./db.ts", import.meta.url).pathname)};
       const human = { name: "Test Human", email: "human@example.com", kind: "human" };
       const agent = { name: "claude-code", email: null, kind: "agent" };
       const app = project.create({ key: "APP" }, human);
       const actions = (key) => task.activity(key).map((row) => row.action);
+      const insertEvent = ({ id, created_at, entity_type = "task", entity_id = "orphan", action = "edit", changes = null }) => {
+        getDb().query("INSERT INTO activity (id, created_at, actor_name, actor_email, actor_kind, entity_type, entity_id, action, changes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .run(id, created_at, agent.name, agent.email, agent.kind, entity_type, entity_id, action, changes == null ? null : JSON.stringify(changes));
+      };
       ${script}
     `], { env: { ...process.env, ZINN_DIR: directory } });
     expect(result.stderr.toString()).toBe("");
@@ -23,6 +27,172 @@ function runActivityCheck(script: string) {
     rmSync(directory, { recursive: true, force: true });
   }
 }
+
+test("activity reads use global UUID prefix matching and distinct lookup errors", () => {
+  runActivityCheck(`
+    const first = "11111111-1111-7111-8111-111111111111";
+    const second = "11111111-2111-7111-8111-111111111111";
+    insertEvent({ id: first, created_at: 1 });
+    insertEvent({ id: second, created_at: 2, entity_type: "project" });
+    assert.equal(activity.getById(first).id, first);
+    assert.equal(activity.getById(first.toUpperCase()).id, first);
+    assert.equal(activity.getById(first.replaceAll("-", "")).id, first);
+    assert.equal(activity.getById("11111111-1").id, first);
+    assert.equal(activity.getById("111111111").id, first);
+    assert.throws(() => activity.getById("11111111"), (error) => {
+      assert.match(error.message, /ambiguous/);
+      assert.ok(error.message.includes(first));
+      assert.ok(error.message.includes(second));
+      assert.match(error.message, /more characters/);
+      return true;
+    });
+    assert.throws(() => activity.getById("1111111"), /at least 8/);
+    assert.throws(() => activity.getById("1111-1111"), /Invalid activity ID/);
+    assert.throws(() => activity.getById("ffffffff"), /No activity matches/);
+    assert.ok(activity.getIds().includes(second));
+  `);
+});
+
+test("activity lists order by time then ID and apply limits after task filtering", () => {
+  runActivityCheck(`
+    const item = task.create({ project_id: app.id, title: "Item" }, human);
+    const other = task.create({ project_id: app.id, title: "Other" }, human);
+    const earlier = "11111111-1111-7111-8111-111111111111";
+    const tiedLower = "11111111-2111-7111-8111-111111111111";
+    const tiedHigher = "11111111-3111-7111-8111-111111111111";
+    const outside = "11111111-4111-7111-8111-111111111111";
+    const futureTime = Date.now() + 10000;
+    insertEvent({ id: earlier, created_at: futureTime, entity_id: item.id });
+    insertEvent({ id: tiedHigher, created_at: futureTime + 1, entity_id: item.id });
+    insertEvent({ id: tiedLower, created_at: futureTime + 1, entity_id: item.id });
+    insertEvent({ id: outside, created_at: futureTime + 2, entity_id: other.id });
+    const before = getDb().query("SELECT * FROM activity ORDER BY id").all();
+    const changesBefore = getDb().query("SELECT total_changes() AS count").get().count;
+    assert.deepEqual(activity.getAll({ limit: 4 }).map((event) => event.id), [outside, tiedHigher, tiedLower, earlier]);
+    assert.deepEqual(activity.getAll({ taskKey: "app-1", limit: 2 }).map((event) => event.id), [tiedHigher, tiedLower]);
+    assert.equal(activity.getAll({ taskKey: "APP-1" }).length, 4);
+    assert.throws(() => activity.getById("11111111"), /ambiguous/);
+    assert.deepEqual(activity.getIds().sort(), before.map((event) => event.id).sort());
+    assert.deepEqual(getDb().query("SELECT * FROM activity ORDER BY id").all(), before);
+    assert.equal(getDb().query("SELECT total_changes() AS count").get().count, changesBefore);
+    // The existing per-task read keeps its ID-ascending contract.
+    assert.deepEqual(task.activity(item.key).map((event) => event.id), before.filter((event) => event.entity_id === item.id).map((event) => event.id));
+  `);
+});
+
+test("activity finds archived and explicitly deleted tasks without requiring a live entity", () => {
+  runActivityCheck(`
+    const item = task.create({ project_id: app.id, title: "Keep history" }, human);
+    task.archive(item.key, agent);
+    assert.equal(activity.getTaskIdentities("app-1")[0].status, "archived");
+    assert.deepEqual(activity.getAll({ taskKey: item.key }).map((event) => event.action).sort(), ["archive", "create"]);
+    task.delete(item.key, agent);
+    assert.deepEqual(activity.getTaskIdentities(item.key), [{ id: item.id, key: item.key, title: item.title, status: "deleted" }]);
+    assert.deepEqual(activity.getAll({ taskKey: item.key }).map((event) => event.action).sort(), ["archive", "create", "delete"]);
+    project.delete("APP", human);
+    assert.equal(activity.getAll({ taskKey: item.key }).length, 3);
+    assert.deepEqual(activity.getAll({ taskKey: "APP-99" }), []);
+    assert.deepEqual(activity.getTaskIdentities("UNKNOWN-1"), []);
+    assert.throws(() => activity.getAll({ taskKey: "APP-0" }), /Invalid task key/);
+  `);
+});
+
+test("task history includes the original aggregate project deletion and every reused-key lifetime", () => {
+  runActivityCheck(`
+    const first = task.create({ project_id: app.id, title: "First lifetime" }, human);
+    const unrelated = task.create({ project_id: app.id, title: "Other task" }, human);
+    task.archive(first.key, agent);
+    const firstHistory = task.activity(first.key);
+    project.delete("APP", agent);
+    const deletion = activity.getAll().find((event) => event.entity_type === "project" && event.action === "delete");
+    const recreatedProject = project.create({ key: "APP" }, human);
+    const second = task.create({ project_id: recreatedProject.id, title: "Second lifetime" }, human);
+    const all = activity.getAll({ taskKey: "APP-1" });
+    assert.equal(all.length, firstHistory.length + 2);
+    assert.equal(all.filter((event) => event.id === deletion.id).length, 1);
+    assert.deepEqual(all.find((event) => event.id === deletion.id), deletion);
+    assert.ok(!all.some((event) => event.entity_id === unrelated.id));
+    assert.deepEqual(new Set(all.filter((event) => event.entity_type === "task").map((event) => event.entity_id)), new Set([first.id, second.id]));
+    assert.deepEqual(activity.getTaskIdentities("app-1"), [
+      { id: second.id, key: second.key, title: second.title, status: "active" },
+      { id: first.id, key: first.key, title: first.title, status: "deleted" },
+    ]);
+    assert.deepEqual(activity.getAll({ taskKey: "APP-1", limit: 1 }), all.slice(0, 1));
+    assert.equal(activity.getTaskIdentities("APP-1").length, 2);
+    project.delete("APP", human);
+    assert.equal(activity.getTaskIdentities("APP-1").length, 2);
+    assert.equal(activity.getAll({ taskKey: "APP-1" }).filter((event) => event.entity_type === "project").length, 2);
+  `);
+});
+
+test("deletion snapshots alone recover task identities and preserve the recorded event", () => {
+  runActivityCheck(`
+    const explicit = "22222222-1111-7111-8111-111111111111";
+    const aggregate = "22222222-2111-7111-8111-111111111111";
+    insertEvent({ id: explicit, created_at: 1, entity_id: "old-task", action: "delete", changes: { key: "GONE-1", title: "Deleted before other logging" } });
+    insertEvent({ id: aggregate, created_at: 2, entity_type: "project", entity_id: "old-project", action: "delete", changes: { key: "GONE", tasks: [
+      { id: "cascaded-task", key: "GONE-1", title: "Another lifetime" },
+      { id: "cascaded-task", key: "GONE-1", title: "Another lifetime" },
+    ] } });
+    const events = activity.getAll({ taskKey: "gone-1" });
+    assert.deepEqual(events.map((event) => event.id), [aggregate, explicit]);
+    assert.deepEqual(events[0], activity.getById(aggregate));
+    assert.equal(events[0].entity_id, "old-project");
+    assert.equal(activity.getTaskIdentities("GONE-1").length, 2);
+  `);
+});
+
+test("activity preserves every action, relation pair, null and unknown payload fields", () => {
+  runActivityCheck(`
+    const first = task.create({ project_id: app.id, title: "First", description: "  First line\\nSecond line  " }, human);
+    const second = task.create({ project_id: app.id, title: "Second" }, human);
+    relation.create({ sourceTaskKey: first.key, targetTaskKey: second.key, relation_type: "related" }, agent);
+    task.order({ taskKey: second.key, direction: "top" }, agent);
+    column.create({ projectKey: "APP", name: "Extra" }, human);
+    label.create({ name: "Read test" }, human);
+    const unknownId = "33333333-1111-7111-8111-111111111111";
+    const changes = { future_field: { text: "  Preserve\\n\\tthis  ", values: [null, 3] }, title: ["First", "Renamed"] };
+    insertEvent({ id: unknownId, created_at: 1, entity_id: first.id, changes });
+    const all = activity.getAll();
+    assert.deepEqual(new Set(all.map((event) => event.entity_type)), new Set(["task", "project", "column", "label"]));
+    assert.equal(all.filter((event) => event.action === "relation_create").length, 2);
+    assert.equal(all.filter((event) => event.action === "order").length, 1);
+    assert.equal(all.find((event) => event.action === "order").changes, null);
+    const event = activity.getById(unknownId);
+    assert.deepEqual(event.changes, changes);
+    assert.deepEqual(activity.getAll({ taskKey: first.key }).find((item) => item.id === unknownId), event);
+    assert.deepEqual(Object.keys(event).sort(), ["id", "created_at", "actor_name", "actor_email", "actor_kind", "entity_type", "entity_id", "action", "changes"].sort());
+    assert.equal(all.find((event) => event.entity_id === first.id && event.action === "create").changes.description, "  First line\\nSecond line  ");
+  `);
+});
+
+test.each([0, 9])("activity reads obey the existing read-only policy at schema version %i", (version) => {
+  const reader = `
+    import { strict as assert } from "node:assert";
+    import { activity, configureDatabase, task, ReadOnlyDatabaseError } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
+    import { getDb } from ${JSON.stringify(new URL("./db.ts", import.meta.url).pathname)};
+    configureDatabase({ client: "test", version: "0.0.0", executable: "activity-test", release: "source", allowsLegacyRead: true });
+    const all = activity.getAll();
+    assert.equal(all.length, 2);
+    assert.deepEqual(activity.getById(all[0].id), all[0]);
+    assert.equal(activity.getAll({ taskKey: "APP-1" }).length, 1);
+    assert.equal(activity.getTaskIdentities("APP-1")[0].status, "active");
+    assert.equal(activity.getIds().length, 2);
+    assert.equal(getDb().query("PRAGMA query_only").get().query_only, 1);
+    assert.equal(getDb().query("SELECT total_changes() AS count").get().count, 0);
+    assert.throws(() => task.edit({ taskKey: "APP-1", title: "Refused" }, { name: "Test", kind: "human", email: null }), ReadOnlyDatabaseError);
+  `;
+  runActivityCheck(`
+    task.create({ project_id: app.id, title: "Readable" }, human);
+    getDb().exec("PRAGMA user_version = ${version}");
+    const before = getDb().query("SELECT * FROM activity ORDER BY id").all();
+    const result = Bun.spawnSync([process.execPath, "--eval", ${JSON.stringify(reader)}], { env: { ...process.env, ZINN_DIR: process.env.ZINN_DIR } });
+    assert.equal(result.stderr.toString(), "");
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(getDb().query("SELECT * FROM activity ORDER BY id").all(), before);
+    assert.equal(getDb().query("PRAGMA user_version").get().user_version, ${version});
+  `);
+});
 
 test("descriptions normalize before persistence and activity across projects, tasks and labels", () => {
   runActivityCheck(`

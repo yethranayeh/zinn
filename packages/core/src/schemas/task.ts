@@ -3,8 +3,20 @@ import { z } from "zod";
 import { labelNameSchema } from "./label";
 import { descriptionSchema, descriptionEditSchema } from "./description";
 import { relationTypeSchema } from "./relation";
+import { projectKeyPattern } from "./project";
 
 export const positiveIntegerPattern = "[1-9]\\d{0,14}";
+
+const taskKeyRegex = new RegExp(`^(${projectKeyPattern})-(${positiveIntegerPattern})$`);
+
+export function parseTaskKey(taskKey: string) {
+  const taskKeyMatch = taskKeyRegex.exec(taskKey);
+  if (taskKeyMatch == null) {
+    return null;
+  }
+
+  return { projectKey: taskKeyMatch[1]!, taskNumber: Number(taskKeyMatch[2]) };
+}
 
 const titleMessage = "Task title cannot be blank";
 

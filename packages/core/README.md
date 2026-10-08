@@ -81,6 +81,14 @@ Mutations that change tasks, projects, columns, global label definitions, relati
 
 Project deletion produces one aggregate project activity row. Its snapshot contains the project's key and name, ordered columns as `{ id, name }`, and active and archived tasks as `{ id, key, title }`. SQLite's cascaded task, column, relation, comment, label-attachment, and search-row deletions do not produce individual deletion activity.
 
+`activity.getAll({ taskKey?, limit? })` returns all matching events, newest first by `created_at`, then `id` for ties. `limit` is an optional positive safe integer applied after filtering. A task key matches its current or archived task and any deleted lifetimes recoverable from explicit task-deletion or project-deletion snapshots, including after project deletion. Matching project-deletion events retain their original project identity and payload. Reused keys include every known task identity; a valid key with no recoverable history returns `[]`.
+
+`activity.getById(id)` returns one event by its full UUID or unique left prefix. Matching ignores case and accepts canonical hyphens or uninterrupted hexadecimal digits. Prefixes require at least eight hexadecimal digits. Malformed, too-short, missing and ambiguous IDs throw distinct errors; ambiguity lists the matching full IDs. Lookup uniqueness covers the entire activity table.
+
+Both reads return `Activity` values with full `id`, `created_at` (epoch milliseconds), `actor_name`, `actor_email`, `actor_kind`, `entity_type`, `entity_id`, `action`, and `changes` (parsed JSON or `null`). Historical payloads are returned as recorded, including unknown fields and full text. Reads follow the normal database-opening policy and append no activity.
+
+`activity.getIds()` returns every full event ID for global abbreviation checks. `activity.getTaskIdentities(taskKey)` returns known lifetimes as `{ id, key, title, status }`, where `status` is `"active"`, `"archived"` or `"deleted"`. Current identities use current titles; deleted identities use recorded deletion snapshots. These navigation facts do not replace historical event payloads. `task.activity(key)` retains its existing live-task lookup and ID-ascending order.
+
 ## Task priority
 
 Tasks store `priority: TaskPriority | null` and `TaskPriority` is `"low" | "medium" | "high" | "urgent"`.
