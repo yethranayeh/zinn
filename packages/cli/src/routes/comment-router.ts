@@ -15,6 +15,7 @@ import {
 import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit";
 import { currentActor } from "../actor";
 import { formatRows } from "../presentation/row-layout";
+import { formatLocalTime } from "../presentation/time";
 
 type PresentedComment = Pick<CommentWithKey, "key" | "text" | "created_at" | "updated_at">;
 
@@ -31,25 +32,9 @@ export function presentComments(taskKey: string) {
   return comment.getAll(taskKey).map(presentComment);
 }
 
-function formatCommentCreatedAt(createdAt: number) {
-  const date = new Date(createdAt);
-  const offsetMinutes = -date.getTimezoneOffset();
-  const offsetSign = offsetMinutes >= 0 ? "+" : "-";
-  const absoluteOffsetMinutes = Math.abs(offsetMinutes);
-  const offsetHours = Math.floor(absoluteOffsetMinutes / 60);
-  const remainingOffsetMinutes = absoluteOffsetMinutes % 60;
-  const pad = (value: number) => String(value).padStart(2, "0");
-
-  return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
-    `${pad(date.getHours())}:${pad(date.getMinutes())} ` +
-    `${offsetSign}${pad(offsetHours)}:${pad(remainingOffsetMinutes)}`
-  );
-}
-
 function commentRow(commentMatch: PresentedComment, options: { showsCreatedAt: boolean }) {
   const createdAtCells: Array<RowCell> = options.showsCreatedAt
-    ? [{ text: formatCommentCreatedAt(commentMatch.created_at), style: "dim" }]
+    ? [{ text: formatLocalTime(commentMatch.created_at), style: "dim" }]
     : [];
 
   return [{ text: commentMatch.key }, ...createdAtCells, { text: commentMatch.text }];

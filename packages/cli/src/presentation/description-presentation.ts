@@ -1,5 +1,8 @@
-export function formatDescriptionPreview(description: string | null) {
-  const DESCRIPTION_PREVIEW_LENGTH = 80;
+export function formatDescriptionPreview(
+  description: string | null,
+  options: { maxLength?: number } = {},
+) {
+  const previewLength = options.maxLength ?? 80;
 
   if (description == null) {
     return "";
@@ -7,9 +10,9 @@ export function formatDescriptionPreview(description: string | null) {
 
   const normalizedDescription = description.replace(/\s+/g, " ").trim();
 
-  if (normalizedDescription.length <= DESCRIPTION_PREVIEW_LENGTH) {
+  if (normalizedDescription.length <= previewLength) {
     return normalizedDescription;
   }
 
-  return `${normalizedDescription.slice(0, DESCRIPTION_PREVIEW_LENGTH - 1).trimEnd()}…`;
+  return `${normalizedDescription.slice(0, previewLength - 1).trimEnd()}…`;
 }

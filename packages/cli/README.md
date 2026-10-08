@@ -491,7 +491,23 @@ Use `none` to clear priority. Task lists show priority in a compact column after
 Zinn keeps an activity log of task changes such as creating, editing, moving, reordering, archiving, unarchiving and deleting a task, its labels, its relations, and its comments. Project, column, and global label definition changes are recorded too. Each log also says _who_ made the change.
 
 Deleting a project records one project deletion rather than separate deletion activity for every cascaded row.
-Note that this data is not yet surfaced by any command yet.
+
+```sh
+zinn activity list
+zinn activity list --limit 10
+zinn activity list --task MDR-1
+zinn activity view 019abcdf-1234-7
+```
+
+`activity list` returns every matching event, newest first by its recorded time and then event ID for ties. `--limit` takes a positive safe integer and caps the newest matches. Relation mutations retain their two affected-task events, and reorders are included.
+
+`--task` matches existing, archived and deleted tasks by readable key, including after project deletion. It recovers identities from current tasks and recorded deletion snapshots. A reused key includes all known lifetimes, distinguished by task ID and current/deleted status. The aggregate project deletion that removed a matching task retains its original project identity and full payload. A valid key without recoverable recorded history returns an empty list.
+
+Event IDs are stored UUIDs. Text lists use the shortest prefix of at least eight hexadecimal digits that is unique across the whole activity table. `activity view` accepts a full UUID or a unique left prefix, ignoring case, with canonical hyphens or uninterrupted hexadecimal digits. An ambiguous prefix lists candidates and requires more characters. Full IDs are durable; prefixes may become ambiguous as history grows.
+
+Text times use local dates/times with a UTC offset. Current entity names and task statuses help navigation; recorded changes retain their historical values. `activity view` preserves full recorded text and line breaks, with raw JSON for unknown change fields.
+
+With `--json`, list returns an array (including `[]` for no matches), and view returns one event object. Both expose the same full fields: `id`, `created_at` (epoch milliseconds), `actor_name`, `actor_email`, `actor_kind`, `entity_type`, `entity_id`, `action`, and `changes`. `changes` is parsed JSON or `null`, and includes the complete payload even when text listing summarizes it. Full event and entity IDs remain available after deletion.
 
 When a coding agent performs a mutation with `zinn`, the change is recorded under that agent's name.
 

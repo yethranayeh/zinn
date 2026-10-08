@@ -88,6 +88,18 @@ zinn task comment delete MDR-1#1
 
 Comments also appear in `task view`. See the [CLI documentation](packages/cli/README.md#task-comments) for details.
 
+## Activity log
+
+Read recent recorded changes across the database or for one task:
+
+```sh
+zinn activity list --limit 10
+zinn activity list --task MDR-1
+zinn activity view <activity-id>
+```
+
+Activity includes archived and deleted entities. Task filtering recovers deleted tasks from recorded deletion snapshots. When a project deletion removes its tasks, the history includes that single project-deletion event. Use `activity view` for full recorded changes and `--json` for full event records. See the [CLI documentation](packages/cli/README.md#activity) for event IDs and filtering.
+
 ## Data location
 
 Zinn stores its shared local database at `~/.zinn/data/zinn.sqlite`. Every Zinn project on your machine uses that database unless `ZINN_DIR` or a settings file points elsewhere.

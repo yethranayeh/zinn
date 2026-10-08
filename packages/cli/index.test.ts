@@ -5,6 +5,7 @@ import { tmpdir, userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 import packageJson from "./package.json";
+import type { Activity } from "@zinn-dev/core";
 
 // ? End-to-end tests: each case spawns the real bin, so there is no module-level
 // ? import of core here and `ZINN_DIR` is passed per-spawn rather than set on
@@ -254,6 +255,8 @@ test("every command help exits cleanly instead of running the command", () => {
     ["task", "comment", "list"],
     ["task", "comment", "edit"],
     ["task", "comment", "delete"],
+    ["activity", "list"],
+    ["activity", "view"],
     ["backup"],
     ["restore"],
     ["migrate"],
@@ -5242,5 +5245,310 @@ test("the text-edit flags are limited to the edit commands and listed in their h
       expect(help).toContain("[--append|--replacing <old> [--all]]");
       expect(help).toContain("--append");
     }
+  });
+});
+
+// --- ACTIVITY
+
+function seedRecordedActivity(
+  directory: string,
+  inputs: Array<Pick<Activity, "id"> & Partial<Activity>>,
+) {
+  expect(runZinn(["activity", "list", "--json"], directory).code).toBe(0);
+  const events: Array<Activity> = inputs.map((input) => ({
+    id: input.id,
+    created_at: input.created_at ?? Date.UTC(2026, 9, 8, 10, 30),
+    actor_name: input.actor_name ?? "Test Agent",
+    actor_email: input.actor_email === undefined ? "agent@example.com" : input.actor_email,
+    actor_kind: input.actor_kind ?? "agent",
+    entity_type: input.entity_type ?? "task",
+    entity_id: input.entity_id ?? "11111111-1234-7000-8000-123456abcdef",
+    action: input.action ?? "edit",
+    changes: input.changes ?? null,
+  }));
+  withTestDb(directory, (db) => {
+    const insert = db.query("INSERT INTO activity (id, created_at, actor_name, actor_email, actor_kind, entity_type, entity_id, action, changes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    for (const event of events) {
+      insert.run(event.id, event.created_at, event.actor_name, event.actor_email, event.actor_kind,
+        event.entity_type, event.entity_id, event.action,
+        event.changes === null ? null : JSON.stringify(event.changes));
+    }
+  });
+  return events;
+}
+
+test("activity help exposes list/view without opening a database", () => {
+  withIsolatedZinnDir((directory) => {
+    expect(runZinn(["--help"], directory).stdout).toContain("activity {list|view}");
+    const namespace = runZinn(["activity", "--help"], directory);
+    expect(namespace.code).toBe(0);
+    expect(namespace.stdout).toContain("{list|view}");
+    for (const command of ["list", "view"]) {
+      const result = runZinn(["activity", command, "--help"], directory);
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain(`Usage: zinn activity ${command}`);
+      expect(result.stderr).toBe("");
+    }
+    expect(existsSync(join(directory, "data"))).toBe(false);
+  });
+});
+
+test("activity empty lists and unrecoverable task histories return empty results", () => {
+  withIsolatedZinnDir((directory) => {
+    for (const args of [["activity", "list"], ["activity", "list", "--task", "gone-2"]]) {
+      const text = runZinn(args, directory);
+      expect(text).toEqual({ code: 0, stdout: "", stderr: "" });
+      const json = runZinn([...args, "--json"], directory);
+      expect(json.code).toBe(0);
+      expect(JSON.parse(json.stdout)).toEqual([]);
+    }
+  });
+});
+
+test("activity JSON preserves full matching records, parsed payloads and deterministic ordering", () => {
+  withIsolatedZinnDir((directory) => {
+    const events = seedRecordedActivity(directory, [
+      { id: "11111111-1234-7000-8000-123456abcde1", created_at: 1, entity_type: "project", action: "create", changes: { key: "OLD", name: "Old project", columns: [] } },
+      { id: "11111111-1234-7000-8000-123456abcde2", created_at: 2, entity_type: "column", action: "order" },
+      { id: "11111111-1234-7000-8000-123456abcde3", created_at: 2, entity_type: "label", action: "delete", actor_email: null, changes: { name: "Old label", description: "Full\ntext", future: { values: [1, null] } } },
+    ]);
+    const listed = runZinn(["activity", "list", "--json"], directory);
+    expect(listed.code).toBe(0);
+    expect(JSON.parse(listed.stdout)).toEqual([events[2], events[1], events[0]]);
+    expect(JSON.parse(runZinn(["activity", "list", "--limit", "1", "--json"], directory).stdout)).toEqual([events[2]]);
+    expect(JSON.parse(runZinn(["activity", "list", "--limit", String(Number.MAX_SAFE_INTEGER), "--json"], directory).stdout)).toHaveLength(3);
+    for (const event of events) {
+      const viewed = runZinn(["activity", "view", event.id, "--json"], directory);
+      expect(viewed.code).toBe(0);
+      expect(JSON.parse(viewed.stdout)).toEqual(event);
+    }
+    const text = runZinn(["activity", "list"], directory).stdout;
+    expect(text).toContain("order");
+    expect(text).toContain("column");
+    expect(text).toContain("Entity ID: 11111111-1234-7000-8000-123456abcdef");
+    expect(text).toContain("project OLD [recorded]");
+    expect(text).toContain("label Old label [recorded]");
+  });
+});
+
+test("activity returns all events by default and limits only after selecting matches", () => {
+  withIsolatedZinnDir((directory) => {
+    const events = seedRecordedActivity(directory, Array.from({ length: 55 }, (_, index) => ({
+      id: `11111111-1234-7000-8000-${String(index).padStart(12, "0")}`,
+      created_at: index,
+    })));
+    expect(JSON.parse(runZinn(["activity", "list", "--json"], directory).stdout)).toEqual(events.toReversed());
+    expect(JSON.parse(runZinn(["activity", "list", "--limit", "2", "--json"], directory).stdout)).toEqual(events.toReversed().slice(0, 2));
+  });
+});
+
+test("activity task-filtered prefixes remain globally unique even outside the filter and limit", () => {
+  withIsolatedZinnDir((directory) => {
+    expect(runZinn(["project", "create", "APP"], directory).code).toBe(0);
+    expect(runZinn(["task", "create", "APP", "--title", "Current task"], directory).code).toBe(0);
+    const taskId = withTestDb(directory, (db) => db.query<{ id: string }, []>("SELECT id FROM task").get()!.id);
+    const first = "abcdef12-1234-7000-8000-000000000001";
+    const second = "abcdef12-1234-7000-8000-000000000002";
+    seedRecordedActivity(directory, [
+      { id: first, created_at: Date.now() + 1000, entity_id: taskId },
+      { id: second, created_at: Date.now() + 2000, entity_type: "label" },
+    ]);
+    const filtered = runZinn(["activity", "list", "--task", "app-1", "--limit", "1"], directory);
+    expect(filtered.code).toBe(0);
+    expect(filtered.stdout.split(" | ")[0]).toBe(first);
+    expect(filtered.stdout).toContain("APP-1 · edited");
+    expect(filtered.stdout).not.toContain("[current]");
+    expect(filtered.stdout).not.toContain(second);
+    const ambiguous = runZinn(["activity", "view", "abcdef12", "--json"], directory);
+    expect(ambiguous.code).toBe(1);
+    expect(ambiguous.stdout).toBe("");
+    const message = JSON.parse(ambiguous.stderr).error.message;
+    expect(message).toContain("ambiguous");
+    expect(message).toContain(first);
+    expect(message).toContain(second);
+    expect(message).toContain("more characters");
+  });
+});
+
+test("activity view accepts normalized IDs and reports malformed, short and missing IDs distinctly", () => {
+  withIsolatedZinnDir((directory) => {
+    const id = "abcdef12-1234-7000-8000-123456abcdef";
+    const [event] = seedRecordedActivity(directory, [{ id }]);
+    for (const input of [id, id.toUpperCase(), id.replaceAll("-", ""), "ABCDEF12", "ABCDEF12-1", "ABCDEF121"]) {
+      const result = runZinn(["activity", "view", input, "--json"], directory);
+      expect(result.code).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual(event);
+    }
+    for (const [input, message] of [
+      ["abcdef1", "at least 8"], ["abcd-ef12", "Invalid activity ID"], ["ffffffff", "No activity matches"],
+    ] as const) {
+      const result = runZinn(["activity", "view", input], directory);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain(message!);
+    }
+  });
+});
+
+test("activity rejects unsupported, repeated and malformed command arguments without writes", () => {
+  withIsolatedZinnDir((directory) => {
+    const [event] = seedRecordedActivity(directory, [{ id: "abcdef12-1234-7000-8000-123456abcdef" }]);
+    const before = withTestDb(directory, (db) => db.query("SELECT * FROM activity").all());
+    const invalid = [
+      ["list", "APP-1"], ["list", "--project", "APP"],
+      ["list", "--task", "APP-1", "--task", "APP-2"],
+      ["list", "--limit", "1", "--limit", "2"], ["list", "--task", "APP-0"],
+      ["view"], ["view", event!.id, "extra"], ["view", event!.id, "--task", "APP-1"],
+    ];
+    for (const args of invalid) {
+      const result = runZinn(["activity", ...args, "--json"], directory);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(JSON.parse(result.stderr).error.message.length).toBeGreaterThan(0);
+    }
+    for (const limit of ["0", "-1", "1.5", "1e2", "01", " 2", "Infinity", "9007199254740992", "99999999999999999"]) {
+      const result = runZinn(["activity", "list", `--limit=${limit}`, "--json"], directory);
+      expect(result.code).toBe(1);
+      expect(JSON.parse(result.stderr).error.message).toBe("Activity limit must be a positive safe integer");
+    }
+    expect(withTestDb(directory, (db) => db.query("SELECT * FROM activity").all())).toEqual(before);
+  });
+});
+
+test("activity recovers deleted and reused task lifetimes, retaining the original project deletion", () => {
+  withIsolatedZinnDir((directory) => {
+    const run = (...args: Array<string>) => runZinn(args, directory);
+    expect(run("project", "create", "APP").code).toBe(0);
+    expect(run("task", "create", "APP", "--title", "Old lifetime").code).toBe(0);
+    expect(run("task", "create", "APP", "--title", "Unrelated").code).toBe(0);
+    const oldTaskId = withTestDb(directory, (db) => db.query<{ id: string }, []>("SELECT id FROM task WHERE number = 1").get()!.id);
+    expect(run("task", "archive", "APP-1").code).toBe(0);
+    const archivedEvents: Array<Activity> = JSON.parse(run("activity", "list", "--task", "APP-1", "--json").stdout);
+    const archiveEvent = archivedEvents.find((event) => event.action === "archive")!;
+    expect(run("activity", "list", "--task", "APP-1").stdout).not.toContain("[archived]");
+    expect(run("activity", "view", archiveEvent.id).stdout).toContain("[archived]");
+    expect(run("project", "delete", "APP", "--yes").code).toBe(0);
+    const deletion = JSON.parse(run("activity", "list", "--json").stdout).find((event: Activity) => event.entity_type === "project" && event.action === "delete");
+    expect(run("project", "create", "APP").code).toBe(0);
+    expect(run("task", "create", "APP", "--title", "New lifetime").code).toBe(0);
+    const newTaskId = withTestDb(directory, (db) => db.query<{ id: string }, []>("SELECT id FROM task WHERE number = 1").get()!.id);
+    const events: Array<Activity> = JSON.parse(run("activity", "list", "--task", "app-1", "--json").stdout);
+    expect(events).toHaveLength(4);
+    expect(events.find((event) => event.id === deletion.id)).toEqual(deletion);
+    expect(new Set(events.filter((event) => event.entity_type === "task").map((event) => event.entity_id))).toEqual(new Set([oldTaskId, newTaskId]));
+    const text = run("activity", "list", "--task", "APP-1").stdout;
+    expect(text).toContain(`Task identity: current; ${newTaskId}`);
+    expect(text).toContain(`Task identity: deleted; ${oldTaskId}`);
+    expect(text).toContain(`removed APP-1 (${oldTaskId})`);
+    const limited = run("activity", "list", "--task", "APP-1", "--limit", "1").stdout;
+    expect(limited).toContain(`Task identity: current; ${newTaskId}`);
+    expect(limited).not.toContain(oldTaskId);
+    expect(JSON.parse(run("activity", "list", "--task", "APP-99", "--json").stdout)).toEqual([]);
+    expect(run("activity", "view", deletion.id).stdout).toContain(oldTaskId);
+  });
+});
+
+test("activity finds explicit task deletions and deletion-only historical snapshots", () => {
+  withIsolatedZinnDir((directory) => {
+    expect(runZinn(["project", "create", "APP"], directory).code).toBe(0);
+    expect(runZinn(["task", "create", "APP", "--title", "Delete me"], directory).code).toBe(0);
+    expect(runZinn(["task", "delete", "APP-1", "--yes"], directory).code).toBe(0);
+    const explicit = runZinn(["activity", "list", "--task", "APP-1"], directory);
+    expect(explicit.code).toBe(0);
+    expect(explicit.stdout).toContain("APP-1 · deleted");
+    expect(explicit.stdout).toContain("Delete me");
+    const [snapshot] = seedRecordedActivity(directory, [{ id: "abcdef12-1234-7000-8000-123456abcdef", entity_type: "project", action: "delete",
+      changes: { key: "GONE", tasks: [{ id: "old-task", key: "GONE-2", title: "Snapshot only" }] } }]);
+    expect(JSON.parse(runZinn(["activity", "list", "--task", "gone-2", "--json"], directory).stdout)).toEqual([snapshot]);
+    expect(runZinn(["activity", "list", "--task", "GONE-2"], directory).stdout).toContain("removed GONE-2 (old-task)");
+  });
+});
+
+test("activity retains each relation event and uses current names only for navigation", () => {
+  withIsolatedZinnDir((directory) => {
+    const run = (...args: Array<string>) => runZinn(args, directory);
+    expect(run("project", "create", "APP").code).toBe(0);
+    expect(run("task", "create", "APP", "--title", "First").code).toBe(0);
+    expect(run("task", "create", "APP", "--title", "Second").code).toBe(0);
+    expect(run("task", "relation", "create", "APP-1", "APP-2", "--type", "related").code).toBe(0);
+    expect(run("label", "create", "Before").code).toBe(0);
+    expect(run("label", "edit", "Before", "--name", "Now").code).toBe(0);
+    const events: Array<Activity> = JSON.parse(run("activity", "list", "--json").stdout);
+    const relations = events.filter((event) => event.action === "relation_create");
+    expect(relations).toHaveLength(2);
+    expect(relations[0]!.id).not.toBe(relations[1]!.id);
+    expect(relations[0]!.changes).toEqual(relations[1]!.changes);
+    const text = run("activity", "list").stdout;
+    expect(text.match(/added relation/g)).toHaveLength(2);
+    expect(text).toContain("source: APP-1");
+    expect(text).toContain("target: APP-2");
+    const labelCreate = events.find((event) => event.entity_type === "label" && event.action === "create")!;
+    const view = run("activity", "view", labelCreate.id).stdout;
+    expect(view).toContain("label Now [current]");
+    expect(view).toContain("name:\nBefore");
+    expect(JSON.parse(run("activity", "view", labelCreate.id, "--json").stdout)).toEqual(labelCreate);
+  });
+});
+
+test("activity views preserve recorded text, actor/entity identity, unknown fields and local offsets", () => {
+  withIsolatedZinnDir((directory) => {
+    const oldText = "  Before\n\tSecond line\n";
+    const newText = "  After\r\n\tFinal line  ";
+    const id = "abcdef12-1234-7000-8000-123456abcdef";
+    const [event] = seedRecordedActivity(directory, [{ id,
+      changes: { title: ["Old title", "New title"], description: [oldText, newText], future: { text: "Unknown\ntext", values: [null, 2] } } }]);
+    const view = runZinn(["activity", "view", "abcdef12"], directory, { TZ: "Europe/Berlin" });
+    expect(view.code).toBe(0);
+    expect(view.stdout).toContain(id);
+    expect(view.stdout).toContain(event!.entity_id);
+    expect(view.stdout).toContain("Test Agent");
+    expect(view.stdout).toContain("agent@example.com");
+    expect(view.stdout).toContain("Kind: agent");
+    expect(view.stdout).toContain("2026-10-08 12:30 +02:00");
+    expect(view.stdout).toContain(oldText);
+    expect(view.stdout).toContain(newText);
+    expect(view.stdout).toContain("Raw JSON:");
+    expect(view.stdout).toContain('"future"');
+    expect(view.stdout).toContain('"Unknown\\ntext"');
+    const listed = runZinn(["activity", "list"], directory).stdout;
+    expect(listed).toContain("description changed");
+    expect(listed).not.toContain(oldText);
+    expect(JSON.parse(runZinn(["activity", "view", id, "--json"], directory).stdout)).toEqual(event);
+    const [commentEvent] = seedRecordedActivity(directory, [{ id: "fedcba98-1234-7000-8000-123456abcdef", action: "comment_create",
+      changes: { comment: { id: "old-comment", key: "APP-1#1", text: oldText } } }]);
+    expect(runZinn(["activity", "view", commentEvent!.id], directory).stdout).toContain(oldText);
+  });
+});
+
+test.each([0, 9])("activity commands read schema version %i under the existing policy without writes", (version) => {
+  withIsolatedZinnDir((directory) => {
+    const [event] = seedRecordedActivity(directory, [{ id: "abcdef12-1234-7000-8000-123456abcdef", action: "delete",
+      changes: { key: "GONE-1", title: "Deleted" } }]);
+    withTestDb(directory, (db) => db.run(`PRAGMA user_version = ${version}`));
+    const snapshot = () => withTestDb(directory, (db) => ({
+      schema: db.query("SELECT * FROM sqlite_schema ORDER BY name").all(),
+      events: db.query("SELECT * FROM activity").all(),
+      version: db.query("PRAGMA user_version").get(),
+    }));
+    const before = snapshot();
+    if (version === 0) {
+      const refused = runZinn(["activity", "list", "--json"], directory);
+      expect(refused.code).toBe(1);
+      expect(refused.stdout).toBe("");
+      expect(JSON.parse(refused.stderr).error.message).toContain("--allow-legacy-read");
+    }
+    const flags = version === 0 ? ["--allow-legacy-read"] : [];
+    for (const args of [["list"], ["list", "--task", "GONE-1"], ["view", event!.id]]) {
+      for (const mode of [[], ["--json"]]) {
+        const result = runZinn(["activity", ...args, ...flags, ...mode], directory);
+        expect(result.code).toBe(0);
+        if (version === 0) {
+          expect(result.stderr.match(/Warning:/g)).toHaveLength(1);
+        } else {
+          expect(result.stderr).toBe("");
+        }
+      }
+    }
+    expect(snapshot()).toEqual(before);
   });
 });
