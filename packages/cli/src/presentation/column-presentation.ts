@@ -2,7 +2,8 @@ import type { RowCell } from "./row-layout";
 
 import { formatRows } from "./row-layout";
 
-export type PresentedColumnTaskCount = { name: string; taskCount: number };
+export type PresentedColumn = { name: string; project?: string; taskCount?: number };
+export type PresentedColumnTaskCount = PresentedColumn & { taskCount: number };
 
 /** Archived tasks are off the board, so they share one row below the columns instead of a column of their own. */
 const ARCHIVED_ROW_LABEL = "Archived";
@@ -21,16 +22,25 @@ export function columnNameCell(columnName: string): RowCell {
 }
 
 /** The archived row is left out when there are no archived tasks. */
-export function formatColumnTaskCounts(
-  presentedColumns: Array<PresentedColumnTaskCount>,
-  options: { archivedTaskCount: number },
+export function formatColumnList(
+  presentedColumns: Array<PresentedColumn>,
+  options: { showsProject?: boolean; showsTaskCounts?: boolean; archivedTaskCount?: number } = {},
 ) {
-  const rows: Array<Array<RowCell>> = presentedColumns.map((presentedColumn) => [
-    columnNameCell(presentedColumn.name),
-    { text: String(presentedColumn.taskCount) },
-  ]);
+  const rows: Array<Array<RowCell>> = presentedColumns.map((presentedColumn) => {
+    const projectCells: Array<RowCell> =
+      options.showsProject && presentedColumn.project != null
+        ? [{ text: presentedColumn.project }]
+        : [];
 
-  if (options.archivedTaskCount > 0) {
+    const taskCountCells: Array<RowCell> =
+      options.showsTaskCounts && presentedColumn.taskCount != null
+        ? [{ text: String(presentedColumn.taskCount) }]
+        : [];
+
+    return [...projectCells, columnNameCell(presentedColumn.name), ...taskCountCells];
+  });
+
+  if (options.archivedTaskCount != null && options.archivedTaskCount > 0) {
     rows.push([{ text: ARCHIVED_ROW_LABEL }, { text: String(options.archivedTaskCount) }]);
   }
 

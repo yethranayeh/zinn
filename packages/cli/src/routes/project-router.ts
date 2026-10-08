@@ -1,5 +1,8 @@
 import type { RouteDef } from "../types";
-import type { PresentedColumnTaskCount } from "../presentation/column-presentation";
+import type {
+  PresentedColumn,
+  PresentedColumnTaskCount,
+} from "../presentation/column-presentation";
 
 import { parseArgs } from "node:util";
 
@@ -13,7 +16,7 @@ import {
   validateUniqueOptions,
 } from "../lib";
 import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit";
-import { formatColumnTaskCounts } from "../presentation/column-presentation";
+import { formatColumnList } from "../presentation/column-presentation";
 import { formatDescriptionPreview } from "../presentation/description-presentation";
 import { formatCellSeparator, formatRows } from "../presentation/row-layout";
 import { formatSection } from "../presentation/section";
@@ -51,8 +54,6 @@ function formatProjectList(
   );
 }
 
-type PresentedColumn = { project: string; name: string };
-
 function presentColumn(columnMatch: { project_id: string; name: string }): PresentedColumn {
   const columnProject = project.getById(columnMatch.project_id)!;
 
@@ -60,7 +61,7 @@ function presentColumn(columnMatch: { project_id: string; name: string }): Prese
 }
 
 function formatColumn(presented: PresentedColumn) {
-  return formatRows([[{ text: presented.project }, { text: presented.name }]]);
+  return formatColumnList([presented], { showsProject: true });
 }
 
 export const projectRouter = {
@@ -151,7 +152,8 @@ Example: zinn project list`,
           sections.push(formatSection("Description", viewedProject.description));
         }
 
-        const columnTaskCounts = formatColumnTaskCounts(viewedProject.columns, {
+        const columnTaskCounts = formatColumnList(viewedProject.columns, {
+          showsTaskCounts: true,
           archivedTaskCount: viewedProject.archivedTaskCount,
         });
         sections.push(formatSection("Columns", columnTaskCounts));
@@ -283,14 +285,20 @@ Example: zinn project column create MDR "Boardlog"`,
           quit("Project key needs to be specified to list columns");
         }
 
-        // TODO: attach per-column task count
-        // TODO: terminal formatting
-        const columns = column.getAllByProjectKey(projectKey).map((c) => ({ name: c.name }));
-        output(columns, (presentedColumns) => presentedColumns.map((c) => c.name).join("\n"));
+        const taskCounts = column.getTaskCountsByProjectKey(projectKey);
+        const columns = taskCounts.columns.map((columnCount) => ({
+          name: columnCount.column.name,
+          taskCount: columnCount.taskCount,
+        }));
+        output(columns, (presentedColumns) =>
+          formatColumnList(presentedColumns, {
+            showsTaskCounts: true,
+          }),
+        );
       },
       help: `Usage: zinn project column list <project-key>
 
-List a project's columns in board order.
+List a project's columns in board order with their unarchived task counts.
 
 Example: zinn project column list MDR`,
     },

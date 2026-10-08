@@ -103,6 +103,8 @@ zinn project column list MDR
 
 `project view` prints the project with its full description and the number of unarchived tasks in each column. Archived tasks are counted as one total. Use `zinn task list <project-key>` to list the tasks themselves.
 
+`project column list` shows the project's columns in board order with their unarchived task counts. With `--json`, it returns `[{ "name": "Backlog", "taskCount": 3 }, ...]`.
+
 Edit a project:
 
 ```sh

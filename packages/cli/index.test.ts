@@ -402,7 +402,7 @@ test("project column edit renames a column in place and keeps its tasks", () => 
     const renamed = runZinn(["project", "column", "edit", "col", "todo", "--name", " Next up "], dir);
     expect(renamed).toEqual({ stdout: "COL | Next up\n", stderr: "", code: 0 });
     expect(runZinn(["project", "column", "list", "COL"], dir).stdout).toBe(
-      "Backlog\nNext up\nIn Progress\nReview\nDone\n",
+      "Backlog     | 0\nNext up     | 1\nIn Progress | 0\nReview      | 0\nDone        | 0\n",
     );
     expect(readColumns()).toEqual(
       before.map((row: any) => (row.name === "TODO" ? { ...row, name: "Next up" } : row)),
@@ -453,7 +453,9 @@ test("project column edit rejects invalid requests without writes", () => {
 test("project column order moves a column in every direction and prints it", () => {
   withIsolatedZinnDir((dir) => {
     runZinn(["project", "create", "COL", "--name", "Columns"], dir);
-    const listColumns = () => runZinn(["project", "column", "list", "COL"], dir).stdout.trim().split("\n");
+    const listColumns = () => JSON.parse(
+      runZinn(["project", "column", "list", "COL", "--json"], dir).stdout,
+    ).map((column: { name: string }) => column.name);
 
     expect(runZinn(["project", "column", "order", "col", "review", "first"], dir)).toEqual({
       stdout: "COL | Review\n",
@@ -691,12 +693,16 @@ test("project view JSON contains the project, per-column task counts in board or
       columns: expectedColumns,
       archivedTaskCount: 0,
     });
+    expect(JSON.parse(run("project", "column", "list", "view", "--json").stdout)).toEqual(expectedColumns);
 
     run("task", "archive", "VIEW-1");
     expect(JSON.parse(run("project", "view", "VIEW", "--json").stdout)).toMatchObject({
       columns: [expectedColumns[0], { name: "Backlog", taskCount: 0 }, ...expectedColumns.slice(2)],
       archivedTaskCount: 1,
     });
+    expect(JSON.parse(run("project", "column", "list", "VIEW", "--json").stdout)).toEqual([
+      expectedColumns[0], { name: "Backlog", taskCount: 0 }, ...expectedColumns.slice(2),
+    ]);
   });
 });
 
@@ -3707,6 +3713,21 @@ test("project view bolds its section headings, dims the separators and colors co
     );
     expect(run({}, "project", "list").stdout).toBe("MDR | Macrodata | First line. Second line.\n");
     expect(run({ FORCE_COLOR: "1" }, "project", "view", "MDR", "--json").stdout).not.toContain("\x1b");
+    const columnEnvironments: Array<Record<string, string>> = [{}, { FORCE_COLOR: "1" }, { NO_COLOR: "1" }];
+    for (const env of columnEnvironments) {
+      const projectView = run(env, "project", "view", "MDR").stdout;
+      const columnList = run(env, "project", "column", "list", "MDR").stdout;
+      const columnsSection = projectView.split(env.FORCE_COLOR ? bold("Columns:") : "Columns:")[1]!;
+      expect(columnsSection.trimStart()).toStartWith(columnList);
+      expect(columnList).not.toContain("Archived");
+    }
+    expect(run({ FORCE_COLOR: "1" }, "project", "column", "edit", "MDR", "Backlog", "--name", "Backlog").stdout)
+      .toBe(`MDR${DIM_SEPARATOR}${GRAY_BACKLOG}\n`);
+    expect(run({ FORCE_COLOR: "1" }, "project", "column", "order", "MDR", "Done", "last").stdout)
+      .toBe(`MDR${DIM_SEPARATOR}${GREEN_DONE}\n`);
+    expect(run({ FORCE_COLOR: "1" }, "project", "column", "create", "MDR", "Waiting").stdout)
+      .toBe(`MDR${DIM_SEPARATOR}Waiting\n`);
+    expect(run({ FORCE_COLOR: "1" }, "project", "column", "list", "MDR", "--json").stdout).not.toContain("\x1b");
   });
 });
 
