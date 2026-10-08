@@ -3,7 +3,7 @@ import type { DatabaseState } from "./classify";
 import type { OpenDecision } from "./open-policy";
 
 import { expect, test } from "bun:test";
-import { mkdirSync, symlinkSync } from "node:fs";
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { resolveStorage } from "../constant";
@@ -49,7 +49,7 @@ test.each(rows)(
   ({ state, core, client, database, legacy = false, expected }) => {
     const decision = decideOpen({
       state,
-      isDefaultDatabase: () => database === "default",
+      isProtectedDatabase: () => database === "default",
       coreRelease: core,
       clientRelease: client,
       allowsLegacyRead: legacy,
@@ -59,18 +59,18 @@ test.each(rows)(
   },
 );
 
-test("only an older database asks whether it is the default database", () => {
+test("only an older database asks whether it is a protected database", () => {
   const states: Array<DatabaseState> = ["absent", "empty", "unmarked", "current", "newer"];
 
   for (const state of states) {
-    const isDefaultDatabase = () => {
+    const isProtectedDatabase = () => {
       throw new Error(`asked for ${state}`);
     };
 
     expect(() =>
       decideOpen({
         state,
-        isDefaultDatabase,
+        isProtectedDatabase,
         coreRelease: "source",
         clientRelease: "source",
         allowsLegacyRead: true,
@@ -106,7 +106,7 @@ test("without the default folder, another folder does not hold the default datab
 
 test("a default store is protected, even before its folder exists", () => {
   withDirectory((home) => {
-    expect(isProtectedStorage(resolveStorage({ env: {}, home }))).toBe(true);
+    expect(isProtectedStorage(resolveStorage({ cwd: home, env: {}, home }))).toBe(true);
   });
 });
 
@@ -119,10 +119,30 @@ test("a ZINN_DIR store is protected only when it reaches the default folder", ()
     mkdirSync(other);
     symlinkSync(defaultDir, link);
     const isProtected = (zinnDir: string) =>
-      isProtectedStorage(resolveStorage({ env: { ZINN_DIR: zinnDir }, home }));
+      isProtectedStorage(resolveStorage({ cwd: home, env: { ZINN_DIR: zinnDir }, home }));
 
     expect(isProtected(defaultDir)).toBe(true);
     expect(isProtected(link)).toBe(true);
     expect(isProtected(other)).toBe(false);
+  });
+});
+
+test("a store chosen by either settings file is protected, outside the default folder too", () => {
+  withDirectory((root) => {
+    const home = join(root, "home");
+    const repository = join(root, "repository");
+    mkdirSync(join(home, ".zinn"), { recursive: true });
+    mkdirSync(join(repository, ".git"), { recursive: true });
+    writeFileSync(join(home, ".zinn", "settings.json"), JSON.stringify({ storage: { directory: join(root, "global-store") } }));
+
+    const globalStorage = resolveStorage({ cwd: repository, env: {}, home });
+    expect(globalStorage.source).toBe("global");
+    expect(isProtectedStorage(globalStorage)).toBe(true);
+
+    writeFileSync(join(repository, "zinn.local.json"), JSON.stringify({ storage: { directory: "local-store" } }));
+
+    const localStorage = resolveStorage({ cwd: repository, env: {}, home });
+    expect(localStorage.source).toBe("local");
+    expect(isProtectedStorage(localStorage)).toBe(true);
   });
 });

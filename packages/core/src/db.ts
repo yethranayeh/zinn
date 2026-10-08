@@ -65,7 +65,7 @@ function prepare(connection: Database): Prepared {
   const classification = classifyConnection(connection, MIGRATIONS);
   const decision = decideOpen({
     state: classification.state,
-    isDefaultDatabase: () => isProtectedStorage(getStorage()),
+    isProtectedDatabase: () => isProtectedStorage(getStorage()),
     coreRelease: readCoreReleaseMode(),
     clientRelease: policy.release,
     allowsLegacyRead: policy.allowsLegacyRead,

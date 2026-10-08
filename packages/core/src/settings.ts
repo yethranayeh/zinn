@@ -38,6 +38,9 @@ function settingsFileError(path: string, problem: string) {
   return new Error(`Cannot use settings file ${path}: ${problem}`);
 }
 
+/** Error codes for a file that does not exist: ENOTDIR when a folder on its path is a file. */
+const MISSING_FILE_CODES = new Set(["ENOENT", "ENOTDIR"]);
+
 /** Reads and validates one settings file. A file that does not exist gives `null` and any other problem throws. */
 function readSettingsFile(path: string): SettingsFile | null {
   let text: string;
@@ -45,7 +48,8 @@ function readSettingsFile(path: string): SettingsFile | null {
   try {
     text = readFileSync(path, "utf8");
   } catch (error) {
-    const isMissingFile = error instanceof Error && "code" in error && error.code === "ENOENT";
+    const isMissingFile =
+      error instanceof Error && "code" in error && MISSING_FILE_CODES.has(String(error.code));
     if (isMissingFile) {
       return null;
     }

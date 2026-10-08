@@ -42,7 +42,7 @@ export const DEFAULT_OPEN_POLICY: OpenPolicy = {
 
 /**
  * Why a database opened read-only:
- * - older: a build that is not a published release found the default database at an older version
+ * - older: a build that is not a published release found a protected database at an older version
  * - newer: the database has a newer version than this build reaches
  * - unmarked: the database has no schema version, and the client allowed best-effort reading
  */
@@ -57,8 +57,8 @@ export type OpenDecision =
 
 export type OpenFacts = {
   state: DatabaseState;
-  /** Whether the database is the default database. Asked only for an older database. */
-  isDefaultDatabase: () => boolean;
+  /** Whether a source checkout leaves the database's upgrade to an explicit migration. Asked only for an older database. */
+  isProtectedDatabase: () => boolean;
   coreRelease: ReleaseMode;
   clientRelease: ReleaseMode;
   allowsLegacyRead: boolean;
@@ -80,11 +80,11 @@ export function decideOpen(facts: OpenFacts): OpenDecision {
     case "older": {
       /**
        * Source code may hold unreleased migrations,
-       *  so it upgrades the default database only through an explicit migration.
+       *  so it upgrades a protected database only through an explicit migration.
        */
       const isPublishedBuild =
         facts.coreRelease === "published" && facts.clientRelease === "published";
-      const upgradesAutomatically = isPublishedBuild || !facts.isDefaultDatabase();
+      const upgradesAutomatically = isPublishedBuild || !facts.isProtectedDatabase();
 
       return upgradesAutomatically
         ? { action: "upgrade" }
@@ -111,7 +111,8 @@ export function isDefaultDatabase(mainDir: string, defaultMainDir: string) {
 
 /**
  * Whether a source checkout opens the store's older database read-only, leaving the upgrade to an explicit migration.
- * Every store is protected except a `ZINN_DIR` store that does not reach the default folder.
+ * Every store is protected, whether the default folder or chosen by a settings file, except a `ZINN_DIR` store
+ *  that does not reach the default folder.
  */
 export function isProtectedStorage({ source, directory, defaultDirectory }: Storage) {
   if (source !== "env") {
@@ -159,7 +160,7 @@ function describeReadOnly(
 
   switch (reason) {
     case "older":
-      return `${opening}: it has schema version ${version}, and this build (${build}) uses version ${latestVersion}. A build that is not a published release upgrades the default database only through an explicit migration`;
+      return `${opening}: it has schema version ${version}, and this build (${build}) uses version ${latestVersion}. A build that is not a published release upgrades only a ZINN_DIR database by itself`;
     case "newer":
       return `${opening}: it has schema version ${version}, but this build (${build}) reaches only version ${latestVersion}. Use a newer Zinn version to change it`;
     case "unmarked":

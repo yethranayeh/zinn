@@ -10,6 +10,8 @@ import packageJson from "../../package.json";
 export const migrateCommand = {
   run: (args) => {
     parseArgs({ args, strict: true, allowPositionals: false });
+    // Resolved before the try, so a store that cannot be resolved fails without the note about backups.
+    const { backupDirectory } = getStorage();
 
     try {
       const result = migrate.run({
@@ -27,7 +29,7 @@ export const migrateCommand = {
       // A refusal attempted nothing, so only a failed upgrade points at the backups.
       if (!(error instanceof MigrationRefusedError)) {
         console.error(
-          `The database is unchanged. Backups taken before each upgrade attempt are kept in ${getStorage().backupDirectory}.`,
+          `The database is unchanged. Backups taken before each upgrade attempt are kept in ${backupDirectory}.`,
         );
       }
 

@@ -1,7 +1,7 @@
 /**
  * How getDb() opens each kind of database (ZINN-118), run in child processes,
- *  since core resolves its folder from HOME and ZINN_DIR once, when it is first used.
- * Default-database fixtures live in a temporary HOME with ZINN_DIR unset. Each child checks
+ *  since core resolves its folder from HOME, ZINN_DIR and the settings files once, when it is first used.
+ * Default-database fixtures live in a temporary HOME with ZINN_DIR unset, and each child runs in that HOME. Each child checks
  *  where core resolved its folder and exits before opening anything if it is not the expected one.
  * Older databases come from a test-only version 2 that the child puts in place of the shipped,
  *  empty migration list, and a published core comes from replacing core's release reading.
@@ -9,7 +9,7 @@
 import type { ReleaseMode } from "./release";
 
 import { expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -62,10 +62,11 @@ async function withHomeAsync(check: (home: string) => Promise<void>) {
   }
 }
 
-type Location = { home: string; zinnDir?: string };
+/** Where a child runs. `store` is the folder a settings file chooses, and `cwd` defaults to the HOME. */
+type Location = { home: string; zinnDir?: string; store?: string; cwd?: string };
 
-function mainDirOf({ home, zinnDir }: Location) {
-  return zinnDir ?? join(home, ".zinn");
+function mainDirOf({ home, zinnDir, store }: Location) {
+  return zinnDir ?? store ?? join(home, ".zinn");
 }
 
 function childEnvironment({ home, zinnDir }: Location) {
@@ -99,7 +100,10 @@ function childCommand(location: Location, script: string) {
 
 /** Runs script in a child and returns the JSON on the last line of its output. */
 function runChild(location: Location, script: string) {
-  const result = Bun.spawnSync(childCommand(location, script), { env: childEnvironment(location) });
+  const result = Bun.spawnSync(childCommand(location, script), {
+    env: childEnvironment(location),
+    cwd: location.cwd ?? location.home,
+  });
 
   expect(result.stderr.toString()).toBe("");
   expect(result.exitCode).toBe(0);
@@ -254,7 +258,7 @@ test("a current default database opens for writing, and opening it changes nothi
   });
 });
 
-/** Opens an older database, which a source build keeps read-only when it is the default database. */
+/** Opens an older database, which a source build keeps read-only when it is a protected database. */
 function expectOlderReadOnly(location: Location, openCase: OpenCase) {
   const mainDir = mainDirOf(location);
   const before = readDatabase(mainDir);
@@ -266,7 +270,9 @@ function expectOlderReadOnly(location: Location, openCase: OpenCase) {
   expect(outcome.writeError.message).toContain(databasePath(mainDir));
   expect(outcome.writeError.message).toContain("schema version 1");
   expect(outcome.writeError.message).toContain("uses version 2");
-  expect(outcome.writeError.message).toContain("only through an explicit migration");
+  expect(outcome.writeError.message).toContain(
+    "upgrades only a ZINN_DIR database by itself",
+  );
   expect(readDatabase(mainDir)).toEqual(before);
   expect(backupsOf(mainDir)).toEqual([]);
 }
@@ -336,6 +342,108 @@ test("a ZINN_DIR that reaches the default folder through a link or a parent step
       { home, zinnDir: link },
       { coreRelease: "published", clientRelease: "published" },
     );
+  });
+});
+
+/** A home with a repository whose zinn.local.json, or the global settings file, chooses a store outside the default folder. */
+function settingsLocation(home: string, file: "local" | "global"): Location {
+  const repository = join(home, "repository");
+  // ? The local file is found from process.cwd(), which gives the real path; the global one from HOME as given.
+  const store = join(file === "local" ? realpathSync(home) : home, `${file}-store`);
+  mkdirSync(join(repository, ".git"), { recursive: true });
+  mkdirSync(join(home, ".zinn"), { recursive: true });
+
+  if (file === "local") {
+    writeFileSync(join(repository, "zinn.local.json"), JSON.stringify({ storage: { directory: "../local-store" } }));
+  } else {
+    writeFileSync(join(home, ".zinn", "settings.json"), JSON.stringify({ storage: { directory: "~/global-store" } }));
+  }
+
+  return { home, store, cwd: repository };
+}
+
+test.each(["local", "global"] as const)(
+  "an older database in a store chosen by the %s settings file stays read-only on a source build",
+  (file) => {
+    withHome((home) => {
+      const location = settingsLocation(home, file);
+      createDatabase(location.store!, 1);
+      expectOlderReadOnly(location, {});
+    });
+  },
+);
+
+test("an older database in a settings-chosen store upgrades by itself when core and client are both published", () => {
+  withHome((home) => {
+    const location = settingsLocation(home, "local");
+    createDatabase(location.store!, 1);
+    expectOlderUpgraded(location, { coreRelease: "published", clientRelease: "published" });
+  });
+});
+
+/** Every file and folder under `directory`, to prove that a failed command left it as it was. */
+function listTree(directory: string) {
+  return readdirSync(directory, { recursive: true }).map(String).sort();
+}
+
+/** A child that tries each way into the database and reports each error message. */
+const DATABASE_ENTRY_ATTEMPTS = `
+  const core = await import(${modulePath("../index.ts")});
+  const actor = { name: "Test Human", email: null, kind: "human" };
+  const build = { client: "test", version: "1.0.0" };
+  const attempts = {
+    read: () => core.project.getAll(),
+    write: () => core.project.create({ key: "NEW" }, actor),
+    backup: () => core.backup.create(build),
+    restore: () => core.backup.restore({ ...build, path: "backup.sqlite" }),
+    migrate: () => core.migrate.run(build),
+    reindex: () => core.reindex.run(),
+  };
+  const errors = {};
+  for (const [name, attempt] of Object.entries(attempts)) {
+    try {
+      attempt();
+      errors[name] = null;
+    } catch (error) {
+      errors[name] = error.message;
+    }
+  }
+  console.log(JSON.stringify(errors));
+`;
+
+test.each([
+  { problem: "invalid JSON", content: '{ "storage": ', message: "it is not valid JSON" },
+  { problem: "an unknown key", content: JSON.stringify({ storge: { directory: "store" } }), message: 'Unrecognized key: "storge"' },
+  { problem: "a wrong type", content: JSON.stringify({ storage: { directory: 42 } }), message: "storage.directory" },
+])("a settings file with $problem fails every way into the database before any folder or database is created", ({ content, message }) => {
+  withHome((home) => {
+    const repository = join(home, "repository");
+    const settingsPath = join(repository, "zinn.local.json");
+    mkdirSync(join(repository, ".git"), { recursive: true });
+    writeFileSync(settingsPath, content);
+    const realSettingsPath = realpathSync(settingsPath);
+    const before = listTree(repository);
+
+    // ? An invalid file fails the command under ZINN_DIR too.
+    for (const zinnDir of [undefined, join(home, "isolated")]) {
+      const result = Bun.spawnSync([process.execPath, "--eval", DATABASE_ENTRY_ATTEMPTS], {
+        env: childEnvironment({ home, zinnDir }),
+        cwd: repository,
+      });
+
+      expect(result.stderr.toString()).toBe("");
+      expect(result.exitCode).toBe(0);
+      const errors = JSON.parse(result.stdout.toString());
+      expect(Object.keys(errors)).toHaveLength(6);
+      for (const [attempt, error] of Object.entries(errors)) {
+        expect({ attempt, error }).toEqual({ attempt, error: expect.stringContaining(`Cannot use settings file ${realSettingsPath}`) });
+        expect(error).toContain(message);
+      }
+      // ? Bun keeps its own cache in the HOME, so only the store folders and the repository are checked.
+      expect(existsSync(join(home, ".zinn"))).toBe(false);
+      expect(existsSync(join(home, "isolated"))).toBe(false);
+      expect(listTree(repository)).toEqual(before);
+    }
   });
 });
 
@@ -647,6 +755,7 @@ test("a process that loses the race to create a fresh database opens the databas
 
       const child = Bun.spawn(childCommand(location, RACE_INSTRUMENTATION), {
         env: childEnvironment(location),
+        cwd: home,
         stdout: "pipe",
         stderr: "pipe",
       });
@@ -685,6 +794,7 @@ test("processes that create a fresh default database at once all open it", async
     const children = keys.map((key) =>
       Bun.spawn(childCommand(location, openScript({ createKey: key })), {
         env: childEnvironment(location),
+        cwd: home,
         stdout: "pipe",
         stderr: "pipe",
       }),

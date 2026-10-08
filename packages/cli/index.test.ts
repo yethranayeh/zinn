@@ -4752,3 +4752,54 @@ test("CLI initialization errors expose the underlying message and code", () => {
     expect(readFileSync(path, "utf8")).toBe(contents);
   });
 });
+
+// --- SETTINGS (ZINN-56)
+
+// ? Runs the bin from cwd with ZINN_DIR unset and a temporary HOME inside testDir, so the settings files choose the store.
+function runZinnFrom(args: Array<string>, testDir: string, cwd: string) {
+  const env: Record<string, string | undefined> = { ...process.env, HOME: join(testDir, "home") };
+  delete env.ZINN_DIR;
+  const proc = Bun.spawnSync(["bun", CLI_PATH, ...args], { cwd, env });
+
+  return { stdout: proc.stdout.toString(), stderr: proc.stderr.toString(), code: proc.exitCode };
+}
+
+/** A repository inside testDir holding a zinn.local.json with the given content. */
+function repositoryWithSettings(testDir: string, content: string) {
+  const repository = join(testDir, "repository");
+  mkdirSync(join(repository, ".git"), { recursive: true });
+  mkdirSync(join(testDir, "home"));
+  writeFileSync(join(repository, "zinn.local.json"), content);
+
+  return repository;
+}
+
+test("storage.directory in zinn.local.json chooses the store, from any folder of the repository", () => {
+  withIsolatedZinnDir((dir) => {
+    const repository = repositoryWithSettings(dir, JSON.stringify({ storage: { directory: "../store" } }));
+    const nested = join(repository, "src");
+    mkdirSync(nested);
+
+    expect(runZinnFrom(["project", "create", "SET"], dir, repository).code).toBe(0);
+    expect(runZinnFrom(["project", "list", "--json"], dir, nested).stdout).toContain('"key": "SET"');
+    expect(withTestDb(join(dir, "store"), (db) => db.query("SELECT key FROM project").all())).toEqual([{ key: "SET" }]);
+    expect(existsSync(join(dir, "home", ".zinn"))).toBe(false);
+  });
+});
+
+test("an invalid zinn.local.json fails the command with the file's path, without a stack trace, before creating a store", () => {
+  withIsolatedZinnDir((dir) => {
+    const repository = repositoryWithSettings(dir, JSON.stringify({ storage: { directory: 42 } }));
+    const settingsPath = join(realpathSync(repository), "zinn.local.json");
+
+    const result = runZinnFrom(["project", "create", "SET"], dir, repository);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toStartWith(`Cannot use settings file ${settingsPath}: it has invalid settings\n`);
+    expect(result.stderr).toContain("storage.directory");
+    expect(result.stderr).not.toContain("    at ");
+    expect(existsSync(join(dir, "home", ".zinn"))).toBe(false);
+    expect(readdirSync(repository).sort()).toEqual([".git", "zinn.local.json"]);
+  });
+});

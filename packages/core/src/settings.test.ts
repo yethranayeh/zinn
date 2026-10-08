@@ -234,3 +234,10 @@ test("reading settings creates no file or folder", () => {
 
   expect(listTree(root)).toEqual(withFiles);
 });
+
+test("a ZINN_DIR that is a file has no global settings file, so the store's own error reports it", () => {
+  const zinnDirectory = join(root, "a-file");
+  writeFileSync(zinnDirectory, "not a folder");
+
+  expect(resolveSettings({ cwd: root, env: { ZINN_DIR: zinnDirectory }, home }).global).toBeNull();
+});
