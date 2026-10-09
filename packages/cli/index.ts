@@ -14,21 +14,7 @@ if (isVersionRequest) {
   const router = createRouter(routes);
 
   if (args.length === 0 || isHelpFlag(args[0]!)) {
-    console.info(`ZINN - A kanban workflow in the terminal
-
-Usage: zinn <command>
-
-Options:
-  -h, --help  Show help
-  -v, --version  Show version
-  --json      Print command output as JSON
-  --allow-legacy-read  Read a database without a schema version, best effort and read-only
-
-Commands:
-${router.commands}
-
-Run zinn <namespace> --help or zinn <command> --help for more information.
-Running zinn without a command shows this help.`);
+    console.info(router.help);
   } else {
     const { configureDatabase } = await import("@zinn-dev/core");
     const { cliOpenPolicy } = await import("./src/database");

@@ -47,6 +47,26 @@ function formatCommands(parsedRoutes: Array<ParsedRoute>, prefix: string) {
     .join("\n");
 }
 
+function getRootHelp(parsedRoutes: Array<ParsedRoute>) {
+  // TODO: maybe "brand" text that is exported and used here for title and desc
+  return `ZINN - A kanban workflow in the terminal
+
+Usage: zinn <command>
+
+Options:
+  -h, --help  Show help
+  -v, --version  Show version
+  --json      Print command output as JSON
+  --allow-legacy-read  Read a database without a schema version, best effort and read-only
+
+Commands:
+${formatCommands(parsedRoutes, "")}
+
+Run zinn <namespace> --help or zinn <command> --help for more information.
+--help shows help for the command words before it and runs nothing. The rest of the line is ignored.
+Running zinn without a command shows this help.`;
+}
+
 function getNamespaceHelp(parsedRoutes: Array<ParsedRoute>, namespace: string) {
   const commands = formatCommands(parsedRoutes, `${namespace} `);
 
@@ -55,6 +75,48 @@ function getNamespaceHelp(parsedRoutes: Array<ParsedRoute>, namespace: string) {
   }
 
   return `Usage: zinn ${namespace} <command>\n\nCommands:\n${commands}`;
+}
+
+// The longest leading run of words that names a namespace, or the root namespace "" when none does.
+function findNearestNamespace(parsedRoutes: Array<ParsedRoute>, words: Array<string>) {
+  for (let endIndex = words.length; endIndex > 0; endIndex--) {
+    const namespace = toCommand(words.slice(0, endIndex));
+    const help = getNamespaceHelp(parsedRoutes, namespace);
+
+    if (help != null) {
+      return { namespace, wordCount: endIndex, help };
+    }
+  }
+
+  return { namespace: "", wordCount: 0, help: getRootHelp(parsedRoutes) };
+}
+
+// Prints help for a namespace when asked, or exits with an error for a missing or unknown command in it.
+function routeToNamespace(
+  parsedRoutes: Array<ParsedRoute>,
+  words: Array<string>,
+  isHelpRequest: boolean,
+) {
+  const { namespace, wordCount, help } = findNearestNamespace(parsedRoutes, words);
+  const unknownWord = words[wordCount];
+  const commandName = namespace === "" ? "zinn" : `zinn ${namespace}`;
+
+  if (unknownWord == null && isHelpRequest) {
+    console.info(help);
+    return;
+  }
+
+  if (unknownWord == null) {
+    quit(`Missing a command for "${commandName}"`, help);
+  }
+
+  const reason = `Unrecognized command "${unknownWord}" for "${commandName}"`;
+
+  if (isHelpRequest) {
+    quit(reason, help);
+  }
+
+  quit(`${reason}. Run \`${commandName} --help\` for a list of available commands`);
 }
 
 export function parseRoutes(routesDef: RouteDef, prefix?: string) {
@@ -96,17 +158,12 @@ function route(parsedRoutes: Array<ParsedRoute>, rawArgs: Array<string>) {
     setLegacyReadAllowed(true);
   }
 
-  const args = [...filteredRoutableArgs, ...passthroughArgs];
-  const isHelpRequest = isHelpFlag(filteredRoutableArgs.at(-1) ?? "");
-
-  if (isHelpRequest && args.length > 1) {
-    const namespace = toCommand(filteredRoutableArgs.slice(0, -1));
-    const namespaceHelp = getNamespaceHelp(parsedRoutes, namespace);
-    if (namespaceHelp != null) {
-      console.info(namespaceHelp);
-      return;
-    }
-  }
+  // A help flag asks for help with the command words before it, so nothing after it is read.
+  const helpFlagIndex = filteredRoutableArgs.findIndex(isHelpFlag);
+  const isHelpRequest = helpFlagIndex !== -1;
+  const args = isHelpRequest
+    ? filteredRoutableArgs.slice(0, helpFlagIndex)
+    : [...filteredRoutableArgs, ...passthroughArgs];
 
   let match: ParsedRoute | null = null;
   let nestingLevel = 0;
@@ -127,18 +184,16 @@ function route(parsedRoutes: Array<ParsedRoute>, rawArgs: Array<string>) {
   }
 
   if (match == null) {
-    quit(
-      `Unrecognized command "${toCommand(args)}". Please run \`zinn --help\` for a list of available commands`,
-    );
+    routeToNamespace(parsedRoutes, args, isHelpRequest);
+    return;
   }
 
-  const commandArgs = args.slice(nestingLevel);
-  const isCommandHelpRequest = commandArgs.length === 1 && isHelpFlag(commandArgs[0]!);
-
-  if (isCommandHelpRequest) {
+  if (isHelpRequest) {
     console.info(match.help);
     return;
   }
+
+  const commandArgs = args.slice(nestingLevel);
 
   try {
     match.run(commandArgs);
@@ -157,6 +212,6 @@ export function createRouter(routesDef: RouteDef) {
 
   return {
     route: (args: Array<string>) => route(parsedRoutes, args),
-    commands: formatCommands(parsedRoutes, ""),
+    help: getRootHelp(parsedRoutes),
   };
 }

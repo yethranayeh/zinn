@@ -89,11 +89,13 @@ export function failureMessage(error: any, fallback: string) {
   return error?.message ?? fallback;
 }
 
-export function quit(reason: string): never {
+/** Prints the reason as an error, followed by help when given, and exits with code 1. */
+export function quit(reason: string, help?: string): never {
   if (outputMode === "json") {
-    console.error(JSON.stringify({ error: { message: reason } }, null, 2));
+    const error = help == null ? { message: reason } : { message: reason, help };
+    console.error(JSON.stringify({ error }, null, 2));
   } else {
-    console.error(reason);
+    console.error(help == null ? reason : `${reason}\n\n${help}`);
   }
 
   process.exit(1);

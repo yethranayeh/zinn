@@ -495,6 +495,6 @@ zinn task --help
 zinn task move --help
 ```
 
-The short `-h` form works in the same positions.
+The short `-h` form works in the same positions. `--help` shows help for the command words before it and runs nothing. The rest of the line is ignored.
 
 Running `zinn` without a command shows help. Use `zinn --version` (or `-v`) to print the CLI version.

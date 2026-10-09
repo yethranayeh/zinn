@@ -95,6 +95,24 @@ test("a help request never runs a command even when its help is empty", () => {
   }
 });
 
+test("a help flag anywhere before -- prints help for the words before it and runs nothing", () => {
+  const run = mock(() => {});
+  const info = spyOn(console, "info").mockImplementation(() => {});
+  const router = createRouter({ foo: { bar: { run, help: "bar help" } } });
+
+  try {
+    router.route(["foo", "bar", "--help", "--name", "x"]);
+    router.route(["foo", "bar", "x", "-h"]);
+    expect(run).not.toHaveBeenCalled();
+    expect(info.mock.calls).toEqual([["bar help"], ["bar help"]]);
+
+    router.route(["foo", "--help", "bar"]);
+    expect(info.mock.calls.at(-1)![0]).toContain("Usage: zinn foo <command>");
+  } finally {
+    info.mockRestore();
+  }
+});
+
 test("--allow-legacy-read before a -- is taken out of the arguments and allows legacy reads", () => {
   const run = mock(() => {});
   const router = createRouter({ foo: { run, help: "" } });

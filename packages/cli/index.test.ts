@@ -288,31 +288,148 @@ const routeNamespaces = [
   ),
 ];
 
+const ROOT_USAGE = "Usage: zinn <command>";
+
 test("every command help exits cleanly instead of running the command", () => {
   withIsolatedZinnDir((dir) => {
+    // ? ZINN-67: arguments before and after the flag do not change which help prints.
+    const argumentsAroundFlag = [
+      { before: [], after: [] },
+      { before: ["APP-1"], after: ["APP-2", "--json"] },
+    ];
+
     for (const command of routeCommands) {
       for (const flag of HELP_FLAGS) {
-        const result = runZinn([...command.split(" "), flag], dir);
-        expect(result.code).toBe(0);
-        expect(result.stderr).toBe("");
-        expect(result.stdout).toContain(`Usage: zinn ${command}`);
+        for (const { before, after } of argumentsAroundFlag) {
+          const result = runZinn([...command.split(" "), ...before, flag, ...after], dir);
+          expect(result.code).toBe(0);
+          expect(result.stderr).toBe("");
+          expect(result.stdout).toContain(`Usage: zinn ${command}`);
+        }
+      }
+    }
+    expect(existsSync(join(dir, "data"))).toBe(false);
+  });
+}, 30_000);
+
+test("every namespace help exits cleanly instead of running a command", () => {
+  withIsolatedZinnDir((dir) => {
+    for (const namespace of routeNamespaces) {
+      for (const flag of HELP_FLAGS) {
+        // ? ZINN-67: words after the flag are not read, even a known command or a typo.
+        for (const after of [[], ["view", "APP-1"], ["shwo"]]) {
+          const result = runZinn([...namespace.split(" "), flag, ...after], dir);
+          expect(result.code).toBe(0);
+          expect(result.stderr).toBe("");
+          expect(result.stdout).toContain(`Usage: zinn ${namespace} <command>`);
+        }
       }
     }
     expect(existsSync(join(dir, "data"))).toBe(false);
   });
 });
 
-test("every namespace help exits cleanly instead of running a command", () => {
+test("a bare namespace is an error that carries the namespace help", () => {
   withIsolatedZinnDir((dir) => {
     for (const namespace of routeNamespaces) {
-      for (const flag of HELP_FLAGS) {
-        const result = runZinn([...namespace.split(" "), flag], dir);
-        expect(result.code).toBe(0);
-        expect(result.stderr).toBe("");
-        expect(result.stdout).toContain(`Usage: zinn ${namespace} <command>`);
-      }
+      const text = runZinn(namespace.split(" "), dir);
+      expect(text.code).toBe(1);
+      expect(text.stdout).toBe("");
+      expect(text.stderr).toContain(`Usage: zinn ${namespace} <command>`);
+
+      const json = runZinn([...namespace.split(" "), "--json"], dir);
+      expect(json.code).toBe(1);
+      expect(json.stdout).toBe("");
+      const { error } = JSON.parse(json.stderr);
+      expect(typeof error.message).toBe("string");
+      expect(error.help).toContain(`Usage: zinn ${namespace} <command>`);
     }
     expect(existsSync(join(dir, "data"))).toBe(false);
+  });
+});
+
+test("a help flag before command words prints help for the words before it", () => {
+  withIsolatedZinnDir((dir) => {
+    const rootHelpRequests = [
+      ["--help", "task", "view"],
+      ["--json", "--help"],
+      ["--allow-legacy-read", "--help"],
+    ];
+    for (const args of rootHelpRequests) {
+      const result = runZinn(args, dir);
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toContain(ROOT_USAGE);
+    }
+
+    // ? Help stays text under --json.
+    const jsonCommandHelp = runZinn(["task", "view", "--json", "--help"], dir);
+    expect(jsonCommandHelp.code).toBe(0);
+    expect(jsonCommandHelp.stdout).toContain("Usage: zinn task view");
+    expect(() => JSON.parse(jsonCommandHelp.stdout)).toThrow();
+    expect(existsSync(join(dir, "data"))).toBe(false);
+  });
+});
+
+test("an unknown command with a help flag fails with the nearest namespace help on stderr", () => {
+  withIsolatedZinnDir((dir) => {
+    const cases = [
+      { args: ["task", "show", "APP-1", "--help"], usage: "Usage: zinn task <command>" },
+      { args: ["task", "relation", "shwo", "-h"], usage: "Usage: zinn task relation <command>" },
+      { args: ["bogus", "--help"], usage: ROOT_USAGE },
+    ];
+
+    for (const { args, usage } of cases) {
+      const text = runZinn(args, dir);
+      expect(text.code).toBe(1);
+      expect(text.stdout).toBe("");
+      expect(text.stderr).toContain(usage);
+
+      const json = runZinn([...args, "--json"], dir);
+      expect(json.code).toBe(1);
+      expect(json.stdout).toBe("");
+      const { error } = JSON.parse(json.stderr);
+      expect(typeof error.message).toBe("string");
+      expect(error.help).toContain(usage);
+    }
+    expect(existsSync(join(dir, "data"))).toBe(false);
+  });
+});
+
+test("an unknown command without a help flag points to the nearest namespace help", () => {
+  withIsolatedZinnDir((dir) => {
+    const cases = [
+      { args: ["task", "show", "APP-1"], helpCommand: "zinn task --help" },
+      { args: ["bogus"], helpCommand: "zinn --help" },
+    ];
+
+    for (const { args, helpCommand } of cases) {
+      const text = runZinn(args, dir);
+      expect(text.code).toBe(1);
+      expect(text.stdout).toBe("");
+      expect(text.stderr).toContain(helpCommand);
+      expect(text.stderr).not.toContain("Usage:");
+
+      const json = runZinn([...args, "--json"], dir);
+      expect(json.code).toBe(1);
+      const { error } = JSON.parse(json.stderr);
+      expect(error.message).toContain(helpCommand);
+      expect(error).not.toHaveProperty("help");
+    }
+  });
+});
+
+test("a help flag after command arguments saves nothing", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "APP"], dir);
+    const columns = () => withTestDb(dir, (db) => db.query("SELECT * FROM project_column ORDER BY id").all());
+    const before = columns();
+
+    const result = runZinn(["project", "column", "create", "APP", "--help"], dir);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("Usage: zinn project column create");
+    expect(columns()).toEqual(before);
   });
 });
 
