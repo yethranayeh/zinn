@@ -5,11 +5,14 @@ import { tmpdir, userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 import packageJson from "./package.json";
+import { parseRoutes } from "./src/routes/router";
+import { routes } from "./src/routes/routes";
 import type { Activity } from "@zinn-dev/core";
 
-// ? End-to-end tests: each case spawns the real bin, so there is no module-level
-// ? import of core here and `ZINN_DIR` is passed per-spawn rather than set on
-// ? `process.env`. Subprocesses are the only option while `quit()` calls
+// ? End-to-end tests: each case spawns the real bin, so `ZINN_DIR` is passed
+// ? per-spawn rather than set on `process.env`. The route table is imported only
+// ? to list the commands; nothing in this process opens a database.
+// ? Subprocesses are the only option while `quit()` calls
 // ? `process.exit` — see the refactor TODO at the bottom of this file.
 //
 // ? `.todo` cases below cover behavior that cannot be asserted yet. Bun skips
@@ -273,45 +276,51 @@ test("namespace help lists its commands without running one", () => {
   expect(columnHelp.stdout).not.toContain("  column ");
 });
 
-test("every command help exits cleanly instead of running the command", () => {
-  const commands = [
-    ["project", "create"],
-    ["project", "list"],
-    ["project", "view"],
-    ["project", "delete"],
-    ["project", "column", "create"],
-    ["project", "column", "edit"],
-    ["project", "column", "list"],
-    ["project", "column", "order"],
-    ["task", "create"],
-    ["task", "list"],
-    ["task", "search"],
-    ["task", "view"],
-    ["task", "edit"],
-    ["project", "edit"],
-    ["task", "move"],
-    ["task", "order"],
-    ["task", "delete"],
-    ["task", "archive"],
-    ["task", "unarchive"],
-    ["task", "comment", "create"],
-    ["task", "comment", "list"],
-    ["task", "comment", "edit"],
-    ["task", "comment", "delete"],
-    ["activity", "list"],
-    ["activity", "view"],
-    ["backup"],
-    ["restore"],
-    ["migrate"],
-    ["reindex"],
-  ];
+const HELP_FLAGS = ["--help", "-h"];
+const routeCommands = parseRoutes(routes).map(({ command }) => command);
+// ? Every proper prefix of a command's words is a namespace, e.g. "task" and "task comment".
+const routeNamespaces = [
+  ...new Set(
+    routeCommands.flatMap((command) => {
+      const words = command.split(" ");
+      return words.slice(0, -1).map((_, index) => words.slice(0, index + 1).join(" "));
+    }),
+  ),
+];
 
-  for (const command of commands) {
-    const result = runZinn([...command, "--help"]);
-    expect(result.code).toBe(0);
-    expect(result.stderr).toBe("");
-    expect(result.stdout).toContain(`Usage: zinn ${command.join(" ")}`);
-  }
+test("every command help exits cleanly instead of running the command", () => {
+  withIsolatedZinnDir((dir) => {
+    for (const command of routeCommands) {
+      for (const flag of HELP_FLAGS) {
+        const result = runZinn([...command.split(" "), flag], dir);
+        expect(result.code).toBe(0);
+        expect(result.stderr).toBe("");
+        expect(result.stdout).toContain(`Usage: zinn ${command}`);
+      }
+    }
+    expect(existsSync(join(dir, "data"))).toBe(false);
+  });
+});
+
+test("every namespace help exits cleanly instead of running a command", () => {
+  withIsolatedZinnDir((dir) => {
+    for (const namespace of routeNamespaces) {
+      for (const flag of HELP_FLAGS) {
+        const result = runZinn([...namespace.split(" "), flag], dir);
+        expect(result.code).toBe(0);
+        expect(result.stderr).toBe("");
+        expect(result.stdout).toContain(`Usage: zinn ${namespace} <command>`);
+      }
+    }
+    expect(existsSync(join(dir, "data"))).toBe(false);
+  });
+});
+
+test("root help and activity namespace help list the activity commands", () => {
+  withIsolatedZinnDir((directory) => {
+    expect(runZinn(["--help"], directory).stdout).toContain("activity {list|view}");
+    expect(runZinn(["activity", "--help"], directory).stdout).toContain("{list|view}");
+  });
 });
 
 // --- PROJECT
@@ -3889,19 +3898,6 @@ test("task text output names labels without color words when color is off, and J
   });
 });
 
-test("label namespaces and commands expose help without initializing storage", () => {
-  withIsolatedZinnDir((dir) => {
-    for (const args of [["label"], ["label", "create"], ["label", "edit"], ["label", "list"], ["label", "delete"], ["task", "label"], ["task", "label", "add"], ["task", "label", "remove"]]) {
-      for (const flag of ["-h", "--help"]) {
-        const result = runZinn([...args, flag], dir);
-        expect(result.code).toBe(0);
-        expect(result.stdout).not.toContain("TODO");
-      }
-    }
-    expect(Bun.file(join(dir, "data", "zinn.sqlite")).size).toBe(0);
-  });
-});
-
 test("label deletion confirms global removal and cancellation preserves attachments and timestamps", () => {
   withIsolatedZinnDir((dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
@@ -5319,22 +5315,6 @@ function seedRecordedActivity(
   });
   return events;
 }
-
-test("activity help exposes list/view without opening a database", () => {
-  withIsolatedZinnDir((directory) => {
-    expect(runZinn(["--help"], directory).stdout).toContain("activity {list|view}");
-    const namespace = runZinn(["activity", "--help"], directory);
-    expect(namespace.code).toBe(0);
-    expect(namespace.stdout).toContain("{list|view}");
-    for (const command of ["list", "view"]) {
-      const result = runZinn(["activity", command, "--help"], directory);
-      expect(result.code).toBe(0);
-      expect(result.stdout).toContain(`Usage: zinn activity ${command}`);
-      expect(result.stderr).toBe("");
-    }
-    expect(existsSync(join(directory, "data"))).toBe(false);
-  });
-});
 
 test("activity empty lists and unrecoverable task histories return empty results", () => {
   withIsolatedZinnDir((directory) => {
