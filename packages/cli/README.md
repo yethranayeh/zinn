@@ -67,6 +67,26 @@ Flags:
 A command with no match, or with several matches and no `--all`, fails without changing anything.
 An empty text with `--replacing` deletes the match. `--append` and `--replacing` cannot be combined.
 
+## Text values
+
+A value that begins with a dash, such as a Markdown bullet, must be joined to its flag with `=`. Otherwise the command fails without changing anything:
+
+```sh
+zinn task edit MDR-1 --description="- Bring waffles." --append
+```
+
+For multi-line text, such as Markdown, pass a heredoc with a quoted delimiter (`'EOF'`) in bash or zsh. The shell then passes `$`, backticks, quotes and leading dashes as written:
+
+```sh
+zinn task edit MDR-1 --description="$(cat <<'EOF'
+- Bring waffles.
+- Count the `numbers` for $5 and "Kier".
+EOF
+)"
+```
+
+`$(...)` drops trailing line breaks, so the stored text ends with the last character of the last line.
+
 ## Changing tasks in bulk
 
 `task move`, `task archive` and `task unarchive` accept multiple task keys, so several tasks can be changed in one command:
@@ -115,7 +135,7 @@ zinn project edit MDR --description ""
 ```
 
 Provide `--name`, `--description`, or both.
-Use `--name="--example"` when a value begins with a dash.
+See [Text values](#text-values) for values that begin with a dash and multi-line text.
 
 Add another column at the end of the board:
 
@@ -307,7 +327,7 @@ zinn task edit MDR-1 --title "Meet the quarterly refinement quota" --description
 See [Editing conventions](#editing-conventions) for title validation, partial edits and clearing descriptions.
 
 Archived tasks can be edited without unarchiving them.
-Use `--title="--example"` when a value begins with a dash.
+See [Text values](#text-values) for values that begin with a dash and multi-line text.
 
 ## Move and order tasks
 
