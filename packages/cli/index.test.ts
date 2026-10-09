@@ -449,11 +449,11 @@ test("project create seeds the default columns", () => {
 
   expect(listed.code).toBe(0);
   expect(JSON.parse(listed.stdout)).toEqual([
-    { name: "Backlog" },
-    { name: "TODO" },
-    { name: "In Progress" },
-    { name: "Review" },
-    { name: "Done" },
+    { name: "Backlog", taskCount: 0 },
+    { name: "TODO", taskCount: 0 },
+    { name: "In Progress", taskCount: 0 },
+    { name: "Review", taskCount: 0 },
+    { name: "Done", taskCount: 0 },
   ]);
 });
 
