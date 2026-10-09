@@ -151,6 +151,7 @@ test("column filtering narrows ordered project and global lists together with la
       task.archive("BBB-1", actor);
       task.order({ taskKey: "BBB-3", direction: "top" }, actor);
       const keys = (props) => task.getAll(props).map((row) => row.key);
+      assert.deepEqual(keys({ columnName: " In Progress " }), ["AAA-1", "BBB-3", "BBB-2"]);
       assert.deepEqual(keys({ columnName: "IN PROGRESS" }), ["AAA-1", "BBB-3", "BBB-2"]);
       assert.deepEqual(keys({ projectKey: "bbb", columnName: "in progress" }), ["BBB-3", "BBB-2"]);
       for (const projectKey of [undefined, "BBB"]) {
@@ -166,7 +167,7 @@ test("column filtering narrows ordered project and global lists together with la
       assert.deepEqual(keys({ columnName: "In Progress", archive: "archived" }), ["BBB-1"]);
       assert.deepEqual(keys({ columnName: "In Progress", archive: "all" }), ["AAA-1", "BBB-3", "BBB-2", "BBB-1"]);
       for (const projectKey of [undefined, "BBB", "CCC"]) {
-        for (const columnName of ["Nowhere", "Review", "Progress", " In Progress "]) {
+        for (const columnName of ["Nowhere", "Review", "Progress"]) {
           assert.deepEqual(task.getAll({ projectKey, columnName, archive: "all" }), []);
         }
       }

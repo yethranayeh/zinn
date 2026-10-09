@@ -1,3 +1,4 @@
+import { columnNameSchema } from "../schemas/column";
 import type {
   Activity,
   ActivityAction,
@@ -142,7 +143,7 @@ export function findByName<T extends { name: string }>(matches: Array<T>, name: 
 }
 
 export function requireColumnByName(project: Project, projectColumns: Array<Column>, name: string) {
-  const columnMatch = findByName(projectColumns, name);
+  const columnMatch = findByName(projectColumns, validateTaskInput(columnNameSchema, name));
 
   if (columnMatch == null) {
     // TODO: maybe a `did you mean` type of fuzzy check for misspelllings

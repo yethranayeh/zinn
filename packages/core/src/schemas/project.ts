@@ -1,12 +1,11 @@
 import { z } from "zod";
+import { titleTextSchema } from "./title-text";
 import { descriptionSchema, descriptionEditSchema } from "./description";
 
-const nameMessage = "Project name cannot be blank or contain line breaks or control characters";
-export const invalidNameCharRegex = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
-
-export const projectNameSchema = z
-  .string({ error: nameMessage })
-  .refine((value) => value.trim().length > 0 && !invalidNameCharRegex.test(value), nameMessage);
+export const projectNameSchema = titleTextSchema(
+  "Project name cannot be blank or contain line breaks or control characters",
+  "Project name cannot be blank or contain line breaks or control characters",
+);
 
 export const projectKeyPattern = "[A-Za-z][A-Za-z0-9]*";
 

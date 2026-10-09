@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { validateTaskInput, taskEditSchema, taskCreateSchema, taskListSchema } from "./task";
 
-test("task list accepts a single column name without changing its matching input", () => {
-  expect(taskListSchema.parse({ columnName: " In Progress " })).toEqual({ columnName: " In Progress " });
+test("task list normalizes a single column name", () => {
+  expect(taskListSchema.parse({ columnName: " In Progress " })).toEqual({ columnName: "In Progress" });
   expect(taskListSchema.parse({})).toEqual({});
   expect(taskListSchema.safeParse({ columnName: ["Review", "Done"] }).success).toBe(false);
 });
@@ -12,7 +12,7 @@ test("edit schemas normalize empty descriptions and never default omitted fields
     taskKey: "TEST-1", description: null,
   });
   expect(taskEditSchema.parse({ taskKey: "TEST-1", title: " Title " })).toEqual({
-    taskKey: "TEST-1", title: " Title ",
+    taskKey: "TEST-1", title: "Title",
   });
   expect(taskEditSchema.parse({ taskKey: "TEST-1", description: null }).description).toBeNull();
 });

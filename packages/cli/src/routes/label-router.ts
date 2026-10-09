@@ -69,7 +69,7 @@ export const labelRouter = {
     help: `Usage: zinn label create <name> [--description <text>] [--color <color>]
 
 Create a global label. Names preserve casing, but uniqueness is case-insensitive.
-Names are trimmed and cannot be blank.
+Names are trimmed and cannot be blank or contain line breaks or control characters.
 Description is optional.
 
 Color defaults to white.

@@ -1,7 +1,11 @@
 import { z } from "zod";
+import { titleTextSchema } from "./title-text";
 import { descriptionSchema, descriptionEditSchema } from "./description";
 
-export const labelNameSchema = z.string().trim().min(1, "Label name cannot be blank");
+export const labelNameSchema = titleTextSchema(
+  "Label name cannot be blank",
+  "Label name cannot contain line breaks or control characters",
+);
 export const labelColorSchema = z.enum([
   "red",
   "green",

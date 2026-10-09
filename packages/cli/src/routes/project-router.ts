@@ -101,7 +101,7 @@ Create a project with the default columns.
 Project keys are stored in uppercase.
 
 An omitted name defaults to the uppercase project key.
-Names cannot be blank.
+Names are trimmed and cannot be blank or contain line breaks or control characters.
 Descriptions may contain multiple lines. If omitted, they are saved as null.
 
 Example: zinn project create MDR --name "Macrodata Refinement"`,

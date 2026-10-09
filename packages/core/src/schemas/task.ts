@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { titleTextSchema } from "./title-text";
+import { columnNameSchema } from "./column";
 
 import { labelNameSchema } from "./label";
 import { descriptionSchema, descriptionEditSchema } from "./description";
@@ -18,11 +20,10 @@ export function parseTaskKey(taskKey: string) {
   return { projectKey: taskKeyMatch[1]!, taskNumber: Number(taskKeyMatch[2]) };
 }
 
-const titleMessage = "Task title cannot be blank";
-
-export const taskTitleSchema = z
-  .string({ error: titleMessage })
-  .refine((value) => value.trim().length > 0, titleMessage);
+export const taskTitleSchema = titleTextSchema(
+  "Task title cannot be blank",
+  "Task title cannot contain line breaks or control characters",
+);
 
 export const taskPrioritySchema = z.enum(["low", "medium", "high", "urgent"]);
 
@@ -32,7 +33,7 @@ export const taskCreateSchema = z.strictObject({
   description: descriptionSchema.default(null),
   priority: taskPrioritySchema.nullable().optional(),
   labelNames: z.array(labelNameSchema).optional(),
-  columnName: z.string().optional(),
+  columnName: columnNameSchema.optional(),
   // The new task is the source and targetTaskKey the target, as in relation create.
   relations: z
     .array(z.strictObject({ relation_type: relationTypeSchema, targetTaskKey: z.string() }))
@@ -76,7 +77,7 @@ export const taskArchiveFilterSchema = z.enum(["active", "archived", "all"]);
 
 export const taskListSchema = z.strictObject({
   projectKey: z.string().optional(),
-  columnName: z.string().optional(),
+  columnName: columnNameSchema.optional(),
   archive: taskArchiveFilterSchema.optional(),
   labelNames: z.array(labelNameSchema).optional(),
 });
