@@ -11,9 +11,16 @@ import { PUBLISHED_STAMP, readCoreReleaseMode, readReleaseMode, RELEASE_STAMP_FI
 
 const CORE_DIRECTORY = fileURLToPath(new URL("..", import.meta.url));
 
-type Folder = { stamp?: string; isStampFolder?: boolean };
+const RELEASE_VERSION = "1.2.0";
 
-function writeFolder(directory: string, { stamp, isStampFolder = false }: Folder) {
+/** `version: null` leaves out package.json. */
+type Folder = { stamp?: string; isStampFolder?: boolean; version?: string | null };
+
+function writeFolder(directory: string, { stamp, isStampFolder = false, version = RELEASE_VERSION }: Folder) {
+  if (version != null) {
+    writeFileSync(join(directory, "package.json"), JSON.stringify({ name: "client", version }));
+  }
+
   if (stamp != null) {
     writeFileSync(join(directory, RELEASE_STAMP_FILE), stamp);
   }
@@ -32,6 +39,8 @@ const cases: Array<{ folder: Folder; expected: ReleaseMode }> = [
   { folder: { stamp: "published" }, expected: "source" },
   { folder: { stamp: "" }, expected: "source" },
   { folder: { isStampFolder: true }, expected: "source" },
+  { folder: { stamp: PUBLISHED, version: "1.3.0-dev" }, expected: "source" },
+  { folder: { stamp: PUBLISHED, version: null }, expected: "source" },
 ];
 
 test.each(cases)("a package folder with $folder is $expected", ({ folder, expected }) => {

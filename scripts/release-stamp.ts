@@ -9,7 +9,7 @@
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { PUBLISHED_STAMP, RELEASE_STAMP_FILE } from "../packages/core/src/release.ts";
+import { isPrerelease, PUBLISHED_STAMP, RELEASE_STAMP_FILE } from "../packages/core/src/release.ts";
 
 const WORKSPACE_PREFIX = "workspace:";
 
@@ -21,10 +21,6 @@ const action = process.argv[2];
 
 function readPackageJson(directory: string): PackageJson {
   return JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
-}
-
-function isPrerelease(version: string) {
-  return version.includes("-");
 }
 
 /** The package.json of the sibling package with this name, from the folders next to this package. */
