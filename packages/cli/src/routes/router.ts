@@ -89,6 +89,8 @@ ${formatCommands(parsedRoutes, "")}
 
 Run zinn <namespace> --help or zinn <command> --help for more information.
 --help shows help for the command words before it and runs nothing. The rest of the line is ignored.
+-- ends the options: everything after it is considered a plain word, even if it starts with a dash (e.g. 'zinn project column create SHOP -- -later').
+Flags after it are not read.
 Running zinn without a command shows this help.`;
 }
 

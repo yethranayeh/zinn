@@ -9,7 +9,6 @@ import {
   confirmAction,
   output,
   quit,
-  validatePositionalCount,
   validatePositionals,
   validateUniqueOptions,
 } from "../lib";
@@ -63,8 +62,8 @@ function parseTextArgs(args: Array<string>) {
     tokens: true,
   });
 
-  validatePositionalCount(positionals, 1, "Exactly one task key is required");
   validateUniqueOptions(tokens);
+  validatePositionals(positionals, ["<task-key>"]);
 
   if (values.text === undefined) {
     quit("Comment text must be specified with --text");
@@ -82,8 +81,8 @@ function parseCommentEditArgs(args: Array<string>) {
     tokens: true,
   });
 
-  validatePositionalCount(positionals, 1, "Exactly one comment key is required");
   validateUniqueOptions(tokens);
+  validatePositionals(positionals, ["<comment-key>"]);
 
   const text = resolveTextEdit(values.text, values, "--text");
   if (text === undefined) {
@@ -110,7 +109,7 @@ Example: zinn task comment create MDR-1 --text "Ready for review"`,
   list: {
     run: (args) => {
       const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
-      validatePositionalCount(positionals, 1, "Exactly one task key is required");
+      validatePositionals(positionals, ["<task-key>"]);
       output(presentComments(positionals[0]!), formatComments);
     },
     help: `Usage: zinn task comment list <task-key>

@@ -5,14 +5,7 @@ import type { RouteDef } from "../types";
 import { parseArgs } from "node:util";
 import { label, labelCreateSchema, labelDeleteSchema, labelEditSchema } from "@zinn-dev/core";
 
-import {
-  confirmAction,
-  output,
-  quit,
-  validatePositionalCount,
-  validatePositionals,
-  validateUniqueOptions,
-} from "../lib";
+import { confirmAction, output, quit, validatePositionals, validateUniqueOptions } from "../lib";
 import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit";
 import { currentActor } from "../actor";
 import { isColorEnabled } from "../presentation/color";
@@ -58,9 +51,8 @@ export const labelRouter = {
         tokens: true,
       });
 
-      validatePositionalCount(positionals, 1, "Exactly one label name is required");
-
       validateUniqueOptions(tokens);
+      validatePositionals(positionals, ["<name>"]);
 
       const input = labelCreateSchema.parse({ name: positionals[0], ...values });
       const created = label.create(input, currentActor());
@@ -80,7 +72,9 @@ Example: zinn label create bug --description "Unexpected behavior" --color red`,
   },
   list: {
     run: (args) => {
-      parseArgs({ args, strict: true, allowPositionals: false });
+      const { positionals } = parseArgs({ args, strict: true, allowPositionals: true });
+      validatePositionals(positionals, []);
+
       output(label.getAll().map(presentLabel), formatLabelList);
     },
     help: `Usage: zinn label list
@@ -102,8 +96,8 @@ List all global label definitions.`,
         tokens: true,
       });
 
-      validatePositionalCount(positionals, 1, "Exactly one label name is required");
       validateUniqueOptions(tokens);
+      validatePositionals(positionals, ["<name>"]);
 
       const input = labelEditSchema.parse({
         labelName: positionals[0],

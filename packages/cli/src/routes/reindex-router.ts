@@ -4,11 +4,12 @@ import { parseArgs } from "node:util";
 import { reindex } from "@zinn-dev/core";
 
 import { reportLockWait } from "../database";
-import { output } from "../lib";
+import { output, validatePositionals } from "../lib";
 
 export const reindexCommand = {
   run: (args) => {
-    parseArgs({ args, strict: true, allowPositionals: false });
+    const { positionals } = parseArgs({ args, strict: true, allowPositionals: true });
+    validatePositionals(positionals, []);
 
     const result = reindex.run({ onWait: reportLockWait });
 

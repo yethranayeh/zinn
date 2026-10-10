@@ -11,7 +11,6 @@ import {
   output,
   quit,
   UsageError,
-  validatePositionalCount,
   validatePositionals,
   validateUniqueOptions,
 } from "../lib";
@@ -47,19 +46,13 @@ export const taskRouter = {
         strict: true,
         tokens: true,
       });
-      const projectKey = positionals[0];
-      if (projectKey == null) {
-        quit("A task needs to belong to a project");
-      }
-      validatePositionalCount(
-        positionals,
-        1,
-        "Only one project key can be specified; use --title and --description",
-      );
+      validateUniqueOptions(tokens, ["label", "depends-on", "related"]);
+      validatePositionals(positionals, ["<project-key>"]);
+
+      const projectKey = positionals[0]!;
       if (values.title === undefined) {
         quit("A task needs at least a title: use --title");
       }
-      validateUniqueOptions(tokens, ["label", "depends-on", "related"]);
       const projectMatch = project.getByKey(projectKey);
       if (projectMatch == null) {
         quit(`Project with key "${project.standardizeKey(projectKey)}" does not exist`);
@@ -113,17 +106,13 @@ Examples:
       });
 
       validateUniqueOptions(tokens, ["label"]);
+      validatePositionals(positionals, ["[<project-key>]"]);
 
       if (values.archived && values.all) {
         quit('Use either "--archived" or "--all", not both');
       }
 
       const projectKey = positionals[0];
-
-      if (positionals.length > 1) {
-        quit("Only one project key can be specified");
-      }
-
       const archive = values.all ? "all" : values.archived ? "archived" : "active";
 
       const tasks = task.getAll({
@@ -166,17 +155,11 @@ Example: zinn task list MDR --label cli`,
         tokens: true,
       });
 
-      const [query, projectKey] = positionals;
-
-      if (query == null) {
-        quit("A search query must be specified");
-      }
-
-      if (positionals.length > 2) {
-        quit("Only one query and one project key can be specified; quote multi-word queries");
-      }
-
       validateUniqueOptions(tokens, ["label"]);
+      validatePositionals(positionals, ["<query>", "[<project-key>]"]);
+
+      const query = positionals[0]!;
+      const projectKey = positionals[1];
 
       if (values.archived && values.all) {
         quit('Use either "--archived" or "--all", not both');
@@ -223,8 +206,6 @@ When archived matches are hidden, a note is printed to say how many.
 Use --limit to show at most <n> results.
 Use --label to filter for tasks with a specific label, no case-sensitivity is applied for matching.
 A search result's output matches that of 'task list'.
-
-Use -- before a query that begins with a dash.
 
 Example: zinn task search "refinement quota" MDR --limit 5`,
   },
@@ -295,16 +276,10 @@ Example: zinn task view MDR-1`,
         tokens: true,
       });
 
-      const taskKey = positionals[0];
-
-      if (taskKey == null) {
-        quit("Task key must be specified");
-      }
-
-      validatePositionalCount(positionals, 1, "Only one task key can be specified");
-
       validateUniqueOptions(tokens, ["add-label", "remove-label"]);
+      validatePositionals(positionals, ["<task-key>"]);
 
+      const taskKey = positionals[0]!;
       const description = resolveTextEdit(values.description, values, "--description");
 
       const hasEditFlags =
@@ -359,17 +334,10 @@ Examples:
   move: {
     run: (args) => {
       const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
+      validatePositionals(positionals, ["<task-key>...", "<target-column>"]);
+
       const taskKeys = positionals.slice(0, -1);
-      const targetColumn = positionals.at(-1);
-
-      if (targetColumn == null) {
-        quit("Task key must be specified");
-      }
-
-      if (taskKeys.length === 0) {
-        quit("Target column must be specified");
-      }
-
+      const targetColumn = positionals.at(-1)!;
       const moves = task.moveMany({ taskKeys, targetColumn }, currentActor());
       outputTaskChanges(
         moves,
@@ -398,7 +366,7 @@ Example: zinn task move MDR-1 MDR-2 "In Progress"`,
       const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
       /**
        * The words every direction needs. Only whether they are there is checked here,
-       *  since the direction decides whether a target column follows.
+       *  since the direction decides whether a target task follows.
        */
       const leadingWords = ["<task-key>", "{top|up|down|bottom|before|after}"];
       validatePositionals(positionals.slice(0, leadingWords.length), leadingWords);
@@ -549,10 +517,7 @@ Remove existing labels from a task. Label names are matched case-insensitively.`
 
 function parseTaskKeys(args: Array<string>) {
   const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
-
-  if (positionals.length === 0) {
-    quit("Task key must be specified");
-  }
+  validatePositionals(positionals, ["<task-key>..."]);
 
   return positionals;
 }
@@ -586,9 +551,8 @@ function outputTaskChanges(
 
 function parseTaskLabelArgs(args: string[]) {
   const { positionals } = parseArgs({ args, strict: true, allowPositionals: true });
-  if (positionals.length < 2) {
-    quit("Provide a task key and at least one label name");
-  }
+  validatePositionals(positionals, ["<task-key>", "<label-name>..."]);
+
   return { taskKey: positionals[0]!, labelNames: positionals.slice(1) };
 }
 

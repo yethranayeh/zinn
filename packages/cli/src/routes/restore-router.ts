@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { backup, RestoreRefusedError, getStorage } from "@zinn-dev/core";
 
 import { reportLockWait } from "../database";
-import { askConfirmation, output, validatePositionalCount, validateUniqueOptions } from "../lib";
+import { askConfirmation, output, validatePositionals, validateUniqueOptions } from "../lib";
 import packageJson from "../../package.json";
 
 const build = { client: "cli", version: packageJson.version };
@@ -20,7 +20,7 @@ export const restoreCommand = {
       options: { yes: { type: "boolean" } },
     });
     validateUniqueOptions(tokens);
-    validatePositionalCount(positionals, 1, "Specify the backup file to restore");
+    validatePositionals(positionals, ["<path>"]);
 
     const path = resolve(positionals[0]!);
     const { databasePath, backupDirectory } = getStorage();

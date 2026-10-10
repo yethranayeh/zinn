@@ -104,16 +104,6 @@ export function quit(reason: string, help?: string): never {
 /** A command was given the wrong words. The router prints the message with the command's usage lines. */
 export class UsageError extends Error {}
 
-export function validatePositionalCount(
-  positionals: Array<string>,
-  expected: number,
-  message: string,
-) {
-  if (positionals.length !== expected) {
-    quit(message);
-  }
-}
-
 /**
  * Checks a command's words against its usage line, with the words written the same way:
  * `<task-key>` is required, `[<project-key>]` is optional and `<task-key>...` repeats.

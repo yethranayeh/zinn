@@ -454,6 +454,143 @@ test("every command rejects an unknown option before it opens the database", () 
   });
 }, 30_000);
 
+type CommandWords = {
+  // ? Words that fill every slot of the usage line, the optional ones included.
+  words: string[];
+  // ? How many of those words the command requires.
+  required: number;
+  // ? Whether a word of the usage line repeats (<task-key>...), so no word is one too many.
+  repeats?: boolean;
+  // ? Flags the command accepts more than once; every other flag is accepted once.
+  repeatableFlags?: string[];
+};
+
+const commandWords: Record<string, CommandWords> = {
+  "project create": { words: ["SHOP"], required: 1 },
+  "project list": { words: [], required: 0 },
+  "project view": { words: ["SHOP"], required: 1 },
+  "project edit": { words: ["SHOP"], required: 1 },
+  "project delete": { words: ["SHOP"], required: 1 },
+  "project column create": { words: ["SHOP", "Later"], required: 2 },
+  "project column list": { words: ["SHOP"], required: 1 },
+  "project column edit": { words: ["SHOP", "Later"], required: 2 },
+  "project column order": { words: ["SHOP", "TODO", "first"], required: 3 },
+  "task create": { words: ["SHOP"], required: 1, repeatableFlags: ["label", "depends-on", "related"] },
+  "task list": { words: ["SHOP"], required: 0, repeatableFlags: ["label"] },
+  "task search": { words: ["refine", "SHOP"], required: 1, repeatableFlags: ["label"] },
+  "task view": { words: ["SHOP-1"], required: 1 },
+  "task edit": { words: ["SHOP-1"], required: 1, repeatableFlags: ["add-label", "remove-label"] },
+  "task move": { words: ["SHOP-1", "Done"], required: 2, repeats: true },
+  "task order": { words: ["SHOP-1", "top"], required: 2 },
+  "task archive": { words: ["SHOP-1"], required: 1, repeats: true },
+  "task unarchive": { words: ["SHOP-1"], required: 1, repeats: true },
+  "task delete": { words: ["SHOP-1"], required: 1 },
+  "task relation create": { words: ["SHOP-1", "SHOP-2"], required: 2 },
+  "task relation list": { words: ["SHOP-1"], required: 1 },
+  "task relation delete": { words: ["SHOP-1", "SHOP-2"], required: 2 },
+  "task comment create": { words: ["SHOP-1"], required: 1 },
+  "task comment list": { words: ["SHOP-1"], required: 1 },
+  "task comment edit": { words: ["SHOP-1#1"], required: 1 },
+  "task comment delete": { words: ["SHOP-1#1"], required: 1 },
+  "task label add": { words: ["SHOP-1", "bug"], required: 2, repeats: true },
+  "task label remove": { words: ["SHOP-1", "bug"], required: 2, repeats: true },
+  "label create": { words: ["bug"], required: 1 },
+  "label list": { words: [], required: 0 },
+  "label edit": { words: ["bug"], required: 1 },
+  "label delete": { words: ["bug"], required: 1 },
+  "activity list": { words: [], required: 0 },
+  "activity view": { words: ["019abcdf"], required: 1 },
+  backup: { words: [], required: 0 },
+  restore: { words: ["backup.sqlite"], required: 1 },
+  migrate: { words: [], required: 0 },
+  reindex: { words: [], required: 0 },
+};
+const EXTRA_WORD = "extra-word";
+// ? The usage lines that open each command's help.
+const commandUsages = new Map(
+  parseRoutes(routes).map(({ command, help }) => [command, help.split("\n\n")[0]!]),
+);
+// ? A word of a usage line: <name> to fill in, or {a|b} for a choice of literal words.
+const USAGE_WORD_PATTERN = /<[^<>\s]+>|\{[^{}\s]+\}/g;
+// ? The spellings a word stands for: itself, or each literal word of a choice.
+const spellingsOf = (usageWord: string) =>
+  usageWord.startsWith("{") ? usageWord.slice(1, -1).split("|") : [usageWord];
+
+test("the table of command words has an entry for every route command and no other", () => {
+  expect(Object.keys(commandWords).sort()).toEqual([...routeCommands].sort());
+});
+
+test("every command rejects an extra word, naming it with the usage line, before it opens the database", () => {
+  withIsolatedZinnDir((dir) => {
+    for (const [command, { words, repeats }] of Object.entries(commandWords)) {
+      if (repeats) {
+        continue;
+      }
+
+      const result = runZinn([...command.split(" "), ...words, EXTRA_WORD], dir);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain(EXTRA_WORD);
+      expect(result.stderr).toContain(`Usage: zinn ${command}`);
+    }
+    expect(existsSync(join(dir, "data"))).toBe(false);
+  });
+}, 60_000);
+
+test("every command with required words rejects one word too few, naming a word its usage line writes", () => {
+  withIsolatedZinnDir((dir) => {
+    for (const [command, { words, required }] of Object.entries(commandWords)) {
+      if (required === 0) {
+        continue;
+      }
+
+      const result = runZinn([...command.split(" "), ...words.slice(0, required - 1)], dir);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+
+      // ? The message is the paragraph before the usage lines. Every word is in the usage lines,
+      // ? so a check on all of stderr would pass for any message.
+      const [message, usage] = result.stderr.split("\n\n");
+      expect(usage).toContain(`Usage: zinn ${command}`);
+      const namedWords = message!.match(USAGE_WORD_PATTERN) ?? [];
+      expect(namedWords.length).toBeGreaterThan(0);
+
+      const usageSpellings = (usage!.match(USAGE_WORD_PATTERN) ?? []).flatMap(spellingsOf);
+      for (const spelling of namedWords.flatMap(spellingsOf)) {
+        expect(usageSpellings).toContain(spelling);
+      }
+    }
+    expect(existsSync(join(dir, "data"))).toBe(false);
+  });
+}, 60_000);
+
+test("every flag in a usage line is rejected when given twice, unless the command repeats it", () => {
+  withIsolatedZinnDir((dir) => {
+    for (const [command, { words, repeatableFlags = [] }] of Object.entries(commandWords)) {
+      // ? A flag followed by <...> or {...} takes a value. Any value works, since the repeat check runs first.
+      const flags = [...commandUsages.get(command)!.matchAll(/--([a-z-]+)( [<{])?/g)].map(
+        ([, name, valueMark]) => ({ name: name!, takesValue: valueMark !== undefined }),
+      );
+      for (const repeatable of repeatableFlags) {
+        expect(flags.map(({ name }) => name)).toContain(repeatable);
+      }
+
+      for (const { name, takesValue } of flags) {
+        if (repeatableFlags.includes(name)) {
+          continue;
+        }
+
+        const flag = takesValue ? [`--${name}`, "x"] : [`--${name}`];
+        const result = runZinn([...command.split(" "), ...words, ...flag, ...flag], dir);
+        expect(result.code).toBe(1);
+        expect(result.stdout).toBe("");
+        expect(result.stderr).toContain(`--${name}`);
+      }
+    }
+    expect(existsSync(join(dir, "data"))).toBe(false);
+  });
+}, 60_000);
+
 test("project list, project view, the project column commands, task view and task order reject invalid requests without writes", () => {
   withIsolatedZinnDir((dir) => {
     runZinn(["project", "create", "SHOP"], dir);
@@ -689,7 +826,7 @@ test("project create requires a key", () => {
   const result = runZinn(["project", "create"]);
 
   expect(result.code).toBe(1);
-  expect(result.stderr).toContain("Project key must be specified");
+  expect(result.stderr).toContain("Usage: zinn project create");
 });
 
 test("project create defaults the stored name to the uppercase key and allows a later rename", () => {
@@ -822,10 +959,12 @@ test("project column edit rejects invalid requests without writes", () => {
     runZinn(["project", "create", "COL", "--name", "Columns"], dir);
     const read = () => withTestDb(dir, (db) => db.query("SELECT * FROM project_column").all());
     const before = read();
-    const cases: Array<[string[], string]> = [
-      [[], "Both the project key and the column name must be specified"],
-      [["COL"], "Both the project key and the column name must be specified"],
-      [["COL", "TODO", "extra", "--name", "Next"], "Both the project key and the column name must be specified"],
+    const usage = "Usage: zinn project column edit";
+    // ? Each case lists the facts its error carries.
+    const cases: Array<[string[], ...string[]]> = [
+      [[], usage],
+      [["COL"], usage],
+      [["COL", "TODO", "extra", "--name", "Next"], `"extra"`, usage],
       [["COL", "TODO"], "Provide an edit flag: --name"],
       [["COL", "TODO", "--name"], "argument missing"],
       [["COL", "TODO", "--title", "Next"], "Unknown option"],
@@ -836,10 +975,12 @@ test("project column edit rejects invalid requests without writes", () => {
       [["COL", "Missing", "--name", "Next"], `Columns does not have a column named "Missing"`],
       [["NOPE", "TODO", "--name", "Next"], `Project with key "NOPE" does not exist!`],
     ];
-    for (const [args, message] of cases) {
+    for (const [args, ...facts] of cases) {
       const result = runZinn(["project", "column", "edit", ...args], dir);
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain(message);
+      for (const fact of facts) {
+        expect(result.stderr).toContain(fact);
+      }
       expect(result.stdout).toBe("");
       expect(read()).toEqual(before);
     }
@@ -1173,7 +1314,7 @@ test("task create rejects an unknown project", () => {
 test("task create requires a project key and a title", () => {
   runZinn(["project", "create", "ARGS", "--name", "Args"]);
 
-  expect(runZinn(["task", "create"]).stderr).toContain("A task needs to belong to a project");
+  expect(runZinn(["task", "create"]).stderr).toContain("Usage: zinn task create");
   expect(runZinn(["task", "create", "ARGS"]).stderr).toContain("A task needs at least a title");
 });
 
@@ -2171,7 +2312,7 @@ test("task comment commands validate their inputs without partial writes", () =>
         ["task", "comment", "create", "NOTE-1", "--text", "one", "--text", "two"],
         "only be specified once",
       ],
-      [["task", "comment", "list"], "Exactly one task key is required"],
+      [["task", "comment", "list"], "Usage: zinn task comment list"],
       [["task", "comment", "edit", "NOTE-1#1"], "Comment text must be specified"],
       [
         ["task", "comment", "edit", "019dbfc3-f513-7000-8000-000000000000", "--text", "No"],
@@ -2192,10 +2333,8 @@ test("task comment commands validate their inputs without partial writes", () =>
 
 test("task move requires a task key and target column", () => {
   withIsolatedZinnDir((testDir) => {
-    expect(runZinn(["task", "move"], testDir).stderr).toContain("Task key must be specified");
-    expect(runZinn(["task", "move", "MOVE-1"], testDir).stderr).toContain(
-      "Target column must be specified",
-    );
+    expect(runZinn(["task", "move"], testDir).stderr).toContain("Usage: zinn task move");
+    expect(runZinn(["task", "move", "MOVE-1"], testDir).stderr).toContain("Usage: zinn task move");
   });
 });
 
@@ -3049,8 +3188,8 @@ test("task archive is idempotent and unarchive restores active listing", () => {
 });
 
 test("task archive and unarchive require a valid existing task key", () => {
-  expect(runZinn(["task", "archive"]).stderr).toContain("Task key must be specified");
-  expect(runZinn(["task", "unarchive"]).stderr).toContain("Task key must be specified");
+  expect(runZinn(["task", "archive"]).stderr).toContain("Usage: zinn task archive");
+  expect(runZinn(["task", "unarchive"]).stderr).toContain("Usage: zinn task unarchive");
   expect(runZinn(["task", "archive", "INVALID"]).stderr).toContain(
     'Invalid task key "INVALID"',
   );
@@ -3123,13 +3262,15 @@ test("task edit rejects invalid requests without partial writes", () => {
   withIsolatedZinnDir((dir) => {
     runZinn(["project", "create", "EDIT", "--name", "Edits"], dir);
     runZinn(["task", "create", "EDIT", "--title", "Original", "--description", "Description"], dir);
-    const cases: Array<[string[], string]> = [
-      [[], "Task key must be specified"],
+    const usage = "Usage: zinn task edit";
+    // ? Each case lists the facts its error carries.
+    const cases: Array<[string[], ...string[]]> = [
+      [[], usage],
       [["EDIT-1"], "Provide at least one edit flag"],
       [["EDIT-1", "--title"], "argument missing"],
       [["EDIT-1", "--description"], "argument missing"],
       [["EDIT-1", "--unknown", "text"], "Unknown option"],
-      [["EDIT-1", "extra", "--title", "text"], "Only one task key"],
+      [["EDIT-1", "extra", "--title", "text"], `"extra"`, usage],
       [["EDIT-1", "--title", "one", "--title", "two"], "only be specified once"],
       [["EDIT-1", "--title", ""], "Task title cannot be blank"],
       [["EDIT-1", "--title", "   "], "Task title cannot be blank"],
@@ -3137,10 +3278,12 @@ test("task edit rejects invalid requests without partial writes", () => {
       [["INVALID", "--title", "text"], "Invalid task key"],
       [["EDIT-99", "--title", "text"], "does not exist"],
     ];
-    for (const [args, message] of cases) {
+    for (const [args, ...facts] of cases) {
       const result = runZinn(["task", "edit", ...args], dir);
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain(message);
+      for (const fact of facts) {
+        expect(result.stderr).toContain(fact);
+      }
       expect(result.stdout).toBe("");
     }
     expect(runZinn(["task", "view", "EDIT-1"], dir).stdout).toBe(
@@ -3382,10 +3525,12 @@ test("task search validates its arguments", () => {
   withIsolatedZinnDir((dir) => {
     runZinn(["project", "create", "VAL"], dir);
 
-    const cases: Array<[Array<string>, string]> = [
-      [[], "A search query must be specified"],
+    const usage = "Usage: zinn task search";
+    // ? Each case lists the facts its error carries.
+    const cases: Array<[Array<string>, ...string[]]> = [
+      [[], usage],
       [[""], "Search query cannot be blank"],
-      [["a", "VAL", "extra"], "quote multi-word queries"],
+      [["a", "VAL", "extra"], `"extra"`, usage],
       [["a", "--archived", "--all"], 'Use either "--archived" or "--all", not both'],
       [["a", "--limit", "0"], "Search limit must be a positive integer"],
       [["a", "--limit", "two"], "Search limit must be a positive integer"],
@@ -3397,10 +3542,12 @@ test("task search validates its arguments", () => {
       [["a", "MISSING"], 'Project with key "MISSING" does not exist'],
     ];
 
-    for (const [args, message] of cases) {
+    for (const [args, ...facts] of cases) {
       const result = runZinn(["task", "search", ...args], dir);
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain(message);
+      for (const fact of facts) {
+        expect(result.stderr).toContain(fact);
+      }
     }
   });
 });
@@ -3474,9 +3621,11 @@ test("--json reports errors as JSON on stderr and leaves stdout empty", () => {
 
   expect(result.code).toBe(1);
   expect(result.stdout).toBe("");
-  expect(JSON.parse(result.stderr)).toEqual({
-    error: { message: "Project key must be specified" },
-  });
+  const parsed = JSON.parse(result.stderr);
+  expect(Object.keys(parsed)).toEqual(["error"]);
+  expect(Object.keys(parsed.error).sort()).toEqual(["help", "message"]);
+  expect(parsed.error.message).toContain("<project-key>");
+  expect(parsed.error.help).toContain("Usage: zinn project create");
 });
 
 test("--json refuses commands that ask for confirmation without --yes, deleting nothing", () => {
@@ -3615,22 +3764,26 @@ test("project edit rejects invalid requests without writes", () => {
     runZinn(["project", "create", "EDIT", "--name", "Original"], dir);
     const read = () => withTestDb(dir, (db) => db.query("SELECT * FROM project").get());
     const before = read();
-    const cases: Array<[string[], string]> = [
-      [[], "Project key must be specified"],
+    const usage = "Usage: zinn project edit";
+    // ? Each case lists the facts its error carries.
+    const cases: Array<[string[], ...string[]]> = [
+      [[], usage],
       [["EDIT"], "Provide an edit flag"],
       [["EDIT", "--name"], "argument missing"],
       [["EDIT", "--key", "NEW"], "Unknown option"],
-      [["EDIT", "extra", "--name", "Name"], "Only one project key"],
+      [["EDIT", "extra", "--name", "Name"], `"extra"`, usage],
       [["EDIT", "--name", "One", "--name", "Two"], "only be specified once"],
       [["EDIT", "--name", ""], "blank or contain line breaks or control characters"],
       [["EDIT", "--name", "   "], "blank or contain line breaks or control characters"],
       [["EDIT", "--name", "Two\nlines"], "blank or contain line breaks or control characters"],
       [["MISSING", "--name", "Name"], "does not exist"],
     ];
-    for (const [args, message] of cases) {
+    for (const [args, ...facts] of cases) {
       const result = runZinn(["project", "edit", ...args], dir);
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain(message);
+      for (const fact of facts) {
+        expect(result.stderr).toContain(fact);
+      }
       expect(result.stdout).toBe("");
       expect(read()).toEqual(before);
     }
@@ -4311,8 +4464,18 @@ test("shared option checks reject repeated scalar flags and retain positional va
       expect(result.code).toBe(1);
       expect(result.stderr).toContain("can only be specified once");
     }
-    for (const args of [["label", "create"], ["label", "create", "one", "two"], ["label", "edit"], ["label", "edit", "one", "two", "--color", "red"]]) {
-      expect(runZinn(args, dir).stderr).toContain("Exactly one label name is required");
+    // ? Each case lists the facts its error carries.
+    const labelWordCases: Array<[string[], ...string[]]> = [
+      [["label", "create"], "Usage: zinn label create"],
+      [["label", "create", "one", "two"], `"two"`, "Usage: zinn label create"],
+      [["label", "edit"], "Usage: zinn label edit"],
+      [["label", "edit", "one", "two", "--color", "red"], `"two"`, "Usage: zinn label edit"],
+    ];
+    for (const [args, ...facts] of labelWordCases) {
+      const result = runZinn(args, dir);
+      for (const fact of facts) {
+        expect(result.stderr).toContain(fact);
+      }
     }
     const extraLabel = runZinn(["label", "delete", "one", "two"], dir);
     expect(extraLabel.stderr).toContain(`"two"`);
@@ -4740,7 +4903,7 @@ test("restore needs exactly one backup path", () => {
     const result = runZinn(["restore", "--yes"], dir);
 
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain("Specify the backup file to restore");
+    expect(result.stderr).toContain("Usage: zinn restore");
     expect(readdirSync(dir)).toEqual([]);
   });
 });

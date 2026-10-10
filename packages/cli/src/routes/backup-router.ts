@@ -3,12 +3,13 @@ import type { Command } from "../types";
 import { parseArgs } from "node:util";
 import { backup } from "@zinn-dev/core";
 
-import { output } from "../lib";
+import { output, validatePositionals } from "../lib";
 import packageJson from "../../package.json";
 
 export const backupCommand = {
   run: (args) => {
-    parseArgs({ args, strict: true, allowPositionals: false });
+    const { positionals } = parseArgs({ args, strict: true, allowPositionals: true });
+    validatePositionals(positionals, []);
 
     const created = backup.create({ client: "cli", version: packageJson.version });
 

@@ -4,12 +4,14 @@ import { parseArgs } from "node:util";
 import { migrate, MigrationRefusedError, getStorage } from "@zinn-dev/core";
 
 import { reportLockWait } from "../database";
-import { output } from "../lib";
+import { output, validatePositionals } from "../lib";
 import packageJson from "../../package.json";
 
 export const migrateCommand = {
   run: (args) => {
-    parseArgs({ args, strict: true, allowPositionals: false });
+    const { positionals } = parseArgs({ args, strict: true, allowPositionals: true });
+    validatePositionals(positionals, []);
+
     // Resolved before the try, so a store that cannot be resolved fails without the note about backups.
     const { backupDirectory } = getStorage();
 

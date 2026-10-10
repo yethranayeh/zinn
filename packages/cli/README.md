@@ -87,6 +87,25 @@ EOF
 
 `$(...)` drops trailing line breaks, so the stored text ends with the last character of the last line.
 
+## Words and repeated flags
+
+`--` ends the options. Every word after the first `--` is considered a plain word, even a secondary instance of `--` or anything else that starts with a dash. Flags after it, such as `--json`, are not read. A trailing `--` changes nothing:
+
+```sh
+zinn project column create MDR -- -later
+zinn task search -- -flag
+```
+
+A flag can be given once.
+Only these flags repeat:
+
+- `--label` on `task create`, `task list` and `task search`,
+- `--depends-on` and `--related` on `task create`,
+- `--add-label` and `--remove-label` on `task edit`.
+
+Any other flag given twice, `--json` and `--yes` included, **fails** without changing anything.
+A help flag is the _exception_: the first one shows help and the rest of the line is ignored, so `-h --help` works and help is given whenever needed! No problem!
+
 ## Changing tasks in bulk
 
 `task move`, `task archive` and `task unarchive` accept multiple task keys, so several tasks can be changed in one command:
@@ -219,7 +238,7 @@ Search defaults to active tasks. `--archived` searches archived tasks and `--all
 
 `--label` works as it does for `task list`: repeat it to require every specified label. Label filtering happens before `--limit` and before archived matches are counted.
 
-With `--json`, search returns an array of tasks like `task list` does. A search with no results succeeds. Put `--` before a query that begins with a dash: `zinn task search -- -flag`.
+With `--json`, search returns an array of tasks like `task list` does. A search with no results succeeds. A query that begins with a dash goes after `--` (see [Words and repeated flags](#words-and-repeated-flags)).
 
 Search uses an index that Zinn keeps up to date as tasks and comments change. `zinn reindex` rebuilds it from the tasks and their comments, archived tasks included:
 
@@ -486,7 +505,7 @@ zinn task create MDR --title "Refine the numbers" --json
 
 - Read commands print what they list or show. Write commands print the entity they created, changed, or deleted.
 - Output is a single JSON document on stdout. Empty lists print `[]`.
-- Errors go to stderr as `{ "error": { "message": "..." } }`, stdout stays empty, and the command exits with code 1.
+- Errors go to stderr as `{ "error": { "message": "..." } }`, stdout stays empty, and the command exits with code 1. An error can also carry `"help"`: the command's usage line for a missing or extra word, or the namespace help for a missing command.
 
 Scripts should use `--json`. Text is colored only in a terminal unless `NO_COLOR` disables it. `FORCE_COLOR` overrides both: `0` turns color off and any other nonempty value turns it on, including when piped.
 

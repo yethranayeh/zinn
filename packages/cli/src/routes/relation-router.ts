@@ -3,7 +3,7 @@ import type { RouteDef } from "../types";
 
 import { parseArgs } from "node:util";
 import { column, relation, relationCreateSchema, task } from "@zinn-dev/core";
-import { output, quit, validatePositionalCount, validateUniqueOptions } from "../lib";
+import { output, quit, validatePositionals, validateUniqueOptions } from "../lib";
 import { currentActor } from "../actor";
 import { formatCellSeparator, formatRows } from "../presentation/row-layout";
 import { columnNameCell } from "../presentation/column-presentation";
@@ -87,9 +87,8 @@ function parseRelationArgs(args: string[]) {
     tokens: true,
   });
 
-  validatePositionalCount(positionals, 2, "Exactly two task keys are required: source, target");
-
   validateUniqueOptions(tokens);
+  validatePositionals(positionals, ["<source-task-key>", "<target-task-key>"]);
 
   const typeResult = relationCreateSchema.shape.relation_type.safeParse(values.type);
 
@@ -151,7 +150,7 @@ Example: zinn task relation create APP-1 APP-2 --type dependency`,
   list: {
     run: (args) => {
       const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
-      validatePositionalCount(positionals, 1, "Provide exactly one task key");
+      validatePositionals(positionals, ["<task-key>"]);
       output(presentRelations(task.getByKey(positionals[0]!)), formatRelations);
     },
     help: `Usage: zinn task relation list <task-key>

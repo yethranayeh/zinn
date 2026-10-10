@@ -2,7 +2,7 @@ import type { RouteDef } from "../types";
 
 import { parseArgs } from "node:util";
 import { activity, activityLimitMessage, positiveIntegerPattern } from "@zinn-dev/core";
-import { output, quit, validatePositionalCount, validateUniqueOptions } from "../lib";
+import { output, quit, validatePositionals, validateUniqueOptions } from "../lib";
 import { formatActivityList, presentActivities } from "../presentation/activity-presentation";
 
 export const activityRouter = {
@@ -15,8 +15,9 @@ export const activityRouter = {
         strict: true,
         tokens: true,
       });
-      validatePositionalCount(positionals, 0, "Use --task <task-key> to filter activity");
       validateUniqueOptions(tokens);
+      validatePositionals(positionals, []);
+
       // Safe integers can have one more digit than readable task numbers.
       const limitPattern = new RegExp(`^${positiveIntegerPattern}\\d?$`);
       if (values.limit !== undefined && !limitPattern.test(values.limit)) {
@@ -53,7 +54,7 @@ Examples:
   view: {
     run: (args) => {
       const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
-      validatePositionalCount(positionals, 1, "Provide exactly one activity ID");
+      validatePositionals(positionals, ["<activity-id>"]);
       output(activity.getById(positionals[0]!), (event) =>
         formatActivityList(presentActivities([event], { showsFullIds: true }), {
           showsDetails: true,

@@ -13,7 +13,6 @@ import {
   output,
   quit,
   UsageError,
-  validatePositionalCount,
   validatePositionals,
   validateUniqueOptions,
 } from "../lib";
@@ -77,15 +76,10 @@ export const projectRouter = {
         tokens: true,
       });
 
-      const projectKey = positionals[0];
-
-      if (projectKey == null) {
-        quit("Project key must be specified");
-      }
-
-      validatePositionalCount(positionals, 1, "Only one project key can be specified");
-
       validateUniqueOptions(tokens);
+      validatePositionals(positionals, ["<project-key>"]);
+
+      const projectKey = positionals[0]!;
 
       try {
         const createdProject = project.create(
@@ -179,16 +173,10 @@ Example: zinn project view MDR`,
         tokens: true,
       });
 
-      const projectKey = positionals[0];
-
-      if (projectKey == null) {
-        quit("Project key must be specified");
-      }
-
-      validatePositionalCount(positionals, 1, "Only one project key can be specified");
-
       validateUniqueOptions(tokens);
+      validatePositionals(positionals, ["<project-key>"]);
 
+      const projectKey = positionals[0]!;
       const description = resolveTextEdit(values.description, values, "--description");
 
       if (values.name === undefined && description === undefined) {
@@ -310,12 +298,8 @@ Example: zinn project column list MDR`,
           tokens: true,
         });
 
-        validatePositionalCount(
-          positionals,
-          2,
-          "Both the project key and the column name must be specified",
-        );
         validateUniqueOptions(tokens);
+        validatePositionals(positionals, ["<project-key>", "<column-name>"]);
 
         if (values.name === undefined) {
           quit("Provide an edit flag: --name");
