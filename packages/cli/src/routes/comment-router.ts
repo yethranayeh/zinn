@@ -10,6 +10,7 @@ import {
   output,
   quit,
   validatePositionalCount,
+  validatePositionals,
   validateUniqueOptions,
 } from "../lib";
 import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit";
@@ -136,13 +137,15 @@ Examples:
   },
   delete: {
     run: (args) => {
-      const { values, positionals } = parseArgs({
+      const { values, positionals, tokens } = parseArgs({
         args,
         options: { yes: { type: "boolean" } },
         allowPositionals: true,
         strict: true,
+        tokens: true,
       });
-      validatePositionalCount(positionals, 1, "Exactly one comment key is required");
+      validateUniqueOptions(tokens);
+      validatePositionals(positionals, ["<comment-key>"]);
 
       const commentMatch = comment.getByKey(positionals[0]!);
       const canDelete = confirmAction(

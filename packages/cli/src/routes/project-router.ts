@@ -12,7 +12,9 @@ import {
   failureMessage,
   output,
   quit,
+  UsageError,
   validatePositionalCount,
+  validatePositionals,
   validateUniqueOptions,
 } from "../lib";
 import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit";
@@ -107,7 +109,10 @@ Descriptions may contain multiple lines. If omitted, they are saved as null.
 Example: zinn project create MDR --name "Macrodata Refinement"`,
   },
   list: {
-    run: () => {
+    run: (args: Array<string>) => {
+      const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
+      validatePositionals(positionals, []);
+
       const projects = project.getAll();
 
       output(projects.map(presentProject), formatProjectList);
@@ -120,14 +125,10 @@ Example: zinn project list`,
   },
   view: {
     run: (args: Array<string>) => {
-      const projectKey = args[0];
+      const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
+      validatePositionals(positionals, ["<project-key>"]);
 
-      if (projectKey == null) {
-        quit("Project key must be specified");
-      }
-
-      validatePositionalCount(args, 1, "Only one project key can be specified");
-
+      const projectKey = positionals[0]!;
       const projectMatch = project.getByKey(projectKey);
 
       if (projectMatch == null) {
@@ -213,17 +214,17 @@ Examples:
   },
   delete: {
     run: (args: Array<string>) => {
-      const { values, positionals } = parseArgs({
+      const { values, positionals, tokens } = parseArgs({
         args,
         options: { yes: { type: "boolean" } },
         allowPositionals: true,
         strict: true,
+        tokens: true,
       });
-      const projectKey = positionals[0];
+      validateUniqueOptions(tokens);
+      validatePositionals(positionals, ["<project-key>"]);
 
-      if (projectKey == null) {
-        quit("You need to specificy which project to delete");
-      }
+      const projectKey = positionals[0]!;
 
       try {
         const projectMatch = project.getByKey(projectKey);
@@ -257,12 +258,11 @@ Example: zinn project delete MDR`,
   column: {
     create: {
       run: (args: Array<string>) => {
-        const projectKey = args[0];
-        const columnName = args[1];
+        const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
+        validatePositionals(positionals, ["<project-key>", "<column-name>"]);
 
-        if (projectKey == null || columnName == null) {
-          quit("Both the project name and the column name must be defined");
-        }
+        const projectKey = positionals[0]!;
+        const columnName = positionals[1]!;
 
         try {
           const createdColumn = column.create({ projectKey, name: columnName }, currentActor());
@@ -280,12 +280,10 @@ Example: zinn project column create MDR "Boardlog"`,
     },
     list: {
       run: (args: Array<string>) => {
-        const projectKey = args[0];
-        if (projectKey == null) {
-          quit("Project key needs to be specified to list columns");
-        }
+        const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
+        validatePositionals(positionals, ["<project-key>"]);
 
-        const taskCounts = column.getTaskCountsByProjectKey(projectKey);
+        const taskCounts = column.getTaskCountsByProjectKey(positionals[0]!);
         const columns = taskCounts.columns.map((columnCount) => ({
           name: columnCount.column.name,
           taskCount: columnCount.taskCount,
@@ -346,31 +344,30 @@ Example: zinn project column edit MDR "In Progress" --name "Refining"`,
     },
     order: {
       run: (args: Array<string>) => {
-        const [projectKey, columnName, direction, targetColumnName, ...extraArgs] = args;
+        const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
+        /**
+         * The words every direction needs. Only whether they are there is checked here,
+         *  since the direction decides whether a target column follows.
+         */
+        const leadingWords = [
+          "<project-key>",
+          "<column-name>",
+          "{first|previous|next|last|before|after}",
+        ];
+        validatePositionals(positionals.slice(0, leadingWords.length), leadingWords);
 
-        if (projectKey == null || columnName == null) {
-          quit("Both the project key and the column name must be specified");
-        }
-
-        if (direction == null) {
-          quit("Order direction must be specified");
-        }
-
+        const projectKey = positionals[0]!;
+        const columnName = positionals[1]!;
+        const direction = positionals[2]!;
         let orderedColumn: ReturnType<typeof column.order>;
 
         switch (direction) {
           case "before":
           case "after": {
-            if (targetColumnName == null) {
-              quit(`Target column must be specified for "${direction}"`);
-            }
-
-            if (extraArgs.length > 0) {
-              quit("Only one target column can be specified");
-            }
+            validatePositionals(positionals, [...leadingWords, "<target-column-name>"]);
 
             orderedColumn = column.order(
-              { projectKey, columnName, direction, targetColumnName },
+              { projectKey, columnName, direction, targetColumnName: positionals[3]! },
               currentActor(),
             );
             break;
@@ -379,15 +376,13 @@ Example: zinn project column edit MDR "In Progress" --name "Refining"`,
           case "previous":
           case "next":
           case "last": {
-            if (targetColumnName != null) {
-              quit(`Order direction "${direction}" does not accept a target column`);
-            }
+            validatePositionals(positionals, leadingWords);
 
             orderedColumn = column.order({ projectKey, columnName, direction }, currentActor());
             break;
           }
           default:
-            quit(`Unknown order direction "${direction}"`);
+            throw new UsageError(`Unknown order direction "${direction}"`);
         }
 
         // TODO: maybe also print the new full column state?

@@ -1,5 +1,7 @@
 import type { Command, ParsedRoute, RouteDef } from "../types";
 
+import { parseArgs } from "node:util";
+
 import {
   failureMessage,
   isAllowLegacyReadFlag,
@@ -8,10 +10,33 @@ import {
   quit,
   setLegacyReadAllowed,
   setOutputMode,
+  UsageError,
+  validateUniqueOptions,
 } from "../lib";
 
 function getIsRunnable(obj: any): obj is Command {
   return Object.hasOwn(obj, "run");
+}
+
+function isRouterFlag(arg: string) {
+  return isJsonFlag(arg) || isAllowLegacyReadFlag(arg);
+}
+
+// --json and --allow-legacy-read can each be given once, like a command's own flags.
+function validateRouterFlags(routableArgs: Array<string>) {
+  const { tokens } = parseArgs({
+    args: routableArgs.filter(isRouterFlag),
+    options: { json: { type: "boolean" }, "allow-legacy-read": { type: "boolean" } },
+    strict: true,
+    tokens: true,
+  });
+
+  validateUniqueOptions(tokens);
+}
+
+/** The usage lines that open a command's help, up to its first blank line. */
+function getUsage(help: string) {
+  return help.split("\n\n")[0]!;
 }
 
 function toCommand(args: Array<string>) {
@@ -146,9 +171,7 @@ function route(parsedRoutes: Array<ParsedRoute>, rawArgs: Array<string>) {
   const separatorIndex = rawArgs.indexOf("--");
   const routableArgs = separatorIndex === -1 ? rawArgs : rawArgs.slice(0, separatorIndex);
   const passthroughArgs = separatorIndex === -1 ? [] : rawArgs.slice(separatorIndex);
-  const filteredRoutableArgs = routableArgs.filter(
-    (arg) => !isJsonFlag(arg) && !isAllowLegacyReadFlag(arg),
-  );
+  const filteredRoutableArgs = routableArgs.filter((arg) => !isRouterFlag(arg));
 
   if (routableArgs.some(isJsonFlag)) {
     setOutputMode("json");
@@ -193,11 +216,17 @@ function route(parsedRoutes: Array<ParsedRoute>, rawArgs: Array<string>) {
     return;
   }
 
+  validateRouterFlags(routableArgs);
+
   const commandArgs = args.slice(nestingLevel);
 
   try {
     match.run(commandArgs);
   } catch (err: any) {
+    if (err instanceof UsageError) {
+      quit(err.message, getUsage(match.help));
+    }
+
     quit(
       failureMessage(
         err,

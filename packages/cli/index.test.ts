@@ -440,6 +440,234 @@ test("root help and activity namespace help list the activity commands", () => {
   });
 });
 
+// --- ARGUMENTS
+
+test("every command rejects an unknown option before it opens the database", () => {
+  withIsolatedZinnDir((dir) => {
+    for (const command of routeCommands) {
+      const result = runZinn([...command.split(" "), "--bogus"], dir);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain("--bogus");
+    }
+    expect(existsSync(join(dir, "data"))).toBe(false);
+  });
+}, 30_000);
+
+test("project list, project view, the project column commands, task view and task order reject invalid requests without writes", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "SHOP"], dir);
+    runZinn(["task", "create", "SHOP", "--title", "First"], dir);
+    runZinn(["task", "create", "SHOP", "--title", "Second"], dir);
+    const read = () => withTestDb(dir, (db) => ({
+      columns: db.query("SELECT * FROM project_column ORDER BY id").all(),
+      tasks: db.query("SELECT * FROM task ORDER BY id").all(),
+      activity: db.query("SELECT * FROM activity ORDER BY id").all(),
+    }));
+    const before = read();
+    // ? ZINN-51: an unknown option is named; an extra word is named and shown with the usage line;
+    // ? a missing word shows the usage line. A -- in front or at the end adds no word, and a second -- is a word.
+    type RejectedCases = {
+      unknownOption: [string[], string];
+      extraWords: Array<[string[], string]>;
+      missingWords: Array<string[]>;
+    };
+    const casesByCommand: Record<string, RejectedCases> = {
+      "project list": {
+        unknownOption: [["--bogus"], "--bogus"],
+        extraWords: [[["extra"], "extra"], [["--", "extra"], "extra"], [["extra", "--"], "extra"], [["--", "--"], "--"]],
+        missingWords: [],
+      },
+      "project view": {
+        unknownOption: [["SHOP", "--bogus"], "--bogus"],
+        extraWords: [[["SHOP", "extra"], "extra"], [["--", "SHOP", "extra"], "extra"], [["SHOP", "--", "--"], "--"]],
+        missingWords: [[], ["--"]],
+      },
+      "project column create": {
+        unknownOption: [["SHOP", "Later", "--bogus"], "--bogus"],
+        extraWords: [
+          [["SHOP", "Needs", "Review"], "Review"],
+          [["--", "SHOP", "Needs", "Review"], "Review"],
+          [["SHOP", "Later", "--", "--"], "--"],
+        ],
+        missingWords: [[], ["SHOP"], ["--", "SHOP"], ["SHOP", "--"]],
+      },
+      "project column list": {
+        unknownOption: [["SHOP", "--counts"], "--counts"],
+        extraWords: [[["SHOP", "extra"], "extra"], [["--", "SHOP", "extra"], "extra"], [["SHOP", "--", "--"], "--"]],
+        missingWords: [[], ["--"]],
+      },
+      "project column order": {
+        unknownOption: [["SHOP", "TODO", "first", "--foo"], "--foo"],
+        extraWords: [
+          [["SHOP", "TODO", "first", "Done"], "Done"],
+          [["SHOP", "TODO", "before", "Done", "Review"], "Review"],
+          [["--", "SHOP", "TODO", "first", "Done"], "Done"],
+          [["SHOP", "TODO", "first", "--", "--"], "--"],
+        ],
+        missingWords: [[], ["SHOP", "TODO"], ["SHOP", "TODO", "before"], ["--", "SHOP", "TODO"], ["SHOP", "TODO", "after", "--"]],
+      },
+      "task view": {
+        unknownOption: [["SHOP-1", "--bogus"], "--bogus"],
+        extraWords: [[["SHOP-1", "SHOP-2"], "SHOP-2"], [["--", "SHOP-1", "SHOP-2"], "SHOP-2"], [["SHOP-1", "--", "--"], "--"]],
+        missingWords: [[], ["--"]],
+      },
+      "task order": {
+        unknownOption: [["SHOP-1", "--foo"], "--foo"],
+        extraWords: [
+          [["SHOP-1", "top", "SHOP-2"], "SHOP-2"],
+          [["SHOP-1", "before", "SHOP-2", "extra"], "extra"],
+          [["--", "SHOP-1", "top", "SHOP-2"], "SHOP-2"],
+          [["SHOP-1", "top", "--", "--"], "--"],
+        ],
+        missingWords: [[], ["SHOP-1"], ["SHOP-1", "before"], ["--", "SHOP-1"], ["SHOP-1", "after", "--"]],
+      },
+    };
+
+    for (const [command, { unknownOption, extraWords, missingWords }] of Object.entries(casesByCommand)) {
+      const usage = `Usage: zinn ${command}`;
+      const rejections = [
+        { args: unknownOption[0], facts: [unknownOption[1]] },
+        ...extraWords.map(([args, word]) => ({ args, facts: [`"${word}"`, usage] })),
+        ...missingWords.map((args) => ({ args, facts: [usage] })),
+      ];
+      for (const { args, facts } of rejections) {
+        const result = runZinn([...command.split(" "), ...args], dir);
+        expect(result.code).toBe(1);
+        expect(result.stdout).toBe("");
+        for (const fact of facts) {
+          expect(result.stderr).toContain(fact);
+        }
+        expect(read()).toEqual(before);
+      }
+    }
+
+    // ? An unknown direction shows both usage lines, so the valid directions are listed.
+    for (const args of [["project", "column", "order", "SHOP", "TODO", "sideways"], ["task", "order", "SHOP-1", "sideways"]]) {
+      const result = runZinn(args, dir);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain(`"sideways"`);
+      expect(result.stderr).toContain("{before|after}");
+      expect(read()).toEqual(before);
+    }
+  });
+}, 30_000);
+
+test("project column create takes a name that begins with a dash only after --", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "SHOP"], dir);
+    const readNames = () => withTestDb(dir, (db) =>
+      db.query<{ name: string }, []>("SELECT name FROM project_column ORDER BY column_order").all().map(({ name }) => name),
+    );
+    const before = readNames();
+
+    // ? A flag, a word that begins with a dash and the second half of an unquoted name are never saved as a name.
+    for (const args of [["SHOP", "--name", "Waiting"], ["SHOP", "Needs", "Review"], ["SHOP", "-later"]]) {
+      const result = runZinn(["project", "column", "create", ...args], dir);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(readNames()).toEqual(before);
+    }
+
+    expect(runZinn(["project", "column", "create", "SHOP", "--", "-later"], dir).code).toBe(0);
+    expect(readNames()).toEqual([...before, "-later"]);
+  });
+});
+
+test("a -- in front of the words or at the end leaves a valid command working", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "SHOP"], dir);
+    runZinn(["task", "create", "SHOP", "--title", "First"], dir);
+    runZinn(["task", "create", "SHOP", "--title", "Second"], dir);
+
+    const sameAsWithout: Array<[string[], string[]]> = [
+      [["task", "view", "--", "SHOP-1"], ["task", "view", "SHOP-1"]],
+      [["project", "view", "SHOP", "--"], ["project", "view", "SHOP"]],
+      [["project", "column", "list", "--", "SHOP"], ["project", "column", "list", "SHOP"]],
+    ];
+    for (const [withSeparator, withoutSeparator] of sameAsWithout) {
+      const result = runZinn(withSeparator, dir);
+      expect(result.code).toBe(0);
+      expect(result).toEqual(runZinn(withoutSeparator, dir));
+    }
+
+    expect(runZinn(["task", "order", "SHOP-2", "top", "--"], dir).code).toBe(0);
+    expect(runZinn(["task", "list", "SHOP"], dir).stdout).toMatch(/SHOP-2[^\n]*\nSHOP-1/);
+  });
+});
+
+test("delete commands take one key and one --yes, and delete nothing otherwise", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "A"], dir);
+    runZinn(["project", "create", "B"], dir);
+    runZinn(["task", "create", "A", "--title", "First"], dir);
+    runZinn(["task", "create", "A", "--title", "Second"], dir);
+    runZinn(["task", "comment", "create", "A-1", "--text", "Note"], dir);
+    runZinn(["label", "create", "bug"], dir);
+    const read = () => withTestDb(dir, (db) => ({
+      projects: db.query("SELECT * FROM project ORDER BY id").all(),
+      columns: db.query("SELECT * FROM project_column ORDER BY id").all(),
+      tasks: db.query("SELECT * FROM task ORDER BY id").all(),
+      comments: db.query("SELECT * FROM comment ORDER BY id").all(),
+      labels: db.query("SELECT * FROM label ORDER BY id").all(),
+      activity: db.query("SELECT * FROM activity ORDER BY id").all(),
+    }));
+    const before = read();
+    // ? Each case lists the facts its error carries.
+    const cases: Array<[string[], ...string[]]> = [
+      [["task", "delete", "A-1", "A-2", "--yes"], `"A-2"`, "Usage: zinn task delete"],
+      [["project", "delete", "A", "B", "--yes"], `"B"`, "Usage: zinn project delete"],
+      // ? After --, --yes is a word, so it is rejected as an extra word.
+      [["task", "delete", "--", "A-1", "--yes"], `"--yes"`, "Usage: zinn task delete"],
+      [["task", "delete", "A-1", "--yes", "--", "--"], `"--"`, "Usage: zinn task delete"],
+      [["project", "delete", "A", "--yes", "--yes"], "--yes"],
+      [["task", "delete", "A-1", "--yes", "--yes"], "--yes"],
+      [["task", "comment", "delete", "A-1#1", "--yes", "--yes"], "--yes"],
+      [["label", "delete", "bug", "--yes", "--yes"], "--yes"],
+    ];
+    for (const [args, ...facts] of cases) {
+      const result = runZinn(args, dir);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      for (const fact of facts) {
+        expect(result.stderr).toContain(fact);
+      }
+      expect(read()).toEqual(before);
+    }
+  });
+});
+
+test("--json or --allow-legacy-read given twice runs nothing, while a second help flag still shows help", () => {
+  withIsolatedZinnDir((dir) => {
+    for (const flag of ["--json", "--allow-legacy-read"]) {
+      const result = runZinn(["project", "create", "APP", flag, flag], dir);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain(flag);
+    }
+    expect(existsSync(join(dir, "data"))).toBe(false);
+
+    const help = runZinn(["task", "view", "A-1", "-h", "--help"], dir);
+    expect(help.code).toBe(0);
+    expect(help.stderr).toBe("");
+    expect(help.stdout).toContain("Usage: zinn task view");
+  });
+});
+
+test("with --json, an extra word is one JSON error on stderr whose help is the usage line", () => {
+  withIsolatedZinnDir((dir) => {
+    const result = runZinn(["task", "view", "A-1", "A-2", "--json"], dir);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    const { error } = JSON.parse(result.stderr);
+    expect(error.message).toContain("A-2");
+    expect(error.help).toContain("Usage: zinn task view");
+    expect(existsSync(join(dir, "data"))).toBe(false);
+  });
+});
+
 // --- PROJECT
 
 test("project create seeds the default columns", () => {
@@ -658,24 +886,28 @@ test("project column order rejects invalid requests and skips no-ops without wri
     runZinn(["project", "create", "COL", "--name", "Columns"], dir);
     const read = () => withTestDb(dir, (db) => db.query("SELECT * FROM project_column").all());
     const before = read();
-    const cases: Array<[string[], string]> = [
-      [[], "Both the project key and the column name must be specified"],
-      [["COL"], "Both the project key and the column name must be specified"],
-      [["COL", "TODO"], "Order direction must be specified"],
+    const usage = "Usage: zinn project column order";
+    // ? Each case lists the facts its error carries.
+    const cases: Array<[string[], ...string[]]> = [
+      [[], usage],
+      [["COL"], usage],
+      [["COL", "TODO"], usage],
       [["COL", "TODO", "sideways"], `Unknown order direction "sideways"`],
       [["COL", "TODO", "top"], `Unknown order direction "top"`],
-      [["COL", "TODO", "before"], `Target column must be specified for "before"`],
-      [["COL", "TODO", "before", "Done", "Review"], "Only one target column can be specified"],
-      [["COL", "TODO", "first", "Done"], `Order direction "first" does not accept a target column`],
+      [["COL", "TODO", "before"], usage],
+      [["COL", "TODO", "before", "Done", "Review"], `"Review"`, usage],
+      [["COL", "TODO", "first", "Done"], `"Done"`, usage],
       [["COL", "   ", "first"], "Column name cannot be blank"],
       [["COL", "Missing", "first"], `Columns does not have a column named "Missing"`],
       [["COL", "TODO", "after", "Missing"], `Columns does not have a column named "Missing"`],
       [["NOPE", "TODO", "first"], `Project with key "NOPE" does not exist!`],
     ];
-    for (const [args, message] of cases) {
+    for (const [args, ...facts] of cases) {
       const result = runZinn(["project", "column", "order", ...args], dir);
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain(message);
+      for (const fact of facts) {
+        expect(result.stderr).toContain(fact);
+      }
       expect(result.stdout).toBe("");
       expect(read()).toEqual(before);
     }
@@ -885,9 +1117,10 @@ test("project view validates its project key", () => {
     const unknown = runZinn(["project", "view", "unknown"], testDir);
 
     expect(missing.code).toBe(1);
-    expect(missing.stderr).toContain("Project key must be specified");
+    expect(missing.stderr).toContain("Usage: zinn project view");
     expect(extra.code).toBe(1);
-    expect(extra.stderr).toContain("Only one project key can be specified");
+    expect(extra.stderr).toContain(`"TWO"`);
+    expect(extra.stderr).toContain("Usage: zinn project view");
     expect(unknown.code).toBe(1);
     expect(unknown.stderr).toContain('Project with key "UNKNOWN" does not exist!');
   });
@@ -1708,13 +1941,13 @@ test("task view requires a task key", () => {
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("Task key must be specified");
+    expect(result.stderr).toContain("Usage: zinn task view");
   });
 });
 
 test("task view rejects malformed task keys with an actionable error", () => {
   withIsolatedZinnDir((testDir) => {
-    for (const invalidKey of ["VIEW", "VIEW-", "VIEW-one", "VIEW-1-extra", "-1"]) {
+    for (const invalidKey of ["VIEW", "VIEW-", "VIEW-one", "VIEW-1-extra"]) {
       const result = runZinn(["task", "view", invalidKey], testDir);
 
       expect(result.code).toBe(1);
@@ -1722,6 +1955,13 @@ test("task view rejects malformed task keys with an actionable error", () => {
       expect(result.stderr).toContain(`Invalid task key "${invalidKey}"`);
       expect(result.stderr).toContain("Expected format PROJECT-1");
     }
+
+    // ? ZINN-51: a word that begins with a dash is read as a word only after --.
+    const dashKey = runZinn(["task", "view", "--", "-1"], testDir);
+    expect(dashKey.code).toBe(1);
+    expect(dashKey.stdout).toBe("");
+    expect(dashKey.stderr).toContain(`Invalid task key "-1"`);
+    expect(dashKey.stderr).toContain("Expected format PROJECT-1");
   });
 });
 
@@ -1937,7 +2177,7 @@ test("task comment commands validate their inputs without partial writes", () =>
         ["task", "comment", "edit", "019dbfc3-f513-7000-8000-000000000000", "--text", "No"],
         "Invalid comment key",
       ],
-      [["task", "comment", "delete"], "Exactly one comment key is required"],
+      [["task", "comment", "delete"], "Usage: zinn task comment delete"],
     ];
 
     for (const [args, message] of cases) {
@@ -2432,11 +2672,11 @@ test("task order places a task immediately before or after its target", () => {
 test("task order requires a task key and an ordering instruction", () => {
   const missingTask = runZinn(["task", "order"]);
   expect(missingTask.code).toBe(1);
-  expect(missingTask.stderr).toContain("Task key must be specified");
+  expect(missingTask.stderr).toContain("Usage: zinn task order");
 
   const missingInstruction = runZinn(["task", "order", "ORDER-1"]);
   expect(missingInstruction.code).toBe(1);
-  expect(missingInstruction.stderr).toContain("Order direction must be specified");
+  expect(missingInstruction.stderr).toContain("Usage: zinn task order");
 });
 
 test("task order validates direction and target arguments", () => {
@@ -2446,11 +2686,12 @@ test("task order validates direction and target arguments", () => {
 
   const missingTarget = runZinn(["task", "order", "ORDER-1", "before"]);
   expect(missingTarget.code).toBe(1);
-  expect(missingTarget.stderr).toContain('Target task must be specified for "before"');
+  expect(missingTarget.stderr).toContain("Usage: zinn task order");
 
   const unexpectedTarget = runZinn(["task", "order", "ORDER-1", "top", "ORDER-2"]);
   expect(unexpectedTarget.code).toBe(1);
-  expect(unexpectedTarget.stderr).toContain('Order direction "top" does not accept a target task');
+  expect(unexpectedTarget.stderr).toContain('"ORDER-2"');
+  expect(unexpectedTarget.stderr).toContain("Usage: zinn task order");
 });
 
 test("task order help documents its own command", () => {
@@ -2849,7 +3090,7 @@ test("task delete keeps the task when confirmation is declined", () => {
 });
 
 test("task delete requires a valid existing task key", () => {
-  expect(runZinn(["task", "delete"]).stderr).toContain("Task key must be specified");
+  expect(runZinn(["task", "delete"]).stderr).toContain("Usage: zinn task delete");
   expect(runZinn(["task", "delete", "INVALID"]).stderr).toContain(
     'Invalid task key "INVALID"',
   );
@@ -4070,9 +4311,12 @@ test("shared option checks reject repeated scalar flags and retain positional va
       expect(result.code).toBe(1);
       expect(result.stderr).toContain("can only be specified once");
     }
-    for (const args of [["label", "create"], ["label", "create", "one", "two"], ["label", "edit"], ["label", "edit", "one", "two", "--color", "red"], ["label", "delete", "one", "two"]]) {
+    for (const args of [["label", "create"], ["label", "create", "one", "two"], ["label", "edit"], ["label", "edit", "one", "two", "--color", "red"]]) {
       expect(runZinn(args, dir).stderr).toContain("Exactly one label name is required");
     }
+    const extraLabel = runZinn(["label", "delete", "one", "two"], dir);
+    expect(extraLabel.stderr).toContain(`"two"`);
+    expect(extraLabel.stderr).toContain("Usage: zinn label delete");
   });
 });
 

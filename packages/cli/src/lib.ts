@@ -101,6 +101,9 @@ export function quit(reason: string, help?: string): never {
   process.exit(1);
 }
 
+/** A command was given the wrong words. The router prints the message with the command's usage lines. */
+export class UsageError extends Error {}
+
 export function validatePositionalCount(
   positionals: Array<string>,
   expected: number,
@@ -108,6 +111,25 @@ export function validatePositionalCount(
 ) {
   if (positionals.length !== expected) {
     quit(message);
+  }
+}
+
+/**
+ * Checks a command's words against its usage line, with the words written the same way:
+ * `<task-key>` is required, `[<project-key>]` is optional and `<task-key>...` repeats.
+ * Optional words go last.
+ */
+export function validatePositionals(positionals: Array<string>, words: Array<string>) {
+  const requiredWords = words.filter((word) => !word.startsWith("["));
+  const missingWord = requiredWords[positionals.length];
+  if (missingWord !== undefined) {
+    throw new UsageError(`Missing argument ${missingWord}`);
+  }
+
+  const hasRepeatingWord = words.some((word) => word.endsWith("..."));
+  const extraWord = positionals[words.length];
+  if (!hasRepeatingWord && extraWord !== undefined) {
+    throw new UsageError(`Unexpected argument "${extraWord}"`);
   }
 }
 

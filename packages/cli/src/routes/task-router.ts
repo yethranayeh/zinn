@@ -10,7 +10,9 @@ import {
   failureMessage,
   output,
   quit,
+  UsageError,
   validatePositionalCount,
+  validatePositionals,
   validateUniqueOptions,
 } from "../lib";
 import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit";
@@ -228,13 +230,10 @@ Example: zinn task search "refinement quota" MDR --limit 5`,
   },
   view: {
     run: (args) => {
-      const taskKey = args[0];
+      const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
+      validatePositionals(positionals, ["<task-key>"]);
 
-      if (taskKey == null) {
-        quit("Task key must be specified");
-      }
-
-      const taskMatch = task.getByKey(taskKey);
+      const taskMatch = task.getByKey(positionals[0]!);
       const viewedTask = {
         ...presentTask(taskMatch),
         relations: presentRelations(taskMatch),
@@ -396,28 +395,26 @@ Example: zinn task move MDR-1 MDR-2 "In Progress"`,
   },
   order: {
     run: (args) => {
-      const [taskKey, direction, targetTaskKey, ...extraArgs] = args;
+      const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
+      /**
+       * The words every direction needs. Only whether they are there is checked here,
+       *  since the direction decides whether a target column follows.
+       */
+      const leadingWords = ["<task-key>", "{top|up|down|bottom|before|after}"];
+      validatePositionals(positionals.slice(0, leadingWords.length), leadingWords);
 
-      if (taskKey == null) {
-        quit("Task key must be specified");
-      }
-
-      if (direction == null) {
-        quit("Order direction must be specified");
-      }
+      const taskKey = positionals[0]!;
+      const direction = positionals[1]!;
 
       switch (direction) {
         case "before":
         case "after": {
-          if (targetTaskKey == null) {
-            quit(`Target task must be specified for "${direction}"`);
-          }
+          validatePositionals(positionals, [...leadingWords, "<target-task-key>"]);
 
-          if (extraArgs.length > 0) {
-            quit("Only one target task can be specified");
-          }
-
-          const orderedTask = task.order({ taskKey, direction, targetTaskKey }, currentActor());
+          const orderedTask = task.order(
+            { taskKey, direction, targetTaskKey: positionals[2]! },
+            currentActor(),
+          );
           output(presentTask(orderedTask), formatTaskRow);
           return;
         }
@@ -425,16 +422,14 @@ Example: zinn task move MDR-1 MDR-2 "In Progress"`,
         case "up":
         case "down":
         case "bottom": {
-          if (targetTaskKey != null) {
-            quit(`Order direction "${direction}" does not accept a target task`);
-          }
+          validatePositionals(positionals, leadingWords);
 
           const orderedTask = task.order({ taskKey, direction }, currentActor());
           output(presentTask(orderedTask), formatTaskRow);
           return;
         }
         default:
-          quit(`Unknown order direction "${direction}"`);
+          throw new UsageError(`Unknown order direction "${direction}"`);
       }
     },
     help: `Usage: zinn task order <task-key> {top|up|down|bottom}
@@ -490,17 +485,17 @@ Example: zinn task unarchive MDR-1 MDR-2`,
   },
   delete: {
     run: (args: Array<string>) => {
-      const { values, positionals } = parseArgs({
+      const { values, positionals, tokens } = parseArgs({
         args,
         options: { yes: { type: "boolean" } },
         allowPositionals: true,
         strict: true,
+        tokens: true,
       });
-      const taskKey = positionals[0];
+      validateUniqueOptions(tokens);
+      validatePositionals(positionals, ["<task-key>"]);
 
-      if (taskKey == null) {
-        quit("Task key must be specified");
-      }
+      const taskKey = positionals[0]!;
 
       try {
         const taskMatch = task.getByKey(taskKey);

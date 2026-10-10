@@ -10,6 +10,7 @@ import {
   output,
   quit,
   validatePositionalCount,
+  validatePositionals,
   validateUniqueOptions,
 } from "../lib";
 import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit";
@@ -131,14 +132,16 @@ Examples:
   },
   delete: {
     run: (args) => {
-      const { values, positionals } = parseArgs({
+      const { values, positionals, tokens } = parseArgs({
         args,
         options: { yes: { type: "boolean" } },
         strict: true,
         allowPositionals: true,
+        tokens: true,
       });
 
-      validatePositionalCount(positionals, 1, "Exactly one label name is required");
+      validateUniqueOptions(tokens);
+      validatePositionals(positionals, ["<name>"]);
 
       const props = labelDeleteSchema.parse({ name: positionals[0] });
       const labelMatch = label.getByName(props.name);

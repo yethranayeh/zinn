@@ -3,7 +3,7 @@ import type { OpenPolicy } from "@zinn-dev/core";
 import { expect, test } from "bun:test";
 import { ReadOnlyDatabaseError, TextEditMatchError, UnmarkedDatabaseError } from "@zinn-dev/core";
 
-import { failureMessage } from "./lib";
+import { failureMessage, UsageError, validatePositionals } from "./lib";
 
 const FALLBACK = "Something went wrong";
 const POLICY: OpenPolicy = {
@@ -67,4 +67,20 @@ test("a text edit that matches several places points at --all, and one that matc
     `${several.message} Use --all to replace every match.`,
   );
   expect(failureMessage(none, FALLBACK)).toBe(none.message);
+});
+
+test("validatePositionals names the first missing word, or the first word past the most it takes", () => {
+  const words = ["<project-key>", "<column-name>"];
+
+  expect(() => validatePositionals(["SHOP", "Later"], words)).not.toThrow();
+  expect(() => validatePositionals(["SHOP"], words)).toThrow(UsageError);
+  expect(() => validatePositionals(["SHOP"], words)).toThrow("<column-name>");
+  expect(() => validatePositionals([], words)).toThrow("<project-key>");
+  expect(() => validatePositionals(["SHOP", "Needs", "Review", "Now"], words)).toThrow('"Review"');
+
+  // ? Written as in the usage lines: [...] marks an optional word and a trailing ... a word that repeats.
+  expect(() => validatePositionals([], ["[<project-key>]"])).not.toThrow();
+  expect(() => validatePositionals(["SHOP", "extra"], ["[<project-key>]"])).toThrow('"extra"');
+  expect(() => validatePositionals(["A-1", "A-2", "A-3"], ["<task-key>..."])).not.toThrow();
+  expect(() => validatePositionals(["A-1"], ["<task-key>...", "<target-column>"])).toThrow("<target-column>");
 });
