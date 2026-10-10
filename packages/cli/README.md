@@ -201,7 +201,7 @@ zinn task create MDR --title "Review the employee handbook" --description "Prepa
 zinn task create MDR --title "Compile the Lexington letters" --column "In Progress"
 ```
 
-Tasks are created with keys such as `MDR-1`. List active tasks, optionally limited to one project, or view one task:
+Tasks are created with keys such as `MDR-1`. Task numbers increase in creation order within each project. List active tasks, optionally limited to one project, or view one task:
 
 ```sh
 zinn task list
@@ -402,6 +402,8 @@ zinn task unarchive MDR-2 MDR-3
 Archive or unarchive multiple tasks by giving several keys. Unarchived tasks land in the order given. See [Changing tasks in bulk](#changing-tasks-in-bulk).
 
 Delete a task permanently with `zinn task delete MDR-1`. It asks for confirmation before performing the action, unless `--yes` is used (see [Confirmations](#confirmations)).
+
+Deleting a task does not make its number available again within that project. Deleting and recreating the project starts its task numbering again at 1.
 
 ## Task priority
 
