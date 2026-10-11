@@ -369,16 +369,20 @@ function formatActivityContent(entry: PresentedActivity) {
   const isMutableCurrentName =
     navigation?.status === "current" &&
     (event.entity_type === "label" || event.entity_type === "column");
+  const isProjectDeletion = event.entity_type === "project" && event.action === "delete";
   const provenance =
-    navigation?.status === "recorded"
-      ? " [recorded]"
-      : isMutableCurrentName
-        ? " [current name]"
-        : "";
+    isProjectDeletion
+      ? " [deleted project]"
+      : navigation?.status === "recorded"
+        ? " [recorded]"
+        : isMutableCurrentName
+          ? " [current name]"
+          : "";
+  const taskIdentity = navigation?.distinguishesTaskId ? ` [${navigation.status} task]` : "";
   const action = ACTION_LABELS[event.action] ?? event.action;
   const summary = formatChangeSummary(entry, { showsRemovedTasks: false, omitsIdentity: true });
   const lines = [
-    `${entityType}${shortName}${provenance} · ${action}${summary === "-" ? "" : `: ${summary}`}`,
+    `${entityType}${shortName}${provenance}${taskIdentity} · ${action}${summary === "-" ? "" : `: ${summary}`}`,
   ];
 
   if (shortName !== name) {

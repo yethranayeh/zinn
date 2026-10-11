@@ -45,6 +45,46 @@ test("activity details keep explicit empty containers distinct from null changes
     .toContain("Changes:\nnull");
 });
 
+test("reused task identities carry their state on each event row without collapsing deleted tasks", () => {
+  const event: Activity = {
+    id: "019abcdf-1234-7000-8000-123456abcde1", created_at: 1,
+    actor_name: "Test", actor_email: null, actor_kind: "human",
+    entity_type: "task", entity_id: "current-task", action: "edit", changes: null,
+  };
+  const identities = [
+    { id: "current-task", status: "current" as const },
+    { id: "archived-task", status: "archived" as const },
+    { id: "first-deleted-task", status: "deleted" as const },
+    { id: "second-deleted-task", status: "deleted" as const },
+  ];
+  for (const identity of identities) {
+    const entry = {
+      event: { ...event, entity_id: identity.id }, displayId: event.id, removedTasks: [],
+      navigation: { name: "APP-1", status: identity.status, distinguishesTaskId: true },
+    };
+    const text = formatActivityList([entry]);
+    expect(text.split("\n")[0]).toContain(`APP-1 [${identity.status} task]`);
+    expect(text).toContain(identity.id);
+  }
+});
+
+test("project deletion keeps its project and removed-task identities visible", () => {
+  const event: Activity = {
+    id: "019abcdf-1234-7000-8000-123456abcde1", created_at: 1,
+    actor_name: "Test", actor_email: null, actor_kind: "human",
+    entity_type: "project", entity_id: "old-project", action: "delete",
+    changes: { key: "APP", tasks: [{ id: "old-task", key: "APP-1", title: "Old task" }] },
+  };
+  const text = formatActivityList([{
+    event, displayId: event.id,
+    navigation: { name: "APP", status: "recorded" },
+    removedTasks: [{ id: "old-task", key: "APP-1", title: "Old task", status: "deleted" }],
+  }]);
+  expect(text.split("\n")[0]).toContain("APP [deleted project]");
+  expect(text).toContain("APP-1");
+  expect(text).toContain("old-task");
+});
+
 test("long entity identities do not pad neighboring activity descriptions", () => {
   const event: Activity = {
     id: "019abcdf-1234-7000-8000-123456abcde1", created_at: 1,

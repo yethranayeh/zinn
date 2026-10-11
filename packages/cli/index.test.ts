@@ -6113,10 +6113,14 @@ test("activity recovers deleted and reused task lifetimes, retaining the origina
     expect(events.find((event) => event.id === deletion.id)).toEqual(deletion);
     expect(new Set(events.filter((event) => event.entity_type === "task").map((event) => event.entity_id))).toEqual(new Set([oldTaskId, newTaskId]));
     const text = run("activity", "list", "--task", "APP-1").stdout;
+    expect(text.split("\n").some((line) => line.includes("APP-1 [current task]"))).toBe(true);
+    expect(text.split("\n").some((line) => line.includes("APP-1 [deleted task]"))).toBe(true);
+    expect(text.split("\n").some((line) => line.includes("APP [deleted project]"))).toBe(true);
     expect(text).toContain(`Task identity: current; ${newTaskId}`);
     expect(text).toContain(`Task identity: deleted; ${oldTaskId}`);
     expect(text).toContain(`removed APP-1 (${oldTaskId})`);
     const limited = run("activity", "list", "--task", "APP-1", "--limit", "1").stdout;
+    expect(limited.split("\n")[0]).toContain("APP-1 [current task]");
     expect(limited).toContain(`Task identity: current; ${newTaskId}`);
     expect(limited).not.toContain(oldTaskId);
     expect(JSON.parse(run("activity", "list", "--task", "APP-99", "--json").stdout)).toEqual([]);

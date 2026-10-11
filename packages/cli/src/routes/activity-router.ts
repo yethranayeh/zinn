@@ -46,6 +46,9 @@ Text times are local dates/times with a UTC offset.
 Event IDs are the shortest globally unique left prefixes of at least eight hex digits.
 Use activity view for full recorded changes; full IDs are durable, short prefixes may become ambiguous.
 With --json, output is an array of full activity records, with parsed changes or null.
+Group JSON records by entity_type and entity_id to distinguish tasks sharing a readable key.
+id identifies the activity event.
+A project deletion event's entity_id is the project ID and removed task IDs are in changes.tasks.
 
 Examples:
   zinn activity list --limit 10
@@ -71,6 +74,7 @@ Accept a full UUID or unique left prefix with at least eight hexadecimal digits.
 Matching ignores case and accepts canonical hyphens or uninterrupted hexadecimal digits.
 An ambiguous prefix lists candidate IDs and requires more characters.
 With --json, output is one full activity record, with parsed changes or null.
+id identifies this event itself, while entity_type and entity_id identify its affected entity.
 
 Example: zinn activity view 019abcdf-1234-7`,
   },
