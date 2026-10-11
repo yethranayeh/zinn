@@ -6,6 +6,11 @@
 			"description": "The address of this file's JSON Schema, for editors.",
 			"type": "string"
 		},
+		"defaultProject": {
+			"description": "The project key used to scope results to the specificed project board when no explicit key is given. Local setting overrides the global one. An explicitly given key in a command overrides both.",
+			"type": "string",
+			"pattern": "^[A-Za-z][A-Za-z0-9]*$"
+		},
 		"storage": {
 			"description": "Where Zinn keeps its data.",
 			"type": "object",

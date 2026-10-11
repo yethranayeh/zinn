@@ -3,7 +3,13 @@ import type { RouteDef } from "../types";
 import type { PresentedTask } from "../presentation/task-presentation";
 
 import { parseArgs } from "node:util";
-import { task, project, positiveIntegerPattern, searchLimitMessage } from "@zinn-dev/core";
+import {
+  task,
+  project,
+  positiveIntegerPattern,
+  searchLimitMessage,
+  parseTaskKey,
+} from "@zinn-dev/core";
 
 import {
   confirmAction,
@@ -18,6 +24,7 @@ import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from ".
 import { formatRelations, presentRelations, relationRouter } from "./relation-router";
 import { commentRouter, formatComments, presentComments } from "./comment-router";
 import { currentActor } from "../actor";
+import { resolveProjectKey } from "../project";
 import { formatSection } from "../presentation/section";
 import { formatActivityList, presentActivities } from "../presentation/activity-presentation";
 import {
@@ -48,9 +55,9 @@ export const taskRouter = {
         tokens: true,
       });
       validateUniqueOptions(tokens, ["label", "depends-on", "related"]);
-      validatePositionals(positionals, ["<project-key>"]);
+      validatePositionals(positionals, ["[<project-key>]"]);
 
-      const projectKey = positionals[0]!;
+      const projectKey = resolveProjectKey(positionals[0], { required: true })!;
       if (values.title === undefined) {
         quit("A task needs at least a title: use --title");
       }
@@ -72,9 +79,13 @@ export const taskRouter = {
       );
       output(presentTask(createdTask), formatTaskRow);
     },
-    help: `Usage: zinn task create <project-key> --title <text> [--description <text>] [--priority {low|medium|high|urgent|none}] [--label <name>] [--column <name>] [--parent <task-key>] [--depends-on <task-key>] [--duplicate-of <task-key>] [--related <task-key>]
+    help: `Usage: zinn task create [<project-key>] --title <text> [--description <text>] [--priority {low|medium|high|urgent|none}] [--label <name>] [--column <name>] [--parent <task-key>] [--depends-on <task-key>] [--duplicate-of <task-key>] [--related <task-key>]
 
 Create a task at the bottom of a column. Without --column, it starts in the project's first column.
+
+An omitted project key uses defaultProject from settings, if present.
+If no default project is set, the key is required.
+
 Column names are matched case-insensitively. An unknown column is an error and creates nothing.
 Priority defaults to none (unassigned).
 Repeat --label to attach multiple existing labels. Unknown labels are errors.
@@ -98,6 +109,7 @@ Examples:
         options: {
           archived: { type: "boolean" },
           all: { type: "boolean" },
+          "all-projects": { type: "boolean" },
           label: { type: "string", multiple: true },
           column: { type: "string" },
         },
@@ -113,7 +125,7 @@ Examples:
         quit('Use either "--archived" or "--all", not both');
       }
 
-      const projectKey = positionals[0];
+      const projectKey = resolveProjectKey(positionals[0], { allProjects: values["all-projects"] });
       const archive = values.all ? "all" : values.archived ? "archived" : "active";
 
       const tasks = task.getAll({
@@ -127,9 +139,12 @@ Examples:
         formatTaskList(presentedTasks, { showsStatus: values.all }),
       );
     },
-    help: `Usage: zinn task list [<project-key>] [--archived|--all] [--label <name>] [--column <name>]
+    help: `Usage: zinn task list [<project-key>] [--all-projects] [--archived|--all] [--label <name>] [--column <name>]
 
 List active tasks by default.
+An omitted project key uses defaultProject from settings, if present.
+If no default project is set, the command lists every project.
+Use --all-projects to list every project, overriding the default. It cannot be combined with a typed project key.
 Use --archived to list archived tasks or --all to list both.
 Use --label to filter for tasks with a specific label, no case-sensitivity is applied for matching.
 Use --column to filter by an exact column name without case sensitivty.
@@ -148,6 +163,7 @@ Example: zinn task list MDR --label cli`,
         options: {
           archived: { type: "boolean" },
           all: { type: "boolean" },
+          "all-projects": { type: "boolean" },
           limit: { type: "string" },
           label: { type: "string", multiple: true },
         },
@@ -160,7 +176,6 @@ Example: zinn task list MDR --label cli`,
       validatePositionals(positionals, ["<query>", "[<project-key>]"]);
 
       const query = positionals[0]!;
-      const projectKey = positionals[1];
 
       if (values.archived && values.all) {
         quit('Use either "--archived" or "--all", not both');
@@ -173,6 +188,11 @@ Example: zinn task list MDR --label cli`,
         quit(searchLimitMessage);
       }
 
+      const isTaskKeyQuery = parseTaskKey(query.trim()) !== null;
+      const projectKey = resolveProjectKey(positionals[1], {
+        allProjects: values["all-projects"],
+        useDefault: !isTaskKeyQuery,
+      });
       const limit = values.limit === undefined ? undefined : Number(values.limit);
       const result = task.search({
         query,
@@ -192,13 +212,17 @@ Example: zinn task list MDR --label cli`,
         console.error(`${count} archived ${noun} hidden, use --all to include them`);
       }
     },
-    help: `Usage: zinn task search <query> [<project-key>] [--archived|--all] [--limit <n>] [--label <name>]
+    help: `Usage: zinn task search <query> [<project-key>] [--all-projects] [--archived|--all] [--limit <n>] [--label <name>]
 
 Search task titles, descriptions, and comments. A comment match lists the task it belongs to.
+An omitted project key uses defaultProject from settings, if present.
+If no default project is set, the command searches every project.
+Use --all-projects to search every project, overriding the default. It cannot be combined with a typed project key.
 Each word matches the start of a word, ignoring case and accents: e.g. "auth" finds "Authentication".
 Every word must match. Quote a query with several words.
 
 A query that is exactly a task key, such as MDR-1, lists that task first.
+If given, a task key query overrides the configured default, and a typed project key still filters the search.
 Other results are ordered by relevance, with title matches weighted highest.
 Equally relevant tasks are ordered by project key, then task number.
 

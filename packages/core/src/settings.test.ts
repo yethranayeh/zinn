@@ -177,6 +177,40 @@ test("a settings file that is not valid JSON throws an error naming the file", (
   expect(() => resolveSettings({ cwd, env: {}, home })).toThrow(`Cannot use settings file ${path}: it is not valid JSON`);
 });
 
+test("defaultProject merges independently of storage and preserves the chosen key", () => {
+  const cwd = join(root, "project");
+  mkdirSync(cwd);
+  globalFile({ defaultProject: "GLOBAL", storage: { directory: "global-store" } });
+  writeJson(join(cwd, "zinn.local.json"), { defaultProject: "local" });
+
+  expect(resolveSettings({ cwd, env: {}, home }).merged).toEqual({
+    defaultProject: "local",
+    storage: { directory: "global-store" },
+  });
+
+  writeJson(join(cwd, "zinn.local.json"), storageSettings("local-store"));
+  expect(resolveSettings({ cwd, env: {}, home }).merged).toEqual({
+    defaultProject: "GLOBAL",
+    storage: { directory: "local-store" },
+  });
+});
+
+test("defaultProject validates project key format and reports its settings file", () => {
+  const cwd = join(root, "project");
+  mkdirSync(cwd);
+  const path = join(cwd, "zinn.local.json");
+  for (const defaultProject of [null, 42, "", "1SHOP", "SHOP-1", "two words"]) {
+    writeJson(path, { defaultProject });
+    try {
+      resolveSettings({ cwd, env: {}, home });
+      throw new Error("Expected invalid settings to be refused");
+    } catch (error) {
+      expect(String(error)).toContain(path);
+      expect(String(error)).toContain("defaultProject");
+    }
+  }
+});
+
 test("an unknown key, at the top or inside storage, throws an error naming the file and the key", () => {
   const cwd = join(root, "project");
   mkdirSync(join(cwd, ".git"), { recursive: true });

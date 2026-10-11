@@ -47,24 +47,33 @@ export function output<T>(data: T, transformToString: (data: T) => string) {
 }
 
 /** Asks before a change that cannot be undone, unless --yes already confirmed it. */
-export function confirmAction(message: string, isPreconfirmed: boolean) {
+export function confirmAction(message: string, isPreconfirmed: boolean, jsonRefusal?: string) {
   // Throws on a read-only database, to avoid asking for confirmation to an already refused action
   assertWritable();
 
-  return askConfirmation(message, isPreconfirmed);
+  return askConfirmation(message, isPreconfirmed, jsonRefusal);
 }
 
 /** Like confirmAction, without opening the database, for commands that bypass the open policy. */
-export function askConfirmation(message: string, isPreconfirmed: boolean) {
+export function askConfirmation(
+  message: string,
+  isPreconfirmed: boolean,
+  jsonRefusal = "Commands that ask for confirmation need --yes when used with --json",
+) {
   if (isPreconfirmed) {
     return true;
   }
 
   if (outputMode === "json") {
-    quit("Commands that ask for confirmation need --yes when used with --json");
+    quit(jsonRefusal);
   }
 
   return confirm(message);
+}
+
+/** Whether someone can answer a prompt: stdin and stdout are both terminals, like how gh decides it. */
+export function canPrompt() {
+  return process.stdin.isTTY === true && process.stdout.isTTY === true;
 }
 
 /** The message to report for a failed command, or fallback when the error has none. */

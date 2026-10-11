@@ -8,6 +8,7 @@ import { parseArgs } from "node:util";
 
 import { column, project } from "@zinn-dev/core";
 import {
+  canPrompt,
   confirmAction,
   failureMessage,
   output,
@@ -22,6 +23,7 @@ import { formatDescriptionPreview } from "../presentation/description-presentati
 import { formatCellSeparator, formatRows } from "../presentation/row-layout";
 import { formatSection } from "../presentation/section";
 import { currentActor } from "../actor";
+import { resolveProjectKey } from "../project";
 
 type PresentedProject = { key: string; name: string; description: string | null };
 type PresentedProjectView = PresentedProject & {
@@ -120,9 +122,9 @@ Example: zinn project list`,
   view: {
     run: (args: Array<string>) => {
       const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
-      validatePositionals(positionals, ["<project-key>"]);
+      validatePositionals(positionals, ["[<project-key>]"]);
 
-      const projectKey = positionals[0]!;
+      const projectKey = resolveProjectKey(positionals[0], { required: true })!;
       const projectMatch = project.getByKey(projectKey);
 
       if (projectMatch == null) {
@@ -156,9 +158,11 @@ Example: zinn project list`,
         return sections.join("\n\n");
       });
     },
-    help: `Usage: zinn project view <project-key>
+    help: `Usage: zinn project view [<project-key>]
 
 Show a project with its description and the number of tasks in each column.
+An omitted project key uses defaultProject from settings, if present.
+If no default project is set, the key is required.
 The description prints in full, keeping its line breaks. Archived tasks are counted as one total.
 
 Example: zinn project view MDR`,
@@ -174,9 +178,9 @@ Example: zinn project view MDR`,
       });
 
       validateUniqueOptions(tokens);
-      validatePositionals(positionals, ["<project-key>"]);
+      validatePositionals(positionals, ["[<project-key>]"]);
 
-      const projectKey = positionals[0]!;
+      const projectKey = resolveProjectKey(positionals[0], { required: true })!;
       const description = resolveTextEdit(values.description, values, "--description");
 
       if (values.name === undefined && description === undefined) {
@@ -189,9 +193,11 @@ Example: zinn project view MDR`,
       );
       output(presentProject(editedProject), formatProject);
     },
-    help: `Usage: zinn project edit <project-key> [--name <text>] [--description <text> ${textEditUsage}]
+    help: `Usage: zinn project edit [<project-key>] [--name <text>] [--description <text> ${textEditUsage}]
 
 Change the supplied project fields. At least one edit flag is required.
+An omitted project key uses defaultProject from settings, if present.
+If no default project is set, the key is required.
 Use --description "" to clear the description.
 
 ${textEditHelp("--description")}
@@ -210,9 +216,10 @@ Examples:
         tokens: true,
       });
       validateUniqueOptions(tokens);
-      validatePositionals(positionals, ["<project-key>"]);
+      validatePositionals(positionals, ["[<project-key>]"]);
 
-      const projectKey = positionals[0]!;
+      const typedProjectKey = positionals[0];
+      const projectKey = resolveProjectKey(typedProjectKey, { required: true })!;
 
       try {
         const projectMatch = project.getByKey(projectKey);
@@ -221,9 +228,24 @@ Examples:
           throw new Error(`Project with key "${projectKey}" does not exist!`);
         }
 
+        // Like `gh repo delete`: --yes never skips the prompt for a project the command did not name
+        const isYesIgnored = values.yes === true && typedProjectKey === undefined;
+        if (isYesIgnored && !canPrompt()) {
+          quit(
+            `Cannot delete the default project ${projectMatch.key} without a terminal. Type its key to use --yes: zinn project delete ${projectMatch.key} --yes`,
+          );
+        }
+
+        if (isYesIgnored) {
+          console.error("Warning: --yes is ignored because no project key was typed");
+        }
+
         const canDelete = confirmAction(
           `Are you sure you want to delete ${projectMatch.key} and all of its columns and tasks?`,
-          values.yes === true,
+          values.yes === true && typedProjectKey !== undefined,
+          typedProjectKey === undefined
+            ? "Project deletion with --json needs a typed <project-key> and --yes"
+            : undefined,
         );
 
         if (canDelete) {
@@ -236,10 +258,13 @@ Examples:
         quit(failureMessage(err, "Something went wrong"));
       }
     },
-    help: `Usage: zinn project delete <project-key> [--yes]
+    help: `Usage: zinn project delete [<project-key>] [--yes]
 
 Permanently delete a project and all of its columns and tasks after confirmation.
-Use --yes to skip the confirmation prompt, for example in scripts or with --json.
+An omitted project key uses defaultProject from settings, if present.
+If no default project is set, the key is required.
+With the default, confirmation is always required: --yes is ignored, and without a terminal the command refuses.
+Use a typed project key and --yes to skip the prompt, including with --json.
 
 Example: zinn project delete MDR`,
   },
@@ -269,9 +294,10 @@ Example: zinn project column create MDR "Boardlog"`,
     list: {
       run: (args: Array<string>) => {
         const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
-        validatePositionals(positionals, ["<project-key>"]);
+        validatePositionals(positionals, ["[<project-key>]"]);
 
-        const taskCounts = column.getTaskCountsByProjectKey(positionals[0]!);
+        const projectKey = resolveProjectKey(positionals[0], { required: true })!;
+        const taskCounts = column.getTaskCountsByProjectKey(projectKey);
         const columns = taskCounts.columns.map((columnCount) => ({
           name: columnCount.column.name,
           taskCount: columnCount.taskCount,
@@ -282,9 +308,11 @@ Example: zinn project column create MDR "Boardlog"`,
           }),
         );
       },
-      help: `Usage: zinn project column list <project-key>
+      help: `Usage: zinn project column list [<project-key>]
 
 List a project's columns in board order with their unarchived task counts.
+An omitted project key uses defaultProject from settings, if present.
+If no default project is set, the key is required.
 
 Example: zinn project column list MDR`,
     },

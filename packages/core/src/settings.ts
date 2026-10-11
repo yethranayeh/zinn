@@ -125,8 +125,12 @@ function mergeSettings(
 ): ResolvedSettings["merged"] {
   const storage =
     local?.storage === undefined ? global?.storage : { ...global?.storage, ...local.storage };
+  const defaultProject = local?.defaultProject ?? global?.defaultProject;
 
-  return storage === undefined ? {} : { storage };
+  return {
+    ...(storage === undefined ? {} : { storage }),
+    ...(defaultProject === undefined ? {} : { defaultProject }),
+  };
 }
 
 /**

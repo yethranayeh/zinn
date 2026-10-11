@@ -43,6 +43,8 @@ export type { ReindexResult } from "./src/migrations/reindex";
 export type { LockWait } from "./src/migrations/upgrade";
 export type { DatabaseFacts, OpenPolicy, ReadOnlyReason } from "./src/migrations/open-policy";
 export type { ReleaseMode } from "./src/release";
+export type { Settings } from "./src/schemas/settings";
+export type { ResolvedSettings, SettingsFile, SettingsInputs } from "./src/settings";
 
 export {
   labelCreateSchema,
@@ -59,6 +61,7 @@ export {
   taskSearchSchema,
   positiveIntegerPattern,
   searchLimitMessage,
+  parseTaskKey,
 } from "./src/schemas/task";
 export { relationCreateSchema, relationDeleteSchema } from "./src/schemas/relation";
 export { textEditSchema } from "./src/schemas/text-edit";
@@ -72,7 +75,7 @@ export {
 } from "./src/schemas/activity";
 export { commentCreateSchema, commentDeleteSchema, commentEditSchema } from "./src/schemas/comment";
 export { SETTINGS_VERSION } from "./src/schemas/settings";
-
+export { resolveSettings } from "./src/settings";
 export { project } from "./src/operations/project";
 export { column } from "./src/operations/column";
 export { task } from "./src/operations/task";

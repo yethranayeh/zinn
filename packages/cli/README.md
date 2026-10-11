@@ -31,15 +31,22 @@ The files are plain JSON, without comments:
 ```json
 {
 	"$schema": "https://zinn.sh/schemas/settings/v1.json",
+	"defaultProject": "MDR",
 	"storage": {
 		"directory": "~/work/zinn-data"
 	}
 }
 ```
 
-`$schema` and `storage.directory` are the only fields. `$schema` is optional and lets editors handle autocomplete and check the file, but Zinn itself ignores it. New settings are added to the same number; only a change that would make existing files invalid gets a new number. An unknown key, a value of the wrong type or invalid JSON stops every command with an error that names the file. Zinn _does not fall back to the defaults_.
+`$schema` is optional and lets editors handle autocomplete and check the file, but Zinn itself ignores it. New settings are added to the same number; only a change that would make existing files invalid gets a new number. An unknown key, a value of the wrong type or invalid JSON stops every command with an error that names the file. Zinn _does not fall back to the defaults_.
 
 `storage.directory` names a Zinn directory with the same layout as `ZINN_DIR`: `data/zinn.sqlite` and `backups/`. The first of these that is set decides the directory: `ZINN_DIR`, `storage.directory` in `zinn.local.json`, `storage.directory` in the global `settings.json`, then `~/.zinn`. A relative path is relative to the folder of the file that sets it. A leading `~` or `~/` means your home folder.
+
+`defaultProject` names the project used when its key is omitted from `task create`, `task list`, `task search`, `project view`, `project column list`, `project edit`, or `project delete`. Project keys are matched case-insensitively. A key typed in the command wins, then the local setting, then the global setting. A local file that omits this field keeps the global value; `null` is not accepted.
+
+Without a default, `task list` and `task search` cover every project, and the other commands require a key. When a configured default names a missing project, commands using it fail with an error naming the key and its settings file.
+
+On `task list` and `task search`, `--all-projects` covers every project, overriding the default, and works with `--all` or `--archived`. It cannot be combined with a typed project key. Commands taking a task key use the project named by that key. Column creation, editing, and ordering require an explicit project key.
 
 ## Editing conventions
 
@@ -144,6 +151,8 @@ zinn project column list MDR
 
 `project view` shows the project's description and task counts. Use `zinn task list <project-key>` to read its tasks.
 
+`project view` and `project column list` accept an omitted project key when [defaultProject](#settings-files) is configured.
+
 `project column list` counts unarchived tasks. With `--json`, it returns `[{ "name": "Backlog", "taskCount": 3 }, ...]`.
 
 Edit a project:
@@ -155,6 +164,7 @@ zinn project edit MDR --description ""
 ```
 
 Provide `--name`, `--description`, or both.
+The project key can be omitted when [defaultProject](#settings-files) is configured.
 See [Text values](#text-values) for values that begin with a dash and multi-line text.
 
 Add another column at the end of the board:
@@ -185,7 +195,7 @@ zinn project column order MDR Review after Done
 Directions follow board order: `first` is the start of the board and `last` is its end.
 Moving a column to the position it already has, or before or after itself, does nothing. Tasks stay in their columns.
 
-`zinn project delete MDR` asks for confirmation, then permanently deletes the project and all of its columns and tasks. `--yes` skips the confirmation (see [Confirmations](#confirmations)).
+`zinn project delete MDR` asks for confirmation, then permanently deletes the project and all of its columns and tasks. `--yes` skips confirmation when the project key is **typed**. With an _omitted_ key and [defaultProject](#settings-files), it always asks: `--yes` is ignored with a warning, and without a terminal the command refuses with exit code 1. With `--json`, type the key and pass `--yes` (see [Confirmations](#confirmations)).
 
 ## Create and read tasks
 
@@ -195,6 +205,8 @@ Create a task with a title and an optional description. Titles follow the shared
 zinn task create MDR --title "Refine 75% of the numbers"
 zinn task create MDR --title "Review the employee handbook" --description "Prepare for a 75% Dance Experience"
 ```
+
+The project key can be omitted when [defaultProject](#settings-files) is configured.
 
 `--column <name>` starts the task at the bottom of a specific column. The column name matching is case insensitive:
 
@@ -207,6 +219,7 @@ Tasks are created with keys such as `MDR-1`. Task numbers increase in creation o
 ```sh
 zinn task list
 zinn task list MDR
+zinn task list --all-projects
 zinn task list MDR --label CLI --label Groom
 zinn task list MDR --column "In Progress"
 zinn task list --column Done --all
@@ -215,6 +228,8 @@ zinn task view MDR-1 --history
 ```
 
 Task lists are previews, so they _omit_ descriptions, but `task view` prints the full description.
+
+An omitted project key uses [defaultProject](#settings-files), or every project when none is configured. `--all-projects` overrides the default.
 
 `task view --history` includes the inspected task's recorded activity, newest first by time, then event ID. Reorders and comment changes are included. Use `activity view <activity-id>` for full recorded changes. See [Activity](#activity) for timestamps, event IDs, and record fields.
 
@@ -232,6 +247,7 @@ Search task titles, descriptions, and comments, optionally in one project:
 
 ```sh
 zinn task search refine
+zinn task search refine --all-projects
 zinn task search "quarterly quota" MDR
 zinn task search MDR-1
 zinn task search auth --all --limit 5
@@ -240,7 +256,11 @@ zinn task search auth MDR --label cli
 
 Each query matches the start of a word, ignoring case and accents, so `cafe` finds "Café" and `auth` finds "Authentication". Every word must match somewhere in the task: its title, its description, or any of its comments. A comment match lists the task the comment belongs to.
 
+The query comes first, then the optional project key. An omitted key uses [defaultProject](#settings-files), or every project when none is configured. `--all-projects` overrides the default.
+
 If the whole query is an existing task key, such as `mdr-1`, that task comes first. Other results follow by relevance, with title matches weighted highest. Equally relevant tasks are ordered by project key, then task number.
+
+An exact task-key query overrides the configured default project. A project key supplied after the query still filters the search.
 
 Search defaults to active tasks. `--archived` searches archived tasks and `--all` searches both. A note on stderr reports hidden archived matches. This is purely a convenience hint and it is _omitted_ from JSON. `--limit <n>` caps the results.
 
@@ -532,6 +552,7 @@ zinn task delete MDR-1 --yes --json
 ```
 
 - With `--json`, `--yes` is **required**. Without it, the command exits with an error and changes nothing.
+- Project deletion also requires a typed project key to skip confirmation; a configured default always needs confirmation and cannot be deleted with `--json`.
 - When nothing answers the prompt, as in CI or with input redirected from an empty source, a command without `--yes` counts as declined: it prints `Deletion cancelled …` (or `Restore cancelled …`) and exits with code 0. Scripts that delete or restore should always use `--yes`.
 - `task relation delete` never asks for confirmation and does not accept `--yes`.
 

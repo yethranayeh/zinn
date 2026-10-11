@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { projectCreateSchema } from "./project";
 
 /**
  * The settings version this schema implements, published at https://zinn.sh/schemas/settings/v<N>.json.
@@ -12,6 +13,11 @@ export const SETTINGS_VERSION = 1;
 export const settingsSchema = z
   .strictObject({
     $schema: z.string().optional().describe("The address of this file's JSON Schema, for editors."),
+    defaultProject: projectCreateSchema.shape.key
+      .optional()
+      .describe(
+        "The project key used to scope results to the specificed project board when no explicit key is given. Local setting overrides the global one. An explicitly given key in a command overrides both.",
+      ),
     storage: z
       .strictObject({
         directory: z
