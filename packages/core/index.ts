@@ -71,6 +71,7 @@ export {
   minimumActivityIdLength,
 } from "./src/schemas/activity";
 export { commentCreateSchema, commentDeleteSchema, commentEditSchema } from "./src/schemas/comment";
+export { SETTINGS_VERSION } from "./src/schemas/settings";
 
 export { project } from "./src/operations/project";
 export { column } from "./src/operations/column";

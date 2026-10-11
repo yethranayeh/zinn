@@ -1,0 +1,24 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"type": "object",
+	"properties": {
+		"$schema": {
+			"description": "The address of this file's JSON Schema, for editors.",
+			"type": "string"
+		},
+		"storage": {
+			"description": "Where Zinn keeps its data.",
+			"type": "object",
+			"properties": {
+				"directory": {
+					"type": "string",
+					"description": "The Zinn directory, which holds data/zinn.sqlite and backups/. A relative path is relative to the folder of this file, and a leading ~ means your home folder. ZINN_DIR, when set, takes precedence."
+				}
+			},
+			"required": ["directory"],
+			"additionalProperties": false
+		}
+	},
+	"additionalProperties": false,
+	"title": "Zinn settings"
+}

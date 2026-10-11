@@ -30,13 +30,14 @@ The files are plain JSON, without comments:
 
 ```json
 {
+	"$schema": "https://zinn.sh/schemas/settings/v1.json",
 	"storage": {
 		"directory": "~/work/zinn-data"
 	}
 }
 ```
 
-`$schema` (a string, ignored by Zinn) and `storage.directory` are the only fields. An unknown key, a value of the wrong type or invalid JSON stops every command with an error that names the file. Zinn does not fall back to the defaults.
+`$schema` and `storage.directory` are the only fields. `$schema` is optional and lets editors handle autocomplete and check the file, but Zinn itself ignores it. Each change to the accepted settings is published under the next number, and `https://zinn.sh/schemas/settings/latest.json` is the newest. An unknown key, a value of the wrong type or invalid JSON stops every command with an error that names the file. Zinn _does not fall back to the defaults_.
 
 `storage.directory` names a Zinn directory with the same layout as `ZINN_DIR`: `data/zinn.sqlite` and `backups/`. The first of these that is set decides the directory: `ZINN_DIR`, `storage.directory` in `zinn.local.json`, `storage.directory` in the global `settings.json`, then `~/.zinn`. A relative path is relative to the folder of the file that sets it. A leading `~` or `~/` means your home folder.
 
