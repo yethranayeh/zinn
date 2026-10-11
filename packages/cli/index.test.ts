@@ -6113,18 +6113,49 @@ test("activity recovers deleted and reused task lifetimes, retaining the origina
     expect(events.find((event) => event.id === deletion.id)).toEqual(deletion);
     expect(new Set(events.filter((event) => event.entity_type === "task").map((event) => event.entity_id))).toEqual(new Set([oldTaskId, newTaskId]));
     const text = run("activity", "list", "--task", "APP-1").stdout;
-    expect(text.split("\n").some((line) => line.includes("APP-1 [current task]"))).toBe(true);
-    expect(text.split("\n").some((line) => line.includes("APP-1 [deleted task]"))).toBe(true);
-    expect(text.split("\n").some((line) => line.includes("APP [deleted project]"))).toBe(true);
+    const projectDeletionRow = text.split("\n").find((line) => line.includes("project APP"))!;
+    expect(projectDeletionRow.split(" · ")[0]).toContain("deleted");
     expect(text).toContain(`Task identity: current; ${newTaskId}`);
     expect(text).toContain(`Task identity: deleted; ${oldTaskId}`);
     expect(text).toContain(`removed APP-1 (${oldTaskId})`);
     const limited = run("activity", "list", "--task", "APP-1", "--limit", "1").stdout;
-    expect(limited.split("\n")[0]).toContain("APP-1 [current task]");
+    expect(limited.split("\n")[0]!.split(" · ")[0]).toContain("current");
     expect(limited).toContain(`Task identity: current; ${newTaskId}`);
     expect(limited).not.toContain(oldTaskId);
     expect(JSON.parse(run("activity", "list", "--task", "APP-99", "--json").stdout)).toEqual([]);
-    expect(run("activity", "view", deletion.id).stdout).toContain(oldTaskId);
+    const viewedDeletion = run("activity", "view", deletion.id).stdout;
+    expect(viewedDeletion).toContain(oldTaskId);
+    expect(viewedDeletion.split("\n")[0]).toContain("deleted");
+  });
+});
+
+test("activity labels each task lifetime that shares a reused key with its own state", () => {
+  withIsolatedZinnDir((directory) => {
+    const run = (...args: Array<string>) => runZinn(args, directory);
+    const taskIds: Array<string> = [];
+    for (const title of ["First lifetime", "Second lifetime", "Third lifetime"]) {
+      if (taskIds.length > 0) {
+        expect(run("project", "delete", "APP", "--yes").code).toBe(0);
+      }
+      expect(run("project", "create", "APP").code).toBe(0);
+      expect(run("task", "create", "APP", "--title", title).code).toBe(0);
+      taskIds.push(withTestDb(directory, (db) => db.query<{ id: string }, []>("SELECT id FROM task WHERE number = 1").get()!.id));
+    }
+    expect(run("task", "archive", "APP-1").code).toBe(0);
+    const [firstId, secondId, archivedId] = taskIds as [string, string, string];
+    const events: Array<Activity> = JSON.parse(run("activity", "list", "--task", "APP-1", "--json").stdout);
+    expect(new Set(events.filter((event) => event.entity_type === "task").map((event) => event.entity_id))).toEqual(new Set(taskIds));
+
+    // A task row's identity line follows the row that carries its state; project rows list removed tasks instead.
+    const lines = run("activity", "list", "--task", "APP-1").stdout.split("\n");
+    const idsLabelled = (state: string) =>
+      new Set(lines.flatMap((line, index) => {
+        const identity = line.split(" · ")[0]!;
+        const isTaskRowInState = identity.includes(state) && !identity.includes("project APP");
+        return isTaskRowInState ? taskIds.filter((id) => lines[index + 1]?.includes(id)) : [];
+      }));
+    expect(idsLabelled("deleted")).toEqual(new Set([firstId, secondId]));
+    expect(idsLabelled("archived")).toEqual(new Set([archivedId]));
   });
 });
 

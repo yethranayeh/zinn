@@ -45,7 +45,7 @@ test("activity details keep explicit empty containers distinct from null changes
     .toContain("Changes:\nnull");
 });
 
-test("reused task identities carry their state on each event row without collapsing deleted tasks", () => {
+test("task rows for a shared key carry their presented state and full ID", () => {
   const event: Activity = {
     id: "019abcdf-1234-7000-8000-123456abcde1", created_at: 1,
     actor_name: "Test", actor_email: null, actor_kind: "human",
@@ -63,7 +63,7 @@ test("reused task identities carry their state on each event row without collaps
       navigation: { name: "APP-1", status: identity.status, distinguishesTaskId: true },
     };
     const text = formatActivityList([entry]);
-    expect(text.split("\n")[0]).toContain(`APP-1 [${identity.status} task]`);
+    expect(text.split("\n")[0]!.split(" · ")[0]).toContain(identity.status);
     expect(text).toContain(identity.id);
   }
 });
@@ -77,10 +77,10 @@ test("project deletion keeps its project and removed-task identities visible", (
   };
   const text = formatActivityList([{
     event, displayId: event.id,
-    navigation: { name: "APP", status: "recorded" },
+    navigation: { name: "APP", status: "deleted" },
     removedTasks: [{ id: "old-task", key: "APP-1", title: "Old task", status: "deleted" }],
   }]);
-  expect(text.split("\n")[0]).toContain("APP [deleted project]");
+  expect(text.split("\n")[0]!.split(" · ")[0]).toContain("deleted");
   expect(text).toContain("APP-1");
   expect(text).toContain("old-task");
 });

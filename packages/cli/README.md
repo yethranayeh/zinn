@@ -449,7 +449,7 @@ zinn activity view 019abcdf-1234-7
 With `--json`, list returns an array and view returns one event object. Both include `id`, `created_at` (epoch milliseconds), `actor_name`, `actor_email`, `actor_kind`, `entity_type`, `entity_id`, `action`, and `changes` (parsed JSON or `null`). Payloads and IDs are preserved in full, including after deletion.
 
 > [!WARNING]
-> A readable task key can identify different tasks after a project is deleted and recreated. `activity list --task <key>` includes all known tasks with that key. Group JSON records by (`entity_type`, `entity_id`) to keep their histories distinct. The `id` identifies the activity event itself. Project deletion events keep the project's `entity_id`, with removed task IDs in `changes.tasks`.
+> A readable task key can identify different tasks after a project is deleted and recreated. Group JSON records by (`entity_type`, `entity_id`) to keep their histories distinct. The `id` identifies the activity event itself. Project deletion events keep the project's `entity_id`, with removed task IDs in `changes.tasks`.
 
 When a coding agent performs a mutation with `zinn`, the change is recorded under that agent's name.
 

@@ -230,15 +230,14 @@ export function presentActivities(
     }
     const isSnapshot = event.action === "create" || event.action === "delete";
     const recordedName = event.changes?.key ?? event.changes?.name;
+    const isProjectDeletion = event.entity_type === "project" && event.action === "delete";
 
     if (navigation === undefined && isSnapshot && typeof recordedName === "string") {
-      navigation = { name: recordedName, status: "recorded" };
+      navigation = { name: recordedName, status: isProjectDeletion ? "deleted" : "recorded" };
     }
 
     const removedTaskIds =
-      event.entity_type === "project" &&
-      event.action === "delete" &&
-      Array.isArray(event.changes?.tasks)
+      isProjectDeletion && Array.isArray(event.changes?.tasks)
         ? new Set(event.changes.tasks.filter(isRecord).map((snapshot) => snapshot.id))
         : new Set();
 
@@ -369,15 +368,15 @@ function formatActivityContent(entry: PresentedActivity) {
   const isMutableCurrentName =
     navigation?.status === "current" &&
     (event.entity_type === "label" || event.entity_type === "column");
-  const isProjectDeletion = event.entity_type === "project" && event.action === "delete";
-  const provenance =
-    isProjectDeletion
-      ? " [deleted project]"
-      : navigation?.status === "recorded"
-        ? " [recorded]"
-        : isMutableCurrentName
-          ? " [current name]"
-          : "";
+  // Task states are labelled below, only when a key is shared.
+  const isDeletedNonTask = navigation?.status === "deleted" && event.entity_type !== "task";
+  const provenance = isDeletedNonTask
+    ? ` [deleted ${event.entity_type}]`
+    : navigation?.status === "recorded"
+      ? " [recorded]"
+      : isMutableCurrentName
+        ? " [current name]"
+        : "";
   const taskIdentity = navigation?.distinguishesTaskId ? ` [${navigation.status} task]` : "";
   const action = ACTION_LABELS[event.action] ?? event.action;
   const summary = formatChangeSummary(entry, { showsRemovedTasks: false, omitsIdentity: true });
