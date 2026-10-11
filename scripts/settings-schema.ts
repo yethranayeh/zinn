@@ -1,11 +1,12 @@
 /**
  * Publishes the settings JSON Schema to docs/public/schemas/settings/: `bun run settings-schema`
- * When the generated schema differs from v<N>.json for core's SETTINGS_VERSION, it writes
- * v<N+1>.json and latest.json and sets SETTINGS_VERSION to N+1. It never changes a published file.
+ * When the generated schema differs in content from v<N>.json for core's SETTINGS_VERSION, it writes
+ * v<N+1>.json and latest.json and sets SETTINGS_VERSION to N+1. It never changes an existing file.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 
 import { SETTINGS_VERSION, settingsSchema } from "../packages/core/src/schemas/settings.ts";
 
@@ -24,6 +25,11 @@ export function schemaFileName(version: number) {
 /** The settings JSON Schema as published: draft-07, tab-indented, with a final newline. */
 export function generateSettingsSchema() {
   return `${JSON.stringify(settingsSchema.toJSONSchema({ target: "draft-07" }), null, "\t")}\n`;
+}
+
+/** Whether two schema files hold the same JSON, whatever their formatting. */
+export function isSameSchema(schema: string, otherSchema: string) {
+  return isDeepStrictEqual(JSON.parse(schema), JSON.parse(otherSchema));
 }
 
 /** Writes v<version>.json and latest.json, refusing to replace a published number. */
@@ -50,7 +56,7 @@ function main() {
     return;
   }
 
-  if (readFileSync(currentPath, "utf8") === schema) {
+  if (isSameSchema(readFileSync(currentPath, "utf8"), schema)) {
     console.log(`Settings schema ${schemaFileName(SETTINGS_VERSION)} is up to date.`);
     return;
   }

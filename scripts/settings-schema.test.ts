@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { SETTINGS_VERSION } from "../packages/core/src/schemas/settings.ts";
 import {
   generateSettingsSchema,
+  isSameSchema,
   LATEST_FILE_NAME,
   SCHEMA_DIRECTORY,
   schemaFileName,
@@ -28,13 +29,13 @@ function findUndescribedProperties(schema: Record<string, unknown>, prefix = "")
 }
 
 test("the published schema for SETTINGS_VERSION matches the settings schema (ZINN-58)", () => {
-  expect(generateSettingsSchema(), PUBLISH_HINT).toBe(
-    readPublished(schemaFileName(SETTINGS_VERSION)),
-  );
+  const published = readPublished(schemaFileName(SETTINGS_VERSION));
+  expect(isSameSchema(generateSettingsSchema(), published), PUBLISH_HINT).toBe(true);
 });
 
 test("latest.json is the schema for SETTINGS_VERSION, the highest published number (ZINN-58)", () => {
-  expect(readPublished(LATEST_FILE_NAME)).toBe(readPublished(schemaFileName(SETTINGS_VERSION)));
+  const latest = readPublished(LATEST_FILE_NAME);
+  expect(isSameSchema(latest, readPublished(schemaFileName(SETTINGS_VERSION)))).toBe(true);
   expect(existsSync(join(SCHEMA_DIRECTORY, schemaFileName(SETTINGS_VERSION + 1)))).toBe(false);
 });
 
