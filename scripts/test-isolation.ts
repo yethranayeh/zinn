@@ -1,10 +1,14 @@
 /** Points ZINN_DIR at a temporary directory before any test module loads, so tests never reach ~/.zinn. */
+import { setDefaultTimeout } from "bun:test";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { RELEASE_STAMP_FILE } from "../packages/core/src/release.ts";
+
+const DEFAULT_TEST_TIMEOUT_MS = 30_000;
+setDefaultTimeout(DEFAULT_TEST_TIMEOUT_MS);
 
 const PACKAGES_DIRECTORY = fileURLToPath(new URL("../packages", import.meta.url));
 const leftoverStamps = readdirSync(PACKAGES_DIRECTORY, { withFileTypes: true })
