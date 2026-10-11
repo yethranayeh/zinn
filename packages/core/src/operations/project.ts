@@ -4,7 +4,7 @@ import { validateProjectInput, projectCreateSchema, projectEditSchema } from "..
 import { actorSchema } from "../schemas/actor";
 import { validateTaskInput } from "../schemas/task";
 
-import { randomUUIDv7 } from "bun";
+import { v7 as uuidv7 } from "uuid";
 import { generateKeyBetween } from "fractional-indexing";
 
 import { writeTransaction } from "../db";
@@ -44,7 +44,7 @@ export const project = {
       for (const name of defaultColumnNames) {
         const columnOrder = generateKeyBetween(lastColumnOrder, null);
         const createdColumn = dbColumn.create({
-          id: randomUUIDv7(),
+          id: uuidv7(),
           project_id: createdProject.id,
           name,
           column_order: columnOrder,

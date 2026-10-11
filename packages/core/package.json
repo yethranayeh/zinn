@@ -46,6 +46,7 @@
 	},
 	"dependencies": {
 		"fractional-indexing": "4.0.0",
+		"uuid": "14.0.3",
 		"zod": "4.6.4"
 	}
 }

@@ -2,7 +2,7 @@ import type { ColumnCreateInput, ColumnEditInput, ColumnOrderInput } from "../sc
 import type { Actor } from "../schemas/actor";
 import type { OrderPlacement } from "./shared";
 
-import { randomUUIDv7 } from "bun";
+import { v7 as uuidv7 } from "uuid";
 import { generateKeyBetween } from "fractional-indexing";
 
 import { writeTransaction } from "../db";
@@ -65,7 +65,7 @@ export const column = {
 
       const lastColOrder = allProjectColumns[allProjectColumns.length - 1]?.column_order ?? null;
       const createdColumn = dbColumn.create({
-        id: randomUUIDv7(),
+        id: uuidv7(),
         name: props.name,
         column_order: generateKeyBetween(lastColOrder, null),
         project_id: project.id,

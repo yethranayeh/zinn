@@ -1,6 +1,6 @@
 import type { Bind, Comment } from "../types";
 
-import { randomUUIDv7 } from "bun";
+import { v7 as uuidv7 } from "uuid";
 
 import { DB_TABLE } from "../constant";
 import { getDb } from "../db";
@@ -36,7 +36,7 @@ export function create(props: Pick<Comment, "task_id" | "number" | "text">) {
   const now = Date.now();
 
   return query.get({
-    $id: randomUUIDv7(undefined, now),
+    $id: uuidv7(),
     $task_id: props.task_id,
     $number: props.number,
     $text: props.text,

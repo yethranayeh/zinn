@@ -1,6 +1,6 @@
 import type { Bind, Project } from "../types";
 
-import { randomUUIDv7 } from "bun";
+import { v7 as uuidv7 } from "uuid";
 
 import { DB_TABLE } from "../constant";
 import { getDb } from "../db";
@@ -51,7 +51,7 @@ export function create({
   const standardizedKey = standardizeProjectKey(key);
 
   return query.get({
-    $id: randomUUIDv7(),
+    $id: uuidv7(),
     $key: standardizedKey,
     $name: name,
     $description: description,

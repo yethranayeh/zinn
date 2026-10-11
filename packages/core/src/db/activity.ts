@@ -1,6 +1,6 @@
 import type { Activity, ActivityEntityType, Bind } from "../types";
 
-import { randomUUIDv7 } from "bun";
+import { v7 as uuidv7 } from "uuid";
 
 import { DB_TABLE } from "../constant";
 import { getDb } from "../db";
@@ -19,7 +19,7 @@ export function create(props: Omit<Activity, "id">) {
     ${DB_TABLE.activity} (id, created_at, actor_name, actor_email, actor_kind, entity_type, entity_id, action, changes)
     VALUES               ($id, $created_at, $actor_name, $actor_email, $actor_kind, $entity_type, $entity_id, $action, $changes);`,
   ).run({
-    $id: randomUUIDv7(),
+    $id: uuidv7(),
     $created_at: props.created_at,
     $actor_name: props.actor_name,
     $actor_email: props.actor_email,

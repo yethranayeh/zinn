@@ -8,7 +8,7 @@ function runActivityCheck(script: string) {
   try {
     const result = Bun.spawnSync([process.execPath, "--eval", `
       import { strict as assert } from "node:assert";
-      import { project, column, task, relation, label, activity } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
+      import { project, column, task, relation, label, comment, activity } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
       import * as dbActivity from ${JSON.stringify(new URL("./db/activity.ts", import.meta.url).pathname)};
       import { getDb } from ${JSON.stringify(new URL("./db.ts", import.meta.url).pathname)};
       const human = { name: "Test Human", email: "human@example.com", kind: "human" };
@@ -27,6 +27,54 @@ function runActivityCheck(script: string) {
     rmSync(directory, { recursive: true, force: true });
   }
 }
+
+test("creation IDs and activity order stay increasing within one millisecond", () => {
+  runActivityCheck(`
+    const now = Date.now();
+    Date.now = () => now;
+    const createdProject = project.create({ key: "UUID" }, human);
+    const defaultColumns = column.getAllByProjectKey(createdProject.key);
+    const extraColumn = column.create({ projectKey: createdProject.key, name: "Extra" }, human);
+    const createdLabel = label.create({ name: "UUID label" }, human);
+    const firstTask = task.create({ project_id: createdProject.id, title: "First" }, human);
+    const secondTask = task.create({ project_id: createdProject.id, title: "Second" }, human);
+    const firstComment = comment.create({ taskKey: firstTask.key, text: "First comment" }, human);
+    const secondComment = comment.create({ taskKey: firstTask.key, text: "Second comment" }, human);
+    const createdRelation = relation.create({
+      sourceTaskKey: secondTask.key,
+      targetTaskKey: firstTask.key,
+      relation_type: "related",
+    }, human);
+    const createdIds = [
+      createdProject.id, ...defaultColumns.map(entry => entry.id), extraColumn.id,
+      createdLabel.id, firstTask.id, secondTask.id, firstComment.id, secondComment.id,
+      createdRelation.id,
+    ];
+    const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+    for (const id of createdIds) {
+      assert.match(id, uuidV7Pattern);
+    }
+    assert.equal(new Set(createdIds).size, createdIds.length);
+    assert.deepEqual(createdIds, [...createdIds].sort());
+    assert.equal(firstComment.created_at, now);
+    assert.equal(firstComment.updated_at, now);
+    assert.equal(createdRelation.source_task_id, firstTask.id);
+    assert.equal(createdRelation.target_task_id, secondTask.id);
+
+    const history = task.activity(firstTask.key);
+    assert.deepEqual(history.map(entry => entry.action), [
+      "create", "comment_create", "comment_create", "relation_create",
+    ]);
+    assert.ok(history.every(entry => entry.created_at === now));
+    const historyIds = history.map(entry => entry.id);
+    for (const id of historyIds) {
+      assert.match(id, uuidV7Pattern);
+    }
+    assert.equal(new Set(historyIds).size, historyIds.length);
+    assert.deepEqual(activity.getAll({ taskKey: firstTask.key }).map(entry => entry.id),
+      [...historyIds].reverse());
+  `);
+});
 
 test("activity reads use global UUID prefix matching and distinct lookup errors", () => {
   runActivityCheck(`

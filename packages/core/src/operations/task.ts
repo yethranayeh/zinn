@@ -9,7 +9,7 @@ import type { TaskLabelInput } from "../schemas/label";
 import type { Actor } from "../schemas/actor";
 import type { OrderPlacement } from "./shared";
 
-import { randomUUIDv7 } from "bun";
+import { v7 as uuidv7 } from "uuid";
 import { generateKeyBetween } from "fractional-indexing";
 
 import { writeTransaction } from "../db";
@@ -243,7 +243,7 @@ export const task = {
 
       const now = Date.now();
       const createdTask = dbTask.create({
-        id: randomUUIDv7(),
+        id: uuidv7(),
         project_id: task.project_id,
         column_id: initialColumn.id,
         number: counter.task_count,

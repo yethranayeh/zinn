@@ -1,6 +1,6 @@
 import type { Bind, TaskRelation } from "../types";
 
-import { randomUUIDv7 } from "bun";
+import { v7 as uuidv7 } from "uuid";
 
 import { DB_TABLE } from "../constant";
 import { getDb } from "../db";
@@ -72,7 +72,7 @@ export function create(props: Omit<CreateTaskRelationInput, "id" | "created_at">
     RETURNING *;`);
 
   return query.get({
-    $id: randomUUIDv7(),
+    $id: uuidv7(),
     $source_task_id: props.source_task_id,
     $target_task_id: props.target_task_id,
     $relation_type: props.relation_type,
