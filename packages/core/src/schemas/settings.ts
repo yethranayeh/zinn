@@ -2,7 +2,9 @@ import { z } from "zod";
 
 /**
  * The settings version this schema implements, published at https://zinn.sh/schemas/settings/v<N>.json.
- * Any change to what the schema accepts needs the next number: run `bun run settings-schema`.
+ * After changing the schema, run `bun run settings-schema`.
+ * Raise the number first only for a breaking change:
+ *  one that makes a valid file rejected or read differently, such as a removed or renamed setting.
  */
 export const SETTINGS_VERSION = 1;
 

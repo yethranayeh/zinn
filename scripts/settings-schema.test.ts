@@ -1,21 +1,16 @@
 import { expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { SETTINGS_VERSION } from "../packages/core/src/schemas/settings.ts";
 import {
   generateSettingsSchema,
   isSameSchema,
-  LATEST_FILE_NAME,
   SCHEMA_DIRECTORY,
   schemaFileName,
 } from "./settings-schema.ts";
 
 const PUBLISH_HINT = "the settings schema changed: run `bun run settings-schema`";
-
-function readPublished(fileName: string) {
-  return readFileSync(join(SCHEMA_DIRECTORY, fileName), "utf8");
-}
 
 /** The paths of every property in a JSON Schema that has no description, such as "storage.directory". */
 function findUndescribedProperties(schema: Record<string, unknown>, prefix = ""): string[] {
@@ -29,14 +24,8 @@ function findUndescribedProperties(schema: Record<string, unknown>, prefix = "")
 }
 
 test("the published schema for SETTINGS_VERSION matches the settings schema (ZINN-58)", () => {
-  const published = readPublished(schemaFileName(SETTINGS_VERSION));
+  const published = readFileSync(join(SCHEMA_DIRECTORY, schemaFileName(SETTINGS_VERSION)), "utf8");
   expect(isSameSchema(generateSettingsSchema(), published), PUBLISH_HINT).toBe(true);
-});
-
-test("latest.json is the schema for SETTINGS_VERSION, the highest published number (ZINN-58)", () => {
-  const latest = readPublished(LATEST_FILE_NAME);
-  expect(isSameSchema(latest, readPublished(schemaFileName(SETTINGS_VERSION)))).toBe(true);
-  expect(existsSync(join(SCHEMA_DIRECTORY, schemaFileName(SETTINGS_VERSION + 1)))).toBe(false);
 });
 
 test("every setting has a description (ZINN-58)", () => {

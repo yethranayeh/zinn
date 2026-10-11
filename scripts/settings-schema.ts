@@ -1,7 +1,7 @@
 /**
- * Publishes the settings JSON Schema to docs/public/schemas/settings/: `bun run settings-schema`
- * When the generated schema differs in content from v<N>.json for core's SETTINGS_VERSION, it writes
- * v<N+1>.json and latest.json and sets SETTINGS_VERSION to N+1. It never changes an existing file.
+ * Writes the settings JSON Schema to docs/public/schemas/settings/v<N>.json for core's
+ *  `SETTINGS_VERSION` when its content changed: `bun run settings-schema`
+ * Files of lower numbers are never written again.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -12,10 +12,6 @@ import { SETTINGS_VERSION, settingsSchema } from "../packages/core/src/schemas/s
 
 export const SCHEMA_DIRECTORY = fileURLToPath(
   new URL("../docs/public/schemas/settings/", import.meta.url),
-);
-export const LATEST_FILE_NAME = "latest.json";
-const SETTINGS_SOURCE = fileURLToPath(
-  new URL("../packages/core/src/schemas/settings.ts", import.meta.url),
 );
 
 export function schemaFileName(version: number) {
@@ -32,51 +28,19 @@ export function isSameSchema(schema: string, otherSchema: string) {
   return isDeepStrictEqual(JSON.parse(schema), JSON.parse(otherSchema));
 }
 
-/** Writes v<version>.json and latest.json, refusing to replace a published number. */
-function publish(version: number, schema: string) {
-  const path = join(SCHEMA_DIRECTORY, schemaFileName(version));
-  if (existsSync(path)) {
-    throw new Error(
-      `${path} is already published and is never changed. Check SETTINGS_VERSION in ${SETTINGS_SOURCE}.`,
-    );
+function main() {
+  const schema = generateSettingsSchema();
+  const fileName = schemaFileName(SETTINGS_VERSION);
+  const path = join(SCHEMA_DIRECTORY, fileName);
+
+  if (existsSync(path) && isSameSchema(readFileSync(path, "utf8"), schema)) {
+    console.log(`Settings schema ${fileName} is up to date.`);
+    return;
   }
 
   mkdirSync(SCHEMA_DIRECTORY, { recursive: true });
   writeFileSync(path, schema);
-  writeFileSync(join(SCHEMA_DIRECTORY, LATEST_FILE_NAME), schema);
-}
-
-function main() {
-  const schema = generateSettingsSchema();
-  const currentPath = join(SCHEMA_DIRECTORY, schemaFileName(SETTINGS_VERSION));
-
-  if (!existsSync(currentPath)) {
-    publish(SETTINGS_VERSION, schema);
-    console.log(`Wrote ${schemaFileName(SETTINGS_VERSION)} and ${LATEST_FILE_NAME}.`);
-    return;
-  }
-
-  if (isSameSchema(readFileSync(currentPath, "utf8"), schema)) {
-    console.log(`Settings schema ${schemaFileName(SETTINGS_VERSION)} is up to date.`);
-    return;
-  }
-
-  const nextVersion = SETTINGS_VERSION + 1;
-  const versionLine = `export const SETTINGS_VERSION = ${SETTINGS_VERSION};`;
-  const source = readFileSync(SETTINGS_SOURCE, "utf8");
-  const isSingleVersionLine = source.split(versionLine).length === 2;
-  if (!isSingleVersionLine) {
-    throw new Error(`Expected one line \`${versionLine}\` in ${SETTINGS_SOURCE}.`);
-  }
-
-  publish(nextVersion, schema);
-  writeFileSync(
-    SETTINGS_SOURCE,
-    source.replace(versionLine, `export const SETTINGS_VERSION = ${nextVersion};`),
-  );
-  console.log(
-    `Wrote ${schemaFileName(nextVersion)} and ${LATEST_FILE_NAME}, and set SETTINGS_VERSION to ${nextVersion}.`,
-  );
+  console.log(`Wrote ${fileName}.`);
 }
 
 if (import.meta.main) {
