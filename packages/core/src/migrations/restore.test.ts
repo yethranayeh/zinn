@@ -511,6 +511,44 @@ test("a backup whose rows point to missing rows is rolled back before committing
   });
 });
 
+test("a backup with an empty child referencing a missing table rolls back before committing", () => {
+  withDirectory((directory) => {
+    const live = makeBoard(join(directory, "zinn.sqlite"), seedLive);
+    const before = readBoard(live);
+    const backupPath = backupOf(directory, (db) => {
+      seedSource(db);
+      db.exec(`
+        PRAGMA foreign_keys = OFF;
+        PRAGMA legacy_alter_table = OFF;
+        DELETE FROM task_label;
+        ALTER TABLE label RENAME TO label_old;
+        CREATE TABLE label (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, description TEXT, color TEXT NOT NULL);
+        INSERT INTO label SELECT * FROM label_old;
+        DROP TABLE label_old;
+      `);
+      expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
+    });
+    const backupBefore = readBoard(backupPath);
+    const checked = checkBackup(backupPath, [], BUILD);
+
+    withOpen(live, (db) => {
+      db.exec("PRAGMA foreign_keys = ON");
+      const error = catchError(() => restoreBackup(db, checked, options(directory)));
+
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain("task_label");
+      expect((error as Error).message).toContain("label_old");
+      expect(board(db)).toEqual(before);
+      expect(foreignKeys(db)).toBe(1);
+      expect(db.inTransaction).toBe(false);
+    });
+    expect(readBoard(backupPath)).toEqual(backupBefore);
+    const backups = savedBackups(directory);
+    expect(backups).toHaveLength(1);
+    expect(readBoard(join(directory, "backups", backups[0]!))).toEqual(before);
+  });
+});
+
 test("a connection opened before the restore reads the restored board afterwards", () => {
   withDirectory((directory) => {
     const live = makeBoard(join(directory, "zinn.sqlite"), seedLive);

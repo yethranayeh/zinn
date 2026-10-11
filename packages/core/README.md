@@ -62,6 +62,8 @@ The [public exports](index.ts) provide operations, input types, validation schem
 
 Opening a database can upgrade it, even for a read operation. Upgrades save a backup first and apply completely or not at all.
 
+Upgrades and restores check that foreign keys reference existing tables and rows before committing.
+
 - Older databases upgrade automatically when both core and the client are published releases, or when `ZINN_DIR` selects a separate database. Source clients otherwise open older databases read-only until an explicit `migrate.run`.
 - Databases newer than core supports open read-only.
 - Databases without a schema version are refused unless `allowsLegacyRead` enables best-effort, read-only access.

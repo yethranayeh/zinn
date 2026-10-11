@@ -85,7 +85,7 @@ function applyMigration(db: Database, migration: Migration) {
   }
 }
 
-/** With foreign keys off, nothing else stops a migration or a restore from leaving rows that point nowhere. */
+/** Checks row links and parent tables before committing a migration or restore. */
 export function assertForeignKeys(db: Database, operation = "schema upgrade") {
   const violations = db.query<{ table: string; parent: string }>("PRAGMA foreign_key_check").all();
 
@@ -93,6 +93,26 @@ export function assertForeignKeys(db: Database, operation = "schema upgrade") {
     const links = new Set(violations.map(({ table, parent }) => `${table} to ${parent}`));
     throw new Error(
       `The ${operation} would leave ${violations.length} rows whose foreign keys point to missing rows (${[...links].join(", ")})`,
+    );
+  }
+
+  // Row checks cannot find a missing parent table when its child table is empty.
+  const missingParents = db
+    .query<{ child: string; parent: string }>(`
+    SELECT DISTINCT child.name AS child, foreign_key.[table] AS parent
+    FROM main.sqlite_schema AS child
+    JOIN pragma_foreign_key_list(child.name, 'main') AS foreign_key
+    WHERE child.type = 'table' AND NOT EXISTS (
+      SELECT 1 FROM main.sqlite_schema AS parent
+      WHERE parent.type = 'table' AND parent.name = foreign_key.[table] COLLATE NOCASE
+    )
+  `)
+    .all();
+
+  if (missingParents.length > 0) {
+    const links = missingParents.map(({ child, parent }) => `${child} to ${parent}`);
+    throw new Error(
+      `The ${operation} would leave foreign keys pointing to missing tables (${links.join(", ")})`,
     );
   }
 }

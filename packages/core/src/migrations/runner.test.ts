@@ -70,7 +70,11 @@ const CHILD_TABLES = ["task_relations", "task_label", "comment"];
 test("rebuilding a parent table keeps every child row and link", () => {
   withDatabase((db) => {
     seedBaseline(db);
+    db.exec("PRAGMA legacy_alter_table = OFF");
     const before = snapshot(db);
+    const targetsBefore = CHILD_TABLES.map((table) =>
+      db.query("SELECT * FROM pragma_foreign_key_list($table)").all({ $table: table }),
+    );
     const rebuild = migration(2, rebuildTask, ["task"]);
 
     upgradeSchema(db, [rebuild]);
@@ -85,6 +89,9 @@ test("rebuilding a parent table keeps every child row and link", () => {
     expect(foreignKeys(db)).toBe(1);
     expect(db.inTransaction).toBe(false);
     expect(rebuild.calls.count).toBe(1);
+    expect(CHILD_TABLES.map((table) =>
+      db.query("SELECT * FROM pragma_foreign_key_list($table)").all({ $table: table }),
+    )).toEqual(targetsBefore);
 
     // The child tables still reference task and enforce it.
     expect(() => db.exec("DELETE FROM task WHERE id = 't1'")).not.toThrow();
@@ -258,6 +265,66 @@ test("rows whose foreign keys point to missing rows abort the upgrade", () => {
       "The schema upgrade would leave 1 rows whose foreign keys point to missing rows (comment to task)",
     );
     expect(snapshot(db)).toEqual(before);
+    expect(foreignKeys(db)).toBe(1);
+  });
+});
+
+test.each([true, false])(
+  "an unsafe parent rename rolls back with empty children: %p",
+  (emptyChildren) => {
+    withDatabase((db) => {
+      seedBaseline(db);
+      db.exec("PRAGMA legacy_alter_table = OFF");
+      if (emptyChildren) {
+        db.exec("DELETE FROM task_label");
+      }
+      const before = snapshot(db);
+      const unsafeRebuild = migration(2, (db) => {
+        db.exec(`
+          ALTER TABLE label RENAME TO label_old;
+          CREATE TABLE label (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT,
+            color TEXT NOT NULL);
+          INSERT INTO label SELECT * FROM label_old;
+          DROP TABLE label_old;
+        `);
+      }, ["label"]);
+
+      let thrown: unknown;
+      try {
+        upgradeSchema(db, [unsafeRebuild]);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).message).toContain("task_label");
+      expect((thrown as Error).message).toContain("label_old");
+      expect(snapshot(db)).toEqual(before);
+      expect(foreignKeys(db)).toBe(1);
+      expect(db.inTransaction).toBe(false);
+      expect(unsafeRebuild.calls.count).toBe(1);
+    });
+  },
+);
+
+test("parent tables may appear later in the chain and use a different identifier case", () => {
+  withDatabase((db) => {
+    seedBaseline(db);
+    const addChild = migration(2, (db) => {
+      db.exec("CREATE TABLE extra_child (parent_id TEXT REFERENCES EXTRA_PARENT(id))");
+    });
+    const addParent = migration(3, (db) => {
+      db.exec("CREATE TABLE extra_parent (id TEXT PRIMARY KEY)");
+    });
+
+    upgradeSchema(db, [addChild, addParent]);
+
+    expect(readSchemaVersion(db)).toBe(3);
+    db.exec("INSERT INTO extra_parent VALUES ('p'); INSERT INTO extra_child VALUES ('p')");
+    expect(count(db, "extra_child")).toBe(1);
     expect(foreignKeys(db)).toBe(1);
   });
 });
