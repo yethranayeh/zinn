@@ -125,7 +125,7 @@ Examples:
   zinn label edit bug --description "Reported by users." --append`,
   },
   delete: {
-    run: (args) => {
+    run: async (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
         options: { yes: { type: "boolean" } },
@@ -144,7 +144,7 @@ Examples:
         quit(`A label with name "${props.name}" does not exist`);
       }
 
-      const canDelete = confirmAction(
+      const canDelete = await confirmAction(
         `Are you sure you want to delete label "${labelMatch.name}" and remove it from all tasks?`,
         values.yes === true,
       );

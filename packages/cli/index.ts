@@ -21,6 +21,6 @@ if (isVersionRequest) {
 
     // Only records the policy. core then opens the database when a command first uses it.
     configureDatabase(cliOpenPolicy());
-    router.route(args);
+    await router.route(args);
   }
 }

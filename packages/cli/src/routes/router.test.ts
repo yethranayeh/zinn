@@ -29,7 +29,48 @@ test("command nesting is properly parsed", () => {
   ]);
 });
 
-test("router calls the run functions", () => {
+test("router waits for an asynchronous handler to finish", async () => {
+  const completion = Promise.withResolvers<void>();
+  let finished = false;
+  const router = createRouter({ example: { help: "", run: async () => {
+    await completion.promise;
+    finished = true;
+  } } });
+
+  const routed = router.route(["example"]);
+  expect(finished).toBe(false);
+  completion.resolve();
+  await routed;
+  expect(finished).toBe(true);
+});
+
+test("asynchronous handler failures use the router's JSON error boundary", () => {
+  for (const errorType of ["Error", "UsageError"]) {
+    const routerPath = new URL("./router.ts", import.meta.url).pathname;
+    const libPath = new URL("../lib.ts", import.meta.url).pathname;
+    const result = Bun.spawnSync([process.execPath, "--eval", `
+      import { createRouter } from ${JSON.stringify(routerPath)};
+      import { UsageError } from ${JSON.stringify(libPath)};
+      const router = createRouter({ example: {
+        help: "Usage: zinn example <value>\\n\\nDetails",
+        run: async () => { await Promise.resolve(); throw new ${errorType}("<value>"); },
+      } });
+      await router.route(["example", "--json"]);
+    `]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout.toString()).toBe("");
+    const { error } = JSON.parse(result.stderr.toString());
+    expect(error.message).toBe("<value>");
+    if (errorType === "UsageError") {
+      expect(error.help).toContain("zinn example <value>");
+      expect(error.help).not.toContain("Details");
+    } else {
+      expect(error.help).toBeUndefined();
+    }
+  }
+});
+
+test("router calls the run functions", async () => {
   const routes: RouteDef = {
     foo: {
       create: mockCommand,
@@ -40,14 +81,14 @@ test("router calls the run functions", () => {
   };
 
   let router = createRouter(routes);
-  router.route(["foo", "create"]);
+  await router.route(["foo", "create"]);
   expect(mockCommand.run).toHaveBeenCalledTimes(1);
 
-  router.route(["foo", "bar", "create"]);
+  await router.route(["foo", "bar", "create"]);
   expect(mockCommand.run).toHaveBeenCalledTimes(2);
 });
 
-test("router calls the deepest nesting command", () => {
+test("router calls the deepest nesting command", async () => {
   const fooCreate = mock(() => {});
   const barCreate = mock(() => {});
   const routes = {
@@ -60,34 +101,34 @@ test("router calls the deepest nesting command", () => {
   } satisfies RouteDef;
 
   let router = createRouter(routes);
-  router.route(["foo", "bar", "create"]);
+  await router.route(["foo", "bar", "create"]);
   expect(routes.foo.bar.create.run).toHaveBeenCalledTimes(1);
   expect(routes.foo.create.run).not.toHaveBeenCalled();
 });
 
-test("only arguments before the first -- are treated as router flags", () => {
+test("only arguments before the first -- are treated as router flags", async () => {
   const run = mock(() => {});
   const router = createRouter({ foo: { run, help: "" } });
 
-  router.route(["foo", "--", "--json", "--help"]);
+  await router.route(["foo", "--", "--json", "--help"]);
   expect(run).toHaveBeenCalledWith(["--", "--json", "--help"]);
 });
 
-test("router flags before a -- still apply", () => {
+test("router flags before a -- still apply", async () => {
   const run = mock(() => {});
   const router = createRouter({ foo: { run, help: "" } });
 
-  router.route(["foo", "--json", "--", "literal"]);
+  await router.route(["foo", "--json", "--", "literal"]);
   expect(run).toHaveBeenCalledWith(["--", "literal"]);
 });
 
-test("a help request never runs a command even when its help is empty", () => {
+test("a help request never runs a command even when its help is empty", async () => {
   const run = mock(() => {});
   const info = spyOn(console, "info").mockImplementation(() => {});
   const router = createRouter({ foo: { run, help: "" } });
 
   try {
-    router.route(["foo", "--help"]);
+    await router.route(["foo", "--help"]);
     expect(run).not.toHaveBeenCalled();
     expect(info).toHaveBeenCalledWith("");
   } finally {
@@ -95,30 +136,30 @@ test("a help request never runs a command even when its help is empty", () => {
   }
 });
 
-test("a help flag anywhere before -- prints help for the words before it and runs nothing", () => {
+test("a help flag anywhere before -- prints help for the words before it and runs nothing", async () => {
   const run = mock(() => {});
   const info = spyOn(console, "info").mockImplementation(() => {});
   const router = createRouter({ foo: { bar: { run, help: "bar help" } } });
 
   try {
-    router.route(["foo", "bar", "--help", "--name", "x"]);
-    router.route(["foo", "bar", "x", "-h"]);
+    await router.route(["foo", "bar", "--help", "--name", "x"]);
+    await router.route(["foo", "bar", "x", "-h"]);
     expect(run).not.toHaveBeenCalled();
     expect(info.mock.calls).toEqual([["bar help"], ["bar help"]]);
 
-    router.route(["foo", "--help", "bar"]);
+    await router.route(["foo", "--help", "bar"]);
     expect(info.mock.calls.at(-1)![0]).toContain("Usage: zinn foo <command>");
   } finally {
     info.mockRestore();
   }
 });
 
-test("--allow-legacy-read before a -- is taken out of the arguments and allows legacy reads", () => {
+test("--allow-legacy-read before a -- is taken out of the arguments and allows legacy reads", async () => {
   const run = mock(() => {});
   const router = createRouter({ foo: { run, help: "" } });
 
   try {
-    router.route(["foo", "--allow-legacy-read", "--", "literal"]);
+    await router.route(["foo", "--allow-legacy-read", "--", "literal"]);
     expect(run).toHaveBeenCalledWith(["--", "literal"]);
     expect(isLegacyReadAllowed()).toBe(true);
   } finally {
@@ -126,11 +167,11 @@ test("--allow-legacy-read before a -- is taken out of the arguments and allows l
   }
 });
 
-test("--allow-legacy-read after a -- stays command input and allows nothing", () => {
+test("--allow-legacy-read after a -- stays command input and allows nothing", async () => {
   const run = mock(() => {});
   const router = createRouter({ foo: { run, help: "" } });
 
-  router.route(["foo", "--", "--allow-legacy-read"]);
+  await router.route(["foo", "--", "--allow-legacy-read"]);
   expect(run).toHaveBeenCalledWith(["--", "--allow-legacy-read"]);
   expect(isLegacyReadAllowed()).toBe(false);
 });

@@ -3697,15 +3697,54 @@ test("confirming commands in a terminal act on y and cancel on n with exit code 
       const env = { ...process.env, ZINN_DIR: dir };
       const before = confirmationSnapshot(dir);
 
-      const declined = await runCliInTerminal(args, { env, input: "n\n" });
-      expect(declined.code).toBe(0);
-      expect(confirmationSnapshot(dir)).toEqual(before);
+      for (const input of ["n\n", "\n"]) {
+        const declined = await runCliInTerminal(args, { env, input });
+        expect(declined.code).toBe(0);
+        expect(confirmationSnapshot(dir)).toEqual(before);
+      }
 
       const accepted = await runCliInTerminal(args, { env, input: "y\n" });
       expect(accepted.code).toBe(0);
       expect(isDone(dir)).toBe(true);
     });
   }
+});
+
+test("confirmation prompts use stderr, preserve exact affirmative answers, and decline EOF", async () => {
+  await withIsolatedZinnDirAsync(async (dir) => {
+    seedConfirmationBoard(dir);
+    const before = confirmationSnapshot(dir);
+    const stderrPath = join(dir, "prompt.stderr");
+    const options = { env: { ...process.env, ZINN_DIR: dir }, stderrPath };
+
+    for (const input of ["yes\n", " y \n", "\x04"]) {
+      const result = await runCliInTerminal(["task", "delete", "CONF-1"], { ...options, input });
+      expect(result.code).toBe(0);
+      expect(result.output).not.toContain("[y/N]");
+      const stderr = readFileSync(stderrPath, "utf8");
+      expect(stderr).toContain("CONF-1");
+      expect(stderr).toContain("[y/N]");
+      expect(stderr).toEndWith("\n");
+      expect(confirmationSnapshot(dir)).toEqual(before);
+    }
+
+    const accepted = await runCliInTerminal(["task", "delete", "CONF-1"], { ...options, input: "Y\n" });
+    expect(accepted.code).toBe(0);
+    expect(accepted.output).not.toContain("[y/N]");
+    expect(runZinn(["task", "view", "CONF-1"], dir).code).toBe(1);
+  });
+});
+
+test("interrupting a confirmation exits 130 and changes nothing", async () => {
+  await withIsolatedZinnDirAsync(async (dir) => {
+    seedConfirmationBoard(dir);
+    const before = confirmationSnapshot(dir);
+    const result = await runCliInTerminal(["task", "delete", "CONF-1"], {
+      env: { ...process.env, ZINN_DIR: dir }, input: "\x03", inputWhen: "[y/N]",
+    });
+    expect(result.code).toBe(130);
+    expect(confirmationSnapshot(dir)).toEqual(before);
+  });
 });
 
 test("--json refuses commands that ask for confirmation without --yes, deleting nothing", () => {

@@ -1,4 +1,5 @@
 import type { parseArgs } from "node:util";
+import { createInterface } from "node:readline/promises";
 
 import {
   assertWritable,
@@ -47,7 +48,7 @@ export function output<T>(data: T, transformToString: (data: T) => string) {
 }
 
 /** Asks before a change that cannot be undone, unless --yes already confirmed it. */
-export function confirmAction(message: string, isPreconfirmed: boolean, jsonRefusal?: string) {
+export async function confirmAction(message: string, isPreconfirmed: boolean, jsonRefusal?: string) {
   // Throws on a read-only database, to avoid asking for confirmation to an already refused action
   assertWritable();
 
@@ -55,7 +56,7 @@ export function confirmAction(message: string, isPreconfirmed: boolean, jsonRefu
 }
 
 /** Like confirmAction, without opening the database, for commands that bypass the open policy. */
-export function askConfirmation(
+export async function askConfirmation(
   message: string,
   isPreconfirmed: boolean,
   jsonRefusal = "Commands that ask for confirmation need --yes when used with --json",
@@ -73,7 +74,26 @@ export function askConfirmation(
     quit("Commands that ask for confirmation need --yes when not running in a terminal");
   }
 
-  return confirm(message);
+  const prompt = createInterface({ input: process.stdin, output: process.stderr });
+  const closed = new AbortController();
+  prompt.once("close", () => closed.abort());
+  prompt.once("SIGINT", () => process.kill(process.pid, "SIGINT"));
+
+  try {
+    const answer = await prompt.question(`${message} [y/N] `, { signal: closed.signal });
+    return answer === "y" || answer === "Y";
+  } catch (error) {
+    if (closed.signal.aborted) {
+      return false;
+    }
+    throw error;
+  } finally {
+    // Readline echoes a newline in a terminal; redirected stderr and EOF need one explicitly.
+    if (!process.stderr.isTTY || closed.signal.aborted) {
+      process.stderr.write("\n");
+    }
+    prompt.close();
+  }
 }
 
 /** Whether someone can answer a prompt: stdin and stdout are both terminals, like how gh decides it. */

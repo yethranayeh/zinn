@@ -207,7 +207,7 @@ Examples:
   zinn project edit MDR --description "database" --replacing "board" --all`,
   },
   delete: {
-    run: (args: Array<string>) => {
+    run: async (args: Array<string>) => {
       const { values, positionals, tokens } = parseArgs({
         args,
         options: { yes: { type: "boolean" } },
@@ -240,7 +240,7 @@ Examples:
           console.error("Warning: --yes is ignored because no project key was typed");
         }
 
-        const canDelete = confirmAction(
+        const canDelete = await confirmAction(
           `Are you sure you want to delete ${projectMatch.key} and all of its columns and tasks?`,
           values.yes === true && typedProjectKey !== undefined,
           typedProjectKey === undefined

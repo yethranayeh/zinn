@@ -507,7 +507,7 @@ Each task's changed field is 'false' when it was already in the requested state.
 Example: zinn task unarchive MDR-1 MDR-2`,
   },
   delete: {
-    run: (args: Array<string>) => {
+    run: async (args: Array<string>) => {
       const { values, positionals, tokens } = parseArgs({
         args,
         options: { yes: { type: "boolean" } },
@@ -522,7 +522,7 @@ Example: zinn task unarchive MDR-1 MDR-2`,
 
       try {
         const taskMatch = task.getByKey(taskKey);
-        const canDelete = confirmAction(
+        const canDelete = await confirmAction(
           `Are you sure you want to delete ${taskKey}?`,
           values.yes === true,
         );

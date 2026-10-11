@@ -11,7 +11,7 @@ import packageJson from "../../package.json";
 const build = { client: "cli", version: packageJson.version };
 
 export const restoreCommand = {
-  run: (args) => {
+  run: async (args) => {
     const { positionals, values, tokens } = parseArgs({
       args,
       strict: true,
@@ -31,7 +31,7 @@ export const restoreCommand = {
       backup.check({ ...build, path });
     }
 
-    const isConfirmed = askConfirmation(
+    const isConfirmed = await askConfirmation(
       `Replace the database at ${databasePath} with the backup ${path}? Its current board is saved to ${backupDirectory} first.`,
       isPreconfirmed,
     );

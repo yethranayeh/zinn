@@ -135,7 +135,7 @@ Examples:
   zinn task comment edit MDR-1#2 --text "Also approved." --append`,
   },
   delete: {
-    run: (args) => {
+    run: async (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
         options: { yes: { type: "boolean" } },
@@ -147,7 +147,7 @@ Examples:
       validatePositionals(positionals, ["<comment-key>"]);
 
       const commentMatch = comment.getByKey(positionals[0]!);
-      const canDelete = confirmAction(
+      const canDelete = await confirmAction(
         `Are you sure you want to delete ${commentMatch.key}?`,
         values.yes === true,
       );

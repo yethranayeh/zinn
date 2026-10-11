@@ -168,7 +168,7 @@ export function parseRoutes(routesDef: RouteDef, prefix?: string) {
   return routeDefinitions;
 }
 
-function route(parsedRoutes: Array<ParsedRoute>, rawArgs: Array<string>) {
+async function route(parsedRoutes: Array<ParsedRoute>, rawArgs: Array<string>) {
   // Anything after "--" belongs to the command, so "--json" there is search text, not a flag.
   const separatorIndex = rawArgs.indexOf("--");
   const routableArgs = separatorIndex === -1 ? rawArgs : rawArgs.slice(0, separatorIndex);
@@ -223,7 +223,7 @@ function route(parsedRoutes: Array<ParsedRoute>, rawArgs: Array<string>) {
   const commandArgs = args.slice(nestingLevel);
 
   try {
-    match.run(commandArgs);
+    await match.run(commandArgs);
   } catch (err: any) {
     if (err instanceof UsageError) {
       quit(err.message, getUsage(match.help));

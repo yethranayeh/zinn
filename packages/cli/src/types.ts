@@ -1,4 +1,4 @@
-export type Command = { run: (args: Array<string>) => void; help: string };
+export type Command = { run: (args: Array<string>) => void | Promise<void>; help: string };
 export type ParsedRoute = {
   command: string;
 } & Command;
