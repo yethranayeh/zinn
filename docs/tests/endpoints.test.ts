@@ -85,11 +85,16 @@ test("llms.txt follows the published structure and all local links work", async 
 		expect(target.status).toBe(200);
 		expect(target.headers.get("Content-Type")).toContain("text/markdown");
 	}
-	const guidance = await (await server.fetch("/agents.md")).text();
-	expect(guidance).toContain("## When to use");
-	for (const fact of ["zinn task list", "zinn task search", "zinn task view", "--json", "ZINN_DIR", "--yes", "Experimental"]) {
-		expect(guidance).toContain(fact);
+	for (const fact of ["zinn --help", "projects", "tasks", "comments", "JSON", "Experimental", "packages/cli/README.md"]) {
+		expect(markdown).toContain(fact);
 	}
+});
+
+test("discovery uses existing documentation without a standalone agent guide", async () => {
+	for (const path of ["/", "/index.md", "/llms.txt", ...trustPages.flatMap((page) => [`/${page}`, `/${page}.md`])]) {
+		expect(await (await server.fetch(path)).text()).not.toContain("/agents.md");
+	}
+	expect((await server.fetch("/agents.md")).status).toBe(404);
 });
 
 test.each(["text/markdown", "text/html"])("missing paths preserve 404, security headers and HEAD for %s", async (accept) => {
@@ -121,7 +126,7 @@ test.each(["text/markdown", "text/html"])("missing paths preserve 404, security 
 
 test("every generated public endpoint is served with its expected type", async () => {
 	for (const [path, mediaType] of [
-		["/index.md", "text/markdown"], ["/agents.md", "text/markdown"], ["/robots.txt", "text/plain"],
+		["/index.md", "text/markdown"], ["/robots.txt", "text/plain"],
 		["/sitemap-index.xml", "application/xml"], ["/sitemap-0.xml", "application/xml"],
 		["/schemas/settings/v1.json", "application/json"]
 	]) {

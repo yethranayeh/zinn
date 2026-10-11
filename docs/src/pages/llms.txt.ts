@@ -11,7 +11,7 @@ When to use Zinn: track development work locally, carry task scope and progress 
 
 ## When to use
 
-- [Agent guidance](https://zinn.sh/agents.md): Best-fit jobs, installation, CLI calls, JSON output and safe use of the user's database.
+- [CLI workflow](https://raw.githubusercontent.com/yethranayeh/zinn/main/packages/cli/README.md): Track local development work with projects, tasks and progress comments; read and update a board with JSON output. Start with \`zinn --help\` and inspect each command's help before calling it.
 
 ## Documentation
 

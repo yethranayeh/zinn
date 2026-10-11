@@ -50,7 +50,7 @@ Read the [settings files](${projectLinks.github}/blob/main/packages/cli/README.m
 
 Read the [first-project guide](${projectLinks.github}/blob/main/packages/cli/README.md#start-a-project), browse the [Zinn source on GitHub](${projectLinks.github}) or find the [Zinn CLI package on npm](${projectLinks.npm}).
 
-Read [About Zinn](https://zinn.sh/about), [Contact](https://zinn.sh/contact), [Privacy](https://zinn.sh/privacy), or the [agent guidance](https://zinn.sh/agents.md).
+Read [About Zinn](https://zinn.sh/about), [Contact](https://zinn.sh/contact) and [Privacy](https://zinn.sh/privacy).
 
 [Twitter](${projectLinks.twitter}) · [Bluesky](${projectLinks.bluesky})
 `;

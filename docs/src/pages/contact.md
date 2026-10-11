@@ -18,4 +18,4 @@ For a website problem, include the page URL, browser and a description of the be
 
 For questions about website data handling, read [Privacy](/privacy) and use the issue tracker for general questions that can be discussed publicly.
 
-Zinn is Experimental. A clear report helps maintainers investigate and discuss the next change. For usage questions, the [CLI reference](https://github.com/yethranayeh/zinn/blob/main/packages/cli/README.md) and [agent guidance](/agents.md) are useful starting points.
+Zinn is Experimental. A clear report helps maintainers investigate and discuss the next change. For usage questions, start with the [CLI reference](https://github.com/yethranayeh/zinn/blob/main/packages/cli/README.md).
