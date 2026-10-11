@@ -7,6 +7,6 @@ export default defineConfig({
 	site: "https://zinn.sh",
 	output: "static",
 	devToolbar: { enabled: false },
-	integrations: [sitemap()],
+	integrations: [sitemap({ filter: (page) => !page.endsWith(".md") })],
 	vite: { plugins: [tailwindcss()] }
 });

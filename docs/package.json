@@ -6,6 +6,7 @@
 		"dev": "bun --bun astro dev --host 127.0.0.1",
 		"build": "bun --bun astro build",
 		"check": "bun --bun astro check",
+		"test": "PUBLIC_SITE_ENV=production bun run build && bun tests/run.ts",
 		"deploy": "PUBLIC_SITE_ENV=production bun run build && bunx wrangler deploy",
 		"preview": "bun --bun astro preview --host 127.0.0.1"
 	},

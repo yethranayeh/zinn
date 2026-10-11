@@ -1,0 +1,16 @@
+---
+import PageLayout from "./PageLayout.astro";
+import Prose from "../components/Prose.astro";
+
+interface Props {
+	frontmatter: { title: string; description: string };
+}
+const { title, description } = Astro.props.frontmatter;
+---
+
+<PageLayout title={title} description={description}>
+	<div
+		class='[&_h1]:mb-6 [&_h1]:text-3xl [&_h1]:leading-tight [&_h1]:tracking-tight sm:[&_h1]:text-4xl md:[&_h1]:text-5xl [&_h2]:mt-10'>
+		<Prose><slot /></Prose>
+	</div>
+</PageLayout>

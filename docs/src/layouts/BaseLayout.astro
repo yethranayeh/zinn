@@ -10,6 +10,7 @@ interface Props {
 
 const { title, description, noindex = false } = Astro.props;
 const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
+const markdownPath = Astro.url.pathname === "/" ? "/index.md" : `${Astro.url.pathname.replace(/\/$/, "")}.md`;
 const socialImageUrl = new URL("/social/zinn.png", Astro.site);
 const socialImageAlt =
 	"Zinn | A kanban workflow in the terminal. Installation and zinn --help on a dark terminal panel.";
@@ -46,6 +47,8 @@ const homepageStructuredData = [website, softwareApplication];
 		{(!isProductionSite || noindex) && <meta name='robots' content='noindex' />}
 		<title>{title}</title>
 		{!noindex && <link rel='canonical' href={canonicalUrl.href} />}
+		<link rel='describedby' href='/llms.txt' />
+		{!noindex && <link rel='alternate' type='text/markdown' href={markdownPath} />}
 		{isProductionSite && <link rel='sitemap' href='/sitemap-index.xml' />}
 		<meta property='og:type' content='website' />
 		<meta property='og:site_name' content='Zinn' />

@@ -2,6 +2,7 @@
 import type { ComponentProps } from "astro/types";
 import BaseLayout from "./BaseLayout.astro";
 import Branding from "../components/Branding.astro";
+import FooterLinks from "../components/FooterLinks.astro";
 
 type Props = ComponentProps<typeof BaseLayout> & {
 	linkHome?: boolean;
@@ -16,6 +17,9 @@ const { linkHome = true, ...metadata } = Astro.props;
 		<div class='my-auto w-full max-w-3xl pt-16 pb-14 md:pt-24 md:pb-16 2xl:ml-32'>
 			<slot />
 		</div>
-		<footer class='mt-auto'><span class='font-mono text-xs tracking-widest'>zinn.sh</span></footer>
+		<footer class:list={["mt-auto", !metadata.noindex && "flex flex-wrap items-center justify-between gap-5"]}>
+			<span class='font-mono text-xs tracking-widest'>zinn.sh</span>
+			{!metadata.noindex && <FooterLinks />}
+		</footer>
 	</main>
 </BaseLayout>

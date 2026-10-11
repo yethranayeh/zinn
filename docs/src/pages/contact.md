@@ -1,0 +1,21 @@
+---
+layout: ../layouts/InfoLayout.astro
+title: Contact Zinn | Questions and issue reporting
+description: Use Zinn's public GitHub issue tracker to report problems, suggest improvements and share reproducible feedback about the CLI or website.
+---
+
+# Contact Zinn
+
+Zinn's [GitHub issue tracker](https://github.com/yethranayeh/zinn/issues) is the public channel for bug reports, questions and suggestions about the CLI and this website.
+
+Search existing issues first so related reports can stay together. The [source repository](https://github.com/yethranayeh/zinn) also provides the documentation and release history.
+
+## Report a problem
+
+For a CLI problem, include the installed Zinn version from `zinn --version`, your operating system, the command you ran and what you expected. Add the exit code and relevant output if you have them. A small reproduction using a separate `ZINN_DIR` helps explain the problem while keeping your working database private.
+
+For a website problem, include the page URL, browser and a description of the behavior. If the problem concerns a machine-readable response, include the request method and Accept header along with the response status and content type.
+
+For questions about website data handling, read [Privacy](/privacy) and use the issue tracker for general questions that can be discussed publicly.
+
+Zinn is Experimental. A clear report helps maintainers investigate and discuss the next change. For usage questions, the [CLI reference](https://github.com/yethranayeh/zinn/blob/main/packages/cli/README.md) and [agent guidance](/agents.md) are useful starting points.
