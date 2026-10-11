@@ -5813,6 +5813,135 @@ test("the text-edit flags are limited to the edit commands and listed in their h
 
 // --- ACTIVITY
 
+test("task view history opts into shared activity previews and full JSON without writes", () => {
+  withIsolatedZinnDir((directory) => {
+    const run = (...args: Array<string>) => {
+      const result = runZinn(args, directory);
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe("");
+      return result.stdout;
+    };
+    run("project", "create", "APP");
+    run("task", "create", "APP", "--title", "Inspected task");
+    run("task", "create", "APP", "--title", "Other task");
+    run("task", "edit", "APP-1", "--description", "Full\nrecorded description");
+    run("task", "order", "APP-1", "bottom");
+    run("task", "move", "APP-1", "In Progress");
+    const originalComment = "Original comment text\n" + "Previous content. ".repeat(20);
+    run("task", "comment", "create", "APP-1", "--text", originalComment);
+    run("task", "comment", "edit", "APP-1#1", "--text", "Current comment");
+    run("task", "comment", "create", "APP-1", "--text", "Deleted comment");
+    run("task", "comment", "delete", "APP-1#2", "--yes");
+    run("task", "relation", "create", "APP-1", "APP-2", "--type", "related");
+    run("task", "relation", "delete", "APP-1", "APP-2", "--type", "related");
+    run("task", "archive", "APP-1");
+    run("task", "unarchive", "APP-1");
+
+    const events: Array<Activity> = JSON.parse(run("activity", "list", "--task", "APP-1", "--json"));
+    expect(events.find((event) => event.action === "order")).toBeDefined();
+    expect(events.find((event) => event.action === "comment_delete")?.changes?.comment).toMatchObject({
+      key: "APP-1#2", text: "Deleted comment",
+    });
+    expect(events.find((event) => event.action === "comment_edit")?.changes?.text).toEqual([
+      originalComment, "Current comment",
+    ]);
+
+    const ordinaryText = run("task", "view", "APP-1");
+    const ordinaryJson = JSON.parse(run("task", "view", "APP-1", "--json"));
+    expect(ordinaryJson).not.toHaveProperty("activity");
+    const historyJson = JSON.parse(run("task", "view", "app-1", "--history", "--json"));
+    expect(historyJson).toEqual({ ...ordinaryJson, activity: events });
+    expect(historyJson.comments).toHaveLength(1);
+    expect(historyJson.comments[0].text).toBe("Current comment");
+    expect(historyJson.comments[0]).not.toHaveProperty("activity");
+
+    const previews = run("activity", "list", "--task", "APP-1");
+    const historyText = run("task", "view", "APP-1", "--history");
+    expect(historyText.startsWith(ordinaryText.trimEnd())).toBe(true);
+    expect(historyText.endsWith(previews)).toBe(true);
+    expect(historyText).not.toContain(originalComment);
+    const commentEdit = events.find((event) => event.action === "comment_edit")!;
+    expect(run("activity", "view", commentEdit.id)).toContain(originalComment);
+    expect(JSON.parse(run("activity", "list", "--task", "APP-1", "--json"))).toEqual(events);
+    expect(JSON.parse(run("task", "view", "APP-1", "--json"))).toEqual(ordinaryJson);
+  });
+});
+
+test("task view only reads history when requested and includes an empty activity array", () => {
+  withIsolatedZinnDir((directory) => {
+    expect(runZinn(["project", "create", "APP"], directory).code).toBe(0);
+    expect(runZinn(["task", "create", "APP", "--title", "Before recording"], directory).code).toBe(0);
+    const taskId = withTestDb(directory, (db) => {
+      db.run("DELETE FROM activity");
+      return db.query<{ id: string }, []>("SELECT id FROM task").get()!.id;
+    });
+    const ordinary = runZinn(["task", "view", "APP-1", "--json"], directory);
+    expect(ordinary.code).toBe(0);
+    const requested = runZinn(["task", "view", "APP-1", "--history", "--json"], directory);
+    expect(requested.code).toBe(0);
+    expect(JSON.parse(requested.stdout)).toEqual({ ...JSON.parse(ordinary.stdout), activity: [] });
+    expect(runZinn(["task", "view", "APP-1", "--history"], directory)).toEqual(
+      runZinn(["task", "view", "APP-1"], directory),
+    );
+
+    seedRecordedActivity(directory, [{ id: "abcdef12-1234-7000-8000-000000000001", entity_id: taskId }]);
+    withTestDb(directory, (db) => db.run("UPDATE activity SET changes = 'invalid JSON'"));
+    expect(runZinn(["task", "view", "APP-1", "--json"], directory)).toEqual(ordinary);
+    expect(runZinn(["task", "view", "APP-1"], directory).code).toBe(0);
+    expect(runZinn(["task", "view", "APP-1", "--history", "--json"], directory).code).toBe(1);
+  });
+});
+
+test("task view history orders timestamp ties and preserves full records for only its task", () => {
+  withIsolatedZinnDir((directory) => {
+    expect(runZinn(["project", "create", "APP"], directory).code).toBe(0);
+    expect(runZinn(["task", "create", "APP", "--title", "Current task"], directory).code).toBe(0);
+    const taskId = withTestDb(directory, (db) => {
+      db.run("DELETE FROM activity");
+      return db.query<{ id: string }, []>("SELECT id FROM task").get()!.id;
+    });
+    const events = seedRecordedActivity(directory, [
+      { id: "abcdef12-1234-7000-8000-000000000001", entity_id: taskId, created_at: 3, changes: { title: ["Old title", "Current task"], future: { text: "Full\nrecorded payload" } } },
+      { id: "fedcba12-1234-7000-8000-000000000001", entity_id: taskId, created_at: 1, action: "order" },
+      { id: "abcdef12-1234-7000-8000-000000000002", entity_id: taskId, created_at: 3, action: "archive", actor_email: null },
+      { id: "abcdef12-1234-7000-8000-000000000003", entity_id: taskId, entity_type: "label", created_at: 4 },
+    ]);
+    const viewed = runZinn(["task", "view", "APP-1", "--history", "--json"], directory);
+    expect(viewed.code).toBe(0);
+    expect(JSON.parse(viewed.stdout).activity).toEqual([events[2], events[0], events[1]]);
+    const previews = runZinn(["activity", "list", "--task", "APP-1"], directory);
+    const text = runZinn(["task", "view", "APP-1", "--history"], directory);
+    expect(text.code).toBe(0);
+    expect(text.stdout.endsWith(previews.stdout)).toBe(true);
+    expect(text.stdout).toContain("Old title");
+  });
+});
+
+test("task view history keeps archived tasks separate from deleted lifetimes with a reused key", () => {
+  withIsolatedZinnDir((directory) => {
+    const run = (...args: Array<string>) => {
+      const result = runZinn(args, directory);
+      expect(result.code).toBe(0);
+      return result.stdout;
+    };
+    run("project", "create", "APP");
+    run("task", "create", "APP", "--title", "Previous lifetime");
+    run("project", "delete", "APP", "--yes");
+    run("project", "create", "APP");
+    run("task", "create", "APP", "--title", "Current lifetime");
+    run("task", "archive", "APP-1");
+    const currentTaskId = withTestDb(directory, (db) => db.query<{ id: string }, []>("SELECT id FROM task").get()!.id);
+    const allLifetimes: Array<Activity> = JSON.parse(run("activity", "list", "--task", "APP-1", "--json"));
+    expect(allLifetimes.some((event) => event.entity_id !== currentTaskId)).toBe(true);
+    const viewed = JSON.parse(run("task", "view", "APP-1", "--history", "--json"));
+    expect(viewed.status).toBe("Archived");
+    expect(viewed.activity).toEqual(allLifetimes.filter((event) => event.entity_type === "task" && event.entity_id === currentTaskId));
+    const text = run("task", "view", "APP-1", "--history");
+    expect(text).toContain(currentTaskId);
+    expect(text).not.toContain("Previous lifetime");
+  });
+});
+
 function seedRecordedActivity(
   directory: string,
   inputs: Array<Pick<Activity, "id"> & Partial<Activity>>,

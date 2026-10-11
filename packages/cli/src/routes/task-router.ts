@@ -19,6 +19,7 @@ import { formatRelations, presentRelations, relationRouter } from "./relation-ro
 import { commentRouter, formatComments, presentComments } from "./comment-router";
 import { currentActor } from "../actor";
 import { formatSection } from "../presentation/section";
+import { formatActivityList, presentActivities } from "../presentation/activity-presentation";
 import {
   formatTaskList,
   formatTaskListWithStatus,
@@ -211,7 +212,14 @@ Example: zinn task search "refinement quota" MDR --limit 5`,
   },
   view: {
     run: (args) => {
-      const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
+      const { values, positionals, tokens } = parseArgs({
+        args,
+        options: { history: { type: "boolean" } },
+        allowPositionals: true,
+        strict: true,
+        tokens: true,
+      });
+      validateUniqueOptions(tokens);
       validatePositionals(positionals, ["<task-key>"]);
 
       const taskMatch = task.getByKey(positionals[0]!);
@@ -219,6 +227,16 @@ Example: zinn task search "refinement quota" MDR --limit 5`,
         ...presentTask(taskMatch),
         relations: presentRelations(taskMatch),
         comments: presentComments(taskMatch.key),
+        ...(values.history === true
+          ? {
+              activity: task
+                .activity(taskMatch.key)
+                .sort(
+                  (left, right) =>
+                    right.created_at - left.created_at || right.id.localeCompare(left.id),
+                ),
+            }
+          : {}),
       };
 
       output(viewedTask, (t) => {
@@ -249,15 +267,28 @@ Example: zinn task search "refinement quota" MDR --limit 5`,
           sections.push(formatSection("Comments", comments, sectionOptions));
         }
 
+        if (t.activity !== undefined) {
+          const history = formatActivityList(presentActivities(t.activity, { taskKey: t.key }));
+          if (history.length > 0) {
+            sections.push(formatSection("History", history, sectionOptions));
+          }
+        }
+
         return sections.join("\n\n");
       });
     },
-    help: `Usage: zinn task view <task-key>
+    help: `Usage: zinn task view <task-key> [--history]
 
 Show a task with its description, relations, and comments.
 A section is shown when the task has that content. The description prints in full, keeping its line breaks.
+Use --history to include this task's recorded activity, newest first, including reorders and comment changes.
+Use activity view <activity-id> for full recorded changes. Text times are local with a UTC offset.
+With --history --json, the activity field contains full activity records, or [] when none are recorded.
+Without --history, JSON omits activity.
 
-Example: zinn task view MDR-1`,
+Examples:
+  zinn task view MDR-1
+  zinn task view MDR-1 --history`,
   },
   edit: {
     run: (args) => {

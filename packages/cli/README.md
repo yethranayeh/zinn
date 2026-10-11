@@ -211,9 +211,16 @@ zinn task list MDR --label CLI --label Groom
 zinn task list MDR --column "In Progress"
 zinn task list --column Done --all
 zinn task view MDR-1
+zinn task view MDR-1 --history
 ```
 
-Task lists are previews, so they omit descriptions, but `task view` prints the full description.
+Task lists are previews, so they _omit_ descriptions, but `task view` prints the full description.
+
+`task view --history` includes the inspected task's recorded activity, newest first by time, then event ID. Reorders and comment changes are included. Use `activity view <activity-id>` for full recorded changes. See [Activity](#activity) for timestamps, event IDs, and record fields.
+
+With `--history --json`, the task gains an `activity` array of full activity records. It returns `[]` when no events are recorded. Without `--history`, this field is _omitted_.
+
+If a project is deleted and recreated with the same key, `task view --history` shows only the _current_ task’s history. `activity list --task <key>` can also show history for **deleted tasks** that previously had that same key.
 
 Repeat `--label <name>` to require every specified label. Matching ignores case.
 
