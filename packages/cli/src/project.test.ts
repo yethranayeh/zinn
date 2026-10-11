@@ -3,6 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { runCliInTerminal } from "../testing";
+
 const PREFIX = join(tmpdir(), "zinndefaulttest-");
 // Each precedence matrix starts several dozen CLI processes.
 const COMMAND_MATRIX_TIMEOUT_MS = 30_000;
@@ -12,6 +14,17 @@ function withTestDirectory(run: (directory: string) => void) {
 
   try {
     run(directory);
+  } finally {
+    removeTestDirectory(directory);
+  }
+}
+
+// Same as withTestDirectory, but removes the directory only after an async run settles.
+async function withTestDirectoryAsync(run: (directory: string) => Promise<void>) {
+  const directory = mkdtempSync(PREFIX);
+
+  try {
+    await run(directory);
   } finally {
     removeTestDirectory(directory);
   }
@@ -42,7 +55,7 @@ function runZinnFrom(args: Array<string>, directory: string, cwd: string) {
   return { stdout: proc.stdout.toString(), stderr: proc.stderr.toString(), code: proc.exitCode };
 }
 
-function runZinnWithConfirmation(args: Array<string>, directory: string, cwd: string) {
+function runZinnWithPipedYes(args: Array<string>, directory: string, cwd: string) {
   const env: Record<string, string | undefined> = { ...process.env, HOME: join(directory, "home") };
   delete env.ZINN_DIR;
   const cliPath = join(import.meta.dir, "..", "index.ts");
@@ -55,26 +68,11 @@ function runZinnWithConfirmation(args: Array<string>, directory: string, cwd: st
 }
 
 /** Runs the CLI attached to a pseudo-terminal and types the input; stdout and stderr arrive together. */
-async function runZinnInTerminal(args: Array<string>, directory: string, cwd: string, input: string) {
+function runZinnInTerminal(args: Array<string>, directory: string, cwd: string, input: string) {
   const env: Record<string, string | undefined> = { ...process.env, HOME: join(directory, "home") };
   delete env.ZINN_DIR;
-  const cliPath = join(import.meta.dir, "..", "index.ts");
-  const decoder = new TextDecoder();
-  let output = "";
-  const proc = Bun.spawn(["bun", cliPath, ...args], {
-    cwd,
-    env,
-    terminal: {
-      data(_terminal, data) {
-        output += decoder.decode(data);
-      },
-    },
-  });
-  proc.terminal!.write(input);
-  const code = await proc.exited;
-  proc.terminal!.close();
 
-  return { output, code };
+  return runCliInTerminal(args, { cwd, env, input });
 }
 
 function makeRepository(directory: string, localSettings: Record<string, unknown> = {}) {
@@ -103,7 +101,7 @@ function seedProjects(directory: string) {
   expect(runZinn(["project", "column", "create", "ALT", "Only ALT"], store).code).toBe(0);
 }
 
-function expectDefaultCommands(directory: string, repository: string, expectedKey: string, otherKey: string) {
+async function expectDefaultCommands(directory: string, repository: string, expectedKey: string, otherKey: string) {
   const invoke = (...args: Array<string>) => runZinnFrom(args, directory, repository);
   const list = invoke("task", "list", "--json");
   const search = invoke("task", "search", "needle", "--json");
@@ -140,31 +138,32 @@ function expectDefaultCommands(directory: string, repository: string, expectedKe
   expect(JSON.parse(explicitEdit.stdout)).toMatchObject({ key: otherKey, name: "Edited explicitly" });
   expect(JSON.parse(invoke("task", "view", `${otherKey}-1`, "--json").stdout).key).toBe(`${otherKey}-1`);
 
-  const deleted = runZinnWithConfirmation(["project", "delete"], directory, repository);
+  const deleted = await runZinnInTerminal(["project", "delete"], directory, repository, "y\n");
   expect(deleted.code).toBe(0);
-  expect(deleted.stdout).toContain(expectedKey);
+  expect(deleted.output).toContain(expectedKey);
+  expect(JSON.parse(invoke("project", "list", "--json").stdout).map((project: { key: string }) => project.key)).toEqual([otherKey]);
   const explicitDelete = runZinnFrom(["project", "delete", otherKey, "--yes", "--json"], directory, repository);
   expect(explicitDelete.code).toBe(0);
   expect(JSON.parse(explicitDelete.stdout).key).toBe(otherKey);
 }
 
-test("each default-project command uses local settings, overrides global settings and yields to a typed key", () => {
-  withTestDirectory((directory) => {
+test("each default-project command uses local settings, overrides global settings and yields to a typed key", async () => {
+  await withTestDirectoryAsync(async (directory) => {
     makeRepository(directory, { defaultProject: "def" });
     writeGlobalSettings(directory, { defaultProject: "ALT" });
     seedProjects(directory);
 
-    expectDefaultCommands(directory, join(directory, "repository"), "DEF", "ALT");
+    await expectDefaultCommands(directory, join(directory, "repository"), "DEF", "ALT");
   });
 }, COMMAND_MATRIX_TIMEOUT_MS);
 
-test("each default-project command falls back to global settings when local settings omit the field", () => {
-  withTestDirectory((directory) => {
+test("each default-project command falls back to global settings when local settings omit the field", async () => {
+  await withTestDirectoryAsync(async (directory) => {
     makeRepository(directory, {});
     writeGlobalSettings(directory, { defaultProject: "DEF" });
     seedProjects(directory);
 
-    expectDefaultCommands(directory, join(directory, "repository"), "DEF", "ALT");
+    await expectDefaultCommands(directory, join(directory, "repository"), "DEF", "ALT");
   });
 }, COMMAND_MATRIX_TIMEOUT_MS);
 
@@ -341,7 +340,7 @@ test("project delete with a default prompts despite --yes, and refuses without a
     expect(JSON.parse(runZinnFrom(["project", "list", "--json"], directory, repository).stdout)).toHaveLength(2);
 
     const noInput = runZinnFrom(["project", "delete", "--yes"], directory, repository);
-    const pipedInput = runZinnWithConfirmation(["project", "delete", "--yes"], directory, repository);
+    const pipedInput = runZinnWithPipedYes(["project", "delete", "--yes"], directory, repository);
     for (const result of [noInput, pipedInput]) {
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");

@@ -553,7 +553,8 @@ zinn task delete MDR-1 --yes --json
 
 - With `--json`, `--yes` is **required**. Without it, the command exits with an error and changes nothing.
 - Project deletion also requires a typed project key to skip confirmation; a configured default always needs confirmation and cannot be deleted with `--json`.
-- When nothing answers the prompt, as in CI or with input redirected from an empty source, a command without `--yes` counts as declined: it prints `Deletion cancelled …` (or `Restore cancelled …`) and exits with code 0. Scripts that delete or restore should always use `--yes`.
+- Without a terminal, when stdin or stdout is redirected as in CI or a pipe, a command without `--yes` refuses before asking: it changes nothing and exits with code 1. Piped input such as `echo y` does not answer the prompt, so scripts that delete or restore must use `--yes`.
+- Declining the prompt in a terminal changes nothing and exits with code 0.
 - `task relation delete` never asks for confirmation and does not accept `--yes`.
 
 ## Help

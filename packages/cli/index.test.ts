@@ -5,6 +5,7 @@ import { tmpdir, userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 import packageJson from "./package.json";
+import { runCliInTerminal } from "./testing";
 import { parseRoutes } from "./src/routes/router";
 import { routes } from "./src/routes/routes";
 import type { Activity } from "@zinn-dev/core";
@@ -129,7 +130,8 @@ test("names and titles share trimming and reject leading or trailing control cha
   });
 });
 
-function runZinnWithConfirmation(args: Array<string>, testDir = TEST_DIR) {
+// ? Pipes "y" into the CLI, as a script would; it does not answer a confirmation.
+function runZinnWithPipedYes(args: Array<string>, testDir = TEST_DIR) {
   const proc = Bun.spawnSync(
     ["/bin/sh", "-c", 'printf "y\\n" | exec bun "$@"', "zinn-confirm", CLI_PATH, ...args],
     { env: { ...process.env, ZINN_DIR: testDir } },
@@ -157,33 +159,13 @@ async function runZinnAsync(args: Array<string>, testDir: string) {
 }
 
 // ? Runs the CLI in a pseudo-terminal, so stdout is a TTY and text output is colored.
-// ? stdout and stderr arrive merged, and the terminal's "\r\n" line endings are normalized.
-async function runZinnInTerminal(
+function runZinnInTerminal(
   args: Array<string>,
   testDir = TEST_DIR,
   additionalEnv: Record<string, string> = {},
-  columns = 200,
+  columns?: number,
 ) {
-  const decoder = new TextDecoder();
-  const terminalClosed = Promise.withResolvers<void>();
-  let output = "";
-
-  const proc = Bun.spawn(["bun", CLI_PATH, ...args], {
-    env: { ...process.env, ...additionalEnv, ZINN_DIR: testDir },
-    terminal: {
-      cols: columns,
-      data: (_terminal, data) => {
-        output += decoder.decode(data, { stream: true });
-      },
-      exit: () => terminalClosed.resolve(),
-    },
-  });
-
-  const code = await proc.exited;
-  await terminalClosed.promise;
-  proc.terminal!.close();
-
-  return { output: output.replaceAll("\r\n", "\n"), code };
+  return runCliInTerminal(args, { env: { ...process.env, ...additionalEnv, ZINN_DIR: testDir }, columns });
 }
 
 function withTestDb<T>(testDir: string, inspect: (db: Database) => T) {
@@ -1070,7 +1052,7 @@ test("project delete accepts a non-standardized key and removes its columns and 
     runZinn(["task", "create", "KEEP", "--title", "Kept task"], testDir);
 
     expect(
-      runZinnWithConfirmation(["project", "delete", "gone"], testDir).code,
+      runZinn(["project", "delete", "gone", "--yes"], testDir).code,
     ).toBe(0);
 
     withTestDb(testDir, (db) => {
@@ -1090,15 +1072,18 @@ test("project delete accepts a non-standardized key and removes its columns and 
   });
 });
 
-test("project delete keeps the project when confirmation is declined", () => {
-  withIsolatedZinnDir((testDir) => {
+test("project delete keeps the project when confirmation is declined", async () => {
+  await withIsolatedZinnDirAsync(async (testDir) => {
     runZinn(["project", "create", "KEEP", "--name", "Kept"], testDir);
     runZinn(["task", "create", "KEEP", "--title", "Kept task"], testDir);
 
-    const result = runZinn(["project", "delete", "keep"], testDir);
+    const result = await runCliInTerminal(["project", "delete", "keep"], {
+      env: { ...process.env, ZINN_DIR: testDir, NO_COLOR: "1" },
+      input: "n\n",
+    });
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain("Deletion cancelled for KEEP | Kept");
+    expect(result.output).toContain("Deletion cancelled for KEEP | Kept");
     expect(runZinn(["project", "list"], testDir).stdout).toContain("KEEP | Kept");
     expect(runZinn(["task", "list", "KEEP"], testDir).stdout).toContain("Kept task");
   });
@@ -1142,7 +1127,7 @@ test("project list does not retain a deleted project", () => {
     runZinn(["project", "create", "KEEP", "--name", "Keep"], testDir);
     runZinn(["project", "create", "REMOVE", "--name", "Remove"], testDir);
     expect(
-      runZinnWithConfirmation(["project", "delete", "REMOVE"], testDir).code,
+      runZinn(["project", "delete", "REMOVE", "--yes"], testDir).code,
     ).toBe(0);
 
     const result = runZinn(["project", "list"], testDir);
@@ -2219,10 +2204,7 @@ test("task comments can be created, listed, edited, viewed, and deleted", () => 
       "NOTE-1#2",
     ]);
 
-    const deleted = runZinnWithConfirmation(
-      ["task", "comment", "delete", "NOTE-1#2"],
-      testDir,
-    );
+    const deleted = runZinn(["task", "comment", "delete", "NOTE-1#2", "--yes"], testDir);
     expect(deleted.code).toBe(0);
     expect(deleted.stdout).toContain("Deleted NOTE-1#2");
 
@@ -2644,8 +2626,8 @@ test("task move prints the same row for one task and for several, as task list s
   });
 });
 
-test("task delete prints the task row after Deleted, or after Deletion cancelled for when declined", () => {
-  withIsolatedZinnDir((testDir) => {
+test("task delete prints the task row after Deleted, or after Deletion cancelled for when declined", async () => {
+  await withIsolatedZinnDirAsync(async (testDir) => {
     runZinn(["label", "create", "urgent"], testDir);
     runZinn(["project", "create", "ROW"], testDir);
     runZinn(
@@ -2654,10 +2636,12 @@ test("task delete prints the task row after Deleted, or after Deletion cancelled
     );
     const row = "ROW-1 | Backlog | H | one | urgent\n";
 
-    // ? runZinn gives no stdin, so without --yes the prompt is declined.
-    const cancelled = runZinn(["task", "delete", "ROW-1"], testDir);
+    const cancelled = await runCliInTerminal(["task", "delete", "ROW-1"], {
+      env: { ...process.env, ZINN_DIR: testDir, NO_COLOR: "1" },
+      input: "n\n",
+    });
     expect(cancelled.code).toBe(0);
-    expect(cancelled.stdout).toEndWith(`Deletion cancelled for ${row}`);
+    expect(cancelled.output).toEndWith(`Deletion cancelled for ${row}`);
     expect(runZinn(["task", "list", "ROW"], testDir).stdout).toBe(row);
 
     const deleted = runZinn(["task", "delete", "ROW-1", "--yes"], testDir);
@@ -3212,18 +3196,19 @@ test("task delete removes the task but not its project", () => {
     runZinn(["project", "create", "KEEP", "--name", "Keep"], testDir);
     runZinn(["task", "create", "KEEP", "--title", "doomed task"], testDir);
 
-    expect(runZinnWithConfirmation(["task", "delete", "KEEP-1"], testDir).code).toBe(0);
+    expect(runZinn(["task", "delete", "KEEP-1", "--yes"], testDir).code).toBe(0);
     expect(runZinn(["task", "list", "KEEP"], testDir).stdout).not.toContain("doomed task");
     expect(runZinn(["project", "list"], testDir).stdout).toContain("KEEP");
   });
 });
 
-test("task delete keeps the task when confirmation is declined", () => {
-  withIsolatedZinnDir((testDir) => {
+test("task delete keeps the task when confirmation is declined", async () => {
+  await withIsolatedZinnDirAsync(async (testDir) => {
     runZinn(["project", "create", "KEEP", "--name", "Keep"], testDir);
     runZinn(["task", "create", "KEEP", "--title", "surviving task"], testDir);
 
-    expect(runZinn(["task", "delete", "KEEP-1"], testDir).code).toBe(0);
+    const declined = await runCliInTerminal(["task", "delete", "KEEP-1"], { env: { ...process.env, ZINN_DIR: testDir }, input: "n\n" });
+    expect(declined.code).toBe(0);
     expect(runZinn(["task", "list", "KEEP"], testDir).stdout).toContain("surviving task");
   });
 });
@@ -3314,14 +3299,14 @@ test("project and column mutations print the affected entity", () => {
     expect(
       runZinn(["project", "column", "create", "life", "Waiting"], testDir).stdout,
     ).toBe("LIFE | Waiting\n");
-    expect(runZinnWithConfirmation(["project", "delete", "life"], testDir).stdout).toContain(
+    expect(runZinn(["project", "delete", "life", "--yes"], testDir).stdout).toContain(
       "Deleted LIFE | Responsive\n",
     );
   });
 });
 
-test("task mutations print the resulting entity", () => {
-  withIsolatedZinnDir((testDir) => {
+test("task mutations print the resulting entity", async () => {
+  await withIsolatedZinnDirAsync(async (testDir) => {
     runZinn(["project", "create", "LIFE", "--name", "Responsive"], testDir);
 
     expect(runZinn(["task", "create", "LIFE", "--title", "First", "--description", "Description"], testDir).stdout).toBe(
@@ -3344,12 +3329,14 @@ test("task mutations print the resulting entity", () => {
     expect(runZinn(["task", "unarchive", "LIFE-1"], testDir).stdout).toBe(
       "LIFE-1 | Active | TODO | - | Updated\n",
     );
-    expect(runZinnWithConfirmation(["task", "delete", "LIFE-1"], testDir).stdout).toContain(
+    expect(runZinn(["task", "delete", "LIFE-1", "--yes"], testDir).stdout).toContain(
       "Deleted LIFE-1 | TODO | - | Updated",
     );
-    expect(runZinn(["task", "delete", "LIFE-2"], testDir).stdout).toContain(
-      "Deletion cancelled for LIFE-2 | TODO | - | Second",
-    );
+    const declined = await runCliInTerminal(["task", "delete", "LIFE-2"], {
+      env: { ...process.env, ZINN_DIR: testDir, NO_COLOR: "1" },
+      input: "n\n",
+    });
+    expect(declined.output).toContain("Deletion cancelled for LIFE-2 | TODO | - | Second");
   });
 });
 
@@ -3628,11 +3615,104 @@ test("--json reports errors as JSON on stderr and leaves stdout empty", () => {
   expect(parsed.error.help).toContain("Usage: zinn project create");
 });
 
+// ? A board with something for each confirming command to change. Returns a backup taken before "Later" was added.
+function seedConfirmationBoard(dir: string) {
+  runZinn(["project", "create", "CONF"], dir);
+  runZinn(["label", "create", "bug"], dir);
+  runZinn(["task", "create", "CONF", "--title", "Kept", "--label", "bug"], dir);
+  runZinn(["task", "comment", "create", "CONF-1", "--text", "Note"], dir);
+  const backupPath = (JSON.parse(runZinn(["backup", "--json"], dir).stdout) as { path: string }).path;
+  runZinn(["task", "create", "CONF", "--title", "Later"], dir);
+
+  return backupPath;
+}
+
+function confirmationSnapshot(dir: string) {
+  const tables = withTestDb(dir, (db) =>
+    ["project", "task", "comment", "label", "task_label", "activity"].map((table) =>
+      db.query(`SELECT * FROM ${table}`).all(),
+    ),
+  );
+
+  return { tables, backups: backupFiles(dir) };
+}
+
+const runJson = (dir: string, ...args: Array<string>) => JSON.parse(runZinn([...args, "--json"], dir).stdout);
+
+// ? ZINN-143: every command that asks for confirmation, run against seedConfirmationBoard,
+// ? with a check that its change happened.
+const CONFIRMING_COMMANDS = [
+  {
+    argsFor: (_backupPath: string) => ["project", "delete", "CONF"],
+    isDone: (dir: string) => runJson(dir, "project", "list").length === 0,
+  },
+  {
+    argsFor: (_backupPath: string) => ["task", "delete", "CONF-1"],
+    isDone: (dir: string) => runZinn(["task", "view", "CONF-1"], dir).code === 1,
+  },
+  {
+    argsFor: (_backupPath: string) => ["task", "comment", "delete", "CONF-1#1"],
+    isDone: (dir: string) => runJson(dir, "task", "view", "CONF-1").comments.length === 0,
+  },
+  {
+    argsFor: (_backupPath: string) => ["label", "delete", "bug"],
+    isDone: (dir: string) => runJson(dir, "label", "list").length === 0,
+  },
+  {
+    argsFor: (backupPath: string) => ["restore", backupPath],
+    isDone: (dir: string) => runJson(dir, "task", "list", "CONF").length === 1,
+  },
+];
+
+test("confirming commands without --yes refuse when not in a terminal, and --yes still performs them", () => {
+  for (const { argsFor, isDone } of CONFIRMING_COMMANDS) {
+    withIsolatedZinnDir((dir) => {
+      const args = argsFor(seedConfirmationBoard(dir));
+      const before = confirmationSnapshot(dir);
+
+      for (const refused of [runZinn(args, dir), runZinnWithPipedYes(args, dir)]) {
+        expect(refused.code).toBe(1);
+        expect(refused.stdout).toBe("");
+        expect(refused.stderr).toContain("--yes");
+        expect(confirmationSnapshot(dir)).toEqual(before);
+      }
+
+      const jsonRefused = runZinn([...args, "--json"], dir);
+      expect(jsonRefused.code).toBe(1);
+      expect(jsonRefused.stdout).toBe("");
+      expect(JSON.parse(jsonRefused.stderr).error.message).toContain("--yes");
+      expect(confirmationSnapshot(dir)).toEqual(before);
+
+      const confirmed = runZinn([...args, "--yes"], dir);
+      expect(confirmed.code).toBe(0);
+      expect(isDone(dir)).toBe(true);
+    });
+  }
+});
+
+test("confirming commands in a terminal act on y and cancel on n with exit code 0", async () => {
+  for (const { argsFor, isDone } of CONFIRMING_COMMANDS) {
+    await withIsolatedZinnDirAsync(async (dir) => {
+      const args = argsFor(seedConfirmationBoard(dir));
+      const env = { ...process.env, ZINN_DIR: dir };
+      const before = confirmationSnapshot(dir);
+
+      const declined = await runCliInTerminal(args, { env, input: "n\n" });
+      expect(declined.code).toBe(0);
+      expect(confirmationSnapshot(dir)).toEqual(before);
+
+      const accepted = await runCliInTerminal(args, { env, input: "y\n" });
+      expect(accepted.code).toBe(0);
+      expect(isDone(dir)).toBe(true);
+    });
+  }
+});
+
 test("--json refuses commands that ask for confirmation without --yes, deleting nothing", () => {
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "WEB"], testDir);
 
-    const result = runZinnWithConfirmation(["project", "delete", "WEB", "--json"], testDir);
+    const result = runZinnWithPipedYes(["project", "delete", "WEB", "--json"], testDir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
@@ -3648,7 +3728,6 @@ test("--yes deletes without asking for confirmation", () => {
     runZinn(["project", "create", "WEB"], testDir);
     runZinn(["task", "create", "WEB", "--title", "Ship it"], testDir);
 
-    // ? runZinn gives no stdin, so without --yes the prompt would be declined.
     const result = runZinn(["task", "delete", "WEB-1", "--yes"], testDir);
 
     expect(result.code).toBe(0);
@@ -3959,7 +4038,7 @@ test("global label workflows support repeated create/edit flags and preserve tas
     expect(run("task", "label", "remove", "APP-1", "AUTH", "dEfEcT").stdout).toBe(
       "APP-1 | Backlog | - | Changed | needs review, soon\n",
     );
-    expect(runZinnWithConfirmation(["label", "delete", "NEEDS REVIEW, SOON"], dir).code).toBe(0);
+    expect(runZinn(["label", "delete", "NEEDS REVIEW, SOON", "--yes"], dir).code).toBe(0);
     expect(run("task", "view", "APP-1").stdout).toBe("APP-1 | Backlog | - | Changed\n");
     expect(run("label", "list").stdout).toContain("auth");
     for (const args of [
@@ -4409,8 +4488,8 @@ test("task text output names labels without color words when color is off, and J
   });
 });
 
-test("label deletion confirms global removal and cancellation preserves attachments and timestamps", () => {
-  withIsolatedZinnDir((dir) => {
+test("label deletion confirms global removal and cancellation preserves attachments and timestamps", async () => {
+  await withIsolatedZinnDirAsync(async (dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
     run("project", "create", "APP");
     run("label", "create", "bug");
@@ -4423,12 +4502,12 @@ test("label deletion confirms global removal and cancellation preserves attachme
       tasks: db.query("SELECT * FROM task ORDER BY id").all(),
     }));
     const before = snapshot();
-    const cancelled = run("label", "delete", "bug");
+    const cancelled = await runCliInTerminal(["label", "delete", "bug"], { env: { ...process.env, ZINN_DIR: dir }, input: "n\n" });
     expect(cancelled.code).toBe(0);
-    expect(cancelled.stdout).toContain('delete label "bug" and remove it from all tasks?');
-    expect(cancelled.stdout).toContain('Deletion cancelled for label "bug"');
+    expect(cancelled.output).toContain('delete label "bug" and remove it from all tasks?');
+    expect(cancelled.output).toContain('Deletion cancelled for label "bug"');
     expect(snapshot()).toEqual(before);
-    const deleted = runZinnWithConfirmation(["label", "delete", "bug"], dir);
+    const deleted = runZinn(["label", "delete", "bug", "--yes"], dir);
     expect(deleted.code).toBe(0);
     expect(deleted.stdout).toContain('Deleted label "bug"');
     expect(run("label", "list").stdout).toContain("keep");
@@ -4749,11 +4828,10 @@ test("restore replaces the board after confirmation and saves the replaced board
     const path = backupWithTask(dir, "Kept");
     runZinn(["task", "create", "RST", "--title", "Later"], dir);
 
-    const result = runZinnWithConfirmation(["restore", path], dir);
+    const result = runZinn(["restore", path, "--yes"], dir);
 
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toContain(`Replace the database at ${join(dir, "data", "zinn.sqlite")} with the backup ${path}?`);
     expect(result.stdout).toContain(`Restored the board from ${path} at schema version 1. The board it replaced was saved to ${join(dir, "backups")}/`);
     expect(taskTitles(dir)).toEqual([{ title: "Kept" }]);
 
@@ -4768,17 +4846,17 @@ test("restore replaces the board after confirmation and saves the replaced board
   });
 });
 
-test("restore keeps the board when confirmation is declined", () => {
-  withIsolatedZinnDir((dir) => {
+test("restore keeps the board when confirmation is declined", async () => {
+  await withIsolatedZinnDirAsync(async (dir) => {
     const path = backupWithTask(dir, "Kept");
     runZinn(["task", "create", "RST", "--title", "Later"], dir);
     const backupsBefore = backupFiles(dir);
 
-    // ? runZinn gives no stdin, so the prompt is declined.
-    const result = runZinn(["restore", path], dir);
+    const result = await runCliInTerminal(["restore", path], { env: { ...process.env, ZINN_DIR: dir }, input: "n\n" });
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain(`Restore cancelled. The database at ${join(dir, "data", "zinn.sqlite")} is unchanged`);
+    expect(result.output).toContain(`Replace the database at ${join(dir, "data", "zinn.sqlite")} with the backup ${path}?`);
+    expect(result.output).toContain(`Restore cancelled. The database at ${join(dir, "data", "zinn.sqlite")} is unchanged`);
     expect(taskTitles(dir)).toEqual([{ title: "Kept" }, { title: "Later" }]);
     expect(backupFiles(dir)).toEqual(backupsBefore);
   });
@@ -5142,7 +5220,7 @@ test("task delete on a read-only database refuses before asking for confirmation
   withIsolatedZinnDir((dir) => {
     createBoard(dir, 9);
     const before = databaseSnapshot(dir);
-    const result = runZinnWithConfirmation(["task", "delete", "MIG-1"], dir);
+    const result = runZinnWithPipedYes(["task", "delete", "MIG-1"], dir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");

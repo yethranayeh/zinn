@@ -68,6 +68,11 @@ export function askConfirmation(
     quit(jsonRefusal);
   }
 
+  // Refuses rather than treating an unanswered prompt as declined, so scripts do not see a false success
+  if (!canPrompt()) {
+    quit("Commands that ask for confirmation need --yes when not running in a terminal");
+  }
+
   return confirm(message);
 }
 
