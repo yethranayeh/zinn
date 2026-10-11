@@ -18,8 +18,8 @@
  *   --keep                         keep the run directory even when everything passes
  *
  * Every child process gets an explicit ZINN_DIR inside the run directory; the harness refuses to run
- *  anywhere near ~/.zinn or ~/.zinn-backups. Core operations need Bun (core imports randomUUIDv7
- *  from "bun"), so only the wrapper scenarios run under Node.
+ *  anywhere near ~/.zinn or ~/.zinn-backups. Core operations need Bun (Node cannot resolve
+ *  core's extensionless source imports), so only the wrapper scenarios run under Node.
  */
 import type { Options, ScenarioResult } from "./harness.ts";
 

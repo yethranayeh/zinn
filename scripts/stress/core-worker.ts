@@ -1,6 +1,6 @@
 /**
  * A child process that runs real core operations against $ZINN_DIR until it is killed.
- * Bun only: core imports randomUUIDv7 from "bun".
+ * Bun only: Node cannot resolve core's extensionless source imports.
  *
  * Modes:
  *   crash    one writer runs a seeded mix of operations and records each in an acknowledgment log
