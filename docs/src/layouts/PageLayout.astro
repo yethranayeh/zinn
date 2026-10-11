@@ -3,6 +3,7 @@ import type { ComponentProps } from "astro/types";
 import BaseLayout from "./BaseLayout.astro";
 import Branding from "../components/Branding.astro";
 import FooterLinks from "../components/FooterLinks.astro";
+import Separator from "../components/Separator.astro";
 
 type Props = ComponentProps<typeof BaseLayout> & {
 	linkHome?: boolean;
@@ -18,8 +19,19 @@ const { linkHome = true, ...metadata } = Astro.props;
 			<slot />
 		</div>
 		<footer class:list={["mt-auto", !metadata.noindex && "flex flex-wrap items-center justify-between gap-5"]}>
-			<span class='font-mono text-xs tracking-widest'>zinn.sh</span>
-			{!metadata.noindex && <FooterLinks />}
+			<div class='flex items-center gap-5'>
+				<span class='shrink-0 font-mono text-xs tracking-widest'>zinn.sh</span>
+				{
+					!metadata.noindex && (
+						<>
+							<>
+								<Separator orientation='vertical' />
+								<FooterLinks />
+							</>
+						</>
+					)
+				}
+			</div>
 		</footer>
 	</main>
 </BaseLayout>
