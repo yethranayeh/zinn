@@ -133,7 +133,7 @@ function refuseOutsideTemporaryInTestRun(
 /**
  * Finds the store's folder from the given inputs: `ZINN_DIR`, then storage.directory in the per-codebase
  *  settings file, then in the global one, then the default folder.
- * The settings files are read even when `ZINN_DIR` is set, so an invalid one fails every command.
+ * The selected settings files are validated before the store is resolved.
  */
 export function resolveStorage(inputs: StorageInputs): Storage {
   const { env, home } = inputs;

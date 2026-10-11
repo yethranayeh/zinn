@@ -421,11 +421,17 @@ test.each([
     const settingsPath = join(repository, "zinn.local.json");
     mkdirSync(join(repository, ".git"), { recursive: true });
     writeFileSync(settingsPath, content);
-    const realSettingsPath = realpathSync(settingsPath);
     const before = listTree(repository);
 
-    // ? An invalid file fails the command under ZINN_DIR too.
     for (const zinnDir of [undefined, join(home, "isolated")]) {
+      const selectedSettingsPath = zinnDir === undefined
+        ? realpathSync(settingsPath)
+        : join(zinnDir, "settings.json");
+      if (zinnDir !== undefined) {
+        mkdirSync(zinnDir);
+        writeFileSync(selectedSettingsPath, content);
+      }
+      const selectedStoreBefore = zinnDir === undefined ? [] : listTree(zinnDir);
       const result = Bun.spawnSync([process.execPath, "--eval", DATABASE_ENTRY_ATTEMPTS], {
         env: childEnvironment({ home, zinnDir }),
         cwd: repository,
@@ -436,12 +442,16 @@ test.each([
       const errors = JSON.parse(result.stdout.toString());
       expect(Object.keys(errors)).toHaveLength(6);
       for (const [attempt, error] of Object.entries(errors)) {
-        expect({ attempt, error }).toEqual({ attempt, error: expect.stringContaining(`Cannot use settings file ${realSettingsPath}`) });
+        expect({ attempt, error }).toEqual({ attempt, error: expect.stringContaining(`Cannot use settings file ${selectedSettingsPath}`) });
         expect(error).toContain(message);
       }
       // ? Bun keeps its own cache in the HOME, so only the store folders and the repository are checked.
       expect(existsSync(join(home, ".zinn"))).toBe(false);
-      expect(existsSync(join(home, "isolated"))).toBe(false);
+      if (zinnDir === undefined) {
+        expect(existsSync(join(home, "isolated"))).toBe(false);
+      } else {
+        expect(listTree(zinnDir)).toEqual(selectedStoreBefore);
+      }
       expect(listTree(repository)).toEqual(before);
     }
   });

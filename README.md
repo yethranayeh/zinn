@@ -48,7 +48,7 @@ Projects share the local database at `~/.zinn/data/zinn.sqlite`. Set `ZINN_DIR` 
 ZINN_DIR=./.zinn-local zinn project list
 ```
 
-Use the same value on later commands to access that database. Relative paths are relative to the current folder.
+Use the same value on later commands to access that database. Relative paths are relative to the current folder. `ZINN_DIR` selects the database, backups, and settings together. The `settings.json` inside that directory supplies settings for the invocation.
 
 Optional `zinn.local.json` and global `settings.json` files can choose the directory too. Precedence is `ZINN_DIR`, local settings, global settings, then `~/.zinn`. See [settings files](packages/cli/README.md#settings-files) for their format and path rules.
 

@@ -19,12 +19,14 @@ Set `ZINN_DIR` to use another Zinn directory and keep using the same value for c
 
 ## Settings files
 
-Zinn reads two optional settings files:
+With `ZINN_DIR` set, Zinn uses `data/zinn.sqlite`, `backups/`, and `settings.json` inside that directory. That `settings.json` is the sole configuration file for the invocation, which means its `defaultProject` applies to that store. `ZINN_DIR` also takes precedence over `storage.directory` in that file.
 
-- `settings.json` in the Zinn directory (`~/.zinn`, or `ZINN_DIR` when it is set) holds the global settings.
+Without `ZINN_DIR`, Zinn reads two optional settings files:
+
+- `settings.json` in `~/.zinn` holds the global settings.
 - `zinn.local.json` holds the settings for one codebase. Zinn uses the nearest one, from the current folder up to the Git root. Outside a Git repository it checks only the current folder.
 
-`zinn.local.json` is personal, since it holds paths from one machine, and is not meant to be committed. Zinn reads it whether or not git ignores it. It is merged over the global file, field by field. A missing file is fine, and Zinn creates no settings file.
+`zinn.local.json` is personal, since it holds paths from one machine, and is not meant to be committed. Without `ZINN_DIR`, Zinn reads it whether or not git ignores it and merges it over the global file, field by field. A missing file is fine, and Zinn creates no settings file.
 
 The files are plain JSON, without comments:
 
@@ -38,7 +40,7 @@ The files are plain JSON, without comments:
 }
 ```
 
-`$schema` is optional and lets editors handle autocomplete and check the file, but Zinn itself ignores it. New settings are added to the same number; only a change that would make existing files invalid gets a new number. An unknown key, a value of the wrong type or invalid JSON stops every command with an error that names the file. Zinn _does not fall back to the defaults_.
+`$schema` is optional and lets editors handle autocomplete and check the file, but Zinn itself ignores it. New settings are added to the same number; only a change that would make existing files invalid gets a new number. An unknown key, a value of the wrong type or invalid JSON in a selected settings file stops every command with an error that names the file. Zinn _does not fall back to the defaults_.
 
 `storage.directory` names a Zinn directory with the same layout as `ZINN_DIR`: `data/zinn.sqlite` and `backups/`. The first of these that is set decides the directory: `ZINN_DIR`, `storage.directory` in `zinn.local.json`, `storage.directory` in the global `settings.json`, then `~/.zinn`. A relative path is relative to the folder of the file that sets it. A leading `~` or `~/` means your home folder.
 

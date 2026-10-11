@@ -247,14 +247,30 @@ test("~ and ~/ in storage.directory start at the given home, and any other value
   });
 });
 
-test("an invalid settings file fails resolution with the file's path, even when ZINN_DIR is set", () => {
+test("an invalid codebase settings file fails without ZINN_DIR and is ignored with it", () => {
   withRoot((root) => {
     const { home, repository, localFile } = layout(root);
     writeSettings(localFile, { storage: { directory: 42 } });
 
-    for (const env of [{}, { ZINN_DIR: join(root, "env-store") }]) {
-      expect(() => resolveStorage({ cwd: repository, env, home })).toThrow(`Cannot use settings file ${localFile}`);
-    }
+    expect(() => resolveStorage({ cwd: repository, env: {}, home })).toThrow(`Cannot use settings file ${localFile}`);
+
+    const zinnDirectory = join(root, "env-store");
+    expect(resolveStorage({ cwd: repository, env: { ZINN_DIR: zinnDirectory }, home }).directory).toBe(zinnDirectory);
+    expect(existsSync(zinnDirectory)).toBe(false);
+  });
+});
+
+test("invalid settings in the ZINN_DIR directory fail with that file's path", () => {
+  withRoot((root) => {
+    const { home, repository } = layout(root);
+    const zinnDirectory = join(root, "env-store");
+    const settingsFile = join(zinnDirectory, "settings.json");
+    writeSettings(settingsFile, { defaultProject: 42 });
+
+    expect(() => resolveStorage({ cwd: repository, env: { ZINN_DIR: zinnDirectory }, home })).toThrow(
+      `Cannot use settings file ${settingsFile}`,
+    );
+    expect(existsSync(join(zinnDirectory, "data"))).toBe(false);
   });
 });
 

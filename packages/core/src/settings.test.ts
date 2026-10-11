@@ -69,6 +69,33 @@ test("ZINN_DIR moves the global file and the default folder is not read", () => 
   expect(resolved.merged).toEqual(storageSettings("moved"));
 });
 
+test("ZINN_DIR uses only its settings, even when codebase and home settings are invalid", () => {
+  const cwd = join(root, "project");
+  mkdirSync(join(cwd, ".git"), { recursive: true });
+  const localPath = join(cwd, "zinn.local.json");
+  const zinnDirectory = join(root, "isolated");
+  const settingsPath = join(zinnDirectory, "settings.json");
+  globalFile("invalid JSON");
+  writeJson(localPath, { defaultProject: "LOCAL" });
+  writeJson(settingsPath, { defaultProject: "SELECTED" });
+
+  const inputs = { cwd, env: { ZINN_DIR: zinnDirectory }, home };
+  expect(resolveSettings(inputs)).toEqual({
+    global: { path: settingsPath, settings: { defaultProject: "SELECTED" } },
+    local: null,
+    merged: { defaultProject: "SELECTED" },
+  });
+
+  writeJson(localPath, "invalid JSON");
+  expect(resolveSettings(inputs).merged).toEqual({ defaultProject: "SELECTED" });
+
+  rmSync(settingsPath);
+  expect(resolveSettings(inputs)).toEqual({ global: null, local: null, merged: {} });
+
+  writeJson(settingsPath, { defaultProject: 42 });
+  expect(() => resolveSettings(inputs)).toThrow(settingsPath);
+});
+
 test("zinn.local.json in the working folder is found", () => {
   const cwd = join(root, "project");
   mkdirSync(join(cwd, ".git"), { recursive: true });

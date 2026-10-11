@@ -46,9 +46,15 @@ function runZinn(args: Array<string>, zinnDirectory: string) {
   return { stdout: proc.stdout.toString(), stderr: proc.stderr.toString(), code: proc.exitCode };
 }
 
-function runZinnFrom(args: Array<string>, directory: string, cwd: string) {
+function runZinnFrom(
+  args: Array<string>,
+  directory: string,
+  cwd: string,
+  additionalEnv: Record<string, string> = {},
+) {
   const env: Record<string, string | undefined> = { ...process.env, HOME: join(directory, "home") };
   delete env.ZINN_DIR;
+  Object.assign(env, additionalEnv);
   const cliPath = join(import.meta.dir, "..", "index.ts");
   const proc = Bun.spawnSync(["bun", cliPath, ...args], { cwd, env });
 
@@ -91,8 +97,7 @@ function writeGlobalSettings(directory: string, settings: Record<string, unknown
   writeFileSync(globalSettingsPath, JSON.stringify({ storage: { directory: join(directory, "store") }, ...settings }));
 }
 
-function seedProjects(directory: string) {
-  const store = join(directory, "store");
+function seedProjects(directory: string, store = join(directory, "store")) {
   expect(runZinn(["project", "create", "DEF", "--name", "Default"], store).code).toBe(0);
   expect(runZinn(["project", "create", "ALT", "--name", "Alternate"], store).code).toBe(0);
   expect(runZinn(["task", "create", "DEF", "--title", "needle default"], store).code).toBe(0);
@@ -100,6 +105,79 @@ function seedProjects(directory: string) {
   expect(runZinn(["project", "column", "create", "DEF", "Only DEF"], store).code).toBe(0);
   expect(runZinn(["project", "column", "create", "ALT", "Only ALT"], store).code).toBe(0);
 }
+
+test("ZINN_DIR selects an empty or populated store without applying the repository default", () => {
+  withTestDirectory((directory) => {
+    const { repository } = makeRepository(directory, { defaultProject: "DEF" });
+    const emptyStore = join(directory, "empty-store");
+    const emptyRun = (...args: Array<string>) => runZinnFrom(args, directory, repository, { ZINN_DIR: emptyStore });
+
+    for (const args of [["task", "list"], ["task", "search", "needle"]]) {
+      const result = emptyRun(...args, "--json");
+      expect(result.code).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual([]);
+    }
+
+    const populatedStore = join(directory, "populated-store");
+    seedProjects(directory, populatedStore);
+    const populatedRun = (...args: Array<string>) => runZinnFrom(args, directory, repository, { ZINN_DIR: populatedStore });
+    expect(JSON.parse(populatedRun("task", "list", "--json").stdout).map((task: { key: string }) => task.key).sort()).toEqual([
+      "ALT-1",
+      "DEF-1",
+    ]);
+    expect(JSON.parse(populatedRun("task", "search", "needle", "--json").stdout).map((task: { key: string }) => task.key).sort()).toEqual([
+      "ALT-1",
+      "DEF-1",
+    ]);
+  });
+});
+
+test("ZINN_DIR uses its own default and reports unknown defaults from its settings file", () => {
+  withTestDirectory((directory) => {
+    const { repository } = makeRepository(directory, { defaultProject: "DEF" });
+    const store = join(directory, "store");
+    mkdirSync(store, { recursive: true });
+    writeFileSync(join(store, "settings.json"), JSON.stringify({ defaultProject: "ALT" }));
+    seedProjects(directory, store);
+    const invoke = (...args: Array<string>) => runZinnFrom(args, directory, repository, { ZINN_DIR: store });
+
+    expect(JSON.parse(invoke("task", "list", "--json").stdout).map((task: { key: string }) => task.key)).toEqual(["ALT-1"]);
+    expect(JSON.parse(invoke("task", "search", "needle", "--json").stdout).map((task: { key: string }) => task.key)).toEqual(["ALT-1"]);
+
+    writeFileSync(join(store, "settings.json"), JSON.stringify({ defaultProject: "NOPE" }));
+    const unknown = invoke("task", "list", "--json");
+    expect(unknown.code).toBe(1);
+    expect(unknown.stderr).toContain("NOPE");
+    expect(unknown.stderr).toContain(join(store, "settings.json"));
+
+    expect(JSON.parse(invoke("task", "list", "ALT", "--json").stdout).map((task: { key: string }) => task.key)).toEqual(["ALT-1"]);
+    expect(JSON.parse(invoke("task", "list", "--all-projects", "--json").stdout)).toHaveLength(2);
+    expect(JSON.parse(invoke("task", "search", " alt-1 ", "--json").stdout).map((task: { key: string }) => task.key)).toEqual(["ALT-1"]);
+  });
+});
+
+test("ZINN_DIR ignores malformed repository and home settings but validates its own settings", () => {
+  withTestDirectory((directory) => {
+    const { repository, localSettingsPath, globalSettingsPath } = makeRepository(directory);
+    const store = join(directory, "store");
+    writeFileSync(localSettingsPath, "{");
+    writeFileSync(globalSettingsPath, "{");
+    const invoke = (...args: Array<string>) => runZinnFrom(args, directory, repository, { ZINN_DIR: store });
+
+    const ignoredMalformedFiles = invoke("task", "list", "--json");
+    expect(ignoredMalformedFiles.code).toBe(0);
+    expect(JSON.parse(ignoredMalformedFiles.stdout)).toEqual([]);
+    expect(ignoredMalformedFiles.stderr).not.toContain(localSettingsPath);
+    expect(ignoredMalformedFiles.stderr).not.toContain(globalSettingsPath);
+
+    const selectedStoreSettingsPath = join(store, "settings.json");
+    writeFileSync(selectedStoreSettingsPath, JSON.stringify({ defaultProject: 42 }));
+    const invalidSelectedStoreSettings = invoke("task", "list", "--json");
+    expect(invalidSelectedStoreSettings.code).toBe(1);
+    expect(invalidSelectedStoreSettings.stderr).toContain(selectedStoreSettingsPath);
+    expect(invalidSelectedStoreSettings.stderr).toContain("defaultProject");
+  });
+});
 
 async function expectDefaultCommands(directory: string, repository: string, expectedKey: string, otherKey: string) {
   const invoke = (...args: Array<string>) => runZinnFrom(args, directory, repository);

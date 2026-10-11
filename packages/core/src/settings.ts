@@ -27,7 +27,7 @@ export type SettingsInputs = {
 export type ResolvedSettings = {
   /** The global file, or null when it does not exist. */
   global: SettingsFile | null;
-  /** The nearest codebase file, or null when there is none. */
+  /** The nearest codebase file, or `null` when absent or `ZINN_DIR` selects the settings. */
   local: SettingsFile | null;
   /** The local file merged over the global file. */
   merged: Omit<Settings, "$schema">;
@@ -135,12 +135,13 @@ function mergeSettings(
 
 /**
  * Reads the global settings file and the nearest per-codebase file, and merges them.
+ * With `ZINN_DIR`, only that directory's **settings.json** is read.
  * It creates no file or folder. A file that exists but cannot be used throws.
  */
 export function resolveSettings({ cwd, env, home }: SettingsInputs): ResolvedSettings {
   const globalDirectory = env.ZINN_DIR ?? join(home, MAIN_FOLDER_NAME);
   const global = readSettingsFile(join(globalDirectory, GLOBAL_SETTINGS_FILE_NAME));
-  const local = readLocalSettings(cwd);
+  const local = env.ZINN_DIR === undefined ? readLocalSettings(cwd) : null;
 
   return { global, local, merged: mergeSettings(global?.settings, local?.settings) };
 }
