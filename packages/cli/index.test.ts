@@ -5937,7 +5937,7 @@ test("task view history keeps archived tasks separate from deleted lifetimes wit
     expect(viewed.status).toBe("Archived");
     expect(viewed.activity).toEqual(allLifetimes.filter((event) => event.entity_type === "task" && event.entity_id === currentTaskId));
     const text = run("task", "view", "APP-1", "--history");
-    expect(text).toContain(currentTaskId);
+    expect(text).not.toContain(currentTaskId);
     expect(text).not.toContain("Previous lifetime");
   });
 });
@@ -6002,8 +6002,10 @@ test("activity JSON preserves full matching records, parsed payloads and determi
     expect(text).toContain("order");
     expect(text).toContain("column");
     expect(text).toContain("Entity ID: 11111111-1234-7000-8000-123456abcdef");
-    expect(text).toContain("project OLD [recorded]");
-    expect(text).toContain("label Old label [recorded]");
+    const identityOf = (name: string) => text.split("\n").find((line) => line.includes(name))!.split(" · ")[0];
+    expect(identityOf("project OLD")).toContain("deleted");
+    expect(identityOf("label Old label")).toContain("deleted");
+    expect(identityOf("column 1111")).toContain("deleted");
   });
 });
 
@@ -6115,12 +6117,11 @@ test("activity recovers deleted and reused task lifetimes, retaining the origina
     const text = run("activity", "list", "--task", "APP-1").stdout;
     const projectDeletionRow = text.split("\n").find((line) => line.includes("project APP"))!;
     expect(projectDeletionRow.split(" · ")[0]).toContain("deleted");
-    expect(text).toContain(`Task identity: current; ${newTaskId}`);
-    expect(text).toContain(`Task identity: deleted; ${oldTaskId}`);
+    expect(text).toContain(newTaskId);
     expect(text).toContain(`removed APP-1 (${oldTaskId})`);
     const limited = run("activity", "list", "--task", "APP-1", "--limit", "1").stdout;
-    expect(limited.split("\n")[0]!.split(" · ")[0]).toContain("current");
-    expect(limited).toContain(`Task identity: current; ${newTaskId}`);
+    expect(limited.split("\n")[0]!.split(" · ")[0]).not.toContain("deleted");
+    expect(limited).toContain(newTaskId);
     expect(limited).not.toContain(oldTaskId);
     expect(JSON.parse(run("activity", "list", "--task", "APP-99", "--json").stdout)).toEqual([]);
     const viewedDeletion = run("activity", "view", deletion.id).stdout;
@@ -6129,7 +6130,7 @@ test("activity recovers deleted and reused task lifetimes, retaining the origina
   });
 });
 
-test("activity labels each task lifetime that shares a reused key with its own state", () => {
+test("activity marks deleted lifetimes of a reused key and keeps every task ID", () => {
   withIsolatedZinnDir((directory) => {
     const run = (...args: Array<string>) => runZinn(args, directory);
     const taskIds: Array<string> = [];
@@ -6146,16 +6147,18 @@ test("activity labels each task lifetime that shares a reused key with its own s
     const events: Array<Activity> = JSON.parse(run("activity", "list", "--task", "APP-1", "--json").stdout);
     expect(new Set(events.filter((event) => event.entity_type === "task").map((event) => event.entity_id))).toEqual(new Set(taskIds));
 
-    // A task row's identity line follows the row that carries its state; project rows list removed tasks instead.
+    // A task row's ID line follows the row; project rows list removed tasks instead.
     const lines = run("activity", "list", "--task", "APP-1").stdout.split("\n");
-    const idsLabelled = (state: string) =>
+    const taskRowIds = (isDeleted: boolean) =>
       new Set(lines.flatMap((line, index) => {
         const identity = line.split(" · ")[0]!;
-        const isTaskRowInState = identity.includes(state) && !identity.includes("project APP");
-        return isTaskRowInState ? taskIds.filter((id) => lines[index + 1]?.includes(id)) : [];
+        const isTaskRow = identity.includes("APP-1") && !identity.includes("project APP");
+        return isTaskRow && identity.includes("deleted") === isDeleted
+          ? taskIds.filter((id) => lines[index + 1]?.includes(id))
+          : [];
       }));
-    expect(idsLabelled("deleted")).toEqual(new Set([firstId, secondId]));
-    expect(idsLabelled("archived")).toEqual(new Set([archivedId]));
+    expect(taskRowIds(true)).toEqual(new Set([firstId, secondId]));
+    expect(taskRowIds(false)).toEqual(new Set([archivedId]));
   });
 });
 
@@ -6166,7 +6169,9 @@ test("activity finds explicit task deletions and deletion-only historical snapsh
     expect(runZinn(["task", "delete", "APP-1", "--yes"], directory).code).toBe(0);
     const explicit = runZinn(["activity", "list", "--task", "APP-1"], directory);
     expect(explicit.code).toBe(0);
-    expect(explicit.stdout).toContain("APP-1 · deleted");
+    const explicitRows = explicit.stdout.trimEnd().split("\n");
+    expect(explicitRows).toHaveLength(2);
+    expect(explicitRows.every((row) => row.split(" · ")[0]!.includes("deleted"))).toBe(true);
     expect(explicit.stdout).toContain("Delete me");
     const [snapshot] = seedRecordedActivity(directory, [{ id: "abcdef12-1234-7000-8000-123456abcdef", entity_type: "project", action: "delete",
       changes: { key: "GONE", tasks: [{ id: "old-task", key: "GONE-2", title: "Snapshot only" }] } }]);

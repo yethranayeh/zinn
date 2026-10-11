@@ -268,7 +268,7 @@ Example: zinn task search "refinement quota" MDR --limit 5`,
         }
 
         if (t.activity !== undefined) {
-          const history = formatActivityList(presentActivities(t.activity, { taskKey: t.key }));
+          const history = formatActivityList(presentActivities(t.activity));
           if (history.length > 0) {
             sections.push(formatSection("History", history, sectionOptions));
           }

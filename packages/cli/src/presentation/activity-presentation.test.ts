@@ -37,7 +37,8 @@ test("activity details keep explicit empty containers distinct from null changes
     entity_type: "task", entity_id: "019abcdf-1234-7000-8000-123456abcde2",
     action: "create", changes: { labels: [], column: {} },
   };
-  const entry = { event, displayId: event.id, removedTasks: [] };
+  const entry = { event, displayId: event.id, removedTasks: [],
+    navigation: { name: "APP-1", status: "current" as const } };
   const text = formatActivityList([entry], { showsDetails: true });
   expect(text).toContain("labels:\n[]");
   expect(text).toContain("column:\n{}");
@@ -45,7 +46,7 @@ test("activity details keep explicit empty containers distinct from null changes
     .toContain("Changes:\nnull");
 });
 
-test("task rows for a shared key carry their presented state and full ID", () => {
+test("task rows for a shared key mark only deleted tasks and keep every task ID", () => {
   const event: Activity = {
     id: "019abcdf-1234-7000-8000-123456abcde1", created_at: 1,
     actor_name: "Test", actor_email: null, actor_kind: "human",
@@ -63,7 +64,7 @@ test("task rows for a shared key carry their presented state and full ID", () =>
       navigation: { name: "APP-1", status: identity.status, distinguishesTaskId: true },
     };
     const text = formatActivityList([entry]);
-    expect(text.split("\n")[0]!.split(" · ")[0]).toContain(identity.status);
+    expect(text.split("\n")[0]!.split(" · ")[0]!.includes("deleted")).toBe(identity.status === "deleted");
     expect(text).toContain(identity.id);
   }
 });
@@ -97,7 +98,7 @@ test("long entity identities do not pad neighboring activity descriptions", () =
   const outlier = { ...short, displayId: "019abcda",
     event: { ...event, id: "019abcda-1234-7000-8000-123456abcde1", entity_type: "project" as const,
       action: "delete" as const, changes: { key: longKey, name: "Active ordering tail" } },
-    navigation: { name: longKey, status: "recorded" as const } };
+    navigation: { name: longKey, status: "deleted" as const } };
   const alone = formatActivityList([short]);
   const together = formatActivityList([short, outlier]);
   expect(together.split("\n")[0]).toBe(alone);

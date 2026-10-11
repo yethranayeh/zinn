@@ -15,15 +15,16 @@ import { formatSection } from "./section";
 import { formatLocalTime } from "./time";
 
 type NavigationIdentity = {
-  name: string;
-  status: "current" | "archived" | "deleted" | "recorded";
+  /** Undefined when the entity no longer exists and this event recorded no name for it. */
+  name?: string;
+  status: "current" | "archived" | "deleted";
   distinguishesTaskId?: boolean;
 };
 
 export type PresentedActivity = {
   event: Activity;
   displayId: string;
-  navigation?: NavigationIdentity;
+  navigation: NavigationIdentity;
   removedTasks: Array<ActivityTaskIdentity>;
 };
 
@@ -230,12 +231,16 @@ export function presentActivities(
     }
     const isSnapshot = event.action === "create" || event.action === "delete";
     const recordedName = event.changes?.key ?? event.changes?.name;
-    const isProjectDeletion = event.entity_type === "project" && event.action === "delete";
 
-    if (navigation === undefined && isSnapshot && typeof recordedName === "string") {
-      navigation = { name: recordedName, status: isProjectDeletion ? "deleted" : "recorded" };
+    // Every existing entity was found above, so it means that a missing one has been *deleted*.
+    if (navigation === undefined) {
+      navigation = {
+        name: isSnapshot && typeof recordedName === "string" ? recordedName : undefined,
+        status: "deleted",
+      };
     }
 
+    const isProjectDeletion = event.entity_type === "project" && event.action === "delete";
     const removedTaskIds =
       isProjectDeletion && Array.isArray(event.changes?.tasks)
         ? new Set(event.changes.tasks.filter(isRecord).map((snapshot) => snapshot.id))
@@ -255,12 +260,13 @@ export function presentActivities(
 
 function formatNavigation(entry: PresentedActivity, options: { showsFullNames?: boolean } = {}) {
   const { event, navigation } = entry;
-  if (navigation === undefined) {
-    return `${event.entity_type} ${event.entity_id}`;
-  }
-
   const identity = navigation.distinguishesTaskId ? `; ${event.entity_id}` : "";
-  const name = options.showsFullNames ? navigation.name : formatDescriptionPreview(navigation.name);
+  const name =
+    navigation.name === undefined
+      ? event.entity_id
+      : options.showsFullNames
+        ? navigation.name
+        : formatDescriptionPreview(navigation.name);
   return `${event.entity_type} ${name} [${navigation.status}${identity}]`;
 }
 
@@ -311,7 +317,7 @@ function formatChangeSummary(
             options.omitsIdentity &&
             isSnapshot &&
             (field === "key" || field === "name") &&
-            value === entry.navigation?.name;
+            value === entry.navigation.name;
           if (repeatsIdentity) {
             return null;
           }
@@ -361,40 +367,32 @@ function formatChangeSummary(
 
 function formatActivityContent(entry: PresentedActivity) {
   const { event, navigation } = entry;
-  const name = navigation?.name ?? event.entity_id;
+  const name = navigation.name ?? event.entity_id;
   const shortName = formatDescriptionPreview(name, { maxLength: ENTITY_PREVIEW_LENGTH });
   const entityType =
-    event.entity_type === "task" && navigation !== undefined ? "" : `${event.entity_type} `;
+    event.entity_type === "task" && navigation.name !== undefined ? "" : `${event.entity_type} `;
   const isMutableCurrentName =
-    navigation?.status === "current" &&
+    navigation.status === "current" &&
     (event.entity_type === "label" || event.entity_type === "column");
-  // Task states are labelled below, only when a key is shared.
-  const isDeletedNonTask = navigation?.status === "deleted" && event.entity_type !== "task";
-  const provenance = isDeletedNonTask
-    ? ` [deleted ${event.entity_type}]`
-    : navigation?.status === "recorded"
-      ? " [recorded]"
-      : isMutableCurrentName
-        ? " [current name]"
-        : "";
-  const taskIdentity = navigation?.distinguishesTaskId ? ` [${navigation.status} task]` : "";
+  const marker =
+    navigation.status === "deleted" ? " [deleted]" : isMutableCurrentName ? " [current name]" : "";
   const action = ACTION_LABELS[event.action] ?? event.action;
   const summary = formatChangeSummary(entry, { showsRemovedTasks: false, omitsIdentity: true });
   const lines = [
-    `${entityType}${shortName}${provenance}${taskIdentity} · ${action}${summary === "-" ? "" : `: ${summary}`}`,
+    `${entityType}${shortName}${marker} · ${action}${summary === "-" ? "" : `: ${summary}`}`,
   ];
 
   if (shortName !== name) {
     const nameLabel =
-      navigation === undefined
+      navigation.name === undefined
         ? "Entity ID"
         : event.entity_type === "task" || event.entity_type === "project"
           ? `Full ${event.entity_type} key`
           : `Full ${event.entity_type} name`;
     lines.push(`${nameLabel}: ${name}`);
   }
-  if (navigation?.distinguishesTaskId) {
-    lines.push(`Task identity: ${navigation.status}; ${event.entity_id}`);
+  if (navigation.distinguishesTaskId) {
+    lines.push(`Task ID: ${event.entity_id}`);
   }
   lines.push(...formatRemovedTasks(entry));
   return lines.join("\n");
@@ -478,7 +476,7 @@ export function formatActivityList(
       [
         formatRows([rows[index]!]),
         formatSection("Entity", `${entry.event.entity_type} ${entry.event.entity_id}`),
-        ...(entry.navigation === undefined
+        ...(entry.navigation.name === undefined
           ? []
           : [formatSection("Navigation", formatNavigation(entry, { showsFullNames: true }))]),
         formatSection(
