@@ -132,6 +132,8 @@ export const relationRouter = {
     },
     help: `Usage: zinn task relation create <source-task-key> <target-task-key> --type <type>
 
+Create a relation between two tasks.
+
 Types:
   related     Connect two tasks, with any order provided to indicate relation.
   dependency  Source depends on target.

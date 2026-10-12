@@ -79,7 +79,7 @@ export const taskRouter = {
       );
       output(presentTask(createdTask), formatTaskRow);
     },
-    help: `Usage: zinn task create [<project-key>] --title <text> [--description <text>] [--priority {low|medium|high|urgent|none}] [--label <name>] [--column <name>] [--parent <task-key>] [--depends-on <task-key>] [--duplicate-of <task-key>] [--related <task-key>]
+    help: `Usage: zinn task create [<project-key>] --title <text> [--description <text>] [--priority {low|medium|high|urgent|none}] [--label <name>]... [--column <name>] [--parent <task-key>] [--depends-on <task-key>]... [--duplicate-of <task-key>] [--related <task-key>]...
 
 Create a task at the bottom of a column. Without --column, it starts in the project's first column.
 
@@ -139,7 +139,7 @@ Examples:
         formatTaskList(presentedTasks, { showsStatus: values.all }),
       );
     },
-    help: `Usage: zinn task list [<project-key>] [--all-projects] [--archived|--all] [--label <name>] [--column <name>]
+    help: `Usage: zinn task list [<project-key>|--all-projects] [--archived|--all] [--label <name>]... [--column <name>]
 
 List active tasks by default.
 An omitted project key uses defaultProject from settings, if present.
@@ -212,7 +212,7 @@ Example: zinn task list MDR --label cli`,
         console.error(`${count} archived ${noun} hidden, use --all to include them`);
       }
     },
-    help: `Usage: zinn task search <query> [<project-key>] [--all-projects] [--archived|--all] [--limit <n>] [--label <name>]
+    help: `Usage: zinn task search <query> [<project-key>|--all-projects] [--archived|--all] [--limit <n>] [--label <name>]...
 
 Search task titles, descriptions, and comments. A comment match lists the task it belongs to.
 An omitted project key uses defaultProject from settings, if present.
@@ -364,7 +364,7 @@ Examples:
 
       output(presentTask(editedTask), formatTaskRow);
     },
-    help: `Usage: zinn task edit <task-key> [--title <text>] [--description <text> ${textEditUsage}] [--priority {low|medium|high|urgent|none}] [--add-label <name>] [--remove-label <name>]
+    help: `Usage: zinn task edit <task-key> [--title <text>] [--description <text> ${textEditUsage}] [--priority {low|medium|high|urgent|none}] [--add-label <name>]... [--remove-label <name>]...
 
 Edit a task's title, description, priority, or label attachments.
 Use --priority none to clear priority.
