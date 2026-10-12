@@ -25,5 +25,5 @@ export function styleOutputText(format: StyleFormat, text: string) {
     return text;
   }
 
-  return styleText(format, text);
+  return styleText(format, text, { validateStream: false });
 }

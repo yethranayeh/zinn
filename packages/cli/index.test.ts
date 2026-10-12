@@ -4213,6 +4213,36 @@ test("FORCE_COLOR colors piped output and wins over NO_COLOR, while FORCE_COLOR=
   });
 });
 
+test("Zinn's color policy controls rendering even when Node's environment rules differ", async () => {
+  await withIsolatedZinnDirAsync(async (dir) => {
+    runZinn(["label", "create", "bug", "--color", "red"], dir);
+    const environments = [
+      { values: { FORCE_COLOR: "banana" }, pipeHasColor: true },
+      { values: { FORCE_COLOR: "banana", NO_COLOR: "1" }, pipeHasColor: true },
+      { values: { NODE_DISABLE_COLORS: "1" }, pipeHasColor: false },
+      { values: { TERM: "dumb" }, pipeHasColor: false },
+    ];
+
+    for (const { values, pipeHasColor } of environments) {
+      const env = { FORCE_COLOR: "", NO_COLOR: "", NODE_DISABLE_COLORS: "", TERM: "xterm-256color", ...values };
+      const piped = runZinn(["label", "list"], dir, env);
+      expect(piped.code).toBe(0);
+      expect(piped.stdout.includes("\x1b[31m")).toBe(pipeHasColor);
+      expect(piped.stdout.includes("red")).toBe(!pipeHasColor);
+
+      const terminal = await runZinnInTerminal(["label", "list"], dir, env);
+      expect(terminal.code).toBe(0);
+      expect(terminal.output).toContain("\x1b[31mbug\x1b[39m");
+      expect(terminal.output).not.toContain("red");
+
+      const json = runZinn(["label", "list", "--json"], dir, env);
+      expect(json.code).toBe(0);
+      expect(json.stdout).not.toContain("\x1b");
+      expect(JSON.parse(json.stdout)).toEqual([{ name: "bug", color: "red", description: null }]);
+    }
+  });
+});
+
 test("task rows color each attached label name by its label color, with dimmed separators and unchanged column widths", async () => {
   await withIsolatedZinnDirAsync(async (dir) => {
     runZinn(["label", "create", "bug", "--color", "red"], dir);
