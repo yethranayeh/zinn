@@ -1,12 +1,12 @@
-import type { Command } from "../types";
+import type { Command } from "../types.js";
 
 import { parseArgs } from "node:util";
 import { resolve } from "node:path";
 import { backup, RestoreRefusedError, getStorage } from "@zinn-dev/core";
 
-import { reportLockWait } from "../database";
-import { askConfirmation, output, validatePositionals, validateUniqueOptions } from "../lib";
-import packageJson from "../../package.json";
+import { reportLockWait } from "../database.js";
+import { askConfirmation, output, validatePositionals, validateUniqueOptions } from "../lib.js";
+import packageJson from "../../package.json" with { type: "json" };
 
 const build = { client: "cli", version: packageJson.version };
 

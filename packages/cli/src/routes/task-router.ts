@@ -1,6 +1,6 @@
 import type { TaskChange, TaskRelationType } from "@zinn-dev/core";
-import type { RouteDef } from "../types";
-import type { PresentedTask } from "../presentation/task-presentation";
+import type { RouteDef } from "../types.js";
+import type { PresentedTask } from "../presentation/task-presentation.js";
 
 import { parseArgs } from "node:util";
 import {
@@ -19,20 +19,20 @@ import {
   UsageError,
   validatePositionals,
   validateUniqueOptions,
-} from "../lib";
-import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit";
-import { formatRelations, presentRelations, relationRouter } from "./relation-router";
-import { commentRouter, formatComments, presentComments } from "./comment-router";
-import { currentActor } from "../actor";
-import { resolveProjectKey } from "../project";
-import { formatSection } from "../presentation/section";
-import { formatActivityList, presentActivities } from "../presentation/activity-presentation";
+} from "../lib.js";
+import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit.js";
+import { formatRelations, presentRelations, relationRouter } from "./relation-router.js";
+import { commentRouter, formatComments, presentComments } from "./comment-router.js";
+import { currentActor } from "../actor.js";
+import { resolveProjectKey } from "../project.js";
+import { formatSection } from "../presentation/section.js";
+import { formatActivityList, presentActivities } from "../presentation/activity-presentation.js";
 import {
   formatTaskList,
   formatTaskListWithStatus,
   formatTaskRow,
   presentTask,
-} from "../presentation/task-presentation";
+} from "../presentation/task-presentation.js";
 
 export const taskRouter = {
   create: {

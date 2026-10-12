@@ -1,10 +1,10 @@
-import type { Command } from "../types";
+import type { Command } from "../types.js";
 
 import { parseArgs } from "node:util";
 import { reindex } from "@zinn-dev/core";
 
-import { reportLockWait } from "../database";
-import { output, validatePositionals } from "../lib";
+import { reportLockWait } from "../database.js";
+import { output, validatePositionals } from "../lib.js";
 
 export const reindexCommand = {
   run: (args) => {

@@ -9,10 +9,10 @@ import {
   project,
   task,
 } from "@zinn-dev/core";
-import { formatDescriptionPreview } from "./description-presentation";
-import { formatRows } from "./row-layout";
-import { formatSection } from "./section";
-import { formatLocalTime } from "./time";
+import { formatDescriptionPreview } from "./description-presentation.js";
+import { formatRows } from "./row-layout.js";
+import { formatSection } from "./section.js";
+import { formatLocalTime } from "./time.js";
 
 type NavigationIdentity = {
   /** Undefined when the entity no longer exists and this event recorded no name for it. */

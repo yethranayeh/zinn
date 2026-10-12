@@ -1,6 +1,6 @@
-import type { RowCell } from "./row-layout";
+import type { RowCell } from "./row-layout.js";
 
-import { formatRows } from "./row-layout";
+import { formatRows } from "./row-layout.js";
 
 export type PresentedColumn = { name: string; project?: string; taskCount?: number };
 export type PresentedColumnTaskCount = PresentedColumn & { taskCount: number };

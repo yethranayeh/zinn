@@ -1,6 +1,6 @@
 import type { CommentWithKey } from "@zinn-dev/core";
-import type { RowCell } from "../presentation/row-layout";
-import type { RouteDef } from "../types";
+import type { RowCell } from "../presentation/row-layout.js";
+import type { RouteDef } from "../types.js";
 
 import { parseArgs } from "node:util";
 import { comment } from "@zinn-dev/core";
@@ -11,11 +11,11 @@ import {
   quit,
   validatePositionals,
   validateUniqueOptions,
-} from "../lib";
-import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit";
-import { currentActor } from "../actor";
-import { formatRows } from "../presentation/row-layout";
-import { formatLocalTime } from "../presentation/time";
+} from "../lib.js";
+import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit.js";
+import { currentActor } from "../actor.js";
+import { formatRows } from "../presentation/row-layout.js";
+import { formatLocalTime } from "../presentation/time.js";
 
 type PresentedComment = Pick<CommentWithKey, "key" | "text" | "created_at" | "updated_at">;
 

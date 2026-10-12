@@ -1,12 +1,12 @@
 import type { TaskRelationType, TaskWithKey } from "@zinn-dev/core";
-import type { RouteDef } from "../types";
+import type { RouteDef } from "../types.js";
 
 import { parseArgs } from "node:util";
 import { column, relation, relationCreateSchema, task } from "@zinn-dev/core";
-import { output, quit, validatePositionals, validateUniqueOptions } from "../lib";
-import { currentActor } from "../actor";
-import { formatCellSeparator, formatRows } from "../presentation/row-layout";
-import { columnNameCell } from "../presentation/column-presentation";
+import { output, quit, validatePositionals, validateUniqueOptions } from "../lib.js";
+import { currentActor } from "../actor.js";
+import { formatCellSeparator, formatRows } from "../presentation/row-layout.js";
+import { columnNameCell } from "../presentation/column-presentation.js";
 
 type PresentedRelation = {
   type: TaskRelationType;

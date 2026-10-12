@@ -37,6 +37,7 @@
 	],
 	"type": "module",
 	"scripts": {
+		"build": "bun build.ts",
 		"prepack": "bun ../../scripts/release-stamp.ts write",
 		"postpack": "bun ../../scripts/release-stamp.ts remove"
 	},

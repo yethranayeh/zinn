@@ -1,4 +1,4 @@
-import type { Command, ParsedRoute, RouteDef } from "../types";
+import type { Command, ParsedRoute, RouteDef } from "../types.js";
 
 import { parseArgs } from "node:util";
 
@@ -12,7 +12,7 @@ import {
   setOutputMode,
   UsageError,
   validateUniqueOptions,
-} from "../lib";
+} from "../lib.js";
 
 function getIsRunnable(obj: any): obj is Command {
   return Object.hasOwn(obj, "run");

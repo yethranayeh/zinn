@@ -1,4 +1,4 @@
-import { styleOutputText } from "./color";
+import { styleOutputText } from "./color.js";
 
 /** A bold heading above its body, optionally preceded by a dim horizontal rule. */
 export function formatSection(

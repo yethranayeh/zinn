@@ -38,6 +38,12 @@ writeFileSync(
     {
       type: "module",
       imports,
+      exports: {
+        ".": {
+          types: "./index.d.ts",
+          import: "./index.js",
+        },
+      },
     },
     null,
     2,

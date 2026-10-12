@@ -1,11 +1,11 @@
-import type { Command } from "../types";
+import type { Command } from "../types.js";
 
 import { parseArgs } from "node:util";
 import { migrate, MigrationRefusedError, getStorage } from "@zinn-dev/core";
 
-import { reportLockWait } from "../database";
-import { output, validatePositionals } from "../lib";
-import packageJson from "../../package.json";
+import { reportLockWait } from "../database.js";
+import { output, validatePositionals } from "../lib.js";
+import packageJson from "../../package.json" with { type: "json" };
 
 export const migrateCommand = {
   run: (args) => {

@@ -1,6 +1,6 @@
-import type { StyleFormat } from "./color";
+import type { StyleFormat } from "./color.js";
 
-import { styleOutputText } from "./color";
+import { styleOutputText } from "./color.js";
 
 export type RowCell = { text: string; style?: StyleFormat };
 

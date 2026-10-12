@@ -1,9 +1,9 @@
-import type { RouteDef } from "../types";
+import type { RouteDef } from "../types.js";
 
 import { parseArgs } from "node:util";
 import { activity, activityLimitMessage, positiveIntegerPattern } from "@zinn-dev/core";
-import { output, quit, validatePositionals, validateUniqueOptions } from "../lib";
-import { formatActivityList, presentActivities } from "../presentation/activity-presentation";
+import { output, quit, validatePositionals, validateUniqueOptions } from "../lib.js";
+import { formatActivityList, presentActivities } from "../presentation/activity-presentation.js";
 
 export const activityRouter = {
   list: {

@@ -3,8 +3,8 @@ import type { DatabaseFacts, LockWait, OpenPolicy } from "@zinn-dev/core";
 import { fileURLToPath } from "node:url";
 import { readReleaseMode } from "@zinn-dev/core";
 
-import packageJson from "../package.json";
-import { isLegacyReadAllowed } from "./lib";
+import packageJson from "../package.json" with { type: "json" };
+import { isLegacyReadAllowed } from "./lib.js";
 
 const MS_PER_SECOND = 1000;
 /** The CLI's package folder, which holds its release stamp once it is packed. */

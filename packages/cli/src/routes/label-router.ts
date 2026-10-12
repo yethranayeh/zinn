@@ -1,15 +1,15 @@
 import type { Label } from "@zinn-dev/core";
-import type { RowCell } from "../presentation/row-layout";
-import type { RouteDef } from "../types";
+import type { RowCell } from "../presentation/row-layout.js";
+import type { RouteDef } from "../types.js";
 
 import { parseArgs } from "node:util";
 import { label, labelCreateSchema, labelDeleteSchema, labelEditSchema } from "@zinn-dev/core";
 
-import { confirmAction, output, quit, validatePositionals, validateUniqueOptions } from "../lib";
-import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit";
-import { currentActor } from "../actor";
-import { isColorEnabled } from "../presentation/color";
-import { formatRows } from "../presentation/row-layout";
+import { confirmAction, output, quit, validatePositionals, validateUniqueOptions } from "../lib.js";
+import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit.js";
+import { currentActor } from "../actor.js";
+import { isColorEnabled } from "../presentation/color.js";
+import { formatRows } from "../presentation/row-layout.js";
 
 type PresentedLabel = Omit<Label, "id">;
 

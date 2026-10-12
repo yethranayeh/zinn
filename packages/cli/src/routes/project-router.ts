@@ -1,8 +1,8 @@
-import type { RouteDef } from "../types";
+import type { RouteDef } from "../types.js";
 import type {
   PresentedColumn,
   PresentedColumnTaskCount,
-} from "../presentation/column-presentation";
+} from "../presentation/column-presentation.js";
 
 import { parseArgs } from "node:util";
 
@@ -16,14 +16,14 @@ import {
   UsageError,
   validatePositionals,
   validateUniqueOptions,
-} from "../lib";
-import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit";
-import { formatColumnList } from "../presentation/column-presentation";
-import { formatDescriptionPreview } from "../presentation/description-presentation";
-import { formatCellSeparator, formatRows } from "../presentation/row-layout";
-import { formatSection } from "../presentation/section";
-import { currentActor } from "../actor";
-import { resolveProjectKey } from "../project";
+} from "../lib.js";
+import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit.js";
+import { formatColumnList } from "../presentation/column-presentation.js";
+import { formatDescriptionPreview } from "../presentation/description-presentation.js";
+import { formatCellSeparator, formatRows } from "../presentation/row-layout.js";
+import { formatSection } from "../presentation/section.js";
+import { currentActor } from "../actor.js";
+import { resolveProjectKey } from "../project.js";
 
 type PresentedProject = { key: string; name: string; description: string | null };
 type PresentedProjectView = PresentedProject & {

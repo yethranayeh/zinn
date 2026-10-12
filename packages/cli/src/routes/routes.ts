@@ -1,11 +1,11 @@
-import { projectRouter } from "./project-router";
-import { taskRouter } from "./task-router";
-import { labelRouter } from "./label-router";
-import { backupCommand } from "./backup-router";
-import { restoreCommand } from "./restore-router";
-import { migrateCommand } from "./migrate-router";
-import { reindexCommand } from "./reindex-router";
-import { activityRouter } from "./activity-router";
+import { projectRouter } from "./project-router.js";
+import { taskRouter } from "./task-router.js";
+import { labelRouter } from "./label-router.js";
+import { backupCommand } from "./backup-router.js";
+import { restoreCommand } from "./restore-router.js";
+import { migrateCommand } from "./migrate-router.js";
+import { reindexCommand } from "./reindex-router.js";
+import { activityRouter } from "./activity-router.js";
 
 // TODO: lazy load?
 export const routes = {

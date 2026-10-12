@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { project, resolveSettings } from "@zinn-dev/core";
-import { UsageError } from "./lib";
+import { UsageError } from "./lib.js";
 
 /** Chooses the explicit project or the configured default, retaining unscoped list/search behavior. */
 export function resolveProjectKey(

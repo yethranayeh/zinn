@@ -1,10 +1,10 @@
-import type { Command } from "../types";
+import type { Command } from "../types.js";
 
 import { parseArgs } from "node:util";
 import { backup } from "@zinn-dev/core";
 
-import { output, validatePositionals } from "../lib";
-import packageJson from "../../package.json";
+import { output, validatePositionals } from "../lib.js";
+import packageJson from "../../package.json" with { type: "json" };
 
 export const backupCommand = {
   run: (args) => {

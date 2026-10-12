@@ -1,6 +1,6 @@
 import type { TextEdit } from "@zinn-dev/core";
 
-import { quit } from "./lib";
+import { quit } from "./lib.js";
 
 /** The flags that change how a text flag (--description, --text) is applied to the stored text. */
 export const textEditOptions = {

@@ -1,11 +1,11 @@
 import type { LabelColor, TaskPriority, TaskWithKey } from "@zinn-dev/core";
-import type { RowCell } from "./row-layout";
+import type { RowCell } from "./row-layout.js";
 
 import { column, label, task } from "@zinn-dev/core";
 
-import { styleOutputText } from "./color";
-import { columnNameCell } from "./column-presentation";
-import { formatCellSeparator, formatRows } from "./row-layout";
+import { styleOutputText } from "./color.js";
+import { columnNameCell } from "./column-presentation.js";
+import { formatCellSeparator, formatRows } from "./row-layout.js";
 
 export type PresentedTask = {
   key: string;
