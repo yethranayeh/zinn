@@ -1,10 +1,10 @@
-import type { ResolvedSettings, SettingsInputs } from "./settings";
+import type { ResolvedSettings, SettingsInputs } from "./settings.js";
 
 import { realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-import { resolveSettings } from "./settings";
+import { resolveSettings } from "./settings.js";
 
 export const MAIN_FOLDER_NAME = ".zinn";
 export const DB_FILE_NAME = "zinn.sqlite";

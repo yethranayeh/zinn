@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { fullTextOrPartialEdit } from "./text-edit";
+import { fullTextOrPartialEdit } from "./text-edit.js";
 
 const commentTextMessage = "Comment text cannot be blank";
 

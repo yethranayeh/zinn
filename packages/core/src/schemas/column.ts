@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { titleTextSchema } from "./title-text";
+import { titleTextSchema } from "./title-text.js";
 
 export const columnNameSchema = titleTextSchema(
   "Column name cannot be blank",

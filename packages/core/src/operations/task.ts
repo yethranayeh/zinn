@@ -1,27 +1,27 @@
-import type { Task, TaskChange, TaskWithKey } from "../types";
+import type { Task, TaskChange, TaskWithKey } from "../types.js";
 import type {
   TaskCreateInput,
   TaskEditInput,
   TaskListInput,
   TaskSearchInput,
-} from "../schemas/task";
-import type { TaskLabelInput } from "../schemas/label";
-import type { Actor } from "../schemas/actor";
-import type { OrderPlacement } from "./shared";
+} from "../schemas/task.js";
+import type { TaskLabelInput } from "../schemas/label.js";
+import type { Actor } from "../schemas/actor.js";
+import type { OrderPlacement } from "./shared.js";
 
 import { v7 as uuidv7 } from "uuid";
 import { generateKeyBetween } from "fractional-indexing";
 
-import { writeTransaction } from "../db";
-import { taskLabelSchema } from "../schemas/label";
+import { writeTransaction } from "../db.js";
+import { taskLabelSchema } from "../schemas/label.js";
 
-import * as dbProject from "../db/project";
-import * as dbColumn from "../db/column";
-import * as dbTask from "../db/task";
-import * as dbTaskLabel from "../db/task-label";
-import * as dbSearch from "../db/search";
-import * as dbRelation from "../db/relation";
-import * as dbActivity from "../db/activity";
+import * as dbProject from "../db/project.js";
+import * as dbColumn from "../db/column.js";
+import * as dbTask from "../db/task.js";
+import * as dbTaskLabel from "../db/task-label.js";
+import * as dbSearch from "../db/search.js";
+import * as dbRelation from "../db/relation.js";
+import * as dbActivity from "../db/activity.js";
 
 import {
   validateTaskInput,
@@ -29,10 +29,10 @@ import {
   taskEditSchema,
   taskListSchema,
   taskSearchSchema,
-} from "../schemas/task";
-import { actorSchema } from "../schemas/actor";
+} from "../schemas/task.js";
+import { actorSchema } from "../schemas/actor.js";
 
-import { relation } from "./relation";
+import { relation } from "./relation.js";
 import {
   getTaskByKey,
   findTaskByExactKey,
@@ -45,7 +45,7 @@ import {
   requireColumnByName,
   findByName,
   resolveDescription,
-} from "./shared";
+} from "./shared.js";
 
 function getSearchMatchExpression(query: string) {
   return query

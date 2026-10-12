@@ -1,6 +1,6 @@
-import type { Database } from "../sqlite/database";
+import type { Database } from "../sqlite/database.js";
 
-import { BASELINE_VERSION } from "./baseline";
+import { BASELINE_VERSION } from "./baseline.js";
 
 export type Migration = {
   /** The schema version this migration brings the database to. */

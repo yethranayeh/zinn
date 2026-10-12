@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-import { standardizeProjectKey } from "../lib";
-import { parseTaskKey } from "./task";
+import { standardizeProjectKey } from "../lib.js";
+import { parseTaskKey } from "./task.js";
 
 export const minimumActivityIdLength = 8;
 export const activityLimitMessage = "Activity limit must be a positive safe integer";

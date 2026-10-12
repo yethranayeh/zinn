@@ -3,12 +3,12 @@
  *  `PRAGMA user_version` bump run in one transaction, so a failure leaves the database as it was.
  * The caller opens and configures the connection; the runner switches only foreign keys.
  */
-import type { Database } from "../sqlite/database";
-import type { Migration } from "./registry";
+import type { Database } from "../sqlite/database.js";
+import type { Migration } from "./registry.js";
 
-import { attachSuppressed } from "../sqlite/database";
-import { BASELINE_VERSION, createBaseline } from "./baseline";
-import { assertMigrationOrder, latestVersion, MIGRATIONS } from "./registry";
+import { attachSuppressed } from "../sqlite/database.js";
+import { BASELINE_VERSION, createBaseline } from "./baseline.js";
+import { assertMigrationOrder, latestVersion, MIGRATIONS } from "./registry.js";
 
 /** SQLite's default `user_version`, which no Zinn version writes, making it an **unmarked** DB. */
 const UNMARKED_VERSION = 0;

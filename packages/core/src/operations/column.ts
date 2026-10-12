@@ -1,21 +1,21 @@
-import type { ColumnCreateInput, ColumnEditInput, ColumnOrderInput } from "../schemas/column";
-import type { Actor } from "../schemas/actor";
-import type { OrderPlacement } from "./shared";
+import type { ColumnCreateInput, ColumnEditInput, ColumnOrderInput } from "../schemas/column.js";
+import type { Actor } from "../schemas/actor.js";
+import type { OrderPlacement } from "./shared.js";
 
 import { v7 as uuidv7 } from "uuid";
 import { generateKeyBetween } from "fractional-indexing";
 
-import { writeTransaction } from "../db";
-import * as dbProject from "../db/project";
-import * as dbColumn from "../db/column";
-import * as dbTask from "../db/task";
+import { writeTransaction } from "../db.js";
+import * as dbProject from "../db/project.js";
+import * as dbColumn from "../db/column.js";
+import * as dbTask from "../db/task.js";
 
-import { standardizeProjectKey } from "../lib";
-import { columnCreateSchema, columnEditSchema, columnOrderSchema } from "../schemas/column";
-import { actorSchema } from "../schemas/actor";
-import { validateTaskInput } from "../schemas/task";
+import { standardizeProjectKey } from "../lib.js";
+import { columnCreateSchema, columnEditSchema, columnOrderSchema } from "../schemas/column.js";
+import { actorSchema } from "../schemas/actor.js";
+import { validateTaskInput } from "../schemas/task.js";
 
-import { findByName, getInsertionIndex, recordActivity, requireColumnByName } from "./shared";
+import { findByName, getInsertionIndex, recordActivity, requireColumnByName } from "./shared.js";
 
 function requireProjectColumns(projectKey: string) {
   const project = dbProject.getByKey(projectKey);

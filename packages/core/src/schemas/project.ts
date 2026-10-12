@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { titleTextSchema } from "./title-text";
-import { descriptionSchema, descriptionEditSchema } from "./description";
+import { titleTextSchema } from "./title-text.js";
+import { descriptionSchema, descriptionEditSchema } from "./description.js";
 
 export const projectNameSchema = titleTextSchema(
   "Project name cannot be blank or contain line breaks or control characters",

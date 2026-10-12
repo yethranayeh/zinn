@@ -1,6 +1,6 @@
 {
 	"name": "@zinn-dev/core",
-	"version": "0.28.0",
+	"version": "0.29.0-dev",
 	"description": "Shared logic for zinn, a kanban workflow in the terminal. Experimental.",
 	"license": "MIT",
 	"bugs": {
@@ -19,6 +19,7 @@
 	"private": false,
 	"type": "module",
 	"scripts": {
+		"build": "bun build.ts",
 		"prepack": "bun ../../scripts/release-stamp.ts write",
 		"postpack": "bun ../../scripts/release-stamp.ts remove"
 	},

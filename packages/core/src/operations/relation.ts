@@ -1,17 +1,17 @@
-import type { TaskRelation, TaskWithKey } from "../types";
-import type { RelationCreateInput, RelationDeleteInput } from "../schemas/relation";
-import type { Actor } from "../schemas/actor";
+import type { TaskRelation, TaskWithKey } from "../types.js";
+import type { RelationCreateInput, RelationDeleteInput } from "../schemas/relation.js";
+import type { Actor } from "../schemas/actor.js";
 
-import { writeTransaction } from "../db";
+import { writeTransaction } from "../db.js";
 
-import * as dbTask from "../db/task";
-import * as dbRelation from "../db/relation";
+import * as dbTask from "../db/task.js";
+import * as dbRelation from "../db/relation.js";
 
-import { validateTaskInput } from "../schemas/task";
-import { relationCreateSchema, relationDeleteSchema } from "../schemas/relation";
-import { actorSchema } from "../schemas/actor";
+import { validateTaskInput } from "../schemas/task.js";
+import { relationCreateSchema, relationDeleteSchema } from "../schemas/relation.js";
+import { actorSchema } from "../schemas/actor.js";
 
-import { getTaskByKey, attachTaskKey, recordTaskActivity, describeRelation } from "./shared";
+import { getTaskByKey, attachTaskKey, recordTaskActivity, describeRelation } from "./shared.js";
 
 type RelationResult = TaskRelation & {
   source?: TaskWithKey;

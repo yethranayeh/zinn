@@ -1,0 +1,18 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"target": "ES2023",
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"rootDir": ".",
+		"outDir": "dist",
+		"allowJs": false,
+		"allowImportingTsExtensions": false,
+		"rewriteRelativeImportExtensions": true,
+		"noEmit": false,
+		"noEmitOnError": true,
+		"declaration": true
+	},
+	"include": ["index.ts", "src/**/*.ts"],
+	"exclude": ["src/**/*.test.ts", "src/**/testing.ts", "src/sqlite/contract.ts", "src/sqlite/node.check.ts"]
+}

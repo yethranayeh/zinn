@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { fullTextOrPartialEdit } from "./text-edit";
+import { fullTextOrPartialEdit } from "./text-edit.js";
 
 /**
  * A standard description field schema reused by many fields.

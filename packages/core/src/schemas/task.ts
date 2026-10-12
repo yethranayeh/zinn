@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { titleTextSchema } from "./title-text";
-import { columnNameSchema } from "./column";
+import { titleTextSchema } from "./title-text.js";
+import { columnNameSchema } from "./column.js";
 
-import { labelNameSchema } from "./label";
-import { descriptionSchema, descriptionEditSchema } from "./description";
-import { relationTypeSchema } from "./relation";
-import { projectKeyPattern } from "./project";
+import { labelNameSchema } from "./label.js";
+import { descriptionSchema, descriptionEditSchema } from "./description.js";
+import { relationTypeSchema } from "./relation.js";
+import { projectKeyPattern } from "./project.js";
 
 export const positiveIntegerPattern = "[1-9]\\d{0,14}";
 

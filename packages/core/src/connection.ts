@@ -1,4 +1,4 @@
-import type { Database } from "./sqlite/database";
+import type { Database } from "./sqlite/database.js";
 
 const BUSY_TIMEOUT_MS = 30_000;
 /**

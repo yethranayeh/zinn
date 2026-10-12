@@ -1,7 +1,7 @@
-import type { Task } from "../types";
+import type { Task } from "../types.js";
 
-import { getDb } from "../db";
-import { DB_TABLE } from "../constant";
+import { getDb } from "../db.js";
+import { DB_TABLE } from "../constant.js";
 
 export function addTask(entry: {
   taskId: string;

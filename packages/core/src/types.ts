@@ -1,11 +1,11 @@
-import type { LabelColor } from "./schemas/label";
-import type { TaskPriority } from "./schemas/task";
-import type { ActorKind } from "./schemas/actor";
-import type { RelationCreateInput } from "./schemas/relation";
+import type { LabelColor } from "./schemas/label.js";
+import type { TaskPriority } from "./schemas/task.js";
+import type { ActorKind } from "./schemas/actor.js";
+import type { RelationCreateInput } from "./schemas/relation.js";
 
-export type { LabelColor } from "./schemas/label";
-export type { TaskPriority } from "./schemas/task";
-export type { Actor, ActorKind } from "./schemas/actor";
+export type { LabelColor } from "./schemas/label.js";
+export type { TaskPriority } from "./schemas/task.js";
+export type { Actor, ActorKind } from "./schemas/actor.js";
 
 // https://www.typescriptlang.org/docs/handbook/2/template-literal-types.html
 type BoundProperty<P extends string> = `$${P}`;

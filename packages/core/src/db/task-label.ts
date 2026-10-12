@@ -1,8 +1,8 @@
-import type { Task, Label } from "../types";
+import type { Task, Label } from "../types.js";
 
-import { getDb } from "../db";
-import { DB_TABLE } from "../constant";
-import { compareNames } from "../lib";
+import { getDb } from "../db.js";
+import { DB_TABLE } from "../constant.js";
+import { compareNames } from "../lib.js";
 
 export function getAllByTaskId(taskId: string) {
   return getDb()

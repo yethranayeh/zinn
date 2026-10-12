@@ -1,10 +1,10 @@
-import type { ActivityListInput } from "../schemas/activity";
+import type { ActivityListInput } from "../schemas/activity.js";
 
-import { activityIdSchema, activityListSchema, activityTaskKeySchema } from "../schemas/activity";
-import { validateTaskInput } from "../schemas/task";
-import { standardizeProjectKey } from "../lib";
-import { findTaskByExactKey } from "./shared";
-import * as dbActivity from "../db/activity";
+import { activityIdSchema, activityListSchema, activityTaskKeySchema } from "../schemas/activity.js";
+import { validateTaskInput } from "../schemas/task.js";
+import { standardizeProjectKey } from "../lib.js";
+import { findTaskByExactKey } from "./shared.js";
+import * as dbActivity from "../db/activity.js";
 
 export type ActivityTaskIdentity = {
   id: string;

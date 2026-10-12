@@ -1,12 +1,12 @@
-import type { BackupCreateInput } from "../db/backup";
-import type { UpgradeOptions } from "./upgrade";
+import type { BackupCreateInput } from "../db/backup.js";
+import type { UpgradeOptions } from "./upgrade.js";
 
 import { openDatabase } from "#sqlite";
 
-import { applyConnectionSettings } from "../connection";
-import { attachSuppressed } from "../sqlite/database";
-import { classifyDatabase } from "./classify";
-import { upgradeDatabase } from "./upgrade";
+import { applyConnectionSettings } from "../connection.js";
+import { attachSuppressed } from "../sqlite/database.js";
+import { classifyDatabase } from "./classify.js";
+import { upgradeDatabase } from "./upgrade.js";
 
 /** Thrown when the database is in a state that `migrate` leaves alone, so nothing was attempted. */
 export class MigrationRefusedError extends Error {

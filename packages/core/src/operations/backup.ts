@@ -1,15 +1,15 @@
-import type { BackupCreateInput } from "../db/backup";
-import type { LockWait } from "../migrations/upgrade";
+import type { BackupCreateInput } from "../db/backup.js";
+import type { LockWait } from "../migrations/upgrade.js";
 
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-import * as dbBackup from "../db/backup";
-import { ensureDataDirectory } from "../config";
-import { getStorage } from "../constant";
-import { classifyDatabase } from "../migrations/classify";
-import { MIGRATIONS } from "../migrations/registry";
-import { checkBackup, restoreDatabase } from "../migrations/restore";
+import * as dbBackup from "../db/backup.js";
+import { ensureDataDirectory } from "../config.js";
+import { getStorage } from "../constant.js";
+import { classifyDatabase } from "../migrations/classify.js";
+import { MIGRATIONS } from "../migrations/registry.js";
+import { checkBackup, restoreDatabase } from "../migrations/restore.js";
 
 export type BackupRestoreInput = BackupCreateInput & {
   /** The backup file to restore. */

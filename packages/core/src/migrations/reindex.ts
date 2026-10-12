@@ -1,11 +1,11 @@
-import type { Database } from "../sqlite/database";
-import type { Migration } from "./registry";
-import type { FreeSpace } from "./space";
-import type { LockOptions } from "./upgrade";
+import type { Database } from "../sqlite/database.js";
+import type { Migration } from "./registry.js";
+import type { FreeSpace } from "./space.js";
+import type { LockOptions } from "./upgrade.js";
 
-import { latestVersion, MIGRATIONS } from "./registry";
-import { readSchemaVersion } from "./runner";
-import { regenerateSearch } from "./search";
+import { latestVersion, MIGRATIONS } from "./registry.js";
+import { readSchemaVersion } from "./runner.js";
+import { regenerateSearch } from "./search.js";
 import {
   assertFreeSpace,
   estimateRequiredFree,
@@ -13,8 +13,8 @@ import {
   readFreeSpace,
   requireDatabaseFile,
   spacePathsFor,
-} from "./space";
-import { withMigrationLock } from "./upgrade";
+} from "./space.js";
+import { withMigrationLock } from "./upgrade.js";
 
 export type ReindexOptions = LockOptions & {
   migrations?: ReadonlyArray<Migration>;

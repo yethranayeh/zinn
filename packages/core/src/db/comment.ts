@@ -1,9 +1,9 @@
-import type { Bind, Comment } from "../types";
+import type { Bind, Comment } from "../types.js";
 
 import { v7 as uuidv7 } from "uuid";
 
-import { DB_TABLE } from "../constant";
-import { getDb } from "../db";
+import { DB_TABLE } from "../constant.js";
+import { getDb } from "../db.js";
 
 export function getByTaskIdAndNumber(taskId: string, number: number) {
   const db = getDb();

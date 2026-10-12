@@ -3,23 +3,23 @@
  *  so callers that arrive together take turns and each rereads the version once it has the lock.
  * Before A writes anything, a second connection, B, snapshots the file into the backup directory.
  */
-import type { BackupCreateInput } from "../db/backup";
-import type { Database } from "../sqlite/database";
-import type { Migration } from "./registry";
-import type { FreeSpace } from "./space";
+import type { BackupCreateInput } from "../db/backup.js";
+import type { Database } from "../sqlite/database.js";
+import type { Migration } from "./registry.js";
+import type { FreeSpace } from "./space.js";
 
 import { mkdirSync } from "node:fs";
 
-import * as dbBackup from "../db/backup";
-import { SqliteError } from "../sqlite/database";
-import { assertMigrationOrder, latestVersion, MIGRATIONS } from "./registry";
+import * as dbBackup from "../db/backup.js";
+import { SqliteError } from "../sqlite/database.js";
+import { assertMigrationOrder, latestVersion, MIGRATIONS } from "./registry.js";
 import {
   applyPendingMigrations,
   assertOutsideTransaction,
   assertUpgradable,
   readSchemaVersion,
   withForeignKeysOff,
-} from "./runner";
+} from "./runner.js";
 import {
   assertFreeSpace,
   estimateRequiredFree,
@@ -27,7 +27,7 @@ import {
   readFreeSpace,
   requireDatabaseFile,
   spacePathsFor,
-} from "./space";
+} from "./space.js";
 
 /**
  * How long a caller waits in total for another writer to release the database.

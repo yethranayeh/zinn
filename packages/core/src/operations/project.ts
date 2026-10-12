@@ -1,20 +1,20 @@
-import type { ProjectCreateInput, ProjectEditInput } from "../schemas/project";
-import type { Actor } from "../schemas/actor";
-import { validateProjectInput, projectCreateSchema, projectEditSchema } from "../schemas/project";
-import { actorSchema } from "../schemas/actor";
-import { validateTaskInput } from "../schemas/task";
+import type { ProjectCreateInput, ProjectEditInput } from "../schemas/project.js";
+import type { Actor } from "../schemas/actor.js";
+import { validateProjectInput, projectCreateSchema, projectEditSchema } from "../schemas/project.js";
+import { actorSchema } from "../schemas/actor.js";
+import { validateTaskInput } from "../schemas/task.js";
 
 import { v7 as uuidv7 } from "uuid";
 import { generateKeyBetween } from "fractional-indexing";
 
-import { writeTransaction } from "../db";
-import * as dbProject from "../db/project";
-import * as dbColumn from "../db/column";
-import * as dbTask from "../db/task";
-import * as dbSearch from "../db/search";
+import { writeTransaction } from "../db.js";
+import * as dbProject from "../db/project.js";
+import * as dbColumn from "../db/column.js";
+import * as dbTask from "../db/task.js";
+import * as dbSearch from "../db/search.js";
 
-import { standardizeProjectKey } from "../lib";
-import { attachTaskKey, recordActivity, resolveDescription } from "./shared";
+import { standardizeProjectKey } from "../lib.js";
+import { attachTaskKey, recordActivity, resolveDescription } from "./shared.js";
 
 export const project = {
   getById: dbProject.getById,

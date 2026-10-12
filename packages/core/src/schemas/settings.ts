@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { projectCreateSchema } from "./project";
+import { projectCreateSchema } from "./project.js";
 
 /**
  * The settings version this schema implements, published at https://zinn.sh/schemas/settings/v<N>.json.

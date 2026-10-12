@@ -4,8 +4,8 @@ import { basename, join } from "node:path";
 
 import { openDatabase } from "#sqlite";
 
-import { applyConnectionSettings } from "../connection";
-import { attachSuppressed } from "../sqlite/database";
+import { applyConnectionSettings } from "../connection.js";
+import { attachSuppressed } from "../sqlite/database.js";
 
 export type BackupCreateInput = {
   /**

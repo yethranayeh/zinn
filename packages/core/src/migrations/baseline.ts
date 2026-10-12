@@ -1,4 +1,4 @@
-import type { Database } from "../sqlite/database";
+import type { Database } from "../sqlite/database.js";
 
 /**
  * The schema version of the baseline, which is the schema every Zinn database had when schema versions began.

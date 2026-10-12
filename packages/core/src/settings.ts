@@ -1,11 +1,11 @@
-import type { Settings } from "./schemas/settings";
+import type { Settings } from "./schemas/settings.js";
 
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 
-import { settingsSchema } from "./schemas/settings";
-import { MAIN_FOLDER_NAME } from "./constant";
+import { settingsSchema } from "./schemas/settings.js";
+import { MAIN_FOLDER_NAME } from "./constant.js";
 
 export const GLOBAL_SETTINGS_FILE_NAME = "settings.json";
 export const LOCAL_SETTINGS_FILE_NAME = "zinn.local.json";

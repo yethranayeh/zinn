@@ -1,7 +1,7 @@
-import type { Bind, Column } from "../types";
+import type { Bind, Column } from "../types.js";
 
-import { DB_TABLE } from "../constant";
-import { getDb } from "../db";
+import { DB_TABLE } from "../constant.js";
+import { getDb } from "../db.js";
 
 export function getById(id: string) {
   const db = getDb();

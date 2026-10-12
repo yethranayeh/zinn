@@ -1,14 +1,14 @@
-import type { Database } from "../sqlite/database";
-import type { Migration } from "./registry";
+import type { Database } from "../sqlite/database.js";
+import type { Migration } from "./registry.js";
 
 import { existsSync } from "node:fs";
 
 import { openDatabase } from "#sqlite";
 
-import { applyConnectionSettings } from "../connection";
-import { attachSuppressed } from "../sqlite/database";
-import { latestVersion, MIGRATIONS } from "./registry";
-import { readSchemaVersion } from "./runner";
+import { applyConnectionSettings } from "../connection.js";
+import { attachSuppressed } from "../sqlite/database.js";
+import { latestVersion, MIGRATIONS } from "./registry.js";
+import { readSchemaVersion } from "./runner.js";
 
 /**
  * - absent: no database file

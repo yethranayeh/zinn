@@ -1,15 +1,15 @@
-import type { LabelCreateInput, LabelDeleteInput, LabelEditInput } from "../schemas/label";
-import type { Actor } from "../schemas/actor";
+import type { LabelCreateInput, LabelDeleteInput, LabelEditInput } from "../schemas/label.js";
+import type { Actor } from "../schemas/actor.js";
 
-import { writeTransaction } from "../db";
-import { labelCreateSchema, labelDeleteSchema, labelEditSchema } from "../schemas/label";
+import { writeTransaction } from "../db.js";
+import { labelCreateSchema, labelDeleteSchema, labelEditSchema } from "../schemas/label.js";
 
-import * as dbTask from "../db/task";
-import * as dbTaskLabel from "../db/task-label";
-import * as dbLabel from "../db/label";
+import * as dbTask from "../db/task.js";
+import * as dbTaskLabel from "../db/task-label.js";
+import * as dbLabel from "../db/label.js";
 
-import { validateTaskInput } from "../schemas/task";
-import { actorSchema } from "../schemas/actor";
+import { validateTaskInput } from "../schemas/task.js";
+import { actorSchema } from "../schemas/actor.js";
 
 import {
   findByName,
@@ -17,7 +17,7 @@ import {
   resolveDescription,
   recordActivity,
   recordTaskActivity,
-} from "./shared";
+} from "./shared.js";
 
 function findLabelByName(name: string) {
   return findByName(dbLabel.getAll(), name);

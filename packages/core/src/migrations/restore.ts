@@ -5,11 +5,11 @@
  *  while another process has the file open would lose that process's writes.
  * @link https://www.sqlite.org/howtocorrupt.html
  */
-import type { BackupCreateInput } from "../db/backup";
-import type { Database } from "../sqlite/database";
-import type { Migration } from "./registry";
-import type { FreeSpace } from "./space";
-import type { LockOptions } from "./upgrade";
+import type { BackupCreateInput } from "../db/backup.js";
+import type { Database } from "../sqlite/database.js";
+import type { Migration } from "./registry.js";
+import type { FreeSpace } from "./space.js";
+import type { LockOptions } from "./upgrade.js";
 
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -17,13 +17,13 @@ import { pathToFileURL } from "node:url";
 
 import { openDatabase } from "#sqlite";
 
-import * as dbBackup from "../db/backup";
-import { applyConnectionSettings } from "../connection";
-import { attachSuppressed, SqliteError } from "../sqlite/database";
-import { BASELINE_VERSION } from "./baseline";
-import { classifyConnection } from "./classify";
-import { latestVersion, MIGRATIONS } from "./registry";
-import { assertForeignKeys, createSchema, readSchemaVersion, withForeignKeysOff } from "./runner";
+import * as dbBackup from "../db/backup.js";
+import { applyConnectionSettings } from "../connection.js";
+import { attachSuppressed, SqliteError } from "../sqlite/database.js";
+import { BASELINE_VERSION } from "./baseline.js";
+import { classifyConnection } from "./classify.js";
+import { latestVersion, MIGRATIONS } from "./registry.js";
+import { assertForeignKeys, createSchema, readSchemaVersion, withForeignKeysOff } from "./runner.js";
 import {
   assertFreeSpace,
   estimateRequiredFree,
@@ -31,8 +31,8 @@ import {
   readFreeSpace,
   requireDatabaseFile,
   spacePathsFor,
-} from "./space";
-import { withMigrationLock } from "./upgrade";
+} from "./space.js";
+import { withMigrationLock } from "./upgrade.js";
 
 /** The name the backup is attached under while it is copied. */
 const SOURCE_SCHEMA = "restore_source";

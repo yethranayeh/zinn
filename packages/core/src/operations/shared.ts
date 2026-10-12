@@ -1,4 +1,4 @@
-import { columnNameSchema } from "../schemas/column";
+import { columnNameSchema } from "../schemas/column.js";
 import type {
   Activity,
   ActivityAction,
@@ -11,24 +11,24 @@ import type {
   Task,
   TaskRelation,
   TaskWithKey,
-} from "../types";
-import type { Actor } from "../schemas/actor";
-import type { TextEdit } from "../schemas/text-edit";
+} from "../types.js";
+import type { Actor } from "../schemas/actor.js";
+import type { TextEdit } from "../schemas/text-edit.js";
 
-import { descriptionSchema } from "../schemas/description";
-import { commentTextSchema } from "../schemas/comment";
-import { validateTaskInput } from "../schemas/task";
-import { parseTaskKey, positiveIntegerPattern } from "../schemas/task";
-import { assembleSearchEntry } from "../search-entry";
+import { descriptionSchema } from "../schemas/description.js";
+import { commentTextSchema } from "../schemas/comment.js";
+import { validateTaskInput } from "../schemas/task.js";
+import { parseTaskKey, positiveIntegerPattern } from "../schemas/task.js";
+import { assembleSearchEntry } from "../search-entry.js";
 
-import * as dbProject from "../db/project";
-import * as dbTask from "../db/task";
-import * as dbSearch from "../db/search";
-import * as dbLabel from "../db/label";
-import * as dbActivity from "../db/activity";
-import * as dbComment from "../db/comment";
+import * as dbProject from "../db/project.js";
+import * as dbTask from "../db/task.js";
+import * as dbSearch from "../db/search.js";
+import * as dbLabel from "../db/label.js";
+import * as dbActivity from "../db/activity.js";
+import * as dbComment from "../db/comment.js";
 
-import { standardizeProjectKey } from "../lib";
+import { standardizeProjectKey } from "../lib.js";
 
 const commentKeyRegex = new RegExp(`^([^#]+)#(${positiveIntegerPattern})$`);
 

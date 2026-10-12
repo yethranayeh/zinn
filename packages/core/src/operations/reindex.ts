@@ -1,9 +1,9 @@
-import type { LockWait } from "../migrations/upgrade";
+import type { LockWait } from "../migrations/upgrade.js";
 
-import { assertWritable, getDb } from "../db";
-import { getStorage } from "../constant";
-import { classifyDatabase } from "../migrations/classify";
-import { reindexSearch } from "../migrations/reindex";
+import { assertWritable, getDb } from "../db.js";
+import { getStorage } from "../constant.js";
+import { classifyDatabase } from "../migrations/classify.js";
+import { reindexSearch } from "../migrations/reindex.js";
 
 export type ReindexRunInput = {
   /** Called once when another writer holds the database and the reindex starts waiting. */

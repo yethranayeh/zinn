@@ -1,32 +1,32 @@
-import type { Database } from "./sqlite/database";
-import type { DatabaseClassification } from "./migrations/classify";
+import type { Database } from "./sqlite/database.js";
+import type { DatabaseClassification } from "./migrations/classify.js";
 import type {
   DatabaseFacts,
   OpenDecision,
   OpenPolicy,
   ReadOnlyReason,
-} from "./migrations/open-policy";
+} from "./migrations/open-policy.js";
 
 import { existsSync } from "node:fs";
 
 import { openDatabase } from "#sqlite";
 
-import { getStorage } from "./constant";
-import { ensureDataDirectory } from "./config";
-import { applyConnectionSettings } from "./connection";
-import { classifyConnection } from "./migrations/classify";
+import { getStorage } from "./constant.js";
+import { ensureDataDirectory } from "./config.js";
+import { applyConnectionSettings } from "./connection.js";
+import { classifyConnection } from "./migrations/classify.js";
 import {
   decideOpen,
   DEFAULT_OPEN_POLICY,
   isProtectedStorage,
   ReadOnlyDatabaseError,
   UnmarkedDatabaseError,
-} from "./migrations/open-policy";
-import { MIGRATIONS } from "./migrations/registry";
-import { createSchema, SchemaNotEmptyError } from "./migrations/runner";
-import { upgradeDatabase } from "./migrations/upgrade";
-import { readCoreReleaseMode } from "./release";
-import { attachSuppressed, SqliteError } from "./sqlite/database";
+} from "./migrations/open-policy.js";
+import { MIGRATIONS } from "./migrations/registry.js";
+import { createSchema, SchemaNotEmptyError } from "./migrations/runner.js";
+import { upgradeDatabase } from "./migrations/upgrade.js";
+import { readCoreReleaseMode } from "./release.js";
+import { attachSuppressed, SqliteError } from "./sqlite/database.js";
 
 let db: Database | null = null;
 let policy: OpenPolicy = DEFAULT_OPEN_POLICY;

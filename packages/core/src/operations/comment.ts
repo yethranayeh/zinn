@@ -1,15 +1,15 @@
-import type { CommentWithKey } from "../types";
-import type { CommentCreateInput, CommentDeleteInput, CommentEditInput } from "../schemas/comment";
-import type { Actor } from "../schemas/actor";
+import type { CommentWithKey } from "../types.js";
+import type { CommentCreateInput, CommentDeleteInput, CommentEditInput } from "../schemas/comment.js";
+import type { Actor } from "../schemas/actor.js";
 
-import { writeTransaction } from "../db";
+import { writeTransaction } from "../db.js";
 
-import * as dbTask from "../db/task";
-import * as dbComment from "../db/comment";
+import * as dbTask from "../db/task.js";
+import * as dbComment from "../db/comment.js";
 
-import { validateTaskInput } from "../schemas/task";
-import { actorSchema } from "../schemas/actor";
-import { commentCreateSchema, commentDeleteSchema, commentEditSchema } from "../schemas/comment";
+import { validateTaskInput } from "../schemas/task.js";
+import { actorSchema } from "../schemas/actor.js";
+import { commentCreateSchema, commentDeleteSchema, commentEditSchema } from "../schemas/comment.js";
 
 import {
   getTaskByKey,
@@ -18,7 +18,7 @@ import {
   updateTaskSearchRecord,
   recordTaskActivity,
   resolveCommentText,
-} from "./shared";
+} from "./shared.js";
 
 function describeComment(comment: CommentWithKey) {
   return { id: comment.id, key: comment.key, text: comment.text };

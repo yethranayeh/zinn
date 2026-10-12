@@ -1,9 +1,9 @@
-import type { Activity, ActivityEntityType, Bind } from "../types";
+import type { Activity, ActivityEntityType, Bind } from "../types.js";
 
 import { v7 as uuidv7 } from "uuid";
 
-import { DB_TABLE } from "../constant";
-import { getDb } from "../db";
+import { DB_TABLE } from "../constant.js";
+import { getDb } from "../db.js";
 
 type StoredActivity = Omit<Activity, "changes"> & { changes: string | null };
 

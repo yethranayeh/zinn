@@ -3,15 +3,15 @@
  * The estimate is only advisory, so rollback is still
  *  the actual protection layer when the real demand is higher
  */
-import type { Database } from "../sqlite/database";
-import type { Migration } from "./registry";
+import type { Database } from "../sqlite/database.js";
+import type { Migration } from "./registry.js";
 
 import { statfsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname } from "node:path";
 
-import { SEARCH_COMMENT_SEPARATOR } from "../search-entry";
-import { readSchemaVersion } from "./runner";
+import { SEARCH_COMMENT_SEPARATOR } from "../search-entry.js";
+import { readSchemaVersion } from "./runner.js";
 
 // The guesses below were checked on small test boards. They are cautious estimates, not SQLite limits.
 

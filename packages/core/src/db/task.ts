@@ -1,10 +1,10 @@
-import type { Bind, Task } from "../types";
-import type { TaskArchiveFilter } from "../schemas/task";
+import type { Bind, Task } from "../types.js";
+import type { TaskArchiveFilter } from "../schemas/task.js";
 
-export type { TaskArchiveFilter } from "../schemas/task";
+export type { TaskArchiveFilter } from "../schemas/task.js";
 
-import { getDb } from "../db";
-import { DB_TABLE } from "../constant";
+import { getDb } from "../db.js";
+import { DB_TABLE } from "../constant.js";
 
 function getArchiveCondition(filter: TaskArchiveFilter) {
   switch (filter) {

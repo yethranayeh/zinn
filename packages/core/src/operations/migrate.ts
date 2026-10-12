@@ -1,8 +1,8 @@
-import type { BackupCreateInput } from "../db/backup";
-import type { LockWait } from "../migrations/upgrade";
+import type { BackupCreateInput } from "../db/backup.js";
+import type { LockWait } from "../migrations/upgrade.js";
 
-import { getStorage } from "../constant";
-import { migrateDatabase } from "../migrations/migrate";
+import { getStorage } from "../constant.js";
+import { migrateDatabase } from "../migrations/migrate.js";
 
 export type MigrateRunInput = BackupCreateInput & {
   /** Called once when another writer holds the database and the upgrade starts waiting. */

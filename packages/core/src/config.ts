@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { getStorage } from "./constant";
+import { getStorage } from "./constant.js";
 
 /**
  * Creates the data directory and any missing parents.

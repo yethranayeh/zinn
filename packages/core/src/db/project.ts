@@ -1,10 +1,10 @@
-import type { Bind, Project } from "../types";
+import type { Bind, Project } from "../types.js";
 
 import { v7 as uuidv7 } from "uuid";
 
-import { DB_TABLE } from "../constant";
-import { getDb } from "../db";
-import { standardizeProjectKey } from "../lib";
+import { DB_TABLE } from "../constant.js";
+import { getDb } from "../db.js";
+import { standardizeProjectKey } from "../lib.js";
 
 export function getAll() {
   const db = getDb();

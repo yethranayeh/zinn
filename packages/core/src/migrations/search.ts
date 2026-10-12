@@ -1,7 +1,7 @@
-import type { Database } from "../sqlite/database";
+import type { Database } from "../sqlite/database.js";
 
-import { assembleSearchEntry } from "../search-entry";
-import { TASK_SEARCH_DEFINITION } from "./baseline";
+import { assembleSearchEntry } from "../search-entry.js";
+import { TASK_SEARCH_DEFINITION } from "./baseline.js";
 
 /**
  * Recreates `task_search` and fills it from every task and its comments, archived ones included.
