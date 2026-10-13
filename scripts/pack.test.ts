@@ -17,6 +17,10 @@ function run(command: string[], cwd: string, env = process.env) {
 }
 
 test("pnpm packs fresh JS artifacts with independent identities and unchanged migration protection", () => {
+  if (!Bun.which("pnpm")) {
+    throw new Error("pnpm is required for packing checks. Install pnpm and rerun bun test.");
+  }
+
   const root = mkdtempSync(join(tmpdir(), "zinn-pack-"));
 
   try {
@@ -61,11 +65,15 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
 
     for (const name of ["core", "cli"]) {
       const directory = join(root, "packages", name);
-      const version = JSON.parse(readFileSync(join(directory, "package.json"), "utf8")).version;
+      const sourceManifest = JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
+      const version = sourceManifest.version;
+      const stagingDirectory = join(directory, sourceManifest.publishConfig.directory);
       // Packing must build, even when a previous output is incomplete.
-      mkdirSync(join(directory, "dist"), { recursive: true });
-      writeFileSync(join(directory, "dist", "obsolete.js"), "throw new Error('stale release');");
+      mkdirSync(stagingDirectory, { recursive: true });
+      writeFileSync(join(stagingDirectory, "obsolete.js"), "throw new Error('stale release');");
       run(["pnpm", "pack", "--pack-destination", packDirectory], directory);
+      const developmentIdentityUrl = pathToFileURL(join(directory, "dist", "src/release-identity.js")).href;
+      expect(run(["bun", "--eval", `console.log((await import(${JSON.stringify(developmentIdentityUrl)})).RELEASE_MODE)`], root).trim()).toBe("source");
       const archive = join(packDirectory, `zinn-dev-${name}-${version}.tgz`);
       const members = run(["tar", "-tzf", archive], root).trim().split("\n");
       expect(members).toContain("package/index.js");
@@ -105,6 +113,10 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
     }
     const packedCore = join(consumer, "core");
     const packedCli = join(consumer, "cli");
+    const coreStagingDirectory = join(coreDirectory, JSON.parse(sourceSnapshots[0]!.manifest).publishConfig.directory);
+    const stagedCoreIdentityUrl = pathToFileURL(join(coreStagingDirectory, "src/release-identity.js")).href;
+    // The CLI's core rebuild must leave the prepared core release intact.
+    expect(run(["bun", "--eval", `console.log((await import(${JSON.stringify(stagedCoreIdentityUrl)})).RELEASE_MODE)`], root).trim()).toBe("published");
     const identitiesCode = `Promise.all([
       import(${JSON.stringify(pathToFileURL(join(packedCore, "src/release.js")).href)}),
       import(${JSON.stringify(pathToFileURL(join(packedCli, "src/database.js")).href)})
@@ -154,11 +166,15 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
     }
 
     run(["bun", "run", "build"], cliDirectory);
+    expect(run(["bun", "--eval", `console.log((await import(${JSON.stringify(stagedCoreIdentityUrl)})).RELEASE_MODE)`], root).trim()).toBe("published");
     for (const directory of [coreDirectory, cliDirectory]) {
       const identityUrl = pathToFileURL(join(directory, "dist", "src/release-identity.js")).href;
       expect(run(["bun", "--eval", `console.log((await import(${JSON.stringify(identityUrl)})).RELEASE_MODE)`], root).trim()).toBe("source");
       expect(readFileSync(join(directory, "src/release-identity.ts"), "utf8")).toContain('"source"');
     }
+    const coreLink = join(cliDirectory, "dist", "node_modules", "@zinn-dev", "core");
+    const linkedCoreIdentityUrl = pathToFileURL(join(coreLink, "src/release-identity.js")).href;
+    expect(run(["bun", "--eval", `console.log((await import(${JSON.stringify(linkedCoreIdentityUrl)})).RELEASE_MODE)`], root).trim()).toBe("source");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

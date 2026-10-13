@@ -7,7 +7,7 @@ test("checked-in core identity is source", () => {
 });
 
 test("published files come from build output while workspace links stay on source", () => {
-  expect(packageJson.publishConfig.directory).toBe("dist");
+  expect(packageJson.publishConfig.directory).toBe("release-dist");
   expect(packageJson.publishConfig.linkDirectory).toBe(false);
   expect(packageJson.files).toContain("index.js");
 });

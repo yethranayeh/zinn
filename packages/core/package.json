@@ -44,7 +44,7 @@
 	],
 	"publishConfig": {
 		"access": "public",
-		"directory": "dist",
+		"directory": "release-dist",
 		"linkDirectory": false
 	},
 	"dependencies": {

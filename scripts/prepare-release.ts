@@ -1,5 +1,5 @@
 /** Prepares fresh release output, refusing prerelease packages and workspace dependencies. */
-import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { isPrerelease } from "../packages/core/src/release.ts";
@@ -10,6 +10,13 @@ type PackageJson = { name: string; version: string; dependencies?: Record<string
 
 const packageDirectory = process.cwd();
 const outputDirectory = join(packageDirectory, "dist");
+const stagingDirectory = join(packageDirectory, "release-dist");
+
+if (!process.env.npm_config_user_agent?.startsWith("pnpm/")) {
+  throw new Error(
+    "Release preparation requires pnpm. Run pnpm pack or pnpm publish from the package directory.",
+  );
+}
 
 function readPackageJson(directory: string): PackageJson {
   return JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
@@ -63,7 +70,7 @@ if (prereleases.length > 0) {
 }
 
 try {
-  rmSync(outputDirectory, { recursive: true, force: true });
+  rmSync(stagingDirectory, { recursive: true, force: true });
 
   const build = Bun.spawn(["bun", "run", "build"], {
     cwd: packageDirectory,
@@ -76,13 +83,16 @@ try {
     throw new Error(`Release build failed with exit code ${exitCode}`);
   }
 
+  cpSync(outputDirectory, stagingDirectory, {
+    recursive: true,
+    // Development dependency links must not enter release staging.
+    filter: (source) => source !== join(outputDirectory, "node_modules"),
+  });
   writeFileSync(
-    join(outputDirectory, "src", "release-identity.js"),
+    join(stagingDirectory, "src", "release-identity.js"),
     'export const RELEASE_MODE = "published";\n',
   );
-  // Release artifacts consume separately installed dependencies.
-  rmSync(join(outputDirectory, "node_modules"), { recursive: true, force: true });
 } catch (error) {
-  rmSync(outputDirectory, { recursive: true, force: true });
+  rmSync(stagingDirectory, { recursive: true, force: true });
   throw error;
 }
