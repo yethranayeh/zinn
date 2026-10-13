@@ -17,8 +17,8 @@ function run(command: string[]) {
 
 test("emitted core works on both runtimes and its declarations need no Bun types", () => {
   // A development build must discard identity left by an earlier release build.
-  mkdirSync(outputDirectory, { recursive: true });
-  writeFileSync(join(outputDirectory, "release-stamp.json"), '{"release":"published"}');
+  mkdirSync(join(outputDirectory, "src"), { recursive: true });
+  writeFileSync(join(outputDirectory, "src/release-identity.js"), 'export const RELEASE_MODE = "published";');
   writeFileSync(join(outputDirectory, "package.json"), '{"version":"1.0.0","type":"module"}');
   run(["bun", "run", "--cwd", packageDirectory, "build"]);
   const directory = mkdtempSync(join(tmpdir(), "zinn-core-build-"));

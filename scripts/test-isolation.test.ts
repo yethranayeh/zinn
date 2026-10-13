@@ -1,35 +1,34 @@
 import { expect, test } from "bun:test";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { PUBLISHED_STAMP, RELEASE_STAMP_FILE } from "../packages/core/src/release.ts";
+import { SOURCE_IDENTITY_MODULES } from "./test-isolation.ts";
 
 const REPOSITORY_DIRECTORY = fileURLToPath(new URL("..", import.meta.url));
-const packageNames = readdirSync(join(REPOSITORY_DIRECTORY, "packages"), { withFileTypes: true })
-  .filter((entry) => entry.isDirectory())
-  .map((entry) => entry.name);
+const packageNames = SOURCE_IDENTITY_MODULES.map((identity) => identity.name);
+const additionalPackage = "additional-client";
 const cases = [
-  { name: "a clean checkout", packageName: null, version: "1.0.0" },
-  ...packageNames.flatMap((packageName) =>
-    ["1.0.0", "1.1.0-dev"].map((version) => ({
-      name: `a stamp in ${packageName} at ${version}`,
-      packageName,
-      version,
-    })),
-  ),
+  { name: "a clean source checkout", published: [] },
+  ...packageNames.map((name) => ({ name: `published ${name} source`, published: [name] })),
+  { name: "all published sources", published: packageNames },
+  { name: "an additional published client", published: [additionalPackage] },
 ];
 
-test.each(cases)("test preload with $name", ({ packageName, version }) => {
+test.each(cases)("test preload with $name", ({ published }) => {
   const directory = mkdtempSync(join(tmpdir(), "zinn-test-isolation-"));
 
   try {
     mkdirSync(join(directory, "scripts"));
     mkdirSync(join(directory, "temp"));
-    mkdirSync(join(directory, "packages", "core", "src"), { recursive: true });
-    for (const path of ["scripts/test-isolation.ts", "packages/core/src/release.ts"]) {
-      copyFileSync(join(REPOSITORY_DIRECTORY, path), join(directory, path));
+    copyFileSync(join(REPOSITORY_DIRECTORY, "scripts/test-isolation.ts"), join(directory, "scripts/test-isolation.ts"));
+    for (const name of [...packageNames, additionalPackage]) {
+      const sourceDirectory = join(directory, "packages", name, "src");
+      const outputDirectory = join(directory, "packages", name, "dist", "src");
+      mkdirSync(sourceDirectory, { recursive: true });
+      mkdirSync(outputDirectory, { recursive: true });
+      writeFileSync(join(sourceDirectory, "release-identity.ts"), `export const RELEASE_MODE = "${published.includes(name) ? "published" : "source"}";\n`);
+      writeFileSync(join(outputDirectory, "release-identity.js"), 'export const RELEASE_MODE = "published";\n');
     }
     writeFileSync(join(directory, "bunfig.toml"), '[test]\npreload = ["./scripts/test-isolation.ts"]\n');
     writeFileSync(join(directory, "probe.test.ts"), `
@@ -43,29 +42,18 @@ test.each(cases)("test preload with $name", ({ packageName, version }) => {
       });
     `);
 
-    const stamp = JSON.stringify(PUBLISHED_STAMP);
-    const stampPath = packageName === null ? null : join(directory, "packages", packageName, RELEASE_STAMP_FILE);
-    if (stampPath !== null) {
-      mkdirSync(dirname(stampPath), { recursive: true });
-      writeFileSync(join(dirname(stampPath), "package.json"), JSON.stringify({ version }));
-      writeFileSync(stampPath, stamp);
-    }
-
     const result = Bun.spawnSync([process.execPath, "test", "./probe.test.ts"], {
       cwd: directory,
       env: { ...process.env, TMPDIR: join(directory, "temp"), ZINN_DIR: join(directory, "inherited-store") },
     });
-    const testMarker = join(directory, "test-ran");
 
-    if (stampPath === null) {
+    if (published.length === 0) {
       expect(result.exitCode).toBe(0);
-      expect(existsSync(testMarker)).toBe(true);
+      expect(existsSync(join(directory, "test-ran"))).toBe(true);
     } else {
       expect(result.exitCode).not.toBe(0);
-      expect(existsSync(testMarker)).toBe(false);
-      expect(result.stderr.toString()).toContain(stampPath);
-      expect(result.stderr.toString()).toContain("bun ../../scripts/release-stamp.ts remove");
-      expect(readFileSync(stampPath, "utf8")).toBe(stamp);
+      expect(existsSync(join(directory, "test-ran"))).toBe(false);
+      expect(result.stderr.toString()).toContain("release-identity.ts");
     }
   } finally {
     rmSync(directory, { recursive: true, force: true });

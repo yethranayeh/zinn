@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync 
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import packageJson from "./package.json";
+import { writePackageOutput } from "../../scripts/package-output.ts";
 
 const packageDirectory = fileURLToPath(new URL(".", import.meta.url));
 const coreDirectory = fileURLToPath(new URL("../core", import.meta.url));
@@ -25,20 +25,7 @@ for (const command of [
   }
 }
 
-writeFileSync(
-  join(outputDirectory, "package.json"),
-  `${JSON.stringify(
-    {
-      name: packageJson.name,
-      version: packageJson.version,
-      type: "module",
-      exports: { ".": { types: "./index.d.ts", import: "./index.js" } },
-      bin: { zinn: "./index.js" },
-    },
-    null,
-    2,
-  )}\n`,
-);
+writePackageOutput(packageDirectory, { bin: { zinn: "./index.js" } });
 
 // Only the emitted executable uses the Node shebang.
 const executablePath = join(outputDirectory, "index.js");

@@ -21,7 +21,7 @@ export type OpenPolicy = {
   version: string;
   /** What the client runs from, named in diagnostics, such as the CLI's script path. */
   executable: string;
-  /** The client's own release mode, read with `readReleaseMode` from its package. */
+  /** The client's own release mode, independent of core's identity. */
   release: ReleaseMode;
   /** Opens a database without a schema version for best-effort reading. It never allows changes. */
   allowsLegacyRead: boolean;

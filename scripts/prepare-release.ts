@@ -1,23 +1,15 @@
-/**
- * Writes or removes the release stamp of the package in the current folder:
- *   `bun ../../scripts/release-stamp.ts write`    from the package's prepack script
- *   `bun ../../scripts/release-stamp.ts remove`   from its postpack script
- * Packing runs both, so only the packed package keeps the stamp.
- * `write` refuses to pack a prerelease (such as `0.39.0-dev`), or a package whose `workspace:`
- * dependency is one: pnpm packs `workspace:*` as that sibling's current version, which is not on npm.
- */
+/** Prepares fresh release output, refusing prerelease packages and workspace dependencies. */
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { isPrerelease, PUBLISHED_STAMP, RELEASE_STAMP_FILE } from "../packages/core/src/release.ts";
+import { isPrerelease } from "../packages/core/src/release.ts";
 
 const WORKSPACE_PREFIX = "workspace:";
 
 type PackageJson = { name: string; version: string; dependencies?: Record<string, string> };
 
 const packageDirectory = process.cwd();
-const stampPath = join(packageDirectory, RELEASE_STAMP_FILE);
-const action = process.argv[2];
+const outputDirectory = join(packageDirectory, "dist");
 
 function readPackageJson(directory: string): PackageJson {
   return JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
@@ -62,18 +54,35 @@ function findPrereleases() {
   return prereleases;
 }
 
-if (action === "write") {
-  const prereleases = findPrereleases();
+const prereleases = findPrereleases();
 
-  if (prereleases.length > 0) {
-    throw new Error(
-      `Refusing to pack a prerelease: ${prereleases.join(", ")}. Set the release version first.`,
-    );
+if (prereleases.length > 0) {
+  throw new Error(
+    `Refusing to pack a prerelease: ${prereleases.join(", ")}. Set the release version first.`,
+  );
+}
+
+try {
+  rmSync(outputDirectory, { recursive: true, force: true });
+
+  const build = Bun.spawn(["bun", "run", "build"], {
+    cwd: packageDirectory,
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  const exitCode = await build.exited;
+
+  if (exitCode !== 0) {
+    throw new Error(`Release build failed with exit code ${exitCode}`);
   }
 
-  writeFileSync(stampPath, `${JSON.stringify(PUBLISHED_STAMP)}\n`);
-} else if (action === "remove") {
-  rmSync(stampPath, { force: true });
-} else {
-  throw new Error("Usage: bun scripts/release-stamp.ts {write|remove}");
+  writeFileSync(
+    join(outputDirectory, "src", "release-identity.js"),
+    'export const RELEASE_MODE = "published";\n',
+  );
+  // Release artifacts consume separately installed dependencies.
+  rmSync(join(outputDirectory, "node_modules"), { recursive: true, force: true });
+} catch (error) {
+  rmSync(outputDirectory, { recursive: true, force: true });
+  throw error;
 }

@@ -1,0 +1,165 @@
+import { expect, test } from "bun:test";
+import { appendFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+import { openDatabase } from "../packages/core/src/sqlite/bun.ts";
+import { seedBaseline } from "../packages/core/src/migrations/testing.ts";
+
+const REPOSITORY_DIRECTORY = fileURLToPath(new URL("..", import.meta.url));
+const PACK_CHECK_TIMEOUT_MS = 60_000;
+
+function run(command: string[], cwd: string, env = process.env) {
+  const result = Bun.spawnSync(command, { cwd, env });
+  expect(result.exitCode, result.stdout.toString() + result.stderr.toString()).toBe(0);
+  return result.stdout.toString();
+}
+
+test("pnpm packs fresh JS artifacts with independent identities and unchanged migration protection", () => {
+  const root = mkdtempSync(join(tmpdir(), "zinn-pack-"));
+
+  try {
+    for (const path of ["package.json", "tsconfig.json", "pnpm-workspace.yaml", "scripts/package-output.ts", "scripts/prepare-release.ts"]) {
+      mkdirSync(join(root, path, ".."), { recursive: true });
+      cpSync(join(REPOSITORY_DIRECTORY, path), join(root, path));
+    }
+    symlinkSync(join(REPOSITORY_DIRECTORY, "node_modules"), join(root, "node_modules"), "junction");
+    for (const name of ["core", "cli"]) {
+      const directory = join(root, "packages", name);
+      mkdirSync(directory, { recursive: true });
+      for (const path of ["index.ts", "src", "package.json", "README.md", "LICENSE", "build.ts", "tsconfig.build.json"]) {
+        cpSync(join(REPOSITORY_DIRECTORY, "packages", name, path), join(directory, path), { recursive: true });
+      }
+      const manifestPath = join(directory, "package.json");
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+      manifest.version = manifest.version.replace(/-dev$/, "");
+      if (name === "core") {
+        manifest.files.push("included.txt");
+        appendFileSync(join(directory, "build.ts"), `
+          const { writeFileSync } = await import("node:fs");
+          writeFileSync(new URL("./dist/included.txt", import.meta.url), "selected by the package files list");
+          writeFileSync(new URL("./dist/excluded.txt", import.meta.url), "not selected by the package files list");
+        `);
+      }
+      writeFileSync(manifestPath, JSON.stringify(manifest));
+    }
+    const coreDirectory = join(root, "packages", "core");
+    const cliDirectory = join(root, "packages", "cli");
+    symlinkSync(join(REPOSITORY_DIRECTORY, "packages", "core", "node_modules"), join(coreDirectory, "node_modules"), "junction");
+    mkdirSync(join(cliDirectory, "node_modules", "@zinn-dev"), { recursive: true });
+    symlinkSync(coreDirectory, join(cliDirectory, "node_modules", "@zinn-dev", "core"), "junction");
+    const sourceSnapshots = [coreDirectory, cliDirectory].map((directory) => ({
+      directory,
+      manifest: readFileSync(join(directory, "package.json"), "utf8"),
+      identity: readFileSync(join(directory, "src/release-identity.ts"), "utf8"),
+    }));
+    const packDirectory = join(root, "tarballs");
+    mkdirSync(packDirectory);
+    const consumer = join(root, "consumer", "node_modules", "@zinn-dev");
+    mkdirSync(consumer, { recursive: true });
+
+    for (const name of ["core", "cli"]) {
+      const directory = join(root, "packages", name);
+      const version = JSON.parse(readFileSync(join(directory, "package.json"), "utf8")).version;
+      // Packing must build, even when a previous output is incomplete.
+      mkdirSync(join(directory, "dist"), { recursive: true });
+      writeFileSync(join(directory, "dist", "obsolete.js"), "throw new Error('stale release');");
+      run(["pnpm", "pack", "--pack-destination", packDirectory], directory);
+      const archive = join(packDirectory, `zinn-dev-${name}-${version}.tgz`);
+      const members = run(["tar", "-tzf", archive], root).trim().split("\n");
+      expect(members).toContain("package/index.js");
+      expect(members).toContain("package/index.d.ts");
+      expect(members).toContain("package/README.md");
+      expect(members).toContain("package/LICENSE");
+      expect(members).toContain("package/src/release-identity.js");
+      expect(members.some((path) => path.endsWith(".ts") && !path.endsWith(".d.ts"))).toBe(false);
+      expect(members.some((path) => /node_modules|obsolete|release-stamp|AGENTS|NOTES|build\.test/.test(path))).toBe(false);
+      if (name === "core") {
+        expect(members).toContain("package/included.txt");
+        expect(members).not.toContain("package/excluded.txt");
+      }
+      const extracted = join(consumer, name);
+      mkdirSync(extracted);
+      run(["tar", "-xzf", archive, "-C", extracted, "--strip-components=1"], root);
+      if (name === "core") {
+        symlinkSync(join(REPOSITORY_DIRECTORY, "packages", "core", "node_modules"), join(extracted, "node_modules"), "junction");
+      }
+      const manifest = JSON.parse(readFileSync(join(extracted, "package.json"), "utf8"));
+      expect(manifest.exports).toEqual({ ".": { types: "./index.d.ts", import: "./index.js" } });
+      expect(manifest.types).toBe("./index.d.ts");
+      expect(manifest).not.toHaveProperty("zinnRelease");
+      expect(manifest.scripts).toBeUndefined();
+      if (name === "core") {
+        expect(manifest.imports["#sqlite"]).toEqual({ bun: "./src/sqlite/bun.js", default: "./src/sqlite/node.js" });
+      } else {
+        expect(manifest.dependencies["@zinn-dev/core"]).toBe(JSON.parse(readFileSync(join(coreDirectory, "package.json"), "utf8")).version);
+        expect(manifest.bin.zinn).toBe("./index.js");
+        expect(readFileSync(join(extracted, "index.js"), "utf8")).toStartWith("#!/usr/bin/env node");
+      }
+    }
+
+    for (const { directory, manifest, identity } of sourceSnapshots) {
+      expect(readFileSync(join(directory, "package.json"), "utf8")).toBe(manifest);
+      expect(readFileSync(join(directory, "src/release-identity.ts"), "utf8")).toBe(identity);
+    }
+    const packedCore = join(consumer, "core");
+    const packedCli = join(consumer, "cli");
+    const identitiesCode = `Promise.all([
+      import(${JSON.stringify(pathToFileURL(join(packedCore, "src/release.js")).href)}),
+      import(${JSON.stringify(pathToFileURL(join(packedCli, "src/database.js")).href)})
+    ]).then(([core, cli]) => console.log(JSON.stringify({ core: core.readCoreReleaseMode(), cli: cli.cliOpenPolicy().release })));`;
+    for (const runtime of ["bun", "node"]) {
+      expect(JSON.parse(run([runtime, "--eval", identitiesCode], root))).toEqual({ core: "published", cli: "published" });
+    }
+
+    // Only disposable packed output receives the test migration.
+    const registryPath = join(packedCore, "src/migrations/registry.js");
+    const registry = readFileSync(registryPath, "utf8");
+    expect(registry).toContain("export const MIGRATIONS = [];");
+    writeFileSync(registryPath, registry.replace("export const MIGRATIONS = [];", `export const MIGRATIONS = [{ version: 2, name: "test upgrade", rebuilds: [], apply(db) { db.exec("CREATE TABLE pack_test (value TEXT)"); } }];`));
+
+    const cases = [
+      { core: "source", cli: "source", isolated: false, upgrades: false },
+      { core: "published", cli: "source", isolated: false, upgrades: false },
+      { core: "source", cli: "published", isolated: false, upgrades: false },
+      { core: "published", cli: "published", isolated: false, upgrades: true },
+      { core: "source", cli: "source", isolated: true, upgrades: true },
+    ] as const;
+    for (const [index, state] of cases.entries()) {
+      writeFileSync(join(packedCore, "src/release-identity.js"), `export const RELEASE_MODE = "${state.core}";\n`);
+      writeFileSync(join(packedCli, "src/release-identity.js"), `export const RELEASE_MODE = "${state.cli}";\n`);
+      const home = join(root, `home-${index}`);
+      const store = join(home, state.isolated ? "isolated-store" : ".zinn");
+      mkdirSync(join(store, "data"), { recursive: true });
+      const databasePath = join(store, "data", "zinn.sqlite");
+      const seed = openDatabase(databasePath);
+      seedBaseline(seed);
+      seed.close();
+      const env = { ...process.env, HOME: home, ZINN_DIR: store };
+      run(["bun", join(packedCli, "index.js"), "project", "list", "--json"], home, env);
+      let database = openDatabase(databasePath);
+      expect(database.query<{ user_version: number }>("PRAGMA user_version").get()!.user_version).toBe(state.upgrades ? 2 : 1);
+      expect(database.query("PRAGMA foreign_key_check").all()).toEqual([]);
+      database.close();
+      if (!state.upgrades) {
+        const refused = Bun.spawnSync(["bun", join(packedCli, "index.js"), "project", "create", "REFUSED", "--json"], { cwd: home, env });
+        expect(refused.exitCode).toBe(1);
+        expect(refused.stdout.toString()).toBe("");
+        run(["bun", join(packedCli, "index.js"), "migrate", "--json"], home, env);
+        database = openDatabase(databasePath);
+        expect(database.query<{ user_version: number }>("PRAGMA user_version").get()!.user_version).toBe(2);
+        database.close();
+      }
+    }
+
+    run(["bun", "run", "build"], cliDirectory);
+    for (const directory of [coreDirectory, cliDirectory]) {
+      const identityUrl = pathToFileURL(join(directory, "dist", "src/release-identity.js")).href;
+      expect(run(["bun", "--eval", `console.log((await import(${JSON.stringify(identityUrl)})).RELEASE_MODE)`], root).trim()).toBe("source");
+      expect(readFileSync(join(directory, "src/release-identity.ts"), "utf8")).toContain('"source"');
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}, PACK_CHECK_TIMEOUT_MS);

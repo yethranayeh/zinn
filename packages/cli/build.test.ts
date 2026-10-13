@@ -25,14 +25,18 @@ function runCli(runtime: string, args: string[], directory: string, env: Record<
 beforeAll(() => {
   // A development build refreshes both outputs, including old release identity.
   for (const directory of [outputDirectory, coreOutputDirectory]) {
-    mkdirSync(directory, { recursive: true });
-    writeFileSync(join(directory, "release-stamp.json"), '{"release":"published"}');
+    mkdirSync(join(directory, "src"), { recursive: true });
+    writeFileSync(join(directory, "src/release-identity.js"), 'export const RELEASE_MODE = "published";');
   }
 
   const result = Bun.spawnSync(["bun", "run", "--cwd", packageDirectory, "build"]);
   expect(result.exitCode, result.stderr.toString() + result.stdout.toString()).toBe(0);
-  expect(existsSync(join(outputDirectory, "release-stamp.json"))).toBe(false);
-  expect(existsSync(join(coreOutputDirectory, "release-stamp.json"))).toBe(false);
+  for (const directory of [outputDirectory, coreOutputDirectory]) {
+    const identityUrl = pathToFileURL(join(directory, "src/release-identity.js")).href;
+    const identity = Bun.spawnSync(["bun", "--eval", `console.log((await import(${JSON.stringify(identityUrl)})).RELEASE_MODE)`]);
+    expect(identity.exitCode, identity.stderr.toString()).toBe(0);
+    expect(identity.stdout.toString().trim()).toBe("source");
+  }
 }, BUILD_CHECK_TIMEOUT_MS);
 
 for (const runtime of ["node", "bun"]) {
@@ -169,12 +173,13 @@ test("source entrypoints ignore leftover release output and development identiti
     const manifests = [outputDirectory, coreOutputDirectory].map((directory) => ({
       directory,
       content: readFileSync(join(directory, "package.json"), "utf8"),
+      identity: readFileSync(join(directory, "src/release-identity.js"), "utf8"),
     }));
 
     try {
       for (const { directory, content } of manifests) {
         writeFileSync(join(directory, "package.json"), JSON.stringify({ ...JSON.parse(content), version: "1.0.0" }));
-        writeFileSync(join(directory, "release-stamp.json"), '{"release":"published"}');
+        writeFileSync(join(directory, "src/release-identity.js"), 'export const RELEASE_MODE = "published";\n');
       }
 
       expect(readIdentities()).toEqual({ builtCli: "published", sourceCli: "source", builtCore: "published", sourceCore: "source" });
@@ -184,9 +189,9 @@ test("source entrypoints ignore leftover release output and development identiti
       expect(sourceVersion.exitCode).toBe(0);
       expect(sourceVersion.stdout.toString().trim()).toBe(packageJson.version);
     } finally {
-      for (const { directory, content } of manifests) {
+      for (const { directory, content, identity } of manifests) {
         writeFileSync(join(directory, "package.json"), content);
-        rmSync(join(directory, "release-stamp.json"));
+        writeFileSync(join(directory, "src/release-identity.js"), identity);
       }
     }
   });

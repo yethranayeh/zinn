@@ -1,15 +1,9 @@
 import { expect, spyOn, test } from "bun:test";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import packageJson from "../package.json";
 import { cliOpenPolicy, reportLegacyRead, reportLockWait } from "./database";
 import { setLegacyReadAllowed } from "./lib";
-
-const CLI_DIRECTORY = fileURLToPath(new URL("..", import.meta.url));
-// The file name core's release reading looks for.
-const RELEASE_STAMP_FILE = "release-stamp.json";
+import { RELEASE_MODE } from "./release-identity";
 
 test("the CLI opens the database as the cli client of its own release mode, without legacy reads", () => {
   const { onWait, onLegacyRead, ...policy } = cliOpenPolicy();
@@ -61,10 +55,14 @@ test("the policy warns on stderr about the unmarked database that opened for rea
   }
 });
 
-test("this source folder has no stamp", () => {
-  expect(existsSync(join(CLI_DIRECTORY, RELEASE_STAMP_FILE))).toBe(false);
+test("checked-in CLI identity is source", () => {
+  expect(RELEASE_MODE).toBe("source");
 });
 
-test("the published package includes the stamp", () => {
-  expect(packageJson.files).toContain(RELEASE_STAMP_FILE);
+test("published files come from build output while workspace links stay on source", () => {
+  expect(packageJson.publishConfig.directory).toBe("dist");
+  expect(packageJson.publishConfig.linkDirectory).toBe(false);
+  expect(packageJson.files).toContain("index.js");
+  expect(packageJson.scripts.prepack).toContain("prepare-release.ts");
+  expect(packageJson.scripts).not.toHaveProperty("postpack");
 });

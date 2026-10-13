@@ -95,5 +95,4 @@ export { MigrationRefusedError } from "./src/migrations/migrate.js";
 export { RestoreRefusedError } from "./src/migrations/restore.js";
 export { assertWritable, configureDatabase } from "./src/db.js";
 export { ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./src/migrations/open-policy.js";
-export { readReleaseMode } from "./src/release.js";
 export { getStorage } from "./src/constant.js";

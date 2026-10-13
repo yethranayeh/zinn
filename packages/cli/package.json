@@ -30,22 +30,24 @@
 		}
 	},
 	"files": [
-		"index.ts",
-		"src",
-		"LICENSE",
-		"release-stamp.json"
+		"index.js",
+		"index.d.ts",
+		"src/**/*.js",
+		"src/**/*.d.ts",
+		"LICENSE"
 	],
 	"type": "module",
 	"scripts": {
 		"build": "bun build.ts",
-		"prepack": "bun ../../scripts/release-stamp.ts write",
-		"postpack": "bun ../../scripts/release-stamp.ts remove"
+		"prepack": "bun ../../scripts/prepare-release.ts"
 	},
 	"bin": {
 		"zinn": "./index.ts"
 	},
 	"publishConfig": {
-		"access": "public"
+		"access": "public",
+		"directory": "dist",
+		"linkDirectory": false
 	},
 	"dependencies": {
 		"@zinn-dev/core": "workspace:*"

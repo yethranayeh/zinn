@@ -45,7 +45,9 @@ ZINN_DIR=./.zinn-example bun example.ts
 
 Core opens the database on first use. By default it shares `~/.zinn/data/zinn.sqlite` with the CLI, but `ZINN_DIR` and settings files can choose another location. See [data location](../../README.md#data-location).
 
-The example runs as a source script. Packaged clients use `readReleaseMode` with their own package directory to identify their release mode. Core throws errors; clients handle output, prompts, and the optional database wait and legacy-read callbacks.
+The example runs as a source script. Clients pass their own `release` identity: `source` for development and `published` for prepared release artifacts. Core independently identifies its own build.
+
+Core throws errors while clients handle output, prompts, and the optional database wait and legacy-read callbacks.
 
 ## Shared behavior
 

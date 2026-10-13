@@ -1,8 +1,9 @@
-import { rmSync, writeFileSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import packageJson from "./package.json";
+import { writePackageOutput } from "../../scripts/package-output.ts";
 
 const packageDirectory = fileURLToPath(new URL(".", import.meta.url));
 const outputDirectory = join(packageDirectory, "dist");
@@ -32,20 +33,4 @@ const imports = Object.fromEntries(
   ]),
 );
 
-writeFileSync(
-  join(outputDirectory, "package.json"),
-  `${JSON.stringify(
-    {
-      type: "module",
-      imports,
-      exports: {
-        ".": {
-          types: "./index.d.ts",
-          import: "./index.js",
-        },
-      },
-    },
-    null,
-    2,
-  )}\n`,
-);
+writePackageOutput(packageDirectory, { imports });

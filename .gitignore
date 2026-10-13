@@ -37,6 +37,3 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .npmrc
 .zinn-dev/
 data
-
-# written by prepack and removed by postpack, so only packed packages carry it
-release-stamp.json
