@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { openDatabase } from "../packages/core/src/sqlite/bun.ts";
 import { seedBaseline } from "../packages/core/src/migrations/testing.ts";
-import { createPackageFixture, PACKAGE_NAMES } from "./package-fixture.ts";
+import { createPackageTestCopy, PACKAGE_NAMES } from "./package-fixture.ts";
 
 const REPOSITORY_DIRECTORY = fileURLToPath(new URL("..", import.meta.url));
 const PACK_CHECK_TIMEOUT_MS = 60_000;
@@ -25,7 +25,7 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
   const root = mkdtempSync(join(tmpdir(), "zinn-pack-"));
 
   try {
-    createPackageFixture(REPOSITORY_DIRECTORY, root);
+    createPackageTestCopy(REPOSITORY_DIRECTORY, root);
     for (const name of PACKAGE_NAMES) {
       const directory = join(root, "packages", name);
       const manifestPath = join(directory, "package.json");

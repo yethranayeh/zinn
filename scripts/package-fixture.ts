@@ -3,24 +3,28 @@ import { cpSync, lstatSync, mkdirSync, readFileSync, symlinkSync } from "node:fs
 import { dirname, join } from "node:path";
 
 export const PACKAGE_NAMES = ["core", "cli"] as const;
+export const GIT_CONTEXT_VARIABLES = [
+  "GIT_DIR",
+  "GIT_COMMON_DIR",
+  "GIT_WORK_TREE",
+  "GIT_INDEX_FILE",
+] as const;
 
-function git(directory: string, args: string[]) {
+// Ignore inherited Git paths so commands use only the requested repository.
+export function git(directory: string, args: string[]) {
   const result = Bun.spawnSync(["git", "-c", "core.hooksPath=/dev/null", ...args], {
     cwd: directory,
     env: {
       ...process.env,
-      GIT_DIR: undefined,
-      GIT_COMMON_DIR: undefined,
-      GIT_WORK_TREE: undefined,
-      GIT_INDEX_FILE: undefined,
+      ...Object.fromEntries(GIT_CONTEXT_VARIABLES.map((name) => [name, undefined])),
     },
   });
   assert.equal(result.exitCode, 0, `git ${args.join(" ")} failed: ${result.stderr.toString()}`);
   return result.stdout.toString();
 }
 
-/** Copies current tracked and nonignored files, then links the installed build dependencies. */
-export function createPackageFixture(repositoryDirectory: string, fixtureDirectory: string) {
+/** Creates a temporary source copy for package checks and links its build dependencies. */
+export function createPackageTestCopy(repositoryDirectory: string, testCopyDirectory: string) {
   const files = git(repositoryDirectory, [
     "ls-files",
     "--cached",
@@ -32,7 +36,7 @@ export function createPackageFixture(repositoryDirectory: string, fixtureDirecto
     .split("\0")
     .filter(Boolean);
 
-  mkdirSync(fixtureDirectory, { recursive: true });
+  mkdirSync(testCopyDirectory, { recursive: true });
   for (const path of files) {
     const isDependencyPath = path.split("/").includes("node_modules");
     if (isDependencyPath) {
@@ -42,33 +46,33 @@ export function createPackageFixture(repositoryDirectory: string, fixtureDirecto
     if (!lstatSync(source, { throwIfNoEntry: false })) {
       continue;
     }
-    const destination = join(fixtureDirectory, path);
+    const destination = join(testCopyDirectory, path);
     mkdirSync(dirname(destination), { recursive: true });
     cpSync(source, destination, { verbatimSymlinks: true });
   }
 
-  // Nested checks need the copied files' inventory, independent of the original repository.
-  git(fixtureDirectory, ["init", "--quiet", "--template="]);
-  git(fixtureDirectory, ["add", "--all", "--force"]);
+  // Register copied files so another package check can copy this directory too.
+  git(testCopyDirectory, ["init", "--quiet", "--template="]);
+  git(testCopyDirectory, ["add", "--all", "--force"]);
 
   symlinkSync(
     join(repositoryDirectory, "node_modules"),
-    join(fixtureDirectory, "node_modules"),
+    join(testCopyDirectory, "node_modules"),
     "junction",
   );
 
   symlinkSync(
     join(repositoryDirectory, "packages/core/node_modules"),
-    join(fixtureDirectory, "packages/core/node_modules"),
+    join(testCopyDirectory, "packages/core/node_modules"),
     "junction",
   );
 
-  const cliDependencies = join(fixtureDirectory, "packages/cli/node_modules/@zinn-dev");
+  const cliDependencies = join(testCopyDirectory, "packages/cli/node_modules/@zinn-dev");
   mkdirSync(cliDependencies, { recursive: true });
-  symlinkSync(join(fixtureDirectory, "packages/core"), join(cliDependencies, "core"), "junction");
+  symlinkSync(join(testCopyDirectory, "packages/core"), join(cliDependencies, "core"), "junction");
 }
 
-/** Reads the common exact lower bound used by the packages' Node engine contracts. */
+/** Reads the minimum Node version declared by both packages. */
 export function readNodeMinimum(repositoryDirectory: string) {
   const requirements = PACKAGE_NAMES.map((name) => {
     const manifest = JSON.parse(

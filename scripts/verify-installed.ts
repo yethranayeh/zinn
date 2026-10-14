@@ -1,6 +1,5 @@
-/** Checks installed release artifacts before pnpm publishes either package. */
+/** Checks locally packed core and CLI on Node and Bun before publishing. */
 import { strict as assert } from "node:assert";
-import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -13,16 +12,17 @@ import {
 import { homedir, release, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPackageFixture, PACKAGE_NAMES, readNodeMinimum } from "./package-fixture.ts";
+import { createPackageTestCopy, PACKAGE_NAMES, readNodeMinimum } from "./package-fixture.ts";
+import { readVerifiedDownload } from "./archive-cache.ts";
 
 const REPOSITORY_DIRECTORY = fileURLToPath(new URL("..", import.meta.url));
 const PARALLEL_CREATES = 8;
 const METADATA_TIMEOUT_MS = 60_000;
 const COMMAND_TIMEOUT_MS = 120_000;
-const ARCHIVE_TIMEOUT_MS = 600_000;
-const NODE_CACHE_DIRECTORY = join(homedir(), ".cache", "zinn", "node");
+const NODE_DOWNLOAD_TIMEOUT_MS = 600_000;
+const NODE_DOWNLOAD_CACHE_DIRECTORY = join(homedir(), ".cache", "zinn", "node");
 
-// A publish dry-run still needs real local tarballs and a real consumer install.
+// Even during a publish dry-run, build package files and install them for testing.
 const TOOL_ENVIRONMENT = Object.fromEntries(
   Object.entries(process.env).filter(([name]) => name.toLowerCase() !== "npm_config_dry_run"),
 );
@@ -79,12 +79,14 @@ async function download(url: string) {
   }
 }
 
-async function nodeRuntimes(
+async function prepareNodeRuntimes(
   directory: string,
   minimum: ReturnType<typeof readNodeMinimum>,
 ): Promise<Runtime[]> {
   assert.equal(process.platform, "darwin", "Installed-package verification requires macOS.");
-  console.log("Selecting maintained Node releases from the official schedule and release index...");
+  console.log(
+    "Selecting Node versions to test: the package minimum and maintained release lines...",
+  );
 
   const [schedule, releases] = await Promise.all([
     download("https://raw.githubusercontent.com/nodejs/Release/main/schedule.json").then(
@@ -111,24 +113,27 @@ async function nodeRuntimes(
     }
   }
 
-  mkdirSync(NODE_CACHE_DIRECTORY, { recursive: true });
-  console.log(`Node versions: ${[...versions].join(", ")}; archive cache: ${NODE_CACHE_DIRECTORY}`);
+  console.log(
+    `Node versions: ${[...versions].join(", ")}; downloaded Node files: ${NODE_DOWNLOAD_CACHE_DIRECTORY}`,
+  );
 
   const runtimes: Runtime[] = [];
   for (const version of versions) {
-    const archiveName = `node-v${version}-darwin-${process.arch}.tar.xz`;
+    const nodeDownloadName = `node-v${version}-darwin-${process.arch}.tar.xz`;
+
     const releaseUrl = `https://nodejs.org/dist/v${version}`;
     const sums = await (await download(`${releaseUrl}/SHASUMS256.txt`)).text();
     const expectedHash = sums
       .split("\n")
-      .find((line) => line.trim().split(/\s+/)[1] === archiveName)
+      .find((line) => line.trim().split(/\s+/)[1] === nodeDownloadName)
       ?.split(/\s+/)[0];
-    assert.ok(expectedHash, `No official checksum for ${archiveName}`);
-    const archivePath = join(NODE_CACHE_DIRECTORY, archiveName);
-    console.log(`${existsSync(archivePath) ? "Checking cached" : "Downloading"} ${archiveName}...`);
-    const temporaryArchive = join(directory, archiveName);
+    assert.ok(expectedHash, `No official checksum for ${nodeDownloadName}`);
 
-    if (!existsSync(archivePath)) {
+    const nodeDownloadPath = join(NODE_DOWNLOAD_CACHE_DIRECTORY, nodeDownloadName);
+
+    console.log(`Checking Node download ${nodeDownloadName}...`);
+    await readVerifiedDownload(nodeDownloadPath, expectedHash, async (temporaryDownloadPath) => {
+      console.log(`Downloading Node: ${nodeDownloadName}...`);
       await succeeds(
         [
           "/usr/bin/curl",
@@ -137,60 +142,54 @@ async function nodeRuntimes(
           "--silent",
           "--show-error",
           "--max-time",
-          String(ARCHIVE_TIMEOUT_MS / 1000),
+          String(NODE_DOWNLOAD_TIMEOUT_MS / 1000),
           "--output",
-          temporaryArchive,
-          `${releaseUrl}/${archiveName}`,
+          temporaryDownloadPath,
+          `${releaseUrl}/${nodeDownloadName}`,
         ],
         directory,
         TOOL_ENVIRONMENT,
-        ARCHIVE_TIMEOUT_MS,
+        NODE_DOWNLOAD_TIMEOUT_MS,
       );
-    }
+    });
+    console.log(`PASS Node download matches its official SHA256 checksum: ${nodeDownloadName}`);
 
-    const archive = readFileSync(existsSync(archivePath) ? archivePath : temporaryArchive);
-    assert.equal(
-      createHash("sha256").update(archive).digest("hex"),
-      expectedHash,
-      `Checksum mismatch: ${archiveName}`,
-    );
-    console.log(`PASS SHA256 ${archiveName}`);
+    // Unpack the verified Node download for this test run.
+    await succeeds(["/usr/bin/tar", "-xf", nodeDownloadPath, "-C", directory], directory);
 
-    if (!existsSync(archivePath)) {
-      writeFileSync(archivePath, archive);
-    }
-
-    // Extract the checked archive afresh rather than trusting an earlier executable.
-    await succeeds(["/usr/bin/tar", "-xzf", archivePath, "-C", directory], directory);
-    const executable = join(directory, archiveName.replace(/\.tar\.xz$/, ""), "bin", "node");
+    const executable = join(directory, nodeDownloadName.replace(/\.tar\.xz$/, ""), "bin", "node");
     const path = `${dirname(executable)}:/usr/bin:/bin`;
     assert.ok(
       !path.split(":").some((entry) => existsSync(join(entry, "bun"))),
       "Node check PATH contains Bun",
     );
     assert.equal((await succeeds([executable, "--version"], directory)).trim(), `v${version}`);
+
     runtimes.push({ name: `Node ${version}`, executable, adapter: "node", path });
   }
 
   return runtimes;
 }
 
-async function installPackages(root: string) {
+async function installPackedZinnPackages(root: string) {
+  console.log(
+    "Building and packing Zinn in a temporary copy, then installing it in an empty test folder...",
+  );
   const repository = join(root, "repository");
-  createPackageFixture(REPOSITORY_DIRECTORY, repository);
+  createPackageTestCopy(REPOSITORY_DIRECTORY, repository);
 
   const coreDirectory = join(repository, "packages", "core");
 
   const tarballs = join(root, "tarballs");
   mkdirSync(tarballs);
 
-  const archives: Record<string, string> = {};
+  const packageTarballs: Record<string, string> = {};
   for (const name of PACKAGE_NAMES) {
     const directory = join(repository, "packages", name);
     const manifest = JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
-    // Preserve the release versions; development fixtures must finalize their own copies.
+    // Pack the existing versions; release preparation rejects development versions.
     await succeeds(["pnpm", "pack", "--dry-run=false", "--pack-destination", tarballs], directory);
-    archives[name] = join(tarballs, `zinn-dev-${name}-${manifest.version}.tgz`);
+    packageTarballs[name] = join(tarballs, `zinn-dev-${name}-${manifest.version}.tgz`);
   }
 
   const consumer = join(root, "consumer");
@@ -201,10 +200,10 @@ async function installPackages(root: string) {
       private: true,
       type: "module",
       dependencies: {
-        "@zinn-dev/core": `file:${archives.core}`,
-        "@zinn-dev/cli": `file:${archives.cli}`,
+        "@zinn-dev/core": `file:${packageTarballs.core}`,
+        "@zinn-dev/cli": `file:${packageTarballs.cli}`,
       },
-      pnpm: { overrides: { "@zinn-dev/core": `file:${archives.core}` } },
+      pnpm: { overrides: { "@zinn-dev/core": `file:${packageTarballs.core}` } },
     }),
   );
 
@@ -222,7 +221,7 @@ async function installPackages(root: string) {
     JSON.parse(readFileSync(join(installedCore, "package.json"), "utf8")),
     JSON.parse(readFileSync(join(coreDirectory, "release-dist/package.json"), "utf8")),
   );
-  console.log(`PASS installed CLI resolves packed core: ${installedCore}`);
+  console.log(`PASS installed CLI uses the core package built for this check: ${installedCore}`);
 
   return { consumer, installedCore, installedCli };
 }
@@ -373,15 +372,16 @@ async function checkDeclarations(consumer: string) {
 const root = mkdtempSync(join(tmpdir(), "zinn-installed-"));
 try {
   const minimum = readNodeMinimum(REPOSITORY_DIRECTORY);
+  console.log("Checking that installed Zinn works on Node without Bun, and on Bun.");
   console.log(
-    `Installed release verification: ${process.platform} ${release()} ${process.arch}, Bun ${Bun.version}, pnpm ${(await succeeds(["pnpm", "--version"], REPOSITORY_DIRECTORY)).trim()}`,
+    `Test environment: ${process.platform} ${release()} ${process.arch}, Bun ${Bun.version}, pnpm ${(await succeeds(["pnpm", "--version"], REPOSITORY_DIRECTORY)).trim()}`,
   );
 
-  const { consumer, installedCli } = await installPackages(root);
+  const { consumer, installedCli } = await installPackedZinnPackages(root);
   const runtimeDirectory = join(root, "runtimes");
   mkdirSync(runtimeDirectory);
 
-  const runtimes = await nodeRuntimes(runtimeDirectory, minimum);
+  const runtimes = await prepareNodeRuntimes(runtimeDirectory, minimum);
   runtimes.push({
     name: `Bun ${Bun.version}`,
     executable: process.execPath,
@@ -394,9 +394,9 @@ try {
   }
 
   await checkDeclarations(consumer);
-  console.log("PASS installed release verification; publish may proceed");
+  console.log("PASS installed Zinn checks; publishing may proceed");
 } catch (error) {
-  console.error("Installed release verification failed; publish aborted.", error);
+  console.error("Installed Zinn checks failed; publishing stopped.", error);
   process.exitCode = 1;
 } finally {
   rmSync(root, { recursive: true, force: true });

@@ -3,19 +3,14 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { createPackageFixture, PACKAGE_NAMES, readNodeMinimum } from "./package-fixture.ts";
+import { createPackageTestCopy, git, GIT_CONTEXT_VARIABLES, PACKAGE_NAMES, readNodeMinimum } from "./package-fixture.ts";
 
 function write(directory: string, path: string, content: string) {
   mkdirSync(dirname(join(directory, path)), { recursive: true });
   writeFileSync(join(directory, path), content);
 }
 
-function runGit(directory: string, args: string[]) {
-  const result = Bun.spawnSync(["git", "-c", "core.hooksPath=/dev/null", ...args], { cwd: directory });
-  expect(result.exitCode, result.stderr.toString()).toBe(0);
-}
-
-test("package fixtures include current build inputs, omit ignored files and support nested snapshots", () => {
+test("temporary package copies include current build inputs, omit ignored files and can be copied again", () => {
   const root = mkdtempSync(join(tmpdir(), "zinn-package-fixture-"));
   const source = join(root, "source");
   const fixture = join(root, "fixture");
@@ -23,14 +18,14 @@ test("package fixtures include current build inputs, omit ignored files and supp
 
   try {
     mkdirSync(source);
-    runGit(source, ["init", "--quiet", "--template="]);
+    git(source, ["init", "--quiet", "--template="]);
     write(source, ".gitignore", "node_modules/\ndist/\n");
     for (const name of PACKAGE_NAMES) {
       write(source, `packages/${name}/package.json`, JSON.stringify({ name, engines: { node: ">=24.0.0" } }));
     }
     write(source, "scripts/build.ts", "original build input\n");
     write(source, "deleted.txt", "removed build input\n");
-    runGit(source, ["add", "--all"]);
+    git(source, ["add", "--all"]);
     const sourceIndex = readFileSync(join(source, ".git/index"));
     write(source, "scripts/build.ts", "changed working-tree input\n");
     write(source, "packages/core/assets/new.txt", "new untracked build input\n");
@@ -41,7 +36,7 @@ test("package fixtures include current build inputs, omit ignored files and supp
     mkdirSync(join(source, "packages/core/node_modules"));
     rmSync(join(source, "deleted.txt"));
 
-    createPackageFixture(source, fixture);
+    createPackageTestCopy(source, fixture);
     expect(readFileSync(join(fixture, "scripts/build.ts"))).toEqual(readFileSync(join(source, "scripts/build.ts")));
     expect(readFileSync(join(fixture, "packages/core/assets/new.txt"))).toEqual(readFileSync(join(source, "packages/core/assets/new.txt")));
     expect(existsSync(join(fixture, ".private.txt"))).toBe(false);
@@ -52,12 +47,56 @@ test("package fixtures include current build inputs, omit ignored files and supp
 
     write(fixture, "scripts/build.ts", "changed snapshot input\n");
     write(fixture, "scripts/another-helper.ts", "another untracked input\n");
-    createPackageFixture(fixture, nested);
+    createPackageTestCopy(fixture, nested);
     for (const path of ["scripts/build.ts", "scripts/another-helper.ts", "packages/core/assets/new.txt"]) {
       expect(readFileSync(join(nested, path))).toEqual(readFileSync(join(fixture, path)));
     }
     expect(realpathSync(join(nested, "packages/cli/node_modules/@zinn-dev/core"))).toBe(realpathSync(join(nested, "packages/core")));
   } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("temporary repository setup ignores inherited Git paths", () => {
+  const root = mkdtempSync(join(tmpdir(), "zinn-git-context-"));
+  const foreign = join(root, "foreign");
+  const fixture = join(root, "fixture");
+  const previousEnvironment = Object.fromEntries(GIT_CONTEXT_VARIABLES.map((name) => [name, process.env[name]]));
+
+  try {
+    mkdirSync(foreign);
+    mkdirSync(fixture);
+    git(foreign, ["init", "--quiet", "--template="]);
+    write(foreign, "retained.txt", "retained data\n");
+    git(foreign, ["add", "--all"]);
+    const foreignIndex = readFileSync(join(foreign, ".git/index"));
+    const foreignData = readFileSync(join(foreign, "retained.txt"));
+    const redirectedEnvironment = {
+      GIT_DIR: join(foreign, ".git"),
+      GIT_COMMON_DIR: join(foreign, ".git"),
+      GIT_WORK_TREE: foreign,
+      GIT_INDEX_FILE: join(foreign, ".git/index"),
+    };
+    for (const name of GIT_CONTEXT_VARIABLES) {
+      process.env[name] = redirectedEnvironment[name];
+    }
+
+    git(fixture, ["init", "--quiet", "--template="]);
+    write(fixture, "fixture.txt", "fixture data\n");
+    git(fixture, ["add", "--all"]);
+    expect(git(fixture, ["ls-files"]).trim()).toBe("fixture.txt");
+    expect(readFileSync(join(foreign, ".git/index"))).toEqual(foreignIndex);
+    expect(readFileSync(join(foreign, "retained.txt"))).toEqual(foreignData);
+    expect(existsSync(join(foreign, "fixture.txt"))).toBe(false);
+  } finally {
+    for (const name of GIT_CONTEXT_VARIABLES) {
+      const previous = previousEnvironment[name];
+      if (previous === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = previous;
+      }
+    }
     rmSync(root, { recursive: true, force: true });
   }
 });
