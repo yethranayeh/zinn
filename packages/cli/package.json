@@ -37,8 +37,12 @@
 		"LICENSE"
 	],
 	"type": "module",
+	"engines": {
+		"node": ">=24.0.0"
+	},
 	"scripts": {
 		"build": "bun build.ts",
+		"prepublishOnly": "bun ../../scripts/verify-installed.ts",
 		"prepack": "bun ../../scripts/prepare-release.ts"
 	},
 	"bin": {

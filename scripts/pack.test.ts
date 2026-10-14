@@ -1,11 +1,12 @@
 import { expect, test } from "bun:test";
-import { appendFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { openDatabase } from "../packages/core/src/sqlite/bun.ts";
 import { seedBaseline } from "../packages/core/src/migrations/testing.ts";
+import { createPackageFixture, PACKAGE_NAMES } from "./package-fixture.ts";
 
 const REPOSITORY_DIRECTORY = fileURLToPath(new URL("..", import.meta.url));
 const PACK_CHECK_TIMEOUT_MS = 60_000;
@@ -24,17 +25,9 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
   const root = mkdtempSync(join(tmpdir(), "zinn-pack-"));
 
   try {
-    for (const path of ["package.json", "tsconfig.json", "pnpm-workspace.yaml", "scripts/package-output.ts", "scripts/prepare-release.ts"]) {
-      mkdirSync(join(root, path, ".."), { recursive: true });
-      cpSync(join(REPOSITORY_DIRECTORY, path), join(root, path));
-    }
-    symlinkSync(join(REPOSITORY_DIRECTORY, "node_modules"), join(root, "node_modules"), "junction");
-    for (const name of ["core", "cli"]) {
+    createPackageFixture(REPOSITORY_DIRECTORY, root);
+    for (const name of PACKAGE_NAMES) {
       const directory = join(root, "packages", name);
-      mkdirSync(directory, { recursive: true });
-      for (const path of ["index.ts", "src", "package.json", "README.md", "LICENSE", "build.ts", "tsconfig.build.json"]) {
-        cpSync(join(REPOSITORY_DIRECTORY, "packages", name, path), join(directory, path), { recursive: true });
-      }
       const manifestPath = join(directory, "package.json");
       const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
       manifest.version = manifest.version.replace(/-dev$/, "");
@@ -50,9 +43,6 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
     }
     const coreDirectory = join(root, "packages", "core");
     const cliDirectory = join(root, "packages", "cli");
-    symlinkSync(join(REPOSITORY_DIRECTORY, "packages", "core", "node_modules"), join(coreDirectory, "node_modules"), "junction");
-    mkdirSync(join(cliDirectory, "node_modules", "@zinn-dev"), { recursive: true });
-    symlinkSync(coreDirectory, join(cliDirectory, "node_modules", "@zinn-dev", "core"), "junction");
     const sourceSnapshots = [coreDirectory, cliDirectory].map((directory) => ({
       directory,
       manifest: readFileSync(join(directory, "package.json"), "utf8"),
@@ -63,7 +53,7 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
     const consumer = join(root, "consumer", "node_modules", "@zinn-dev");
     mkdirSync(consumer, { recursive: true });
 
-    for (const name of ["core", "cli"]) {
+    for (const name of PACKAGE_NAMES) {
       const directory = join(root, "packages", name);
       const sourceManifest = JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
       const version = sourceManifest.version;
