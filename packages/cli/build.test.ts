@@ -140,6 +140,32 @@ test("the emitted bin runs directly with its Node shebang", () => {
   });
 });
 
+test("the emitted bin ignores the run folder's bunfig.toml and .env", () => {
+  // ? ZINN-136: environment variables come only from whatever launches zinn.
+  withDirectory((directory) => {
+    const home = join(directory, "home");
+    const dotenvStore = join(directory, "dotenv-store");
+    const preloadMarker = join(directory, "preload-ran");
+    const runFolder = join(directory, "run");
+    mkdirSync(home);
+    mkdirSync(runFolder);
+    writeFileSync(join(runFolder, "preload.js"), `require("node:fs").writeFileSync(${JSON.stringify(preloadMarker)}, "");\n`);
+    writeFileSync(join(runFolder, "bunfig.toml"), 'preload = ["./preload.js"]\n');
+    writeFileSync(join(runFolder, ".env"), `ZINN_DIR=${dotenvStore}\n`);
+
+    // Node and Bun keep a variable the launching environment set, so ZINN_DIR must be unset for a loaded .env to show.
+    const env: Record<string, string | undefined> = { ...process.env, HOME: home };
+    delete env.ZINN_DIR;
+    const result = Bun.spawnSync([CLI_PATH, "project", "create", "BUILD", "--json"], { cwd: runFolder, env });
+
+    expect(result.exitCode, result.stderr.toString()).toBe(0);
+    expect(JSON.parse(result.stdout.toString()).key).toBe("BUILD");
+    expect(existsSync(join(home, ".zinn", "data", "zinn.sqlite"))).toBe(true);
+    expect(existsSync(dotenvStore)).toBe(false);
+    expect(existsSync(preloadMarker)).toBe(false);
+  });
+});
+
 test("the CLI build checks against core declarations rather than source modules", () => {
   const result = Bun.spawnSync(["bunx", "--no-install", "tsc", "-p", join(packageDirectory, "tsconfig.build.json"), "--noEmit", "--listFiles"], {
     cwd: repositoryDirectory,
