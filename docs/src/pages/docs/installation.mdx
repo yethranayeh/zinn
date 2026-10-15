@@ -1,0 +1,93 @@
+---
+layout: ../../layouts/DocsLayout.astro
+title: Install Zinn | Kanban CLI and core library
+description: Install, upgrade and uninstall the Zinn CLI and core library with npm. Zinn runs on Node.js 24.15.0 or newer, and on Bun.
+breadcrumb: Installation
+---
+
+import { components } from "../../markdown/components";
+export { components };
+
+# Install Zinn
+
+Zinn is published on npm as two packages: the CLI, [@zinn-dev/cli](https://www.npmjs.com/package/@zinn-dev/cli), and the core library at [@zinn-dev/core](https://www.npmjs.com/package/@zinn-dev/core).
+
+## Requirements
+
+The CLI and core run on [Node.js](https://nodejs.org/) 24.15.0 or newer. Core also runs on Bun, and the CLI can run on Bun through `bunx`.
+
+On a Node.js 24 release older than 24.15.0, npm installs Zinn with an engine warning, and every command that opens the database prints an `ExperimentalWarning` about SQLite to stderr. Output on stdout, including `--json`, is unaffected.
+
+## Install the CLI
+
+```sh title="Install the CLI"
+npm i -g @zinn-dev/cli
+```
+
+Check that the `zinn` command is available:
+
+```sh title="Check the installed version"
+zinn --version
+```
+
+The [quick start](https://github.com/yethranayeh/zinn#quick-start) creates a first project and task.
+
+### Run the CLI on Bun
+
+The `zinn` command runs on Node.js. To run the CLI on Bun, even where Node.js is installed, use `bunx --bun` and put the Zinn command after the package name:
+
+```sh title="Run the CLI on Bun"
+bunx --bun @zinn-dev/cli --help
+```
+
+Bun's documentation explains [how `--bun` overrides a Node.js shebang](https://bun.com/docs/pm/bunx#shebangs).
+
+## Add core to a project
+
+```sh title="Add core to a project"
+npm i @zinn-dev/core
+```
+
+The [core README](https://github.com/yethranayeh/zinn/blob/main/packages/core/README.md) has a runnable example with database configuration.
+
+## Upgrade
+
+Save a backup of the database first:
+
+```sh title="Back up the database"
+zinn backup
+```
+
+Then install the latest CLI. It brings the core release it was built with:
+
+```sh title="Upgrade the CLI"
+npm i -g @zinn-dev/cli@latest
+```
+
+In a project that uses core, upgrade it there:
+
+```sh title="Upgrade core in a project"
+npm i @zinn-dev/core@latest
+```
+
+Name `@latest`: npm saves core with a `^0.x` range, which stays within one minor release.
+
+A newer release upgrades an older database the first time it opens it, saving a backup first. Older releases then open that database read-only, so upgrade the CLI and core together when they share a database.
+
+The CLI reference covers [backups](https://github.com/yethranayeh/zinn/blob/main/packages/cli/README.md#back-up-the-database), [restoring a backup](https://github.com/yethranayeh/zinn/blob/main/packages/cli/README.md#restore-the-database) and [database upgrades](https://github.com/yethranayeh/zinn/blob/main/packages/cli/README.md#upgrade-the-database).
+
+## Uninstall
+
+Uninstalling the CLI also removes the core it brought:
+
+```sh title="Uninstall the CLI"
+npm uninstall -g @zinn-dev/cli
+```
+
+In a project that uses core, remove it there:
+
+```sh title="Remove core from a project"
+npm uninstall @zinn-dev/core
+```
+
+Uninstalling leaves your data in place. The Zinn directory holds the database, backups and settings. It is `~/.zinn` unless `ZINN_DIR` or a [settings file](https://github.com/yethranayeh/zinn/blob/main/packages/cli/README.md#settings-files) chooses another. Deleting it removes every project and backup.

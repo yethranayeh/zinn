@@ -1,0 +1,17 @@
+---
+import PageLayout from "./PageLayout.astro";
+import Prose from "../components/Prose.astro";
+import Breadcrumbs from "../components/Breadcrumbs.astro";
+
+interface Props {
+	frontmatter: { title: string; description: string; breadcrumb?: string };
+}
+
+const { title, description, breadcrumb } = Astro.props.frontmatter;
+const docsHome = { name: "Docs", path: "/docs/" };
+---
+
+<PageLayout title={title} description={description}>
+	{breadcrumb && <Breadcrumbs items={[docsHome, { name: breadcrumb, path: Astro.url.pathname }]} />}
+	<Prose><slot /></Prose>
+</PageLayout>

@@ -12,7 +12,7 @@ A kanban workflow in the terminal.
 npm i -g @zinn-dev/cli
 ```
 
-Requires [Node.js](https://nodejs.org/) 24.15.0 or newer.
+Requires [Node.js](https://nodejs.org/) 24.15.0 or newer. See [installation](https://zinn.sh/docs/installation) for upgrading, uninstalling and running on Bun.
 
 ## Quick start
 

@@ -1,7 +1,7 @@
 ---
 import type { ComponentProps } from "astro/types";
 import BaseLayout from "./BaseLayout.astro";
-import Branding from "../components/Branding.astro";
+import SiteHeader from "../components/SiteHeader.astro";
 import SiteFooter from "../components/SiteFooter.astro";
 
 type Props = ComponentProps<typeof BaseLayout> & {
@@ -13,10 +13,12 @@ const { linkHome = true, ...metadata } = Astro.props;
 
 <BaseLayout {...metadata}>
 	<main class='flex min-h-svh flex-col px-6 pt-8 pb-6 md:px-12 md:pt-10 md:pb-8 lg:px-24'>
-		<header><Branding linked={linkHome} /></header>
+		<SiteHeader linkHome={linkHome} />
+
 		<div class='my-auto w-full max-w-3xl pt-16 pb-14 md:pt-24 md:pb-16 2xl:ml-32'>
 			<slot />
 		</div>
+
 		<SiteFooter class='mt-auto' links={!metadata.noindex} />
 	</main>
 </BaseLayout>

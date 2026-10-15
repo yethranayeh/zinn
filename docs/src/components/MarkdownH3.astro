@@ -1,0 +1,9 @@
+---
+import type { HTMLAttributes } from "astro/types";
+
+type Props = HTMLAttributes<"h3">;
+
+const { class: className, ...attributes } = Astro.props;
+---
+
+<h3 class:list={["mt-8 mb-4 font-semibold", className]} {...attributes}><slot /></h3>

@@ -3,8 +3,14 @@ import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 const docsDirectory = resolve(import.meta.dir, "..");
-const trustPages = (await readdir(join(docsDirectory, "src/pages")))
-	.filter((file) => file.endsWith(".md")).map((file) => file.slice(0, -3)).sort();
+const markdownSources = (await readdir(join(docsDirectory, "src/pages"), { recursive: true }))
+	.filter((file) => /\.mdx?$/.test(file)).sort();
+// A page's route drops the .md or .mdx extension and a trailing index, so docs/index.mdx serves /docs.
+const routeOf = (source: string) => source.replace(/\.mdx?$/, "").replace(/\/index$/, "");
+const trustPages = markdownSources.filter((source) => !source.includes("/")).map(routeOf);
+const docsSources = markdownSources.filter((source) => source.startsWith("docs/"));
+const docsPages = docsSources.map(routeOf);
+const markdownPages = markdownSources.map(routeOf).sort();
 const baseUrl = process.env.SITE_TEST_URL;
 if (!baseUrl) {
 	throw new Error("Run bun run --cwd docs test to start the local Cloudflare server.");
@@ -44,6 +50,7 @@ test("homepage preserves product metadata, structured data and install commands"
 	for (const page of trustPages) {
 		expect(html).toContain(`href="/${page}"`);
 	}
+	expect(html).toContain('href="/docs/installation"');
 });
 
 test.each(trustPages)("/%s has substantive HTML and an identical Markdown body", async (page) => {
@@ -55,14 +62,56 @@ test.each(trustPages)("/%s has substantive HTML and an identical Markdown body",
 	expect(html).toMatch(/<h1[^>]*>[^<]+<\/h1>/);
 	expect(html).toContain(`rel="alternate" type="text/markdown" href="/${page}.md"`);
 	expect(html).toContain(`rel="canonical" href="https://zinn.sh/${page}/"`);
+	await expectMarkdownTwin(page, `${page}.md`);
+});
+
+async function expectMarkdownTwin(page: string, source: string) {
 	const markdownResponse = await server.fetch(`/${page}.md`);
 	expect(markdownResponse.status).toBe(200);
 	expect(markdownResponse.headers.get("Content-Type")).toContain("text/markdown");
 	const markdown = await markdownResponse.text();
-	const source = await Bun.file(join(docsDirectory, `src/pages/${page}.md`)).text();
-	expect(markdown).toBe(source.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trimStart());
+	const sourceText = await Bun.file(join(docsDirectory, "src/pages", source)).text();
+	const body = sourceText.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trimStart();
+	expect(markdown).toBe(body.replace(/^(?:(?:import|export) .*\r?\n)+/, "").trimStart());
 	expect(markdown).toStartWith("# ");
 	expect(markdown).not.toContain("layout:");
+	return markdown;
+}
+
+test.each(docsSources)("docs page %s has a Markdown twin and breadcrumbs matching its structured data", async (source) => {
+	const page = routeOf(source);
+	const response = await server.fetch(`/${page}`);
+	expect(response.status).toBe(200);
+	const html = await response.text();
+	expect(html).toMatch(/<h1[^>]*>[^<]+<\/h1>/);
+	expect(html).toContain(`rel="alternate" type="text/markdown" href="/${page}.md"`);
+	expect(html).toContain(`rel="canonical" href="https://zinn.sh/${page}/"`);
+	const markdown = await expectMarkdownTwin(page, source);
+	// Every fenced block renders as a labelled terminal block with a prompt per command.
+	const fences = [...markdown.matchAll(/^```sh title="([^"]+)"\n([\s\S]*?)^```$/gm)];
+	const blocks = [...html.matchAll(/<pre class="command-block[^"]*"[^>]*aria-label="([^"]+)"[^>]*>([\s\S]*?)<\/pre>/g)];
+	expect(markdown.match(/^```/gm)?.length ?? 0).toBe(fences.length * 2);
+	expect(blocks.map((block) => block[1])).toEqual(fences.map((fence) => fence[1]!));
+	for (const [index, block] of blocks.entries()) {
+		const commands = fences[index]![2]!.trim().split(/\n\s*\n/);
+		expect(block[2]!.match(/aria-hidden="true">\$ <\/span>/g)?.length).toBe(commands.length);
+	}
+
+	const isDocsHome = page === "docs";
+	const breadcrumbs = html.match(/<nav\b[^>]*aria-label="Breadcrumb"[^>]*>([\s\S]*?)<\/nav>/)?.[1];
+	expect(breadcrumbs === undefined).toBe(isDocsHome);
+	if (isDocsHome) {
+		return;
+	}
+	const visible = [...breadcrumbs!.matchAll(/<a\b[^>]*href="([^"]+)"[^>]*>\s*([^<]+?)\s*<\/a>/g)]
+		.map((match) => ({ name: match[2]!, item: new URL(match[1]!, "https://zinn.sh").href }));
+	const structured = [...html.matchAll(/<script type="application\/ld\+json"[^>]*>(.*?)<\/script>/g)]
+		.map((match) => JSON.parse(match[1]!)).find((data) => data["@type"] === "BreadcrumbList");
+	expect(structured.itemListElement.map(({ name, item }: { name: string; item: string }) => ({ name, item }))).toEqual(visible);
+	expect(structured.itemListElement.map(({ position }: { position: number }) => position)).toEqual(visible.map((_, index) => index + 1));
+	expect(visible[0]!.item).toBe("https://zinn.sh/docs/");
+	expect(visible.at(-1)!.item).toBe(`https://zinn.sh/${page}/`);
+	expect(breadcrumbs).toMatch(new RegExp(`href="/${page}/"[^>]*aria-current="page"`));
 });
 
 test("llms.txt follows the published structure and all local links work", async () => {
@@ -91,7 +140,7 @@ test("llms.txt follows the published structure and all local links work", async 
 });
 
 test("discovery uses existing documentation without a standalone agent guide", async () => {
-	for (const path of ["/", "/index.md", "/llms.txt", ...trustPages.flatMap((page) => [`/${page}`, `/${page}.md`])]) {
+	for (const path of ["/", "/index.md", "/llms.txt", ...markdownPages.flatMap((page) => [`/${page}`, `/${page}.md`])]) {
 		expect(await (await server.fetch(path)).text()).not.toContain("/agents.md");
 	}
 	expect((await server.fetch("/agents.md")).status).toBe(404);
@@ -143,7 +192,7 @@ test("every generated public endpoint is served with its expected type", async (
 	expect(robots.includes("Sitemap: https://zinn.sh/sitemap-index.xml")).toBe(process.env.SITE_TEST_ENV === "production");
 	const sitemap = await (await server.fetch("/sitemap-0.xml")).text();
 	const locations = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]!);
-	expect(locations).toEqual(["https://zinn.sh/", ...trustPages.map((page) => `https://zinn.sh/${page}/`)]);
+	expect(locations).toEqual(["https://zinn.sh/", ...markdownPages.map((page) => `https://zinn.sh/${page}/`)]);
 	for (const location of locations) {
 		expect((await server.fetch(new URL(location).pathname)).status).toBe(200);
 	}

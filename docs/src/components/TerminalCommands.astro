@@ -1,13 +1,67 @@
 ---
+import Icon from "./Icon.astro";
+
 interface Props {
 	label: string;
 	commands: string[];
+	class?: string;
 }
-const { label, commands } = Astro.props;
+const { label, commands, class: className } = Astro.props;
 ---
 
-<pre
-	class='command-block mb-6 max-w-full overflow-x-auto bg-soot p-5 text-[13px] leading-[1.8] text-limestone selection:bg-limestone selection:text-soot md:p-6 md:text-[14px]'
-	tabindex='0'
-	role='region'
-	aria-label={label}><code>{commands.map((command, index) => <Fragment>{index > 0 ? "\n\n" : ""}<span class='text-bronze select-none' aria-hidden='true'>$ </span>{command}</Fragment>)}</code></pre>
+<div class:list={["group/terminal mb-6", className]} data-terminal>
+	<div class='flex items-start bg-soot text-limestone scheme-dark'>
+		<pre
+			class='command-block min-w-0 flex-1 overflow-x-auto p-5 pr-0 text-[13px] leading-[1.8] selection:bg-limestone! selection:text-soot! md:p-6 md:pr-0 md:text-[14px]'
+			tabindex='0'
+			role='region'
+			aria-label={label}><code>{commands.map((command, index) => <Fragment>{index > 0 ? "\n\n" : ""}<span class='text-bronze select-none' aria-hidden='true'>$ </span>{command}</Fragment>)}</code></pre>
+		<button
+			class='m-1 flex size-11 shrink-0 cursor-pointer items-center justify-center hover:bg-limestone/8 focus-visible:outline-offset-2 md:m-2'
+			type='button'
+			data-terminal-copy={commands.join("\n")}
+			hidden
+			aria-label={`Copy commands: ${label}`}
+			title='Copy commands'>
+			<Icon name='copy' class='size-5 group-data-[copied]/terminal:hidden' />
+			<Icon name='check' class='hidden size-5 group-data-[copied]/terminal:block' />
+		</button>
+	</div>
+	<p
+		class='sr-only text-xs leading-normal data-[error]:not-sr-only data-[error]:mt-2'
+		data-terminal-feedback
+		role='status'
+		aria-live='polite'
+		aria-atomic='true'>
+	</p>
+</div>
+
+<script>
+	for (const button of document.querySelectorAll<HTMLButtonElement>("[data-terminal-copy]")) {
+		const terminal = button.closest<HTMLElement>("[data-terminal]")!;
+		const feedback = terminal.querySelector<HTMLElement>("[data-terminal-feedback]")!;
+		let resetTimer: ReturnType<typeof setTimeout>;
+
+		function reset() {
+			terminal.removeAttribute("data-copied");
+			feedback.removeAttribute("data-error");
+			feedback.textContent = "";
+		}
+
+		button.hidden = false;
+		button.addEventListener("click", async () => {
+			clearTimeout(resetTimer);
+			reset();
+			try {
+				await navigator.clipboard.writeText(button.dataset.terminalCopy!);
+			} catch {
+				feedback.setAttribute("data-error", "");
+				feedback.textContent = "Could not copy. Select the commands to copy them manually.";
+				return;
+			}
+			terminal.setAttribute("data-copied", "");
+			feedback.textContent = "Commands copied to clipboard.";
+			resetTimer = setTimeout(reset, 2500);
+		});
+	}
+</script>

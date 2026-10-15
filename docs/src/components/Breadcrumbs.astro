@@ -1,0 +1,39 @@
+---
+interface Props {
+	items: { name: string; path: string }[];
+}
+
+const { items } = Astro.props;
+const breadcrumbList = {
+	"@context": "https://schema.org",
+	"@type": "BreadcrumbList",
+	itemListElement: items.map((item, index) => ({
+		"@type": "ListItem",
+		position: index + 1,
+		name: item.name,
+		item: new URL(item.path, Astro.site).href
+	}))
+};
+---
+
+<nav class='mb-8 font-mono text-xs' aria-label='Breadcrumb'>
+	<ol class='flex flex-wrap items-center gap-x-2 gap-y-1'>
+		{
+			items.map((item, index) => {
+				const isCurrent = index === items.length - 1;
+				return (
+					<li class='flex items-center gap-x-2'>
+						{index > 0 && <span aria-hidden='true'>/</span>}
+						<a
+							class:list={["py-2", isCurrent ? "no-underline" : "underline"]}
+							href={item.path}
+							aria-current={isCurrent ? "page" : undefined}>
+							{item.name}
+						</a>
+					</li>
+				);
+			})
+		}
+	</ol>
+</nav>
+<script type='application/ld+json' is:inline set:html={JSON.stringify(breadcrumbList).replaceAll("<", "\\u003c")} />

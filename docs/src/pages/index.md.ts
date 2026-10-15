@@ -15,6 +15,8 @@ ${installCommand}
 zinn --help
 \`\`\`
 
+Read the [installation guide](https://zinn.sh/docs/installation) for requirements, upgrading and uninstalling.
+
 ## Zinn: a kanban CLI for your terminal
 
 Zinn is an Experimental kanban task manager for the terminal.
