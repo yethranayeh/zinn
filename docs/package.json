@@ -17,7 +17,9 @@
 	},
 	"devDependencies": {
 		"@astrojs/check": "^0.9.10",
+		"@resvg/resvg-js": "2.6.2",
 		"@tailwindcss/vite": "^4.3.3",
+		"satori": "0.60.0",
 		"typescript": "^5",
 		"wrangler": "4.147.0"
 	}

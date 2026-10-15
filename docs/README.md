@@ -20,6 +20,8 @@ bun run --cwd docs test
 
 Default builds are previews: they carry `noindex` and omit analytics. For a production build, use `PUBLIC_SITE_ENV=production bun run docs:build`.
 
+Builds generate `/social/zinn.png` from the shared installation command and the [social-card component](src/components/SocialCard.ts).
+
 ## Deployment
 
 Deploy from the repository root:

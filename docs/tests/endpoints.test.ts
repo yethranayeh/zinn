@@ -128,7 +128,7 @@ test("every generated public endpoint is served with its expected type", async (
 	for (const [path, mediaType] of [
 		["/index.md", "text/markdown"], ["/robots.txt", "text/plain"],
 		["/sitemap-index.xml", "application/xml"], ["/sitemap-0.xml", "application/xml"],
-		["/schemas/settings/v1.json", "application/json"]
+		["/schemas/settings/v1.json", "application/json"], ["/social/zinn.png", "image/png"]
 	]) {
 		const response = await server.fetch(path!);
 		expect(response.status).toBe(200);
@@ -150,4 +150,19 @@ test("every generated public endpoint is served with its expected type", async (
 	const schema = await (await server.fetch("/schemas/settings/v1.json")).json();
 	expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
 	expect(schema.type).toBe("object");
+});
+
+test("social preview is a 1200 by 630 PNG linked by homepage metadata", async () => {
+	const html = await (await server.fetch("/")).text();
+	expect(html).toContain('content="https://zinn.sh/social/zinn.png"');
+	const response = await server.fetch("/social/zinn.png");
+	const png = Buffer.from(await response.arrayBuffer());
+	const signature = Buffer.from("\x89PNG\r\n\x1a\n", "binary");
+	expect(png.subarray(0, signature.length)).toEqual(signature);
+	// PNG's IHDR chunk starts with two four-byte dimensions after the chunk header.
+	const chunkHeaderBytes = 8;
+	const dimensionBytes = 4;
+	const dimensionsOffset = signature.length + chunkHeaderBytes;
+	expect(png.readUInt32BE(dimensionsOffset)).toBe(1200);
+	expect(png.readUInt32BE(dimensionsOffset + dimensionBytes)).toBe(630);
 });
