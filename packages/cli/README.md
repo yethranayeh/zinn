@@ -1,6 +1,6 @@
 # @zinn-dev/cli
 
-The `zinn` command-line interface. Requires [Bun](https://bun.sh).
+The `zinn` command-line interface.
 
 > [!IMPORTANT]
 > **Experimental.** Commands, output, and the database schema will likely change often between releases until stable.
@@ -9,8 +9,10 @@ The `zinn` command-line interface. Requires [Bun](https://bun.sh).
 ## Install
 
 ```sh
-bun add --global @zinn-dev/cli
+npm i -g @zinn-dev/cli
 ```
+
+Requires [Node.js](https://nodejs.org/) 24.15.0 or newer.
 
 For a first project and task, see the [quick start](../../README.md#quick-start).
 

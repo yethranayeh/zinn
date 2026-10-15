@@ -12,7 +12,7 @@ Zinn is an Experimental kanban CLI and task manager for the terminal. It brings 
 
 Each project has its own board. Tasks move between its columns as work progresses, and related, dependency, duplicate and subtask relations connect the work. Descriptions hold scope, while comments record updates. Search helps find tasks by their titles, descriptions and comments, and archiving keeps completed work available outside the active list.
 
-Scripts and agents can use the same CLI with JSON output. Read the [CLI reference](https://github.com/yethranayeh/zinn/blob/main/packages/cli/README.md) for commands and example calls. Installation requires Bun.
+Scripts and agents can use the same CLI with JSON output. Read the [CLI reference](https://github.com/yethranayeh/zinn/blob/main/packages/cli/README.md) for commands and example calls.
 
 ## Source and status
 

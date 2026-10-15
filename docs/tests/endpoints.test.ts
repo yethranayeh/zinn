@@ -26,7 +26,7 @@ test("homepage preserves product metadata, structured data and install commands"
 	const html = await response.text();
 	expect(html).toMatch(/<title>[^<]*Zinn[^<]*Kanban CLI/);
 	expect(visibleText(html)).toContain("Zinn: a kanban CLI");
-	expect(html).toContain("bun add -g @zinn-dev/cli");
+	expect(html).toContain("npm i -g @zinn-dev/cli");
 	expect(html).toContain("zinn --help");
 	expect(html).toMatch(/rel="canonical" href="https:\/\/zinn.sh\/"/);
 	const structuredData = [...html.matchAll(/<script type="application\/ld\+json"[^>]*>(.*?)<\/script>/g)]

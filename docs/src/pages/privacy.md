@@ -14,7 +14,7 @@ Cloudflare serves zinn.sh.
 
 Requests pass through Cloudflare's network, which receives request information such as the visitor's IP address, requested URL and browser headers to deliver the site. See [Cloudflare's privacy policy](https://www.cloudflare.com/privacypolicy/) for its handling of personal information.
 
-Links to GitHub, npm, Bun and social profiles take you to those services, whose own policies apply when you visit them.
+Links to GitHub, npm and social profiles take you to those services, whose own policies apply when you visit them.
 
 ## Website analytics
 

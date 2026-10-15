@@ -12,7 +12,7 @@ export const projectLinks = {
 export const homepage = {
   title: "Zinn | Kanban CLI and task manager for the terminal",
   description:
-    "Zinn is an experimental kanban CLI and task manager. Manage projects and tasks locally in your terminal. Requires Bun.",
+    "Zinn is an experimental kanban CLI and task manager. Manage projects and tasks locally in your terminal.",
 };
 
-export const installCommand = "bun add -g @zinn-dev/cli";
+export const installCommand = "npm i -g @zinn-dev/cli";

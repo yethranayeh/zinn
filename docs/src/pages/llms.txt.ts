@@ -5,7 +5,7 @@ export const GET: APIRoute = () =>
   new Response(
     `# Zinn
 
-> Zinn is an Experimental kanban CLI and task manager for the terminal. It stores projects and tasks in a local SQLite database and requires Bun.
+> Zinn is an Experimental kanban CLI and task manager for the terminal. It stores projects and tasks in a local SQLite database and requires Node.js 24.15.0 or newer.
 
 When to use Zinn: track development work locally, carry task scope and progress between sessions, or read and update a project's board from scripts and agents using the CLI's JSON output. Run Zinn on the user's machine with shell access; start with \`zinn --help\` and read the CLI reference before changing tasks.
 

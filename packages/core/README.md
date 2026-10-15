@@ -9,22 +9,23 @@ The shared logic and SQLite storage for [Zinn](https://github.com/yethranayeh/zi
 ## Install
 
 ```sh
-bun add @zinn-dev/core
+npm i @zinn-dev/core
 ```
 
-Requires [Bun](https://bun.sh).
+Requires [Node.js](https://nodejs.org/) 24.15.0 or newer. Core also runs on [Bun](https://bun.sh).
 
 ## Usage
 
 Configure the database before the first operation. Mutations require an explicit actor:
 
 ```ts
+import { fileURLToPath } from "node:url";
 import { configureDatabase, project, task, type Actor } from "@zinn-dev/core";
 
 configureDatabase({
 	client: "example",
 	version: "0.1.0",
-	executable: import.meta.path,
+	executable: fileURLToPath(import.meta.url),
 	release: "source",
 	allowsLegacyRead: false
 });
@@ -40,7 +41,7 @@ console.log(task.getAll({ projectKey: app.key }));
 Save this as `example.ts` and run it with a new Zinn directory:
 
 ```sh
-ZINN_DIR=./.zinn-example bun example.ts
+ZINN_DIR=./.zinn-example node example.ts
 ```
 
 Core opens the database on first use. By default it shares `~/.zinn/data/zinn.sqlite` with the CLI, but `ZINN_DIR` and settings files can choose another location. See [data location](../../README.md#data-location).

@@ -9,10 +9,10 @@ A kanban workflow in the terminal.
 ## Install
 
 ```sh
-bun add -g @zinn-dev/cli
+npm i -g @zinn-dev/cli
 ```
 
-Requires [Bun](https://bun.sh).
+Requires [Node.js](https://nodejs.org/) 24.15.0 or newer.
 
 ## Quick start
 
@@ -62,9 +62,23 @@ Published releases _automatically_ upgrade older databases, saving a backup firs
 
 Newer databases open read-only. Databases without a schema version require `--allow-legacy-read` for read-only access and it is _not guaranteed_ that a legacy DB read will work as expected. See [upgrade the database](packages/cli/README.md#upgrade-the-database).
 
-## Development data
+## Development
 
-From the repository root, seed and use the isolated `.zinn-dev` database:
+Zinn is developed with [Bun](https://bun.sh) 1.3, [pnpm](https://pnpm.io/) 10, [Node.js](https://nodejs.org/) 24 and Git. Other platforms, tools and versions are untested.
+
+From the repository root, install dependencies and run the tests:
+
+```sh
+bun install
+bun test packages scripts
+bun run test:node
+```
+
+The tests also pack and run the built packages, so they need pnpm, Node.js and Git on `PATH`. `bun run test:node` runs core's SQLite checks under Node.js. The website has its own tests; see [docs](docs/README.md).
+
+### Development data
+
+Seed and use the isolated `.zinn-dev` database:
 
 ```sh
 bun run dev:seed
