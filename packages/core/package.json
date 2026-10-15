@@ -1,6 +1,6 @@
 {
 	"name": "@zinn-dev/core",
-	"version": "0.29.0-dev",
+	"version": "0.29.0",
 	"description": "Shared logic for zinn, a kanban workflow in the terminal. Experimental.",
 	"license": "MIT",
 	"bugs": {
