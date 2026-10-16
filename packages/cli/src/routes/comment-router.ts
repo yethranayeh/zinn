@@ -7,6 +7,7 @@ import { comment } from "@zinn-dev/core";
 
 import {
   confirmAction,
+  dashValueHelp,
   output,
   quit,
   validatePositionals,
@@ -104,6 +105,8 @@ export const commentRouter = {
 Add a comment to a task. Comment text cannot be blank.
 Archived tasks can be commented on.
 
+${dashValueHelp("--text")}
+
 Example: zinn task comment create MDR-1 --text "Ready for review"`,
   },
   list: {
@@ -129,6 +132,8 @@ Example: zinn task comment list MDR-1`,
 Replace a comment's text. Comment text cannot be blank.
 
 ${textEditHelp("--text")}
+
+${dashValueHelp("--text")}
 
 Examples:
   zinn task comment edit MDR-1#2 --text "Approved"

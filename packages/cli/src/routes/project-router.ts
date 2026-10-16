@@ -10,6 +10,7 @@ import { column, project } from "@zinn-dev/core";
 import {
   canPrompt,
   confirmAction,
+  dashValueHelp,
   failureMessage,
   output,
   quit,
@@ -101,6 +102,8 @@ Project keys are stored in uppercase.
 An omitted name defaults to the uppercase project key.
 Names are trimmed and cannot be blank or contain line breaks or control characters.
 Descriptions may contain multiple lines. If omitted, they are saved as null.
+
+${dashValueHelp("--description")}
 
 Example: zinn project create MDR --name "Macrodata Refinement"`,
   },
@@ -201,6 +204,8 @@ If no default project is set, the key is required.
 Use --description "" to clear the description.
 
 ${textEditHelp("--description")}
+
+${dashValueHelp("--description")}
 
 Examples:
   zinn project edit MDR --name "Macrodata Refinement"
@@ -351,6 +356,8 @@ The --name flag is required.
 Columns are matched by name, and matching is case-insensitive.
 Names are trimmed, and must remain unique within the same project.
 Changing only the casing of a column's own name is allowed.
+
+${dashValueHelp("--name")}
 
 Example: zinn project column edit MDR "In Progress" --name "Refining"`,
     },

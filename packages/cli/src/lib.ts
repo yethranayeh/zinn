@@ -48,7 +48,11 @@ export function output<T>(data: T, transformToString: (data: T) => string) {
 }
 
 /** Asks before a change that cannot be undone, unless --yes already confirmed it. */
-export async function confirmAction(message: string, isPreconfirmed: boolean, jsonRefusal?: string) {
+export async function confirmAction(
+  message: string,
+  isPreconfirmed: boolean,
+  jsonRefusal?: string,
+) {
   // Throws on a read-only database, to avoid asking for confirmation to an already refused action
   assertWritable();
 
@@ -176,4 +180,14 @@ export function validateUniqueOptions(tokens: ParsedTokens, repeatableOptions: A
 
 export function isHelpFlag(flag: string) {
   return ["-h", "--help"].includes(flag);
+}
+
+/**
+ * Help sentence for a flag whose value may begin with a dash, such as a Markdown bullet.
+ * `parseArgs` refuses `--flag -value`, since a value that looks like an option may mean the value
+ *  was forgotten, so we respect that refusal and not take the next word as the value
+ * @see {@link https://github.com/pkgjs/parseargs/issues/77}
+ */
+export function dashValueHelp(flag: string) {
+  return `A value that begins with a dash must be joined to its flag with =, as in ${flag}="- item".`;
 }

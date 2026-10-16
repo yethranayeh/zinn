@@ -13,6 +13,7 @@ import {
 
 import {
   confirmAction,
+  dashValueHelp,
   failureMessage,
   output,
   quit,
@@ -90,7 +91,9 @@ Column names are matched case-insensitively. An unknown column is an error and c
 Priority defaults to none (unassigned).
 Repeat --label to attach multiple existing labels. Unknown labels are errors.
 Label names are matched case-insensitively.
-Titles are trimmed and cannot be blank or contain line breaks or control characters. Use --title="--example" for text beginning with a dash.
+Titles are trimmed and cannot be blank or contain line breaks or control characters.
+
+${dashValueHelp("--description")}
 
 Relations are set from the new task's perspective: it becomes a subtask of --parent, depends on --depends-on,
 is a duplicate of --duplicate-of, and is related to --related.
@@ -380,7 +383,7 @@ Archived tasks can be edited.
 The same label cannot be both added and removed.
 Titles are trimmed and cannot be blank or contain line breaks or control characters.
 
-Use --title="--example" for text beginning with a dash.
+${dashValueHelp("--description")}
 
 Examples:
   zinn task edit MDR-1 --title "Meet the quarterly refinement quota"

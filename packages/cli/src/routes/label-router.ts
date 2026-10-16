@@ -5,7 +5,14 @@ import type { RouteDef } from "../types.js";
 import { parseArgs } from "node:util";
 import { label, labelCreateSchema, labelDeleteSchema, labelEditSchema } from "@zinn-dev/core";
 
-import { confirmAction, output, quit, validatePositionals, validateUniqueOptions } from "../lib.js";
+import {
+  confirmAction,
+  dashValueHelp,
+  output,
+  quit,
+  validatePositionals,
+  validateUniqueOptions,
+} from "../lib.js";
 import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit.js";
 import { currentActor } from "../actor.js";
 import { isColorEnabled } from "../presentation/color.js";
@@ -68,6 +75,8 @@ Description is optional.
 Color defaults to white.
 Valid colors: red, green, yellow, blue, magenta, cyan, white, gray.
 
+${dashValueHelp("--description")}
+
 Example: zinn label create bug --description "Unexpected behavior" --color red`,
   },
   list: {
@@ -119,6 +128,8 @@ ${textEditHelp("--description")}
 Names are matched and kept unique case-insensitively while preserving their casing.
 Names are trimmed. Changing only the casing is allowed.
 Editing does not affect task attachments or task timestamps.
+
+${dashValueHelp("--description")}
 
 Examples:
   zinn label edit bug --name defect --color yellow
