@@ -15,7 +15,17 @@ const { label, commands, class: className } = Astro.props;
 			class='command-block min-w-0 flex-1 overflow-x-auto p-5 pr-0 text-[13px] leading-[1.8] selection:bg-limestone! selection:text-soot! md:p-6 md:pr-0 md:text-[14px]'
 			tabindex='0'
 			role='region'
-			aria-label={label}><code>{commands.map((command, index) => <Fragment>{index > 0 ? "\n\n" : ""}<span class='text-bronze select-none' aria-hidden='true'>$ </span>{command}</Fragment>)}</code></pre>
+			aria-label={label}>
+			<code>
+				{commands.map((command, index) =>
+				<Fragment>{index > 0 ? "\n\n" : ""}
+					<span data-terminal-command>
+						<span data-terminal-prompt class='text-bronze select-none' aria-hidden='true'>$ </span>
+						{command}
+					</span>
+				</Fragment>)}
+			</code>
+		</pre>
 		<button
 			class='m-1 flex size-11 shrink-0 cursor-pointer items-center justify-center hover:bg-limestone/8 focus-visible:outline-offset-2 md:m-2'
 			type='button'

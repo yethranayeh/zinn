@@ -81,7 +81,11 @@ const workflowCommands = [
 				</p>
 			</Prose>
 			<Prose>
-				<TerminalCommands label='Project workflow commands, horizontally scrollable' commands={workflowCommands} />
+				<TerminalCommands
+					class='workflow-sequence'
+					label='Project workflow commands, horizontally scrollable'
+					commands={workflowCommands}
+				/>
 				<p>
 					Add <code>--json</code> to any command for a single JSON document on stdout. Use <code>--yes</code> to skip confirmation
 					prompts in scripts and agent workflows.
@@ -144,3 +148,58 @@ const workflowCommands = [
 		});
 	}
 </script>
+
+<style is:global>
+	@supports (animation-timeline: view()) and (view-timeline-name: --workflow-sequence) {
+		@media (prefers-reduced-motion: no-preference) {
+			.workflow-sequence {
+				view-timeline-name: --workflow-sequence;
+			}
+
+			.workflow-sequence [data-terminal-command] {
+				--workflow-range: cover 0% cover 0%;
+				color: color-mix(in srgb, var(--color-bone) 70%, var(--color-soot));
+				animation: workflow-command-emphasis linear;
+				animation-timeline: --workflow-sequence;
+				animation-range: var(--workflow-range);
+			}
+
+			.workflow-sequence [data-terminal-prompt] {
+				opacity: 0;
+				animation: workflow-command-prompt linear;
+				animation-timeline: --workflow-sequence;
+				animation-range: var(--workflow-range);
+			}
+
+			.workflow-sequence [data-terminal-command]:nth-of-type(1) {
+				--workflow-range: cover 0% cover 45%;
+			}
+
+			.workflow-sequence [data-terminal-command]:nth-of-type(2) {
+				--workflow-range: cover 45% cover 65%;
+			}
+
+			.workflow-sequence [data-terminal-command]:nth-of-type(3) {
+				--workflow-range: cover 65% cover 80%;
+			}
+
+			.workflow-sequence [data-terminal-command]:nth-of-type(4) {
+				--workflow-range: cover 80% cover 100%;
+			}
+		}
+	}
+
+	@keyframes workflow-command-emphasis {
+		from,
+		to {
+			color: var(--color-limestone);
+		}
+	}
+
+	@keyframes workflow-command-prompt {
+		from,
+		to {
+			opacity: 1;
+		}
+	}
+</style>
