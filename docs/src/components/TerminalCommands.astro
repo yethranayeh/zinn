@@ -12,18 +12,17 @@ const { label, commands, class: className } = Astro.props;
 <div class:list={["group/terminal mb-6", className]} data-terminal>
 	<div class='flex items-start bg-soot text-limestone scheme-dark'>
 		<pre
-			class='command-block min-w-0 flex-1 overflow-x-auto p-5 pr-0 text-[13px] leading-[1.8] selection:bg-limestone! selection:text-soot! md:p-6 md:pr-0 md:text-[14px]'
+			class='command-block min-w-0 flex-1 overflow-x-auto whitespace-normal p-5 pr-0 text-[13px] leading-[1.8] selection:bg-limestone! selection:text-soot! md:p-6 md:pr-0 md:text-[14px]'
 			tabindex='0'
 			role='region'
 			aria-label={label}>
-			<code>
-				{commands.map((command, index) =>
-				<Fragment>{index > 0 ? "\n\n" : ""}
-					<span data-terminal-command>
+			<code class='block'>
+				{commands.map((command) => (
+					<span data-terminal-command class='block [&:not(:first-child)]:mt-[1.8em]'>
 						<span data-terminal-prompt class='text-bronze select-none' aria-hidden='true'>$ </span>
-						{command}
+						<span class='whitespace-pre' set:text={command} />
 					</span>
-				</Fragment>)}
+				))}
 			</code>
 		</pre>
 		<button
