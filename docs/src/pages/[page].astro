@@ -1,0 +1,22 @@
+---
+import { getCollection, render, type CollectionEntry } from "astro:content";
+import InfoLayout from "../layouts/InfoLayout.astro";
+import { components } from "../markdown/components";
+
+export async function getStaticPaths() {
+	const entries = await getCollection("pages");
+
+	return entries.map((entry) => ({ params: { page: entry.id }, props: { entry } }));
+}
+
+interface Props {
+	entry: CollectionEntry<"pages">;
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+---
+
+<InfoLayout {...entry.data}>
+	<Content components={components} />
+</InfoLayout>

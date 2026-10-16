@@ -1,31 +1,22 @@
 import type { APIRoute, GetStaticPaths } from "astro";
+import { getCollection } from "astro:content";
+import { docsSlug } from "../config/routes";
 
-const pages = import.meta.glob<string>("./**/*.{md,mdx}", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-});
+export const getStaticPaths = (async () => {
+  const pages = await getCollection("pages");
+  const docs = await getCollection("docs");
 
-// Drops the frontmatter and, in MDX, the import and export lines that follow it.
-const markdownBody = (source: string) =>
-  source
-    .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "")
-    .trimStart()
-    .replace(/^(?:(?:import|export) .*\r?\n)+/, "")
-    .trimStart();
+  return [
+    ...pages.map((entry) => ({ params: { page: entry.id }, props: { markdown: entry.body } })),
+    ...docs.map((entry) => ({
+      params: { page: ["docs", docsSlug(entry)].filter(Boolean).join("/") },
+      props: { markdown: entry.body },
+    })),
+  ];
+}) satisfies GetStaticPaths;
 
-export const getStaticPaths: GetStaticPaths = () =>
-  Object.entries(pages).map(([path, source]) => ({
-    params: {
-      page: path
-        .slice(2)
-        .replace(/\.mdx?$/, "")
-        .replace(/\/index$/, ""),
-    },
-    props: { markdown: markdownBody(source) },
-  }));
-
+// MDX entry bodies arrive trimmed, so end the file with a newline as its source does.
 export const GET: APIRoute = ({ props }) =>
-  new Response(props.markdown, {
+  new Response(`${props.markdown}\n`, {
     headers: { "Content-Type": "text/markdown; charset=utf-8" },
   });

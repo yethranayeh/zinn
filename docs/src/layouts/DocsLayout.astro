@@ -4,10 +4,12 @@ import Prose from "../components/Prose.astro";
 import Breadcrumbs from "../components/Breadcrumbs.astro";
 
 interface Props {
-	frontmatter: { title: string; description: string; breadcrumb?: string };
+	title: string;
+	description: string;
+	breadcrumb?: string;
 }
 
-const { title, description, breadcrumb } = Astro.props.frontmatter;
+const { title, description, breadcrumb } = Astro.props;
 const docsHome = { name: "Docs", path: "/docs/" };
 ---
 

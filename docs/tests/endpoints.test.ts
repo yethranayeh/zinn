@@ -3,11 +3,13 @@ import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 const docsDirectory = resolve(import.meta.dir, "..");
-const markdownSources = (await readdir(join(docsDirectory, "src/pages"), { recursive: true }))
-	.filter((file) => /\.mdx?$/.test(file)).sort();
-// A page's route drops the .md or .mdx extension and a trailing index, so docs/index.mdx serves /docs.
-const routeOf = (source: string) => source.replace(/\.mdx?$/, "").replace(/\/index$/, "");
-const trustPages = markdownSources.filter((source) => !source.includes("/")).map(routeOf);
+const contentDirectory = join(docsDirectory, "src/content");
+const markdownSources = (await readdir(contentDirectory, { recursive: true }))
+	.filter((file) => file.endsWith(".mdx")).sort();
+// A page's route drops the pages/ folder, the .mdx extension and a trailing index, so docs/index.mdx serves /docs.
+const routeOf = (source: string) => source.replace(/^pages\//, "").replace(/\.mdx$/, "").replace(/\/index$/, "");
+const trustSources = markdownSources.filter((source) => source.startsWith("pages/"));
+const trustPages = trustSources.map(routeOf);
 const docsSources = markdownSources.filter((source) => source.startsWith("docs/"));
 const docsPages = docsSources.map(routeOf);
 const markdownPages = markdownSources.map(routeOf).sort();
@@ -53,7 +55,8 @@ test("homepage preserves product metadata, structured data and install commands"
 	expect(html).toContain('href="/docs/installation"');
 });
 
-test.each(trustPages)("/%s has substantive HTML and an identical Markdown body", async (page) => {
+test.each(trustSources)("trust page %s has substantive HTML and an identical Markdown body", async (source) => {
+	const page = routeOf(source);
 	const response = await server.fetch(`/${page}`);
 	expect(response.status).toBe(200);
 	const html = await response.text();
@@ -62,7 +65,7 @@ test.each(trustPages)("/%s has substantive HTML and an identical Markdown body",
 	expect(html).toMatch(/<h1[^>]*>[^<]+<\/h1>/);
 	expect(html).toContain(`rel="alternate" type="text/markdown" href="/${page}.md"`);
 	expect(html).toContain(`rel="canonical" href="https://zinn.sh/${page}/"`);
-	await expectMarkdownTwin(page, `${page}.md`);
+	await expectMarkdownTwin(page, source);
 });
 
 async function expectMarkdownTwin(page: string, source: string) {
@@ -70,9 +73,8 @@ async function expectMarkdownTwin(page: string, source: string) {
 	expect(markdownResponse.status).toBe(200);
 	expect(markdownResponse.headers.get("Content-Type")).toContain("text/markdown");
 	const markdown = await markdownResponse.text();
-	const sourceText = await Bun.file(join(docsDirectory, "src/pages", source)).text();
-	const body = sourceText.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trimStart();
-	expect(markdown).toBe(body.replace(/^(?:(?:import|export) .*\r?\n)+/, "").trimStart());
+	const sourceText = await Bun.file(join(contentDirectory, source)).text();
+	expect(markdown).toBe(sourceText.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trimStart());
 	expect(markdown).toStartWith("# ");
 	expect(markdown).not.toContain("layout:");
 	return markdown;
