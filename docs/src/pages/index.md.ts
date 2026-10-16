@@ -32,9 +32,9 @@ Create a project, add a task, then move it into In Progress. Each project begins
 Use descriptions for scope, comments for updates and labels and priorities to organize tasks. Connect work with related, dependency, duplicate and subtask relations. Search titles, descriptions and comments, and archive tasks when they no longer belong in the active list.
 
 \`\`\`sh
-zinn project create DEMO --name "Release work"
-zinn task create DEMO --title "Write release notes" --priority high
-zinn task move DEMO-1 "In Progress"
+zinn project create DEMO --name 'Release work'
+zinn task create DEMO --title 'Write release notes' --priority high
+zinn task move DEMO-1 'In Progress'
 zinn task list DEMO --json
 \`\`\`
 

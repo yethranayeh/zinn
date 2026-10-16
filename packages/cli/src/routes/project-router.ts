@@ -105,7 +105,7 @@ Descriptions may contain multiple lines. If omitted, they are saved as null.
 
 ${dashValueHelp("--description")}
 
-Example: zinn project create MDR --name "Macrodata Refinement"`,
+Example: zinn project create MDR --name 'Macrodata Refinement'`,
   },
   list: {
     run: (args: Array<string>) => {
@@ -201,15 +201,15 @@ Example: zinn project view MDR`,
 Change the supplied project fields. At least one edit flag is required.
 An omitted project key uses defaultProject from settings, if present.
 If no default project is set, the key is required.
-Use --description "" to clear the description.
+Use --description '' to clear the description.
 
 ${textEditHelp("--description")}
 
 ${dashValueHelp("--description")}
 
 Examples:
-  zinn project edit MDR --name "Macrodata Refinement"
-  zinn project edit MDR --description "database" --replacing "board" --all`,
+  zinn project edit MDR --name 'Macrodata Refinement'
+  zinn project edit MDR --description database --replacing board --all`,
   },
   delete: {
     run: async (args: Array<string>) => {
@@ -294,7 +294,7 @@ Example: zinn project delete MDR`,
 Add a column at the end of a project's board.
 Names are trimmed, cannot be blank or contain line breaks or control characters, and must be unique within the project regardless of casing.
 
-Example: zinn project column create MDR "Boardlog"`,
+Example: zinn project column create MDR Boardlog`,
     },
     list: {
       run: (args: Array<string>) => {
@@ -359,7 +359,7 @@ Changing only the casing of a column's own name is allowed.
 
 ${dashValueHelp("--name")}
 
-Example: zinn project column edit MDR "In Progress" --name "Refining"`,
+Example: zinn project column edit MDR 'In Progress' --name Refining`,
     },
     order: {
       run: (args: Array<string>) => {
@@ -416,7 +416,7 @@ Use first or last for either end, previous or next for one position,
 
 Columns are matched by name, and matching is case-insensitive.
 
-Example: zinn project column order MDR Review before "In Progress"`,
+Example: zinn project column order MDR Review before 'In Progress'`,
     },
   },
 } satisfies RouteDef;

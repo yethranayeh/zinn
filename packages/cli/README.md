@@ -362,7 +362,7 @@ Edit or delete a comment using its key:
 
 ```sh
 zinn task comment edit 'MDR-1#1' --text Approved
-zinn task comment delete MDR-1#1
+zinn task comment delete 'MDR-1#1'
 ```
 
 Deletion asks for confirmation, unless `--yes` is used (see [Confirmations](#confirmations)). Comments can be added to archived tasks. Comment mutations are recorded in the activity log without changing the task's modification timestamp.

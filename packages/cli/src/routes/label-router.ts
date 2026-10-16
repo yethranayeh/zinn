@@ -77,7 +77,7 @@ Valid colors: red, green, yellow, blue, magenta, cyan, white, gray.
 
 ${dashValueHelp("--description")}
 
-Example: zinn label create bug --description "Unexpected behavior" --color red`,
+Example: zinn label create bug --description 'Unexpected behavior' --color red`,
   },
   list: {
     run: (args) => {
@@ -121,7 +121,7 @@ List all global label definitions.`,
     help: `Usage: zinn label edit <name> [--name <text>] [--description <text> ${textEditUsage}] [--color <color>]
 
 Change specified fields.
-Provide at least one edit flag. Use --description "" to clear the description.
+Provide at least one edit flag. Use --description '' to clear the description.
 
 ${textEditHelp("--description")}
 
@@ -133,7 +133,7 @@ ${dashValueHelp("--description")}
 
 Examples:
   zinn label edit bug --name defect --color yellow
-  zinn label edit bug --description "Reported by users." --append`,
+  zinn label edit bug --description 'Reported by users.' --append`,
   },
   delete: {
     run: async (args) => {

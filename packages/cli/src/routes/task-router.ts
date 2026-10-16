@@ -124,9 +124,9 @@ Repeat --depends-on and --related to name several tasks.
 A target task that does not exist causes an error, and task creation is aborted.
 
 Examples:
-  zinn task create MDR --title "Refine the numbers" --description "Meet the quarterly quota" --label urgent
-  zinn task create MDR --title "Review the numbers" --column "In Progress"
-  zinn task create MDR --title "Sort the files" --parent MDR-1 --depends-on MDR-2`,
+  zinn task create MDR --title 'Refine the numbers' --description 'Meet the quarterly quota' --label urgent
+  zinn task create MDR --title 'Review the numbers' --column 'In Progress'
+  zinn task create MDR --title 'Sort the files' --parent MDR-1 --depends-on MDR-2`,
   },
   list: {
     run: (args) => {
@@ -258,7 +258,7 @@ Use --limit to show at most <n> results.
 Use --label to filter for tasks with a specific label, no case-sensitivity is applied for matching.
 A search result's output matches that of 'task list'.
 
-Example: zinn task search "refinement quota" MDR --limit 5`,
+Example: zinn task search 'refinement quota' MDR --limit 5`,
   },
   view: {
     run: (args) => {
@@ -387,7 +387,7 @@ Examples:
 
 Edit a task's title, description, priority, or label attachments.
 Use --priority none to clear priority.
-Provide at least one edit flag. Use --description "" to clear the description.
+Provide at least one edit flag. Use --description '' to clear the description.
 
 ${textEditHelp("--description")}
 
@@ -402,8 +402,8 @@ Titles are trimmed and cannot be blank or contain line breaks or control charact
 ${dashValueHelp("--description")}
 
 Examples:
-  zinn task edit MDR-1 --title "Meet the quarterly refinement quota"
-  zinn task edit MDR-1 --description "Bring waffles." --append`,
+  zinn task edit MDR-1 --title 'Meet the quarterly refinement quota'
+  zinn task edit MDR-1 --description 'Bring waffles.' --append`,
     guessedFlags: {
       "--status": (args) => suggestTaskMove(args, editOptions),
       "--column": (args) => suggestTaskMove(args, editOptions),
@@ -437,7 +437,7 @@ On bulk changes, if any task cannot be moved, the bulk operation is aborted.
 With --json, one task prints an object and several print an array.
 Each task's changed field is 'false' when it was already in the requested state.
 
-Example: zinn task move MDR-1 MDR-2 "In Progress"`,
+Example: zinn task move MDR-1 MDR-2 'In Progress'`,
     guessedFlags: { "--status": suggestTaskMove, "--column": suggestTaskMove },
   },
   order: {

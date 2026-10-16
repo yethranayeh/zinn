@@ -107,7 +107,7 @@ Archived tasks can be commented on.
 
 ${dashValueHelp("--text")}
 
-Example: zinn task comment create MDR-1 --text "Ready for review"`,
+Example: zinn task comment create MDR-1 --text 'Ready for review'`,
   },
   list: {
     run: (args) => {
@@ -136,8 +136,8 @@ ${textEditHelp("--text")}
 ${dashValueHelp("--text")}
 
 Examples:
-  zinn task comment edit MDR-1#2 --text "Approved"
-  zinn task comment edit MDR-1#2 --text "Also approved." --append`,
+  zinn task comment edit 'MDR-1#2' --text Approved
+  zinn task comment edit 'MDR-1#2' --text 'Also approved.' --append`,
   },
   delete: {
     run: async (args) => {
@@ -171,6 +171,6 @@ Examples:
 Permanently delete a comment after confirmation.
 Use --yes to skip the confirmation prompt, for example in scripts or with --json.
 
-Example: zinn task comment delete MDR-1#2`,
+Example: zinn task comment delete 'MDR-1#2'`,
   },
 } satisfies RouteDef;

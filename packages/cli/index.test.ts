@@ -3413,7 +3413,7 @@ test("task edit preserves archive state and documents its flags", () => {
   });
   const help = runZinn(["task", "edit", "--help"]);
   expect(help.code).toBe(0);
-  expect(help.stdout).toContain('--description ""');
+  expect(help.stdout).toContain("--description ''");
 });
 
 test("project and column mutations print the affected entity", () => {

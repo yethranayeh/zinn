@@ -194,7 +194,7 @@ export function isHelpFlag(flag: string) {
  * @see {@link https://github.com/pkgjs/parseargs/issues/77}
  */
 export function dashValueHelp(flag: string) {
-  return `A value that begins with a dash must be joined to its flag with =, as in ${flag}="- item".`;
+  return `A value that begins with a dash must be joined to its flag with =, as in ${flag}='- item'.`;
 }
 
 // "Option '--title' argument is ambiguous."
