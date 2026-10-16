@@ -1,5 +1,5 @@
 /**
- * Puts a backup's board in place of a database's by copying the backup into it,
+ * Copies the backup's contents into the database,
  *  inside one write transaction on a connection that holds SQLite's write lock.
  * The database file and its -wal and -shm files stay where they are, so moving or replacing them
  *  while another process has the file open would lose that process's writes.
@@ -23,7 +23,12 @@ import { attachSuppressed, SqliteError } from "../sqlite/database.js";
 import { BASELINE_VERSION } from "./baseline.js";
 import { classifyConnection } from "./classify.js";
 import { latestVersion, MIGRATIONS } from "./registry.js";
-import { assertForeignKeys, createSchema, readSchemaVersion, withForeignKeysOff } from "./runner.js";
+import {
+  assertForeignKeys,
+  createSchema,
+  readSchemaVersion,
+  withForeignKeysOff,
+} from "./runner.js";
 import {
   assertFreeSpace,
   estimateRequiredFree,
@@ -52,7 +57,7 @@ export class RestoreRefusedError extends Error {
 export type CheckedBackup = { path: string; version: number };
 
 export type RestoreOptions = LockOptions & {
-  /** Where the backup of the replaced board goes, and the client named in its file name and in errors. */
+  /** Where the backup of the replaced database goes, and the client named in its file name and in errors. */
   backup: BackupCreateInput & { directory: string };
   migrations?: ReadonlyArray<Migration>;
   /** Reads a filesystem's free space. Tests pass their own, so no test fills the disk. */
@@ -65,7 +70,7 @@ export type RestoreResult = {
   previousVersion: number;
   /** The backup's schema version, which the database has now. */
   restoredVersion: number;
-  /** The backup of the board the restore replaced, null when the database was empty. */
+  /** The backup of the database the restore replaced, null when the database was empty. */
   backupPath: string | null;
 };
 
@@ -77,7 +82,7 @@ function quote(name: string) {
 }
 
 /**
- * The tables that hold a board's rows: ordinary and virtual ones.
+ * The tables that hold a database's rows: ordinary and virtual ones.
  * Leaves out SQLite's own tables and the shadow tables a virtual table such as the search index keeps,
  *  which SQLite creates, fills and drops along with it.
  * @link https://www.sqlite.org/pragma.html#pragma_table_list
@@ -249,10 +254,11 @@ export function checkBackup(
 }
 
 /** Drops every trigger, view and table in main. Indexes and shadow tables go with their tables. */
-function dropBoard(db: Database) {
+function dropDatabaseTables(db: Database) {
   const triggers = db
     .query<{ name: string }>("SELECT name FROM main.sqlite_schema WHERE type = 'trigger'")
     .all();
+
   const views = db
     .query<{ name: string }>(
       "SELECT name FROM pragma_table_list WHERE schema = 'main' AND type = 'view'",
@@ -277,7 +283,7 @@ function dropBoard(db: Database) {
  * An unqualified CREATE makes its object in main, and indexes and triggers find their table there first.
  * @link https://www.sqlite.org/lang_naming.html
  */
-function createBoard(db: Database) {
+function createDatabaseTables(db: Database) {
   const skipped = new Set(
     db
       .query<{ name: string }>(
@@ -317,7 +323,7 @@ function copyRows(db: Database) {
     );
   }
 
-  // Dropping its tables does not drop sqlite_sequence, so it may hold the replaced board's counters.
+  // Dropping its tables does not drop sqlite_sequence, so it may hold the replaced database's counters.
   if (hasSequenceTable(db, "main")) {
     db.exec(`DELETE FROM main.${SEQUENCE_TABLE}`);
   }
@@ -345,9 +351,10 @@ function assertRowCounts(db: Database, tables: ReadonlyArray<TableRow>) {
 }
 
 /** Replaces main's schema, rows and version with the attached backup's, inside the caller's transaction. */
-function replaceBoard(db: Database, version: number) {
-  dropBoard(db);
-  createBoard(db);
+function replaceDatabaseContents(db: Database, version: number) {
+  dropDatabaseTables(db);
+  createDatabaseTables(db);
+
   const tables = copyRows(db);
   // The version is an integer read by checkBackup.
   db.exec(`PRAGMA main.user_version = ${version}`);
@@ -356,7 +363,7 @@ function replaceBoard(db: Database, version: number) {
 }
 
 /**
- * The free bytes the restore needs: the backup of the current board, then the backup's pages
+ * The free bytes the restore needs: the backup of the current database, then the backup's pages
  *  written into the database and its -wal file, with the estimate's usual headroom.
  * The copy is treated like one rebuilt table as large as the whole backup.
  */
@@ -419,21 +426,21 @@ export function restoreBackup(
       withMigrationLock(db, databasePath, { ...lock, operation: "restore" }, () => {
         const { state, version: previousVersion } = classifyConnection(db, migrations);
         const sourceBytes = readSourceBytes(db);
-        const savesBoard = state !== "empty";
+        const savesDatabase = state !== "empty";
 
         // The free space of a missing directory is unknown, which would stop the restore.
         mkdirSync(backup.directory, { recursive: true });
-        assertFreeSpace(spacePaths, requiredFree(db, sourceBytes, savesBoard), readFree);
+        assertFreeSpace(spacePaths, requiredFree(db, sourceBytes, savesDatabase), readFree);
 
         let backupPath: string | null = null;
 
-        if (savesBoard) {
-          // db holds the write lock and has written nothing, so the backup is the board as it is.
+        if (savesDatabase) {
+          // db holds the write lock and has written nothing, so the backup is the database as it is.
           backupPath = dbBackup.create(databasePath, backup.directory, backup).path;
           assertFreeSpace(spacePaths, requiredFree(db, sourceBytes, false), readFree);
         }
 
-        replaceBoard(db, checked.version);
+        replaceDatabaseContents(db, checked.version);
 
         return { databasePath, previousVersion, restoredVersion: checked.version, backupPath };
       }),

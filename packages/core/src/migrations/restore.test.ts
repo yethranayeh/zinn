@@ -64,7 +64,7 @@ function options(directory: string, overrides: Partial<RestoreOptions> = {}): Re
 }
 
 /** Creates a database file in WAL mode, as getDb() would, and lets prepare fill it. */
-function makeBoard(path: string, prepare: (db: Database) => void) {
+function makeDatabase(path: string, prepare: (db: Database) => void) {
   const db = openDatabase(path);
 
   try {
@@ -91,7 +91,7 @@ function withOpen<T>(path: string, read: (db: Database) => T): T {
  * The version, schema and every row with its rowid. The search index's shadow tables are left out:
  *  rebuilding the index from the same text may lay them out differently.
  */
-function board(db: Database) {
+function databaseState(db: Database) {
   const tables = db
     .query<{ name: string }>(
       "SELECT name FROM pragma_table_list WHERE schema = 'main' AND type IN ('table', 'virtual') AND name NOT LIKE 'sqlite%' ORDER BY name",
@@ -105,8 +105,8 @@ function board(db: Database) {
   return { version: readSchemaVersion(db), schema: schemaObjects(db), rows };
 }
 
-function readBoard(path: string) {
-  return withOpen(path, board);
+function readDatabaseState(path: string) {
+  return withOpen(path, databaseState);
 }
 
 function searchIds(db: Database, words: string) {
@@ -148,9 +148,9 @@ function seedLive(db: Database) {
   `);
 }
 
-/** A backup of a fresh board made by `prepare`, named the way the backup command names it. */
+/** A backup of a fresh database made by `prepare`, named the way the backup command names it. */
 function backupOf(directory: string, prepare: (db: Database) => void) {
-  const source = makeBoard(join(directory, `source-${readdirSync(directory).length}.sqlite`), prepare);
+  const source = makeDatabase(join(directory, `source-${readdirSync(directory).length}.sqlite`), prepare);
   return dbBackup.create(source, join(directory, "made"), MAKER).path;
 }
 
@@ -169,12 +169,12 @@ function catchError(action: () => unknown) {
   throw new Error("Expected an error");
 }
 
-test("a backup at the same version replaces the board, keeping rows, rowids, timestamps, counters and search", () => {
+test("a backup at the same version replaces the database, keeping rows, rowids, timestamps, counters and search", () => {
   withDirectory((directory) => {
-    const live = makeBoard(join(directory, "zinn.sqlite"), seedLive);
+    const live = makeDatabase(join(directory, "zinn.sqlite"), seedLive);
     const backupPath = backupOf(directory, seedSource);
-    const liveBefore = readBoard(live);
-    const backupBoard = readBoard(backupPath);
+    const liveBefore = readDatabaseState(live);
+    const backupState = readDatabaseState(backupPath);
 
     const result = restoreDatabase(live, backupPath, options(directory));
 
@@ -184,9 +184,9 @@ test("a backup at the same version replaces the board, keeping rows, rowids, tim
       restoredVersion: 1,
       backupPath: expect.any(String),
     });
-    expect(readBoard(live)).toEqual(backupBoard);
-    expect(backupBoard.rows.task).toContainEqual(expect.objectContaining({ id: "t3", archived_at: 11 }));
-    expect(backupBoard.rows.project).toEqual([expect.objectContaining({ key: "SRC", task_count: 3 })]);
+    expect(readDatabaseState(live)).toEqual(backupState);
+    expect(backupState.rows.task).toContainEqual(expect.objectContaining({ id: "t3", archived_at: 11 }));
+    expect(backupState.rows.project).toEqual([expect.objectContaining({ key: "SRC", task_count: 3 })]);
     withOpen(live, (db) => {
       expectHealthy(db);
       expect(searchIds(db, "three")).toEqual(["t2"]);
@@ -194,21 +194,21 @@ test("a backup at the same version replaces the board, keeping rows, rowids, tim
       expect(searchIds(db, "widget")).toEqual([]);
     });
 
-    // The replaced board was saved as an ordinary backup.
+    // The replaced database was saved as an ordinary backup.
     expect(savedBackups(directory)).toHaveLength(1);
-    expect(readBoard(result.backupPath!)).toEqual(liveBefore);
+    expect(readDatabaseState(result.backupPath!)).toEqual(liveBefore);
   });
 });
 
-test("the backup taken before a restore restores the board back", () => {
+test("the backup taken before a restore restores the database back", () => {
   withDirectory((directory) => {
-    const live = makeBoard(join(directory, "zinn.sqlite"), seedLive);
-    const liveBefore = readBoard(live);
+    const live = makeDatabase(join(directory, "zinn.sqlite"), seedLive);
+    const liveBefore = readDatabaseState(live);
     const first = restoreDatabase(live, backupOf(directory, seedSource), options(directory));
 
     const second = restoreDatabase(live, first.backupPath!, options(directory));
 
-    expect(readBoard(live)).toEqual(liveBefore);
+    expect(readDatabaseState(live)).toEqual(liveBefore);
     withOpen(live, (db) => {
       expectHealthy(db);
       expect(searchIds(db, "widget")).toEqual(["t4"]);
@@ -220,7 +220,7 @@ test("the backup taken before a restore restores the board back", () => {
 
 test("restores into a database newer than this build", () => {
   withDirectory((directory) => {
-    const live = makeBoard(join(directory, "zinn.sqlite"), (db) => {
+    const live = makeDatabase(join(directory, "zinn.sqlite"), (db) => {
       seedLive(db);
       db.exec(`PRAGMA user_version = ${NEWER_VERSION}`);
     });
@@ -229,8 +229,8 @@ test("restores into a database newer than this build", () => {
     const result = restoreDatabase(live, backupPath, options(directory));
 
     expect(result).toMatchObject({ previousVersion: NEWER_VERSION, restoredVersion: 1 });
-    expect(readBoard(live)).toEqual(readBoard(backupPath));
-    expect(readBoard(result.backupPath!).version).toBe(NEWER_VERSION);
+    expect(readDatabaseState(live)).toEqual(readDatabaseState(backupPath));
+    expect(readDatabaseState(result.backupPath!).version).toBe(NEWER_VERSION);
   });
 });
 
@@ -242,28 +242,28 @@ test("restores into a database older than this build, and into one without a sch
       db.exec("PRAGMA user_version = 2");
     });
 
-    const older = makeBoard(join(directory, "older.sqlite"), seedLive);
+    const older = makeDatabase(join(directory, "older.sqlite"), seedLive);
     expect(restoreDatabase(older, backupPath, options(directory, { migrations }))).toMatchObject({
       previousVersion: 1,
       restoredVersion: 2,
     });
-    expect(readBoard(older)).toEqual(readBoard(backupPath));
+    expect(readDatabaseState(older)).toEqual(readDatabaseState(backupPath));
 
-    const unmarked = makeBoard(join(directory, "unmarked.sqlite"), (db) => {
+    const unmarked = makeDatabase(join(directory, "unmarked.sqlite"), (db) => {
       seedLive(db);
       db.exec("PRAGMA user_version = 0");
     });
     const result = restoreDatabase(unmarked, backupPath, options(directory, { migrations }));
     expect(result).toMatchObject({ previousVersion: 0, restoredVersion: 2 });
-    expect(readBoard(unmarked)).toEqual(readBoard(backupPath));
-    expect(readBoard(result.backupPath!).version).toBe(0);
+    expect(readDatabaseState(unmarked)).toEqual(readDatabaseState(backupPath));
+    expect(readDatabaseState(result.backupPath!).version).toBe(0);
   });
 });
 
 test("an older backup is restored at its own version, without upgrading it", () => {
   withDirectory((directory) => {
     const migrations = [rebuildTaskMigration];
-    const live = makeBoard(join(directory, "zinn.sqlite"), (db) => {
+    const live = makeDatabase(join(directory, "zinn.sqlite"), (db) => {
       seedLive(db);
       db.exec("PRAGMA user_version = 2");
     });
@@ -272,14 +272,14 @@ test("an older backup is restored at its own version, without upgrading it", () 
     const result = restoreDatabase(live, backupPath, options(directory, { migrations }));
 
     expect(result).toMatchObject({ previousVersion: 2, restoredVersion: 1 });
-    expect(readBoard(live)).toEqual(readBoard(backupPath));
+    expect(readDatabaseState(live)).toEqual(readDatabaseState(backupPath));
   });
 });
 
-test("indexes, views, triggers and AUTOINCREMENT counters are restored, and the replaced board's are dropped", () => {
+test("indexes, views, triggers and AUTOINCREMENT counters are restored, and the replaced database's are dropped", () => {
   withDirectory((directory) => {
     const migrations = [addObjectsMigration];
-    const live = makeBoard(join(directory, "zinn.sqlite"), seedLive);
+    const live = makeDatabase(join(directory, "zinn.sqlite"), seedLive);
     const backupPath = backupOf(directory, (db) => {
       seedSource(db);
       addObjectsMigration.apply(db);
@@ -292,7 +292,7 @@ test("indexes, views, triggers and AUTOINCREMENT counters are restored, and the 
 
     const result = restoreDatabase(live, backupPath, options(directory, { migrations }));
 
-    expect(readBoard(live)).toEqual(readBoard(backupPath));
+    expect(readDatabaseState(live)).toEqual(readDatabaseState(backupPath));
     withOpen(live, (db) => {
       expectHealthy(db);
       expect(db.query("SELECT name, seq FROM sqlite_sequence").all()).toEqual([
@@ -307,9 +307,9 @@ test("indexes, views, triggers and AUTOINCREMENT counters are restored, and the 
       expect(db.query("SELECT updated_at FROM project").get()).toEqual({ updated_at: 4 });
     });
 
-    // Restoring the version 1 board drops the version 2 objects again.
+    // Restoring the version 1 database drops the version 2 objects again.
     restoreDatabase(live, result.backupPath!, options(directory, { migrations }));
-    const restored = readBoard(live);
+    const restored = readDatabaseState(live);
     expect(restored.version).toBe(1);
     expect(restored.schema.map(({ name }) => name)).not.toContain("open_task");
     expect(restored.schema.map(({ name }) => name)).not.toContain("task_title");
@@ -322,7 +322,7 @@ test("indexes, views, triggers and AUTOINCREMENT counters are restored, and the 
 
 test("a backup whose columns are in another order is restored, as SQLite stored its schema", () => {
   withDirectory((directory) => {
-    const live = makeBoard(join(directory, "zinn.sqlite"), seedLive);
+    const live = makeDatabase(join(directory, "zinn.sqlite"), seedLive);
     const backupPath = backupOf(directory, (db) => {
       seedSource(db);
       // A rename makes SQLite store the new name in double quotes.
@@ -336,8 +336,8 @@ test("a backup whose columns are in another order is restored, as SQLite stored 
 
     restoreDatabase(live, backupPath, options(directory));
 
-    const restored = readBoard(live);
-    expect(restored).toEqual(readBoard(backupPath));
+    const restored = readDatabaseState(live);
+    expect(restored).toEqual(readDatabaseState(backupPath));
     expect(Object.keys(restored.rows.label![0]!)).toEqual(["rowid", "color", "description", "name", "id"]);
     expect(restored.rows.label).toHaveLength(2);
     withOpen(live, expectHealthy);
@@ -346,8 +346,8 @@ test("a backup whose columns are in another order is restored, as SQLite stored 
 
 test("a backup that cannot be restored is refused, and the database and backups are left as they were", () => {
   withDirectory((directory) => {
-    const live = makeBoard(join(directory, "zinn.sqlite"), seedLive);
-    const before = readBoard(live);
+    const live = makeDatabase(join(directory, "zinn.sqlite"), seedLive);
+    const before = readDatabaseState(live);
 
     const textFile = join(directory, "notes.sqlite");
     writeFileSync(textFile, "not a database ".repeat(200));
@@ -370,7 +370,7 @@ test("a backup that cannot be restored is refused, and the database and backups 
     page.write("unusex", page.indexOf("unused"));
     writeFileSync(brokenIndex, bytes);
 
-    const otherApp = makeBoard(join(directory, "other.sqlite"), (db) => {
+    const otherApp = makeDatabase(join(directory, "other.sqlite"), (db) => {
       db.exec("CREATE TABLE note (id INTEGER PRIMARY KEY, text TEXT); PRAGMA user_version = 1");
     });
     const unmarked = backupOf(directory, (db) => {
@@ -406,12 +406,12 @@ test("a backup that cannot be restored is refused, and the database and backups 
       expect((error as Error).message).toContain(message);
     }
 
-    expect(readBoard(live)).toEqual(before);
+    expect(readDatabaseState(live)).toEqual(before);
     expect(existsSync(join(directory, "backups"))).toBe(false);
   });
 });
 
-test("restores onto a missing database by creating it, with no backup of a replaced board", () => {
+test("restores onto a missing database by creating it, with no backup of a replaced database", () => {
   withDirectory((directory) => {
     const backupPath = backupOf(directory, seedSource);
     const live = join(directory, "store", "data", "zinn.sqlite");
@@ -424,7 +424,7 @@ test("restores onto a missing database by creating it, with no backup of a repla
       restoredVersion: 1,
       backupPath: null,
     });
-    expect(readBoard(live)).toEqual(readBoard(backupPath));
+    expect(readDatabaseState(live)).toEqual(readDatabaseState(backupPath));
     withOpen(live, expectHealthy);
     expect(savedBackups(directory)).toEqual([]);
   });
@@ -441,11 +441,11 @@ test("a refused restore onto a missing database creates nothing", () => {
   });
 });
 
-test("a failure while copying rows rolls back, keeps its error and the backup, and leaves the board as it was", () => {
+test("a failure while copying rows rolls back, keeps its error and the backup, and leaves the database as it was", () => {
   withDirectory((directory) => {
-    const live = makeBoard(join(directory, "zinn.sqlite"), seedLive);
+    const live = makeDatabase(join(directory, "zinn.sqlite"), seedLive);
     const backupPath = backupOf(directory, seedSource);
-    const before = readBoard(live);
+    const before = readDatabaseState(live);
     const failure = new Error("injected copy failure");
     const failingDriver: SqliteDriver = {
       ...bunDriver,
@@ -483,17 +483,17 @@ test("a failure while copying rows rolls back, keeps its error and the backup, a
       db.close();
     }
 
-    expect(readBoard(live)).toEqual(before);
+    expect(readDatabaseState(live)).toEqual(before);
     const saved = savedBackups(directory);
     expect(saved).toHaveLength(1);
-    expect(readBoard(join(directory, "backups", saved[0]!))).toEqual(before);
+    expect(readDatabaseState(join(directory, "backups", saved[0]!))).toEqual(before);
   });
 });
 
 test("a backup whose rows point to missing rows is rolled back before committing", () => {
   withDirectory((directory) => {
-    const live = makeBoard(join(directory, "zinn.sqlite"), seedLive);
-    const before = readBoard(live);
+    const live = makeDatabase(join(directory, "zinn.sqlite"), seedLive);
+    const before = readDatabaseState(live);
     const backupPath = backupOf(directory, (db) => {
       seedSource(db);
       db.exec(`
@@ -506,15 +506,15 @@ test("a backup whose rows point to missing rows is rolled back before committing
     expect(() => restoreDatabase(live, backupPath, options(directory))).toThrow(
       "The restore would leave 1 rows whose foreign keys point to missing rows (comment to task)",
     );
-    expect(readBoard(live)).toEqual(before);
+    expect(readDatabaseState(live)).toEqual(before);
     expect(savedBackups(directory)).toHaveLength(1);
   });
 });
 
 test("a backup with an empty child referencing a missing table rolls back before committing", () => {
   withDirectory((directory) => {
-    const live = makeBoard(join(directory, "zinn.sqlite"), seedLive);
-    const before = readBoard(live);
+    const live = makeDatabase(join(directory, "zinn.sqlite"), seedLive);
+    const before = readDatabaseState(live);
     const backupPath = backupOf(directory, (db) => {
       seedSource(db);
       db.exec(`
@@ -528,7 +528,7 @@ test("a backup with an empty child referencing a missing table rolls back before
       `);
       expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
     });
-    const backupBefore = readBoard(backupPath);
+    const backupBefore = readDatabaseState(backupPath);
     const checked = checkBackup(backupPath, [], BUILD);
 
     withOpen(live, (db) => {
@@ -538,20 +538,20 @@ test("a backup with an empty child referencing a missing table rolls back before
       expect(error).toBeInstanceOf(Error);
       expect((error as Error).message).toContain("task_label");
       expect((error as Error).message).toContain("label_old");
-      expect(board(db)).toEqual(before);
+      expect(databaseState(db)).toEqual(before);
       expect(foreignKeys(db)).toBe(1);
       expect(db.inTransaction).toBe(false);
     });
-    expect(readBoard(backupPath)).toEqual(backupBefore);
+    expect(readDatabaseState(backupPath)).toEqual(backupBefore);
     const backups = savedBackups(directory);
     expect(backups).toHaveLength(1);
-    expect(readBoard(join(directory, "backups", backups[0]!))).toEqual(before);
+    expect(readDatabaseState(join(directory, "backups", backups[0]!))).toEqual(before);
   });
 });
 
-test("a connection opened before the restore reads the restored board afterwards", () => {
+test("a connection opened before the restore reads the restored database afterwards", () => {
   withDirectory((directory) => {
-    const live = makeBoard(join(directory, "zinn.sqlite"), seedLive);
+    const live = makeDatabase(join(directory, "zinn.sqlite"), seedLive);
     const backupPath = backupOf(directory, seedSource);
 
     withOpen(live, (other) => {
@@ -561,16 +561,16 @@ test("a connection opened before the restore reads the restored board afterwards
 
       expect(other.query("SELECT key FROM project").all()).toEqual([{ key: "SRC" }]);
       expect(searchIds(other, "gadget")).toEqual(["t3"]);
-      expect(board(other)).toEqual(readBoard(backupPath));
+      expect(databaseState(other)).toEqual(readDatabaseState(backupPath));
     });
   });
 });
 
 test("a restore that cannot get the write lock in time stops before changing or saving anything", () => {
   withDirectory((directory) => {
-    const live = makeBoard(join(directory, "zinn.sqlite"), seedLive);
+    const live = makeDatabase(join(directory, "zinn.sqlite"), seedLive);
     const backupPath = backupOf(directory, seedSource);
-    const before = readBoard(live);
+    const before = readDatabaseState(live);
     const waits: Array<LockWait> = [];
 
     withOpen(live, (other) => {
@@ -592,7 +592,7 @@ test("a restore that cannot get the write lock in time stops before changing or 
     });
 
     expect(waits).toEqual([{ databasePath: realpathSync(live), budgetMs: SHORT_BUDGET_MS }]);
-    expect(readBoard(live)).toEqual(before);
+    expect(readDatabaseState(live)).toEqual(before);
     expect(savedBackups(directory)).toEqual([]);
   });
 });
@@ -606,13 +606,13 @@ test("backup file names give the client and version that made them", () => {
     dbBackup.readBackupFileName("2026-10-06T12-30-05Z-zinn-tui-1.0.0-beta.2-1a2b3c4d.sqlite"),
   ).toEqual({ client: "zinn-tui", version: "1.0.0-beta.2" });
   expect(dbBackup.readBackupFileName("2026-10-06T12-30-05Z-test-unknown-1a2b3c4d.sqlite")).toBeNull();
-  expect(dbBackup.readBackupFileName("board.sqlite")).toBeNull();
+  expect(dbBackup.readBackupFileName("database.sqlite")).toBeNull();
 });
 
 test("the backup a restore saves is named like any other backup", () => {
   withDirectory((directory) => {
     mkdirSync(join(directory, "backups"));
-    const live = makeBoard(join(directory, "zinn.sqlite"), seedLive);
+    const live = makeDatabase(join(directory, "zinn.sqlite"), seedLive);
 
     const { backupPath } = restoreDatabase(live, backupOf(directory, seedSource), options(directory));
 

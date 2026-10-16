@@ -20,7 +20,7 @@ const options = (directory: string, migrations: ReadonlyArray<Migration>) => ({
   readFreeSpace: () => PLENTY_OF_SPACE,
 });
 
-function withBoard(directory: string, prepare: (db: Database) => void) {
+function withDatabase(directory: string, prepare: (db: Database) => void) {
   const path = join(directory, "zinn.sqlite");
   const db = openDatabase(path);
 
@@ -59,22 +59,22 @@ test("classifies every state without creating anything", () => {
 
     const emptyDir = join(directory, "empty");
     mkdirSync(emptyDir);
-    const empty = withBoard(emptyDir, () => {});
+    const empty = withDatabase(emptyDir, () => {});
     expect(classifyDatabase(empty, []).state).toBe("empty");
 
     const unmarkedDir = join(directory, "unmarked");
     mkdirSync(unmarkedDir);
-    const unmarked = withBoard(unmarkedDir, (db) => {
+    const unmarked = withDatabase(unmarkedDir, (db) => {
       seedBaseline(db);
       db.exec("PRAGMA user_version = 0");
     });
     expect(classifyDatabase(unmarked, [])).toEqual({ state: "unmarked", version: 0, latestVersion: 1 });
 
-    const boardDir = join(directory, "board");
-    mkdirSync(boardDir);
-    const board = withBoard(boardDir, seedBaseline);
-    expect(classifyDatabase(board, []).state).toBe("current");
-    expect(classifyDatabase(board, [upgradeTask])).toEqual({
+    const databaseDirectory = join(directory, "database");
+    mkdirSync(databaseDirectory);
+    const database = withDatabase(databaseDirectory, seedBaseline);
+    expect(classifyDatabase(database, []).state).toBe("current");
+    expect(classifyDatabase(database, [upgradeTask])).toEqual({
       state: "older",
       version: 1,
       latestVersion: 2,
@@ -82,10 +82,10 @@ test("classifies every state without creating anything", () => {
 
     const newerDir = join(directory, "newer");
     mkdirSync(newerDir);
-    const newer = withBoard(newerDir, versionedAt(5));
+    const newer = withDatabase(newerDir, versionedAt(5));
     expect(classifyDatabase(newer, [upgradeTask])).toEqual({ state: "newer", version: 5, latestVersion: 2 });
 
-    expect(readdirSync(directory).sort()).toEqual(["board", "empty", "newer", "unmarked"]);
+    expect(readdirSync(directory).sort()).toEqual(["database", "empty", "newer", "unmarked"]);
   });
 });
 
@@ -100,7 +100,7 @@ test("an absent database is refused and no file or directory is created", () => 
 
 test("an empty database is refused and left empty", () => {
   withDirectory((directory) => {
-    const path = withBoard(directory, () => {});
+    const path = withDatabase(directory, () => {});
     const before = snapshotOf(path);
 
     expect(() => migrateDatabase(path, options(directory, [upgradeTask]))).toThrow(MigrationRefusedError);
@@ -111,7 +111,7 @@ test("an empty database is refused and left empty", () => {
 
 test("an unmarked database is refused and keeps schema, data and version", () => {
   withDirectory((directory) => {
-    const path = withBoard(directory, (db) => {
+    const path = withDatabase(directory, (db) => {
       seedBaseline(db);
       db.exec("PRAGMA user_version = 0");
     });
@@ -127,7 +127,7 @@ test("an unmarked database is refused and keeps schema, data and version", () =>
 
 test("a newer database is refused with both versions and the running build, and left unchanged", () => {
   withDirectory((directory) => {
-    const path = withBoard(directory, versionedAt(7));
+    const path = withDatabase(directory, versionedAt(7));
     const before = snapshotOf(path);
 
     expect(() => migrateDatabase(path, options(directory, [upgradeTask]))).toThrow(
@@ -140,7 +140,7 @@ test("a newer database is refused with both versions and the running build, and 
 
 test("a current database is a no-op with no backup", () => {
   withDirectory((directory) => {
-    const path = withBoard(directory, seedBaseline);
+    const path = withDatabase(directory, seedBaseline);
     const before = snapshotOf(path);
 
     expect(migrateDatabase(path, options(directory, []))).toEqual({
@@ -157,7 +157,7 @@ test("a current database is a no-op with no backup", () => {
 
 test("an older database is upgraded after a backup that is kept and still opens", () => {
   withDirectory((directory) => {
-    const path = withBoard(directory, seedBaseline);
+    const path = withDatabase(directory, seedBaseline);
     const before = snapshotOf(path);
 
     const result = migrateDatabase(path, options(directory, [upgradeTask]));
@@ -185,7 +185,7 @@ test("an older database is upgraded after a backup that is kept and still opens"
 
 test("a failed upgrade leaves the database as it was and keeps the backup", () => {
   withDirectory((directory) => {
-    const path = withBoard(directory, seedBaseline);
+    const path = withDatabase(directory, seedBaseline);
     const before = snapshotOf(path);
     const failing: Migration = {
       version: 2,

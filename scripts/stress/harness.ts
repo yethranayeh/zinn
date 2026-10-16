@@ -25,7 +25,7 @@ export const WRAPPER_WORKER = join(import.meta.dir, "wrapper-worker.ts");
 // Node prints an ExperimentalWarning for node:sqlite on every start; it is noise in collected stderr.
 export const NODE_COMMAND = ["node", "--disable-warning=ExperimentalWarning"];
 
-// The user's live board and its retained backups. The harness refuses to touch either.
+// The user's live database and its retained backups. The harness refuses to touch either.
 const LIVE_ZINN_DIR = join(homedir(), ".zinn");
 const LIVE_BACKUP_DIR = join(homedir(), ".zinn-backups");
 

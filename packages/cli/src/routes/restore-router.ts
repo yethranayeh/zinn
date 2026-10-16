@@ -32,7 +32,7 @@ export const restoreCommand = {
     }
 
     const isConfirmed = await askConfirmation(
-      `Replace the database at ${databasePath} with the backup ${path}? Its current board is saved to ${backupDirectory} first.`,
+      `Replace the database at ${databasePath} with the backup ${path}? The current database is saved to ${backupDirectory} first.`,
       isPreconfirmed,
     );
 
@@ -45,10 +45,10 @@ export const restoreCommand = {
       const result = backup.restore({ ...build, path, onWait: reportLockWait });
 
       output(result, (r) => {
-        const restored = `Restored the board from ${path} at schema version ${r.restoredVersion}.`;
+        const restored = `Restored the database from ${path} at schema version ${r.restoredVersion}.`;
         return r.backupPath == null
-          ? `${restored} There was no board to save`
-          : `${restored} The board it replaced was saved to ${r.backupPath}`;
+          ? `${restored} There was no database to save`
+          : `${restored} The database it replaced was saved to ${r.backupPath}`;
       });
     } catch (error) {
       // A refusal attempted nothing, so only a failed restore points at the backups.
@@ -78,9 +78,9 @@ export const restoreCommand = {
   },
   help: `Usage: zinn restore <path> [--yes]
 
-Replace the board with the one in a backup file, such as one saved by \`zinn backup\` or by an upgrade, after confirmation.
+Replace the database with the one in a backup file, such as one saved by \`zinn backup\` or by an upgrade, after confirmation.
 
-The current board is saved first, in the same place as \`zinn backup\`, and the restore is applied completely or not at all.
+The current database is saved first, in the same place as \`zinn backup\`, and the restore is applied completely or not at all.
 A backup with an older schema version is restored at that version. Zinn then upgrades it like any older database: by itself, except for ~/.zinn run from a source checkout, which needs \`zinn migrate\`.
 Restoring onto a missing database creates it.
 Fails, leaving the database as it is, when the backup has a newer schema version than this Zinn or none at all, is damaged, or is not a Zinn database.

@@ -13,10 +13,10 @@ import { dirname } from "node:path";
 import { SEARCH_COMMENT_SEPARATOR } from "../search-entry.js";
 import { readSchemaVersion } from "./runner.js";
 
-// The guesses below were checked on small test boards. They are cautious estimates, not SQLite limits.
+// The guesses below were checked on small test databases. They are cautious estimates, not SQLite limits.
 
 /**
- * Guesses found below are results from some small test boards
+ * Guesses found below are results from some small test databases
  *  generated as estimates to be cautious of.
  * They are not a representation of any real SQLite limits
  */

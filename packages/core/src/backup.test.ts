@@ -64,7 +64,7 @@ test("same-time backups preserve earlier snapshots and include uncheckpointed WA
   }
 });
 
-test("restore puts a backup's board back through the public operations, and its own backup undoes it", () => {
+test("restore puts a backup's database back through the public operations, and its own backup undoes it", () => {
   const directory = mkdtempSync(join(tmpdir(), "zinn-restore-"));
 
   try {
@@ -87,34 +87,34 @@ test("restore puts a backup's board back through the public operations, and its 
       task.archive("APP-2", human);
       comment.create({ taskKey: "APP-1", text: "Needs a spinner" }, human);
       const saved = backup.create(build).path;
-      const boardAtBackup = { tasks: task.getAll({ archive: "all" }), comments: comment.getAll("APP-1") };
+      const databaseAtBackup = { tasks: task.getAll({ archive: "all" }), comments: comment.getAll("APP-1") };
 
       task.create({ project_id: app.id, title: "Later work", description: null }, human);
       task.delete("APP-1", human);
-      const boardBeforeRestore = keys();
+      const databaseBeforeRestore = keys();
 
       // A file that is not a backup changes nothing.
       const notABackup = join(directory, "notes.txt");
       writeFileSync(notABackup, "not a backup");
       assert.throws(() => backup.restore({ ...build, path: notABackup }), RestoreRefusedError);
-      assert.deepEqual(keys(), boardBeforeRestore);
+      assert.deepEqual(keys(), databaseBeforeRestore);
 
       const restored = backup.restore({ ...build, path: saved });
       assert.equal(restored.previousVersion, 1);
       assert.equal(restored.restoredVersion, 1);
-      assert.deepEqual(task.getAll({ archive: "all" }), boardAtBackup.tasks);
-      assert.deepEqual(comment.getAll("APP-1"), boardAtBackup.comments);
+      assert.deepEqual(task.getAll({ archive: "all" }), databaseAtBackup.tasks);
+      assert.deepEqual(comment.getAll("APP-1"), databaseAtBackup.comments);
       assert.deepEqual(keys("archived"), ["APP-2"]);
       assert.deepEqual(found("spinner"), ["APP-1"]);
       assert.deepEqual(found("gadget"), ["APP-2"]);
       assert.deepEqual(found("later"), []);
       assert.equal(first.id, task.getByKey("APP-1").id);
 
-      // The task counter came back with the board, so the next task gets the next number after the backup's.
+      // The task counter came back with the database, so the next task gets the next number after the backup's.
       assert.equal(task.create({ project_id: app.id, title: "After restore", description: null }, human).key, "APP-3");
 
       backup.restore({ ...build, path: restored.backupPath });
-      assert.deepEqual(keys(), boardBeforeRestore);
+      assert.deepEqual(keys(), databaseBeforeRestore);
       assert.ok(readdirSync(backupDirectory).length === 3);
     `], { env: { ...process.env, ZINN_DIR: directory } });
 
@@ -125,7 +125,7 @@ test("restore puts a backup's board back through the public operations, and its 
   }
 });
 
-test("restore onto a store with no database creates it, with no backup of a replaced board", () => {
+test("restore onto a store with no database creates it, with no backup of a replaced database", () => {
   const source = mkdtempSync(join(tmpdir(), "zinn-restore-source-"));
   const target = mkdtempSync(join(tmpdir(), "zinn-restore-target-"));
   const run = (directory: string, script: string) =>

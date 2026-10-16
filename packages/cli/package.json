@@ -1,6 +1,6 @@
 {
 	"name": "@zinn-dev/cli",
-	"version": "0.40.0",
+	"version": "0.41.0-dev",
 	"description": "A kanban workflow in the terminal. Experimental.",
 	"license": "MIT",
 	"bugs": {

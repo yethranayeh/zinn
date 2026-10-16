@@ -36,7 +36,7 @@ export const backup = {
    */
   check: ({ path, client, version }: Omit<BackupRestoreInput, "onWait">) =>
     checkBackup(resolve(path), MIGRATIONS, { client, version }),
-  /** Replaces the board with the backup's, saving the replaced board as a backup first. */
+  /** Replaces the database contents from a backup, saving the current database first. */
   restore: ({ path, client, version, onWait }: BackupRestoreInput) => {
     const { databasePath, backupDirectory } = getStorage();
     const isNewStore = !existsSync(databasePath);

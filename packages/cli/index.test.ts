@@ -3615,8 +3615,8 @@ test("--json reports errors as JSON on stderr and leaves stdout empty", () => {
   expect(parsed.error.help).toContain("Usage: zinn project create");
 });
 
-// ? A board with something for each confirming command to change. Returns a backup taken before "Later" was added.
-function seedConfirmationBoard(dir: string) {
+// ? A database with something for each confirming command to change. Returns a backup taken before "Later" was added.
+function seedConfirmationDatabase(dir: string) {
   runZinn(["project", "create", "CONF"], dir);
   runZinn(["label", "create", "bug"], dir);
   runZinn(["task", "create", "CONF", "--title", "Kept", "--label", "bug"], dir);
@@ -3639,7 +3639,7 @@ function confirmationSnapshot(dir: string) {
 
 const runJson = (dir: string, ...args: Array<string>) => JSON.parse(runZinn([...args, "--json"], dir).stdout);
 
-// ? ZINN-143: every command that asks for confirmation, run against seedConfirmationBoard,
+// ? ZINN-143: every command that asks for confirmation, run against seedConfirmationDatabase,
 // ? with a check that its change happened.
 const CONFIRMING_COMMANDS = [
   {
@@ -3667,7 +3667,7 @@ const CONFIRMING_COMMANDS = [
 test("confirming commands without --yes refuse when not in a terminal, and --yes still performs them", () => {
   for (const { argsFor, isDone } of CONFIRMING_COMMANDS) {
     withIsolatedZinnDir((dir) => {
-      const args = argsFor(seedConfirmationBoard(dir));
+      const args = argsFor(seedConfirmationDatabase(dir));
       const before = confirmationSnapshot(dir);
 
       for (const refused of [runZinn(args, dir), runZinnWithPipedYes(args, dir)]) {
@@ -3693,7 +3693,7 @@ test("confirming commands without --yes refuse when not in a terminal, and --yes
 test("confirming commands in a terminal act on y and cancel on n with exit code 0", async () => {
   for (const { argsFor, isDone } of CONFIRMING_COMMANDS) {
     await withIsolatedZinnDirAsync(async (dir) => {
-      const args = argsFor(seedConfirmationBoard(dir));
+      const args = argsFor(seedConfirmationDatabase(dir));
       const env = { ...process.env, ZINN_DIR: dir };
       const before = confirmationSnapshot(dir);
 
@@ -3712,7 +3712,7 @@ test("confirming commands in a terminal act on y and cancel on n with exit code 
 
 test("confirmation prompts use stderr, preserve exact affirmative answers, and decline EOF", async () => {
   await withIsolatedZinnDirAsync(async (dir) => {
-    seedConfirmationBoard(dir);
+    seedConfirmationDatabase(dir);
     const before = confirmationSnapshot(dir);
     const stderrPath = join(dir, "prompt.stderr");
     const options = { env: { ...process.env, ZINN_DIR: dir }, stderrPath };
@@ -3737,7 +3737,7 @@ test("confirmation prompts use stderr, preserve exact affirmative answers, and d
 
 test("interrupting a confirmation exits 130 and changes nothing", async () => {
   await withIsolatedZinnDirAsync(async (dir) => {
-    seedConfirmationBoard(dir);
+    seedConfirmationDatabase(dir);
     const before = confirmationSnapshot(dir);
     const result = await runCliInTerminal(["task", "delete", "CONF-1"], {
       env: { ...process.env, ZINN_DIR: dir }, input: "\x03", inputWhen: "[y/N]",
@@ -4892,7 +4892,7 @@ test("restore explains recovery from damaged task and comment pages without chan
   }
 });
 
-test("restore replaces the board after confirmation and saves the replaced board as a backup", () => {
+test("restore replaces the database after confirmation and saves the replaced database as a backup", () => {
   withIsolatedZinnDir((dir) => {
     const path = backupWithTask(dir, "Kept");
     runZinn(["task", "create", "RST", "--title", "Later"], dir);
@@ -4901,7 +4901,9 @@ test("restore replaces the board after confirmation and saves the replaced board
 
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toContain(`Restored the board from ${path} at schema version 1. The board it replaced was saved to ${join(dir, "backups")}/`);
+    expect(result.stdout).toContain(path);
+    expect(result.stdout).toContain("schema version 1");
+    expect(result.stdout).toContain(`${join(dir, "backups")}/`);
     expect(taskTitles(dir)).toEqual([{ title: "Kept" }]);
 
     const saved = backupFiles(dir).map((name) => join(dir, "backups", name)).filter((file) => file !== path);
@@ -4915,7 +4917,7 @@ test("restore replaces the board after confirmation and saves the replaced board
   });
 });
 
-test("restore keeps the board when confirmation is declined", async () => {
+test("restore keeps the database when confirmation is declined", async () => {
   await withIsolatedZinnDirAsync(async (dir) => {
     const path = backupWithTask(dir, "Kept");
     runZinn(["task", "create", "RST", "--title", "Later"], dir);
@@ -4964,7 +4966,7 @@ test("restore with --json needs --yes, and with it prints the restore result", (
 test("restore refuses a file that is not a backup it can restore, printing why and changing nothing", () => {
   withIsolatedZinnDir((dir) => {
     withIsolatedZinnDir((newerDir) => {
-      createBoard(dir, 1);
+      createDatabase(dir, 1);
       const before = databaseSnapshot(dir);
       const textFile = join(newerDir, "notes.sqlite");
       writeFileSync(textFile, "not a database");
@@ -5019,7 +5021,10 @@ test("restore onto a store with no database creates it from the backup", () => {
       const result = runZinn(["restore", path, "--yes"], dir);
 
       expect(result.code).toBe(0);
-      expect(result.stdout).toBe(`Restored the board from ${path} at schema version 1. There was no board to save\n`);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toContain(path);
+      expect(result.stdout).toContain("schema version 1");
+      expect(backupFiles(dir)).toEqual([]);
       expect(runZinn(["task", "list", "RST"], dir).stdout).toContain("Kept");
     });
   });
@@ -5031,7 +5036,7 @@ test("restore works on newer and unmarked databases, without --allow-legacy-read
 
     for (const version of [9, 0]) {
       withIsolatedZinnDir((dir) => {
-        createBoard(dir, version);
+        createDatabase(dir, version);
 
         const result = runZinn(["restore", path, "--yes", "--json"], dir);
 
@@ -5067,7 +5072,7 @@ function databaseSnapshot(dir: string) {
   }));
 }
 
-function createBoard(dir: string, version: number) {
+function createDatabase(dir: string, version: number) {
   runZinn(["project", "create", "MIG"], dir);
   runZinn(["task", "create", "MIG", "--title", "Kept"], dir);
   withTestDb(dir, (db) => db.run(`PRAGMA user_version = ${version}`));
@@ -5101,7 +5106,7 @@ test("migrate refuses an empty database", () => {
 
 test("migrate refuses an unmarked database, with or without --allow-legacy-read, and changes nothing", () => {
   withIsolatedZinnDir((dir) => {
-    createBoard(dir, 0);
+    createDatabase(dir, 0);
     const before = databaseSnapshot(dir);
     const result = runZinn(["migrate", "--json"], dir);
 
@@ -5116,7 +5121,7 @@ test("migrate refuses an unmarked database, with or without --allow-legacy-read,
 
 test("migrate refuses a newer database and reports both versions and the CLI version", () => {
   withIsolatedZinnDir((dir) => {
-    createBoard(dir, 9);
+    createDatabase(dir, 9);
     const before = databaseSnapshot(dir);
     const result = runZinn(["migrate"], dir);
 
@@ -5131,7 +5136,7 @@ test("migrate refuses a newer database and reports both versions and the CLI ver
 
 test("migrate on a current database is a no-op with no backup", () => {
   withIsolatedZinnDir((dir) => {
-    createBoard(dir, 1);
+    createDatabase(dir, 1);
     const before = databaseSnapshot(dir);
 
     const result = runZinn(["migrate", "--json"], dir);
@@ -5251,7 +5256,7 @@ test("reindex refuses an empty database file and leaves it empty", () => {
 
 test("reindex refuses a newer database and leaves it unchanged", () => {
   withIsolatedZinnDir((dir) => {
-    createBoard(dir, 9);
+    createDatabase(dir, 9);
     const before = databaseSnapshot(dir);
     const result = runZinn(["reindex"], dir);
 
@@ -5266,7 +5271,7 @@ test("reindex refuses a newer database and leaves it unchanged", () => {
 
 test("a newer database refuses changes, naming both versions and this CLI, while reads still work", () => {
   withIsolatedZinnDir((dir) => {
-    createBoard(dir, 9);
+    createDatabase(dir, 9);
     const before = databaseSnapshot(dir);
 
     const list = runZinn(["task", "list", "MIG"], dir);
@@ -5287,7 +5292,7 @@ test("a newer database refuses changes, naming both versions and this CLI, while
 
 test("task delete on a read-only database refuses before asking for confirmation", () => {
   withIsolatedZinnDir((dir) => {
-    createBoard(dir, 9);
+    createDatabase(dir, 9);
     const before = databaseSnapshot(dir);
     const result = runZinnWithPipedYes(["task", "delete", "MIG-1"], dir);
 
@@ -5300,7 +5305,7 @@ test("task delete on a read-only database refuses before asking for confirmation
 
 test("an unmarked database is refused, for reads and writes, and left unchanged", () => {
   withIsolatedZinnDir((dir) => {
-    createBoard(dir, 0);
+    createDatabase(dir, 0);
     const before = databaseSnapshot(dir);
 
     for (const args of [["task", "list", "MIG"], ["task", "create", "MIG", "--title", "Refused"]]) {
@@ -5324,7 +5329,7 @@ function warningLines(stderr: string) {
 
 test("--allow-legacy-read reads an unmarked database with one warning on stderr, each invocation needing it again", () => {
   withIsolatedZinnDir((dir) => {
-    createBoard(dir, 0);
+    createDatabase(dir, 0);
     const before = databaseSnapshot(dir);
     const databasePath = join(dir, "data", "zinn.sqlite");
 
@@ -5346,7 +5351,7 @@ test("--allow-legacy-read reads an unmarked database with one warning on stderr,
 
 test("--allow-legacy-read with --json keeps stdout parseable and refusals as a JSON error", () => {
   withIsolatedZinnDir((dir) => {
-    createBoard(dir, 0);
+    createDatabase(dir, 0);
 
     const allowed = runZinn(["task", "list", "MIG", "--json", LEGACY_FLAG], dir);
     expect(allowed.code).toBe(0);
@@ -5362,7 +5367,7 @@ test("--allow-legacy-read with --json keeps stdout parseable and refusals as a J
 
 test("a --allow-legacy-read after -- is command input, so the database stays refused", () => {
   withIsolatedZinnDir((dir) => {
-    createBoard(dir, 0);
+    createDatabase(dir, 0);
     const before = databaseSnapshot(dir);
     const result = runZinn(["task", "search", "--", LEGACY_FLAG], dir);
 
@@ -5376,7 +5381,7 @@ test("a --allow-legacy-read after -- is command input, so the database stays ref
 
 test("--allow-legacy-read never lets a command change an unmarked database", () => {
   withIsolatedZinnDir((dir) => {
-    createBoard(dir, 0);
+    createDatabase(dir, 0);
     const before = databaseSnapshot(dir);
     const attempts = [
       ["task", "create", "MIG", "--title", "Refused"],
@@ -5399,7 +5404,7 @@ test("--allow-legacy-read never lets a command change an unmarked database", () 
 
 test("--allow-legacy-read does not warn about a database that has a schema version", () => {
   withIsolatedZinnDir((dir) => {
-    createBoard(dir, 1);
+    createDatabase(dir, 1);
     const current = runZinn(["task", "list", "MIG", LEGACY_FLAG], dir);
     expect(current.code).toBe(0);
     expect(current.stderr).toBe("");
@@ -5413,7 +5418,7 @@ test("--allow-legacy-read does not warn about a database that has a schema versi
 
 test("help, --version and backup need no --allow-legacy-read for an unmarked database", () => {
   withIsolatedZinnDir((dir) => {
-    createBoard(dir, 0);
+    createDatabase(dir, 0);
     const before = databaseSnapshot(dir);
 
     expect(runZinn(["--help"], dir).stdout).toContain(LEGACY_FLAG);
@@ -5436,7 +5441,7 @@ test("help and --version open no database, not even one that core refuses", () =
     }
     expect(readdirSync(dir)).toEqual([]);
 
-    createBoard(dir, 0);
+    createDatabase(dir, 0);
     const before = databaseSnapshot(dir);
     for (const args of commands) {
       const result = runZinn(args, dir);
