@@ -37,3 +37,13 @@ test("activity lists accept optional filters and positive safe-integer limits", 
   }
   expect(activityListSchema.safeParse({ projectKey: "APP" }).success).toBe(false);
 });
+
+test("session and thread filters preserve exact opaque values and reject empty or non-string inputs", () => {
+  const input = { sessionId: " Conversation/1 ", threadId: "1", taskKey: "app-1", limit: 2 };
+  expect(activityListSchema.parse(input)).toEqual({ ...input, taskKey: "APP-1" });
+  for (const field of ["sessionId", "threadId"] as const) {
+    for (const value of ["", null, 1, true, []]) {
+      expect(activityListSchema.safeParse({ [field]: value }).success).toBe(false);
+    }
+  }
+});

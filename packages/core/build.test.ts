@@ -69,6 +69,8 @@ test("emitted core works on both runtimes and its declarations need no Bun types
         assert.equal(identity.actor_agent, "general");
         assert.equal(identity.actor_model, "vendor/model");
         assert.equal(identity.actor_effort, "medium");
+        assert.deepEqual(core.activity.getAll({ sessionId: "conversation", threadId: "child", limit: 1 }), [identity]);
+        assert.deepEqual(core.activity.getAll({ sessionId: "conversation", threadId: "other" }), []);
         const db = getDb();
         assert.equal(db.query("PRAGMA integrity_check").get().integrity_check, "ok");
         assert.deepEqual(db.query("PRAGMA foreign_key_check").all(), []);
@@ -80,12 +82,13 @@ test("emitted core works on both runtimes and its declarations need no Bun types
     run(["bun", "run", "test:node", runtimeCheck]);
 
     writeFileSync(join(directory, "consumer.mts"), `
-      import { project, task, configureDatabase, type Actor, type TaskWithKey } from "@zinn-dev/core";
+      import { activity, project, task, configureDatabase, type Activity, type Actor, type TaskWithKey } from "@zinn-dev/core";
       const actor: Actor = { name: "consumer", email: "consumer@example.test", kind: "human" };
       configureDatabase({ client: "consumer", version: "1.0.0", executable: "consumer.mts", release: "source", allowsLegacyRead: false });
       const createdProject = project.create({ key: "TYPES" }, actor);
       const createdTask: TaskWithKey = task.create({ project_id: createdProject.id, title: "Declarations", priority: "high" }, actor);
       const key: string = createdTask.key;
+      const events: Activity[] = activity.getAll({ sessionId: "conversation", threadId: "child", limit: 1 });
       // @ts-expect-error priority is a public vocabulary, not an arbitrary string.
       task.create({ project_id: createdProject.id, title: "Invalid", priority: "invalid" }, actor);
       // @ts-expect-error every mutation requires an explicit actor.

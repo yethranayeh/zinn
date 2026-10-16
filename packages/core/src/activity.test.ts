@@ -195,6 +195,79 @@ test("activity lists order by time then ID and apply limits after task filtering
   `);
 });
 
+test("activity identity filters match complete case-sensitive values conjunctively", () => {
+  runActivityCheck(`
+    const conversation = { ...agent, sessionId: "conversation/one" };
+    const firstThread = task.create({ project_id: app.id, title: "First thread" }, {
+      ...conversation, threadId: "thread/one",
+    });
+    const secondThread = task.create({ project_id: app.id, title: "Second thread" }, {
+      ...conversation, threadId: "thread/two",
+    });
+    const otherConversation = task.create({ project_id: app.id, title: "Other conversation" }, {
+      ...agent, sessionId: "conversation/two", threadId: "thread/one",
+    });
+    const legacy = task.create({ project_id: app.id, title: "Legacy metadata" }, human);
+    const firstEvent = activity.getAll().find((event) => event.entity_id === firstThread.id);
+    const secondEvent = activity.getAll().find((event) => event.entity_id === secondThread.id);
+    const otherEvent = activity.getAll().find((event) => event.entity_id === otherConversation.id);
+    const legacyEvent = activity.getAll().find((event) => event.entity_id === legacy.id);
+    const beforeRows = getDb().query("SELECT * FROM activity ORDER BY id").all();
+    const changesBefore = getDb().query("SELECT total_changes() AS count").get().count;
+
+    assert.deepEqual(activity.getAll({ sessionId: "conversation/one" }).map((event) => event.id).sort(),
+      [firstEvent.id, secondEvent.id].sort());
+    assert.deepEqual(activity.getAll({ threadId: "thread/one" }).map((event) => event.id).sort(),
+      [firstEvent.id, otherEvent.id].sort());
+    assert.deepEqual(activity.getAll({ sessionId: "conversation/one", threadId: "thread/two" }).map((event) => event.id),
+      [secondEvent.id]);
+    assert.deepEqual(activity.getAll({ sessionId: "conversation/two", threadId: "thread/two" }), []);
+    assert.deepEqual(activity.getAll({ sessionId: "Conversation/one" }), []);
+    assert.deepEqual(activity.getAll({ sessionId: "conversation/one-extra" }), []);
+    assert.deepEqual(activity.getAll({ threadId: "thread/one-extra" }), []);
+    assert.deepEqual(activity.getAll({ sessionId: "conversation/one", limit: 1 }).map((event) => event.id),
+      [secondEvent.id]);
+    assert.equal(legacyEvent.actor_session_id, null);
+    assert.equal(legacyEvent.actor_thread_id, null);
+    assert.deepEqual(getDb().query("SELECT * FROM activity ORDER BY id").all(), beforeRows);
+    assert.equal(getDb().query("SELECT total_changes() AS count").get().count, changesBefore);
+  `);
+});
+
+test("identity filters include deleted and reused task-key lifetimes and project deletion", () => {
+  runActivityCheck(`
+    const runActor = { ...agent, sessionId: "run/one", threadId: "thread/one" };
+    const firstProject = project.create({ key: "RUN" }, runActor);
+    const firstTask = task.create({ project_id: firstProject.id, title: "First lifetime" }, runActor);
+    const unrelated = task.create({ project_id: firstProject.id, title: "Unrelated" }, {
+      ...runActor, threadId: "thread/other",
+    });
+    const firstTaskCreate = activity.getAll().find((event) => event.entity_id === firstTask.id);
+    const unrelatedCreate = activity.getAll().find((event) => event.entity_id === unrelated.id);
+
+    project.delete("RUN", runActor);
+    const aggregateDeletion = activity.getAll().find((event) => event.entity_type === "project" && event.action === "delete");
+    const secondProject = project.create({ key: "RUN" }, runActor);
+    const secondTask = task.create({ project_id: secondProject.id, title: "Second lifetime" }, runActor);
+    const secondTaskCreate = activity.getAll().find((event) => event.entity_id === secondTask.id);
+    const beforeRows = getDb().query("SELECT * FROM activity ORDER BY id").all();
+    const changesBefore = getDb().query("SELECT total_changes() AS count").get().count;
+
+    const filtered = activity.getAll({
+      sessionId: "run/one", threadId: "thread/one", taskKey: "RUN-1",
+    });
+    assert.deepEqual(filtered.map((event) => event.id), [secondTaskCreate.id, aggregateDeletion.id, firstTaskCreate.id]);
+    assert.equal(filtered.filter((event) => event.entity_type === "task").length, 2);
+    assert.equal(filtered.filter((event) => event.entity_type === "project" && event.action === "delete").length, 1);
+    assert.ok(!filtered.some((event) => event.id === unrelatedCreate.id));
+    assert.deepEqual(activity.getAll({
+      sessionId: "run/one", threadId: "thread/other", taskKey: "RUN-1",
+    }), []);
+    assert.deepEqual(getDb().query("SELECT * FROM activity ORDER BY id").all(), beforeRows);
+    assert.equal(getDb().query("SELECT total_changes() AS count").get().count, changesBefore);
+  `);
+});
+
 test("activity finds archived and explicitly deleted tasks without requiring a live entity", () => {
   runActivityCheck(`
     const item = task.create({ project_id: app.id, title: "Keep history" }, human);

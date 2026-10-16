@@ -40,6 +40,8 @@ export const activityIdSchema = z
 
 export const activityListSchema = z.strictObject({
   taskKey: activityTaskKeySchema.optional(),
+  sessionId: z.string().min(1, "Session ID cannot be empty").optional(),
+  threadId: z.string().min(1, "Thread ID cannot be empty").optional(),
   limit: z
     .number({ error: activityLimitMessage })
     .int(activityLimitMessage)

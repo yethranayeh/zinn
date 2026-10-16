@@ -4729,7 +4729,7 @@ function runZinnAs(args: Array<string>, testDir: string, env: Record<string, str
 
   // ? cwd outside any repository, so only the identity file given per case applies.
   const proc = Bun.spawnSync(["bun", CLI_PATH, ...args], { cwd: testDir, env: { ...baseEnv, ...env } });
-  return { stderr: proc.stderr.toString(), code: proc.exitCode };
+  return { stdout: proc.stdout.toString(), stderr: proc.stderr.toString(), code: proc.exitCode };
 }
 
 function lastActor(testDir: string) {
@@ -6287,7 +6287,11 @@ test("activity rejects unsupported, repeated and malformed command arguments wit
       ["list", "APP-1"], ["list", "--project", "APP"],
       ["list", "--task", "APP-1", "--task", "APP-2"],
       ["list", "--limit", "1", "--limit", "2"], ["list", "--task", "APP-0"],
+      ["list", "--session", "first", "--session", "second"],
+      ["list", "--thread", "first", "--thread", "second"],
+      ["list", "--session", ""], ["list", "--thread", ""],
       ["view"], ["view", event!.id, "extra"], ["view", event!.id, "--task", "APP-1"],
+      ["view", event!.id, "--session", "session"],
     ];
     for (const args of invalid) {
       const result = runZinn(["activity", ...args, "--json"], directory);
@@ -6301,6 +6305,73 @@ test("activity rejects unsupported, repeated and malformed command arguments wit
       expect(JSON.parse(result.stderr).error.message).toBe("Activity limit must be a positive safe integer");
     }
     expect(withTestDb(directory, (db) => db.query("SELECT * FROM activity").all())).toEqual(before);
+  });
+});
+
+test("session activity filters return only committed changes and compose with thread, task and limit", () => {
+  withIsolatedZinnDir((directory) => {
+    const run = (args: Array<string>, env: Record<string, string> = {}) => runZinnAs(args, directory, env);
+    const events = (...flags: Array<string>): Array<Activity> => {
+      const result = run(["activity", "list", ...flags, "--json"]);
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe("");
+      return JSON.parse(result.stdout);
+    };
+    const first = { CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: "Conversation/A" };
+    const second = { CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: "Conversation/B" };
+    const child = {
+      CODEX_SESSION_ID: "Conversation/C", CODEX_THREAD_ID: "Child/1",
+      ZINN_AGENT: "worker", ZINN_MODEL: "vendor/model", ZINN_EFFORT: "low",
+    };
+    const parent = { CODEX_SESSION_ID: "Conversation/C", CODEX_THREAD_ID: "Conversation/C" };
+    expect(run(["project", "create", "RUN"], first).code).toBe(0);
+    expect(run(["task", "create", "RUN", "--title", "First"], first).code).toBe(0);
+    expect(run(["task", "edit", "RUN-1", "--title", "Changed"], first).code).toBe(0);
+    expect(run(["task", "create", "RUN", "--title", "Second"], second).code).toBe(0);
+    expect(run(["task", "create", "RUN", "--title", "Child"], child).code).toBe(0);
+    expect(run(["task", "edit", "RUN-2", "--title", "Parent update"], parent).code).toBe(0);
+
+    const session = events("--session", "Conversation/A");
+    expect(session.map((event) => [event.entity_type, event.action])).toEqual([
+      ["task", "edit"], ["task", "create"], ["project", "create"],
+    ]);
+    expect(session.every((event) => event.actor_session_id === "Conversation/A" && event.actor_thread_id === null)).toBe(true);
+    expect(events("--session", "Conversation/A", "--task", "run-1", "--limit", "1")).toEqual([session[0]!]);
+    const childEvents = events("--thread", "Child/1");
+    expect(childEvents).toHaveLength(1);
+    expect(childEvents[0]).toMatchObject({ actor_session_id: "Conversation/C", actor_thread_id: "Child/1", changes: { title: "Child" } });
+    expect(events("--session", "Conversation/C", "--thread", "Child/1")).toEqual(childEvents);
+    expect(events("--session", "Conversation/C")).toHaveLength(2);
+    expect(events("--thread", "Conversation/C")).toHaveLength(1);
+
+    const historicalId = "abcdef12-1234-7000-8000-123456abcde1";
+    seedRecordedActivity(directory, [{ id: historicalId, actor_name: "1", entity_id: session[0]!.entity_id }]);
+    expect(events().some((event) => event.id === historicalId)).toBe(true);
+    expect(events("--session", "Conversation/A")).toEqual(session);
+    const before = events();
+    expect(run(["task", "edit", "RUN-1", "--title", "Changed"], first).code).toBe(0);
+    expect(run(["task", "move", "RUN-1", "Missing"], first).code).toBe(1);
+    expect(events()).toEqual(before);
+
+    for (const flags of [
+      ["--session", "conversation/A"], ["--session", "Conversation"],
+      ["--session", " Conversation/A"], ["--thread", "Child"],
+      ["--session", "Conversation/A", "--thread", "Child/1"],
+    ]) {
+      expect(events(...flags)).toEqual([]);
+      expect(run(["activity", "list", ...flags])).toEqual({ code: 0, stdout: "", stderr: "" });
+    }
+
+    const view = run(["activity", "view", childEvents[0]!.id]);
+    expect(view.code).toBe(0);
+    for (const detail of ["Source: env:CODEX_THREAD_ID", "Session: Conversation/C", "Thread: Child/1", "Agent: worker", "Model: vendor/model", "Effort: low"]) {
+      expect(view.stdout).toContain(detail);
+    }
+    const historical = run(["activity", "view", historicalId]);
+    expect(historical.code).toBe(0);
+    for (const field of ["Source", "Session", "Thread", "Agent", "Model", "Effort"]) {
+      expect(historical.stdout).toContain(`${field}: null`);
+    }
   });
 });
 

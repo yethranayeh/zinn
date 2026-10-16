@@ -52,6 +52,16 @@ const RECORDED_FIELDS = new Set([
 
 const ENTITY_PREVIEW_LENGTH = 24;
 const UNKNOWN_ACTOR_NAME = "unknown";
+const ACTOR_DETAIL_FIELDS = [
+  { key: "actor_kind", label: "Kind" },
+  { key: "actor_email", label: "Email" },
+  { key: "actor_source", label: "Source" },
+  { key: "actor_session_id", label: "Session" },
+  { key: "actor_thread_id", label: "Thread" },
+  { key: "actor_agent", label: "Agent" },
+  { key: "actor_model", label: "Model" },
+  { key: "actor_effort", label: "Effort" },
+] as const;
 const ACTION_LABELS: Record<ActivityAction, string> = {
   create: "created",
   edit: "edited",
@@ -482,7 +492,12 @@ export function formatActivityList(
           : [formatSection("Navigation", formatNavigation(entry, { showsFullNames: true }))]),
         formatSection(
           "Actor",
-          `${entry.event.actor_name ?? UNKNOWN_ACTOR_NAME}\nKind: ${entry.event.actor_kind}\nEmail: ${entry.event.actor_email ?? "null"}`,
+          [
+            entry.event.actor_name ?? UNKNOWN_ACTOR_NAME,
+            ...ACTOR_DETAIL_FIELDS.map(
+              ({ key, label }) => `${label}: ${entry.event[key] ?? "null"}`,
+            ),
+          ].join("\n"),
         ),
         formatSection("Changes", formatRecordedChanges(entry.event)),
       ].join("\n\n"),

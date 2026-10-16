@@ -459,12 +459,16 @@ Deleting a project records one project deletion rather than separate deletion ac
 zinn activity list
 zinn activity list --limit 10
 zinn activity list --task MDR-1
+zinn activity list --session conversation-id
+zinn activity list --session conversation-id --thread child-thread-id
 zinn activity view 019abcdf-1234-7
 ```
 
 `--limit` caps the newest matching events and must be a positive safe integer. Reorders and both affected-task events from relation changes are included.
 
 `--task` includes active, archived, and deleted tasks by readable key, with history recovered from current tasks and recorded deletion snapshots. A reused key includes all known task lifetimes. A project deletion that removed the task is included as the original project event. A valid key with no recoverable history returns an empty list.
+
+`--session` and `--thread` match the complete stored IDs exactly, including case and whitespace. All supplied filters must match, and `--limit` applies after filtering. Rows without the requested identity do not match. No matches return empty output, or `[]` with `--json`, and exit successfully. Session activity records committed changes.
 
 `activity view` accepts a full UUID or a unique prefix of at least eight hexadecimal digits for convenience. The match ignores case and accepts both the full hyphenated or compact forms. Prefixes must be unique across all activity. Use a full ID for reliable reference results. Using prefixes may result in unreliable results over time as history grows.
 

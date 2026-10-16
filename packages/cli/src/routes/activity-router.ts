@@ -10,7 +10,12 @@ export const activityRouter = {
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
-        options: { task: { type: "string" }, limit: { type: "string" } },
+        options: {
+          task: { type: "string" },
+          session: { type: "string" },
+          thread: { type: "string" },
+          limit: { type: "string" },
+        },
         allowPositionals: true,
         strict: true,
         tokens: true,
@@ -26,6 +31,8 @@ export const activityRouter = {
 
       const events = activity.getAll({
         taskKey: values.task,
+        sessionId: values.session,
+        threadId: values.thread,
         limit: values.limit === undefined ? undefined : Number(values.limit),
       });
 
@@ -33,7 +40,7 @@ export const activityRouter = {
         formatActivityList(presentActivities(items, { taskKey: values.task })),
       );
     },
-    help: `Usage: zinn activity list [--task <task-key>] [--limit <n>] [--json]
+    help: `Usage: zinn activity list [--task <task-key>] [--session <id>] [--thread <id>] [--limit <n>] [--json]
 
 List recorded activity across the database, newest first.
 By default, all matching events are returned. --limit takes a positive safe integer.
@@ -41,6 +48,8 @@ By default, all matching events are returned. --limit takes a positive safe inte
 including the recorded project deletion that removed a task.
 A key reused after project deletion includes every known lifetime.
 A valid key without recoverable history returns an empty list.
+--session and --thread match the complete stored IDs exactly, including case.
+All supplied filters must match; --limit applies afterwards.
 
 Text times are local dates/times with a UTC offset.
 Event IDs are the shortest globally unique left prefixes of at least eight hex digits.
@@ -52,7 +61,8 @@ A project deletion event's entity_id is the project ID and removed task IDs are 
 
 Examples:
   zinn activity list --limit 10
-  zinn activity list --task APP-2 --json`,
+  zinn activity list --task APP-2 --json
+  zinn activity list --session conversation-id --thread child-thread-id`,
   },
   view: {
     run: (args) => {

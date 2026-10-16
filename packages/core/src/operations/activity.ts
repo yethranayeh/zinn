@@ -1,6 +1,10 @@
 import type { ActivityListInput } from "../schemas/activity.js";
 
-import { activityIdSchema, activityListSchema, activityTaskKeySchema } from "../schemas/activity.js";
+import {
+  activityIdSchema,
+  activityListSchema,
+  activityTaskKeySchema,
+} from "../schemas/activity.js";
 import { validateTaskInput } from "../schemas/task.js";
 import { standardizeProjectKey } from "../lib.js";
 import { findTaskByExactKey } from "./shared.js";
@@ -74,7 +78,17 @@ export const activity = {
       );
     }
 
-    return props.limit === undefined ? events : events.slice(0, props.limit);
+    const matchingEvents = events.filter((event) => {
+      const matchesSession =
+        props.sessionId === undefined || event.actor_session_id === props.sessionId;
+
+      const matchesThread =
+        props.threadId === undefined || event.actor_thread_id === props.threadId;
+
+      return matchesSession && matchesThread;
+    });
+
+    return props.limit === undefined ? matchingEvents : matchingEvents.slice(0, props.limit);
   },
   getById: (id: string) => {
     const hexPrefix = validateTaskInput(activityIdSchema, id);
