@@ -28,6 +28,73 @@ function runActivityCheck(script: string) {
   }
 }
 
+test("declared identity round-trips through mutations and every activity read", () => {
+  runActivityCheck(`
+    const declaredActor = {
+      name: null, email: null, kind: "agent", source: " adapter/custom ",
+      sessionId: " Conversation/1 ", threadId: " Child/2 ", agent: " Explore ",
+      model: " provider/model@revision ", effort: " 0.7 ",
+    };
+    const expected = {
+      actor_name: null, actor_email: null, actor_kind: "agent", actor_source: "adapter/custom",
+      actor_session_id: "Conversation/1", actor_thread_id: "Child/2", actor_agent: "Explore",
+      actor_model: "provider/model@revision", actor_effort: "0.7",
+    };
+    const assertIdentity = (event) => {
+      for (const [field, value] of Object.entries(expected)) {
+        assert.equal(event[field], value, field);
+      }
+    };
+    const projectWithIdentity = project.create({ key: "IDENTITY" }, declaredActor);
+    column.create({ projectKey: "IDENTITY", name: "Extra" }, declaredActor);
+    label.create({ name: "Identity label" }, declaredActor);
+    const item = task.create({ project_id: projectWithIdentity.id, title: "Attributed" }, declaredActor);
+    const other = task.create({ project_id: projectWithIdentity.id, title: "Related" }, declaredActor);
+    comment.create({ taskKey: item.key, text: "Context" }, declaredActor);
+    relation.create({ sourceTaskKey: item.key, targetTaskKey: other.key, relation_type: "related" }, declaredActor);
+    task.edit({ taskKey: item.key, title: "Changed" }, declaredActor);
+    for (const event of activity.getAll().filter(event => event.actor_source !== null)) {
+      assertIdentity(event);
+      assertIdentity(activity.getById(event.id));
+    }
+    assert.deepEqual(new Set(activity.getAll().filter(event => event.actor_source !== null).map(event => event.entity_type)),
+      new Set(["project", "column", "label", "task"]));
+    for (const event of task.activity(item.key)) {
+      assertIdentity(event);
+    }
+    for (const event of activity.getAll({ taskKey: item.key })) {
+      assertIdentity(event);
+    }
+
+    const beforeNoOp = activity.getAll();
+    task.edit({ taskKey: item.key, title: "Changed" }, declaredActor);
+    assert.deepEqual(activity.getAll(), beforeNoOp);
+    getDb().exec("CREATE TRIGGER fail_identity BEFORE INSERT ON activity BEGIN SELECT RAISE(ABORT, 'activity failed'); END");
+    assert.throws(() => task.edit({ taskKey: item.key, title: "Refused" }, declaredActor));
+    assert.equal(task.getByKey(item.key).title, "Changed");
+    assert.deepEqual(activity.getAll(), beforeNoOp);
+  `);
+});
+
+test("omitted and explicit null identity declarations read as null", () => {
+  runActivityCheck(`
+    const omitted = task.create({ project_id: app.id, title: "Omitted" }, human);
+    const explicitNull = task.create({ project_id: app.id, title: "Null" }, {
+      ...agent, source: null, sessionId: null, threadId: null, agent: null, model: null, effort: null,
+    });
+    for (const item of [omitted, explicitNull]) {
+      const [event] = task.activity(item.key);
+      for (const field of ["actor_source", "actor_session_id", "actor_thread_id", "actor_agent", "actor_model", "actor_effort"]) {
+        assert.equal(event[field], null, field);
+      }
+    }
+    const before = activity.getAll();
+    assert.throws(() => task.create({ project_id: app.id, title: "Invalid" }, { ...agent, model: " " }));
+    assert.deepEqual(activity.getAll(), before);
+    assert.equal(task.getAll({ projectKey: "APP" }).length, 2);
+  `);
+});
+
 test("creation IDs and activity order stay increasing within one millisecond", () => {
   runActivityCheck(`
     const now = Date.now();
@@ -209,7 +276,7 @@ test("activity preserves every action, relation pair, null and unknown payload f
     const event = activity.getById(unknownId);
     assert.deepEqual(event.changes, changes);
     assert.deepEqual(activity.getAll({ taskKey: first.key }).find((item) => item.id === unknownId), event);
-    assert.deepEqual(Object.keys(event).sort(), ["id", "created_at", "actor_name", "actor_email", "actor_kind", "entity_type", "entity_id", "action", "changes"].sort());
+    assert.deepEqual(Object.keys(event).sort(), ["id", "created_at", "actor_name", "actor_email", "actor_kind", "actor_source", "actor_session_id", "actor_thread_id", "actor_agent", "actor_model", "actor_effort", "entity_type", "entity_id", "action", "changes"].sort());
     assert.equal(all.find((event) => event.entity_id === first.id && event.action === "create").changes.description, "  First line\\nSecond line  ");
   `);
 });

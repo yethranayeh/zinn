@@ -470,7 +470,7 @@ zinn activity view 019abcdf-1234-7
 
 `activity view` preserves full recorded text and line breaks, including unknown change fields.
 
-With `--json`, list returns an array and view returns one event object. Both include `id`, `created_at` (epoch milliseconds), `actor_name`, `actor_email`, `actor_kind`, `entity_type`, `entity_id`, `action`, and `changes` (parsed JSON or `null`). Payloads and IDs are preserved in full, including after deletion.
+With `--json`, list returns an array and view returns one event object. Both include `id`, `created_at` (epoch milliseconds), `actor_name`, `actor_email`, `actor_kind`, `actor_source`, `actor_session_id`, `actor_thread_id`, `actor_agent`, `actor_model`, `actor_effort`, `entity_type`, `entity_id`, `action`, and `changes` (parsed JSON or `null`). `actor_name` can be `null` for an unnamed agent. The six additional actor fields are `null` when absent, including on events recorded before schema version 2. Payloads and IDs are preserved in full, including after deletion.
 
 > [!WARNING]
 > A readable task key can identify different tasks after a project is deleted and recreated. Group JSON records by (`entity_type`, `entity_id`) to keep their histories distinct. The `id` identifies the activity event itself. Project deletion events keep the project's `entity_id`, with removed task IDs in `changes.tasks`.

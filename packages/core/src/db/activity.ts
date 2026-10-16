@@ -8,7 +8,16 @@ import { getDb } from "../db.js";
 type StoredActivity = Omit<Activity, "changes"> & { changes: string | null };
 
 function parseActivity(row: StoredActivity): Activity {
-  return { ...row, changes: row.changes == null ? null : JSON.parse(row.changes) };
+  return {
+    ...row,
+    actor_source: row.actor_source ?? null,
+    actor_session_id: row.actor_session_id ?? null,
+    actor_thread_id: row.actor_thread_id ?? null,
+    actor_agent: row.actor_agent ?? null,
+    actor_model: row.actor_model ?? null,
+    actor_effort: row.actor_effort ?? null,
+    changes: row.changes == null ? null : JSON.parse(row.changes),
+  };
 }
 
 export function create(props: Omit<Activity, "id">) {
@@ -16,14 +25,27 @@ export function create(props: Omit<Activity, "id">) {
 
   db.query<never, Bind<StoredActivity>>(
     `INSERT INTO
-    ${DB_TABLE.activity} (id, created_at, actor_name, actor_email, actor_kind, entity_type, entity_id, action, changes)
-    VALUES               ($id, $created_at, $actor_name, $actor_email, $actor_kind, $entity_type, $entity_id, $action, $changes);`,
+    ${DB_TABLE.activity} (
+      id, created_at, actor_name, actor_email, actor_kind,
+      actor_source, actor_session_id, actor_thread_id, actor_agent, actor_model, actor_effort,
+      entity_type, entity_id, action, changes
+    ) VALUES (
+      $id, $created_at, $actor_name, $actor_email, $actor_kind,
+      $actor_source, $actor_session_id, $actor_thread_id, $actor_agent, $actor_model, $actor_effort,
+      $entity_type, $entity_id, $action, $changes
+    );`,
   ).run({
     $id: uuidv7(),
     $created_at: props.created_at,
     $actor_name: props.actor_name,
     $actor_email: props.actor_email,
     $actor_kind: props.actor_kind,
+    $actor_source: props.actor_source,
+    $actor_session_id: props.actor_session_id,
+    $actor_thread_id: props.actor_thread_id,
+    $actor_agent: props.actor_agent,
+    $actor_model: props.actor_model,
+    $actor_effort: props.actor_effort,
     $entity_type: props.entity_type,
     $entity_id: props.entity_id,
     $action: props.action,

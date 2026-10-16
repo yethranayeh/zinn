@@ -44,7 +44,7 @@ export type Task = {
 
 export type TaskWithKey = Task & { key: string };
 
-export type TaskChange ={ task: TaskWithKey; changed: boolean };
+export type TaskChange = { task: TaskWithKey; changed: boolean };
 
 export type TaskRelationType = RelationCreateInput["relation_type"];
 export type TaskRelation = {
@@ -99,9 +99,15 @@ export type ActivityEntityType = "task" | "project" | "column" | "label";
 export type Activity = {
   id: string;
   created_at: number;
-  actor_name: string;
+  actor_name: string | null;
   actor_email: string | null;
   actor_kind: ActorKind;
+  actor_source: string | null;
+  actor_session_id: string | null;
+  actor_thread_id: string | null;
+  actor_agent: string | null;
+  actor_model: string | null;
+  actor_effort: string | null;
   entity_type: ActivityEntityType;
   entity_id: string;
   action: ActivityAction;

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { driver as bunDriver } from "../sqlite/bun.ts";
 import { openWith, SqliteError } from "../sqlite/database";
 import { BASELINE_VERSION, createBaseline } from "./baseline";
-import { assertMigrationOrder, MIGRATIONS } from "./registry";
+import { assertMigrationOrder, latestVersion, MIGRATIONS } from "./registry";
 import { createSchema, readSchemaVersion, upgradeSchema } from "./runner";
 import {
   count,
@@ -472,7 +472,7 @@ test("a fresh database gets the baseline and every migration, ending at the late
   });
 });
 
-test("getDb() creates a fresh database at the baseline schema and version", () => {
+test("getDb() creates a fresh database at the latest schema and version", () => {
   withDirectory((directory) => {
     const modulePath = JSON.stringify(fileURLToPath(new URL("../db.ts", import.meta.url)));
     const result = Bun.spawnSync([process.execPath, "--eval", `
@@ -487,11 +487,11 @@ test("getDb() creates a fresh database at the baseline schema and version", () =
     expect(result.stderr.toString()).toBe("");
     expect(result.exitCode).toBe(0);
     const initialized = JSON.parse(result.stdout.toString());
-    expect(initialized.version).toBe(BASELINE_VERSION);
+    expect(initialized.version).toBe(latestVersion(MIGRATIONS));
 
     withDatabase((db) => {
-      createSchema(db, []);
-      expect(readSchemaVersion(db)).toBe(BASELINE_VERSION);
+      createSchema(db);
+      expect(readSchemaVersion(db)).toBe(latestVersion(MIGRATIONS));
       expect(schemaObjects(db)).toEqual(initialized.schema);
     });
   });

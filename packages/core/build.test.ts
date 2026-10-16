@@ -56,6 +56,19 @@ test("emitted core works on both runtimes and its declarations need no Bun types
         assert.equal(core.task.getByKey(createdTask.key).title, "Emitted JavaScript");
         assert.throws(() => core.task.create({ project_id: createdProject.id, title: "invalid", priority: "invalid" }, actor));
         assert.equal(core.task.getAll({ projectKey: createdProject.key }).length, 1);
+        core.project.edit({ projectKey: "BUILD", name: "Identity" }, {
+          name: null, email: null, kind: "agent", source: "adapter/build-check",
+          sessionId: "conversation", threadId: "child", agent: "general",
+          model: "vendor/model", effort: "medium",
+        });
+        const identity = core.activity.getAll({ limit: 1 })[0];
+        assert.equal(identity.actor_name, null);
+        assert.equal(identity.actor_source, "adapter/build-check");
+        assert.equal(identity.actor_session_id, "conversation");
+        assert.equal(identity.actor_thread_id, "child");
+        assert.equal(identity.actor_agent, "general");
+        assert.equal(identity.actor_model, "vendor/model");
+        assert.equal(identity.actor_effort, "medium");
         const db = getDb();
         assert.equal(db.query("PRAGMA integrity_check").get().integrity_check, "ok");
         assert.deepEqual(db.query("PRAGMA foreign_key_check").all(), []);

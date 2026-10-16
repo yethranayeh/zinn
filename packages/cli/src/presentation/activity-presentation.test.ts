@@ -20,6 +20,7 @@ test("activity text keeps full task identities when a long reused key needs disa
   const event: Activity = {
     id: "019abcdf-1234-7000-8000-123456abcde1", created_at: 1,
     actor_name: "Test", actor_email: null, actor_kind: "human",
+    actor_source: null, actor_session_id: null, actor_thread_id: null, actor_agent: null, actor_model: null, actor_effort: null,
     entity_type: "task", entity_id: "019abcdf-1234-7000-8000-123456abcde2",
     action: "archive", changes: null,
   };
@@ -34,6 +35,7 @@ test("activity details keep explicit empty containers distinct from null changes
   const event: Activity = {
     id: "019abcdf-1234-7000-8000-123456abcde1", created_at: 1,
     actor_name: "Test", actor_email: null, actor_kind: "human",
+    actor_source: null, actor_session_id: null, actor_thread_id: null, actor_agent: null, actor_model: null, actor_effort: null,
     entity_type: "task", entity_id: "019abcdf-1234-7000-8000-123456abcde2",
     action: "create", changes: { labels: [], column: {} },
   };
@@ -50,6 +52,7 @@ test("task rows for a shared key mark only deleted tasks and keep every task ID"
   const event: Activity = {
     id: "019abcdf-1234-7000-8000-123456abcde1", created_at: 1,
     actor_name: "Test", actor_email: null, actor_kind: "human",
+    actor_source: null, actor_session_id: null, actor_thread_id: null, actor_agent: null, actor_model: null, actor_effort: null,
     entity_type: "task", entity_id: "current-task", action: "edit", changes: null,
   };
   const identities = [
@@ -73,6 +76,7 @@ test("project deletion keeps its project and removed-task identities visible", (
   const event: Activity = {
     id: "019abcdf-1234-7000-8000-123456abcde1", created_at: 1,
     actor_name: "Test", actor_email: null, actor_kind: "human",
+    actor_source: null, actor_session_id: null, actor_thread_id: null, actor_agent: null, actor_model: null, actor_effort: null,
     entity_type: "project", entity_id: "old-project", action: "delete",
     changes: { key: "APP", tasks: [{ id: "old-task", key: "APP-1", title: "Old task" }] },
   };
@@ -90,6 +94,7 @@ test("long entity identities do not pad neighboring activity descriptions", () =
   const event: Activity = {
     id: "019abcdf-1234-7000-8000-123456abcde1", created_at: 1,
     actor_name: "Test", actor_email: null, actor_kind: "human",
+    actor_source: null, actor_session_id: null, actor_thread_id: null, actor_agent: null, actor_model: null, actor_effort: null,
     entity_type: "task", entity_id: "task-id", action: "archive", changes: null,
   };
   const short = { event, displayId: "019abcdf", removedTasks: [],

@@ -8,7 +8,8 @@ import { openDatabase } from "#sqlite";
 
 import { SEARCH_COMMENT_SEPARATOR } from "../search-entry";
 import { reindexSearch } from "./reindex";
-import { readSchemaVersion } from "./runner";
+import { readSchemaVersion, upgradeSchema } from "./runner";
+import { latestVersion, MIGRATIONS } from "./registry";
 import { regenerateSearch } from "./search";
 import { readDatabaseFile } from "./space";
 import { seedBaseline, snapshot, withDatabase } from "./testing";
@@ -20,6 +21,7 @@ const SHORT_BUDGET_MS = 150;
 const BULK_TASKS = 200;
 
 const options = { readFreeSpace: () => PLENTY_OF_SPACE };
+const CURRENT_VERSION = latestVersion(MIGRATIONS);
 
 function searchRows(db: Database) {
   return db
@@ -53,6 +55,7 @@ function expectSearchHealthy(db: Database) {
 /** seedBaseline's index joins t1's comments without the separator and has no entry for t3. */
 function seedStaleIndex(db: Database) {
   seedBaseline(db);
+  upgradeSchema(db);
   db.exec(`
     UPDATE task SET archived_at = 11 WHERE id = 't3';
     INSERT INTO comment (id, task_id, number, text, created_at, updated_at)
@@ -88,7 +91,7 @@ test("reindex rebuilds a stale index from the task and comment records, archived
     expect(matches(db, "zebra")).toEqual(["t3"]);
     expect(matches(db, "orphan")).toEqual([]);
     expect(sourceRows(db)).toEqual(source);
-    expect(readSchemaVersion(db)).toBe(1);
+    expect(readSchemaVersion(db)).toBe(CURRENT_VERSION);
     expectSearchHealthy(db);
   });
 });
@@ -108,7 +111,7 @@ test("reindex recreates a missing index instead of leaving it empty", () => {
 
 test("a database at another version than this build's latest is refused and left unchanged", () => {
   const regenerating: Migration = {
-    version: 2,
+    version: CURRENT_VERSION + 1,
     name: "regenerate search",
     rebuilds: [],
     regeneratesSearch: true,
@@ -119,17 +122,17 @@ test("a database at another version than this build's latest is refused and left
     seedStaleIndex(db);
     const before = snapshot(db);
 
-    // Older: this build would regenerate with version 2's layout.
-    expect(() => reindexSearch(db, { ...options, migrations: [regenerating] })).toThrow(
-      "has schema version 1, and this build rebuilds the search index only at version 2. It was left unchanged",
+    // Older: this build would regenerate with the next version's layout.
+    expect(() => reindexSearch(db, { ...options, migrations: [...MIGRATIONS, regenerating] })).toThrow(
+      `has schema version ${CURRENT_VERSION}, and this build rebuilds the search index only at version ${regenerating.version}. It was left unchanged`,
     );
 
     // Newer: another process upgraded it with a newer build.
-    db.exec("PRAGMA user_version = 2");
+    db.exec(`PRAGMA user_version = ${CURRENT_VERSION + 1}`);
     const newer = snapshot(db);
-    expect(() => reindexSearch(db, options)).toThrow("has schema version 2");
+    expect(() => reindexSearch(db, options)).toThrow(`has schema version ${CURRENT_VERSION + 1}`);
     expect(snapshot(db)).toEqual(newer);
-    db.exec("PRAGMA user_version = 1");
+    db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
     expect(snapshot(db)).toEqual(before);
   });
 });

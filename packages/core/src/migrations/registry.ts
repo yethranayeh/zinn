@@ -1,6 +1,7 @@
 import type { Database } from "../sqlite/database.js";
 
 import { BASELINE_VERSION } from "./baseline.js";
+import { actorIdentityMigration } from "./actor-identity.js";
 
 export type Migration = {
   /** The schema version this migration brings the database to. */
@@ -26,7 +27,7 @@ export type Migration = {
  * Databases that already ran it would keep its old result,
  *  while newer ones got the new one.
  */
-export const MIGRATIONS: ReadonlyArray<Migration> = [];
+export const MIGRATIONS: ReadonlyArray<Migration> = [actorIdentityMigration];
 
 /** Each migration's version follows the one before it, starting right after the baseline. */
 export function assertMigrationOrder(migrations: ReadonlyArray<Migration>) {

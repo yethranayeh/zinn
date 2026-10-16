@@ -73,6 +73,7 @@ test("restore puts a backup's database back through the public operations, and i
       import { existsSync, readdirSync, writeFileSync } from "node:fs";
       import { join } from "node:path";
       import { backup, comment, project, RestoreRefusedError, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
+      import { latestVersion, MIGRATIONS } from ${JSON.stringify(new URL("./migrations/registry.ts", import.meta.url).pathname)};
       import { getStorage } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
 
       const { backupDirectory, directory } = getStorage();
@@ -100,8 +101,8 @@ test("restore puts a backup's database back through the public operations, and i
       assert.deepEqual(keys(), databaseBeforeRestore);
 
       const restored = backup.restore({ ...build, path: saved });
-      assert.equal(restored.previousVersion, 1);
-      assert.equal(restored.restoredVersion, 1);
+      assert.equal(restored.previousVersion, latestVersion(MIGRATIONS));
+      assert.equal(restored.restoredVersion, latestVersion(MIGRATIONS));
       assert.deepEqual(task.getAll({ archive: "all" }), databaseAtBackup.tasks);
       assert.deepEqual(comment.getAll("APP-1"), databaseAtBackup.comments);
       assert.deepEqual(keys("archived"), ["APP-2"]);

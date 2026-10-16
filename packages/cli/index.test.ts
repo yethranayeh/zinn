@@ -9,6 +9,7 @@ import { runCliInTerminal } from "./testing";
 import { parseRoutes } from "./src/routes/router";
 import { routes } from "./src/routes/routes";
 import type { Activity } from "@zinn-dev/core";
+import { latestVersion, MIGRATIONS } from "../core/src/migrations/registry";
 
 // ? End-to-end tests: each case spawns the real bin, so `ZINN_DIR` is passed
 // ? per-spawn rather than set on `process.env`. The route table is imported only
@@ -25,6 +26,7 @@ const PREFIX = join(tmpdir(), "zinntest-");
 const TEST_DIR = mkdtempSync(PREFIX);
 // ? Resolved from this file so the suite does not depend on the cwd it is run from.
 const CLI_PATH = join(import.meta.dir, "index.ts");
+const CURRENT_SCHEMA_VERSION = latestVersion(MIGRATIONS);
 const GRAY_BACKLOG = "\x1b[90mBacklog\x1b[39m";
 const GREEN_DONE = "\x1b[32mDone\x1b[39m";
 // ? Chrome (separators, empty markers, timestamps) is dimmed, never colored: SGR 2 on, SGR 22 off.
@@ -4902,7 +4904,7 @@ test("restore replaces the database after confirmation and saves the replaced da
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.stdout).toContain(path);
-    expect(result.stdout).toContain("schema version 1");
+    expect(result.stdout).toContain(`schema version ${CURRENT_SCHEMA_VERSION}`);
     expect(result.stdout).toContain(`${join(dir, "backups")}/`);
     expect(taskTitles(dir)).toEqual([{ title: "Kept" }]);
 
@@ -4953,8 +4955,8 @@ test("restore with --json needs --yes, and with it prints the restore result", (
     const restored = JSON.parse(result.stdout);
     expect(restored).toEqual({
       databasePath: realpathSync(join(dir, "data", "zinn.sqlite")),
-      previousVersion: 1,
-      restoredVersion: 1,
+      previousVersion: CURRENT_SCHEMA_VERSION,
+      restoredVersion: CURRENT_SCHEMA_VERSION,
       backupPath: expect.any(String),
     });
     expect(dirname(restored.backupPath)).toBe(join(dir, "backups"));
@@ -5023,7 +5025,7 @@ test("restore onto a store with no database creates it from the backup", () => {
       expect(result.code).toBe(0);
       expect(result.stderr).toBe("");
       expect(result.stdout).toContain(path);
-      expect(result.stdout).toContain("schema version 1");
+      expect(result.stdout).toContain(`schema version ${CURRENT_SCHEMA_VERSION}`);
       expect(backupFiles(dir)).toEqual([]);
       expect(runZinn(["task", "list", "RST"], dir).stdout).toContain("Kept");
     });
@@ -5042,7 +5044,7 @@ test("restore works on newer and unmarked databases, without --allow-legacy-read
 
         expect(result.code).toBe(0);
         expect(result.stderr).toBe("");
-        expect(JSON.parse(result.stdout)).toMatchObject({ previousVersion: version, restoredVersion: 1 });
+        expect(JSON.parse(result.stdout)).toMatchObject({ previousVersion: version, restoredVersion: CURRENT_SCHEMA_VERSION });
         expect(runZinn(["task", "list", "RST"], dir).stdout).toContain("Kept");
         expect(backupFiles(dir)).toHaveLength(1);
       });
@@ -5127,7 +5129,7 @@ test("migrate refuses a newer database and reports both versions and the CLI ver
 
     expect(result.code).toBe(1);
     expect(result.stderr).toContain("schema version 9");
-    expect(result.stderr).toContain(`cli ${packageJson.version}) reaches only version 1`);
+    expect(result.stderr).toContain(`cli ${packageJson.version}) reaches only version ${CURRENT_SCHEMA_VERSION}`);
     expect(result.stderr).not.toContain("Backups taken before");
     expect(databaseSnapshot(dir)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
@@ -5136,7 +5138,7 @@ test("migrate refuses a newer database and reports both versions and the CLI ver
 
 test("migrate on a current database is a no-op with no backup", () => {
   withIsolatedZinnDir((dir) => {
-    createDatabase(dir, 1);
+    createDatabase(dir, CURRENT_SCHEMA_VERSION);
     const before = databaseSnapshot(dir);
 
     const result = runZinn(["migrate", "--json"], dir);
@@ -5144,12 +5146,12 @@ test("migrate on a current database is a no-op with no backup", () => {
     expect(result.stderr).toBe("");
     expect(JSON.parse(result.stdout)).toEqual({
       databasePath: join(dir, "data", "zinn.sqlite"),
-      previousVersion: 1,
-      finalVersion: 1,
+      previousVersion: CURRENT_SCHEMA_VERSION,
+      finalVersion: CURRENT_SCHEMA_VERSION,
       changed: false,
       backupPath: null,
     });
-    expect(runZinn(["migrate"], dir).stdout).toBe("The database is already at schema version 1\n");
+    expect(runZinn(["migrate"], dir).stdout).toBe(`The database is already at schema version ${CURRENT_SCHEMA_VERSION}\n`);
     expect(databaseSnapshot(dir)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
   });
@@ -5283,7 +5285,7 @@ test("a newer database refuses changes, naming both versions and this CLI, while
     expect(created.stdout).toBe("");
     expect(created.stderr).toContain(`The database at ${join(dir, "data", "zinn.sqlite")} is read-only`);
     expect(created.stderr).toContain("schema version 9");
-    expect(created.stderr).toContain("reaches only version 1");
+    expect(created.stderr).toContain(`reaches only version ${CURRENT_SCHEMA_VERSION}`);
     expect(created.stderr).toContain(`cli ${packageJson.version}, run from ${CLI_PATH}`);
     expect(databaseSnapshot(dir)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
@@ -6102,18 +6104,25 @@ function seedRecordedActivity(
   const events: Array<Activity> = inputs.map((input) => ({
     id: input.id,
     created_at: input.created_at ?? Date.UTC(2026, 9, 8, 10, 30),
-    actor_name: input.actor_name ?? "Test Agent",
+    actor_name: input.actor_name === undefined ? "Test Agent" : input.actor_name,
     actor_email: input.actor_email === undefined ? "agent@example.com" : input.actor_email,
     actor_kind: input.actor_kind ?? "agent",
+    actor_source: input.actor_source ?? null,
+    actor_session_id: input.actor_session_id ?? null,
+    actor_thread_id: input.actor_thread_id ?? null,
+    actor_agent: input.actor_agent ?? null,
+    actor_model: input.actor_model ?? null,
+    actor_effort: input.actor_effort ?? null,
     entity_type: input.entity_type ?? "task",
     entity_id: input.entity_id ?? "11111111-1234-7000-8000-123456abcdef",
     action: input.action ?? "edit",
     changes: input.changes ?? null,
   }));
   withTestDb(directory, (db) => {
-    const insert = db.query("INSERT INTO activity (id, created_at, actor_name, actor_email, actor_kind, entity_type, entity_id, action, changes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    const insert = db.query("INSERT INTO activity (id, created_at, actor_name, actor_email, actor_kind, actor_source, actor_session_id, actor_thread_id, actor_agent, actor_model, actor_effort, entity_type, entity_id, action, changes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     for (const event of events) {
       insert.run(event.id, event.created_at, event.actor_name, event.actor_email, event.actor_kind,
+        event.actor_source, event.actor_session_id, event.actor_thread_id, event.actor_agent, event.actor_model, event.actor_effort,
         event.entity_type, event.entity_id, event.action,
         event.changes === null ? null : JSON.stringify(event.changes));
     }
@@ -6137,7 +6146,7 @@ test("activity JSON preserves full matching records, parsed payloads and determi
   withIsolatedZinnDir((directory) => {
     const events = seedRecordedActivity(directory, [
       { id: "11111111-1234-7000-8000-123456abcde1", created_at: 1, entity_type: "project", action: "create", changes: { key: "OLD", name: "Old project", columns: [] } },
-      { id: "11111111-1234-7000-8000-123456abcde2", created_at: 2, entity_type: "column", action: "order" },
+      { id: "11111111-1234-7000-8000-123456abcde2", created_at: 2, entity_type: "column", action: "order", actor_name: null, actor_source: "adapter/test", actor_session_id: "session/1", actor_thread_id: "thread/2", actor_agent: "general", actor_model: "vendor/model", actor_effort: "medium" },
       { id: "11111111-1234-7000-8000-123456abcde3", created_at: 2, entity_type: "label", action: "delete", actor_email: null, changes: { name: "Old label", description: "Full\ntext", future: { values: [1, null] } } },
     ]);
     const listed = runZinn(["activity", "list", "--json"], directory);

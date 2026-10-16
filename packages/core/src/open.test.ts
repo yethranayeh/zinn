@@ -3,8 +3,8 @@
  *  since core resolves its folder from HOME, ZINN_DIR and the settings files once, when it is first used.
  * Default-database fixtures live in a temporary HOME with ZINN_DIR unset, and each child runs in that HOME. Each child checks
  *  where core resolved its folder and exits before opening anything if it is not the expected one.
- * Older databases come from a test-only version 2 that the child puts in place of the shipped,
- *  empty migration list, and a published core comes from replacing core's release reading.
+ * Older databases come from a test-only migration appended to the shipped list, and a published
+ *  core comes from replacing core's release reading.
  */
 import type { ReleaseMode } from "./release";
 
@@ -16,8 +16,9 @@ import { fileURLToPath } from "node:url";
 
 import { openDatabase } from "#sqlite";
 
-import { createBaseline } from "./migrations/baseline";
-import { readSchemaVersion } from "./migrations/runner";
+import { BASELINE_VERSION, createBaseline } from "./migrations/baseline";
+import { latestVersion, MIGRATIONS } from "./migrations/registry";
+import { applyPendingMigrations, readSchemaVersion, upgradeSchema } from "./migrations/runner";
 import { schemaObjects, seedBaseline, snapshot } from "./migrations/testing";
 
 const HOME_PREFIX = join(tmpdir(), "zinn-open-home-");
@@ -28,6 +29,7 @@ const WRONG_FOLDER_EXIT = 3;
 const NEWER_VERSION = 9;
 const UNMARKED_VERSION = 0;
 const TEST_CLIENT = { client: "test", version: "1.0.0", executable: "/test/zinn" };
+const TEST_MIGRATION_VERSION = latestVersion(MIGRATIONS) + 1;
 
 function modulePath(path: string) {
   return JSON.stringify(fileURLToPath(new URL(path, import.meta.url)));
@@ -115,7 +117,7 @@ type OpenCase = {
   coreRelease?: ReleaseMode;
   clientRelease?: ReleaseMode;
   allowsLegacyRead?: boolean;
-  /** Puts a test-only version 2 in place of the shipped migrations. */
+  /** Appends a test-only migration after the shipped migrations. */
   migration?: "adds a table" | "fails";
   /** The project key the child tries to create, or null to only read. */
   createKey?: string | null;
@@ -129,8 +131,8 @@ function coreSetup({
   migration,
 }: OpenCase) {
   const migrations = {
-    "adds a table": `{ version: 2, name: "add test_addition", rebuilds: [], apply: (db) => db.exec("CREATE TABLE test_addition (id TEXT PRIMARY KEY)") }`,
-    fails: `{ version: 2, name: "fail on purpose", rebuilds: [], apply: () => { throw new Error("planned migration failure"); } }`,
+    "adds a table": `{ version: registry.latestVersion(registry.MIGRATIONS) + 1, name: "add test_addition", rebuilds: [], apply: (db) => db.exec("CREATE TABLE test_addition (id TEXT PRIMARY KEY)") }`,
+    fails: `{ version: registry.latestVersion(registry.MIGRATIONS) + 1, name: "fail on purpose", rebuilds: [], apply: () => { throw new Error("planned migration failure"); } }`,
   };
   const releaseModule = modulePath("./release.ts");
   const registryModule = modulePath("./migrations/registry.ts");
@@ -140,7 +142,7 @@ function coreSetup({
     const release = { ...(await import(${releaseModule})) };
     const registry = { ...(await import(${registryModule})) };
     ${coreRelease == null ? "" : `mock.module(${releaseModule}, () => ({ ...release, readCoreReleaseMode: () => ${JSON.stringify(coreRelease)} }));`}
-    ${migration == null ? "" : `mock.module(${registryModule}, () => ({ ...registry, MIGRATIONS: [${migrations[migration]}] }));`}
+    ${migration == null ? "" : `mock.module(${registryModule}, () => ({ ...registry, MIGRATIONS: [...registry.MIGRATIONS, ${migrations[migration]}] }));`}
     const core = await import(${modulePath("../index.ts")});
     core.configureDatabase({ ...${JSON.stringify(TEST_CLIENT)}, release: ${JSON.stringify(clientRelease)}, allowsLegacyRead: ${allowsLegacyRead} });
     const actor = { name: "Test Human", email: null, kind: "human" };
@@ -199,6 +201,13 @@ function createDatabase(mainDir: string, version: number) {
   });
 }
 
+function createCurrentDatabase(mainDir: string) {
+  createDatabase(mainDir, BASELINE_VERSION);
+  withDatabase(mainDir, (db) => {
+    upgradeSchema(db);
+  });
+}
+
 function readDatabase(mainDir: string) {
   return withDatabase(mainDir, (db) => snapshot(db));
 }
@@ -237,7 +246,7 @@ test("a missing default database is created at the latest version, without a set
     const mainDir = join(home, ".zinn");
 
     expect(runChild({ home }, openScript({}))).toEqual({ projects: [], wrote: true });
-    expect(readDatabase(mainDir).version).toBe(1);
+    expect(readDatabase(mainDir).version).toBe(latestVersion(MIGRATIONS));
     expect(projectKeys(mainDir)).toEqual(["NEW"]);
     expect(existsSync(join(mainDir, "settings.json"))).toBe(false);
   });
@@ -246,13 +255,13 @@ test("a missing default database is created at the latest version, without a set
 test("a current default database opens for writing, and opening it changes nothing and makes no backup", () => {
   withHome((home) => {
     const mainDir = join(home, ".zinn");
-    createDatabase(mainDir, 1);
+    createCurrentDatabase(mainDir);
     const before = readDatabase(mainDir);
 
     expect(runChild({ home }, openScript({ createKey: null }))).toEqual({ projects: ["APP"] });
     expect(readDatabase(mainDir)).toEqual(before);
     expect(runChild({ home }, openScript({}))).toEqual({ projects: ["APP"], wrote: true });
-    expect(readDatabase(mainDir).version).toBe(1);
+    expect(readDatabase(mainDir).version).toBe(latestVersion(MIGRATIONS));
     expect(backupsOf(mainDir)).toEqual([]);
     expect(existsSync(join(mainDir, "settings.json"))).toBe(false);
   });
@@ -269,7 +278,7 @@ function expectOlderReadOnly(location: Location, openCase: OpenCase) {
   expect(outcome.writeError.reason).toBe("older");
   expect(outcome.writeError.message).toContain(databasePath(mainDir));
   expect(outcome.writeError.message).toContain("schema version 1");
-  expect(outcome.writeError.message).toContain("uses version 2");
+  expect(outcome.writeError.message).toContain(`uses version ${TEST_MIGRATION_VERSION}`);
   expect(outcome.writeError.message).toContain(
     "upgrades only a ZINN_DIR database by itself",
   );
@@ -284,7 +293,7 @@ function expectOlderUpgraded(location: Location, openCase: OpenCase) {
 
   expect(outcome).toEqual({ projects: ["APP"], wrote: true });
   withDatabase(mainDir, (db) => {
-    expect(readSchemaVersion(db)).toBe(2);
+    expect(readSchemaVersion(db)).toBe(TEST_MIGRATION_VERSION);
     expect(schemaObjects(db).map(({ name }) => name)).toContain("test_addition");
   });
   expect(projectKeys(mainDir)).toEqual(["APP", "NEW"]);
@@ -295,7 +304,7 @@ function expectOlderUpgraded(location: Location, openCase: OpenCase) {
 
   const backup = openDatabase(join(mainDir, "backups", backups[0]!));
   try {
-    expect(readSchemaVersion(backup)).toBe(1);
+    expect(readSchemaVersion(backup)).toBe(BASELINE_VERSION);
     expect(schemaObjects(backup).map(({ name }) => name)).not.toContain("test_addition");
   } finally {
     backup.close();
@@ -490,7 +499,7 @@ test.each([
       expect(outcome.writeError.reason).toBe("newer");
       expect(outcome.writeError.message).toContain(databasePath(mainDir));
       expect(outcome.writeError.message).toContain(`schema version ${NEWER_VERSION}`);
-      expect(outcome.writeError.message).toContain("reaches only version 1");
+      expect(outcome.writeError.message).toContain(`reaches only version ${latestVersion(MIGRATIONS)}`);
       expect(outcome.writeError.message).toContain("test 1.0.0, run from /test/zinn");
       expect(readDatabase(mainDir)).toEqual(before);
       expect(backupsOf(mainDir)).toEqual([]);
@@ -543,7 +552,7 @@ test("core reports an unmarked database opened for reading once, and no other st
     createDatabase(mainDir, UNMARKED_VERSION);
 
     expect(runChild({ home }, legacyReadReportScript()).legacyReads).toEqual([
-      { databasePath: databasePath(mainDir), version: UNMARKED_VERSION, latestVersion: 1 },
+      { databasePath: databasePath(mainDir), version: UNMARKED_VERSION, latestVersion: latestVersion(MIGRATIONS) },
     ]);
   });
 
@@ -759,9 +768,10 @@ test("a process that loses the race to create a fresh database opens the databas
       // WAL mode with no tables and no version, so the database is still fresh.
       winner.exec("PRAGMA journal_mode = WAL");
       winner.exec("CREATE TABLE placeholder (id INTEGER); DROP TABLE placeholder;");
+      winner.exec("PRAGMA foreign_keys = OFF");
       winner.exec("BEGIN IMMEDIATE");
       createBaseline(winner);
-      winner.exec("PRAGMA user_version = 1");
+      applyPendingMigrations(winner, MIGRATIONS, BASELINE_VERSION);
 
       const child = Bun.spawn(childCommand(location, RACE_INSTRUMENTATION), {
         env: childEnvironment(location),
@@ -774,6 +784,7 @@ test("a process that loses the race to create a fresh database opens the databas
       // The winner commits only once the child has found the database empty.
       const seen = await readUntil(reader, "CLASSIFIED empty");
       winner.exec("COMMIT");
+      winner.exec("PRAGMA foreign_keys = ON");
       const output = seen + (await readUntil(reader, null));
 
       expect(await new Response(child.stderr).text()).toBe("");
@@ -792,7 +803,7 @@ test("a process that loses the race to create a fresh database opens the databas
       winner.close();
     }
 
-    expect(readDatabase(mainDir).version).toBe(1);
+    expect(readDatabase(mainDir).version).toBe(latestVersion(MIGRATIONS));
     expect(projectKeys(mainDir)).toEqual(["LATE"]);
   });
 });
@@ -817,7 +828,7 @@ test("processes that create a fresh default database at once all open it", async
     }
 
     const mainDir = join(home, ".zinn");
-    expect(readDatabase(mainDir).version).toBe(1);
+    expect(readDatabase(mainDir).version).toBe(latestVersion(MIGRATIONS));
     expect(projectKeys(mainDir)).toEqual(keys);
   });
 }, 30_000);
