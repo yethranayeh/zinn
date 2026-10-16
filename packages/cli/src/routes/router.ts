@@ -4,11 +4,12 @@ import { parseArgs } from "node:util";
 
 import {
   dashValueHelp,
-  dashValueMessage,
   failureMessage,
   isAllowLegacyReadFlag,
   isHelpFlag,
   isJsonFlag,
+  isRouterFlag,
+  parseArgsMessage,
   quit,
   setLegacyReadAllowed,
   setOutputMode,
@@ -18,10 +19,6 @@ import {
 
 function getIsRunnable(obj: any): obj is Command {
   return Object.hasOwn(obj, "run");
-}
-
-function isRouterFlag(arg: string) {
-  return isJsonFlag(arg) || isAllowLegacyReadFlag(arg);
 }
 
 // --json and --allow-legacy-read can each be given once, like a command's own flags.
@@ -232,9 +229,10 @@ async function route(parsedRoutes: Array<ParsedRoute>, rawArgs: Array<string>) {
       quit(err.message, getUsage(match.help));
     }
 
-    const dashValueReason = dashValueMessage(err, rawArgs);
-    if (dashValueReason != null) {
-      quit(dashValueReason, getUsage(match.help));
+    const suggestFor = (flag: string) => match.guessedFlags?.[flag]?.(commandArgs);
+    const parseArgsReason = parseArgsMessage(err, rawArgs, suggestFor);
+    if (parseArgsReason != null) {
+      quit(parseArgsReason, getUsage(match.help));
     }
 
     quit(

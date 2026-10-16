@@ -432,7 +432,11 @@ test("every command rejects an unknown option before it opens the database", () 
       const result = runZinn([...command.split(" "), "--bogus"], dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
-      expect(result.stderr).toContain("--bogus");
+      // ? ZINN-108: a guessed flag is named with the usage line, without advice to put it after --.
+      const [message, usage] = result.stderr.split("\n\n");
+      expect(message).toContain("--bogus");
+      expect(message).not.toContain("-- ");
+      expect(usage).toContain(`Usage: zinn ${command}`);
     }
     expect(existsSync(join(dir, "data"))).toBe(false);
   });
@@ -584,6 +588,90 @@ test("every flag followed by <value> in a usage line refuses a separate value th
         expect(result.code).toBe(1);
         expect(result.stdout).toBe("");
         expect(result.stderr).toContain(`${flag}='- item'`);
+        expect(result.stderr).toContain(`Usage: zinn ${command}`);
+      }
+    }
+    expect(existsSync(join(dir, "data"))).toBe(false);
+  });
+}, 60_000);
+
+test("every command refuses a word that begins with a single dash, showing the command with it after --", () => {
+  withIsolatedZinnDir((dir) => {
+    for (const [command, { words }] of Object.entries(commandWords)) {
+      const result = runZinn([...command.split(" "), ...words, "-later"], dir);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain(`zinn ${command} `);
+      expect(result.stderr).toContain(" -- -later");
+      expect(result.stderr).toContain(`Usage: zinn ${command}`);
+    }
+    expect(existsSync(join(dir, "data"))).toBe(false);
+  });
+}, 60_000);
+
+test("the command shown for a word that begins with a single dash runs as shown, keeping --json before --", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "SHOP"], dir);
+    const refused = runZinn(["project", "column", "create", "SHOP", "-later", "--json"], dir);
+    expect(refused.code).toBe(1);
+    expect(refused.stdout).toBe("");
+
+    const { error } = JSON.parse(refused.stderr);
+    expect(error.help).toContain("Usage: zinn project column create");
+    const shownArgs = error.message.match(/zinn (.*)$/)[1];
+    const proc = Bun.spawnSync(["/bin/sh", "-c", `exec bun "$0" ${shownArgs}`, CLI_PATH], {
+      env: { ...process.env, ZINN_DIR: dir },
+    });
+    expect(proc.exitCode).toBe(0);
+    expect(JSON.parse(proc.stdout.toString())).toMatchObject({ name: "-later" });
+  });
+});
+
+test("a guessed --status or --column on task edit or task move suggests the task move command that runs as shown", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "SHOP"], dir);
+    runZinn(["task", "create", "SHOP", "--title", "First"], dir);
+    runZinn(["task", "create", "SHOP", "--title", "Second"], dir);
+    const readColumns = () => withTestDb(dir, (db) =>
+      db.query<{ column: string }, []>(
+        "SELECT project_column.name AS column FROM task JOIN project_column ON project_column.id = task.column_id ORDER BY task.id",
+      ).all().map(({ column }) => column),
+    );
+
+    const cases: Array<[string[], string[]]> = [
+      [["task", "edit", "SHOP-1", "--status", "In Progress"], ["In Progress", "Backlog"]],
+      [["task", "edit", "SHOP-1", "--title", "Renamed", "--column=Done"], ["Done", "Backlog"]],
+      [["task", "move", "SHOP-1", "SHOP-2", "--column", "TODO"], ["TODO", "TODO"]],
+    ];
+    for (const [args, columnsAfter] of cases) {
+      const before = readColumns();
+      const refused = runZinn([...args, "--json"], dir);
+      expect(refused.code).toBe(1);
+      expect(refused.stdout).toBe("");
+      expect(readColumns()).toEqual(before);
+
+      const { error } = JSON.parse(refused.stderr);
+      expect(error.help).toContain(`Usage: zinn ${args.slice(0, 2).join(" ")}`);
+      const shownArgs = error.message.match(/zinn (task move .*)$/)[1];
+      const proc = Bun.spawnSync(["/bin/sh", "-c", `exec bun "$0" ${shownArgs}`, CLI_PATH], {
+        env: { ...process.env, ZINN_DIR: dir },
+      });
+      expect(proc.exitCode).toBe(0);
+      expect(() => JSON.parse(proc.stdout.toString())).not.toThrow();
+      expect(readColumns()).toEqual(columnsAfter);
+    }
+  });
+});
+
+test("every flag followed by <value> in a usage line fails without its value, showing the usage line", () => {
+  withIsolatedZinnDir((dir) => {
+    for (const [command, { words }] of Object.entries(commandWords)) {
+      const valueFlags = [...commandUsages.get(command)!.matchAll(/(--[a-z-]+) </g)].map(([, flag]) => flag!);
+      for (const flag of valueFlags) {
+        const result = runZinn([...command.split(" "), ...words, flag], dir);
+        expect(result.code).toBe(1);
+        expect(result.stdout).toBe("");
+        expect(result.stderr).toContain(flag);
         expect(result.stderr).toContain(`Usage: zinn ${command}`);
       }
     }

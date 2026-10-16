@@ -2,7 +2,7 @@ import type { TaskChange, TaskRelationType } from "@zinn-dev/core";
 import type { RouteDef } from "../types.js";
 import type { PresentedTask } from "../presentation/task-presentation.js";
 
-import { parseArgs } from "node:util";
+import { parseArgs, type ParseArgsOptionsConfig } from "node:util";
 import {
   task,
   project,
@@ -34,6 +34,29 @@ import {
   formatTaskRow,
   presentTask,
 } from "../presentation/task-presentation.js";
+
+const editOptions = {
+  title: { type: "string" },
+  description: { type: "string" },
+  ...textEditOptions,
+  priority: { type: "string" },
+  "add-label": { type: "string", multiple: true },
+  "remove-label": { type: "string", multiple: true },
+} as const;
+
+// A column is changed with task move, so a guessed --status or --column suggests it with the same task keys.
+function suggestTaskMove(args: Array<string>, options: ParseArgsOptionsConfig = {}) {
+  const { values, positionals } = parseArgs({
+    args,
+    options,
+    allowPositionals: true,
+    strict: false,
+  });
+  const guessedColumn = values.status ?? values.column;
+  const columnWords = typeof guessedColumn === "string" ? [guessedColumn] : [];
+
+  return ["task", "move", ...positionals, ...columnWords];
+}
 
 export const taskRouter = {
   create: {
@@ -321,14 +344,7 @@ Examples:
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
-        options: {
-          title: { type: "string" },
-          description: { type: "string" },
-          ...textEditOptions,
-          priority: { type: "string" },
-          "add-label": { type: "string", multiple: true },
-          "remove-label": { type: "string", multiple: true },
-        },
+        options: editOptions,
         allowPositionals: true,
         strict: true,
         tokens: true,
@@ -388,6 +404,10 @@ ${dashValueHelp("--description")}
 Examples:
   zinn task edit MDR-1 --title "Meet the quarterly refinement quota"
   zinn task edit MDR-1 --description "Bring waffles." --append`,
+    guessedFlags: {
+      "--status": (args) => suggestTaskMove(args, editOptions),
+      "--column": (args) => suggestTaskMove(args, editOptions),
+    },
   },
   move: {
     run: (args) => {
@@ -418,6 +438,7 @@ With --json, one task prints an object and several print an array.
 Each task's changed field is 'false' when it was already in the requested state.
 
 Example: zinn task move MDR-1 MDR-2 "In Progress"`,
+    guessedFlags: { "--status": suggestTaskMove, "--column": suggestTaskMove },
   },
   order: {
     run: (args) => {

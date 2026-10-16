@@ -26,6 +26,11 @@ export function isAllowLegacyReadFlag(flag: string) {
   return flag === "--allow-legacy-read";
 }
 
+/** A flag the router reads wherever it appears before --, for every command. */
+export function isRouterFlag(flag: string) {
+  return isJsonFlag(flag) || isAllowLegacyReadFlag(flag);
+}
+
 export function setLegacyReadAllowed(allowed: boolean) {
   legacyReadAllowed = allowed;
 }
@@ -192,7 +197,7 @@ export function dashValueHelp(flag: string) {
   return `A value that begins with a dash must be joined to its flag with =, as in ${flag}="- item".`;
 }
 
-// parseArgs names the refused flag only in its message, the same under Node and Bun.
+// "Option '--title' argument is ambiguous."
 const DASH_VALUE_ERROR_PATTERN = /^Option '(--[^']+)' argument is ambiguous\./;
 // The characters Python's `shlex.quote` leaves unquoted.
 const SHELL_SAFE_WORD_PATTERN = /^[\w@%+=:,./-]+$/;
@@ -211,7 +216,7 @@ export function shellQuote(word: string) {
  *  command with that value joined to its flag.
  * `null` for any other error
  */
-export function dashValueMessage(error: any, args: Array<string>) {
+function dashValueMessage(error: any, args: Array<string>) {
   const isInvalidOptionValue = error?.code === "ERR_PARSE_ARGS_INVALID_OPTION_VALUE";
   const flag = isInvalidOptionValue ? DASH_VALUE_ERROR_PATTERN.exec(error.message)?.[1] : undefined;
   const flagIndex = args.findIndex(
@@ -231,4 +236,85 @@ export function dashValueMessage(error: any, args: Array<string>) {
   ].join(" ");
 
   return `Option "${flag}" is followed by "${value}", which begins with a dash. If it is the value, join it to the flag with =: ${fixedCommand}`;
+}
+
+// "Unknown option '--project'."
+const UNKNOWN_LONG_OPTION_PATTERN = /^Unknown option '(--[^']+)'/;
+// A word that begins with a single dash, such as -later.
+const SHORT_OPTION_WORD_PATTERN = /^-[^-]/;
+
+/** A command line to show, with each word quoted for the shell as needed. */
+function formatCommand(args: Array<string>) {
+  return ["zinn", ...args].map(shellQuote).join(" ");
+}
+
+/** The words of the command a user likely meant by a flag the command does not take, if known. */
+type SuggestFor = (flag: string) => Array<string> | undefined;
+
+/**
+ * The message for `parseArgs` refusal of an unknown option.
+ * A long flag is named, with the command the user likely meant when one is known,
+ *  and otherwise the usage line shown with it is the fix.
+ * A word with a single dash shows the user's command with it after `--`.
+ */
+function unknownOptionMessage(message: string, args: Array<string>, suggestFor: SuggestFor) {
+  const DOUBLE_DASH = "--";
+  const flag = UNKNOWN_LONG_OPTION_PATTERN.exec(message)?.[1];
+  if (flag !== undefined) {
+    const suggestion = suggestFor(flag);
+    const reason = `Unknown option "${flag}"`;
+    return suggestion === undefined
+      ? reason
+      : `${reason}. Did you mean: ${formatCommand([...suggestion, ...args.filter(isRouterFlag)])}`;
+  }
+
+  // Commands define no short options, so `parseArgs` refused the first single-dash word before `--`.
+  const separatorIndex = args.indexOf(DOUBLE_DASH);
+  const optionArgs = separatorIndex === -1 ? args : args.slice(0, separatorIndex);
+  const wordIndex = optionArgs.findIndex((arg) => SHORT_OPTION_WORD_PATTERN.test(arg));
+  if (wordIndex === -1) {
+    return message;
+  }
+
+  const word = args[wordIndex]!;
+  const readOptions = [...word.slice(1)].map((letter) => `-${letter}`);
+  const readAs = readOptions.length > 1 ? ` (Zinn read ${word} as ${readOptions.join(" ")})` : "";
+  const reason = `Unknown option "${readOptions[0]}"${readAs}. If it is a value, put it after --`;
+
+  // Flags after the word must stay before --, and only the router's own flags are known to be flags.
+  const wordsAfter = args.slice(wordIndex + 1);
+  const routerFlagsAfter = wordsAfter.filter(isRouterFlag);
+  const plainWordsAfter = wordsAfter.filter((arg) => !isRouterFlag(arg));
+  if (plainWordsAfter.some((arg) => arg.startsWith("-"))) {
+    return `${reason}.`;
+  }
+
+  const fixedCommand = formatCommand([
+    ...args.slice(0, wordIndex),
+    ...routerFlagsAfter,
+    DOUBLE_DASH,
+    word,
+    ...plainWordsAfter,
+  ]);
+
+  return `${reason}: ${fixedCommand}`;
+}
+
+/**
+ * The message for an argument error from parseArgs, rewritten where parseArgs' own advice misleads.
+ * parseArgs names the flag only in its message text, which Node and Bun word the same.
+ * `null` for any other error.
+ */
+export function parseArgsMessage(error: any, args: Array<string>, suggestFor: SuggestFor) {
+  const code = error?.code;
+  const isParseArgsError = typeof code === "string" && code.startsWith("ERR_PARSE_ARGS_");
+  if (!isParseArgsError) {
+    return null;
+  }
+
+  if (code === "ERR_PARSE_ARGS_UNKNOWN_OPTION") {
+    return unknownOptionMessage(error.message, args, suggestFor);
+  }
+
+  return dashValueMessage(error, args) ?? error.message;
 }
