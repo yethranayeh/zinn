@@ -19,10 +19,10 @@ Requires [Node.js](https://nodejs.org/) 24.15.0 or newer. See [installation](htt
 Create a project, add a task, and move it through the board:
 
 ```sh
-zinn project create MDR --name "Macrodata Refinement"
-zinn task create MDR --title "Refine 75% of the numbers"
+zinn project create MDR --name 'Macrodata Refinement'
+zinn task create MDR --title 'Refine 75% of the numbers'
 zinn task list MDR
-zinn task move MDR-1 "In Progress"
+zinn task move MDR-1 'In Progress'
 zinn task view MDR-1
 ```
 
@@ -31,8 +31,8 @@ New projects start with Backlog, TODO, In Progress, Review, and Done columns. Yo
 Search tasks and comments, record a note, inspect recent activity, or archive completed work:
 
 ```sh
-zinn task search "numbers" MDR
-zinn task comment create MDR-1 --text "Ready for review"
+zinn task search numbers MDR
+zinn task comment create MDR-1 --text 'Ready for review'
 zinn activity list --task MDR-1
 zinn task archive MDR-1
 zinn task list MDR --archived

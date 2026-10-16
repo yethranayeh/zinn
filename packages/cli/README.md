@@ -60,14 +60,14 @@ Move, order, archive, unarchive, and task-label attachment commands also succeed
 
 Names and titles are trimmed and cannot be blank or contain line breaks or control characters, such as tabs.
 
-Project, task, and label descriptions may contain multiple lines. Omitted descriptions on creation, empty strings, and whitespace-only strings are stored as `null`. Text containing a non-whitespace character is preserved exactly, including leading and trailing whitespace. Use `--description ""` on an edit to clear a description. JSON returns the full text or `null`.
+Project, task, and label descriptions may contain multiple lines. Omitted descriptions on creation, empty strings, and whitespace-only strings are stored as `null`. Text containing a non-whitespace character is preserved exactly, including leading and trailing whitespace. Use `--description ''` on an edit to clear a description. JSON returns the full text or `null`.
 
 To change part of a description, or of a comment's text, `--append` and `--replacing` modify how `--description` (or `--text` on `task comment edit`) is applied to the stored text:
 
 ```sh
-zinn task edit MDR-1 --description "Bring waffles." --append
-zinn task edit MDR-1 --description "new sentence" --replacing "old sentence"
-zinn project edit MDR --description "database" --replacing "board" --all
+zinn task edit MDR-1 --description 'Bring waffles.' --append
+zinn task edit MDR-1 --description 'new sentence' --replacing 'old sentence'
+zinn project edit MDR --description database --replacing board --all
 ```
 
 Flags:
@@ -84,7 +84,7 @@ An empty text with `--replacing` deletes the match. `--append` and `--replacing`
 A value that begins with a dash, such as a Markdown bullet, must be joined to its flag with `=`. Otherwise the command fails without changing anything:
 
 ```sh
-zinn task edit MDR-1 --description="- Bring waffles." --append
+zinn task edit MDR-1 --description='- Bring waffles.' --append
 ```
 
 For multi-line text, such as Markdown, pass a heredoc with a quoted delimiter (`'EOF'`) in bash or zsh. The shell then passes `$`, backticks, quotes and leading dashes as written:
@@ -136,7 +136,7 @@ Commands on the same machine can share a database on a local filesystem. Zinn wa
 Create a project with a key and optionally provide a name and description:
 
 ```sh
-zinn project create MDR --name "Macrodata Refinement" --description "Refine macrodata"
+zinn project create MDR --name 'Macrodata Refinement' --description 'Refine macrodata'
 ```
 
 Project keys are stored in uppercase. An omitted name defaults to the key.
@@ -162,9 +162,9 @@ zinn project column list MDR
 Edit a project:
 
 ```sh
-zinn project edit MDR --name "Macrodata Refinement (Morning Shift)"
-zinn project edit MDR --description "Meet the quarterly quota"
-zinn project edit MDR --description ""
+zinn project edit MDR --name 'Macrodata Refinement (Morning Shift)'
+zinn project edit MDR --description 'Meet the quarterly quota'
+zinn project edit MDR --description ''
 ```
 
 Provide `--name`, `--description`, or both.
@@ -174,13 +174,13 @@ See [Text values](#text-values) for values that begin with a dash and multi-line
 Add another column at the end of the board:
 
 ```sh
-zinn project column create MDR "Boardlog"
+zinn project column create MDR Boardlog
 ```
 
 Rename a column:
 
 ```sh
-zinn project column edit MDR "In Progress" --name "Refining"
+zinn project column edit MDR 'In Progress' --name Refining
 ```
 
 Column names follow the shared [name and title rules](#editing-conventions) and match case-insensitively. Names must be unique within the project; changing only the casing is allowed. Renaming keeps tasks in the column.
@@ -192,7 +192,7 @@ zinn project column order MDR Review first
 zinn project column order MDR Review previous
 zinn project column order MDR Review next
 zinn project column order MDR Review last
-zinn project column order MDR Review before "In Progress"
+zinn project column order MDR Review before 'In Progress'
 zinn project column order MDR Review after Done
 ```
 
@@ -206,8 +206,8 @@ Moving a column to the position it already has, or before or after itself, does 
 Create a task with a title and an optional description. Titles follow the shared [name and title rules](#editing-conventions). New tasks enter the project's first column:
 
 ```sh
-zinn task create MDR --title "Refine 75% of the numbers"
-zinn task create MDR --title "Review the employee handbook" --description "Prepare for a 75% Dance Experience"
+zinn task create MDR --title 'Refine 75% of the numbers'
+zinn task create MDR --title 'Review the employee handbook' --description 'Prepare for a 75% Dance Experience'
 ```
 
 The project key can be omitted when [defaultProject](#settings-files) is configured.
@@ -215,7 +215,7 @@ The project key can be omitted when [defaultProject](#settings-files) is configu
 `--column <name>` starts the task at the bottom of a specific column. The column name matching is case insensitive:
 
 ```sh
-zinn task create MDR --title "Compile the Lexington letters" --column "In Progress"
+zinn task create MDR --title 'Compile the Lexington letters' --column 'In Progress'
 ```
 
 Tasks are created with keys such as `MDR-1`. Task numbers increase in creation order within each project. List active tasks, optionally limited to one project, or view one task:
@@ -225,7 +225,7 @@ zinn task list
 zinn task list MDR
 zinn task list --all-projects
 zinn task list MDR --label CLI --label Groom
-zinn task list MDR --column "In Progress"
+zinn task list MDR --column 'In Progress'
 zinn task list --column Done --all
 zinn task view MDR-1
 zinn task view MDR-1 --history
@@ -252,7 +252,7 @@ Search task titles, descriptions, and comments, optionally in one project:
 ```sh
 zinn task search refine
 zinn task search refine --all-projects
-zinn task search "quarterly quota" MDR
+zinn task search 'quarterly quota' MDR
 zinn task search MDR-1
 zinn task search auth --all --limit 5
 zinn task search auth MDR --label cli
@@ -285,7 +285,7 @@ Only the index changes, completely or not at all, so no backup is saved. With `-
 Labels are global and reusable across projects.
 
 ```sh
-zinn label create urgent --color red --description "Needs attention soon"
+zinn label create urgent --color red --description 'Needs attention soon'
 zinn label create review
 zinn label edit review --name ready --color green
 zinn label list
@@ -294,13 +294,13 @@ zinn label list
 ### Adding to tasks
 
 ```sh
-zinn task create MDR --title "Check the numbers" --label urgent --label review
+zinn task create MDR --title 'Check the numbers' --label urgent --label review
 zinn task label add MDR-1 urgent review
 zinn task label remove MDR-1 review
 zinn task edit MDR-1 --add-label review --remove-label urgent
 ```
 
-Repeat `--label`, `--add-label`, or `--remove-label` for several labels. Each value is one name, so commas are part of the name. Quote names containing spaces: `--label "needs review"`.
+Repeat `--label`, `--add-label`, or `--remove-label` for several labels. Each value is one name, so commas are part of the name. Quote names containing spaces: `--label 'needs review'`.
 
 Label names follow the shared [name and title rules](#editing-conventions), preserve their stored casing, and match case-insensitively. Changing only the casing is allowed; names that differ only in case _cannot_ coexist.
 
@@ -341,7 +341,7 @@ Remove the existing subtask relation before assigning a different parent. Moving
 `task create` can relate the new task with `--parent`, `--depends-on`, `--duplicate-of` and `--related`. Repeat `--depends-on` and `--related` to relate several tasks:
 
 ```sh
-zinn task create MDR --title "Sort the files" --parent MDR-1 --depends-on MDR-2
+zinn task create MDR --title 'Sort the files' --parent MDR-1 --depends-on MDR-2
 ```
 
 Remove a relation with `zinn task relation delete MDR-1 MDR-2 --type dependency`, using its original direction for `dependency`, `duplicate`, and `subtask`. For `related`, order does not matter.
@@ -352,7 +352,7 @@ Relation deletion requires no confirmation.
 Add and list comments on a task:
 
 ```sh
-zinn task comment create MDR-1 --text "Ready for review"
+zinn task comment create MDR-1 --text 'Ready for review'
 zinn task comment list MDR-1
 ```
 
@@ -361,7 +361,7 @@ Comments receive keys per task like `MDR-1#1`.
 Edit or delete a comment using its key:
 
 ```sh
-zinn task comment edit MDR-1#1 --text "Approved"
+zinn task comment edit 'MDR-1#1' --text Approved
 zinn task comment delete MDR-1#1
 ```
 
@@ -372,9 +372,9 @@ Deletion asks for confirmation, unless `--yes` is used (see [Confirmations](#con
 Edit a task's title, description, priority, or labels:
 
 ```sh
-zinn task edit MDR-1 --title "Meet the quarterly refinement quota"
-zinn task edit MDR-1 --description "Complete refinement before the waffle party"
-zinn task edit MDR-1 --title "Meet the quarterly refinement quota" --description ""
+zinn task edit MDR-1 --title 'Meet the quarterly refinement quota'
+zinn task edit MDR-1 --description 'Complete refinement before the waffle party'
+zinn task edit MDR-1 --title 'Meet the quarterly refinement quota' --description ''
 ```
 
 See [Editing conventions](#editing-conventions) for title validation, partial edits and clearing descriptions.
@@ -387,7 +387,7 @@ See [Text values](#text-values) for values that begin with a dash and multi-line
 Move a task to another column in its project:
 
 ```sh
-zinn task move MDR-1 "In Progress"
+zinn task move MDR-1 'In Progress'
 ```
 
 A moved task appears at the bottom of its destination column. Moving it to its current column does nothing. Archived tasks must be unarchived before they can be moved.
@@ -395,7 +395,7 @@ A moved task appears at the bottom of its destination column. Moving it to its c
 For multiple tasks, give their keys before the column. They move in input order; tasks already in that column retain their positions. Each task's column is looked up in its own project:
 
 ```sh
-zinn task move MDR-1 MDR-2 APP-4 "In Progress"
+zinn task move MDR-1 MDR-2 APP-4 'In Progress'
 ```
 
 See [Changing tasks in bulk](#changing-tasks-in-bulk).
@@ -444,7 +444,7 @@ Deleting a task does not make its number available again within that project. De
 Priority is optional: `low`, `medium`, `high`, or `urgent`. New tasks have no assigned priority by default.
 
 ```sh
-zinn task create MDR --title "Review the numbers" --priority high
+zinn task create MDR --title 'Review the numbers' --priority high
 zinn task edit MDR-1 --priority urgent
 zinn task edit MDR-1 --priority none
 ```
@@ -551,7 +551,7 @@ Add `--json` to any command to get JSON instead of text. The flag can go anywher
 
 ```sh
 zinn task list MDR --json
-zinn task create MDR --title "Refine the numbers" --json
+zinn task create MDR --title 'Refine the numbers' --json
 ```
 
 - Read commands print what they list or show. Write commands print the entity they created, changed, or deleted.
