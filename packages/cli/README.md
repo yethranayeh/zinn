@@ -477,7 +477,15 @@ With `--json`, list returns an array and view returns one event object. Both inc
 
 When a coding agent performs a mutation with `zinn`, the change is recorded under that agent's name.
 
-Zinn recognizes Claude Code, Codex, OpenCode, Gemini CLI, Cline, Cursor, Copilot's coding agent, Crush, Amp, and any tool that sets `AI_AGENT`. If you are using a tool that Zinn does not recognize, you can set `AI_AGENT` in that tool's environment settings, for example `AI_AGENT=hermes`. Otherwise, Zinn uses your git `user.name` and `user.email`, and if that's also not set, it falls to your system username.
+Zinn recognizes Claude Code, Codex, OpenCode, Gemini CLI, Cline, Cursor, Copilot's coding agent, Crush, Amp, and any tool that sets `AI_AGENT`.
+
+It checks `AI_AGENT`, then `AGENT`, then tool markers, taking the first identifying value. You can declare a name through that tool's environment settings, for example `AI_AGENT=hermes`.
+
+With no marker, Zinn uses your git `user.name` and `user.email`, then your system username. `actor_source` records the deciding `env:<VARIABLE>`, `git-config` or `os-user`.
+
+Integrations can supply `ZINN_SESSION_ID` for the top-level conversation and `ZINN_THREAD_ID` for the execution thread running the command. When either is provided, Zinn uses that pair. Otherwise it uses the first available _native_ pair: `CLAUDE_CODE_SESSION_ID` with a `null` thread, then `CODEX_SESSION_ID` and `CODEX_THREAD_ID`. If a member is missing, it stays `null` because Zinn never combines pairs. Inherited IDs associate the command with their declared conversation or thread.
+
+`ZINN_AGENT`, `ZINN_MODEL` and `ZINN_EFFORT` declare the host agent name, running model and effort for the execution making the change. Zinn trims surrounding whitespace, treats blank declarations as _unset_ and preserves other text. These values are declarations rather than authenticated identities. New changes retain them in activity JSON and earlier events keep their recorded attribution.
 
 ## Back up the database
 

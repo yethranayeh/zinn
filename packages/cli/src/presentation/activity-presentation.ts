@@ -51,6 +51,7 @@ const RECORDED_FIELDS = new Set([
 ]);
 
 const ENTITY_PREVIEW_LENGTH = 24;
+const UNKNOWN_ACTOR_NAME = "unknown";
 const ACTION_LABELS: Record<ActivityAction, string> = {
   create: "created",
   edit: "edited",
@@ -456,7 +457,7 @@ export function formatActivityList(
     const metadata = [
       { text: entry.displayId },
       { text: formatLocalTime(entry.event.created_at), style: "dim" as const },
-      { text: `${entry.event.actor_name} (${entry.event.actor_kind})` },
+      { text: `${entry.event.actor_name ?? UNKNOWN_ACTOR_NAME} (${entry.event.actor_kind})` },
     ];
     if (!options.showsDetails) {
       return [...metadata, { text: formatActivityContent(entry) }];
@@ -481,7 +482,7 @@ export function formatActivityList(
           : [formatSection("Navigation", formatNavigation(entry, { showsFullNames: true }))]),
         formatSection(
           "Actor",
-          `${entry.event.actor_name}\nKind: ${entry.event.actor_kind}\nEmail: ${entry.event.actor_email ?? "null"}`,
+          `${entry.event.actor_name ?? UNKNOWN_ACTOR_NAME}\nKind: ${entry.event.actor_kind}\nEmail: ${entry.event.actor_email ?? "null"}`,
         ),
         formatSection("Changes", formatRecordedChanges(entry.event)),
       ].join("\n\n"),
