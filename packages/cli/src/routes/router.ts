@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 
 import {
   dashValueHelp,
+  dashValueMessage,
   failureMessage,
   isAllowLegacyReadFlag,
   isHelpFlag,
@@ -229,6 +230,11 @@ async function route(parsedRoutes: Array<ParsedRoute>, rawArgs: Array<string>) {
   } catch (err: any) {
     if (err instanceof UsageError) {
       quit(err.message, getUsage(match.help));
+    }
+
+    const dashValueReason = dashValueMessage(err, rawArgs);
+    if (dashValueReason != null) {
+      quit(dashValueReason, getUsage(match.help));
     }
 
     quit(

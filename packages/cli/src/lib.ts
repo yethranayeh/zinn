@@ -191,3 +191,44 @@ export function isHelpFlag(flag: string) {
 export function dashValueHelp(flag: string) {
   return `A value that begins with a dash must be joined to its flag with =, as in ${flag}="- item".`;
 }
+
+// parseArgs names the refused flag only in its message, the same under Node and Bun.
+const DASH_VALUE_ERROR_PATTERN = /^Option '(--[^']+)' argument is ambiguous\./;
+// The characters Python's `shlex.quote` leaves unquoted.
+const SHELL_SAFE_WORD_PATTERN = /^[\w@%+=:,./-]+$/;
+
+/** Quotes a word for a POSIX shell when it needs it, like Python's `shlex.quote` */
+export function shellQuote(word: string) {
+  if (SHELL_SAFE_WORD_PATTERN.test(word)) {
+    return word;
+  }
+
+  return `'${word.replaceAll("'", `'\\''`)}'`;
+}
+
+/**
+ * The message for `parseArgs` refusal of a value that begins with a dash, showing the user's
+ *  command with that value joined to its flag.
+ * `null` for any other error
+ */
+export function dashValueMessage(error: any, args: Array<string>) {
+  const isInvalidOptionValue = error?.code === "ERR_PARSE_ARGS_INVALID_OPTION_VALUE";
+  const flag = isInvalidOptionValue ? DASH_VALUE_ERROR_PATTERN.exec(error.message)?.[1] : undefined;
+  const flagIndex = args.findIndex(
+    (arg, index) => arg === flag && args[index + 1]?.startsWith("-"),
+  );
+
+  if (flagIndex === -1) {
+    return null;
+  }
+
+  const value = args[flagIndex + 1]!;
+  const fixedCommand = [
+    "zinn",
+    ...args.slice(0, flagIndex).map(shellQuote),
+    `${flag}=${shellQuote(value)}`,
+    ...args.slice(flagIndex + 2).map(shellQuote),
+  ].join(" ");
+
+  return `Option "${flag}" is followed by "${value}", which begins with a dash. If it is the value, join it to the flag with =: ${fixedCommand}`;
+}

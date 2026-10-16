@@ -575,6 +575,41 @@ test("every flag in a usage line is rejected when given twice, unless the comman
   });
 }, 60_000);
 
+test("every flag followed by <value> in a usage line refuses a separate value that begins with a dash, showing it joined with =", () => {
+  withIsolatedZinnDir((dir) => {
+    for (const [command, { words }] of Object.entries(commandWords)) {
+      const valueFlags = [...commandUsages.get(command)!.matchAll(/(--[a-z-]+) </g)].map(([, flag]) => flag!);
+      for (const flag of valueFlags) {
+        const result = runZinn([...command.split(" "), ...words, flag, "- item"], dir);
+        expect(result.code).toBe(1);
+        expect(result.stdout).toBe("");
+        expect(result.stderr).toContain(`${flag}='- item'`);
+        expect(result.stderr).toContain(`Usage: zinn ${command}`);
+      }
+    }
+    expect(existsSync(join(dir, "data"))).toBe(false);
+  });
+}, 60_000);
+
+test("the command shown for a value that begins with a dash runs as shown", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "SHOP"], dir);
+    const refused = runZinn(["task", "create", "SHOP", "--title", "Fix it's bug", "--description", "- item", "--json"], dir);
+    expect(refused.code).toBe(1);
+    expect(refused.stdout).toBe("");
+    expect(JSON.parse(runZinn(["task", "list", "SHOP", "--json"], dir).stdout)).toEqual([]);
+
+    const { error } = JSON.parse(refused.stderr);
+    expect(error.help).toContain("Usage: zinn task create");
+    const shownArgs = error.message.match(/zinn (.*)$/)[1];
+    const proc = Bun.spawnSync(["/bin/sh", "-c", `exec bun "$0" ${shownArgs}`, CLI_PATH], {
+      env: { ...process.env, ZINN_DIR: dir },
+    });
+    expect(proc.exitCode).toBe(0);
+    expect(JSON.parse(proc.stdout.toString())).toMatchObject({ title: "Fix it's bug", description: "- item" });
+  });
+});
+
 test("project list, project view, the project column commands, task view and task order reject invalid requests without writes", () => {
   withIsolatedZinnDir((dir) => {
     runZinn(["project", "create", "SHOP"], dir);
