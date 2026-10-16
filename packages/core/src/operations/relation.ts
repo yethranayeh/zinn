@@ -136,5 +136,6 @@ export const relation = {
       return relationMatch;
     });
   },
+  /** Returns relations by created_at ascending, then id ascending, with or without included tasks. */
   getAll: getRelations,
 };

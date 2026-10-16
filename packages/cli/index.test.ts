@@ -4093,14 +4093,13 @@ test("relation list aligns and colors connected columns, and marks archived task
     run("task", "relation", "create", "APP-1", "APP-2", "--type", "related");
     run("task", "relation", "create", "APP-3", "APP-1", "--type", "dependency");
 
-    // Relations come back in no promised order, so compare the lines sorted.
     const expectedLines = [
       "Depends on     | LONGER-1 | Done         | Original",
       "Related to     | APP-2    | Backlog      | Plan | Archived",
       "Depended on by | APP-3    | Verification | Review",
     ];
     const listed = run("task", "relation", "list", "APP-1").stdout;
-    expect(listed.trimEnd().split("\n").sort()).toEqual([...expectedLines].sort());
+    expect(listed.trimEnd().split("\n")).toEqual(expectedLines);
     const colored = runZinn(["task", "relation", "list", "APP-1"], dir, { FORCE_COLOR: "1" }).stdout;
     expect(colored).toContain("\x1b[32mDone        \x1b[39m");
     expect(colored).toContain("\x1b[90mBacklog     \x1b[39m");
@@ -4108,12 +4107,13 @@ test("relation list aligns and colors connected columns, and marks archived task
     expect(runZinn(["task", "relation", "list", "APP-1"], dir, { NO_COLOR: "1" }).stdout).toBe(listed);
     const json = JSON.parse(run("task", "relation", "list", "APP-1", "--json").stdout);
     expect(json.find((entry: { task: { key: string } }) => entry.task.key === "LONGER-1").task.column).toBe("Done");
+    expect(json.map((entry: { task: { key: string } }) => entry.task.key)).toEqual(["LONGER-1", "APP-2", "APP-3"]);
+    const viewedJson = JSON.parse(run("task", "view", "APP-1", "--json").stdout);
+    expect(viewedJson.relations).toEqual(json);
 
     const viewed = run("task", "view", "APP-1").stdout;
     expect(viewed).toContain(`\n\n${SECTION_RULE}\nRelations:\n`);
-    for (const line of expectedLines) {
-      expect(viewed).toContain(`${line}\n`);
-    }
+    expect(viewed).toContain(`${expectedLines.join("\n")}\n`);
   });
 });
 

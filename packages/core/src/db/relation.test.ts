@@ -129,6 +129,32 @@ test("duplicate direction and optional task enrichment preserve raw lookup", () 
   `);
 });
 
+test("relation lists order incoming and outgoing relations by timestamp, then ID, with or without tasks", () => {
+  runRelationCheck(`
+    const app = project.create({ key: "APP" }, actor);
+    for (let index = 0; index < 5; index++) {
+      task.create({ project_id: app.id, title: "Task" }, actor);
+    }
+    const fixtures = [
+      { source: "APP-1", target: "APP-2", type: "dependency", timestamp: 200, id: "relation-c" },
+      { source: "APP-3", target: "APP-1", type: "duplicate", timestamp: 100, id: "relation-b" },
+      { source: "APP-1", target: "APP-4", type: "related", timestamp: 100, id: "relation-a" },
+      { source: "APP-5", target: "APP-1", type: "subtask", timestamp: 50, id: "relation-d" },
+    ];
+    for (const fixture of fixtures) {
+      const created = relation.create({
+        sourceTaskKey: fixture.source, targetTaskKey: fixture.target, relation_type: fixture.type,
+      }, actor);
+      getDb().query("UPDATE task_relations SET created_at = ?, id = ? WHERE id = ?")
+        .run(fixture.timestamp, fixture.id, created.id);
+    }
+    const expectedIds = ["relation-d", "relation-a", "relation-b", "relation-c"];
+    for (const options of [undefined, { include: { tasks: false } }, { include: { tasks: true } }]) {
+      assert.deepEqual(relation.getAll("APP-1", options).map(entry => entry.id), expectedIds);
+    }
+  `);
+});
+
 test("relation deletion matches type and direction, preserving tasks and other relations", () => {
   runRelationCheck(`
     const app = project.create({ key: "APP" }, actor);

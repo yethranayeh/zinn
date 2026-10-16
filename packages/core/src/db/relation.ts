@@ -15,7 +15,8 @@ export function getAllByTaskId(taskId: string) {
 
   return db
     .query<TaskRelation, Bind<{ taskId: string }>>(`SELECT * FROM ${DB_TABLE.task_relations}
-    WHERE source_task_id = $taskId OR target_task_id = $taskId`)
+    WHERE source_task_id = $taskId OR target_task_id = $taskId
+    ORDER BY created_at ASC, id ASC`)
     .all({ $taskId: taskId });
 }
 

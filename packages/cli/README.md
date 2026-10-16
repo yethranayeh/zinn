@@ -332,6 +332,8 @@ zinn task relation list MDR-1
 Relations do not automatically move, complete, or archive tasks.
 Tasks from separate projects can be related to each other. Tasks can also be related to archived tasks.
 
+JSON relation arrays from `task relation list` and `task view` are ordered by creation timestamp ascending, then relation ID ascending for ties.
+
 Use `zinn task relation create APP-2 APP-1 --type subtask` to make APP-2 a child of APP-1. Each task can have one parent and any number of subtasks, including nested subtasks.
 
 Remove the existing subtask relation before assigning a different parent. Moving or archiving a parent does not change its children, and deleting a parent removes its child relations while retaining child task data.
