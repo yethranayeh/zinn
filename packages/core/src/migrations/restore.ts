@@ -13,7 +13,6 @@ import type { LockOptions } from "./upgrade.js";
 
 import { mkdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 
 import { openDatabase } from "#sqlite";
 
@@ -439,7 +438,8 @@ function detachSource(db: Database) {
 
 /**
  * Restores a checked backup into the database behind db, whatever that database's version.
- * The backup is attached read-only before the write lock, since SQLite refuses ATTACH inside a transaction.
+ * The backup is attached by path before the write lock. Only main is written;
+ *  SQLite may checkpoint a WAL-mode source without changing its rows.
  * Under the lock, with foreign keys off, a database that is not empty gets a free-space check and
  *  a backup through a separate connection while db has written nothing.
  * Then, in the same transaction, it drops main's tables, views and triggers, creates the backup's,
@@ -460,8 +460,7 @@ export function restoreBackup(
 ): RestoreResult {
   const databasePath = requireDatabaseFile(db, "restore");
   const spacePaths = spacePathsFor(databasePath, backup.directory);
-  const sourceUri = `${pathToFileURL(resolve(checked.path)).href}?mode=ro`;
-  db.query(`ATTACH DATABASE $uri AS ${SOURCE_SCHEMA}`).run({ $uri: sourceUri });
+  db.query(`ATTACH DATABASE $path AS ${SOURCE_SCHEMA}`).run({ $path: resolve(checked.path) });
 
   let result: RestoreResult;
 

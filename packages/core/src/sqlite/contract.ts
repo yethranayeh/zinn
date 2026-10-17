@@ -9,7 +9,6 @@ import { strict as assert } from "node:assert";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 
 import { openWith, sqliteCodeName, SqliteError } from "./database.ts";
 
@@ -703,10 +702,9 @@ export function defineContractChecks(test: DefineTest, adapter: Adapter) {
     });
   });
 
-  test("a file attached through a mode=ro URI is readable, refuses writes, and can be detached after a write transaction", () => {
+  test("a file attached by path is readable, can be detached after a write transaction on main, and keeps its rows", () => {
     withDirectory((directory) => {
-      // A ? or # in a path would start the URI's query or fragment, so the URL encodes them.
-      const sourcePath = join(directory, "source ?#.sqlite");
+      const sourcePath = join(directory, "source # % ü.sqlite");
       const source = adapter.openDatabase(sourcePath);
 
       try {
@@ -720,17 +718,11 @@ export function defineContractChecks(test: DefineTest, adapter: Adapter) {
       const db = adapter.openDatabase(join(directory, "contract.sqlite"));
 
       try {
-        db.query("ATTACH DATABASE $uri AS source").run({
-          $uri: `${pathToFileURL(sourcePath).href}?mode=ro`,
-        });
+        db.query("ATTACH DATABASE $path AS source").run({ $path: sourcePath });
         assert.deepEqual(db.query("PRAGMA source.user_version").get(), { user_version: 7 });
 
         db.transaction(() => {
-          db.exec("CREATE TABLE copy AS SELECT value FROM source.item");
-          assert.throws(
-            () => db.exec("INSERT INTO source.item VALUES (2)"),
-            (error) => assertSqliteError(error, "SQLITE_READONLY", 8),
-          );
+          db.exec("CREATE TABLE main.copy AS SELECT value FROM source.item");
         }).immediate();
 
         db.exec("DETACH DATABASE source");
@@ -740,6 +732,15 @@ export function defineContractChecks(test: DefineTest, adapter: Adapter) {
         ]);
       } finally {
         db.close();
+      }
+
+      const unchanged = adapter.openDatabase(sourcePath, { readonly: true });
+
+      try {
+        assert.deepEqual(unchanged.query("SELECT value FROM item").all(), [{ value: 1 }]);
+        assert.deepEqual(unchanged.query("PRAGMA user_version").get(), { user_version: 7 });
+      } finally {
+        unchanged.close();
       }
     });
   });

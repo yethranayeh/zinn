@@ -5,6 +5,7 @@ import type { RestoreOptions } from "./restore";
 
 import { expect, test } from "bun:test";
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -175,9 +176,11 @@ test("a backup at the same version replaces the database, keeping rows, rowids, 
     const backupPath = backupOf(directory, seedSource);
     const liveBefore = readDatabaseState(live);
     const backupState = readDatabaseState(backupPath);
+    const backupBytes = readFileSync(backupPath);
 
     const result = restoreDatabase(live, backupPath, options(directory));
 
+    expect(readFileSync(backupPath)).toEqual(backupBytes);
     expect(result).toEqual({
       databasePath: realpathSync(live),
       previousVersion: 1,
@@ -197,6 +200,39 @@ test("a backup at the same version replaces the database, keeping rows, rowids, 
     // The replaced database was saved as an ordinary backup.
     expect(savedBackups(directory)).toHaveLength(1);
     expect(readDatabaseState(result.backupPath!)).toEqual(liveBefore);
+  });
+});
+
+test("a source with committed WAL data restores without changing its rows", () => {
+  withDirectory((directory) => {
+    const live = makeDatabase(join(directory, "zinn.sqlite"), seedLive);
+    const writerPath = join(directory, "wal-writer.sqlite");
+    const sourcePath = join(directory, "source # % ü.sqlite");
+    const writer = openDatabase(writerPath);
+    let sourceState: ReturnType<typeof databaseState>;
+
+    try {
+      writer.exec("PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0");
+      seedSource(writer);
+      writer.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+      const checkpointedBytes = readFileSync(writerPath);
+      writer.exec("UPDATE project SET name = 'Committed WAL source'");
+      sourceState = databaseState(writer);
+      expect(readFileSync(writerPath)).toEqual(checkpointedBytes);
+      expect(readFileSync(`${writerPath}-wal`).length).toBeGreaterThan(0);
+
+      // No writer runs while this isolated fixture's main file and committed WAL are copied.
+      copyFileSync(writerPath, sourcePath);
+      copyFileSync(`${writerPath}-wal`, `${sourcePath}-wal`);
+    } finally {
+      writer.close();
+    }
+
+    restoreDatabase(live, sourcePath, options(directory));
+
+    expect(readDatabaseState(live)).toEqual(sourceState);
+    expect(readDatabaseState(sourcePath)).toEqual(sourceState);
+    withOpen(live, expectHealthy);
   });
 });
 
@@ -446,6 +482,7 @@ test("a failure while copying rows rolls back, keeps its error and the backup, a
     const live = makeDatabase(join(directory, "zinn.sqlite"), seedLive);
     const backupPath = backupOf(directory, seedSource);
     const before = readDatabaseState(live);
+    const backupBytes = readFileSync(backupPath);
     const failure = new Error("injected copy failure");
     const failingDriver: SqliteDriver = {
       ...bunDriver,
@@ -483,6 +520,7 @@ test("a failure while copying rows rolls back, keeps its error and the backup, a
       db.close();
     }
 
+    expect(readFileSync(backupPath)).toEqual(backupBytes);
     expect(readDatabaseState(live)).toEqual(before);
     const saved = savedBackups(directory);
     expect(saved).toHaveLength(1);
