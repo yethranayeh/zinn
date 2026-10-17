@@ -203,7 +203,7 @@ test("source entrypoints ignore leftover release output and development identiti
       import(${JSON.stringify(policyUrl)}), import(${JSON.stringify(sourcePolicyUrl)}),
       import(${JSON.stringify(coreReleaseUrl)}), import(${JSON.stringify(sourceCoreReleaseUrl)})
     ]).then(([builtCli, sourceCli, builtCore, sourceCore]) => console.log(JSON.stringify({
-      builtCli: builtCli.cliOpenPolicy().release, sourceCli: sourceCli.cliOpenPolicy().release,
+      builtCli: builtCli.getCliOpenPolicy().release, sourceCli: sourceCli.getCliOpenPolicy().release,
       builtCore: builtCore.readCoreReleaseMode(), sourceCore: sourceCore.readCoreReleaseMode()
     })));`;
     const readIdentities = () => {
