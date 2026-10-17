@@ -371,12 +371,15 @@ zinn task comment list MDR-1
 
 Comments receive keys per task like `MDR-1#1`.
 
-Edit or delete a comment using its key:
+View, edit or delete a comment using its key:
 
 ```sh
+zinn task comment view 'MDR-1#1'
 zinn task comment edit 'MDR-1#1' --text Approved
 zinn task comment delete 'MDR-1#1'
 ```
+
+`task comment view` shows the current text in full, keeping its line breaks, including on archived tasks. With `--json`, it returns one object with `key`, `text`, `created_at` and `updated_at`.
 
 Deletion asks for confirmation, unless `--yes` is used (see [Confirmations](#confirmations)). Comments can be added to archived tasks. Comment mutations are recorded in the activity log without changing the task's modification timestamp.
 

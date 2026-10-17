@@ -121,6 +121,20 @@ List a task's comments by oldest first.
 
 Example: zinn task comment list MDR-1`,
   },
+  view: {
+    run: (args) => {
+      const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
+      validatePositionals(positionals, ["<comment-key>"]);
+      output(presentComment(comment.getByKey(positionals[0]!)), formatComment);
+    },
+    help: `Usage: zinn task comment view <comment-key>
+
+Show a comment's current text in full, keeping its line breaks.
+Comments on archived tasks can be viewed.
+With --json, return one object with key, text, created_at and updated_at.
+
+Example: zinn task comment view 'MDR-1#1'`,
+  },
   edit: {
     run: (args) => {
       const props = parseCommentEditArgs(args);

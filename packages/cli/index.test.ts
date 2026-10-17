@@ -205,7 +205,7 @@ test("root help supports -h and --help and lists commands", () => {
   expect(longHelp.stdout).toContain("project column {create|list|edit|order}");
   expect(longHelp.stdout).toContain("project {create|list|view|edit|delete}");
   expect(longHelp.stdout).toContain("task {create|list|search|view|edit|move|order|archive|unarchive|delete}");
-  expect(longHelp.stdout).toContain("task comment {create|list|edit|delete}");
+  expect(longHelp.stdout).toContain("task comment {create|list|view|edit|delete}");
   expect(longHelp.stdout).toContain("\n  backup\n  restore\n  migrate\n");
   expect(longHelp.stdout).toContain("-v, --version  Show version");
   expect(shortHelp).toEqual(longHelp);
@@ -489,6 +489,7 @@ const commandWords: Record<string, CommandWords> = {
   "task relation delete": { words: ["SHOP-1", "SHOP-2"], required: 2 },
   "task comment create": { words: ["SHOP-1"], required: 1 },
   "task comment list": { words: ["SHOP-1"], required: 1 },
+  "task comment view": { words: ["SHOP-1#1"], required: 1 },
   "task comment edit": { words: ["SHOP-1#1"], required: 1 },
   "task comment delete": { words: ["SHOP-1#1"], required: 1 },
   "task label add": { words: ["SHOP-1", "bug"], required: 2, repeats: true },
@@ -2367,6 +2368,79 @@ test("task comments can be created, listed, edited, viewed, and deleted", () => 
         TZ: "Europe/Berlin",
       }).stdout,
     ).toContain(`${multilinePrefix}Line one\n${" ".repeat(multilinePrefix.length)}Line two\n`);
+  });
+});
+
+test("task comment view reads only the requested current comment, including on archived tasks, without writes", () => {
+  withIsolatedZinnDir((directory) => {
+    const run = (...args: Array<string>) => runZinn(args, directory);
+    expect(run("project", "create", "NOTE").code).toBe(0);
+    expect(run("task", "create", "NOTE", "--title", "Commented task").code).toBe(0);
+    expect(run("task", "comment", "create", "NOTE-1", "--text", "Sibling comment").code).toBe(0);
+    expect(run("task", "comment", "create", "NOTE-1", "--text", "Original text").code).toBe(0);
+    const text = "  Current first line\n\tSecond line\n" + "Full comment text. ".repeat(40) + "\n";
+    const edited = run("task", "comment", "edit", "NOTE-1#2", "--text", text, "--json");
+    expect(edited.code).toBe(0);
+    const expected = JSON.parse(edited.stdout);
+    const snapshot = () => withTestDb(directory, (db) => ({
+      comments: db.query("SELECT * FROM comment ORDER BY id").all(),
+      tasks: db.query("SELECT * FROM task ORDER BY id").all(),
+      activity: db.query("SELECT * FROM activity ORDER BY id").all(),
+    }));
+
+    for (const archived of [false, true]) {
+      if (archived) {
+        expect(run("task", "archive", "NOTE-1").code).toBe(0);
+      }
+      const before = snapshot();
+      const viewed = run("task", "comment", "view", "note-1#2");
+      expect(viewed.code).toBe(0);
+      expect(viewed.stderr).toBe("");
+      expect(viewed.stdout).toContain("NOTE-1#2");
+      for (const line of text.trimEnd().split("\n")) {
+        expect(viewed.stdout).toContain(line);
+      }
+      expect(viewed.stdout).not.toContain("Sibling comment");
+      expect(viewed.stdout).not.toContain("Original text");
+
+      const viewedJson = run("task", "comment", "view", "note-1#2", "--json");
+      expect(viewedJson.code).toBe(0);
+      expect(viewedJson.stderr).toBe("");
+      const data = JSON.parse(viewedJson.stdout);
+      expect(data).toEqual({
+        key: "NOTE-1#2", text, created_at: expected.created_at, updated_at: expected.updated_at,
+      });
+      expect(snapshot()).toEqual(before);
+    }
+  });
+});
+
+test("task comment view rejects malformed, missing and deleted comments with structured errors", () => {
+  withIsolatedZinnDir((directory) => {
+    const run = (...args: Array<string>) => runZinn(args, directory);
+    expect(run("project", "create", "NOTE").code).toBe(0);
+    expect(run("task", "create", "NOTE", "--title", "Commented task").code).toBe(0);
+    expect(run("task", "comment", "create", "NOTE-1", "--text", "Deleted text").code).toBe(0);
+    expect(run("task", "comment", "delete", "NOTE-1#1", "--yes").code).toBe(0);
+
+    const cases = [
+      { key: "NOTE-1", code: "invalid_input", details: { field: ["commentKey"] } },
+      { key: "NOTE-1#1", code: "not_found", details: { entity: "comment", key: "NOTE-1#1" } },
+      { key: "NOTE-1#2", code: "not_found", details: { entity: "comment", key: "NOTE-1#2" } },
+      { key: "NOTE-2#1", code: "not_found", details: { entity: "task", key: "NOTE-2" } },
+    ];
+    for (const { key, code, details } of cases) {
+      for (const json of [false, true]) {
+        const flags = json ? ["--json"] : [];
+        const result = run("task", "comment", "view", key, ...flags);
+        expect(result.code).toBe(1);
+        expect(result.stdout).toBe("");
+        expect(result.stderr).not.toBe("");
+        if (json) {
+          expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code, details });
+        }
+      }
+    }
   });
 });
 
