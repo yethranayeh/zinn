@@ -78,10 +78,17 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
       if (name === "core") {
         expect(members).toContain("package/included.txt");
         expect(members).not.toContain("package/excluded.txt");
+      } else {
+        expect(members).toContain("package/skills/zinn/SKILL.md");
       }
       const extracted = join(consumer, name);
       mkdirSync(extracted);
       run(["tar", "-xzf", archive, "-C", extracted, "--strip-components=1"], root);
+      if (name === "cli") {
+        expect(readFileSync(join(extracted, "skills/zinn/SKILL.md"))).toEqual(
+          readFileSync(join(directory, "skills/zinn/SKILL.md")),
+        );
+      }
       if (name === "core") {
         symlinkSync(join(REPOSITORY_DIRECTORY, "packages", "core", "node_modules"), join(extracted, "node_modules"), "junction");
       } else {

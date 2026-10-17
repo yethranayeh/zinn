@@ -18,14 +18,9 @@ On a Node.js 24 release older than 24.15.0, npm installs Zinn with an engine war
 
 ## Install the CLI
 
-<div class="[&>div]:my-0 flex flex-col w-full">
-
 ```sh title="Install the CLI"
 npm i -g @zinn-dev/cli
 ```
-
-<div class="self-end"><AgentSetup /></div>
-</div>
 
 Check that the `zinn` command is available:
 
@@ -44,6 +39,28 @@ bunx --bun @zinn-dev/cli --help
 ```
 
 Bun's documentation explains [how `--bun` overrides a Node.js shebang](https://bun.com/docs/pm/bunx#shebangs).
+
+## Use with coding agents
+
+Choose either setup for your coding agent:
+
+### Skill
+
+Install the [Zinn workflow skill](https://github.com/yethranayeh/zinn/blob/main/packages/cli/skills/zinn/SKILL.md). It covers picking up work, keeping task context, recording follow-ups, and handing off for review.
+
+```sh title="Install the agent skill"
+npx skills add yethranayeh/zinn --skill zinn -g -y
+```
+
+The skill installs globally for use across repositories. It applies where the user or repository uses Zinn. Its installer is the [open-source skills CLI](https://github.com/vercel-labs/skills).
+
+<AgentSetup />
+
+### Repository rule
+
+Add this line to your `AGENTS.md` or `CLAUDE.md`, then let the agent discover commands through `zinn --help`:
+
+This repository uses Zinn for work tracking. Before substantial work, on resume, and before finishing, check the relevant task and keep it current. Use `zinn --help` to discover commands.
 
 ## Add core to a project
 
@@ -65,6 +82,12 @@ Then install the latest CLI. It brings the core release it was built with:
 
 ```sh title="Upgrade the CLI"
 npm i -g @zinn-dev/cli@latest
+```
+
+If you installed the agent skill, update it separately:
+
+```sh title="Update installed agent skills"
+npx skills update -g
 ```
 
 In a project that uses core, upgrade it there:

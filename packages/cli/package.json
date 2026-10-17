@@ -34,6 +34,7 @@
 		"index.d.ts",
 		"src/**/*.js",
 		"src/**/*.d.ts",
+		"skills/zinn/SKILL.md",
 		"LICENSE"
 	],
 	"type": "module",

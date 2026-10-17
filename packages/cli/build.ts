@@ -1,4 +1,12 @@
-import { chmodSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  cpSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,6 +34,7 @@ for (const command of [
 }
 
 writePackageOutput(packageDirectory, { bin: { zinn: "./index.js" } });
+cpSync(join(packageDirectory, "skills"), join(outputDirectory, "skills"), { recursive: true });
 
 // Only the emitted executable uses the Node shebang.
 const executablePath = join(outputDirectory, "index.js");

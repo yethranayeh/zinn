@@ -40,6 +40,15 @@ zinn task list MDR --archived
 
 Use `zinn --help` to discover commands and `zinn <command> --help` for usage. Add `--json` for scripting. The [CLI README](packages/cli/README.md) covers filtering, labels, priorities, relations, text edits, and other command behavior.
 
+## Coding agents
+
+Choose either setup for your coding agent:
+
+- **Skill:** install the [Zinn workflow skill](packages/cli/skills/zinn/SKILL.md) with `npx skills add yethranayeh/zinn --skill zinn -g -y`. It covers picking up work, keeping task context, recording follow-ups, and handing off for review.
+- **Repository rule:** add a line to your `AGENTS.md` or `CLAUDE.md`, that should say something along the lines of “This repository uses Zinn for work tracking. Before substantial work, on resume, and before finishing, check the relevant task and keep it current. Use `zinn --help` to discover commands.”
+
+See [agent setup and updates](https://zinn.sh/docs/installation#use-with-coding-agents) for details.
+
 ## Data location
 
 Projects share the local database at `~/.zinn/data/zinn.sqlite`. Set `ZINN_DIR` to use another Zinn directory:
