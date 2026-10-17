@@ -9,6 +9,7 @@ import { seedBaseline } from "../packages/core/src/migrations/testing.ts";
 import { BASELINE_VERSION } from "../packages/core/src/migrations/baseline.ts";
 import { latestVersion, MIGRATIONS } from "../packages/core/src/migrations/registry.ts";
 import { createPackageTestCopy, PACKAGE_NAMES } from "./package-fixture.ts";
+import { checkSkillExamples } from "./skill-checks.ts";
 
 const REPOSITORY_DIRECTORY = fileURLToPath(new URL("..", import.meta.url));
 const PACK_CHECK_TIMEOUT_MS = 60_000;
@@ -122,6 +123,15 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
     }
     const packedCore = join(consumer, "core");
     const packedCli = join(consumer, "cli");
+    for (const runtime of ["bun", "node"]) {
+      checkSkillExamples({
+        packageDirectory: packedCli,
+        runtime: Bun.which(runtime)!,
+        entryPoint: join(packedCli, "index.js"),
+        directory: join(root, `skill-${runtime}`),
+        env: process.env,
+      });
+    }
     const coreStagingDirectory = join(coreDirectory, JSON.parse(sourceSnapshots[0]!.manifest).publishConfig.directory);
     const stagedCoreIdentityUrl = pathToFileURL(join(coreStagingDirectory, "src/release-identity.js")).href;
     // The CLI's core rebuild must leave the prepared core release intact.

@@ -21,11 +21,12 @@ type TerminalRunOptions = {
 /** Runs a CLI process with separate stdout and stderr in an explicitly selected environment. */
 export function runCli(
   args: Array<string>,
-  options: Pick<TerminalRunOptions, "env" | "cwd" | "runtime" | "cliPath">,
+  options: Pick<TerminalRunOptions, "env" | "cwd" | "runtime" | "cliPath"> & { timeoutMs?: number },
 ) {
   const proc = Bun.spawnSync([options.runtime ?? "bun", options.cliPath ?? CLI_PATH, ...args], {
     env: options.env,
     cwd: options.cwd,
+    timeout: options.timeoutMs,
   });
   return { stdout: proc.stdout.toString(), stderr: proc.stderr.toString(), code: proc.exitCode };
 }

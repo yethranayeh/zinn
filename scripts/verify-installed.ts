@@ -16,6 +16,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { createPackageTestCopy, PACKAGE_NAMES, readNodeMinimum } from "./package-fixture.ts";
 import { readVerifiedDownload } from "./archive-cache.ts";
+import { checkSkillExamples, readWorkflowSkill } from "./skill-checks.ts";
 
 const REPOSITORY_DIRECTORY = fileURLToPath(new URL("..", import.meta.url));
 const PACKAGE_CHECKS_DIRECTORY = join(REPOSITORY_DIRECTORY, "packages/core/package-checks");
@@ -283,6 +284,15 @@ async function checkRuntime(
   assert.equal(list[0].title, "Installed CLI");
   console.log(`${prefix} PASS installed bin version, project/task creation and JSON list`);
 
+  checkSkillExamples({
+    packageDirectory: installedCli,
+    runtime: runtime.executable,
+    entryPoint: join(installedCli, manifest.bin.zinn),
+    directory: join(directory, "skill-examples"),
+    env,
+  });
+  console.log(`${prefix} PASS bundled skill metadata, review version and executable examples`);
+
   for (const flags of [[], ["--json"]]) {
     const failed = await run([...command, "task", "view", "CLI-999999", ...flags], consumer, env);
     assert.notEqual(failed.code, 0);
@@ -363,6 +373,7 @@ async function checkDeclarations(consumer: string) {
 
 const root = mkdtempSync(join(tmpdir(), "zinn-installed-"));
 try {
+  readWorkflowSkill(join(REPOSITORY_DIRECTORY, "packages/cli"));
   const minimum = readNodeMinimum(REPOSITORY_DIRECTORY);
   console.log("Checking that installed Zinn works on Node without Bun, and on Bun.");
   console.log(
