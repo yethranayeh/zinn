@@ -1,4 +1,3 @@
-import { columnNameSchema } from "../schemas/column.js";
 import type {
   Activity,
   ActivityAction,
@@ -15,6 +14,8 @@ import type {
 import type { Actor } from "../schemas/actor.js";
 import type { TextEdit } from "../schemas/text-edit.js";
 
+import { CoreError } from "../errors.js";
+import { columnNameSchema } from "../schemas/column.js";
 import { descriptionSchema } from "../schemas/description.js";
 import { commentTextSchema } from "../schemas/comment.js";
 import { validateTaskInput } from "../schemas/task.js";
@@ -52,13 +53,19 @@ function requireTaskByParsedKey(parsedKey: ParsedTaskKey) {
   const { project, task } = findTaskByParsedKey(parsedKey);
 
   if (project == null) {
-    throw new Error(
+    throw new CoreError(
       `Project with key "${standardizeProjectKey(parsedKey.projectKey)}" does not exist!`,
+      "missing",
+      { entity: "project", key: standardizeProjectKey(parsedKey.projectKey) },
     );
   }
 
   if (task == null) {
-    throw new Error(`Task "${project.key}-${parsedKey.taskNumber}" does not exist!`);
+    throw new CoreError(
+      `Task "${project.key}-${parsedKey.taskNumber}" does not exist!`,
+      "missing",
+      { entity: "task", key: `${project.key}-${parsedKey.taskNumber}` },
+    );
   }
 
   return task;
@@ -67,7 +74,9 @@ function requireTaskByParsedKey(parsedKey: ParsedTaskKey) {
 export function getTaskByKey(taskKey: string) {
   const parsedKey = parseTaskKey(taskKey);
   if (parsedKey == null) {
-    throw new Error(`Invalid task key "${taskKey}". Expected format PROJECT-1`);
+    throw new CoreError(`Invalid task key "${taskKey}". Expected format PROJECT-1`, "input", {
+      field: ["taskKey"],
+    });
   }
 
   return requireTaskByParsedKey(parsedKey);
@@ -104,19 +113,30 @@ export function attachCommentKey(comment: Comment, taskKey: string): CommentWith
 export function getCommentByKey(commentKey: string): CommentWithKey {
   const commentKeyMatch = commentKeyRegex.exec(commentKey);
   if (commentKeyMatch == null) {
-    throw new Error(`Invalid comment key "${commentKey}". Expected format PROJECT-1#1`);
+    throw new CoreError(
+      `Invalid comment key "${commentKey}". Expected format PROJECT-1#1`,
+      "input",
+      { field: ["commentKey"] },
+    );
   }
 
   const parsedTaskKey = parseTaskKey(commentKeyMatch[1]!);
   if (parsedTaskKey == null) {
-    throw new Error(`Invalid comment key "${commentKey}". Expected format PROJECT-1#1`);
+    throw new CoreError(
+      `Invalid comment key "${commentKey}". Expected format PROJECT-1#1`,
+      "input",
+      { field: ["commentKey"] },
+    );
   }
 
   const taskMatch = requireTaskByParsedKey(parsedTaskKey);
   const commentNumber = Number(commentKeyMatch[2]);
   const commentMatch = dbComment.getByTaskIdAndNumber(taskMatch.id, commentNumber);
   if (commentMatch == null) {
-    throw new Error(`Comment "${taskMatch.key}#${commentNumber}" does not exist`);
+    throw new CoreError(`Comment "${taskMatch.key}#${commentNumber}" does not exist`, "missing", {
+      entity: "comment",
+      key: `${taskMatch.key}#${commentNumber}`,
+    });
   }
 
   return attachCommentKey(commentMatch, taskMatch.key);
@@ -129,7 +149,10 @@ export function resolveLabels(names: Array<string>) {
   for (const name of names) {
     const match = findByName(labels, name);
     if (match == null) {
-      throw new Error(`A label with name "${name}" does not exist`);
+      throw new CoreError(`A label with name "${name}" does not exist`, "missing", {
+        entity: "label",
+        key: name,
+      });
     }
 
     matches.set(match.id, match);
@@ -147,7 +170,10 @@ export function requireColumnByName(project: Project, projectColumns: Array<Colu
 
   if (columnMatch == null) {
     // TODO: maybe a `did you mean` type of fuzzy check for misspelllings
-    throw new Error(`${project.name} does not have a column named "${name}"`);
+    throw new CoreError(`${project.name} does not have a column named "${name}"`, "missing", {
+      entity: "column",
+      key: name,
+    });
   }
 
   return { columnMatch, columnIndex: projectColumns.indexOf(columnMatch) };
@@ -254,16 +280,18 @@ export function describeRelation(
 }
 
 /** Thrown when the text to replace does not match exactly one place, so nothing was changed. */
-export class TextEditMatchError extends Error {
+export class TextEditMatchError extends CoreError {
   override name = "TextEditMatchError";
   readonly matchCount: number;
   readonly target: string;
 
-  constructor(matchCount: number, target: string) {
+  constructor(matchCount: number, target: string, field?: string) {
     super(
       matchCount === 0
         ? `The text to replace was not found in ${target}.`
         : `The text to replace matches ${matchCount} places in ${target}. Include more of the surrounding text so it matches one place.`,
+      "conflict",
+      { reason: "text_match_count", matchCount, field: field === undefined ? undefined : [field] },
     );
     this.matchCount = matchCount;
     this.target = target;
@@ -274,7 +302,12 @@ const PARAGRAPH_BREAK = "\n\n";
 const trailingLineBreaksRegex = /[\r\n]+$/;
 
 /** Applies one edit to the stored text. `target` names the text in a match error. */
-export function applyTextEdit(current: string | null, edit: TextEdit, target: string) {
+export function applyTextEdit(
+  current: string | null,
+  edit: TextEdit,
+  target: string,
+  field?: string,
+) {
   if ("append" in edit) {
     const existingText = (current ?? "").replace(trailingLineBreaksRegex, "");
     return existingText.length === 0 ? edit.append : existingText + PARAGRAPH_BREAK + edit.append;
@@ -285,7 +318,7 @@ export function applyTextEdit(current: string | null, edit: TextEdit, target: st
   const matchCount = parts.length - 1;
   const isAmbiguous = matchCount > 1 && edit.all !== true;
   if (matchCount === 0 || isAmbiguous) {
-    throw new TextEditMatchError(matchCount, target);
+    throw new TextEditMatchError(matchCount, target, field);
   }
 
   return parts.join(edit.replace);
@@ -301,7 +334,7 @@ export function resolveDescription(
     return input;
   }
 
-  return descriptionSchema.parse(applyTextEdit(current, input, target));
+  return validateTaskInput(descriptionSchema, applyTextEdit(current, input, target, "description"));
 }
 
 /** The comment text an edit input leads to; an edit object is applied to the current text. */
@@ -310,5 +343,5 @@ export function resolveCommentText(input: string | TextEdit, current: string, ta
     return input;
   }
 
-  return validateTaskInput(commentTextSchema, applyTextEdit(current, input, target));
+  return validateTaskInput(commentTextSchema, applyTextEdit(current, input, target, "text"));
 }

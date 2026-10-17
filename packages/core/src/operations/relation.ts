@@ -2,6 +2,7 @@ import type { TaskRelation, TaskWithKey } from "../types.js";
 import type { RelationCreateInput, RelationDeleteInput } from "../schemas/relation.js";
 import type { Actor } from "../schemas/actor.js";
 
+import { CoreError } from "../errors.js";
 import { writeTransaction } from "../db.js";
 
 import * as dbTask from "../db/task.js";
@@ -24,7 +25,9 @@ type RelationGetOptions = {
 
 function getRelations(taskKey: string, options?: RelationGetOptions): Array<RelationResult> {
   if (taskKey == null) {
-    throw new Error("A task key is required to list relations");
+    throw new CoreError("A task key is required to list relations", "input", {
+      field: ["taskKey"],
+    });
   }
 
   const taskMatch = getTaskByKey(taskKey);
@@ -45,7 +48,10 @@ function resolveRelationTaskIds(props: RelationCreateInput) {
   const targetTask = getTaskByKey(props.targetTaskKey);
 
   if (sourceTask.id === targetTask.id) {
-    throw new Error("A task cannot have a relation to itself. Not appropriate.");
+    throw new CoreError("A task cannot have a relation to itself. Not appropriate.", "input", {
+      entity: "relation",
+      field: ["targetTaskKey"],
+    });
   }
 
   let sourceId = sourceTask.id;
@@ -77,18 +83,28 @@ export const relation = {
       const relationMatch = dbRelation.getByTaskIdsAndType(resolved);
 
       if (relationMatch != null) {
-        throw new Error("This relation already exists");
+        throw new CoreError("This relation already exists", "conflict", {
+          entity: "relation",
+          reason: "already_exists",
+        });
       }
 
       if (resolved.relation_type === "subtask") {
         if (dbRelation.getParentByTaskId(resolved.source_task_id) != null) {
-          throw new Error("This task already has a parent. Remove its subtask relation first.");
+          throw new CoreError(
+            "This task already has a parent. Remove its subtask relation first.",
+            "conflict",
+            { entity: "task", key: props.sourceTaskKey, reason: "parent_exists" },
+          );
         }
 
         const ancestorIds = dbRelation.getAncestorIds(resolved.target_task_id);
         const wouldCreateCycle = ancestorIds.includes(resolved.source_task_id);
         if (wouldCreateCycle) {
-          throw new Error("A subtask relation cannot create a cycle");
+          throw new CoreError("A subtask relation cannot create a cycle", "conflict", {
+            entity: "relation",
+            reason: "cycle",
+          });
         }
       }
 
@@ -117,7 +133,7 @@ export const relation = {
       const relationMatch = dbRelation.getByTaskIdsAndType(resolved);
 
       if (relationMatch == null) {
-        throw new Error("This relation does not exist");
+        throw new CoreError("This relation does not exist", "missing", { entity: "relation" });
       }
 
       const changes = describeRelation(relationMatch);

@@ -1,3 +1,4 @@
+import { CoreError } from "../errors.js";
 import type { BackupCreateInput } from "../db/backup.js";
 import type { LockWait } from "../migrations/upgrade.js";
 
@@ -25,7 +26,10 @@ export const backup = {
     const { state } = classifyDatabase(databasePath);
 
     if (state === "absent" || state === "empty") {
-      throw new Error(`There is no Zinn database at ${databasePath} to back up`);
+      throw new CoreError(`There is no Zinn database at ${databasePath} to back up`, "missing", {
+        entity: "database",
+        databasePath,
+      });
     }
 
     return dbBackup.create(databasePath, backupDirectory, input);

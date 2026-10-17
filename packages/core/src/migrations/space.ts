@@ -12,6 +12,7 @@ import { dirname } from "node:path";
 
 import { SEARCH_COMMENT_SEPARATOR } from "../search-entry.js";
 import { readSchemaVersion } from "./runner.js";
+import { CoreError } from "../errors.js";
 
 // The guesses below were checked on small test databases. They are cautious estimates, not SQLite limits.
 
@@ -341,8 +342,10 @@ export function assertFreeSpace(
     const space = read(path);
 
     if (space == null) {
-      throw new Error(
+      throw new CoreError(
         `The free disk space at ${path} is unknown, and ${required[key]} bytes are required`,
+        "storage",
+        { path },
       );
     }
 
@@ -360,8 +363,10 @@ export function assertFreeSpace(
     const requiredBytes = roundUpTo(filesystem.space.blockBytes, filesystem.required);
 
     if (filesystem.space.availableBytes < requiredBytes) {
-      throw new Error(
+      throw new CoreError(
         `Not enough free disk space at ${filesystem.paths.join(", ")}: ${requiredBytes} bytes are required and ${filesystem.space.availableBytes} are available`,
+        "storage",
+        { path: filesystem.paths[0], reason: "disk_full" },
       );
     }
   }

@@ -11,7 +11,7 @@ import type { Migration } from "./registry.js";
 import type { FreeSpace } from "./space.js";
 import type { LockOptions } from "./upgrade.js";
 
-import { existsSync, mkdirSync } from "node:fs";
+import { mkdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -38,6 +38,7 @@ import {
   spacePathsFor,
 } from "./space.js";
 import { withMigrationLock } from "./upgrade.js";
+import { CoreError } from "../errors.js";
 
 /** The name the backup is attached under while it is copied. */
 const SOURCE_SCHEMA = "restore_source";
@@ -49,7 +50,7 @@ const SEQUENCE_TABLE = "sqlite_sequence";
 const INTEGRITY_OK = "ok";
 
 /** Thrown when a backup cannot be restored, before anything in the database changed. */
-export class RestoreRefusedError extends Error {
+export class RestoreRefusedError extends CoreError {
   override name = "RestoreRefusedError";
 }
 
@@ -157,6 +158,14 @@ function newerBackupError(
 
   return new RestoreRefusedError(
     `The backup at ${path} has schema version ${version}, but this build (${client} ${buildVersion}) reaches only version ${latest}, so nothing was restored. ${advice}`,
+    "conflict",
+    {
+      entity: "backup",
+      backupPath: path,
+      schemaVersion: version,
+      supportedSchemaVersion: latest,
+      reason: "newer_database",
+    },
   );
 }
 
@@ -182,6 +191,8 @@ function readCheckedVersion(
   if (!isSound) {
     throw new RestoreRefusedError(
       `The backup at ${path} failed SQLite's integrity check (${problems[0]}), so nothing was restored`,
+      "storage",
+      { entity: "backup", backupPath: path, reason: "corrupt" },
     );
   }
 
@@ -191,6 +202,14 @@ function readCheckedVersion(
   if (version < BASELINE_VERSION) {
     throw new RestoreRefusedError(
       `The file at ${path} has no schema version, so nothing was restored. Only backups with schema versions ${BASELINE_VERSION} to ${latest} can be restored`,
+      "conflict",
+      {
+        entity: "backup",
+        backupPath: path,
+        schemaVersion: version,
+        supportedSchemaVersion: latest,
+        reason: "invalid_backup",
+      },
     );
   }
 
@@ -206,6 +225,14 @@ function readCheckedVersion(
   if (!isZinnDatabase) {
     throw new RestoreRefusedError(
       `The file at ${path} is not a Zinn database: its tables differ from the ones Zinn creates at its schema version (${version}), so nothing was restored`,
+      "conflict",
+      {
+        entity: "backup",
+        backupPath: path,
+        schemaVersion: version,
+        supportedSchemaVersion: latest,
+        reason: "invalid_backup",
+      },
     );
   }
 
@@ -222,8 +249,22 @@ export function checkBackup(
   migrations: ReadonlyArray<Migration>,
   build: BackupCreateInput,
 ): CheckedBackup {
-  if (!existsSync(path)) {
-    throw new RestoreRefusedError(`There is no file at ${path} to restore`);
+  try {
+    statSync(path);
+  } catch (error) {
+    const isMissing =
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR");
+
+    if (!isMissing) {
+      throw error;
+    }
+
+    throw new RestoreRefusedError(`There is no file at ${path} to restore`, "missing", {
+      entity: "backup",
+      backupPath: path,
+    });
   }
 
   const source = openDatabase(path, { readonly: true });
@@ -242,6 +283,14 @@ export function checkBackup(
     if (isUnreadable(error)) {
       throw new RestoreRefusedError(
         `The file at ${path} is damaged or is not a SQLite database (${(error as Error).message}), so nothing was restored`,
+        "storage",
+        {
+          entity: "backup",
+          backupPath: path,
+          reason: (error as SqliteError).code.startsWith("SQLITE_NOTADB")
+            ? "not_database"
+            : "corrupt",
+        },
         { cause: error },
       );
     }

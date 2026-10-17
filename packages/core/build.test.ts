@@ -54,7 +54,15 @@ test("emitted core works on both runtimes and its declarations need no Bun types
         assert.equal(createdTask.key, "BUILD-1");
         assert.equal(core.task.search({ query: "searchable" }).tasks[0].id, createdTask.id);
         assert.equal(core.task.getByKey(createdTask.key).title, "Emitted JavaScript");
-        assert.throws(() => core.task.create({ project_id: createdProject.id, title: "invalid", priority: "invalid" }, actor));
+        assert.throws(
+          () => core.task.create({ project_id: createdProject.id, title: "invalid", priority: "invalid" }, actor),
+          (error) => error instanceof core.InputValidationError && error.kind === "input" && error.facts.field[0] === "priority",
+        );
+        assert.throws(
+          () => core.task.getByKey("BUILD-404"),
+          (error) => error instanceof core.CoreError && error.kind === "missing" && error.facts.key === "BUILD-404",
+        );
+        assert.throws(() => getDb().exec("SELECT * FROM absent_table"), core.SqliteError);
         assert.equal(core.task.getAll({ projectKey: createdProject.key }).length, 1);
         core.project.edit({ projectKey: "BUILD", name: "Identity" }, {
           name: null, email: null, kind: "agent", source: "adapter/build-check",
@@ -82,12 +90,16 @@ test("emitted core works on both runtimes and its declarations need no Bun types
     run(["bun", "run", "test:node", runtimeCheck]);
 
     writeFileSync(join(directory, "consumer.mts"), `
-      import { activity, project, task, configureDatabase, type Activity, type Actor, type TaskWithKey } from "@zinn-dev/core";
+      import { activity, project, task, configureDatabase, CoreError, InputValidationError, SqliteError, type FailureFacts, type Activity, type Actor, type TaskWithKey } from "@zinn-dev/core";
       const actor: Actor = { name: "consumer", email: "consumer@example.test", kind: "human" };
       configureDatabase({ client: "consumer", version: "1.0.0", executable: "consumer.mts", release: "source", allowsLegacyRead: false });
       const createdProject = project.create({ key: "TYPES" }, actor);
       const createdTask: TaskWithKey = task.create({ project_id: createdProject.id, title: "Declarations", priority: "high" }, actor);
       const key: string = createdTask.key;
+      const failureFacts: FailureFacts = { entity: "task", key };
+      const failure: Error = new CoreError("Missing task", "missing", failureFacts);
+      const validation: Error = new InputValidationError([{ code: "invalid_type", path: ["title"], message: "Invalid title" }]);
+      const sqlite: Error = new SqliteError("Busy", 5, null);
       const events: Activity[] = activity.getAll({ sessionId: "conversation", threadId: "child", limit: 1 });
       // @ts-expect-error priority is a public vocabulary, not an arbitrary string.
       task.create({ project_id: createdProject.id, title: "Invalid", priority: "invalid" }, actor);

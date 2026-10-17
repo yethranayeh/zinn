@@ -1,4 +1,6 @@
 import { z } from "zod";
+
+import { InputValidationError } from "../errors.js";
 import { titleTextSchema } from "./title-text.js";
 import { descriptionSchema, descriptionEditSchema } from "./description.js";
 
@@ -37,7 +39,7 @@ export type ProjectEditInput = z.infer<typeof projectEditSchema>;
 export function validateProjectInput<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {
   const result = schema.safeParse(input);
   if (!result.success) {
-    throw new Error(result.error.issues.map((issue) => issue.message).join("\n"));
+    throw new InputValidationError(result.error.issues);
   }
 
   return result.data;

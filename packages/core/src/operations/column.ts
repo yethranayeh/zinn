@@ -1,3 +1,4 @@
+import { CoreError } from "../errors.js";
 import type { ColumnCreateInput, ColumnEditInput, ColumnOrderInput } from "../schemas/column.js";
 import type { Actor } from "../schemas/actor.js";
 import type { OrderPlacement } from "./shared.js";
@@ -21,7 +22,11 @@ function requireProjectColumns(projectKey: string) {
   const project = dbProject.getByKey(projectKey);
 
   if (project == null) {
-    throw new Error(`Project with key "${standardizeProjectKey(projectKey)}" does not exist!`);
+    throw new CoreError(
+      `Project with key "${standardizeProjectKey(projectKey)}" does not exist!`,
+      "missing",
+      { entity: "project", key: standardizeProjectKey(projectKey) },
+    );
   }
 
   return { project, projectColumns: dbColumn.getAllByProjectId(project.id) };
@@ -60,7 +65,11 @@ export const column = {
       const existingColumn = findByName(allProjectColumns, props.name);
 
       if (existingColumn != null) {
-        throw new Error(`There is already a "${props.name}" column`);
+        throw new CoreError(
+          `There is already a "${props.name}" column`,
+          "conflict",
+          { entity: "column", key: props.name, reason: "already_exists" },
+        );
       }
 
       const lastColOrder = allProjectColumns[allProjectColumns.length - 1]?.column_order ?? null;
@@ -98,7 +107,11 @@ export const column = {
       const isTakenByAnotherColumn = existingColumn != null && existingColumn.id !== columnMatch.id;
 
       if (isTakenByAnotherColumn) {
-        throw new Error(`There is already a "${props.name}" column`);
+        throw new CoreError(
+          `There is already a "${props.name}" column`,
+          "conflict",
+          { entity: "column", key: props.name, reason: "already_exists" },
+        );
       }
 
       const now = Date.now();

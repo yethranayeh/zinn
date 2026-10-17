@@ -15,6 +15,8 @@ import {
   spacePathsFor,
 } from "./space.js";
 import { withMigrationLock } from "./upgrade.js";
+import { CoreError } from "../errors.js";
+import { BASELINE_VERSION } from "./baseline.js";
 
 export type ReindexOptions = LockOptions & {
   migrations?: ReadonlyArray<Migration>;
@@ -50,8 +52,21 @@ export function reindexSearch(
     const latest = latestVersion(migrations);
 
     if (version !== latest) {
-      throw new Error(
+      throw new CoreError(
         `The database at ${databasePath} has schema version ${version}, and this build rebuilds the search index only at version ${latest}. It was left unchanged`,
+        "conflict",
+        {
+          entity: "database",
+          databasePath,
+          schemaVersion: version,
+          supportedSchemaVersion: latest,
+          reason:
+            version < BASELINE_VERSION
+              ? "unmarked_database"
+              : version > latest
+                ? "newer_database"
+                : "older_database",
+        },
       );
     }
 

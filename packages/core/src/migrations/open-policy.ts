@@ -9,6 +9,7 @@ import type { LockWait } from "./upgrade.js";
 
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
+import { CoreError } from "../errors.js";
 
 /** What a client tells core about itself before core opens the database. */
 export type OpenPolicy = {
@@ -129,23 +130,42 @@ export type DatabaseFacts = {
 };
 
 /** Thrown before any SQL runs when a change is asked of a database that opened read-only. */
-export class ReadOnlyDatabaseError extends Error {
+export class ReadOnlyDatabaseError extends CoreError {
   override name = "ReadOnlyDatabaseError";
   readonly reason: ReadOnlyReason;
 
   constructor(reason: ReadOnlyReason, facts: DatabaseFacts, policy: OpenPolicy) {
-    super(describeReadOnly(reason, facts, policy));
+    super(describeReadOnly(reason, facts, policy), "conflict", {
+      entity: "database",
+      databasePath: facts.databasePath,
+      schemaVersion: facts.version,
+      supportedSchemaVersion: facts.latestVersion,
+      reason:
+        reason === "older"
+          ? "older_database"
+          : reason === "newer"
+            ? "newer_database"
+            : "unmarked_database",
+    });
     this.reason = reason;
   }
 }
 
 /** Thrown when the database has no schema version and the client did not allow legacy reads. */
-export class UnmarkedDatabaseError extends Error {
+export class UnmarkedDatabaseError extends CoreError {
   override name = "UnmarkedDatabaseError";
 
-  constructor({ databasePath }: DatabaseFacts) {
+  constructor({ databasePath, version, latestVersion }: DatabaseFacts) {
     super(
       `The database at ${databasePath} has no schema version, so it was not opened and was left unchanged. Zinn changes it only after its schema is verified and adopted as version 1, and reads it only when the client allows best-effort legacy reads`,
+      "conflict",
+      {
+        entity: "database",
+        databasePath,
+        schemaVersion: version,
+        supportedSchemaVersion: latestVersion,
+        reason: "unmarked_database",
+      },
     );
   }
 }

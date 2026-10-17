@@ -1,6 +1,12 @@
 import type { ProjectCreateInput, ProjectEditInput } from "../schemas/project.js";
 import type { Actor } from "../schemas/actor.js";
-import { validateProjectInput, projectCreateSchema, projectEditSchema } from "../schemas/project.js";
+
+import {
+  validateProjectInput,
+  projectCreateSchema,
+  projectEditSchema,
+} from "../schemas/project.js";
+import { CoreError } from "../errors.js";
 import { actorSchema } from "../schemas/actor.js";
 import { validateTaskInput } from "../schemas/task.js";
 
@@ -28,7 +34,11 @@ export const project = {
       const existingProject = dbProject.getByKey(props.key);
 
       if (existingProject != null) {
-        throw new Error(`Project with key "${existingProject.key}" already exists!`);
+        throw new CoreError(
+          `Project with key "${existingProject.key}" already exists!`,
+          "conflict",
+          { entity: "project", key: existingProject.key, reason: "already_exists" },
+        );
       }
 
       const key = standardizeProjectKey(props.key);
@@ -77,8 +87,10 @@ export const project = {
       const projectMatch = dbProject.getByKey(props.projectKey);
 
       if (projectMatch == null) {
-        throw new Error(
+        throw new CoreError(
           `Project with key "${standardizeProjectKey(props.projectKey)}" does not exist!`,
+          "missing",
+          { entity: "project", key: standardizeProjectKey(props.projectKey) },
         );
       }
 
@@ -125,7 +137,10 @@ export const project = {
       const projectMatch = dbProject.getByKey(key);
 
       if (projectMatch == null) {
-        throw new Error(`Project with key "${key}" does not exist!`);
+        throw new CoreError(`Project with key "${key}" does not exist!`, "missing", {
+          entity: "project",
+          key,
+        });
       }
 
       const columns = dbColumn

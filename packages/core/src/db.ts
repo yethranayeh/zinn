@@ -8,7 +8,6 @@ import type {
 } from "./migrations/open-policy.js";
 
 import { existsSync } from "node:fs";
-
 import { openDatabase } from "#sqlite";
 
 import { getStorage } from "./constant.js";
@@ -27,6 +26,7 @@ import { createSchema, SchemaNotEmptyError } from "./migrations/runner.js";
 import { upgradeDatabase } from "./migrations/upgrade.js";
 import { readCoreReleaseMode } from "./release.js";
 import { attachSuppressed, SqliteError } from "./sqlite/database.js";
+import { rethrowSearchError } from "./search-error.js";
 
 let db: Database | null = null;
 let policy: OpenPolicy = DEFAULT_OPEN_POLICY;
@@ -240,5 +240,9 @@ export function assertWritable() {
 /** Runs fn in one write transaction once the database accepts changes. Every core mutation uses it. */
 export function writeTransaction<T>(fn: () => T): T {
   assertWritable();
-  return getDb().transaction(fn).immediate();
+  try {
+    return getDb().transaction(fn).immediate();
+  } catch (error) {
+    rethrowSearchError(error);
+  }
 }

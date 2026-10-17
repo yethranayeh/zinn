@@ -1,7 +1,7 @@
 import type { Database } from "../sqlite/database.js";
 import type { Migration } from "./registry.js";
 
-import { existsSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 import { openDatabase } from "#sqlite";
@@ -65,25 +65,22 @@ export function classifyDatabase(
   migrations: ReadonlyArray<Migration> = MIGRATIONS,
   options: { queryOnly?: boolean } = {},
 ): DatabaseClassification {
-  if (options.queryOnly) {
-    try {
-      statSync(databasePath);
-    } catch (error) {
-      const isMissing =
-        error instanceof Error &&
-        "code" in error &&
-        (error.code === "ENOENT" || error.code === "ENOTDIR");
+  try {
+    statSync(databasePath);
+  } catch (error) {
+    const isMissing =
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR");
 
-      if (!isMissing) {
-        throw error;
-      }
-      return { state: "absent", version: 0, latestVersion: latestVersion(migrations) };
+    if (!isMissing) {
+      throw error;
     }
-
-    return withDatabaseInspection(databasePath, (db) => classifyConnection(db, migrations));
-  }
-  if (!existsSync(databasePath)) {
     return { state: "absent", version: 0, latestVersion: latestVersion(migrations) };
+  }
+
+  if (options.queryOnly) {
+    return withDatabaseInspection(databasePath, (db) => classifyConnection(db, migrations));
   }
 
   const db = openDatabase(databasePath);

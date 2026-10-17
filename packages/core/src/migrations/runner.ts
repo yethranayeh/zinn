@@ -9,6 +9,7 @@ import type { Migration } from "./registry.js";
 import { attachSuppressed } from "../sqlite/database.js";
 import { BASELINE_VERSION, createBaseline } from "./baseline.js";
 import { assertMigrationOrder, latestVersion, MIGRATIONS } from "./registry.js";
+import { CoreError } from "../errors.js";
 
 /** SQLite's default `user_version`, which no Zinn version writes, making it an **unmarked** DB. */
 const UNMARKED_VERSION = 0;
@@ -132,8 +133,15 @@ export function assertUpgradable(version: number, migrations: ReadonlyArray<Migr
   const isSupported = version >= BASELINE_VERSION && version <= targetVersion;
 
   if (!isSupported) {
-    throw new Error(
+    throw new CoreError(
       `Only schema versions ${BASELINE_VERSION} to ${targetVersion} can be upgraded, and this database has version ${version}`,
+      "conflict",
+      {
+        entity: "database",
+        schemaVersion: version,
+        supportedSchemaVersion: targetVersion,
+        reason: version < BASELINE_VERSION ? "unmarked_database" : "newer_database",
+      },
     );
   }
 }

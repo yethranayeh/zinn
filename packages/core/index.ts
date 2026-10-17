@@ -47,6 +47,7 @@ export type { Settings } from "./src/schemas/settings.js";
 export type { ResolvedSettings, SettingsFile, SettingsInputs } from "./src/settings.js";
 export type { SettingsFileInspection, SettingsInspection } from "./src/settings.js";
 export type { StoreInfo } from "./src/operations/info.js";
+export type { FailureKind, FailureFacts, ValidationIssue } from "./src/errors.js";
 
 export {
   labelCreateSchema,
@@ -99,3 +100,5 @@ export { assertWritable, configureDatabase } from "./src/db.js";
 export { ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./src/migrations/open-policy.js";
 export { getStorage } from "./src/constant.js";
 export { info } from "./src/operations/info.js";
+export { CoreError, InputValidationError } from "./src/errors.js";
+export { SqliteError } from "./src/sqlite/database.js";

@@ -1,5 +1,6 @@
 import type { LockWait } from "../migrations/upgrade.js";
 
+import { CoreError } from "../errors.js";
 import { assertWritable, getDb } from "../db.js";
 import { getStorage } from "../constant.js";
 import { classifyDatabase } from "../migrations/classify.js";
@@ -18,7 +19,10 @@ export const reindex = {
     const { state } = classifyDatabase(databasePath);
 
     if (state === "absent" || state === "empty") {
-      throw new Error(`There is no Zinn database at ${databasePath} to reindex`);
+      throw new CoreError(`There is no Zinn database at ${databasePath} to reindex`, "missing", {
+        entity: "database",
+        databasePath,
+      });
     }
 
     assertWritable();

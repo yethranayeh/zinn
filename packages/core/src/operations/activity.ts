@@ -1,3 +1,4 @@
+import { CoreError } from "../errors.js";
 import type { ActivityListInput } from "../schemas/activity.js";
 
 import {
@@ -95,12 +96,23 @@ export const activity = {
     const matches = dbActivity.getByIdPrefix(hexPrefix);
 
     if (matches.length === 0) {
-      throw new Error(`No activity matches "${id}"`);
+      throw new CoreError(`No activity matches "${id}"`, "missing", {
+        entity: "activity",
+        key: id,
+      });
     }
 
     if (matches.length > 1) {
-      throw new Error(
+      throw new CoreError(
         `Activity ID "${id}" is ambiguous. Candidates: ${matches.map((event) => event.id).join(", ")}. Provide more characters`,
+        "conflict",
+        {
+          entity: "activity",
+          key: id,
+          reason: "ambiguous_reference",
+          matchCount: matches.length,
+          candidateIds: matches.map((event) => event.id),
+        },
       );
     }
 

@@ -12,7 +12,9 @@ import type { OrderPlacement } from "./shared.js";
 import { v7 as uuidv7 } from "uuid";
 import { generateKeyBetween } from "fractional-indexing";
 
+import { CoreError } from "../errors.js";
 import { writeTransaction } from "../db.js";
+import { rethrowSearchError } from "../search-error.js";
 import { taskLabelSchema } from "../schemas/label.js";
 
 import * as dbProject from "../db/project.js";
@@ -127,7 +129,11 @@ function moveTask(props: { taskKey: string; targetColumn: string }, actor: Actor
   const taskMatch = getTaskByKey(props.taskKey);
 
   if (taskMatch.archived_at != null) {
-    throw new Error(`Archived task "${props.taskKey}" cannot be moved`);
+    throw new CoreError(`Archived task "${props.taskKey}" cannot be moved`, "conflict", {
+      entity: "task",
+      key: taskMatch.key,
+      reason: "archived",
+    });
   }
 
   const projectMatch = dbProject.getById(taskMatch.project_id)!;
@@ -223,7 +229,15 @@ export const task = {
       const project = dbProject.getById(task.project_id);
       const counter = dbProject.incrementTaskCounterById(task.project_id);
 
-      if (project == null || counter == null) {
+      if (project == null) {
+        throw new CoreError(
+          `Project's next task number could not be retrieved  (ID:${task.project_id})`,
+          "missing",
+          { entity: "project", key: task.project_id },
+        );
+      }
+
+      if (counter == null) {
         throw new Error(
           `Project's next task number could not be retrieved  (ID:${task.project_id})`,
         );
@@ -235,7 +249,11 @@ export const task = {
           ? projectColumns[0]
           : requireColumnByName(project, projectColumns, task.columnName).columnMatch;
       if (initialColumn == null) {
-        throw new Error(`Project "${project.key}" does not have any columns`);
+        throw new CoreError(`Project "${project.key}" does not have any columns`, "conflict", {
+          entity: "project",
+          key: project.key,
+          reason: "no_columns",
+        });
       }
 
       const lastTask = dbTask.getLastByColumnId(initialColumn.id);
@@ -295,7 +313,10 @@ export const task = {
     const taskProject = dbProject.getByKey(props.projectKey);
 
     if (taskProject == null) {
-      throw new Error(`Project with key "${props.projectKey}" does not exist!`);
+      throw new CoreError(`Project with key "${props.projectKey}" does not exist!`, "missing", {
+        entity: "project",
+        key: props.projectKey,
+      });
     }
 
     const taskMatches = filterTasksByLabels(
@@ -316,7 +337,10 @@ export const task = {
       const projectMatch = dbProject.getByKey(props.projectKey);
 
       if (projectMatch == null) {
-        throw new Error(`Project with key "${props.projectKey}" does not exist!`);
+        throw new CoreError(`Project with key "${props.projectKey}" does not exist!`, "missing", {
+          entity: "project",
+          key: props.projectKey,
+        });
       }
 
       projectId = projectMatch.id;
@@ -327,8 +351,16 @@ export const task = {
       keyMatch != null && (projectId == null || keyMatch.project_id === projectId);
     const pinnedTasks = isKeyMatchInScope ? [keyMatch] : [];
 
-    const textMatches = dbSearch
-      .searchTasks({ match: getSearchMatchExpression(props.query), projectId })
+    let searchRows;
+    try {
+      searchRows = dbSearch.searchTasks({
+        match: getSearchMatchExpression(props.query),
+        projectId,
+      });
+    } catch (error) {
+      rethrowSearchError(error);
+    }
+    const textMatches = searchRows
       .filter((row) => !pinnedTasks.some((pinned) => pinned.id === row.id))
       .map(({ project_key, ...row }) => attachTaskKey(row, project_key));
 
@@ -472,7 +504,11 @@ export const task = {
       const taskMatch = getTaskByKey(taskKey);
 
       if (taskMatch.archived_at != null) {
-        throw new Error(`Archived task "${taskKey}" cannot be reordered`);
+        throw new CoreError(`Archived task "${taskKey}" cannot be reordered`, "conflict", {
+          entity: "task",
+          key: taskMatch.key,
+          reason: "archived",
+        });
       }
 
       const allTasks = dbTask.getAllByColumnId(taskMatch.column_id);
@@ -496,19 +532,27 @@ export const task = {
           }
 
           if (targetTask.project_id !== taskMatch.project_id) {
-            throw new Error(
+            throw new CoreError(
               `Tasks "${taskKey}" and "${props.targetTaskKey}" must be in the same project`,
+              "conflict",
+              { entity: "task", key: taskMatch.key, reason: "different_project" },
             );
           }
 
           if (targetTask.column_id !== taskMatch.column_id) {
-            throw new Error(
+            throw new CoreError(
               `Tasks "${taskKey}" and "${props.targetTaskKey}" must be in the same column`,
+              "conflict",
+              { entity: "task", key: taskMatch.key, reason: "different_column" },
             );
           }
 
           if (targetTask.archived_at != null) {
-            throw new Error(`Archived task "${props.targetTaskKey}" cannot be an ordering target`);
+            throw new CoreError(
+              `Archived task "${props.targetTaskKey}" cannot be an ordering target`,
+              "conflict",
+              { entity: "task", key: targetTask.key, reason: "archived" },
+            );
           }
 
           const targetIndex = allTasks.findIndex((candidate) => candidate.id === targetTask.id);

@@ -1,3 +1,4 @@
+import { CoreError } from "../errors.js";
 import type { LabelCreateInput, LabelDeleteInput, LabelEditInput } from "../schemas/label.js";
 import type { Actor } from "../schemas/actor.js";
 
@@ -30,7 +31,11 @@ export const label = {
 
     return writeTransaction(() => {
       if (findLabelByName(props.name) != null) {
-        throw new Error(`A label with name "${props.name}" already exists`);
+        throw new CoreError(`A label with name "${props.name}" already exists`, "conflict", {
+          entity: "label",
+          key: props.name,
+          reason: "already_exists",
+        });
       }
 
       const createdLabel = dbLabel.create({
@@ -80,7 +85,11 @@ export const label = {
 
       const existingLabel = findLabelByName(name);
       if (existingLabel != null && existingLabel.id !== match.id) {
-        throw new Error(`A label with name "${name}" already exists`);
+        throw new CoreError(`A label with name "${name}" already exists`, "conflict", {
+          entity: "label",
+          key: name,
+          reason: "already_exists",
+        });
       }
 
       const changes: Record<string, unknown> = {};

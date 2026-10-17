@@ -1,4 +1,5 @@
 import type { Settings } from "./schemas/settings.js";
+import type { FailureFacts, FailureKind } from "./errors.js";
 
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -6,6 +7,7 @@ import { z } from "zod";
 
 import { settingsSchema } from "./schemas/settings.js";
 import { MAIN_FOLDER_NAME } from "./constant.js";
+import { CoreError, InputValidationError } from "./errors.js";
 
 export const GLOBAL_SETTINGS_FILE_NAME = "settings.json";
 export const LOCAL_SETTINGS_FILE_NAME = "zinn.local.json";
@@ -45,8 +47,19 @@ export type SettingsInspection = Pick<ResolvedSettings, "global" | "local"> & {
 };
 
 /** An error that names the file and the problem. */
-function settingsFileError(path: string, problem: string) {
-  return new Error(`Cannot use settings file ${path}: ${problem}`);
+function settingsFileError(
+  path: string,
+  problem: string,
+  kind: FailureKind,
+  facts: FailureFacts,
+  cause: unknown,
+) {
+  return new CoreError(
+    `Cannot use settings file ${path}: ${problem}`,
+    kind,
+    { ...facts, settingsPath: path },
+    { cause },
+  );
 }
 
 /** Error codes for a file that does not exist: ENOTDIR when a folder on its path is a file. */
@@ -68,6 +81,9 @@ function readSettingsFile(path: string): SettingsFile | null {
     throw settingsFileError(
       path,
       `it cannot be read (${error instanceof Error ? error.message : String(error)})`,
+      "storage",
+      {},
+      error,
     );
   }
 
@@ -79,12 +95,23 @@ function readSettingsFile(path: string): SettingsFile | null {
     throw settingsFileError(
       path,
       `it is not valid JSON (${error instanceof Error ? error.message : String(error)})`,
+      "input",
+      { reason: "invalid_json" },
+      error,
     );
   }
 
   const result = settingsSchema.safeParse(parsed);
   if (!result.success) {
-    throw settingsFileError(path, `it has invalid settings\n${z.prettifyError(result.error)}`);
+    const validation = new InputValidationError(result.error.issues);
+
+    throw settingsFileError(
+      path,
+      `it has invalid settings\n${z.prettifyError(result.error)}`,
+      "input",
+      { reason: "invalid_settings", field: validation.facts.field },
+      result.error,
+    );
   }
 
   return { path, settings: result.data };

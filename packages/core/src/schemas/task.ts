@@ -1,4 +1,6 @@
 import { z } from "zod";
+
+import { InputValidationError } from "../errors.js";
 import { titleTextSchema } from "./title-text.js";
 import { columnNameSchema } from "./column.js";
 
@@ -106,7 +108,7 @@ export type TaskSearchInput = z.infer<typeof taskSearchSchema>;
 export function validateTaskInput<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {
   const result = schema.safeParse(input);
   if (!result.success) {
-    throw new Error(result.error.issues.map((issue) => issue.message).join("\n"));
+    throw new InputValidationError(result.error.issues);
   }
 
   return result.data;

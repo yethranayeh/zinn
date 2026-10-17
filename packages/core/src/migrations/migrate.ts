@@ -7,9 +7,10 @@ import { applyConnectionSettings } from "../connection.js";
 import { attachSuppressed } from "../sqlite/database.js";
 import { classifyDatabase } from "./classify.js";
 import { upgradeDatabase } from "./upgrade.js";
+import { CoreError } from "../errors.js";
 
 /** Thrown when the database is in a state that `migrate` leaves alone, so nothing was attempted. */
-export class MigrationRefusedError extends Error {
+export class MigrationRefusedError extends CoreError {
   override name = "MigrationRefusedError";
 }
 
@@ -27,7 +28,7 @@ export type MigrateOptions = Omit<UpgradeOptions, "backup"> & {
   backup: UpgradeOptions["backup"] & BackupCreateInput;
 };
 
-function newerDatabaseError(
+function generateNewerDatabaseError(
   databasePath: string,
   version: number,
   latestVersion: number,
@@ -35,6 +36,14 @@ function newerDatabaseError(
 ) {
   return new MigrationRefusedError(
     `The database at ${databasePath} has schema version ${version}, but this build (${client} ${buildVersion}) reaches only version ${latestVersion}. It was left unchanged. Use a newer Zinn version`,
+    "conflict",
+    {
+      entity: "database",
+      databasePath,
+      schemaVersion: version,
+      supportedSchemaVersion: latestVersion,
+      reason: "newer_database",
+    },
   );
 }
 
@@ -54,13 +63,23 @@ export function migrateDatabase(
     case "empty":
       throw new MigrationRefusedError(
         `There is no Zinn database with data at ${databasePath} to upgrade. A new database is created with the latest schema the first time Zinn writes to it`,
+        "missing",
+        { entity: "database", databasePath },
       );
     case "unmarked":
       throw new MigrationRefusedError(
         `The database at ${databasePath} has no schema version, so it cannot be upgraded until its schema is verified and adopted as version 1`,
+        "conflict",
+        {
+          entity: "database",
+          databasePath,
+          schemaVersion: version,
+          supportedSchemaVersion: latestVersion,
+          reason: "unmarked_database",
+        },
       );
     case "newer":
-      throw newerDatabaseError(databasePath, version, latestVersion, backup);
+      throw generateNewerDatabaseError(databasePath, version, latestVersion, backup);
     case "current":
       return {
         databasePath,
@@ -83,7 +102,7 @@ export function migrateDatabase(
 
     // Another caller may have upgraded the database to a newer build's version while this waited.
     if (result.status === "newer") {
-      throw newerDatabaseError(databasePath, result.previousVersion, latestVersion, backup);
+      throw generateNewerDatabaseError(databasePath, result.previousVersion, latestVersion, backup);
     }
 
     const { status: _status, ...migrated } = result;

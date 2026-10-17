@@ -11,6 +11,7 @@ import type { FreeSpace } from "./space.js";
 import { mkdirSync } from "node:fs";
 
 import * as dbBackup from "../db/backup.js";
+import { CoreError } from "../errors.js";
 import { SqliteError } from "../sqlite/database.js";
 import { assertMigrationOrder, latestVersion, MIGRATIONS } from "./registry.js";
 import {
@@ -78,8 +79,10 @@ function lockTimeoutError(
 ) {
   const seconds = (waitedMs / MS_PER_SECOND).toFixed(1);
 
-  return new Error(
+  return new CoreError(
     `Waited ${seconds} seconds for another writer to finish with the database at ${databasePath}, so this ${operation} stopped and applied no changes. Retry once the other writer finishes.`,
+    "storage",
+    { entity: "database", databasePath, reason: "busy" },
     { cause },
   );
 }
