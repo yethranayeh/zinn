@@ -71,7 +71,7 @@ function expandHome(directory: string, home: string) {
  * A relative folder resolves against the folder of the file that sets it.
  */
 function chooseFromSettings(
-  { local, global }: ResolvedSettings,
+  { local, global }: Pick<ResolvedSettings, "global" | "local">,
   home: string,
 ): SettingsChoice | null {
   const candidates = [
@@ -135,10 +135,12 @@ function refuseOutsideTemporaryInTestRun(
  *  settings file, then in the global one, then the default folder.
  * The selected settings files are validated before the store is resolved.
  */
-export function resolveStorage(inputs: StorageInputs): Storage {
+export function resolveStorage(
+  inputs: StorageInputs,
+  settings: Pick<ResolvedSettings, "global" | "local"> = resolveSettings(inputs),
+): Storage {
   const { env, home } = inputs;
   const defaultDirectory = join(home, MAIN_FOLDER_NAME);
-  const settings = resolveSettings(inputs);
 
   if (env.ZINN_DIR !== undefined) {
     return { ...storagePaths(env.ZINN_DIR), source: "env", defaultDirectory };

@@ -18,6 +18,18 @@ type TerminalRunOptions = {
   cliPath?: string;
 };
 
+/** Runs a CLI process with separate stdout and stderr in an explicitly selected environment. */
+export function runCli(
+  args: Array<string>,
+  options: Pick<TerminalRunOptions, "env" | "cwd" | "runtime" | "cliPath">,
+) {
+  const proc = Bun.spawnSync([options.runtime ?? "bun", options.cliPath ?? CLI_PATH, ...args], {
+    env: options.env,
+    cwd: options.cwd,
+  });
+  return { stdout: proc.stdout.toString(), stderr: proc.stderr.toString(), code: proc.exitCode };
+}
+
 /**
  * Shared by CLI tests: runs the CLI in a pseudo-terminal, so stdin and stdout are TTYs.
  * stdout and stderr arrive merged, and the terminal's "\r\n" line endings are normalized.
@@ -29,9 +41,17 @@ export async function runCliInTerminal(args: Array<string>, options: TerminalRun
   let inputSent = false;
 
   const command = [options.runtime ?? "bun", options.cliPath ?? CLI_PATH, ...args];
-  const terminalCommand = options.stderrPath === undefined
-    ? command
-    : ["/bin/sh", "-c", 'exec 2>"$1"; shift; exec "$@"', "zinn-terminal", options.stderrPath, ...command];
+  const terminalCommand =
+    options.stderrPath === undefined
+      ? command
+      : [
+          "/bin/sh",
+          "-c",
+          'exec 2>"$1"; shift; exec "$@"',
+          "zinn-terminal",
+          options.stderrPath,
+          ...command,
+        ];
   const proc = Bun.spawn(terminalCommand, {
     cwd: options.cwd,
     env: options.env,
@@ -39,8 +59,11 @@ export async function runCliInTerminal(args: Array<string>, options: TerminalRun
       cols: options.columns ?? DEFAULT_TERMINAL_COLUMNS,
       data: (terminal, data) => {
         output += decoder.decode(data, { stream: true });
-        const shouldSendInput = options.input !== undefined && options.inputWhen !== undefined
-          && !inputSent && output.includes(options.inputWhen);
+        const shouldSendInput =
+          options.input !== undefined &&
+          options.inputWhen !== undefined &&
+          !inputSent &&
+          output.includes(options.inputWhen);
         if (shouldSendInput) {
           inputSent = true;
           terminal.write(options.input!);

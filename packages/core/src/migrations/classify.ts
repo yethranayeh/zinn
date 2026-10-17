@@ -1,7 +1,8 @@
 import type { Database } from "../sqlite/database.js";
 import type { Migration } from "./registry.js";
 
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 
 import { openDatabase } from "#sqlite";
 
@@ -62,7 +63,25 @@ export function classifyConnection(
 export function classifyDatabase(
   databasePath: string,
   migrations: ReadonlyArray<Migration> = MIGRATIONS,
+  options: { queryOnly?: boolean } = {},
 ): DatabaseClassification {
+  if (options.queryOnly) {
+    try {
+      statSync(databasePath);
+    } catch (error) {
+      const isMissing =
+        error instanceof Error &&
+        "code" in error &&
+        (error.code === "ENOENT" || error.code === "ENOTDIR");
+
+      if (!isMissing) {
+        throw error;
+      }
+      return { state: "absent", version: 0, latestVersion: latestVersion(migrations) };
+    }
+
+    return withDatabaseInspection(databasePath, (db) => classifyConnection(db, migrations));
+  }
   if (!existsSync(databasePath)) {
     return { state: "absent", version: 0, latestVersion: latestVersion(migrations) };
   }
@@ -85,4 +104,39 @@ export function classifyDatabase(
 
   db.close();
   return classification;
+}
+
+/** Inspects an existing database without application writes or schema initialization. */
+export function withDatabaseInspection<T>(databasePath: string, inspect: (db: Database) => T): T {
+  const url = pathToFileURL(databasePath);
+  url.searchParams.set("mode", "rw");
+  const db = openDatabase(url.href);
+  let result: T;
+
+  try {
+    db.exec("PRAGMA query_only = ON");
+    applyConnectionSettings(db);
+    db.exec("BEGIN");
+    result = inspect(db);
+    db.exec("ROLLBACK");
+  } catch (error) {
+    if (db.inTransaction) {
+      try {
+        db.exec("ROLLBACK");
+      } catch (rollbackError) {
+        attachSuppressed(error, rollbackError);
+      }
+    }
+
+    try {
+      db.close();
+    } catch (closeError) {
+      attachSuppressed(error, closeError);
+    }
+
+    throw error;
+  }
+
+  db.close();
+  return result;
 }

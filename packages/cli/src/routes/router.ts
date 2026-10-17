@@ -17,6 +17,11 @@ import {
   validateUniqueOptions,
 } from "../lib.js";
 
+// ZINN_DEBUG=1 prints routing detail on stderr, so stdout and `--json` results stay unchanged.
+function isDebugOutputEnabled() {
+  return process.env.ZINN_DEBUG === "1";
+}
+
 function getIsRunnable(obj: any): obj is Command {
   return Object.hasOwn(obj, "run");
 }
@@ -148,8 +153,8 @@ function routeToNamespace(
 
 export function parseRoutes(routesDef: RouteDef, prefix?: string) {
   const routeDefinitions: Array<ParsedRoute> = [];
-  if (process.env.DEBUG) {
-    console.debug(`::router.parseRoutes[${prefix ?? ""}]`, routesDef);
+  if (isDebugOutputEnabled()) {
+    console.error(`::router.parseRoutes[${prefix ?? ""}]`, routesDef);
   }
 
   for (const key of Object.keys(routesDef)) {
@@ -204,8 +209,8 @@ async function route(parsedRoutes: Array<ParsedRoute>, rawArgs: Array<string>) {
     }
   }
 
-  if (process.env.DEBUG) {
-    console.log("::router.route", { args, result: parsedRoutes.map((r) => r.command), match });
+  if (isDebugOutputEnabled()) {
+    console.error("::router.route", { args, result: parsedRoutes.map((r) => r.command), match });
   }
 
   if (match == null) {

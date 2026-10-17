@@ -45,6 +45,8 @@ export type { DatabaseFacts, OpenPolicy, ReadOnlyReason } from "./src/migrations
 export type { ReleaseMode } from "./src/release.js";
 export type { Settings } from "./src/schemas/settings.js";
 export type { ResolvedSettings, SettingsFile, SettingsInputs } from "./src/settings.js";
+export type { SettingsFileInspection, SettingsInspection } from "./src/settings.js";
+export type { StoreInfo } from "./src/operations/info.js";
 
 export {
   labelCreateSchema,
@@ -79,7 +81,7 @@ export {
   commentEditSchema,
 } from "./src/schemas/comment.js";
 export { SETTINGS_VERSION } from "./src/schemas/settings.js";
-export { resolveSettings } from "./src/settings.js";
+export { resolveSettings, inspectSettings } from "./src/settings.js";
 export { project } from "./src/operations/project.js";
 export { column } from "./src/operations/column.js";
 export { task } from "./src/operations/task.js";
@@ -96,3 +98,4 @@ export { RestoreRefusedError } from "./src/migrations/restore.js";
 export { assertWritable, configureDatabase } from "./src/db.js";
 export { ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./src/migrations/open-policy.js";
 export { getStorage } from "./src/constant.js";
+export { info } from "./src/operations/info.js";

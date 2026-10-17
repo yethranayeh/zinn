@@ -238,6 +238,24 @@ test("a nested route resolves past its namespace", () => {
   expect(result.stdout).toContain("Backlog");
 });
 
+test("ZINN-299: ZINN_DEBUG=1 prints routing detail on stderr and leaves stdout unchanged", () => {
+  withIsolatedZinnDir((dir) => {
+    runZinn(["project", "create", "DBG", "--name", "Debug"], dir);
+    const plain = runZinn(["project", "list", "--json"], dir);
+
+    const debugged = runZinn(["project", "list", "--json"], dir, { ZINN_DEBUG: "1" });
+    expect(debugged.code).toBe(0);
+    expect(debugged.stdout).toBe(plain.stdout);
+    expect(debugged.stderr).toContain("project list");
+
+    for (const env of [{ DEBUG: "1" }, { ZINN_DEBUG: "true" }]) {
+      const ignored = runZinn(["project", "list", "--json"], dir, env);
+      expect(ignored.stdout).toBe(plain.stdout);
+      expect(ignored.stderr).toBe("");
+    }
+  });
+});
+
 test("namespace help lists its commands without running one", () => {
   const taskHelp = runZinn(["task", "--help"]);
   const projectHelp = runZinn(["project", "-h"]);
@@ -488,6 +506,7 @@ const commandWords: Record<string, CommandWords> = {
   "label delete": { words: ["bug"], required: 1 },
   "activity list": { words: [], required: 0 },
   "activity view": { words: ["019abcdf"], required: 1 },
+  info: { words: [], required: 0 },
   backup: { words: [], required: 0 },
   restore: { words: ["backup.sqlite"], required: 1 },
   migrate: { words: [], required: 0 },

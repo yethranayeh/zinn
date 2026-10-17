@@ -42,7 +42,7 @@ The files are plain JSON, without comments:
 }
 ```
 
-`$schema` is optional and lets editors handle autocomplete and check the file, but Zinn itself ignores it. New settings are added to the same number; only a change that would make existing files invalid gets a new number. An unknown key, a value of the wrong type or invalid JSON in a selected settings file stops every command with an error that names the file. Zinn _does not fall back to the defaults_.
+`$schema` is optional and lets editors handle autocomplete and check the file, but Zinn itself ignores it. New settings are added to the same number and it only bumps on breaking changes. An unknown key, a value of the wrong type or invalid JSON in a selected settings file stops commands with an error that names the file, except for the inspection report below. Zinn _does not fall back to the defaults_.
 
 `storage.directory` names a Zinn directory with the same layout as `ZINN_DIR`: `data/zinn.sqlite` and `backups/`. The first of these that is set decides the directory: `ZINN_DIR`, `storage.directory` in `zinn.local.json`, `storage.directory` in the global `settings.json`, then `~/.zinn`. A relative path is relative to the folder of the file that sets it. A leading `~` or `~/` means your home folder.
 
@@ -51,6 +51,19 @@ The files are plain JSON, without comments:
 Without a default, `task list` and `task search` cover every project, and the other commands require a key. When a configured default names a missing project, commands using it fail with an error naming the key and its settings file.
 
 On `task list` and `task search`, `--all-projects` covers every project, overriding the default, and works with `--all` or `--archived`. It cannot be combined with a typed project key. Commands taking a task key use the project named by that key. Column creation, editing, and ordering require an explicit project key.
+
+### Inspection
+
+```sh
+zinn info
+zinn info --json
+```
+
+`info` reports the selected store and database path, the settings files and their sources, the configured default project, the database schema state, and CLI, core and runtime versions. Local settings discovery stops at the nearest `zinn.local.json`. With `ZINN_DIR`, home and codebase settings are marked as not read.
+
+An unusable settings file displays errors, and a missing store or database and database read errors are reported with exit code 0. Note that SQLite may perform normal file housekeeping and crash recovery when this command is called.
+
+With `--json`, the report contains information about storage, settings files, default project, database and versions.
 
 ## Editing conventions
 
@@ -559,6 +572,8 @@ zinn task create MDR --title 'Refine the numbers' --json
 - Errors go to stderr as `{ "error": { "message": "..." } }`, stdout stays empty, and the command exits with code 1. An error can also carry `"help"`: the command's usage line for a missing or extra word, or the namespace help for a missing command.
 
 Scripts should use `--json`. Text is colored only in a terminal unless `NO_COLOR` disables it. `FORCE_COLOR` overrides both: `0` turns color off and any other nonempty value turns it on, including when piped.
+
+`ZINN_DEBUG=1` prints routing details on stderr. Other values do nothing. Stdout, including `--json` output, is unchanged.
 
 ### Confirmations
 
