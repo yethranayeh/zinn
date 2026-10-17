@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { resolveSettings } from "./settings";
+import { chooseDefaultProject, resolveSettings } from "./settings";
 
 // ? ZINN-56: settings discovery, parsing and merging, with temporary folders only.
 let root: string;
@@ -219,6 +219,28 @@ test("defaultProject merges independently of storage and preserves the chosen ke
   expect(resolveSettings({ cwd, env: {}, home }).merged).toEqual({
     defaultProject: "GLOBAL",
     storage: { directory: "local-store" },
+  });
+});
+
+test("the chosen defaultProject comes from the codebase file before the global one, with the path of the file that sets it", () => {
+  const cwd = join(root, "project");
+  mkdirSync(cwd);
+  const globalPath = join(home, ".zinn", "settings.json");
+  const localPath = join(cwd, "zinn.local.json");
+
+  expect(chooseDefaultProject(resolveSettings({ cwd, env: {}, home }))).toBeNull();
+
+  globalFile({ defaultProject: "GLOBAL" });
+  writeJson(localPath, storageSettings("local-store"));
+  expect(chooseDefaultProject(resolveSettings({ cwd, env: {}, home }))).toEqual({
+    key: "GLOBAL",
+    settingsPath: globalPath,
+  });
+
+  writeJson(localPath, { defaultProject: "LOCAL" });
+  expect(chooseDefaultProject(resolveSettings({ cwd, env: {}, home }))).toEqual({
+    key: "LOCAL",
+    settingsPath: localPath,
   });
 });
 

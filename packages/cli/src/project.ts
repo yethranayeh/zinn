@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { project, resolveSettings } from "@zinn-dev/core";
+import { chooseDefaultProject, project, resolveSettings } from "@zinn-dev/core";
 
 import { UsageError } from "./lib.js";
 import { CliError } from "./errors.js";
@@ -35,8 +35,8 @@ export function resolveProjectKey(
   }
 
   const settings = resolveSettings({ cwd: process.cwd(), env: process.env, home: homedir() });
-  const defaultProject = settings.merged.defaultProject;
-  if (defaultProject === undefined) {
+  const defaultProject = chooseDefaultProject(settings);
+  if (defaultProject === null) {
     if (required) {
       throw new UsageError(
         "Missing argument <project-key>. Supply a key or configure defaultProject",
@@ -46,20 +46,14 @@ export function resolveProjectKey(
     return undefined;
   }
 
-  const settingsFile =
-    settings.local?.settings.defaultProject === undefined ? settings.global! : settings.local;
-  if (project.getByKey(defaultProject) == null) {
+  const { key, settingsPath } = defaultProject;
+  if (project.getByKey(key) == null) {
     throw new CliError(
-      `Default project "${defaultProject}" from settings file ${settingsFile.path} does not exist`,
+      `Default project "${key}" from settings file ${settingsPath} does not exist`,
       "not_found",
-      {
-        entity: "project",
-        key: defaultProject,
-        source: "defaultProject",
-        settingsPath: settingsFile.path,
-      },
+      { entity: "project", key, source: "defaultProject", settingsPath },
     );
   }
 
-  return defaultProject;
+  return key;
 }

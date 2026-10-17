@@ -58,6 +58,17 @@ export class CoreError extends Error {
   }
 }
 
+const MISSING_FILE_CODES = new Set(["ENOENT", "ENOTDIR"]);
+
+/** Whether a file system call failed due to nonexistent file or folder */
+export function isMissingFileError(error: unknown) {
+  return error instanceof Error && "code" in error && MISSING_FILE_CODES.has(String(error.code));
+}
+
+export function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export type ValidationIssue = { code: string; path: Array<string | number>; message: string };
 
 /** Keeps schema issue locations without retaining the submitted object. */

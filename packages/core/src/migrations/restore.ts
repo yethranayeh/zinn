@@ -38,7 +38,7 @@ import {
   spacePathsFor,
 } from "./space.js";
 import { withMigrationLock } from "./upgrade.js";
-import { CoreError } from "../errors.js";
+import { CoreError, isMissingFileError } from "../errors.js";
 
 /** The name the backup is attached under while it is copied. */
 const SOURCE_SCHEMA = "restore_source";
@@ -252,12 +252,7 @@ export function checkBackup(
   try {
     statSync(path);
   } catch (error) {
-    const isMissing =
-      error instanceof Error &&
-      "code" in error &&
-      (error.code === "ENOENT" || error.code === "ENOTDIR");
-
-    if (!isMissing) {
+    if (!isMissingFileError(error)) {
       throw error;
     }
 

@@ -6,8 +6,9 @@ import { statSync } from "node:fs";
 import { homedir } from "node:os";
 
 import packageJson from "../../package.json" with { type: "json" };
-import { inspectSettings } from "../settings.js";
+import { chooseDefaultProject, inspectSettings } from "../settings.js";
 import { resolveStorage } from "../constant.js";
+import { errorMessage, isMissingFileError } from "../errors.js";
 import { classifyDatabase } from "../migrations/classify.js";
 import { latestVersion, MIGRATIONS } from "../migrations/registry.js";
 
@@ -32,10 +33,6 @@ export type StoreInfo = {
   };
 };
 
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
-
 export const info = {
   /** Reports the selected settings and database without initializing or upgrading them. */
   get(
@@ -58,8 +55,7 @@ export const info = {
     const projectIsKnown =
       localError === undefined &&
       (settings.local?.settings.defaultProject !== undefined || globalError === undefined);
-    const projectFile =
-      settings.local?.settings.defaultProject !== undefined ? settings.local : settings.global;
+    const projectChoice = chooseDefaultProject(settings);
     const report: StoreInfo = {
       coreVersion: packageJson.version,
       settingsFiles: settings.files,
@@ -72,11 +68,8 @@ export const info = {
         error: unresolvedError,
       },
       defaultProject: {
-        key: projectIsKnown ? (projectFile?.settings.defaultProject ?? null) : null,
-        settingsPath:
-          projectIsKnown && projectFile?.settings.defaultProject !== undefined
-            ? projectFile.path
-            : null,
+        key: projectIsKnown ? (projectChoice?.key ?? null) : null,
+        settingsPath: projectIsKnown ? (projectChoice?.settingsPath ?? null) : null,
         error: projectIsKnown ? null : unresolvedError,
       },
       database: {
@@ -94,17 +87,11 @@ export const info = {
 
     try {
       const storage = resolveStorage(inputs, settings);
-      const settingsPath =
-        storage.source === "local"
-          ? (settings.local?.path ?? null)
-          : storage.source === "global"
-            ? (settings.global?.path ?? null)
-            : null;
       report.storage = {
         directory: storage.directory,
         databasePath: storage.databasePath,
         source: storage.source,
-        settingsPath,
+        settingsPath: storage.settingsPath,
         exists: null,
         error: null,
       };
@@ -117,11 +104,7 @@ export const info = {
           report.storage.error = `${storage.directory} is not a directory`;
         }
       } catch (error) {
-        const isMissing =
-          error instanceof Error &&
-          "code" in error &&
-          (error.code === "ENOENT" || error.code === "ENOTDIR");
-        if (isMissing) {
+        if (isMissingFileError(error)) {
           report.storage.exists = false;
         } else {
           report.storage.error = errorMessage(error);
@@ -131,7 +114,7 @@ export const info = {
       try {
         report.database = {
           path: storage.databasePath,
-          ...classifyDatabase(storage.databasePath, undefined, { queryOnly: true }),
+          ...classifyDatabase(storage.databasePath),
           error: null,
         };
       } catch (error) {

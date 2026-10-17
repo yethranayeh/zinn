@@ -3,7 +3,7 @@ import type { DatabaseState } from "./classify";
 import type { OpenDecision } from "./open-policy";
 
 import { expect, test } from "bun:test";
-import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { resolveStorage } from "../constant";
@@ -101,6 +101,26 @@ test("without the default folder, another folder does not hold the default datab
     mkdirSync(other);
 
     expect(isDefaultDatabase(other, join(home, ".zinn"))).toBe(false);
+  });
+});
+
+test("a ZINN_DIR below a regular file counts as missing, so it does not hold the default database", () => {
+  withDirectory((home) => {
+    const defaultDir = join(home, ".zinn");
+    const file = join(home, "file");
+    const belowFile = join(file, "zinn");
+    mkdirSync(defaultDir);
+    writeFileSync(file, "not a folder");
+    let code: unknown;
+    try {
+      realpathSync(belowFile);
+    } catch (error) {
+      code = (error as NodeJS.ErrnoException).code;
+    }
+
+    expect(code).toBe("ENOTDIR");
+    expect(isDefaultDatabase(belowFile, defaultDir)).toBe(false);
+    expect(isProtectedStorage(resolveStorage({ cwd: home, env: { ZINN_DIR: belowFile }, home }))).toBe(false);
   });
 });
 

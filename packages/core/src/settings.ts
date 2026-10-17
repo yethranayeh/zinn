@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { settingsSchema } from "./schemas/settings.js";
 import { MAIN_FOLDER_NAME } from "./constant.js";
-import { CoreError, InputValidationError } from "./errors.js";
+import { CoreError, errorMessage, InputValidationError, isMissingFileError } from "./errors.js";
 
 export const GLOBAL_SETTINGS_FILE_NAME = "settings.json";
 export const LOCAL_SETTINGS_FILE_NAME = "zinn.local.json";
@@ -62,9 +62,6 @@ function settingsFileError(
   );
 }
 
-/** Error codes for a file that does not exist: ENOTDIR when a folder on its path is a file. */
-const MISSING_FILE_CODES = new Set(["ENOENT", "ENOTDIR"]);
-
 /** Reads and validates one settings file. A file that does not exist gives `null` and any other problem throws. */
 function readSettingsFile(path: string): SettingsFile | null {
   let text: string;
@@ -72,15 +69,13 @@ function readSettingsFile(path: string): SettingsFile | null {
   try {
     text = readFileSync(path, "utf8");
   } catch (error) {
-    const isMissingFile =
-      error instanceof Error && "code" in error && MISSING_FILE_CODES.has(String(error.code));
-    if (isMissingFile) {
+    if (isMissingFileError(error)) {
       return null;
     }
 
     throw settingsFileError(
       path,
-      `it cannot be read (${error instanceof Error ? error.message : String(error)})`,
+      `it cannot be read (${errorMessage(error)})`,
       "storage",
       {},
       error,
@@ -94,7 +89,7 @@ function readSettingsFile(path: string): SettingsFile | null {
   } catch (error) {
     throw settingsFileError(
       path,
-      `it is not valid JSON (${error instanceof Error ? error.message : String(error)})`,
+      `it is not valid JSON (${errorMessage(error)})`,
       "input",
       { reason: "invalid_json" },
       error,
@@ -174,6 +169,22 @@ function mergeSettings(
   };
 }
 
+/** The defaultProject key, decided by local first, global after, or `null` */
+export function chooseDefaultProject({
+  local,
+  global,
+}: Pick<ResolvedSettings, "global" | "local">): { key: string; settingsPath: string } | null {
+  for (const file of [local, global]) {
+    const key = file?.settings.defaultProject;
+
+    if (file !== null && key !== undefined) {
+      return { key, settingsPath: file.path };
+    }
+  }
+
+  return null;
+}
+
 /**
  * Reads the global settings file and the nearest per-codebase file, and merges them.
  * With `ZINN_DIR`, only that directory's **settings.json** is read.
@@ -211,12 +222,7 @@ function loadSettings(
         throw error;
       }
 
-      inspected = {
-        path,
-        source,
-        state: "error",
-        error: error instanceof Error ? error.message : String(error),
-      };
+      inspected = { path, source, state: "error", error: errorMessage(error) };
     }
     files.push(inspected);
     return inspected;

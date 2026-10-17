@@ -2,7 +2,7 @@ import type { Database } from "../sqlite/database";
 import type { Migration } from "./registry";
 
 import { expect, test } from "bun:test";
-import { existsSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { openDatabase } from "#sqlite";
@@ -12,6 +12,9 @@ import { migrateDatabase, MigrationRefusedError } from "./migrate";
 import { rebuildTask, seedBaseline, snapshot, withDirectory } from "./testing";
 
 const PLENTY_OF_SPACE = { availableBytes: 2 ** 40, blockBytes: 4096, device: 1 };
+// Without search permission, stat of a path inside the folder fails with EACCES.
+const UNSEARCHABLE_DIRECTORY_MODE = 0o600;
+const WRITABLE_DIRECTORY_MODE = 0o700;
 
 const upgradeTask: Migration = { version: 2, name: "rebuild task", rebuilds: ["task"], apply: rebuildTask };
 const options = (directory: string, migrations: ReadonlyArray<Migration>) => ({
@@ -86,6 +89,25 @@ test("classifies every state without creating anything", () => {
     expect(classifyDatabase(newer, [upgradeTask])).toEqual({ state: "newer", version: 5, latestVersion: 2 });
 
     expect(readdirSync(directory).sort()).toEqual(["database", "empty", "newer", "unmarked"]);
+  });
+});
+
+test("a path below a regular file is absent, and a path that cannot be checked throws", () => {
+  withDirectory((directory) => {
+    const file = join(directory, "file");
+    writeFileSync(file, "not a folder");
+    expect(classifyDatabase(join(file, "zinn.sqlite"), [])).toEqual({ state: "absent", version: 0, latestVersion: 1 });
+
+    const unsearchable = join(directory, "unsearchable");
+    mkdirSync(unsearchable);
+    chmodSync(unsearchable, UNSEARCHABLE_DIRECTORY_MODE);
+    try {
+      expect(() => classifyDatabase(join(unsearchable, "zinn.sqlite"), [])).toThrow();
+    } finally {
+      chmodSync(unsearchable, WRITABLE_DIRECTORY_MODE);
+    }
+
+    expect(readdirSync(directory).sort()).toEqual(["file", "unsearchable"]);
   });
 });
 

@@ -72,6 +72,7 @@ test("ZINN_DIR gives an env store in that folder, with its paths inside it", () 
   expect(resolveStorage({ cwd: home, env: { ZINN_DIR: directory, NODE_ENV: "test" }, home })).toEqual({
     directory,
     source: "env",
+    settingsPath: null,
     dataDirectory: join(directory, "data"),
     databasePath: join(directory, "data", "zinn.sqlite"),
     backupDirectory: join(directory, "backups"),
@@ -86,6 +87,7 @@ test("without ZINN_DIR the store is the default folder in the given home", () =>
   expect(resolveStorage({ cwd: home, env: {}, home })).toEqual({
     directory: defaultDirectory,
     source: "default",
+    settingsPath: null,
     dataDirectory: join(defaultDirectory, "data"),
     databasePath: join(defaultDirectory, "data", "zinn.sqlite"),
     backupDirectory: join(defaultDirectory, "backups"),
@@ -175,6 +177,7 @@ test("ZINN_DIR wins over storage.directory in both settings files", () => {
 
     expect(storage.source).toBe("env");
     expect(storage.directory).toBe(zinnDirectory);
+    expect(storage.settingsPath).toBeNull();
   });
 });
 
@@ -186,6 +189,7 @@ test("the per-codebase file wins over the global file, and the global file over 
     expect(resolveStorage({ cwd: repository, env: {}, home })).toEqual({
       directory: join(home, ".zinn", "global-store"),
       source: "global",
+      settingsPath: globalFile,
       dataDirectory: join(home, ".zinn", "global-store", "data"),
       databasePath: join(home, ".zinn", "global-store", "data", "zinn.sqlite"),
       backupDirectory: join(home, ".zinn", "global-store", "backups"),
@@ -197,6 +201,7 @@ test("the per-codebase file wins over the global file, and the global file over 
 
     expect(storage.source).toBe("local");
     expect(storage.directory).toBe(join(repository, "local-store"));
+    expect(storage.settingsPath).toBe(localFile);
   });
 });
 

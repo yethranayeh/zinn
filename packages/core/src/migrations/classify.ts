@@ -6,6 +6,7 @@ import { statSync } from "node:fs";
 import { openDatabase } from "#sqlite";
 
 import { applyConnectionSettings } from "../connection.js";
+import { isMissingFileError } from "../errors.js";
 import { attachSuppressed } from "../sqlite/database.js";
 import { latestVersion, MIGRATIONS } from "./registry.js";
 import { readSchemaVersion } from "./runner.js";
@@ -62,44 +63,18 @@ export function classifyConnection(
 export function classifyDatabase(
   databasePath: string,
   migrations: ReadonlyArray<Migration> = MIGRATIONS,
-  options: { queryOnly?: boolean } = {},
 ): DatabaseClassification {
   try {
     statSync(databasePath);
   } catch (error) {
-    const isMissing =
-      error instanceof Error &&
-      "code" in error &&
-      (error.code === "ENOENT" || error.code === "ENOTDIR");
-
-    if (!isMissing) {
+    if (!isMissingFileError(error)) {
       throw error;
     }
+
     return { state: "absent", version: 0, latestVersion: latestVersion(migrations) };
   }
 
-  if (options.queryOnly) {
-    return withDatabaseInspection(databasePath, (db) => classifyConnection(db, migrations));
-  }
-
-  const db = openDatabase(databasePath);
-  let classification;
-
-  try {
-    applyConnectionSettings(db);
-    classification = classifyConnection(db, migrations);
-  } catch (error) {
-    try {
-      db.close();
-    } catch (closeError) {
-      attachSuppressed(error, closeError);
-    }
-
-    throw error;
-  }
-
-  db.close();
-  return classification;
+  return withDatabaseInspection(databasePath, (db) => classifyConnection(db, migrations));
 }
 
 /** Inspects an existing database without application writes or schema initialization. */

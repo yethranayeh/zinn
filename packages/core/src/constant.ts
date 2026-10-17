@@ -28,6 +28,8 @@ type StoragePaths = {
 
 export type Storage = StoragePaths & {
   source: StorageSource;
+  /** The settings file whose storage.directory chose the folder, or null when `ZINN_DIR` or the default chose it. */
+  settingsPath: string | null;
   /** The default folder in the home directory, which a folder from another source may also reach. */
   defaultDirectory: string;
 };
@@ -143,17 +145,32 @@ export function resolveStorage(
   const defaultDirectory = join(home, MAIN_FOLDER_NAME);
 
   if (env.ZINN_DIR !== undefined) {
-    return { ...storagePaths(env.ZINN_DIR), source: "env", defaultDirectory };
+    return {
+      ...storagePaths(env.ZINN_DIR),
+      source: "env",
+      settingsPath: null,
+      defaultDirectory,
+    };
   }
 
   const choice = chooseFromSettings(settings, home);
   if (choice !== null) {
     refuseOutsideTemporaryInTestRun(choice.directory, env, choice.settingsPath);
-    return { ...storagePaths(choice.directory), source: choice.source, defaultDirectory };
+    return {
+      ...storagePaths(choice.directory),
+      source: choice.source,
+      settingsPath: choice.settingsPath,
+      defaultDirectory,
+    };
   }
 
   refuseOutsideTemporaryInTestRun(defaultDirectory, env, null);
-  return { ...storagePaths(defaultDirectory), source: "default", defaultDirectory };
+  return {
+    ...storagePaths(defaultDirectory),
+    source: "default",
+    settingsPath: null,
+    defaultDirectory,
+  };
 }
 
 let processStorage: Storage | null = null;

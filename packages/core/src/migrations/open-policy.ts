@@ -9,7 +9,7 @@ import type { LockWait } from "./upgrade.js";
 
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
-import { CoreError } from "../errors.js";
+import { CoreError, isMissingFileError } from "../errors.js";
 
 /** What a client tells core about itself before core opens the database. */
 export type OpenPolicy = {
@@ -102,7 +102,7 @@ export function isDefaultDatabase(mainDir: string, defaultMainDir: string) {
   try {
     return realpathSync(mainDir) === realpathSync(defaultMainDir);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+    if (isMissingFileError(error)) {
       return resolve(mainDir) === resolve(defaultMainDir);
     }
 
