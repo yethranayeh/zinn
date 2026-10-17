@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import packageJson from "./package.json";
-import { runCliInTerminal } from "./testing";
+import { runCli, runCliInTerminal } from "./testing";
 import { withDirectory } from "../core/src/migrations/testing";
 import { errorDocumentSchema } from "./src/errors";
 
@@ -16,11 +16,8 @@ const coreOutputDirectory = fileURLToPath(new URL("../core/dist", import.meta.ur
 const CLI_PATH = join(outputDirectory, "index.js");
 const BUILD_CHECK_TIMEOUT_MS = 30_000;
 
-function runCli(runtime: string, args: string[], directory: string, env: Record<string, string> = {}) {
-  const result = Bun.spawnSync([runtime, CLI_PATH, ...args], {
-    env: { ...process.env, ZINN_DIR: directory, ...env },
-  });
-  return { code: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
+function runBuilt(runtime: string, args: string[], directory: string, env: Record<string, string> = {}) {
+  return runCli(args, { runtime, cliPath: CLI_PATH, env: { ...process.env, ZINN_DIR: directory, ...env } });
 }
 
 beforeAll(() => {
@@ -62,48 +59,48 @@ for (const runtime of ["node", "bun"]) {
 
   test(`${runtime}: built version/help and JSON task operations use isolated stores`, () => {
     withDirectory((directory) => {
-      const version = runCli(runtime, ["--version"], directory);
+      const version = runBuilt(runtime, ["--version"], directory);
       expect(version.code).toBe(0);
       expect(version.stdout.trim()).toBe(packageJson.version);
       expect(version.stderr).toBe("");
-      const help = runCli(runtime, ["--help"], directory);
+      const help = runBuilt(runtime, ["--help"], directory);
       expect(help.code).toBe(0);
       expect(help.stdout).toContain("project");
       expect(help.stdout).toContain("--json");
       expect(existsSync(join(directory, "data"))).toBe(false);
 
-      const project = runCli(runtime, ["project", "create", "BUILD", "--json"], directory);
+      const project = runBuilt(runtime, ["project", "create", "BUILD", "--json"], directory);
       expect(project.code).toBe(0);
       expect(JSON.parse(project.stdout).key).toBe("BUILD");
-      const created = runCli(runtime, ["task", "create", "BUILD", "--title", "Built CLI", "--json"], directory);
+      const created = runBuilt(runtime, ["task", "create", "BUILD", "--title", "Built CLI", "--json"], directory);
       expect(created.code).toBe(0);
       expect(JSON.parse(created.stdout)).toMatchObject({ key: "BUILD-1", title: "Built CLI" });
-      const edited = runCli(runtime, ["task", "edit", "BUILD-1", "--description", "Searchable output", "--json"], directory);
+      const edited = runBuilt(runtime, ["task", "edit", "BUILD-1", "--description", "Searchable output", "--json"], directory);
       expect(edited.code).toBe(0);
       expect(JSON.parse(edited.stdout).description).toBe("Searchable output");
-      const searched = runCli(runtime, ["task", "search", "Searchable", "--json"], directory, { FORCE_COLOR: "1" });
+      const searched = runBuilt(runtime, ["task", "search", "Searchable", "--json"], directory, { FORCE_COLOR: "1" });
       expect(searched.code).toBe(0);
       expect(JSON.parse(searched.stdout)[0].key).toBe("BUILD-1");
       expect(searched.stdout).not.toContain("\x1b[");
 
-      expect(runCli(runtime, ["label", "create", "build-label", "--color", "red"], directory).code).toBe(0);
-      const colored = runCli(runtime, ["label", "list"], directory, { FORCE_COLOR: "1", NO_COLOR: "1" });
+      expect(runBuilt(runtime, ["label", "create", "build-label", "--color", "red"], directory).code).toBe(0);
+      const colored = runBuilt(runtime, ["label", "list"], directory, { FORCE_COLOR: "1", NO_COLOR: "1" });
       expect(colored.code).toBe(0);
       expect(colored.stdout).toContain("\x1b[");
-      const plain = runCli(runtime, ["label", "list"], directory, { FORCE_COLOR: "0" });
+      const plain = runBuilt(runtime, ["label", "list"], directory, { FORCE_COLOR: "0" });
       expect(plain.code).toBe(0);
       expect(plain.stdout).not.toContain("\x1b[");
       expect(plain.stdout).toContain("red");
 
-      const refused = runCli(runtime, ["task", "delete", "BUILD-1", "--json"], directory);
+      const refused = runBuilt(runtime, ["task", "delete", "BUILD-1", "--json"], directory);
       expect(refused.code).toBe(1);
       expect(refused.stdout).toBe("");
       expect(JSON.parse(refused.stderr).error.message).toContain("--yes");
-      const failed = runCli(runtime, ["task", "delete", "BUILD-99", "--yes", "--json"], directory);
+      const failed = runBuilt(runtime, ["task", "delete", "BUILD-99", "--yes", "--json"], directory);
       expect(failed.code).toBe(1);
       expect(failed.stdout).toBe("");
       expect(JSON.parse(failed.stderr).error.message).toContain("BUILD-99");
-      const viewed = runCli(runtime, ["task", "view", "BUILD-1", "--json"], directory);
+      const viewed = runBuilt(runtime, ["task", "view", "BUILD-1", "--json"], directory);
       expect(viewed.code).toBe(0);
       expect(JSON.parse(viewed.stdout).key).toBe("BUILD-1");
     });
@@ -113,8 +110,8 @@ for (const runtime of ["node", "bun"]) {
     const directory = mkdtempSync(join(tmpdir(), "zinn-cli-build-terminal-"));
 
     try {
-      expect(runCli(runtime, ["project", "create", "BUILD"], directory).code).toBe(0);
-      expect(runCli(runtime, ["task", "create", "BUILD", "--title", "Confirmation"], directory).code).toBe(0);
+      expect(runBuilt(runtime, ["project", "create", "BUILD"], directory).code).toBe(0);
+      expect(runBuilt(runtime, ["task", "create", "BUILD", "--title", "Confirmation"], directory).code).toBe(0);
       const stderrPath = join(directory, "prompt.stderr");
       const options = { runtime, cliPath: CLI_PATH, env: { ...process.env, ZINN_DIR: directory }, stderrPath };
       const declined = await runCliInTerminal(["task", "delete", "BUILD-1"], { ...options, input: "n\n" });
@@ -122,16 +119,16 @@ for (const runtime of ["node", "bun"]) {
       expect(declined.output).not.toContain("[y/N]");
       expect(readFileSync(stderrPath, "utf8")).toContain("BUILD-1");
       expect(readFileSync(stderrPath, "utf8")).toContain("[y/N]");
-      expect(runCli(runtime, ["task", "view", "BUILD-1", "--json"], directory).code).toBe(0);
+      expect(runBuilt(runtime, ["task", "view", "BUILD-1", "--json"], directory).code).toBe(0);
       const interrupted = await runCliInTerminal(["task", "delete", "BUILD-1"], {
         runtime, cliPath: CLI_PATH, env: options.env, input: "\x03", inputWhen: "[y/N]",
       });
       expect(interrupted.code).toBe(130);
-      expect(runCli(runtime, ["task", "view", "BUILD-1", "--json"], directory).code).toBe(0);
+      expect(runBuilt(runtime, ["task", "view", "BUILD-1", "--json"], directory).code).toBe(0);
       const accepted = await runCliInTerminal(["task", "delete", "BUILD-1"], { ...options, input: "Y\n" });
       expect(accepted.code).toBe(0);
       expect(accepted.output).not.toContain("[y/N]");
-      expect(runCli(runtime, ["task", "view", "BUILD-1", "--json"], directory).code).toBe(1);
+      expect(runBuilt(runtime, ["task", "view", "BUILD-1", "--json"], directory).code).toBe(1);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

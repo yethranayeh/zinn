@@ -5,7 +5,7 @@ import { tmpdir, userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 import packageJson from "./package.json";
-import { runCliInTerminal } from "./testing";
+import { runCli, runCliInTerminal } from "./testing";
 import { parseRoutes } from "./src/routes/router";
 import { routes } from "./src/routes/routes";
 import { errorDocumentSchema } from "./src/errors";
@@ -79,15 +79,7 @@ function runZinn(
   testDir = TEST_DIR,
   additionalEnv: Record<string, string> = {},
 ) {
-  const proc = Bun.spawnSync(["bun", CLI_PATH, ...args], {
-    env: { ...process.env, ...additionalEnv, ZINN_DIR: testDir },
-  });
-
-  return {
-    stdout: proc.stdout.toString(),
-    stderr: proc.stderr.toString(),
-    code: proc.exitCode,
-  };
+  return runCli(args, { env: { ...process.env, ...additionalEnv, ZINN_DIR: testDir } });
 }
 
 test("names and titles share trimming and reject leading or trailing control characters", () => {

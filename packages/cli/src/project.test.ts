@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { runCliInTerminal } from "../testing";
+import { runCli, runCliInTerminal } from "../testing";
 import { errorDocumentSchema } from "./errors";
 
 const PREFIX = join(tmpdir(), "zinndefaulttest-");
@@ -40,11 +40,7 @@ function removeTestDirectory(directory: string) {
 }
 
 function runZinn(args: Array<string>, zinnDirectory: string) {
-  const proc = Bun.spawnSync(["bun", join(import.meta.dir, "..", "index.ts"), ...args], {
-    env: { ...process.env, ZINN_DIR: zinnDirectory },
-  });
-
-  return { stdout: proc.stdout.toString(), stderr: proc.stderr.toString(), code: proc.exitCode };
+  return runCli(args, { env: { ...process.env, ZINN_DIR: zinnDirectory } });
 }
 
 function runZinnFrom(
@@ -56,10 +52,8 @@ function runZinnFrom(
   const env: Record<string, string | undefined> = { ...process.env, HOME: join(directory, "home") };
   delete env.ZINN_DIR;
   Object.assign(env, additionalEnv);
-  const cliPath = join(import.meta.dir, "..", "index.ts");
-  const proc = Bun.spawnSync(["bun", cliPath, ...args], { cwd, env });
 
-  return { stdout: proc.stdout.toString(), stderr: proc.stderr.toString(), code: proc.exitCode };
+  return runCli(args, { cwd, env });
 }
 
 function runZinnWithPipedYes(args: Array<string>, directory: string, cwd: string) {

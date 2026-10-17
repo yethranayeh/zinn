@@ -2,7 +2,6 @@ import type { Database } from "../sqlite/database.js";
 import type { Migration } from "./registry.js";
 
 import { statSync } from "node:fs";
-import { pathToFileURL } from "node:url";
 
 import { openDatabase } from "#sqlite";
 
@@ -105,9 +104,7 @@ export function classifyDatabase(
 
 /** Inspects an existing database without application writes or schema initialization. */
 export function withDatabaseInspection<T>(databasePath: string, inspect: (db: Database) => T): T {
-  const url = pathToFileURL(databasePath);
-  url.searchParams.set("mode", "rw");
-  const db = openDatabase(url.href);
+  const db = openDatabase(databasePath, { create: false });
   let result: T;
 
   try {

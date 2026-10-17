@@ -10,7 +10,19 @@ export type SqliteParams = NamedBindings | Array<SqliteValue>;
 /** What the wrapper passes to a driver statement: positional values, or one named-bindings object. */
 export type DriverArgs = Array<SqliteValue> | [NamedBindings];
 
-export type OpenOptions = { readonly?: boolean };
+export type OpenOptions = {
+  readonly?: boolean;
+  /**
+   * Whether a read-write open creates a missing file, as `SQLITE_OPEN_CREATE` does
+   * @default true
+   */
+  create?: boolean;
+};
+
+/** Whether an open is read-write but fails with SQLITE_CANTOPEN on a missing file instead of creating it. */
+export function opensExistingOnly(options: OpenOptions) {
+  return !options.readonly && options.create === false;
+}
 
 export type DriverStatement = {
   get(...args: DriverArgs): unknown;
@@ -611,7 +623,7 @@ export class Database {
 /**
  * Opens a connection without setting pragmas or creating tables.
  * Foreign keys start off and busy_timeout at 0, as in SQLite.
- * A read-write open creates a missing database file.
+ * A read-write open creates a missing database file unless `create` is false.
  */
 export function openWith(driver: SqliteDriver, path: string, options: OpenOptions = {}) {
   const connection = withSqliteErrors(driver, () => driver.connect(path, options));

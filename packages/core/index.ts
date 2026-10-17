@@ -82,7 +82,7 @@ export {
   commentEditSchema,
 } from "./src/schemas/comment.js";
 export { SETTINGS_VERSION } from "./src/schemas/settings.js";
-export { resolveSettings, inspectSettings } from "./src/settings.js";
+export { resolveSettings } from "./src/settings.js";
 export { project } from "./src/operations/project.js";
 export { column } from "./src/operations/column.js";
 export { task } from "./src/operations/task.js";

@@ -1,12 +1,20 @@
 import type { OpenOptions, SqliteDriver } from "./database.ts";
 import { Database as BunDatabase } from "bun:sqlite";
 
-import { openWith } from "./database.ts";
+import { openWith, opensExistingOnly } from "./database.ts";
+
+function openFlags(options: OpenOptions) {
+  if (options.readonly) {
+    return { readonly: true };
+  }
+
+  // readwrite alone is `SQLITE_OPEN_READWRITE` without `SQLITE_OPEN_CREATE`, so a missing file is not created.
+  return opensExistingOnly(options) ? { readwrite: true } : { create: true };
+}
 
 export const driver: SqliteDriver = {
   connect(path, options) {
-    const access = options.readonly ? { readonly: true } : { create: true };
-    const db = new BunDatabase(path, { ...access, safeIntegers: true });
+    const db = new BunDatabase(path, { ...openFlags(options), safeIntegers: true });
 
     return {
       /**

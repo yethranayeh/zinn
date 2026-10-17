@@ -6,7 +6,7 @@
 import type { Database, OpenOptions, SqliteDriver } from "./database.ts";
 
 import { strict as assert } from "node:assert";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -601,6 +601,46 @@ export function defineContractChecks(test: DefineTest, adapter: Adapter) {
       } finally {
         reader.close();
       }
+    });
+  });
+
+  test("an existing-only open uses an existing file read-write, and on a missing path throws SQLITE_CANTOPEN and creates nothing", () => {
+    withDirectory((directory) => {
+      // A file: URI must percent-encode each of these characters, or SQLite reads a different path.
+      const name = "existing ?#%20ü.sqlite";
+      const path = join(directory, name);
+
+      assert.throws(
+        () => adapter.openDatabase(path, { create: false }),
+        (error) => assertSqliteError(error, "SQLITE_CANTOPEN", 14),
+      );
+      assert.deepEqual(readdirSync(directory), []);
+
+      const writer = adapter.openDatabase(path);
+
+      try {
+        writer.exec("CREATE TABLE item (value INTEGER); INSERT INTO item VALUES (1);");
+      } finally {
+        writer.close();
+      }
+
+      const db = adapter.openDatabase(path, { create: false });
+
+      try {
+        assert.deepEqual(db.query("SELECT value FROM item").all(), [{ value: 1 }]);
+        db.exec("PRAGMA query_only = ON");
+        assert.throws(
+          () => db.query("INSERT INTO item VALUES (?)").run(2),
+          (error) => assertSqliteError(error, "SQLITE_READONLY", 8),
+        );
+        db.exec("PRAGMA query_only = OFF");
+        db.query("INSERT INTO item VALUES (?)").run(2);
+        assert.equal(count(db, "item"), 2);
+      } finally {
+        db.close();
+      }
+
+      assert.deepEqual(readdirSync(directory), [name]);
     });
   });
 
