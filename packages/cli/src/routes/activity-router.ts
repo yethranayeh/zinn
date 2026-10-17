@@ -26,7 +26,7 @@ export const activityRouter = {
       // Safe integers can have one more digit than readable task numbers.
       const limitPattern = new RegExp(`^${positiveIntegerPattern}\\d?$`);
       if (values.limit !== undefined && !limitPattern.test(values.limit)) {
-        quit(activityLimitMessage);
+        quit(activityLimitMessage, undefined, { argument: "--limit" });
       }
 
       const events = activity.getAll({

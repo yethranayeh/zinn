@@ -1,12 +1,12 @@
 import { expect, spyOn, test } from "bun:test";
 
 import packageJson from "../package.json";
-import { cliOpenPolicy, reportLegacyRead, reportLockWait } from "./database";
+import { getCliOpenPolicy, reportLegacyRead, reportLockWait } from "./database";
 import { setLegacyReadAllowed } from "./lib";
 import { RELEASE_MODE } from "./release-identity";
 
 test("the CLI opens the database as the cli client of its own release mode, without legacy reads", () => {
-  const { onWait, onLegacyRead, ...policy } = cliOpenPolicy();
+  const { onWait, onLegacyRead, ...policy } = getCliOpenPolicy();
   const stderr = spyOn(console, "error").mockImplementation(() => {});
 
   try {
@@ -29,7 +29,7 @@ test("the CLI opens the database as the cli client of its own release mode, with
 });
 
 test("the policy allows legacy reads only once --allow-legacy-read was handled", () => {
-  const policy = cliOpenPolicy();
+  const policy = getCliOpenPolicy();
 
   try {
     expect(policy.allowsLegacyRead).toBe(false);
@@ -44,7 +44,7 @@ test("the policy warns on stderr about the unmarked database that opened for rea
   const stderr = spyOn(console, "error").mockImplementation(() => {});
 
   try {
-    expect(cliOpenPolicy().onLegacyRead).toBe(reportLegacyRead);
+    expect(getCliOpenPolicy().onLegacyRead).toBe(reportLegacyRead);
     reportLegacyRead({ databasePath: "/data/zinn.sqlite", version: 0, latestVersion: 1 });
 
     expect(stderr.mock.calls).toHaveLength(1);

@@ -54,6 +54,7 @@
 		"linkDirectory": false
 	},
 	"dependencies": {
-		"@zinn-dev/core": "workspace:*"
+		"@zinn-dev/core": "workspace:*",
+		"zod": "4.6.4"
 	}
 }

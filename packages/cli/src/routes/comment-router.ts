@@ -67,7 +67,7 @@ function parseTextArgs(args: Array<string>) {
   validatePositionals(positionals, ["<task-key>"]);
 
   if (values.text === undefined) {
-    quit("Comment text must be specified with --text");
+    quit("Comment text must be specified with --text", undefined, { argument: "--text" });
   }
 
   return { key: positionals[0]!, text: values.text };
@@ -87,7 +87,7 @@ function parseCommentEditArgs(args: Array<string>) {
 
   const text = resolveTextEdit(values.text, values, "--text");
   if (text === undefined) {
-    quit("Comment text must be specified with --text");
+    quit("Comment text must be specified with --text", undefined, { argument: "--text" });
   }
 
   return { key: positionals[0]!, text };

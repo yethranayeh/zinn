@@ -1,6 +1,8 @@
 import { homedir } from "node:os";
 import { project, resolveSettings } from "@zinn-dev/core";
+
 import { UsageError } from "./lib.js";
+import { CliError } from "./errors.js";
 
 /** Chooses the explicit project or the configured default, retaining unscoped list/search behavior. */
 export function resolveProjectKey(
@@ -17,7 +19,9 @@ export function resolveProjectKey(
 ): string | undefined {
   if (allProjects) {
     if (typedKey !== undefined) {
-      throw new UsageError("--all-projects cannot be combined with a project key");
+      throw new UsageError("--all-projects cannot be combined with a project key", {
+        argument: "--all-projects",
+      });
     }
     return undefined;
   }
@@ -36,6 +40,7 @@ export function resolveProjectKey(
     if (required) {
       throw new UsageError(
         "Missing argument <project-key>. Supply a key or configure defaultProject",
+        { argument: "project-key" },
       );
     }
     return undefined;
@@ -44,8 +49,15 @@ export function resolveProjectKey(
   const settingsFile =
     settings.local?.settings.defaultProject === undefined ? settings.global! : settings.local;
   if (project.getByKey(defaultProject) == null) {
-    throw new Error(
+    throw new CliError(
       `Default project "${defaultProject}" from settings file ${settingsFile.path} does not exist`,
+      "not_found",
+      {
+        entity: "project",
+        key: defaultProject,
+        source: "defaultProject",
+        settingsPath: settingsFile.path,
+      },
     );
   }
 

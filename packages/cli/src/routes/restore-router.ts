@@ -5,7 +5,13 @@ import { resolve } from "node:path";
 import { backup, RestoreRefusedError, getStorage } from "@zinn-dev/core";
 
 import { reportLockWait } from "../database.js";
-import { askConfirmation, output, validatePositionals, validateUniqueOptions } from "../lib.js";
+import {
+  askConfirmation,
+  diagnostic,
+  output,
+  validatePositionals,
+  validateUniqueOptions,
+} from "../lib.js";
 import packageJson from "../../package.json" with { type: "json" };
 
 const build = { client: "cli", version: packageJson.version };
@@ -60,14 +66,14 @@ export const restoreCommand = {
           error.code.startsWith("SQLITE_CORRUPT");
 
         if (isDamagedDatabase) {
-          console.error(
+          diagnostic(
             `The database at ${databasePath} is damaged. Nothing was changed. To restore it:\n` +
               `1. Close every program that has the database open.\n` +
               `2. Move ${databasePath}, ${databasePath}-wal and ${databasePath}-shm out of the data folder, keeping any that exist together. Keep these files; do not delete them.\n` +
               `3. Run the same zinn restore command again to create the database from the backup.`,
           );
         } else {
-          console.error(
+          diagnostic(
             `The database is unchanged. Backups taken before each restore attempt are kept in ${backupDirectory}.`,
           );
         }

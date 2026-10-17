@@ -8,19 +8,27 @@ const isVersionRequest = args.length === 1 && ["-v", "--version"].includes(args[
 if (isVersionRequest) {
   console.info(packageJson.version);
 } else {
-  const { isHelpFlag } = await import("./src/lib.js");
-  const { createRouter } = await import("./src/routes/router.js");
-  const { routes } = await import("./src/routes/routes.js");
-  const router = createRouter(routes);
+  const { isHelpFlag, prepareOutput, flushDiagnostics, renderFailure } =
+    await import("./src/lib.js");
 
-  if (args.length === 0 || isHelpFlag(args[0]!)) {
-    console.info(router.help);
-  } else {
-    const { configureDatabase } = await import("@zinn-dev/core");
-    const { cliOpenPolicy } = await import("./src/database.js");
+  prepareOutput(args);
 
-    // Only records the policy. core then opens the database when a command first uses it.
-    configureDatabase(cliOpenPolicy());
-    await router.route(args);
+  try {
+    const { createRouter } = await import("./src/routes/router.js");
+    const { routes } = await import("./src/routes/routes.js");
+    const router = createRouter(routes);
+
+    if (args.length === 0 || isHelpFlag(args[0]!)) {
+      console.info(router.help);
+      flushDiagnostics();
+    } else {
+      const { configureDatabase } = await import("@zinn-dev/core");
+      const { getCliOpenPolicy } = await import("./src/database.js");
+
+      configureDatabase(getCliOpenPolicy());
+      await router.route(args);
+    }
+  } catch (error) {
+    renderFailure(error);
   }
 }

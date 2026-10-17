@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { homedir, release, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { createPackageTestCopy, PACKAGE_NAMES, readNodeMinimum } from "./package-fixture.ts";
 import { readVerifiedDownload } from "./archive-cache.ts";
@@ -225,6 +226,20 @@ async function installPackedZinnPackages(root: string) {
   );
   console.log(`PASS installed CLI uses the core package built for this check: ${installedCore}`);
 
+  const coreZod = realpathSync(
+    createRequire(join(installedCore, "package.json")).resolve("zod/package.json"),
+  );
+  const cliZod = realpathSync(
+    createRequire(join(installedCli, "package.json")).resolve("zod/package.json"),
+  );
+
+  assert.equal(cliZod, coreZod, "Installed CLI and core resolved different Zod copies");
+  assert.equal(
+    JSON.parse(readFileSync(cliZod, "utf8")).version,
+    JSON.parse(readFileSync(join(installedCli, "package.json"), "utf8")).dependencies.zod,
+  );
+  console.log("PASS installed CLI and core share their declared Zod version");
+
   return { consumer, installedCore, installedCli };
 }
 
@@ -276,6 +291,13 @@ async function checkRuntime(
       failed.stderr.includes("CLI-999999"),
       "Failure stderr does not identify the missing task",
     );
+
+    if (flags.includes("--json")) {
+      const failure = JSON.parse(failed.stderr).error;
+      assert.equal(failure.code, "not_found");
+      assert.equal(failure.details.entity, "task");
+      assert.equal(failure.details.key, "CLI-999999");
+    }
   }
   console.log(`${prefix} PASS error exit, stderr and empty stdout with/without --json`);
 

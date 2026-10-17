@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { runCliInTerminal } from "../testing";
+import { errorDocumentSchema } from "./errors";
 
 const PREFIX = join(tmpdir(), "zinndefaulttest-");
 // Each precedence matrix starts several dozen CLI processes.
@@ -413,7 +414,9 @@ test("project delete with a default prompts despite --yes, and refuses without a
     expect(jsonRefusal.stdout).toBe("");
     const refusal = JSON.parse(jsonRefusal.stderr);
     expect(Object.keys(refusal)).toEqual(["error"]);
-    expect(Object.keys(refusal.error)).toEqual(["message"]);
+    expect(errorDocumentSchema.safeParse(refusal).success).toBe(true);
+    expect(refusal.error.code).toBe("invalid_input");
+    expect(refusal.error.details.reason).toBe("confirmation_required");
     expect(typeof refusal.error.message).toBe("string");
     expect(JSON.parse(runZinnFrom(["project", "list", "--json"], directory, repository).stdout)).toHaveLength(2);
 

@@ -11,10 +11,11 @@ import {
   parseTaskKey,
 } from "@zinn-dev/core";
 
+import { CliError } from "../errors.js";
 import {
   confirmAction,
   dashValueHelp,
-  failureMessage,
+  diagnostic,
   output,
   quit,
   UsageError,
@@ -83,11 +84,16 @@ export const taskRouter = {
 
       const projectKey = resolveProjectKey(positionals[0], { required: true })!;
       if (values.title === undefined) {
-        quit("A task needs at least a title: use --title");
+        quit("A task needs at least a title: use --title", undefined, { argument: "--title" });
       }
+
       const projectMatch = project.getByKey(projectKey);
       if (projectMatch == null) {
-        quit(`Project with key "${project.standardizeKey(projectKey)}" does not exist`);
+        throw new CliError(
+          `Project with key "${project.standardizeKey(projectKey)}" does not exist`,
+          "not_found",
+          { entity: "project", key: project.standardizeKey(projectKey), source: "explicit" },
+        );
       }
       const createdTask = task.create(
         {
@@ -148,7 +154,7 @@ Examples:
       validatePositionals(positionals, ["[<project-key>]"]);
 
       if (values.archived && values.all) {
-        quit('Use either "--archived" or "--all", not both');
+        quit('Use either "--archived" or "--all", not both', undefined, { argument: "--archived" });
       }
 
       const projectKey = resolveProjectKey(positionals[0], { allProjects: values["all-projects"] });
@@ -204,14 +210,14 @@ Example: zinn task list MDR --label cli`,
       const query = positionals[0]!;
 
       if (values.archived && values.all) {
-        quit('Use either "--archived" or "--all", not both');
+        quit('Use either "--archived" or "--all", not both', undefined, { argument: "--archived" });
       }
 
       const archive = values.all ? "all" : values.archived ? "archived" : "active";
       const limitPattern = new RegExp(`^${positiveIntegerPattern}$`);
 
       if (values.limit !== undefined && !limitPattern.test(values.limit)) {
-        quit(searchLimitMessage);
+        quit(searchLimitMessage, undefined, { argument: "--limit" });
       }
 
       const isTaskKeyQuery = parseTaskKey(query.trim()) !== null;
@@ -235,7 +241,8 @@ Example: zinn task list MDR --label cli`,
       if (result.hiddenArchivedCount > 0) {
         const count = result.hiddenArchivedCount;
         const noun = count === 1 ? "match" : "matches";
-        console.error(`${count} archived ${noun} hidden, use --all to include them`);
+
+        diagnostic(`${count} archived ${noun} hidden, use --all to include them`);
       }
     },
     help: `Usage: zinn task search <query> [<project-key>|--all-projects] [--archived|--all] [--limit <n>] [--label <name>]...
@@ -366,6 +373,8 @@ Examples:
       if (!hasEditFlags) {
         quit(
           "Provide at least one edit flag: --title, --description, --priority, --add-label, or --remove-label",
+          undefined,
+          { field: [] },
         );
       }
 
@@ -476,7 +485,7 @@ Example: zinn task move MDR-1 MDR-2 'In Progress'`,
           return;
         }
         default:
-          throw new UsageError(`Unknown order direction "${direction}"`);
+          throw new UsageError(`Unknown order direction "${direction}"`, { argument: "direction" });
       }
     },
     help: `Usage: zinn task order <task-key> {top|up|down|bottom}
@@ -558,8 +567,8 @@ Example: zinn task unarchive MDR-1 MDR-2`,
         } else {
           output(presented, (t) => `Deletion cancelled for ${formatTaskRow(t)}`);
         }
-      } catch (err: any) {
-        quit(failureMessage(err, "Something went wrong"));
+      } catch (err) {
+        throw err;
       }
     },
     help: `Usage: zinn task delete <task-key> [--yes]
@@ -623,7 +632,7 @@ function outputTaskChanges(
 
   for (const presentedChange of presentedChanges) {
     if (!presentedChange.changed) {
-      console.error(describeUnchanged(presentedChange));
+      diagnostic(describeUnchanged(presentedChange));
     }
   }
 }
@@ -668,6 +677,8 @@ function parsePriority(value: string | undefined) {
     case "urgent":
       return value;
     default:
-      quit("Priority must be low, medium, high, urgent, or none");
+      quit("Priority must be low, medium, high, urgent, or none", undefined, {
+        argument: "--priority",
+      });
   }
 }

@@ -95,6 +95,8 @@ function parseRelationArgs(args: string[]) {
   if (!typeResult.success) {
     quit(
       `--type must be one of these: ${relationCreateSchema.shape.relation_type.options.join(", ")}`,
+      undefined,
+      { argument: "--type" },
     );
   }
   const sourceTaskKey = positionals[0]!;

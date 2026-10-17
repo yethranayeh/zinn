@@ -4,15 +4,16 @@ import { parseArgs } from "node:util";
 
 import {
   dashValueHelp,
-  failureMessage,
+  diagnostic,
+  flushDiagnostics,
   isAllowLegacyReadFlag,
   isHelpFlag,
-  isJsonFlag,
   isRouterFlag,
   parseArgsMessage,
+  prepareOutput,
   quit,
+  renderFailure,
   setLegacyReadAllowed,
-  setOutputMode,
   UsageError,
   validateUniqueOptions,
 } from "../lib.js";
@@ -139,22 +140,24 @@ function routeToNamespace(
   }
 
   if (unknownWord == null) {
-    quit(`Missing a command for "${commandName}"`, help);
+    quit(`Missing a command for "${commandName}"`, help, { argument: "command" });
   }
 
   const reason = `Unrecognized command "${unknownWord}" for "${commandName}"`;
 
   if (isHelpRequest) {
-    quit(reason, help);
+    quit(reason, help, { argument: "command" });
   }
 
-  quit(`${reason}. Run \`${commandName} --help\` for a list of available commands`);
+  quit(`${reason}. Run \`${commandName} --help\` for a list of available commands`, undefined, {
+    argument: "command",
+  });
 }
 
 export function parseRoutes(routesDef: RouteDef, prefix?: string) {
   const routeDefinitions: Array<ParsedRoute> = [];
   if (isDebugOutputEnabled()) {
-    console.error(`::router.parseRoutes[${prefix ?? ""}]`, routesDef);
+    diagnostic(`::router.parseRoutes[${prefix ?? ""}] ${Object.keys(routesDef).join(" ")}`);
   }
 
   for (const key of Object.keys(routesDef)) {
@@ -174,15 +177,12 @@ export function parseRoutes(routesDef: RouteDef, prefix?: string) {
 }
 
 async function route(parsedRoutes: Array<ParsedRoute>, rawArgs: Array<string>) {
+  prepareOutput(rawArgs);
   // Anything after "--" belongs to the command, so "--json" there is search text, not a flag.
   const separatorIndex = rawArgs.indexOf("--");
   const routableArgs = separatorIndex === -1 ? rawArgs : rawArgs.slice(0, separatorIndex);
   const passthroughArgs = separatorIndex === -1 ? [] : rawArgs.slice(separatorIndex);
   const filteredRoutableArgs = routableArgs.filter((arg) => !isRouterFlag(arg));
-
-  if (routableArgs.some(isJsonFlag)) {
-    setOutputMode("json");
-  }
 
   if (routableArgs.some(isAllowLegacyReadFlag)) {
     setLegacyReadAllowed(true);
@@ -210,7 +210,7 @@ async function route(parsedRoutes: Array<ParsedRoute>, rawArgs: Array<string>) {
   }
 
   if (isDebugOutputEnabled()) {
-    console.error("::router.route", { args, result: parsedRoutes.map((r) => r.command), match });
+    diagnostic(`::router.route ${match?.command ?? "namespace"}`);
   }
 
   if (match == null) {
@@ -231,21 +231,23 @@ async function route(parsedRoutes: Array<ParsedRoute>, rawArgs: Array<string>) {
     await match.run(commandArgs);
   } catch (err: any) {
     if (err instanceof UsageError) {
-      quit(err.message, getUsage(match.help));
+      err.help = getUsage(match.help);
+      throw err;
     }
 
     const suggestFor = (flag: string) => match.guessedFlags?.[flag]?.(commandArgs);
     const parseArgsReason = parseArgsMessage(err, rawArgs, suggestFor);
     if (parseArgsReason != null) {
-      quit(parseArgsReason, getUsage(match.help));
+      const argument = /(?:Unknown option|Option) '(-[^' ]+)/.exec(err.message)?.[1];
+
+      quit(
+        parseArgsReason,
+        getUsage(match.help),
+        argument === undefined ? undefined : { argument },
+      );
     }
 
-    quit(
-      failureMessage(
-        err,
-        `Something went wrong while running "${match.command}" with args: ${commandArgs.join(",")}`,
-      ),
-    );
+    throw err;
   }
 }
 
@@ -253,7 +255,14 @@ export function createRouter(routesDef: RouteDef) {
   const parsedRoutes = parseRoutes(routesDef);
 
   return {
-    route: (args: Array<string>) => route(parsedRoutes, args),
+    route: async (args: Array<string>) => {
+      try {
+        await route(parsedRoutes, args);
+        flushDiagnostics();
+      } catch (error) {
+        renderFailure(error);
+      }
+    },
     help: getRootHelp(parsedRoutes),
   };
 }

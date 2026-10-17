@@ -4,7 +4,7 @@ import { parseArgs } from "node:util";
 import { migrate, MigrationRefusedError, getStorage } from "@zinn-dev/core";
 
 import { reportLockWait } from "../database.js";
-import { output, validatePositionals } from "../lib.js";
+import { diagnostic, output, validatePositionals } from "../lib.js";
 import packageJson from "../../package.json" with { type: "json" };
 
 export const migrateCommand = {
@@ -30,7 +30,7 @@ export const migrateCommand = {
     } catch (error) {
       // A refusal attempted nothing, so only a failed upgrade points at the backups.
       if (!(error instanceof MigrationRefusedError)) {
-        console.error(
+        diagnostic(
           `The database is unchanged. Backups taken before each upgrade attempt are kept in ${backupDirectory}.`,
         );
       }

@@ -82,6 +82,15 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
       run(["tar", "-xzf", archive, "-C", extracted, "--strip-components=1"], root);
       if (name === "core") {
         symlinkSync(join(REPOSITORY_DIRECTORY, "packages", "core", "node_modules"), join(extracted, "node_modules"), "junction");
+      } else {
+        const cliManifest = JSON.parse(readFileSync(join(REPOSITORY_DIRECTORY, "packages/cli/package.json"), "utf8"));
+        for (const [dependency, version] of Object.entries(cliManifest.dependencies)) {
+          if (!String(version).startsWith("workspace:")) {
+            const dependencyPath = join(extracted, "node_modules", dependency);
+            mkdirSync(join(dependencyPath, ".."), { recursive: true });
+            symlinkSync(join(REPOSITORY_DIRECTORY, "packages/cli/node_modules", dependency), dependencyPath, "junction");
+          }
+        }
       }
       const manifest = JSON.parse(readFileSync(join(extracted, "package.json"), "utf8"));
       expect(manifest.exports).toEqual({ ".": { types: "./index.d.ts", import: "./index.js" } });
@@ -92,6 +101,7 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
         expect(manifest.imports["#sqlite"]).toEqual({ bun: "./src/sqlite/bun.js", default: "./src/sqlite/node.js" });
       } else {
         expect(manifest.dependencies["@zinn-dev/core"]).toBe(JSON.parse(readFileSync(join(coreDirectory, "package.json"), "utf8")).version);
+        expect(manifest.dependencies.zod).toBe(JSON.parse(readFileSync(join(coreDirectory, "package.json"), "utf8")).dependencies.zod);
         expect(manifest.bin.zinn).toBe("./index.js");
         expect(readFileSync(join(extracted, "index.js"), "utf8")).toStartWith("#!/usr/bin/env node");
       }

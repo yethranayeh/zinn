@@ -1,6 +1,6 @@
 import type { parseArgs } from "node:util";
-import { createInterface } from "node:readline/promises";
 
+import { createInterface } from "node:readline/promises";
 import {
   assertWritable,
   ReadOnlyDatabaseError,
@@ -8,14 +8,40 @@ import {
   UnmarkedDatabaseError,
 } from "@zinn-dev/core";
 
+import { CliError, classifyFailure, type ErrorDetails } from "./errors.js";
+
 type ParsedTokens = NonNullable<ReturnType<typeof parseArgs>["tokens"]>;
 type OutputMode = "text" | "json";
 
 let outputMode: OutputMode = "text";
 let legacyReadAllowed = false;
+const diagnostics: Array<string> = [];
+const DOUBLE_DASH = "--";
 
 export function setOutputMode(mode: OutputMode) {
   outputMode = mode;
+}
+
+/** Selects output before routing, without treating words after `--` as flags. */
+export function prepareOutput(args: Array<string>) {
+  const separatorIndex = args.indexOf(DOUBLE_DASH);
+  const options = separatorIndex === -1 ? args : args.slice(0, separatorIndex);
+  setOutputMode(options.some(isJsonFlag) ? "json" : "text");
+}
+
+/** Keeps JSON failures parseable while text-mode notices remain immediate. */
+export function diagnostic(message: string) {
+  if (outputMode === "json") {
+    diagnostics.push(message);
+  } else {
+    console.error(message);
+  }
+}
+
+export function flushDiagnostics() {
+  for (const message of diagnostics.splice(0)) {
+    console.error(message);
+  }
 }
 
 export function isJsonFlag(flag: string) {
@@ -75,12 +101,16 @@ export async function askConfirmation(
   }
 
   if (outputMode === "json") {
-    quit(jsonRefusal);
+    quit(jsonRefusal, undefined, { argument: "--yes", reason: "confirmation_required" });
   }
 
   // Refuses rather than treating an unanswered prompt as declined, so scripts do not see a false success
   if (!canPrompt()) {
-    quit("Commands that ask for confirmation need --yes when not running in a terminal");
+    quit(
+      "Commands that ask for confirmation need --yes when not running in a terminal",
+      undefined,
+      { argument: "--yes", reason: "confirmation_required" },
+    );
   }
 
   const prompt = createInterface({ input: process.stdin, output: process.stderr });
@@ -129,23 +159,59 @@ export function failureMessage(error: any, fallback: string) {
     return `${error.message}. Run \`zinn reindex\` to rebuild the search index.`;
   }
 
-  return error?.message ?? fallback;
+  return typeof error?.message === "string" ? error.message : fallback;
 }
 
-/** Prints the reason as an error, followed by help when given, and exits with code 1. */
-export function quit(reason: string, help?: string): never {
-  if (outputMode === "json") {
-    const error = help == null ? { message: reason } : { message: reason, help };
-    console.error(JSON.stringify({ error }, null, 2));
-  } else {
-    console.error(help == null ? reason : `${reason}\n\n${help}`);
+/** Stops a command while retaining its classified error for the outer renderer. */
+export function quit(reason: string | Error, help?: string, details?: ErrorDetails): never {
+  if (reason instanceof Error) {
+    throw reason;
   }
 
-  process.exit(1);
+  throw new CliError(reason, "invalid_input", details, help);
+}
+
+/** Emits one handled failure, including any notices collected before it. */
+export function renderFailure(reason: unknown): void {
+  const failure = {
+    ...classifyFailure(reason),
+    message: failureMessage(reason, "Something went wrong"),
+  };
+  const pendingDiagnostics = diagnostics.splice(0);
+
+  if (outputMode === "json") {
+    const details =
+      failure.details === undefined
+        ? undefined
+        : Object.fromEntries(
+            Object.entries(failure.details).filter(([, value]) => value !== undefined),
+          );
+
+    const error = {
+      ...failure,
+      details: details !== undefined && Object.keys(details).length > 0 ? details : undefined,
+      diagnostics: pendingDiagnostics.length > 0 ? pendingDiagnostics : undefined,
+    };
+
+    console.error(JSON.stringify({ error }, null, 2));
+  } else {
+    for (const message of pendingDiagnostics) {
+      console.error(message);
+    }
+
+    console.error(failure.help == null ? failure.message : `${failure.message}\n\n${failure.help}`);
+  }
+
+  // Let piped stderr finish writing before Node exits
+  process.stderr.write("", () => process.exit(1));
 }
 
 /** A command was given the wrong words. The router prints the message with the command's usage lines. */
-export class UsageError extends Error {}
+export class UsageError extends CliError {
+  constructor(message: string, details?: ErrorDetails) {
+    super(message, "invalid_input", details);
+  }
+}
 
 /**
  * Checks a command's words against its usage line, with the words written the same way:
@@ -156,13 +222,15 @@ export function validatePositionals(positionals: Array<string>, words: Array<str
   const requiredWords = words.filter((word) => !word.startsWith("["));
   const missingWord = requiredWords[positionals.length];
   if (missingWord !== undefined) {
-    throw new UsageError(`Missing argument ${missingWord}`);
+    throw new UsageError(`Missing argument ${missingWord}`, {
+      argument: missingWord.replaceAll(/[\[\]<>]/g, "").replace(/\.\.\.$/, ""),
+    });
   }
 
   const hasRepeatingWord = words.some((word) => word.endsWith("..."));
   const extraWord = positionals[words.length];
   if (!hasRepeatingWord && extraWord !== undefined) {
-    throw new UsageError(`Unexpected argument "${extraWord}"`);
+    throw new UsageError(`Unexpected argument "${extraWord}"`, { field: [] });
   }
 }
 
@@ -176,7 +244,9 @@ export function validateUniqueOptions(tokens: ParsedTokens, repeatableOptions: A
 
     const isRepeatable = repeatableOptions.includes(token.name);
     if (parsedArgs.has(token.name) && !isRepeatable) {
-      quit(`Option "--${token.name}" can only be specified once`);
+      quit(`Option "--${token.name}" can only be specified once`, undefined, {
+        argument: `--${token.name}`,
+      });
     }
 
     parsedArgs.add(token.name);
@@ -258,7 +328,6 @@ type SuggestFor = (flag: string) => Array<string> | undefined;
  * A word with a single dash shows the user's command with it after `--`.
  */
 function unknownOptionMessage(message: string, args: Array<string>, suggestFor: SuggestFor) {
-  const DOUBLE_DASH = "--";
   const flag = UNKNOWN_LONG_OPTION_PATTERN.exec(message)?.[1];
   if (flag !== undefined) {
     const suggestion = suggestFor(flag);

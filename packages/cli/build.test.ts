@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import packageJson from "./package.json";
 import { runCliInTerminal } from "./testing";
 import { withDirectory } from "../core/src/migrations/testing";
+import { errorDocumentSchema } from "./src/errors";
 
 const packageDirectory = fileURLToPath(new URL(".", import.meta.url));
 const repositoryDirectory = fileURLToPath(new URL("../..", import.meta.url));
@@ -40,6 +41,25 @@ beforeAll(() => {
 }, BUILD_CHECK_TIMEOUT_MS);
 
 for (const runtime of ["node", "bun"]) {
+  test(`${runtime}: large handled errors reach piped stderr completely`, () => {
+    const libUrl = pathToFileURL(join(outputDirectory, "src/lib.js")).href;
+    // Exceed pipe buffers so an immediate process.exit would truncate the JSON document.
+    const DIAGNOSTIC_COUNT = 10_000;
+    const code = `import(${JSON.stringify(libUrl)}).then(({ prepareOutput, diagnostic, renderFailure }) => {
+      prepareOutput(["--json"]);
+      for (let index = 0; index < ${DIAGNOSTIC_COUNT}; index++) {
+        diagnostic("A notice repeated for a large failure document");
+      }
+      renderFailure(new Error("failure"));
+    });`;
+    const result = Bun.spawnSync([runtime, "--eval", code]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout.toString()).toBe("");
+    const failure = errorDocumentSchema.parse(JSON.parse(result.stderr.toString())).error;
+    expect(failure.code).toBe("internal");
+    expect(failure.diagnostics).toHaveLength(DIAGNOSTIC_COUNT);
+  });
+
   test(`${runtime}: built version/help and JSON task operations use isolated stores`, () => {
     withDirectory((directory) => {
       const version = runCli(runtime, ["--version"], directory);

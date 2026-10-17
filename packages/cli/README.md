@@ -279,7 +279,7 @@ If the whole query is an existing task key, such as `mdr-1`, that task comes fir
 
 An exact task-key query overrides the configured default project. A project key supplied after the query still filters the search.
 
-Search defaults to active tasks. `--archived` searches archived tasks and `--all` searches both. A note on stderr reports hidden archived matches. This is purely a convenience hint and it is _omitted_ from JSON. `--limit <n>` caps the results.
+Search defaults to active tasks. `--archived` searches archived tasks and `--all` searches both. A note on stderr reports hidden archived matches. `--limit <n>` caps the results.
 
 `--label` works as it does for `task list`: repeat it to require every specified label. Label filtering happens before `--limit` and before archived matches are counted.
 
@@ -569,7 +569,12 @@ zinn task create MDR --title 'Refine the numbers' --json
 
 - Read commands print what they list or show. Write commands print the entity they created, changed, or deleted.
 - Output is a single JSON document on stdout. Empty lists print `[]`.
-- Errors go to stderr as `{ "error": { "message": "..." } }`, stdout stays empty, and the command exits with code 1. An error can also carry `"help"`: the command's usage line for a missing or extra word, or the namespace help for a missing command.
+- Handled errors go to stderr as one JSON document, stdout stays empty, and the command exits with code 1: `{ "error": { "code": "not_found", "message": "...", "details": { "entity": "task", "key": "MDR-999", "source": "explicit" } } }`.
+- `error.code` is `invalid_input` for invalid invocation or settings, `not_found` for an absent required entity or requested file, `conflict` for a request blocked by current state or database compatibility, `storage` for filesystem or SQLite operational failures, and `internal` for an unexpected failure.
+- Optional `error.details` carries known facts: `argument`, `field` (a string/number path), `entity`, `key`, `source` (`explicit` or `defaultProject`), `settingsPath`, `reason`, `matchCount`, `candidateIds`, `path`, `databasePath`, `backupDirectory`, `backupPath`, `schemaVersion`, `supportedSchemaVersion`, and `cause` (`message` and optional native `code`/`errcode`). Unknown facts are omitted.
+- Optional `error.help` retains usage guidance. Prior notices are collected in optional `error.diagnostics`, an array of strings. On success, notices print as text on stderr after the command completes. Text-mode notices print immediately. This includes lock waits; JSON commands report their wait only at completion.
+
+Check the exit status before parsing stdout for success or stderr for failure. Message, help and diagnostic wording is for people; scripts use the code and details. Signals, runtime loading failures and broken output channels are outside this handled-error contract.
 
 Scripts should use `--json`. Text is colored only in a terminal unless `NO_COLOR` disables it. `FORCE_COLOR` overrides both: `0` turns color off and any other nonempty value turns it on, including when piped.
 

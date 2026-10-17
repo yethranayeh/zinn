@@ -5,13 +5,14 @@ import type {
 } from "../presentation/column-presentation.js";
 
 import { parseArgs } from "node:util";
-
 import { column, project } from "@zinn-dev/core";
+
+import { CliError } from "../errors.js";
 import {
   canPrompt,
   confirmAction,
   dashValueHelp,
-  failureMessage,
+  diagnostic,
   output,
   quit,
   UsageError,
@@ -90,8 +91,8 @@ export const projectRouter = {
           currentActor(),
         );
         output(presentProject(createdProject), formatProject);
-      } catch (err: any) {
-        quit(failureMessage(err, "Something went wrong"));
+      } catch (err) {
+        throw err;
       }
     },
     help: `Usage: zinn project create <project-key> [--name <text>] [--description <text>]
@@ -131,7 +132,11 @@ Example: zinn project list`,
       const projectMatch = project.getByKey(projectKey);
 
       if (projectMatch == null) {
-        quit(`Project with key "${project.standardizeKey(projectKey)}" does not exist!`);
+        throw new CliError(
+          `Project with key "${project.standardizeKey(projectKey)}" does not exist!`,
+          "not_found",
+          { entity: "project", key: project.standardizeKey(projectKey), source: "explicit" },
+        );
       }
 
       const taskCounts = column.getTaskCountsByProjectKey(projectMatch.key);
@@ -187,7 +192,7 @@ Example: zinn project view MDR`,
       const description = resolveTextEdit(values.description, values, "--description");
 
       if (values.name === undefined && description === undefined) {
-        quit("Provide an edit flag: --name or --description");
+        quit("Provide an edit flag: --name or --description", undefined, { field: [] });
       }
 
       const editedProject = project.edit(
@@ -230,7 +235,11 @@ Examples:
         const projectMatch = project.getByKey(projectKey);
 
         if (projectMatch == null) {
-          throw new Error(`Project with key "${projectKey}" does not exist!`);
+          throw new CliError(`Project with key "${projectKey}" does not exist!`, "not_found", {
+            entity: "project",
+            key: projectKey,
+            source: "explicit",
+          });
         }
 
         // Like `gh repo delete`: --yes never skips the prompt for a project the command did not name
@@ -238,11 +247,13 @@ Examples:
         if (isYesIgnored && !canPrompt()) {
           quit(
             `Cannot delete the default project ${projectMatch.key} without a terminal. Type its key to use --yes: zinn project delete ${projectMatch.key} --yes`,
+            undefined,
+            { argument: "project-key", reason: "confirmation_required" },
           );
         }
 
         if (isYesIgnored) {
-          console.error("Warning: --yes is ignored because no project key was typed");
+          diagnostic("Warning: --yes is ignored because no project key was typed");
         }
 
         const canDelete = await confirmAction(
@@ -259,8 +270,8 @@ Examples:
         } else {
           output(presentProject(projectMatch), (p) => `Deletion cancelled for ${formatProject(p)}`);
         }
-      } catch (err: any) {
-        quit(failureMessage(err, "Something went wrong"));
+      } catch (err) {
+        throw err;
       }
     },
     help: `Usage: zinn project delete [<project-key>] [--yes]
@@ -285,8 +296,8 @@ Example: zinn project delete MDR`,
         try {
           const createdColumn = column.create({ projectKey, name: columnName }, currentActor());
           output(presentColumn(createdColumn), formatColumn);
-        } catch (err: any) {
-          quit(failureMessage(err, "Something went wrong"));
+        } catch (err) {
+          throw err;
         }
       },
       help: `Usage: zinn project column create <project-key> <column-name>
@@ -335,7 +346,7 @@ Example: zinn project column list MDR`,
         validatePositionals(positionals, ["<project-key>", "<column-name>"]);
 
         if (values.name === undefined) {
-          quit("Provide an edit flag: --name");
+          quit("Provide an edit flag: --name", undefined, { argument: "--name" });
         }
 
         const editedColumn = column.edit(
@@ -401,7 +412,9 @@ Example: zinn project column edit MDR 'In Progress' --name Refining`,
             break;
           }
           default:
-            throw new UsageError(`Unknown order direction "${direction}"`);
+            throw new UsageError(`Unknown order direction "${direction}"`, {
+              argument: "direction",
+            });
         }
 
         // TODO: maybe also print the new full column state?

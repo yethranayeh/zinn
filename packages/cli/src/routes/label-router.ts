@@ -3,13 +3,13 @@ import type { RowCell } from "../presentation/row-layout.js";
 import type { RouteDef } from "../types.js";
 
 import { parseArgs } from "node:util";
+import { CliError } from "../errors.js";
 import { label, labelCreateSchema, labelDeleteSchema, labelEditSchema } from "@zinn-dev/core";
 
 import {
   confirmAction,
   dashValueHelp,
   output,
-  quit,
   validatePositionals,
   validateUniqueOptions,
 } from "../lib.js";
@@ -152,7 +152,11 @@ Examples:
       const labelMatch = label.getByName(props.name);
 
       if (labelMatch == null) {
-        quit(`A label with name "${props.name}" does not exist`);
+        throw new CliError(`A label with name "${props.name}" does not exist`, "not_found", {
+          entity: "label",
+          key: props.name,
+          source: "explicit",
+        });
       }
 
       const canDelete = await confirmAction(

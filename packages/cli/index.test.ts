@@ -8,6 +8,7 @@ import packageJson from "./package.json";
 import { runCliInTerminal } from "./testing";
 import { parseRoutes } from "./src/routes/router";
 import { routes } from "./src/routes/routes";
+import { errorDocumentSchema } from "./src/errors";
 import type { Activity } from "@zinn-dev/core";
 import { latestVersion, MIGRATIONS } from "../core/src/migrations/registry";
 
@@ -3754,7 +3755,9 @@ test("--json reports errors as JSON on stderr and leaves stdout empty", () => {
   expect(result.stdout).toBe("");
   const parsed = JSON.parse(result.stderr);
   expect(Object.keys(parsed)).toEqual(["error"]);
-  expect(Object.keys(parsed.error).sort()).toEqual(["help", "message"]);
+  expect(errorDocumentSchema.safeParse(parsed).success).toBe(true);
+  expect(parsed.error.code).toBe("invalid_input");
+  expect(parsed.error.details.argument).toBe("project-key");
   expect(parsed.error.message).toContain("<project-key>");
   expect(parsed.error.help).toContain("Usage: zinn project create");
 });
@@ -3899,8 +3902,8 @@ test("--json refuses commands that ask for confirmation without --yes, deleting 
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
-    expect(JSON.parse(result.stderr)).toEqual({
-      error: { message: "Commands that ask for confirmation need --yes when used with --json" },
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({
+      code: "invalid_input", details: { argument: "--yes", reason: "confirmation_required" },
     });
     expect(runZinn(["project", "list"], testDir).stdout).toBe("WEB | WEB\n");
   });
@@ -5135,8 +5138,8 @@ test("restore with --json needs --yes, and with it prints the restore result", (
 
     const refused = runZinn(["restore", path, "--json"], dir);
     expect(refused.code).toBe(1);
-    expect(JSON.parse(refused.stderr)).toEqual({
-      error: { message: "Commands that ask for confirmation need --yes when used with --json" },
+    expect(errorDocumentSchema.parse(JSON.parse(refused.stderr)).error).toMatchObject({
+      code: "invalid_input", details: { argument: "--yes", reason: "confirmation_required" },
     });
     expect(taskTitles(dir)).toEqual([{ title: "Kept" }, { title: "Later" }]);
     expect(backupFiles(dir)).toEqual(backupsBefore);
@@ -6087,14 +6090,12 @@ test("a match error with --json uses the usual error shape, with the hint for se
     const none = run("task", "edit", "APP-1", "--description", "x", "--replacing", "absent", "--json");
 
     expect(several.code).toBe(1);
-    expect(JSON.parse(several.stderr)).toEqual({
-      error: {
-        message:
-          "The text to replace matches 2 places in APP-1's description. Include more of the surrounding text so it matches one place. Use --all to replace every match.",
-      },
+    expect(errorDocumentSchema.parse(JSON.parse(several.stderr)).error).toMatchObject({
+      code: "conflict", details: { reason: "text_match_count", matchCount: 2, field: ["description"] },
     });
-    expect(JSON.parse(none.stderr)).toEqual({
-      error: { message: "The text to replace was not found in APP-1's description." },
+    expect(JSON.parse(several.stderr).error.message).toContain("--all");
+    expect(errorDocumentSchema.parse(JSON.parse(none.stderr)).error).toMatchObject({
+      code: "conflict", details: { reason: "text_match_count", matchCount: 0, field: ["description"] },
     });
   });
 });
@@ -6122,8 +6123,8 @@ test("the text-edit flags are usage errors without the text flag or in an invali
       expect(result.stderr).toBe(`${message}\n`);
     }
     expect(storedTextOf(dir)).toEqual(before);
-    expect(JSON.parse(run("task", "edit", "APP-1", "--append", "--json").stderr)).toEqual({
-      error: { message: 'Option "--append" needs "--description"' },
+    expect(errorDocumentSchema.parse(JSON.parse(run("task", "edit", "APP-1", "--append", "--json").stderr)).error).toMatchObject({
+      code: "invalid_input", details: { argument: "--description" },
     });
   });
 });

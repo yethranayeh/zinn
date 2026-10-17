@@ -1,9 +1,29 @@
 import type { OpenPolicy } from "@zinn-dev/core";
 
-import { expect, test } from "bun:test";
+import { expect, test, spyOn } from "bun:test";
 import { ReadOnlyDatabaseError, TextEditMatchError, UnmarkedDatabaseError } from "@zinn-dev/core";
 
-import { failureMessage, UsageError, validatePositionals } from "./lib";
+import { diagnostic, flushDiagnostics, prepareOutput, setOutputMode, failureMessage, UsageError, validatePositionals } from "./lib";
+
+test("JSON notices wait for completion and text notices remain immediate", () => {
+  const stderr = spyOn(console, "error").mockImplementation(() => {});
+  try {
+    prepareOutput(["task", "list", "--json"]);
+    diagnostic("waiting");
+    diagnostic("finished");
+    expect(stderr).not.toHaveBeenCalled();
+    flushDiagnostics();
+    expect(stderr.mock.calls).toEqual([["waiting"], ["finished"]]);
+    flushDiagnostics();
+    expect(stderr).toHaveBeenCalledTimes(2);
+    prepareOutput(["task", "search", "--", "--json"]);
+    diagnostic("text notice");
+    expect(stderr.mock.calls.at(-1)).toEqual(["text notice"]);
+  } finally {
+    setOutputMode("text");
+    stderr.mockRestore();
+  }
+});
 
 const FALLBACK = "Something went wrong";
 const POLICY: OpenPolicy = {

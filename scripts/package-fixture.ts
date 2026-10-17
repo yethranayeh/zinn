@@ -70,6 +70,25 @@ export function createPackageTestCopy(repositoryDirectory: string, testCopyDirec
   const cliDependencies = join(testCopyDirectory, "packages/cli/node_modules/@zinn-dev");
   mkdirSync(cliDependencies, { recursive: true });
   symlinkSync(join(testCopyDirectory, "packages/core"), join(cliDependencies, "core"), "junction");
+
+  const cliManifest = JSON.parse(
+    readFileSync(join(repositoryDirectory, "packages/cli/package.json"), "utf8"),
+  );
+
+  for (const [name, version] of Object.entries(cliManifest.dependencies ?? {})) {
+    if (String(version).startsWith("workspace:")) {
+      continue;
+    }
+
+    const destination = join(testCopyDirectory, "packages/cli/node_modules", name);
+
+    mkdirSync(dirname(destination), { recursive: true });
+    symlinkSync(
+      join(repositoryDirectory, "packages/cli/node_modules", name),
+      destination,
+      "junction",
+    );
+  }
 }
 
 /** Reads the minimum Node version declared by both packages. */

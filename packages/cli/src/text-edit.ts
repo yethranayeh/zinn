@@ -38,16 +38,18 @@ export function resolveTextEdit(
   const isReplacing = flags.replacing !== undefined;
 
   if (isAppending && isReplacing) {
-    quit(`Option "--append" cannot be used with "--replacing"`);
+    quit(`Option "--append" cannot be used with "--replacing"`, undefined, {
+      argument: "--append",
+    });
   }
 
   if ((isAppending || isReplacing) && text === undefined) {
     const modifier = isAppending ? "--append" : "--replacing";
-    quit(`Option "${modifier}" needs "${textFlag}"`);
+    quit(`Option "${modifier}" needs "${textFlag}"`, undefined, { argument: textFlag });
   }
 
   if (flags.all === true && !isReplacing) {
-    quit(`Option "--all" needs "--replacing"`);
+    quit(`Option "--all" needs "--replacing"`, undefined, { argument: "--all" });
   }
 
   if (text === undefined) {
