@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { openDatabase } from "../packages/core/src/sqlite/bun.ts";
 import { seedBaseline } from "../packages/core/src/migrations/testing.ts";
+import { BASELINE_VERSION } from "../packages/core/src/migrations/baseline.ts";
+import { latestVersion, MIGRATIONS } from "../packages/core/src/migrations/registry.ts";
 import { createPackageTestCopy, PACKAGE_NAMES } from "./package-fixture.ts";
 
 const REPOSITORY_DIRECTORY = fileURLToPath(new URL("..", import.meta.url));
@@ -120,16 +122,15 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
     const identitiesCode = `Promise.all([
       import(${JSON.stringify(pathToFileURL(join(packedCore, "src/release.js")).href)}),
       import(${JSON.stringify(pathToFileURL(join(packedCli, "src/database.js")).href)})
-    ]).then(([core, cli]) => console.log(JSON.stringify({ core: core.readCoreReleaseMode(), cli: cli.cliOpenPolicy().release })));`;
+    ]).then(([core, cli]) => console.log(JSON.stringify({ core: core.readCoreReleaseMode(), cli: cli.getCliOpenPolicy().release })));`;
     for (const runtime of ["bun", "node"]) {
       expect(JSON.parse(run([runtime, "--eval", identitiesCode], root))).toEqual({ core: "published", cli: "published" });
     }
 
     // Only disposable packed output receives the test migration.
     const registryPath = join(packedCore, "src/migrations/registry.js");
-    const registry = readFileSync(registryPath, "utf8");
-    expect(registry).toContain("export const MIGRATIONS = [];");
-    writeFileSync(registryPath, registry.replace("export const MIGRATIONS = [];", `export const MIGRATIONS = [{ version: 2, name: "test upgrade", rebuilds: [], apply(db) { db.exec("CREATE TABLE pack_test (value TEXT)"); } }];`));
+    const testMigrationVersion = latestVersion(MIGRATIONS) + 1;
+    appendFileSync(registryPath, `\nMIGRATIONS.push({ version: ${testMigrationVersion}, name: "test upgrade", rebuilds: [], apply(db) { db.exec("CREATE TABLE pack_test (value TEXT)"); } });\n`);
 
     const cases = [
       { core: "source", cli: "source", isolated: false, upgrades: false },
@@ -151,7 +152,8 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
       const env = { ...process.env, HOME: home, ZINN_DIR: store };
       run(["bun", join(packedCli, "index.js"), "project", "list", "--json"], home, env);
       let database = openDatabase(databasePath);
-      expect(database.query<{ user_version: number }>("PRAGMA user_version").get()!.user_version).toBe(state.upgrades ? 2 : 1);
+      expect(database.query<{ user_version: number }>("PRAGMA user_version").get()!.user_version).toBe(state.upgrades ? testMigrationVersion : BASELINE_VERSION);
+      expect(database.query("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'pack_test'").get() !== null).toBe(state.upgrades);
       expect(database.query("PRAGMA foreign_key_check").all()).toEqual([]);
       database.close();
       if (!state.upgrades) {
@@ -160,7 +162,8 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
         expect(refused.stdout.toString()).toBe("");
         run(["bun", join(packedCli, "index.js"), "migrate", "--json"], home, env);
         database = openDatabase(databasePath);
-        expect(database.query<{ user_version: number }>("PRAGMA user_version").get()!.user_version).toBe(2);
+        expect(database.query<{ user_version: number }>("PRAGMA user_version").get()!.user_version).toBe(testMigrationVersion);
+        expect(database.query("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'pack_test'").get()).not.toBeNull();
         database.close();
       }
     }
