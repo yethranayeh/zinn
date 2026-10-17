@@ -63,7 +63,45 @@ zinn info --json
 
 An unusable settings file displays errors, and a missing store or database and database read errors are reported with exit code 0. Note that SQLite may perform normal file housekeeping and crash recovery when this command is called.
 
-With `--json`, the report contains information about storage, settings files, default project, database and versions.
+With `--json`, the report is one object that always has the same keys:
+
+- `settingsFiles` lists each settings file with its `path`, its `source` (`env` for `ZINN_DIR/settings.json`, `global` or `local`) and its `state`: `found` (with the file's `settings`), `missing`, `error` (with an `error` string) or `not-read` (with `reason: "ZINN_DIR"`). With `ZINN_DIR`, the list holds `ZINN_DIR/settings.json` and the home and codebase files marked `not-read`.
+- `storage` holds the store `directory`, its `source` (`env`, `local`, `global` or `default`), the `settingsPath` of the file that chose it (`null` for `env` and `default`), whether the directory `exists`, and an `error`.
+- `defaultProject` holds the `key`, the `settingsPath` of the file that set it, and an `error`. `key` and `settingsPath` are `null` when no default is configured.
+- `database` holds its `path`, its `state`, the schema `version` it has, and the `latestVersion` this CLI reaches. `state` is `absent` (no file), `empty` (a file with no tables), `unmarked` (tables but no schema version), `current`, `older` or `newer` (compared with `latestVersion`), or `unavailable`. `version` is `0` for `absent`, `empty` and `unmarked`.
+- `versions` holds `cli`, `core` and `runtime` (`name` and `version`).
+
+`unavailable` means the database could not be inspected: an unusable settings file left the store undecided (`path` and `version` are `null`), or the file could not be read as a database (`path` is set, `version` is `null`, and `error` says why). Every `error` is `null` when there is no problem. A settings file's error is carried on `storage`, `defaultProject` and `database` as well as on its `settingsFiles` entry, so the same string can appear on several fields. With `ZINN_DIR`, an unusable `ZINN_DIR/settings.json` sets only `defaultProject.error`, since the store is already chosen.
+
+```json
+{
+	"settingsFiles": [
+		{
+			"path": "/home/me/.zinn/settings.json",
+			"source": "global",
+			"state": "found",
+			"settings": { "defaultProject": "DEMO" }
+		},
+		{ "path": "/work/app/zinn.local.json", "source": "local", "state": "missing" }
+	],
+	"storage": {
+		"directory": "/home/me/.zinn",
+		"source": "default",
+		"settingsPath": null,
+		"exists": true,
+		"error": null
+	},
+	"defaultProject": { "key": "DEMO", "settingsPath": "/home/me/.zinn/settings.json", "error": null },
+	"database": {
+		"path": "/home/me/.zinn/data/zinn.sqlite",
+		"state": "current",
+		"version": 2,
+		"latestVersion": 2,
+		"error": null
+	},
+	"versions": { "cli": "0.41.0", "core": "0.30.0", "runtime": { "name": "Node", "version": "22.0.0" } }
+}
+```
 
 ## Editing conventions
 
