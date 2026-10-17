@@ -1,5 +1,5 @@
 ---
-import Icon from "./Icon.astro";
+import CopyButton from "./CopyButton.astro";
 import SuperwhiteTerminalText from "./SuperwhiteTerminalText.astro";
 import { installCommand as command } from "../config/site";
 ---
@@ -24,29 +24,19 @@ import { installCommand as command } from "../config/site";
 			</div>
 		</div>
 
-		<button
-			class='absolute top-auto right-0 md:right-2 bottom-0 flex md:min-h-11 w-fit cursor-pointer items-center justify-center gap-2 p-2.5 font-mono text-xs hover:bg-limestone/8 focus-visible:outline-offset-2 md:top-5 md:bottom-auto md:right-5 md:mt-0 md:w-11'
-			type='button'
-			data-copy={command}
-			hidden
+		<CopyButton
+			class='absolute right-0 bottom-0 w-fit md:top-5 md:right-5 md:bottom-auto'
+			variant='ghost-inverted'
+			size='responsive-icon'
+			value={command}
+			label='COPY'
 			aria-label='Copy installation command'
-			title='Copy command'>
-			<Icon name='copy' class='size-4 md:size-6 group-data-[copied]/install:hidden' />
-			<Icon name='check' class='hidden size-4 md:size-6 group-data-[copied]/install:block' />
-			<span class='md:hidden'>COPY</span>
-		</button>
+			title='Copy command'
+			success='Installation command copied to clipboard. After installing, run zinn --help.'
+			event='install-copy'
+			stateTarget='[data-install]'
+		/>
 	</div>
-
-	<div class='mt-3.5'>
-		<p class='text-xs leading-normal'>Experimental.</p>
-	</div>
-	<p
-		class='sr-only text-xs leading-normal data-[error]:not-sr-only data-[error]:mt-2'
-		data-copy-feedback
-		role='status'
-		aria-live='polite'
-		aria-atomic='true'>
-	</p>
 </div>
 
 <style>
@@ -61,43 +51,3 @@ import { installCommand as command } from "../config/site";
 		--superwhite-ink: transparent;
 	}
 </style>
-
-<script>
-	import { trackEvent } from "../scripts/analytics";
-
-	for (const button of document.querySelectorAll<HTMLButtonElement>("[data-copy]")) {
-		const install = button.closest<HTMLElement>("[data-install]")!;
-		const feedback = install.querySelector<HTMLElement>("[data-copy-feedback]")!;
-		let resetTimer: ReturnType<typeof setTimeout>;
-
-		function reset() {
-			install.removeAttribute("data-copied");
-			feedback.removeAttribute("data-error");
-			feedback.textContent = "";
-			button.title = "Copy command";
-			button.setAttribute("aria-label", "Copy installation command");
-		}
-
-		button.hidden = false;
-		button.addEventListener("click", async () => {
-			clearTimeout(resetTimer);
-			reset();
-			button.disabled = true;
-			try {
-				await navigator.clipboard.writeText(button.dataset.copy!);
-			} catch {
-				feedback.setAttribute("data-error", "");
-				feedback.textContent = "Could not copy. Select the command to copy it manually.";
-				return;
-			} finally {
-				button.disabled = false;
-			}
-			install.setAttribute("data-copied", "");
-			button.title = "Installation command copied. After installing, run zinn --help.";
-			button.setAttribute("aria-label", "Installation command copied to clipboard");
-			feedback.textContent = "Installation command copied to clipboard. After installing, run zinn --help.";
-			resetTimer = setTimeout(reset, 2500);
-			trackEvent("install-copy");
-		});
-	}
-</script>

@@ -1,0 +1,117 @@
+---
+import type { ComponentProps } from "astro/types";
+import type { WebsiteEvent } from "../scripts/analytics";
+import Button from "./Button.astro";
+import Icon from "./Icon.astro";
+
+type Props = ComponentProps<typeof Button> & {
+	value?: string;
+	url?: string;
+	label: string;
+	success: string;
+	stateTarget?: string;
+	event?: WebsiteEvent;
+};
+
+const {
+	value,
+	url,
+	label,
+	success,
+	stateTarget,
+	event,
+	size = "default",
+	class: className,
+	...attributes
+} = Astro.props;
+const iconSize = size === "responsive-icon" ? "size-4 md:size-6" : "size-4";
+const labelClass = size === "icon" ? "sr-only" : size === "responsive-icon" ? "md:hidden" : "";
+---
+
+<Button
+	{...attributes}
+	{size}
+	class:list={["group/copy data-[error]:w-auto!", className]}
+	hidden
+	data-copy-value={value}
+	data-copy-url={url}
+	data-copy-success={success}
+	data-copy-state-target={stateTarget}
+	data-copy-event={event}>
+	<Icon name='copy' class={`${iconSize} group-data-[copied]/copy:hidden group-data-[error]/copy:hidden`} />
+	<Icon name='check' class={`hidden ${iconSize} group-data-[copied]/copy:block group-data-[error]/copy:hidden`} />
+
+	<span class:list={[labelClass, "group-data-[error]/copy:hidden"]}>{label}</span>
+
+	<span class='hidden whitespace-nowrap group-data-[error]/copy:inline' aria-hidden='true'>Failed to copy</span>
+	<span class='sr-only' data-copy-announcement role='status' aria-live='polite' aria-atomic='true'></span>
+</Button>
+
+<script>
+	import { trackEvent, type WebsiteEvent } from "../scripts/analytics";
+
+	const copyStatusDurationMs = 2500;
+	for (const button of document.querySelectorAll<HTMLButtonElement>("[data-copy-value], [data-copy-url]")) {
+		const announcement = button.querySelector<HTMLElement>("[data-copy-announcement]")!;
+		const stateTarget = button.dataset.copyStateTarget
+			? button.closest<HTMLElement>(button.dataset.copyStateTarget)
+			: null;
+		const originalTitle = button.title;
+		const originalLabel = button.getAttribute("aria-label");
+		let resetTimer: ReturnType<typeof setTimeout>;
+
+		function reset() {
+			stateTarget?.removeAttribute("data-copied");
+			button.removeAttribute("data-copied");
+			button.removeAttribute("data-error");
+			announcement.textContent = "";
+			button.title = originalTitle;
+			if (originalLabel !== null) {
+				button.setAttribute("aria-label", originalLabel);
+			} else {
+				button.removeAttribute("aria-label");
+			}
+		}
+
+		function announce(message: string) {
+			announcement.textContent = message;
+			button.title = message;
+			button.setAttribute("aria-label", message);
+			resetTimer = setTimeout(reset, copyStatusDurationMs);
+		}
+
+		button.hidden = false;
+		button.addEventListener("click", async () => {
+			clearTimeout(resetTimer);
+			reset();
+			button.disabled = true;
+			try {
+				if (button.dataset.copyUrl) {
+					const fetchedMarkdown = fetch(button.dataset.copyUrl).then(async (response) => {
+						if (!response.ok) {
+							throw new Error("Markdown request failed");
+						}
+						return new Blob([await response.text()], { type: "text/plain" });
+					});
+					void fetchedMarkdown.catch(() => {});
+					await navigator.clipboard.write([new ClipboardItem({ "text/plain": fetchedMarkdown })]);
+				} else {
+					await navigator.clipboard.writeText(button.dataset.copyValue!);
+				}
+			} catch {
+				button.setAttribute("data-error", "");
+				announce("Failed to copy");
+				return;
+			} finally {
+				button.disabled = false;
+			}
+
+			stateTarget?.setAttribute("data-copied", "");
+			button.setAttribute("data-copied", "");
+			announce(button.dataset.copySuccess!);
+			if (button.dataset.copyEvent) {
+				trackEvent(button.dataset.copyEvent as WebsiteEvent);
+			}
+		});
+	}
+</script>

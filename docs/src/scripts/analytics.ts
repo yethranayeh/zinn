@@ -1,9 +1,11 @@
 import { isProductionSite } from "../config/site";
 
-type WebsiteEvent =
+export type WebsiteEvent =
   | "github-click"
   | "npm-click"
   | "install-copy"
+  | "prompt-copy"
+  | "markdown-copy"
   | "twitter-click"
   | "bluesky-click";
 

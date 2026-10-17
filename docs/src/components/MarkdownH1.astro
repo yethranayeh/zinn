@@ -1,11 +1,20 @@
 ---
 import type { HTMLAttributes } from "astro/types";
 
+import MarkdownActions from "./MarkdownActions.astro";
+
 type Props = HTMLAttributes<"h1">;
+
+const pathname = Astro.url.pathname.replace(/\/$/, "");
+const showMarkdownActions = pathname === "/docs" || pathname.startsWith("/docs/") || pathname === "/changelog";
 
 const { class: className, ...attributes } = Astro.props;
 ---
 
-<h1 class:list={["mb-6 text-3xl leading-tight tracking-tight sm:text-4xl md:text-5xl", className]} {...attributes}>
-	<slot />
-</h1>
+<div class='mb-6 flex flex-wrap justify-between items-start h-min'>
+	<h1 class:list={["text-3xl leading-tight tracking-tight sm:text-4xl md:text-5xl", className]} {...attributes}>
+		<slot />
+	</h1>
+
+	{showMarkdownActions && <MarkdownActions />}
+</div>

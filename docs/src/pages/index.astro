@@ -3,6 +3,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 import SiteHeader from "../components/SiteHeader.astro";
 import SiteFooter from "../components/SiteFooter.astro";
 import Prose from "../components/Prose.astro";
+import AgentSetup from "../components/AgentSetup.astro";
 import InstallCommand from "../components/InstallCommand.astro";
 import ReadingSection from "../components/ReadingSection.astro";
 import TerminalCommands from "../components/TerminalCommands.astro";
@@ -27,25 +28,33 @@ const workflowCommands = [
 			aria-label='Install Zinn'>
 			<SiteHeader linkHome={false} />
 
-			<div class='space-y-6 md:space-y-4 my-auto w-full max-w-3xl pt-16 pb-14 md:pt-24 md:pb-16 2xl:ml-32'>
-				<h1 class='max-w-xl text-4xl leading-tight tracking-tight md:text-5xl'>
+			<div class='my-auto w-full max-w-3xl pt-16 pb-14 md:pt-24 md:pb-16 2xl:ml-32'>
+				<h1 class='max-w-xl text-4xl leading-tighter tracking-tight md:text-5xl'>
 					A kanban workflow<br />in the <span class='text-cinnabar'>terminal</span>.
 				</h1>
+
 				<InstallCommand />
-				<nav class='flex items-center gap-7 font-mono text-xs leading-normal' aria-label='Zinn links'>
-					<a
-						class='inline-flex items-center gap-2 py-2'
-						href={projectLinks.github}
-						aria-label='Zinn source on GitHub'
-						data-site-event='github-click'>GitHub <Icon name='external-link' class='size-4.5' /></a
-					>
-					<a
-						class='inline-flex items-center gap-2 py-2'
-						href={projectLinks.npm}
-						aria-label='Zinn CLI package on npm'
-						data-site-event='npm-click'>npm <Icon name='external-link' class='size-4.5' /></a
-					>
-				</nav>
+
+				<div class='flex justify-between w-full'>
+					<nav
+						class='flex flex-wrap items-center gap-x-7 gap-y-2 font-mono text-xs leading-normal'
+						aria-label='Zinn links'>
+						<a
+							class='inline-flex items-center gap-2 py-2'
+							href={projectLinks.github}
+							aria-label='Zinn source on GitHub'
+							data-site-event='github-click'>GitHub <Icon name='external-link' class='size-4.5' /></a
+						>
+						<a
+							class='inline-flex items-center gap-2 py-2'
+							href={projectLinks.npm}
+							aria-label='Zinn CLI package on npm'
+							data-site-event='npm-click'>npm <Icon name='external-link' class='size-4.5' /></a
+						>
+					</nav>
+
+					<AgentSetup />
+				</div>
 			</div>
 
 			<ScrollCue href='#definition-heading' />

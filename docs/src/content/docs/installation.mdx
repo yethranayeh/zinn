@@ -4,6 +4,8 @@ description: Install, upgrade and uninstall the Zinn CLI and core library with n
 breadcrumb: Installation
 ---
 
+import AgentSetup from "../../components/AgentSetup.astro";
+
 # Install Zinn
 
 Zinn is published on npm as two packages: the CLI, [@zinn-dev/cli](https://www.npmjs.com/package/@zinn-dev/cli), and the core library at [@zinn-dev/core](https://www.npmjs.com/package/@zinn-dev/core).
@@ -16,9 +18,14 @@ On a Node.js 24 release older than 24.15.0, npm installs Zinn with an engine war
 
 ## Install the CLI
 
+<div class="[&>div]:my-0 flex flex-col w-full">
+
 ```sh title="Install the CLI"
 npm i -g @zinn-dev/cli
 ```
+
+<div class="self-end"><AgentSetup /></div>
+</div>
 
 Check that the `zinn` command is available:
 

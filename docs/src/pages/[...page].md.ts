@@ -10,7 +10,12 @@ export const getStaticPaths = (async () => {
     ...pages.map((entry) => ({ params: { page: entry.id }, props: { markdown: entry.body } })),
     ...docs.map((entry) => ({
       params: { page: ["docs", docsSlug(entry)].filter(Boolean).join("/") },
-      props: { markdown: entry.body },
+      props: {
+        // The setup button is an HTML action, so omit its MDX import and element.
+        markdown: entry.body
+          ?.replace(/^import AgentSetup from ["'][^"']+["'];\r?\n\r?\n/, "")
+          .replace(/^<AgentSetup \/>\r?\n\r?\n/m, ""),
+      },
     })),
   ];
 }) satisfies GetStaticPaths;

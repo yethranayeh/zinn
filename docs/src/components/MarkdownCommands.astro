@@ -10,4 +10,4 @@ interface Props {
 const { "data-label": label, "data-commands": commands } = Astro.props;
 ---
 
-<TerminalCommands class='mt-6' label={label} commands={commands.trim().split(/\n\s*\n/)} />
+<TerminalCommands label={label} commands={commands.trim().split(/\n\s*\n/)} />

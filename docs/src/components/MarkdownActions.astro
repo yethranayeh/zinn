@@ -1,0 +1,18 @@
+---
+import Icon from "./Icon.astro";
+import CopyButton from "./CopyButton.astro";
+const markdownUrl = `${Astro.url.pathname.replace(/\/$/, "")}.md`;
+---
+
+<div class='flex flex-wrap items-center gap-x-2 font-mono text-xs'>
+	<CopyButton
+		url={markdownUrl}
+		label='Copy as Markdown'
+		success='Markdown copied to clipboard.'
+		event='markdown-copy'
+	/>
+
+	<a class='inline-flex min-h-11 items-center gap-2 py-2' href={markdownUrl}>
+		View as Markdown <Icon name='external-link' class='size-4' />
+	</a>
+</div>

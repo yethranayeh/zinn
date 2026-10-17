@@ -1,0 +1,11 @@
+---
+import { agentSetupPrompt } from "../config/site";
+import CopyButton from "./CopyButton.astro";
+---
+
+<CopyButton
+	value={agentSetupPrompt}
+	label='Copy for your agent'
+	success='Agent setup prompt copied to clipboard.'
+	event='prompt-copy'
+/>

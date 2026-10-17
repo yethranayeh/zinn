@@ -1,0 +1,31 @@
+---
+import type { HTMLAttributes } from "astro/types";
+
+interface Props extends HTMLAttributes<"button"> {
+	variant?: "ghost" | "ghost-inverted";
+	size?: "default" | "icon" | "responsive-icon";
+}
+
+const { variant = "ghost", size = "default", type = "button", class: className, ...attributes } = Astro.props;
+const variants = {
+	ghost: "hover:bg-soot/8",
+	"ghost-inverted": "hover:bg-limestone/8"
+};
+const sizes = {
+	default: "min-h-11 px-2.5 py-2.5",
+	icon: "size-11 p-2.5",
+	"responsive-icon": "p-2.5 md:size-11"
+};
+---
+
+<button
+	type={type}
+	class:list={[
+		"inline-flex cursor-pointer items-center justify-center gap-2 text-left font-mono text-xs focus-visible:outline-offset-2 disabled:cursor-wait disabled:opacity-50",
+		variants[variant],
+		sizes[size],
+		className
+	]}
+	{...attributes}>
+	<slot />
+</button>

@@ -1,5 +1,5 @@
 ---
-import Icon from "./Icon.astro";
+import CopyButton from "./CopyButton.astro";
 
 interface Props {
 	label: string;
@@ -25,52 +25,15 @@ const { label, commands, class: className } = Astro.props;
 				))}
 			</code>
 		</pre>
-		<button
-			class='m-1 flex size-11 shrink-0 cursor-pointer items-center justify-center hover:bg-limestone/8 focus-visible:outline-offset-2 md:m-2'
-			type='button'
-			data-terminal-copy={commands.join("\n")}
-			hidden
-			aria-label={`Copy commands: ${label}`}
-			title='Copy commands'>
-			<Icon name='copy' class='size-5 group-data-[copied]/terminal:hidden' />
-			<Icon name='check' class='hidden size-5 group-data-[copied]/terminal:block' />
-		</button>
+
+		<CopyButton
+			class='m-1 shrink-0 md:m-2'
+			variant='ghost-inverted'
+			size='icon'
+			value={commands.join("\n")}
+			label={`Copy commands: ${label}`}
+			title='Copy commands'
+			success='Commands copied to clipboard.'
+		/>
 	</div>
-	<p
-		class='sr-only text-xs leading-normal data-[error]:not-sr-only data-[error]:mt-2'
-		data-terminal-feedback
-		role='status'
-		aria-live='polite'
-		aria-atomic='true'>
-	</p>
 </div>
-
-<script>
-	for (const button of document.querySelectorAll<HTMLButtonElement>("[data-terminal-copy]")) {
-		const terminal = button.closest<HTMLElement>("[data-terminal]")!;
-		const feedback = terminal.querySelector<HTMLElement>("[data-terminal-feedback]")!;
-		let resetTimer: ReturnType<typeof setTimeout>;
-
-		function reset() {
-			terminal.removeAttribute("data-copied");
-			feedback.removeAttribute("data-error");
-			feedback.textContent = "";
-		}
-
-		button.hidden = false;
-		button.addEventListener("click", async () => {
-			clearTimeout(resetTimer);
-			reset();
-			try {
-				await navigator.clipboard.writeText(button.dataset.terminalCopy!);
-			} catch {
-				feedback.setAttribute("data-error", "");
-				feedback.textContent = "Could not copy. Select the commands to copy them manually.";
-				return;
-			}
-			terminal.setAttribute("data-copied", "");
-			feedback.textContent = "Commands copied to clipboard.";
-			resetTimer = setTimeout(reset, 2500);
-		});
-	}
-</script>

@@ -1,3 +1,4 @@
+import { agentSetupPrompt, installCommand, minimumNodeVersion } from "../src/config/site";
 import { expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -74,7 +75,9 @@ async function expectMarkdownTwin(page: string, source: string) {
 	expect(markdownResponse.headers.get("Content-Type")).toContain("text/markdown");
 	const markdown = await markdownResponse.text();
 	const sourceText = await Bun.file(join(contentDirectory, source)).text();
-	expect(markdown).toBe(sourceText.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trimStart());
+	expect(markdown).toBe(sourceText.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trimStart()
+      .replace('import AgentSetup from "../../components/AgentSetup.astro";\n\n', "")
+      .replace("<AgentSetup />\n\n", ""));
 	expect(markdown).toStartWith("# ");
 	expect(markdown).not.toContain("layout:");
 	return markdown;
@@ -216,4 +219,27 @@ test("social preview is a 1200 by 630 PNG linked by homepage metadata", async ()
 	const dimensionsOffset = signature.length + chunkHeaderBytes;
 	expect(png.readUInt32BE(dimensionsOffset)).toBe(1200);
 	expect(png.readUInt32BE(dimensionsOffset + dimensionBytes)).toBe(630);
+});
+
+test("agent setup prompt uses the installation command and supported runtime", async () => {
+  for (const command of [installCommand, "node --version", "zinn --version", "npx skills add yethranayeh/zinn --skill zinn -g -y", "zinn --help", minimumNodeVersion]) {
+    expect(agentSetupPrompt).toContain(command);
+  }
+  const installation = await Bun.file(join(contentDirectory, "docs/installation.mdx")).text();
+  expect(installation).toContain(minimumNodeVersion);
+  for (const path of ["/", "/docs/installation"]) {
+    const html = await (await server.fetch(path)).text();
+    expect(html).toContain('data-copy-event="prompt-copy"');
+    expect(visibleText(html)).not.toContain(agentSetupPrompt);
+  }
+});
+
+test.each([...docsPages, "changelog"])("%s offers its Markdown actions directly after the heading", async (page) => {
+  const html = await (await server.fetch(`/${page}`)).text();
+  expect(html).toMatch(new RegExp(`</h1>\\s*<div[^>]*>[\\s\\S]*?data-copy-url="/${page}\\.md"`));
+  expect(html).toContain(`href="/${page}.md"`);
+  expect(html).toContain('data-copy-event="markdown-copy"');
+  const markdown = await server.fetch(`/${page}.md`);
+  expect(markdown.status).toBe(200);
+  expect(markdown.headers.get("Content-Type")).toContain("text/markdown");
 });
