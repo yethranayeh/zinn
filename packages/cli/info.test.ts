@@ -111,6 +111,25 @@ test("broken settings leave values unavailable while info succeeds and ordinary 
   expect(existsSync(join(home, ".zinn", "data"))).toBe(false);
 });
 
+test("an unusable settings file's error prints once in the text output while JSON keeps it on every field", () => {
+  const path = join(cwd, "zinn.local.json");
+  settings(path, { defaultProject: 42, storage: { directory: 5 } });
+  const found = report();
+  const file = found.settingsFiles.find((candidate) => candidate.path === path);
+  if (file?.state !== "error") {
+    throw new Error("expected the local settings file to be reported as an error");
+  }
+  expect(found.storage.error).toBe(file.error);
+  expect(found.database.error).toBe(file.error);
+  expect(found.defaultProject.error).toBe(file.error);
+
+  const text = run(["info"]);
+  expect(text.code).toBe(0);
+  expect(text.stderr).toBe("");
+  expect(text.stdout.split(file.error)).toHaveLength(2);
+  expect(text.stdout).toContain(path);
+});
+
 test("corrupt and non-SQLite files produce database errors while preserving the rest of the report", () => {
   for (const kind of ["corrupt", "not-sqlite"]) {
     const directory = join(root, kind);

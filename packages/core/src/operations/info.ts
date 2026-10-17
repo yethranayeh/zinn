@@ -17,7 +17,6 @@ export type StoreInfo = {
   settingsFiles: Array<SettingsFileInspection>;
   storage: {
     directory: string | null;
-    databasePath: string | null;
     source: StorageSource | null;
     settingsPath: string | null;
     exists: boolean | null;
@@ -61,7 +60,6 @@ export const info = {
       settingsFiles: settings.files,
       storage: {
         directory: null,
-        databasePath: null,
         source: null,
         settingsPath: null,
         exists: null,
@@ -89,13 +87,11 @@ export const info = {
       const storage = resolveStorage(inputs, settings);
       report.storage = {
         directory: storage.directory,
-        databasePath: storage.databasePath,
         source: storage.source,
         settingsPath: storage.settingsPath,
         exists: null,
         error: null,
       };
-      report.database.path = storage.databasePath;
 
       try {
         const directory = statSync(storage.directory);
@@ -118,6 +114,7 @@ export const info = {
           error: null,
         };
       } catch (error) {
+        report.database.path = storage.databasePath;
         report.database.error = errorMessage(error);
       }
     } catch (error) {
