@@ -1,16 +1,17 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const packageDirectory = fileURLToPath(new URL(".", import.meta.url));
 const repositoryDirectory = fileURLToPath(new URL("../..", import.meta.url));
 const outputDirectory = join(packageDirectory, "dist");
+const packageChecksDirectory = join(packageDirectory, "package-checks");
 const BUILD_CHECK_TIMEOUT_MS = 30_000;
 
-function run(command: string[]) {
-  const result = Bun.spawnSync(command, { cwd: repositoryDirectory });
+function run(command: string[], env = process.env) {
+  const result = Bun.spawnSync(command, { cwd: repositoryDirectory, env });
   expect(result.exitCode, `${result.stdout.toString()}\n${result.stderr.toString()}`).toBe(0);
   return result.stdout.toString();
 }
@@ -89,23 +90,18 @@ test("emitted core works on both runtimes and its declarations need no Bun types
     run(["bun", "test", runtimeCheck]);
     run(["bun", "run", "test:node", runtimeCheck]);
 
-    writeFileSync(join(directory, "consumer.mts"), `
-      import { activity, project, task, configureDatabase, CoreError, InputValidationError, SqliteError, type FailureFacts, type Activity, type Actor, type TaskWithKey } from "@zinn-dev/core";
-      const actor: Actor = { name: "consumer", email: "consumer@example.test", kind: "human" };
-      configureDatabase({ client: "consumer", version: "1.0.0", executable: "consumer.mts", release: "source", allowsLegacyRead: false });
-      const createdProject = project.create({ key: "TYPES" }, actor);
-      const createdTask: TaskWithKey = task.create({ project_id: createdProject.id, title: "Declarations", priority: "high" }, actor);
-      const key: string = createdTask.key;
-      const failureFacts: FailureFacts = { entity: "task", key };
-      const failure: Error = new CoreError("Missing task", "missing", failureFacts);
-      const validation: Error = new InputValidationError([{ code: "invalid_type", path: ["title"], message: "Invalid title" }]);
-      const sqlite: Error = new SqliteError("Busy", 5, null);
-      const events: Activity[] = activity.getAll({ sessionId: "conversation", threadId: "child", limit: 1 });
-      // @ts-expect-error priority is a public vocabulary, not an arbitrary string.
-      task.create({ project_id: createdProject.id, title: "Invalid", priority: "invalid" }, actor);
-      // @ts-expect-error every mutation requires an explicit actor.
-      project.create({ key: "INVALID" });
-    `);
+    // The installed-package check runs these same files against the packed package before publishing.
+    const installedCore = join(directory, "node_modules/@zinn-dev/core");
+    mkdirSync(dirname(installedCore), { recursive: true });
+    symlinkSync(outputDirectory, installedCore, "junction");
+    const installedCheck = join(directory, "runtime.mjs");
+    copyFileSync(join(packageChecksDirectory, "runtime.mjs"), installedCheck);
+    for (const runtime of ["bun", "node"]) {
+      const env = { ...process.env, ZINN_DIR: join(directory, `installed-store-${runtime}`) };
+      expect(JSON.parse(run([runtime, installedCheck], env)).adapter).toBe(runtime);
+    }
+
+    copyFileSync(join(packageChecksDirectory, "consumer.mts"), join(directory, "consumer.mts"));
     const consumerConfig = join(directory, "tsconfig.json");
     writeFileSync(consumerConfig, JSON.stringify({
       compilerOptions: {

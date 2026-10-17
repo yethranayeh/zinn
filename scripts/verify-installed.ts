@@ -1,6 +1,7 @@
 /** Checks locally packed core and CLI on Node and Bun before publishing. */
 import { strict as assert } from "node:assert";
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -16,6 +17,7 @@ import { createPackageTestCopy, PACKAGE_NAMES, readNodeMinimum } from "./package
 import { readVerifiedDownload } from "./archive-cache.ts";
 
 const REPOSITORY_DIRECTORY = fileURLToPath(new URL("..", import.meta.url));
+const PACKAGE_CHECKS_DIRECTORY = join(REPOSITORY_DIRECTORY, "packages/core/package-checks");
 const PARALLEL_CREATES = 8;
 const METADATA_TIMEOUT_MS = 60_000;
 const COMMAND_TIMEOUT_MS = 120_000;
@@ -239,26 +241,8 @@ async function checkRuntime(
   // Runtime commands receive no inherited flags, warning suppression, preload, or module paths.
   const env = { HOME: home, ZINN_DIR: join(directory, "store"), PATH: runtime.path };
   const prefix = `[${runtime.name}]`;
-  const coreCheck = join(consumer, "core-check.mjs");
-  writeFileSync(
-    coreCheck,
-    `
-    import { strict as assert } from "node:assert";
-    import { fileURLToPath } from "node:url";
-    import * as core from "@zinn-dev/core";
-    const coreUrl = import.meta.resolve("@zinn-dev/core");
-    const { getDb } = await import(new URL("src/db.js", coreUrl));
-    const { driver } = await import(new URL("src/sqlite/${runtime.adapter}.js", coreUrl));
-    core.configureDatabase({ client: "installed check", version: "1.0.0", executable: "core-check.mjs", release: "published", allowsLegacyRead: false });
-    const actor = { name: "installed check", email: "check@example.test", kind: "agent" };
-    const project = core.project.create({ key: "CORE" }, actor);
-    const task = core.task.create({ project_id: project.id, title: "Installed core" }, actor);
-    assert.equal(core.task.getByKey(task.key).title, "Installed core");
-    assert.equal(getDb().driver, driver, "Core selected the wrong SQLite adapter");
-    getDb().close();
-    console.log(JSON.stringify({ adapter: ${JSON.stringify(runtime.adapter)}, core: fileURLToPath(coreUrl) }));
-  `,
-  );
+  const coreCheck = join(consumer, "runtime.mjs");
+  copyFileSync(join(PACKAGE_CHECKS_DIRECTORY, "runtime.mjs"), coreCheck);
 
   const coreResult = JSON.parse(await succeeds([runtime.executable, coreCheck], consumer, env));
   assert.equal(coreResult.adapter, runtime.adapter);
@@ -327,21 +311,7 @@ async function checkRuntime(
 }
 
 async function checkDeclarations(consumer: string) {
-  writeFileSync(
-    join(consumer, "consumer.mts"),
-    `
-    import { project, task, configureDatabase, type Actor, type TaskWithKey } from "@zinn-dev/core";
-    const actor: Actor = { name: "consumer", email: "consumer@example.test", kind: "human" };
-    configureDatabase({ client: "consumer", version: "1.0.0", executable: "consumer.mts", release: "source", allowsLegacyRead: false });
-    const createdProject = project.create({ key: "TYPES" }, actor);
-    const createdTask: TaskWithKey = task.create({ project_id: createdProject.id, title: "Declarations", priority: "high" }, actor);
-    const key: string = createdTask.key;
-    // @ts-expect-error public priorities are a vocabulary.
-    task.create({ project_id: createdProject.id, title: "Invalid", priority: "invalid" }, actor);
-    // @ts-expect-error mutations require an actor.
-    project.create({ key: "INVALID" });
-  `,
-  );
+  copyFileSync(join(PACKAGE_CHECKS_DIRECTORY, "consumer.mts"), join(consumer, "consumer.mts"));
   writeFileSync(
     join(consumer, "tsconfig.json"),
     JSON.stringify({
