@@ -6,7 +6,10 @@ interface Props {
 }
 
 const { linkHome = true } = Astro.props;
-const links = [{ name: "Installation", path: "/docs/installation" }];
+const links = [
+	{ name: "Installation", path: "/docs/installation" },
+	{ name: "Changelog", path: "/changelog" }
+];
 const currentPath = Astro.url.pathname.replace(/\/$/, "");
 ---
 

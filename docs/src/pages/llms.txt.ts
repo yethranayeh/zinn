@@ -19,6 +19,7 @@ When to use Zinn: track development work locally, carry task scope and progress 
 - [Installation](https://zinn.sh/docs/installation.md): Requirements, installing, upgrading and uninstalling the CLI and core, and running them on Bun.
 - [CLI reference](https://raw.githubusercontent.com/yethranayeh/zinn/main/packages/cli/README.md): Commands, flags, confirmations, JSON contracts and database configuration.
 - [Core library](https://raw.githubusercontent.com/yethranayeh/zinn/main/packages/core/README.md): TypeScript library installation and operations.
+- [Changelog](https://zinn.sh/changelog.md): Release changes, bundled core versions and breaking changes.
 
 ## Project information
 

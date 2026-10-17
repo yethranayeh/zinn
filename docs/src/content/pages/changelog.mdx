@@ -1,0 +1,75 @@
+---
+title: Changelog | Zinn
+description: Release notes for Zinn, an Experimental kanban CLI and core library, including breaking changes and database upgrades.
+---
+
+# Changelog
+
+Notable changes to Zinn. Each CLI release names the core version it includes. **Breaking** changes include the action needed when upgrading.
+
+## 0.40.0 - 2026-10-15
+
+[CLI 0.40.0](https://www.npmjs.com/package/@zinn-dev/cli/v/0.40.0) | [Core 0.29.0](https://www.npmjs.com/package/@zinn-dev/core/v/0.29.0)
+
+### Changed
+
+- Install the CLI with `npm i -g @zinn-dev/cli`. The CLI and core ship as ESM JavaScript with TypeScript declarations and run on Node.js 24.15.0 or newer. Bun remains supported. See [installation](/docs/installation).
+- Confirmation prompts use stderr. Enter declines, and `y` or `Y` confirms.
+- **Breaking core API:** `readReleaseMode` is removed from the public exports. Pass your client's `release` identity directly to `configureDatabase` with `source` for development or `published` for prepared release artifacts. Core determines its own identity independently.
+
+## 0.39.0 - 2026-10-11
+
+[CLI 0.39.0](https://www.npmjs.com/package/@zinn-dev/cli/v/0.39.0) | [Core 0.28.0](https://www.npmjs.com/package/@zinn-dev/core/v/0.28.0)
+
+### Added
+
+- Configure `defaultProject` in `settings.json` or `zinn.local.json` to use a project when its key is omitted. Use `--all-projects` to list or search tasks across projects.
+- Read task activity with `zinn task view <task-key> --history`.
+- Validate settings files with the published [JSON Schema](/schemas/settings/v1.json).
+
+### Changed
+
+- **Breaking confirmations:** `project delete`, `task delete` and `restore` require `--yes` when stdin or stdout is redirected. Unanswered confirmations exit with code **1** before changing data. Scripts must pass `--yes` and type the project key when deleting a project. Piped answers do not confirm an operation.
+- **Breaking settings isolation:** `ZINN_DIR` reads settings only from the selected store's `settings.json`. Put settings needed by that store there. Global and per-codebase files are ignored.
+
+### Fixed
+
+- Activity history marks deleted entities and distinguishes task IDs when a task key is reused.
+- Migrations and restores refuse to commit if foreign keys reference missing tables, as well as missing rows.
+
+## 0.38.0 - 2026-10-10
+
+[CLI 0.38.0](https://www.npmjs.com/package/@zinn-dev/cli/v/0.38.0) | [Core 0.27.0](https://www.npmjs.com/package/@zinn-dev/core/v/0.27.0)
+
+### Added
+
+- Read recorded changes with `zinn activity list` and `zinn activity view`.
+- Assign a column and relations when creating a task, and filter task lists by column.
+- Append text or replace matching text when editing descriptions and comments, using `--append` or `--replacing`.
+- Core exposes activity reads and structured text edits.
+
+### Changed
+
+- **Breaking arguments:** extra positional words, repeated single-use options and conflicting options **fail** with usage help. Remove extra arguments and pass each single use option once.
+- **Breaking validation:** task titles and project, column and label names are trimmed and must be nonblank single lines without control characters. Use descriptions for multiline text.
+
+## 0.37.0 - 2026-10-08
+
+[CLI 0.37.0](https://www.npmjs.com/package/@zinn-dev/cli/v/0.37.0) | [Core 0.26.0](https://www.npmjs.com/package/@zinn-dev/core/v/0.26.0)
+
+### Added
+
+- Move, archive or unarchive several tasks in one command. Each operation applies to all supplied tasks atomically.
+- Restore a database with `zinn restore`, repair its search index with `zinn reindex`, and apply supported schema upgrades with `zinn migrate`.
+- Configure `storage.directory` in global `settings.json` or per-codebase `zinn.local.json`. Note that `ZINN_DIR` overrides both.
+- Core exposes database configuration, migration and recovery operations, plus bulk task operations.
+
+### Changed
+
+- **Breaking database compatibility:** databases now record a schema version. Published releases upgrade supported older versions after saving a backup. Unmarked databases created before version tracking require `--allow-legacy-read` for best-effort read-only access and cannot be upgraded with `zinn migrate`. Save a snapshot with `zinn backup` before upgrading. See [database upgrades](https://github.com/yethranayeh/zinn/blob/main/packages/cli/README.md#upgrade-the-database).
+- **Breaking JSON:** `zinn project view --json` replaces `tasks` with `columns` containing `name` and `taskCount`, plus `archivedTaskCount`. Use `zinn task list <project-key> --json` to read tasks. Move, archive and unarchive return an object for one task or an array for several, with a `changed` flag on each result.
+
+### Fixed
+
+- Backups use unique filenames and become available only after the snapshot is complete.
+- SQLite writes use stronger commit durability, and statements created inside a transaction cannot outlive it.
