@@ -7,6 +7,32 @@ description: Release notes for Zinn, an Experimental kanban CLI and core library
 
 Notable changes to Zinn. Each CLI release names the core version it includes. **Breaking** changes include the action needed when upgrading.
 
+## 0.41.0 - 2026-10-18
+
+[CLI 0.41.0](https://www.npmjs.com/package/@zinn-dev/cli/v/0.41.0) | [Core 0.30.0](https://www.npmjs.com/package/@zinn-dev/core/v/0.30.0)
+
+### Added
+
+- `zinn capabilities` describes every installed command: its inputs, effects, confirmations, and result schemas. With `--json` it emits the full contract, including reusable JSON Schemas.
+- `zinn info` reports the selected store, the settings files, the configured default project, the database schema state, and the CLI, core and runtime versions. Unusable settings and database problems are reported there, and the command still exits with code `0`.
+- `zinn task comment view <comment-key>` shows a comment's full text, keeping its line breaks.
+- Activity records the declared actor identity. Declarations use `ZINN_SESSION_ID`, `ZINN_THREAD_ID`, `ZINN_AGENT`, `ZINN_MODEL` and `ZINN_EFFORT`. Without these, `CLAUDE_CODE_SESSION_ID`, `CODEX_SESSION_ID`/`CODEX_THREAD_ID` or `OPENCODE_SESSION_ID` fills the session or thread, and OpenCode's ID is recorded as the thread.
+- `zinn activity list --session <id>` and `--thread <id>` match complete stored IDs exactly, and rows without the identity do not match. `activity view` reports the declared identity.
+- The CLI package ships the Zinn workflow skill at `skills/zinn/SKILL.md`. Install it using `npx skills add yethranayeh/zinn --skill zinn -g -y`. The skill covers picking up work, keeping task context, recording follow-ups, and handing off for review.
+- Core exposes the `info` operation, `defaultProject` resolution, and validation schemas for settings, activity records, and label, priority, and relation values.
+
+### Changed
+
+- **Breaking JSON:** handled failures carry required `error.code` (`invalid_input`, `not_found`, `conflict`, `storage`, `internal`) and optional `details` and `diagnostics` alongside `message` and `help`. Scripts must match on `code` and read failure facts from `details` instead of message text, and notices, including lock waits, print only after a `--json` command completes.
+- **Breaking core API:** `Actor.name` is nullable, `null` only for unnamed agents, and `Activity` gains the six nullable `actor_*` keys. Expected failures throw `CoreError` or `InputValidationError`, which carry a failure `kind` and typed facts, instead of plain `Error`, and SQLite failures throw `SqliteError`. Consumers must handle `null` actor names and catch these error classes.
+- A published release upgrades databases at schema version 1 to version 2 on first use, after saving a backup.
+- Priority values on `task create` and `task edit` are case-insensitive, and stored values and JSON use lowercase. Relations in `task relation list` and `task view` read oldest first.
+- Refusals of likely mistakes name the fix: an unrecognized `--status` or `--column` on `task edit` or `task move` suggests `zinn task move` with the same task keys, and a dash-leading option value suggests the command joined with `=`, as in `--description='- item'`.
+
+### Fixed
+
+- `zinn restore` attaches the backup by plain path, so backup paths containing `?`, `#` or other special URI characters, including non-ASCII names, restore correctly.
+
 ## 0.40.0 - 2026-10-15
 
 [CLI 0.40.0](https://www.npmjs.com/package/@zinn-dev/cli/v/0.40.0) | [Core 0.29.0](https://www.npmjs.com/package/@zinn-dev/core/v/0.29.0)
