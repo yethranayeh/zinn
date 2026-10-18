@@ -10,6 +10,7 @@ import {
 } from "@zinn-dev/core";
 
 import { errorDocumentSchema } from "./errors.js";
+import { capabilitiesSchema, jsonValueSchema } from "./capabilities-schema.js";
 
 const nullableText = z.string().nullable();
 const count = z.number().int().nonnegative();
@@ -186,6 +187,8 @@ export const resultSchemas = {
   Migrate: migrateSchema,
   Reindex: reindexSchema,
   ErrorEnvelope: errorDocumentSchema,
+  Capabilities: capabilitiesSchema,
+  JsonValue: jsonValueSchema,
 };
 export type ResultSchemaName = keyof typeof resultSchemas;
 export type PresentedTask = z.infer<typeof taskSchema>;
@@ -208,7 +211,10 @@ export type PresentedMigrate = z.infer<typeof migrateSchema>;
 export type PresentedReindex = z.infer<typeof reindexSchema>;
 
 /** Generates local references against the extracted schemas document in draft-07 spec */
-export function generateResultSchemas(schemas: Record<string, z.ZodType> = resultSchemas) {
+export function generateResultSchemas(schemas: Record<string, z.ZodType> = resultSchemas): {
+  $schema: string;
+  definitions: Record<string, z.core.JSONSchema.JSONSchema>;
+} {
   const schemaVersion = "draft-07";
   const registry = z.registry<{ id: string }>();
   for (const [id, schema] of Object.entries(schemas)) {

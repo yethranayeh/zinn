@@ -75,7 +75,8 @@ export function createPackageTestCopy(repositoryDirectory: string, testCopyDirec
     readFileSync(join(repositoryDirectory, "packages/cli/package.json"), "utf8"),
   );
 
-  for (const [name, version] of Object.entries(cliManifest.dependencies ?? {})) {
+  const cliDependenciesToLink = { ...cliManifest.dependencies, ...cliManifest.devDependencies };
+  for (const [name, version] of Object.entries(cliDependenciesToLink)) {
     if (String(version).startsWith("workspace:")) {
       continue;
     }

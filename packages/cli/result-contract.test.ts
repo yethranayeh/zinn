@@ -73,6 +73,7 @@ type Fixture = {
 };
 
 const fixtures: Record<string, Fixture[]> = {
+  "capabilities": [{ schema: "Capabilities", args: [] }],
   "project create": [{ schema: "Project", args: ["NEW"] }],
   "project list": [{ schema: "ProjectList", args: [] }, { schema: "ProjectList", args: [], empty: true }],
   "project view": [{ schema: "ProjectView", args: ["APP"] }],

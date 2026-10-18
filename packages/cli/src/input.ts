@@ -68,6 +68,15 @@ export const invocation = {
   optionSeparator: "--",
   literalOptionValue: "equals",
   singularOptions: "reject-repetition",
+  jsonFailure: "one-stderr-document-with-buffered-diagnostics",
+  jsonSuccessDiagnostics: "text-on-stderr-at-completion",
+  canonicalArgv: [
+    "command-path",
+    "options-with-equals-values",
+    "--json",
+    "separator-if-positionals",
+    "positionals",
+  ],
   version: { spellings: versionSpellings, placement: "sole-argument", stdout: "text", exitCode: 0 },
   help: {
     spellings: helpSpellings,

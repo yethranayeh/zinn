@@ -502,6 +502,7 @@ const commandWords: Record<string, CommandWords> = {
   "activity list": { words: [], required: 0 },
   "activity view": { words: ["019abcdf"], required: 1 },
   info: { words: [], required: 0 },
+  capabilities: { words: [], required: 0 },
   backup: { words: [], required: 0 },
   restore: { words: ["backup.sqlite"], required: 1 },
   migrate: { words: [], required: 0 },

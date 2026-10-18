@@ -7,7 +7,7 @@ export type Command = {
   summary: string;
   effects: {
     domain: "read" | "create" | "update" | "delete" | "replace" | "none";
-    storage: "normal-open" | "backup" | "restore" | "migrate" | "reindex" | "inspect";
+    storage: "normal-open" | "backup" | "restore" | "migrate" | "reindex" | "inspect" | "none";
   };
   confirmation: {
     kind: "none" | "prompt" | "project-delete";

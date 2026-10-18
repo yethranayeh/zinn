@@ -621,6 +621,59 @@ Scripts should use `--json`. Text is colored only in a terminal unless `NO_COLOR
 
 `ZINN_DEBUG=1` prints routing details on stderr. Other values do nothing. Stdout, including `--json` output, is unchanged.
 
+### Command discovery
+
+```sh
+zinn capabilities --json
+```
+
+`capabilities` describes the installed CLI without reading settings, opening a database, prompting, or using the network. It works with missing stores and invalid settings. Without `--json`, it prints a compact summary and the full-contract command.
+
+The JSON document contains `manifestVersion`, `cli` (package `name` and `version`), `invocation`, `commands`, `error`, and `schemas`. Commands follow route order and include capabilities itself. Each command has a token-array `path`, `summary`, `input`, `effects`, `confirmation`, and finite `results`.
+
+- `input.options` is keyed by option name. Each option declares its `type`; omitted `required` and `multiple` mean false. String values can carry named placeholders, choices, patterns and descriptions. Positional `forms` declare ordered names, minimum and maximum occurrences (`null` means no upper bound), and value facts. Choose the form that matches the supplied values. `constraints` describes mutual exclusion, requirements and requests needing at least one input. Optional `notes` explain resolver and domain behavior.
+- `invocation` describes router options, help/version precedence and literal values. Build argv from the command path, command options (`--name=value` for strings), `--json`, then `--` and the positional words. Repeat an option only when `multiple` is true. Tokens after `--` are literal words.
+- `results` selects a JSON success schema: `always`, `booleanOption` (an absent boolean is false), or `positionalCount` (inclusive bounds, counting supplied occurrences, including repeated keys). Each result declares its `mode`, `stream` and `exitCode`.
+- A descriptor's `schemaRef`, such as `#/schemas/definitions/TaskList`, resolves against the whole manifest. JSON Schema `$ref` values resolve against the extracted `schemas` document, which uses draft-07. All references are local. The finite `Capabilities` definition describes the manifest without embedding another manifest value.
+- `effects.domain` describes the domain operation. `effects.storage: "normal-open"` can create or upgrade storage under the normal open policy, including for reads. `"none"` performs no storage access. Administrative commands declare their own storage operation. `confirmation` describes the existing prompt and project-deletion rules; see [Confirmations](#confirmations).
+
+Check the process exit status before selecting a stream. Successful JSON goes to stdout, and notices may appear as text on stderr. A handled failure exits `1` and emits one error document on stderr, described by root `error.schemaRef`, with no success stdout.
+
+See [Scripting and JSON output](#scripting-and-json-output) for error codes, details and exceptions. Help remains text even with `--json`.
+
+For example, this Node.js consumer discovers task-list syntax and its result reference, then lists a project in the selected store:
+
+```js
+import { spawnSync } from "node:child_process";
+
+function json(args) {
+	const result = spawnSync("zinn", args, { encoding: "utf8" });
+	if (result.error) {
+		throw result.error;
+	}
+
+	if (result.status !== 0) {
+		throw new Error(result.stderr);
+	}
+
+	return JSON.parse(result.stdout);
+}
+
+const manifest = json(["capabilities", "--json"]);
+const command = manifest.commands.find(({ path }) => path.join(" ") === "task list");
+const form = command.input.forms[0];
+const values = { "project-key": "APP" };
+const words = form.positionals.flatMap(({ name }) => (values[name] === undefined ? [] : [values[name]]));
+const tasks = json([...command.path, "--json", manifest.invocation.optionSeparator, ...words]);
+const result = command.results.find(({ selector }) => selector.kind === "always");
+
+console.log({ schemaRef: result.schemaRef, tasks });
+```
+
+Use a JSON Schema validator with `manifest.schemas` to validate successful values against the selected definition. Task lists are arrays, including `[]`. Task details are objects. History selects a detail schema with a required `activity` array. Single and bulk mutations can select different schemas, so select the result before validating it.
+
+The CLI release version identifies the command contract. `manifestVersion: 1` identifies how to interpret descriptors and changes only when that interpretation becomes incompatible; it is separate from database and settings versions. Mutable `-dev` builds can change their contract without changing their version, so use the emitted content rather than the version alone as a cache key.
+
 ### Confirmations
 
 Project, task, label, and comment deletion ask for confirmation, as does restoring the database. Use `--yes` to skip the prompt:

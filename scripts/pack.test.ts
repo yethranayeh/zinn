@@ -10,6 +10,8 @@ import { BASELINE_VERSION } from "../packages/core/src/migrations/baseline.ts";
 import { latestVersion, MIGRATIONS } from "../packages/core/src/migrations/registry.ts";
 import { createPackageTestCopy, PACKAGE_NAMES } from "./package-fixture.ts";
 import { checkSkillExamples } from "./skill-checks.ts";
+import { checkCapabilityDiscovery, checkCapabilityConsumer } from "../packages/cli/capability-checks.ts";
+import { runCli } from "../packages/cli/testing.ts";
 
 const REPOSITORY_DIRECTORY = fileURLToPath(new URL("..", import.meta.url));
 const PACK_CHECK_TIMEOUT_MS = 60_000;
@@ -123,7 +125,28 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
     }
     const packedCore = join(consumer, "core");
     const packedCli = join(consumer, "cli");
+    const sourceContract = checkCapabilityDiscovery({
+      runtime: process.execPath,
+      entryPoint: join(cliDirectory, "index.ts"),
+      packageDirectory: cliDirectory,
+      directory: join(root, "capabilities-source"), env: process.env,
+    });
+    checkCapabilityDiscovery({
+      runtime: process.execPath,
+      entryPoint: join(cliDirectory, "dist/index.js"),
+      packageDirectory: join(cliDirectory, "dist"),
+      directory: join(root, "capabilities-build"), env: process.env, expected: sourceContract,
+    });
     for (const runtime of ["bun", "node"]) {
+      const contract = checkCapabilityDiscovery({
+        runtime: Bun.which(runtime)!, entryPoint: join(packedCli, "index.js"),
+        packageDirectory: packedCli, directory: join(root, `capabilities-packed-${runtime}`),
+        env: process.env, expected: sourceContract,
+      });
+      checkCapabilityConsumer(contract, (args) => runCli(args, {
+        runtime: Bun.which(runtime)!, cliPath: join(packedCli, "index.js"), cwd: root,
+        env: { ...process.env, ZINN_DIR: join(root, `capabilities-consumer-${runtime}`), ZINN_DEBUG: undefined, DEBUG: undefined },
+      }));
       checkSkillExamples({
         packageDirectory: packedCli,
         runtime: Bun.which(runtime)!,
