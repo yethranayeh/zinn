@@ -8,14 +8,15 @@ interface Props {
 const { linkHome = true } = Astro.props;
 const links = [
 	{ name: "Installation", path: "/docs/installation" },
-	{ name: "Changelog", path: "/changelog" }
+	{ name: "CHANGELOG", path: "/changelog" }
 ];
 const currentPath = Astro.url.pathname.replace(/\/$/, "");
 ---
 
 <header class='flex items-center justify-between gap-6'>
 	<Branding linked={linkHome} />
-	<nav class='flex items-center gap-7 font-mono text-xs leading-normal' aria-label='Zinn documentation'>
+
+	<nav class='flex items-center gap-2 md:gap-7 font-mono text-xs leading-normal' aria-label='Zinn documentation'>
 		{
 			links.map((link) => (
 				<a class='py-2' href={link.path} aria-current={link.path === currentPath ? "page" : undefined}>
