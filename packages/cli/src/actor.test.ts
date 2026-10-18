@@ -163,16 +163,25 @@ test("a partial ZINN pair wins as a pair instead of borrowing a native value", (
   ).toEqual(agent("claude-code", "env:CLAUDECODE", { sessionId: "claude-session" }));
 });
 
-test("deferred native session and effort values stay unset while Copilot remains a marker", () => {
+test("deferred native session values stay unset while Copilot remains a marker", () => {
   expect(
     detectAgent({
       COPILOT_AGENT_SESSION_ID: "copilot-session",
       OPENCODE_SESSION_ID: "opencode-session",
       HERMES_SESSION_ID: "hermes-session",
-      CLAUDE_EFFORT: "high",
       CLAUDE_CODE_CHILD_SESSION: "1",
     }),
   ).toEqual(agent("copilot", "env:COPILOT_AGENT_SESSION_ID"));
+});
+
+// ZINN-290: a Claude Code subagent's shell carries its own CLAUDE_EFFORT.
+test("CLAUDE_EFFORT is the effort unless ZINN_EFFORT declares one", () => {
+  expect(detectAgent({ CLAUDECODE: "1", CLAUDE_EFFORT: " high " })).toEqual(
+    agent("claude-code", "env:CLAUDECODE", { effort: "high" }),
+  );
+  expect(detectAgent({ CLAUDECODE: "1", CLAUDE_EFFORT: "high", ZINN_EFFORT: "low" })?.effort).toBe("low");
+  expect(detectAgent({ CLAUDECODE: "1", CLAUDE_EFFORT: "high", ZINN_EFFORT: " " })?.effort).toBe("high");
+  expect(detectAgent({ CLAUDECODE: "1", CLAUDE_EFFORT: "" })?.effort).toBeNull();
 });
 
 test("empty or unrelated variables are not agents", () => {
