@@ -1,7 +1,5 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
-import SiteHeader from "../components/SiteHeader.astro";
-import SiteFooter from "../components/SiteFooter.astro";
 import Prose from "../components/Prose.astro";
 import AgentSetup from "../components/AgentSetup.astro";
 import InstallCommand from "../components/InstallCommand.astro";
@@ -22,126 +20,127 @@ const workflowCommands = [
 ---
 
 <BaseLayout title={homepage.title} description={homepage.description}>
-	<main>
-		<section class='flex min-h-dvh flex-col px-6 pb-6 md:px-12 md:pb-8 lg:px-24' aria-label='Install Zinn'>
-			<SiteHeader />
+	<section class='hero site-container flex flex-col pb-6 md:pb-8' aria-label='Install Zinn'>
+		<div class='my-auto w-full max-w-3xl pt-10 pb-14 md:pt-14 md:pb-16'>
+			<h1 class='max-w-xl text-4xl leading-tighter tracking-tight md:text-5xl'>
+				A kanban workflow<br />in the <span class='text-cinnabar'>terminal</span>.
+			</h1>
 
-			<div class='my-auto w-full max-w-3xl pt-10 pb-14 md:pt-14 md:pb-16 2xl:ml-32'>
-				<h1 class='max-w-xl text-4xl leading-tighter tracking-tight md:text-5xl'>
-					A kanban workflow<br />in the <span class='text-cinnabar'>terminal</span>.
-				</h1>
+			<InstallCommand />
 
-				<InstallCommand />
-
-				<div class='flex flex-wrap justify-between w-full'>
-					<nav
-						class='flex flex-wrap items-center gap-x-7 gap-y-2 font-mono text-xs leading-normal'
-						aria-label='Zinn links'>
-						<a
-							class='inline-flex items-center gap-2 py-2'
-							href={projectLinks.github}
-							aria-label='Zinn source on GitHub'
-							data-site-event='github-click'>GitHub <Icon name='external-link' class='size-4.5' /></a
-						>
-						<a
-							class='inline-flex items-center gap-2 py-2'
-							href={projectLinks.npm}
-							aria-label='Zinn CLI package on npm'
-							data-site-event='npm-click'>npm <Icon name='external-link' class='size-4.5' /></a
-						>
-					</nav>
-
-					<AgentSetup />
-				</div>
-			</div>
-
-			<ScrollCue href='#definition-heading' />
-		</section>
-		<ReadingSection id='what-is-zinn' labelledBy='definition-heading' first decorated>
-			<Prose>
-				<h2 id='definition-heading' tabindex='-1' class='scroll-mt-6 pr-16 md:pr-24'>
-					Zinn: a kanban CLI for your terminal
-				</h2>
-				<p class='lead'>Zinn is an Experimental kanban task manager for the terminal.</p>
-				<p>
-					Organize work into projects, columns and tasks. Manage it from the command line, with descriptions,
-					priorities, labels and comments to keep the detail close. Projects and tasks are stored in a local SQLite
-					database.
-				</p>
-				<p>
-					For developers who already work in the terminal, the board is another command away. Scripts and agents can
-					read and write tasks using the CLI's JSON output.
-				</p>
-			</Prose>
-		</ReadingSection>
-		<ReadingSection labelledBy='workflow-heading' surface='bone' split>
-			<Prose>
-				<h2 id='workflow-heading'>Start a project. Move the work.</h2>
-				<p>
-					Create a project, add a task, then move it into In Progress. Each project begins with Backlog, TODO, In
-					Progress, Review and Done columns, which you can rename or extend.
-				</p>
-				<p>
-					Use descriptions for scope, comments for updates and labels and priorities to organize tasks. Connect work
-					with related, dependency, duplicate and subtask relations. Search titles, descriptions and comments, and
-					archive tasks when they no longer belong in the active list.
-				</p>
-			</Prose>
-			<Prose>
-				<TerminalCommands
-					class='workflow-sequence'
-					label='Project workflow commands, horizontally scrollable'
-					commands={workflowCommands}
-				/>
-				<p>
-					Add <code>--json</code> to any command for a single JSON document on stdout. Use <code>--yes</code> to skip confirmation
-					prompts in scripts and agent workflows.
-				</p>
-			</Prose>
-		</ReadingSection>
-		<ReadingSection labelledBy='storage-heading' surface='limestone'>
-			<Prose>
-				<h2 id='storage-heading'>Keep the work local</h2>
-				<p>
-					The default database is <code>~/.zinn/data/zinn.sqlite</code>. Set <code>storage.directory</code> in a codebase's
-					<code>zinn.local.json</code> or in <code>~/.zinn/settings.json</code> to keep it elsewhere. <code
-						>ZINN_DIR</code
-					>
-					overrides both for the commands that carry it.
-				</p>
-				<p>
-					<code>zinn backup</code> saves a database snapshot, and <code>zinn restore</code> puts one back after saving the
-					current database. A newer Zinn upgrades an older database, and <code>zinn migrate</code> runs that upgrade after
-					saving a backup.
-				</p>
-				<p>
-					Read the <a href={`${documentation}#settings-files`}>settings files</a>, <a
-						href={`${documentation}#back-up-the-database`}>database backup</a
-					>, <a href={`${documentation}#restore-the-database`}>database restore</a> and <a
-						href={`${documentation}#upgrade-the-database`}>database upgrade</a
-					> instructions.
-				</p>
-			</Prose>
-		</ReadingSection>
-		<ReadingSection labelledBy='next-heading' surface='bone'>
-			<Prose>
-				<h2 id='next-heading'>Take the next command</h2>
-				<p>
-					Read the <a href={`${documentation}#start-a-project`}>first-project guide</a>, browse the <a
+			<div class='flex flex-wrap justify-between w-full'>
+				<nav
+					class='flex flex-wrap items-center gap-x-7 gap-y-2 font-mono text-xs leading-normal'
+					aria-label='Zinn links'>
+					<a
+						class='inline-flex items-center gap-2 py-2'
 						href={projectLinks.github}
-						data-site-event='github-click'>Zinn source on GitHub</a
-					> or find the <a href={projectLinks.npm} data-site-event='npm-click'>Zinn CLI package on npm</a>.
-				</p>
-			</Prose>
-		</ReadingSection>
-	</main>
-	<SiteFooter class='border-t-[3px] border-soot px-6 py-6 md:px-12 md:py-8 lg:px-24'>
-		<nav class='flex gap-5 sm:ml-auto' aria-label='Zinn social profiles'>
-			<a href={projectLinks.twitter} data-site-event='twitter-click'>Twitter</a>
-			<a href={projectLinks.bluesky} data-site-event='bluesky-click'>Bluesky</a>
-		</nav>
-	</SiteFooter>
+						aria-label='Zinn source on GitHub'
+						data-site-event='github-click'>GitHub <Icon name='external-link' class='size-4.5' /></a
+					>
+					<a
+						class='inline-flex items-center gap-2 py-2'
+						href={projectLinks.npm}
+						aria-label='Zinn CLI package on npm'
+						data-site-event='npm-click'>npm <Icon name='external-link' class='size-4.5' /></a
+					>
+				</nav>
+
+				<AgentSetup />
+			</div>
+		</div>
+
+		<ScrollCue href='#definition-heading' />
+	</section>
+
+	<ReadingSection id='what-is-zinn' labelledBy='definition-heading' first decorated>
+		<Prose>
+			<h2 id='definition-heading' tabindex='-1' class='pr-16 md:pr-24'>Zinn: a kanban CLI for your terminal</h2>
+			<p class='lead'>Zinn is an Experimental kanban task manager for the terminal.</p>
+			<p>
+				Organize work into projects, columns and tasks. Manage it from the command line, with descriptions, priorities,
+				labels and comments to keep the detail close. Projects and tasks are stored in a local SQLite database.
+			</p>
+			<p>
+				For developers who already work in the terminal, the board is another command away. Scripts and agents can read
+				and write tasks using the CLI's JSON output.
+			</p>
+		</Prose>
+	</ReadingSection>
+
+	<ReadingSection labelledBy='workflow-heading' surface='bone' split>
+		<Prose>
+			<h2 id='workflow-heading'>Start a project. Move the work.</h2>
+			<p>
+				Create a project, add a task, then move it into In Progress. Each project begins with Backlog, TODO, In
+				Progress, Review and Done columns, which you can rename or extend.
+			</p>
+			<p>
+				Use descriptions for scope, comments for updates and labels and priorities to organize tasks. Connect work with
+				related, dependency, duplicate and subtask relations. Search titles, descriptions and comments, and archive
+				tasks when they no longer belong in the active list.
+			</p>
+		</Prose>
+		<Prose>
+			<TerminalCommands
+				class='workflow-sequence'
+				label='Project workflow commands, horizontally scrollable'
+				commands={workflowCommands}
+			/>
+			<p>
+				Add <code>--json</code> to any command for a single JSON document on stdout. Use <code>--yes</code> to skip confirmation
+				prompts in scripts and agent workflows.
+			</p>
+		</Prose>
+	</ReadingSection>
+
+	<ReadingSection labelledBy='storage-heading' surface='limestone'>
+		<Prose>
+			<h2 id='storage-heading'>Keep the work local</h2>
+			<p>
+				The default database is <code>~/.zinn/data/zinn.sqlite</code>. Set <code>storage.directory</code> in a codebase's
+				<code>zinn.local.json</code> or in <code>~/.zinn/settings.json</code> to keep it elsewhere. <code>ZINN_DIR</code
+				>
+				overrides both for the commands that carry it.
+			</p>
+			<p>
+				<code>zinn backup</code> saves a database snapshot, and <code>zinn restore</code> puts one back after saving the current
+				database. A newer Zinn upgrades an older database, and <code>zinn migrate</code> runs that upgrade after saving a
+				backup.
+			</p>
+			<p>
+				Read the <a href={`${documentation}#settings-files`}>settings files</a>, <a
+					href={`${documentation}#back-up-the-database`}>database backup</a
+				>, <a href={`${documentation}#restore-the-database`}>database restore</a> and <a
+					href={`${documentation}#upgrade-the-database`}>database upgrade</a
+				> instructions.
+			</p>
+		</Prose>
+	</ReadingSection>
+
+	<ReadingSection labelledBy='next-heading' surface='bone'>
+		<Prose>
+			<h2 id='next-heading'>Take the next command</h2>
+			<p>
+				Read the <a href={`${documentation}#start-a-project`}>first-project guide</a>, browse the <a
+					href={projectLinks.github}
+					data-site-event='github-click'>Zinn source on GitHub</a
+				> or find the <a href={projectLinks.npm} data-site-event='npm-click'>Zinn CLI package on npm</a>.
+			</p>
+		</Prose>
+	</ReadingSection>
+
+	<nav slot='footer' class='flex gap-5 sm:ml-auto' aria-label='Zinn social profiles'>
+		<a href={projectLinks.twitter} data-site-event='twitter-click'>Twitter</a>
+		<a href={projectLinks.bluesky} data-site-event='bluesky-click'>Bluesky</a>
+	</nav>
 </BaseLayout>
+
+<style>
+	.hero {
+		min-height: calc(100dvh - var(--site-header-height));
+	}
+</style>
 
 <script>
 	import { trackEvent } from "../scripts/analytics";

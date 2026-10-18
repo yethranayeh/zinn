@@ -3,35 +3,35 @@ import Separator from "./Separator.astro";
 import NavLink from "./NavLink.astro";
 
 interface Props {
-	class?: string;
 	links?: boolean;
 }
 
-const { class: className, links = true } = Astro.props;
+const { links = true } = Astro.props;
 ---
 
-<footer
-	class:list={[
-		"font-mono text-xs",
-		links && "flex flex-col items-start gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between",
-		className
-	]}>
-	<div class='flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-5'>
-		<span class='shrink-0 tracking-widest'>zinn.sh</span>
-		{
-			links && (
-				<>
-					<Separator orientation='vertical' class='hidden sm:block' />
+<footer class='border-t border-soot font-mono text-xs'>
+	<div
+		class:list={[
+			"site-container py-6 md:py-8",
+			links && "flex flex-col items-start gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between"
+		]}>
+		<div class='flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-5'>
+			<span class='shrink-0 tracking-widest'>zinn.sh</span>
+			{
+				links && (
+					<>
+						<Separator orientation='vertical' class='hidden sm:block' />
 
-					<nav class='flex flex-wrap gap-x-5 gap-y-2' aria-label='Zinn project information'>
-						<NavLink href='/about'>About</NavLink>
-						<NavLink href='/contact'>Contact</NavLink>
-						<NavLink href='/privacy'>Privacy</NavLink>
-					</nav>
-				</>
-			)
-		}
+						<nav class='flex flex-wrap gap-x-5 gap-y-2' aria-label='Zinn project information'>
+							<NavLink href='/about'>About</NavLink>
+							<NavLink href='/contact'>Contact</NavLink>
+							<NavLink href='/privacy'>Privacy</NavLink>
+						</nav>
+					</>
+				)
+			}
+		</div>
+
+		<slot />
 	</div>
-
-	<slot />
 </footer>

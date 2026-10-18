@@ -29,6 +29,26 @@
 }
 
 @layer base {
+	:root {
+		--site-brand-height: 2.75rem;
+		--site-header-height: calc(var(--site-brand-height) + 1px);
+		--site-content-width: 90rem;
+		--site-gutter: 1.5rem;
+		scroll-padding-top: calc(var(--site-header-height) + 1.5rem);
+	}
+
+	@media (min-width: 48rem) {
+		:root {
+			--site-gutter: 3rem;
+		}
+	}
+
+	@media (min-width: 64rem) {
+		:root {
+			--site-gutter: 6rem;
+		}
+	}
+
 	button,
 	a {
 		-webkit-tap-highlight-color: transparent;
@@ -46,5 +66,14 @@
 	:focus-visible {
 		outline: 2px solid currentColor;
 		outline-offset: 6px;
+	}
+}
+
+@layer components {
+	.site-container {
+		width: 100%;
+		max-width: var(--site-content-width);
+		margin-inline: auto;
+		padding-inline: var(--site-gutter);
 	}
 }

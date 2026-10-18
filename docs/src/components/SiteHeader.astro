@@ -8,16 +8,18 @@ const links = [
 ];
 ---
 
-<header class='flex items-end justify-between gap-6 border-b border-pewter'>
-	<Branding />
+<header class='sticky top-0 z-20 shrink-0 border-b border-soot bg-limestone'>
+	<div class='site-container flex items-end justify-between gap-6'>
+		<Branding />
 
-	<nav class='flex items-center gap-4 md:gap-7 font-mono text-xs leading-normal' aria-label='Zinn documentation'>
-		{
-			links.map((link) => (
-				<NavLink class='pb-1' href={link.path}>
-					{link.name}
-				</NavLink>
-			))
-		}
-	</nav>
+		<nav class='flex items-center gap-4 md:gap-7 font-mono text-xs leading-normal' aria-label='Zinn documentation'>
+			{
+				links.map((link) => (
+					<NavLink class='pb-1' href={link.path}>
+						{link.name}
+					</NavLink>
+				))
+			}
+		</nav>
+	</div>
 </header>

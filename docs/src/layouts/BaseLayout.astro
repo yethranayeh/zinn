@@ -1,5 +1,7 @@
 ---
 import "../styles/global.css";
+import SiteHeader from "../components/SiteHeader.astro";
+import SiteFooter from "../components/SiteFooter.astro";
 import { isProductionSite, projectLinks } from "../config/site";
 
 interface Props {
@@ -88,7 +90,15 @@ const homepageStructuredData = [website, softwareApplication];
 			)
 		}
 	</head>
-	<body class='selection:bg-soot selection:text-limestone'>
-		<slot />
+	<body class='flex min-h-dvh flex-col selection:bg-soot selection:text-limestone'>
+		<SiteHeader />
+
+		<main class='flex min-w-0 flex-1 flex-col'>
+			<slot />
+		</main>
+
+		<SiteFooter links={!noindex}>
+			<slot name='footer' />
+		</SiteFooter>
 	</body>
 </html>

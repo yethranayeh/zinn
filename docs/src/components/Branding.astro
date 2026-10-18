@@ -6,7 +6,7 @@ const isHomepage = Astro.url.pathname === "/";
 ---
 
 <a
-	class='mark relative block h-11 w-16 shrink-0 overflow-hidden'
+	class='mark relative block h-[var(--site-brand-height)] w-16 shrink-0 overflow-hidden'
 	data-homepage={isHomepage ? "" : undefined}
 	href='/'
 	aria-label='Zinn homepage'>
