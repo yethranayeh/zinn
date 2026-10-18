@@ -1,30 +1,58 @@
 import type { RouteDef } from "../types.js";
+import type { CommandInput } from "../input.js";
 
 import { parseArgs } from "node:util";
 import { activity, activityLimitMessage, positiveIntegerPattern } from "@zinn-dev/core";
+
+import { generateCommandUsage } from "../input.js";
 import { output, quit, validatePositionals, validateUniqueOptions } from "../lib.js";
 import { formatActivityList, presentActivities } from "../presentation/activity-presentation.js";
 
+const activityInputs = {
+  list: {
+    options: {
+      task: { type: "string", value: { kind: "task-key", name: "task-key" } },
+      session: { type: "string", value: { kind: "text", name: "id" } },
+      thread: { type: "string", value: { kind: "text", name: "id" } },
+      limit: {
+        type: "string",
+        value: { kind: "positive-integer", name: "n", pattern: `^${positiveIntegerPattern}\\d?$` },
+      },
+    },
+    forms: [{ id: "default", positionals: [] }],
+    constraints: [],
+  },
+  view: {
+    options: {},
+    forms: [
+      {
+        id: "default",
+        positionals: [{ name: "activity-id", min: 1, max: 1, value: { kind: "activity-id" } }],
+      },
+    ],
+    constraints: [],
+  },
+} as const satisfies Record<string, CommandInput>;
+
 export const activityRouter = {
   list: {
+    summary: "List recorded activity across the database, newest first.",
+    effects: { domain: "read", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: activityInputs.list,
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
-        options: {
-          task: { type: "string" },
-          session: { type: "string" },
-          thread: { type: "string" },
-          limit: { type: "string" },
-        },
+        options: activityInputs.list.options,
         allowPositionals: true,
         strict: true,
         tokens: true,
       });
-      validateUniqueOptions(tokens);
-      validatePositionals(positionals, []);
+      validateUniqueOptions(tokens, activityInputs.list.options);
+      validatePositionals(positionals, activityInputs.list.forms[0]);
 
       // Safe integers can have one more digit than readable task numbers.
-      const limitPattern = new RegExp(`^${positiveIntegerPattern}\\d?$`);
+      const limitPattern = new RegExp(activityInputs.list.options.limit.value.pattern);
       if (values.limit !== undefined && !limitPattern.test(values.limit)) {
         quit(activityLimitMessage, undefined, { argument: "--limit" });
       }
@@ -40,7 +68,7 @@ export const activityRouter = {
         formatActivityList(presentActivities(items, { taskKey: values.task })),
       );
     },
-    help: `Usage: zinn activity list [--task <task-key>] [--session <id>] [--thread <id>] [--limit <n>] [--json]
+    help: `${generateCommandUsage("activity list", activityInputs.list)}
 
 List recorded activity across the database, newest first.
 By default, all matching events are returned. --limit takes a positive safe integer.
@@ -65,16 +93,25 @@ Examples:
   zinn activity list --session conversation-id --thread child-thread-id`,
   },
   view: {
+    summary: "Show one recorded event with full activity/entity IDs, actor and complete changes.",
+    effects: { domain: "read", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: activityInputs.view,
     run: (args) => {
-      const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
-      validatePositionals(positionals, ["<activity-id>"]);
+      const { positionals } = parseArgs({
+        options: activityInputs.view.options,
+        args,
+        allowPositionals: true,
+        strict: true,
+      });
+      validatePositionals(positionals, activityInputs.view.forms[0]);
       output(activity.getById(positionals[0]!), (event) =>
         formatActivityList(presentActivities([event], { showsFullIds: true }), {
           showsDetails: true,
         }),
       );
     },
-    help: `Usage: zinn activity view <activity-id> [--json]
+    help: `${generateCommandUsage("activity view", activityInputs.view)}
 
 Show one recorded event with full activity/entity IDs, actor and complete changes.
 Text and line breaks are preserved; unknown change fields remain available as raw JSON.

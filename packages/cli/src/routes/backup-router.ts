@@ -3,19 +3,30 @@ import type { Command } from "../types.js";
 import { parseArgs } from "node:util";
 import { backup } from "@zinn-dev/core";
 
+import { generateCommandUsage, noInput } from "../input.js";
 import { output, validatePositionals } from "../lib.js";
 import packageJson from "../../package.json" with { type: "json" };
 
 export const backupCommand = {
+  summary:
+    "Save a copy of the database to ~/.zinn/backups/, or to backups/ in ZINN_DIR when it is set.",
+  effects: { domain: "none", storage: "backup" },
+  confirmation: { kind: "none" },
+  input: noInput,
   run: (args) => {
-    const { positionals } = parseArgs({ args, strict: true, allowPositionals: true });
-    validatePositionals(positionals, []);
+    const { positionals } = parseArgs({
+      options: noInput.options,
+      args,
+      strict: true,
+      allowPositionals: true,
+    });
+    validatePositionals(positionals, noInput.forms[0]);
 
     const created = backup.create({ client: "cli", version: packageJson.version });
 
     output(created, (b) => `Saved a backup to ${b.path}`);
   },
-  help: `Usage: zinn backup
+  help: `${generateCommandUsage("backup", noInput)}
 
 Save a copy of the database to ~/.zinn/backups/, or to backups/ in ZINN_DIR when it is set.
 

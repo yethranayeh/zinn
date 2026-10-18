@@ -1,9 +1,18 @@
+import type { CommandInput } from "../input.js";
 import type { TaskRelationType, TaskWithKey } from "@zinn-dev/core";
 import type { RouteDef } from "../types.js";
 
 import { parseArgs } from "node:util";
 import { column, relation, relationCreateSchema, task } from "@zinn-dev/core";
-import { output, quit, validatePositionals, validateUniqueOptions } from "../lib.js";
+
+import { generateCommandUsage, taskKeyPositional } from "../input.js";
+import {
+  output,
+  quit,
+  requireStringOption,
+  validatePositionals,
+  validateUniqueOptions,
+} from "../lib.js";
 import { currentActor } from "../actor.js";
 import { formatCellSeparator, formatRows } from "../presentation/row-layout.js";
 import { columnNameCell } from "../presentation/column-presentation.js";
@@ -81,16 +90,22 @@ type PresentedRelationChange = { type: TaskRelationType; source: string; target:
 function parseRelationArgs(args: string[]) {
   const { values, positionals, tokens } = parseArgs({
     args,
-    options: { type: { type: "string" } },
+    options: relationInputs.create.options,
     allowPositionals: true,
     strict: true,
     tokens: true,
   });
 
-  validateUniqueOptions(tokens);
-  validatePositionals(positionals, ["<source-task-key>", "<target-task-key>"]);
+  validateUniqueOptions(tokens, relationInputs.create.options);
+  validatePositionals(positionals, relationInputs.create.forms[0]);
 
-  const typeResult = relationCreateSchema.shape.relation_type.safeParse(values.type);
+  const type = requireStringOption(
+    relationInputs.create.options.type,
+    values.type,
+    "type",
+    `--type must be one of these: ${relationInputs.create.options.type.value.choices.join(", ")}`,
+  );
+  const typeResult = relationCreateSchema.shape.relation_type.safeParse(type);
 
   if (!typeResult.success) {
     quit(
@@ -105,8 +120,48 @@ function parseRelationArgs(args: string[]) {
   return { sourceTaskKey, targetTaskKey, relation_type: typeResult.data };
 }
 
+const relationInputs = {
+  create: {
+    options: {
+      type: {
+        type: "string",
+        required: true,
+        value: {
+          kind: "enum",
+          name: "type",
+          choices: relationCreateSchema.shape.relation_type.options,
+        },
+      },
+    },
+    forms: [
+      {
+        id: "default",
+        positionals: [
+          { ...taskKeyPositional, name: "source-task-key" },
+          { ...taskKeyPositional, name: "target-task-key" },
+        ],
+      },
+    ],
+    constraints: [],
+  },
+  list: {
+    options: {},
+    forms: [
+      {
+        id: "default",
+        positionals: [taskKeyPositional],
+      },
+    ],
+    constraints: [],
+  },
+} as const satisfies Record<string, CommandInput>;
+
 export const relationRouter = {
   create: {
+    summary: "Create a relation between two tasks.",
+    effects: { domain: "create", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: relationInputs.create,
     run: (args) => {
       const props = parseRelationArgs(args);
       const { sourceTaskKey, targetTaskKey } = props;
@@ -132,7 +187,7 @@ export const relationRouter = {
         return `${r.source} ${label} ${r.target}`;
       });
     },
-    help: `Usage: zinn task relation create <source-task-key> <target-task-key> --type <type>
+    help: `${generateCommandUsage("task relation create", relationInputs.create)}
 
 Create a relation between two tasks.
 
@@ -152,12 +207,21 @@ Tasks from separate projects can be related to each other. Tasks can also be rel
 Example: zinn task relation create APP-1 APP-2 --type dependency`,
   },
   list: {
+    summary: "Show incoming and outgoing relations with connected task keys, columns and titles.",
+    effects: { domain: "read", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: relationInputs.list,
     run: (args) => {
-      const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
-      validatePositionals(positionals, ["<task-key>"]);
+      const { positionals } = parseArgs({
+        options: relationInputs.list.options,
+        args,
+        allowPositionals: true,
+        strict: true,
+      });
+      validatePositionals(positionals, relationInputs.list.forms[0]);
       output(presentRelations(task.getByKey(positionals[0]!)), formatRelations);
     },
-    help: `Usage: zinn task relation list <task-key>
+    help: `${generateCommandUsage("task relation list", relationInputs.list)}
 
 Show incoming and outgoing relations with connected task keys, columns and titles.
 Archived connected tasks are included and marked Archived.
@@ -166,6 +230,10 @@ An empty list prints nothing.
 Example: zinn task relation list APP-1`,
   },
   delete: {
+    summary: "Remove only the specified relation. No confirmation is required.",
+    effects: { domain: "delete", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: relationInputs.create,
     run: (args) => {
       const props = parseRelationArgs(args);
       relation.delete(props, currentActor());
@@ -180,7 +248,7 @@ Example: zinn task relation list APP-1`,
 
       output(deleted, (r) => `Deleted ${r.type} relation from ${r.source} to ${r.target}`);
     },
-    help: `Usage: zinn task relation delete <source-task-key> <target-task-key> --type <type>
+    help: `${generateCommandUsage("task relation delete", relationInputs.create)}
 
 Remove only the specified relation. No confirmation is required.
 

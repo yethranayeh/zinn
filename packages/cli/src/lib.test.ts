@@ -1,4 +1,5 @@
 import type { OpenPolicy } from "@zinn-dev/core";
+import type { InputForm, PositionalInput } from "./input";
 
 import { expect, test, spyOn } from "bun:test";
 import { ReadOnlyDatabaseError, TextEditMatchError, UnmarkedDatabaseError } from "@zinn-dev/core";
@@ -90,17 +91,30 @@ test("a text edit that matches several places points at --all, and one that matc
 });
 
 test("validatePositionals names the first missing word, or the first word past the most it takes", () => {
-  const words = ["<project-key>", "<column-name>"];
+  const form = (...positionals: Array<Pick<PositionalInput, "name" | "min" | "max">>): InputForm => ({
+    id: "default",
+    positionals: positionals.map((positional) => ({ ...positional, value: { kind: "text" } })),
+  });
+  const projectColumnForm = form(
+    { name: "project-key", min: 1, max: 1 },
+    { name: "column-name", min: 1, max: 1 },
+  );
 
-  expect(() => validatePositionals(["SHOP", "Later"], words)).not.toThrow();
-  expect(() => validatePositionals(["SHOP"], words)).toThrow(UsageError);
-  expect(() => validatePositionals(["SHOP"], words)).toThrow("<column-name>");
-  expect(() => validatePositionals([], words)).toThrow("<project-key>");
-  expect(() => validatePositionals(["SHOP", "Needs", "Review", "Now"], words)).toThrow('"Review"');
+  expect(() => validatePositionals(["SHOP", "Later"], projectColumnForm)).not.toThrow();
+  expect(() => validatePositionals(["SHOP"], projectColumnForm)).toThrow(UsageError);
+  expect(() => validatePositionals(["SHOP"], projectColumnForm)).toThrow("<column-name>");
+  expect(() => validatePositionals([], projectColumnForm)).toThrow("<project-key>");
+  expect(() => validatePositionals(["SHOP", "Needs", "Review", "Now"], projectColumnForm)).toThrow('"Review"');
 
-  // ? Written as in the usage lines: [...] marks an optional word and a trailing ... a word that repeats.
-  expect(() => validatePositionals([], ["[<project-key>]"])).not.toThrow();
-  expect(() => validatePositionals(["SHOP", "extra"], ["[<project-key>]"])).toThrow('"extra"');
-  expect(() => validatePositionals(["A-1", "A-2", "A-3"], ["<task-key>..."])).not.toThrow();
-  expect(() => validatePositionals(["A-1"], ["<task-key>...", "<target-column>"])).toThrow("<target-column>");
+  // ? min 0 makes a word optional and max null makes it repeat, as [<project-key>] and <task-key>... in usage lines.
+  const optionalProjectKey = form({ name: "project-key", min: 0, max: 1 });
+  expect(() => validatePositionals([], optionalProjectKey)).not.toThrow();
+  expect(() => validatePositionals(["SHOP", "extra"], optionalProjectKey)).toThrow('"extra"');
+  expect(() => validatePositionals(["A-1", "A-2", "A-3"], form({ name: "task-key", min: 1, max: null }))).not.toThrow();
+  expect(() =>
+    validatePositionals(
+      ["A-1"],
+      form({ name: "task-key", min: 1, max: null }, { name: "target-column", min: 1, max: 1 }),
+    ),
+  ).toThrow("<target-column>");
 });

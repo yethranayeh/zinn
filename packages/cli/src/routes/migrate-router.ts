@@ -3,14 +3,24 @@ import type { Command } from "../types.js";
 import { parseArgs } from "node:util";
 import { migrate, MigrationRefusedError, getStorage } from "@zinn-dev/core";
 
+import { generateCommandUsage, noInput } from "../input.js";
 import { reportLockWait } from "../database.js";
 import { diagnostic, output, validatePositionals } from "../lib.js";
 import packageJson from "../../package.json" with { type: "json" };
 
 export const migrateCommand = {
+  summary: "Upgrade an existing database to the latest schema version.",
+  effects: { domain: "none", storage: "migrate" },
+  confirmation: { kind: "none" },
+  input: noInput,
   run: (args) => {
-    const { positionals } = parseArgs({ args, strict: true, allowPositionals: true });
-    validatePositionals(positionals, []);
+    const { positionals } = parseArgs({
+      options: noInput.options,
+      args,
+      strict: true,
+      allowPositionals: true,
+    });
+    validatePositionals(positionals, noInput.forms[0]);
 
     // Resolved before the try, so a store that cannot be resolved fails without the note about backups.
     const { backupDirectory } = getStorage();
@@ -38,7 +48,7 @@ export const migrateCommand = {
       throw error;
     }
   },
-  help: `Usage: zinn migrate
+  help: `${generateCommandUsage("migrate", noInput)}
 
 Upgrade an existing database to the latest schema version.
 

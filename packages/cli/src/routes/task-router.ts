@@ -1,6 +1,7 @@
 import type { TaskChange, TaskRelationType } from "@zinn-dev/core";
 import type { RouteDef } from "../types.js";
 import type { PresentedTask } from "../presentation/task-presentation.js";
+import type { CommandInput, InputConstraint } from "../input.js";
 
 import { parseArgs, type ParseArgsOptionsConfig } from "node:util";
 import {
@@ -9,24 +10,44 @@ import {
   positiveIntegerPattern,
   searchLimitMessage,
   parseTaskKey,
+  taskCreateSchema,
 } from "@zinn-dev/core";
 
 import { CliError } from "../errors.js";
 import {
+  generateCommandUsage,
+  taskKeyPositional,
+  archiveConstraint,
+  getOptionInputs,
+  violatesConstraint,
+} from "../input.js";
+import {
+  confirmationDescription,
   confirmAction,
   dashValueHelp,
   diagnostic,
   output,
   quit,
-  UsageError,
   validatePositionals,
+  validateOrderForms,
+  requireStringOption,
   validateUniqueOptions,
 } from "../lib.js";
-import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit.js";
+import {
+  resolveTextEdit,
+  textEditHelp,
+  textEditOptions,
+  textEditConstraints,
+} from "../text-edit.js";
 import { formatRelations, presentRelations, relationRouter } from "./relation-router.js";
 import { commentRouter, formatComments, presentComments } from "./comment-router.js";
 import { currentActor } from "../actor.js";
-import { resolveProjectKey } from "../project.js";
+import {
+  resolveProjectKey,
+  projectScopeConstraint,
+  requiredProjectDescription,
+  projectScopeDescription,
+} from "../project.js";
 import { formatSection } from "../presentation/section.js";
 import { formatActivityList, presentActivities } from "../presentation/activity-presentation.js";
 import {
@@ -35,15 +56,6 @@ import {
   formatTaskRow,
   presentTask,
 } from "../presentation/task-presentation.js";
-
-const editOptions = {
-  title: { type: "string" },
-  description: { type: "string" },
-  ...textEditOptions,
-  priority: { type: "string" },
-  "add-label": { type: "string", multiple: true },
-  "remove-label": { type: "string", multiple: true },
-} as const;
 
 // A column is changed with task move, so a guessed --status or --column suggests it with the same task keys.
 function suggestTaskMove(args: Array<string>, options: ParseArgsOptionsConfig = {}) {
@@ -59,33 +71,235 @@ function suggestTaskMove(args: Array<string>, options: ParseArgsOptionsConfig = 
   return ["task", "move", ...positionals, ...columnWords];
 }
 
+const prioritySchema = taskCreateSchema.shape.priority.unwrap().unwrap();
+const priorityOption = {
+  type: "string",
+  value: {
+    kind: "enum",
+    name: "priority",
+    choices: [...prioritySchema.options, "none"],
+    caseInsensitive: true,
+    description:
+      "Omission leaves priority unassigned on creation and unchanged on edit. none clears priority; JSON uses null.",
+  },
+} as const;
+
+const taskEditConstraint = {
+  kind: "atLeastOne",
+  members: [
+    "option:title",
+    "option:description",
+    "option:priority",
+    "option:add-label",
+    "option:remove-label",
+  ],
+} as const satisfies InputConstraint;
+
+const taskInputs = {
+  create: {
+    options: {
+      title: { type: "string", required: true, value: { kind: "text", name: "text" } },
+      description: { type: "string", value: { kind: "text", name: "text" } },
+      priority: priorityOption,
+      label: { type: "string", multiple: true, value: { kind: "label-name", name: "name" } },
+      column: { type: "string", value: { kind: "column-name", name: "name" } },
+      parent: { type: "string", value: { kind: "task-key", name: "task-key" } },
+      "depends-on": {
+        type: "string",
+        multiple: true,
+        value: { kind: "task-key", name: "task-key" },
+      },
+      "duplicate-of": { type: "string", value: { kind: "task-key", name: "task-key" } },
+      related: { type: "string", multiple: true, value: { kind: "task-key", name: "task-key" } },
+    },
+    forms: [
+      {
+        id: "default",
+        positionals: [{ name: "project-key", min: 0, max: 1, value: { kind: "project-key" } }],
+      },
+    ],
+    constraints: [],
+    notes: [requiredProjectDescription],
+  },
+  list: {
+    options: {
+      archived: { type: "boolean" },
+      all: { type: "boolean" },
+      "all-projects": { type: "boolean" },
+      label: { type: "string", multiple: true, value: { kind: "label-name", name: "name" } },
+      column: { type: "string", value: { kind: "column-name", name: "name" } },
+    },
+    forms: [
+      {
+        id: "default",
+        positionals: [{ name: "project-key", min: 0, max: 1, value: { kind: "project-key" } }],
+      },
+    ],
+    constraints: [archiveConstraint, projectScopeConstraint],
+    notes: [projectScopeDescription],
+  },
+  search: {
+    options: {
+      archived: { type: "boolean" },
+      all: { type: "boolean" },
+      "all-projects": { type: "boolean" },
+      limit: {
+        type: "string",
+        value: { kind: "positive-integer", name: "n", pattern: `^${positiveIntegerPattern}$` },
+      },
+      label: { type: "string", multiple: true, value: { kind: "label-name", name: "name" } },
+    },
+    forms: [
+      {
+        id: "default",
+        positionals: [
+          { name: "query", min: 1, max: 1, value: { kind: "text" } },
+          { name: "project-key", min: 0, max: 1, value: { kind: "project-key" } },
+        ],
+      },
+    ],
+    constraints: [archiveConstraint, projectScopeConstraint],
+    notes: [
+      projectScopeDescription,
+      "A query that is a task key ignores defaultProject unless a project was typed. --all-projects still excludes a typed project.",
+    ],
+  },
+  view: {
+    options: { history: { type: "boolean" } },
+    forms: [
+      {
+        id: "default",
+        positionals: [taskKeyPositional],
+      },
+    ],
+    constraints: [],
+  },
+  edit: {
+    options: {
+      title: { type: "string", value: { kind: "text", name: "text" } },
+      description: { type: "string", value: { kind: "text", name: "text" } },
+      ...textEditOptions,
+      priority: priorityOption,
+      "add-label": { type: "string", multiple: true, value: { kind: "label-name", name: "name" } },
+      "remove-label": {
+        type: "string",
+        multiple: true,
+        value: { kind: "label-name", name: "name" },
+      },
+    },
+    forms: [
+      {
+        id: "default",
+        positionals: [taskKeyPositional],
+      },
+    ],
+    constraints: [...textEditConstraints("--description"), taskEditConstraint],
+    notes: [textEditHelp("--description")],
+  },
+  move: {
+    options: {},
+    forms: [
+      {
+        id: "default",
+        positionals: [
+          { ...taskKeyPositional, max: null },
+          { name: "target-column", min: 1, max: 1, value: { kind: "column-name" } },
+        ],
+      },
+    ],
+    constraints: [],
+  },
+  order: {
+    options: {},
+    forms: [
+      {
+        id: "absolute",
+        positionals: [
+          taskKeyPositional,
+          {
+            name: "direction",
+            min: 1,
+            max: 1,
+            value: { kind: "enum", choices: ["top", "up", "down", "bottom"] },
+          },
+        ],
+      },
+      {
+        id: "relative",
+        positionals: [
+          taskKeyPositional,
+          {
+            name: "direction",
+            min: 1,
+            max: 1,
+            value: { kind: "enum", choices: ["before", "after"] },
+          },
+          { ...taskKeyPositional, name: "target-task-key" },
+        ],
+      },
+    ],
+    constraints: [],
+  },
+  archive: {
+    options: {},
+    forms: [
+      {
+        id: "default",
+        positionals: [{ ...taskKeyPositional, max: null }],
+      },
+    ],
+    constraints: [],
+  },
+  delete: {
+    options: { yes: { type: "boolean" } },
+    forms: [
+      {
+        id: "default",
+        positionals: [taskKeyPositional],
+      },
+    ],
+    constraints: [],
+  },
+  label_add: {
+    options: {},
+    forms: [
+      {
+        id: "default",
+        positionals: [
+          taskKeyPositional,
+          { name: "label-name", min: 1, max: null, value: { kind: "label-name" } },
+        ],
+      },
+    ],
+    constraints: [],
+  },
+} as const satisfies Record<string, CommandInput>;
+
 export const taskRouter = {
   create: {
+    summary:
+      "Create a task at the bottom of a column. Without --column, it starts in the project's first column.",
+    effects: { domain: "create", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: taskInputs.create,
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
-        options: {
-          title: { type: "string" },
-          description: { type: "string" },
-          priority: { type: "string" },
-          label: { type: "string", multiple: true },
-          column: { type: "string" },
-          parent: { type: "string" },
-          "depends-on": { type: "string", multiple: true },
-          "duplicate-of": { type: "string" },
-          related: { type: "string", multiple: true },
-        },
+        options: taskInputs.create.options,
         allowPositionals: true,
         strict: true,
         tokens: true,
       });
-      validateUniqueOptions(tokens, ["label", "depends-on", "related"]);
-      validatePositionals(positionals, ["[<project-key>]"]);
+      validateUniqueOptions(tokens, taskInputs.create.options);
+      validatePositionals(positionals, taskInputs.create.forms[0]);
 
       const projectKey = resolveProjectKey(positionals[0], { required: true })!;
-      if (values.title === undefined) {
-        quit("A task needs at least a title: use --title", undefined, { argument: "--title" });
-      }
+      const title = requireStringOption(
+        taskInputs.create.options.title,
+        values.title,
+        "title",
+        "A task needs at least a title: use --title",
+      );
 
       const projectMatch = project.getByKey(projectKey);
       if (projectMatch == null) {
@@ -98,7 +312,7 @@ export const taskRouter = {
       const createdTask = task.create(
         {
           project_id: projectMatch.id,
-          title: values.title,
+          title,
           description: values.description ?? null,
           priority: parsePriority(values.priority),
           labelNames: values.label,
@@ -109,15 +323,15 @@ export const taskRouter = {
       );
       output(presentTask(createdTask), formatTaskRow);
     },
-    help: `Usage: zinn task create [<project-key>] --title <text> [--description <text>] [--priority {low|medium|high|urgent|none}] [--label <name>]... [--column <name>] [--parent <task-key>] [--depends-on <task-key>]... [--duplicate-of <task-key>] [--related <task-key>]...
+    help: `${generateCommandUsage("task create", taskInputs.create)}
 
 Create a task at the bottom of a column. Without --column, it starts in the project's first column.
 
-An omitted project key uses defaultProject from settings, if present.
-If no default project is set, the key is required.
+${requiredProjectDescription}
 
 Column names are matched case-insensitively. An unknown column is an error and creates nothing.
 Priority defaults to none (unassigned). Priority values are case-insensitive.
+Priority values: ${priorityOption.value.choices.join(", ")}.
 Repeat --label to attach multiple existing labels. Unknown labels are errors.
 Label names are matched case-insensitively.
 Titles are trimmed and cannot be blank or contain line breaks or control characters.
@@ -135,25 +349,23 @@ Examples:
   zinn task create MDR --title 'Sort the files' --parent MDR-1 --depends-on MDR-2`,
   },
   list: {
+    summary: "List active tasks by default.",
+    effects: { domain: "read", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: taskInputs.list,
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
-        options: {
-          archived: { type: "boolean" },
-          all: { type: "boolean" },
-          "all-projects": { type: "boolean" },
-          label: { type: "string", multiple: true },
-          column: { type: "string" },
-        },
+        options: taskInputs.list.options,
         allowPositionals: true,
         strict: true,
         tokens: true,
       });
 
-      validateUniqueOptions(tokens, ["label"]);
-      validatePositionals(positionals, ["[<project-key>]"]);
+      validateUniqueOptions(tokens, taskInputs.list.options);
+      validatePositionals(positionals, taskInputs.list.forms[0]);
 
-      if (values.archived && values.all) {
+      if (violatesConstraint(archiveConstraint, getOptionInputs(values))) {
         quit('Use either "--archived" or "--all", not both', undefined, { argument: "--archived" });
       }
 
@@ -171,12 +383,10 @@ Examples:
         formatTaskList(presentedTasks, { showsStatus: values.all }),
       );
     },
-    help: `Usage: zinn task list [<project-key>|--all-projects] [--archived|--all] [--label <name>]... [--column <name>]
+    help: `${generateCommandUsage("task list", taskInputs.list)}
 
 List active tasks by default.
-An omitted project key uses defaultProject from settings, if present.
-If no default project is set, the command lists every project.
-Use --all-projects to list every project, overriding the default. It cannot be combined with a typed project key.
+${projectScopeDescription}
 Use --archived to list archived tasks or --all to list both.
 Use --label to filter for tasks with a specific label, no case-sensitivity is applied for matching.
 Use --column to filter by an exact column name without case sensitivty.
@@ -189,32 +399,31 @@ Use 'task view' to see a task's full details, including its description.
 Example: zinn task list MDR --label cli`,
   },
   search: {
+    summary:
+      "Search task titles, descriptions, and comments. A comment match lists the task it belongs to.",
+    effects: { domain: "read", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: taskInputs.search,
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
-        options: {
-          archived: { type: "boolean" },
-          all: { type: "boolean" },
-          "all-projects": { type: "boolean" },
-          limit: { type: "string" },
-          label: { type: "string", multiple: true },
-        },
+        options: taskInputs.search.options,
         allowPositionals: true,
         strict: true,
         tokens: true,
       });
 
-      validateUniqueOptions(tokens, ["label"]);
-      validatePositionals(positionals, ["<query>", "[<project-key>]"]);
+      validateUniqueOptions(tokens, taskInputs.search.options);
+      validatePositionals(positionals, taskInputs.search.forms[0]);
 
       const query = positionals[0]!;
 
-      if (values.archived && values.all) {
+      if (violatesConstraint(archiveConstraint, getOptionInputs(values))) {
         quit('Use either "--archived" or "--all", not both', undefined, { argument: "--archived" });
       }
 
       const archive = values.all ? "all" : values.archived ? "archived" : "active";
-      const limitPattern = new RegExp(`^${positiveIntegerPattern}$`);
+      const limitPattern = new RegExp(taskInputs.search.options.limit.value.pattern);
 
       if (values.limit !== undefined && !limitPattern.test(values.limit)) {
         quit(searchLimitMessage, undefined, { argument: "--limit" });
@@ -245,12 +454,10 @@ Example: zinn task list MDR --label cli`,
         diagnostic(`${count} archived ${noun} hidden, use --all to include them`);
       }
     },
-    help: `Usage: zinn task search <query> [<project-key>|--all-projects] [--archived|--all] [--limit <n>] [--label <name>]...
+    help: `${generateCommandUsage("task search", taskInputs.search)}
 
 Search task titles, descriptions, and comments. A comment match lists the task it belongs to.
-An omitted project key uses defaultProject from settings, if present.
-If no default project is set, the command searches every project.
-Use --all-projects to search every project, overriding the default. It cannot be combined with a typed project key.
+${projectScopeDescription}
 Each word matches the start of a word, ignoring case and accents: e.g. "auth" finds "Authentication".
 Every word must match. Quote a query with several words.
 
@@ -268,16 +475,20 @@ A search result's output matches that of 'task list'.
 Example: zinn task search 'refinement quota' MDR --limit 5`,
   },
   view: {
+    summary: "Show a task with its description, relations, and comments.",
+    effects: { domain: "read", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: taskInputs.view,
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
-        options: { history: { type: "boolean" } },
+        options: taskInputs.view.options,
         allowPositionals: true,
         strict: true,
         tokens: true,
       });
-      validateUniqueOptions(tokens);
-      validatePositionals(positionals, ["<task-key>"]);
+      validateUniqueOptions(tokens, taskInputs.view.options);
+      validatePositionals(positionals, taskInputs.view.forms[0]);
 
       const taskMatch = task.getByKey(positionals[0]!);
       const viewedTask = {
@@ -334,7 +545,7 @@ Example: zinn task search 'refinement quota' MDR --limit 5`,
         return sections.join("\n\n");
       });
     },
-    help: `Usage: zinn task view <task-key> [--history]
+    help: `${generateCommandUsage("task view", taskInputs.view)}
 
 Show a task with its description, relations, and comments.
 A section is shown when the task has that content. The description prints in full, keeping its line breaks.
@@ -348,29 +559,26 @@ Examples:
   zinn task view MDR-1 --history`,
   },
   edit: {
+    summary: "Edit a task's title, description, priority, or label attachments.",
+    effects: { domain: "update", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: taskInputs.edit,
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
-        options: editOptions,
+        options: taskInputs.edit.options,
         allowPositionals: true,
         strict: true,
         tokens: true,
       });
 
-      validateUniqueOptions(tokens, ["add-label", "remove-label"]);
-      validatePositionals(positionals, ["<task-key>"]);
+      validateUniqueOptions(tokens, taskInputs.edit.options);
+      validatePositionals(positionals, taskInputs.edit.forms[0]);
 
       const taskKey = positionals[0]!;
       const description = resolveTextEdit(values.description, values, "--description");
 
-      const hasEditFlags =
-        values.title !== undefined ||
-        description !== undefined ||
-        values.priority !== undefined ||
-        values["add-label"] !== undefined ||
-        values["remove-label"] !== undefined;
-
-      if (!hasEditFlags) {
+      if (violatesConstraint(taskEditConstraint, getOptionInputs({ ...values, description }))) {
         quit(
           "Provide at least one edit flag: --title, --description, --priority, --add-label, or --remove-label",
           undefined,
@@ -392,10 +600,11 @@ Examples:
 
       output(presentTask(editedTask), formatTaskRow);
     },
-    help: `Usage: zinn task edit <task-key> [--title <text>] [--description <text> ${textEditUsage}] [--priority {low|medium|high|urgent|none}] [--add-label <name>]... [--remove-label <name>]...
+    help: `${generateCommandUsage("task edit", taskInputs.edit)}
 
 Edit a task's title, description, priority, or label attachments.
 Use --priority none to clear priority. Priority values are case-insensitive.
+Priority values: ${priorityOption.value.choices.join(", ")}.
 Provide at least one edit flag. Use --description '' to clear the description.
 
 ${textEditHelp("--description")}
@@ -414,14 +623,23 @@ Examples:
   zinn task edit MDR-1 --title 'Meet the quarterly refinement quota'
   zinn task edit MDR-1 --description 'Bring waffles.' --append`,
     guessedFlags: {
-      "--status": (args) => suggestTaskMove(args, editOptions),
-      "--column": (args) => suggestTaskMove(args, editOptions),
+      "--status": (args) => suggestTaskMove(args, taskInputs.edit.options),
+      "--column": (args) => suggestTaskMove(args, taskInputs.edit.options),
     },
   },
   move: {
+    summary: "Move tasks to another column in their projects.",
+    effects: { domain: "update", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: taskInputs.move,
     run: (args) => {
-      const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
-      validatePositionals(positionals, ["<task-key>...", "<target-column>"]);
+      const { positionals } = parseArgs({
+        options: taskInputs.move.options,
+        args,
+        allowPositionals: true,
+        strict: true,
+      });
+      validatePositionals(positionals, taskInputs.move.forms[0]);
 
       const taskKeys = positionals.slice(0, -1);
       const targetColumn = positionals.at(-1)!;
@@ -432,7 +650,7 @@ Examples:
         (movedTask) => `${movedTask.key} was already in the ${movedTask.column} column`,
       );
     },
-    help: `Usage: zinn task move <task-key>... <target-column>
+    help: `${generateCommandUsage("task move", taskInputs.move)}
 
 Move tasks to another column in their projects.
 Moving a task to a different column lists it last in that column,
@@ -450,46 +668,35 @@ Example: zinn task move MDR-1 MDR-2 'In Progress'`,
     guessedFlags: { "--status": suggestTaskMove, "--column": suggestTaskMove },
   },
   order: {
+    summary: "Change a task's position within its current column.",
+    effects: { domain: "update", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: taskInputs.order,
     run: (args) => {
-      const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
-      /**
-       * The words every direction needs. Only whether they are there is checked here,
-       *  since the direction decides whether a target task follows.
-       */
-      const leadingWords = ["<task-key>", "{top|up|down|bottom|before|after}"];
-      validatePositionals(positionals.slice(0, leadingWords.length), leadingWords);
-
+      const { positionals } = parseArgs({
+        options: taskInputs.order.options,
+        args,
+        allowPositionals: true,
+        strict: true,
+      });
+      const form = validateOrderForms(positionals, taskInputs.order.forms);
       const taskKey = positionals[0]!;
-      const direction = positionals[1]!;
-
-      switch (direction) {
-        case "before":
-        case "after": {
-          validatePositionals(positionals, [...leadingWords, "<target-task-key>"]);
-
-          const orderedTask = task.order(
-            { taskKey, direction, targetTaskKey: positionals[2]! },
-            currentActor(),
-          );
-          output(presentTask(orderedTask), formatTaskRow);
-          return;
-        }
-        case "top":
-        case "up":
-        case "down":
-        case "bottom": {
-          validatePositionals(positionals, leadingWords);
-
-          const orderedTask = task.order({ taskKey, direction }, currentActor());
-          output(presentTask(orderedTask), formatTaskRow);
-          return;
-        }
-        default:
-          throw new UsageError(`Unknown order direction "${direction}"`, { argument: "direction" });
+      if (form.id === "relative") {
+        const direction =
+          positionals[1] as (typeof form)["positionals"][1]["value"]["choices"][number];
+        const orderedTask = task.order(
+          { taskKey, direction, targetTaskKey: positionals[2]! },
+          currentActor(),
+        );
+        output(presentTask(orderedTask), formatTaskRow);
+      } else {
+        const direction =
+          positionals[1] as (typeof form)["positionals"][1]["value"]["choices"][number];
+        const orderedTask = task.order({ taskKey, direction }, currentActor());
+        output(presentTask(orderedTask), formatTaskRow);
       }
     },
-    help: `Usage: zinn task order <task-key> {top|up|down|bottom}
-       zinn task order <task-key> {before|after} <target-task-key>
+    help: `${generateCommandUsage("task order", taskInputs.order)}
 
 Change a task's position within its current column.
 Use top or bottom for either end, up or down for one position,
@@ -498,6 +705,10 @@ or before or after to place it relative to another task.
 Example: zinn task order MDR-2 before MDR-1`,
   },
   archive: {
+    summary: "Archive tasks so they no longer appear in active task lists.",
+    effects: { domain: "update", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: taskInputs.archive,
     run: (args: Array<string>) => {
       const taskKeys = parseTaskKeys(args);
       const archives = task.archiveMany(taskKeys, currentActor());
@@ -507,7 +718,7 @@ Example: zinn task order MDR-2 before MDR-1`,
         (archivedTask) => `${archivedTask.key} was already archived`,
       );
     },
-    help: `Usage: zinn task archive <task-key>...
+    help: `${generateCommandUsage("task archive", taskInputs.archive)}
 
 Archive tasks so they no longer appear in active task lists.
 Archiving an archived task does not do anything.
@@ -519,6 +730,10 @@ Each task's changed field is 'false' when it was already in the requested state.
 Example: zinn task archive MDR-1 MDR-2`,
   },
   unarchive: {
+    summary: "Unarchive tasks at the bottom of their previous columns, in the order given.",
+    effects: { domain: "update", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: taskInputs.archive,
     run: (args: Array<string>) => {
       const taskKeys = parseTaskKeys(args);
       const unarchives = task.unarchiveMany(taskKeys, currentActor());
@@ -528,7 +743,7 @@ Example: zinn task archive MDR-1 MDR-2`,
         (unarchivedTask) => `${unarchivedTask.key} was already active`,
       );
     },
-    help: `Usage: zinn task unarchive <task-key>...
+    help: `${generateCommandUsage("task unarchive", taskInputs.archive)}
 
 Unarchive tasks at the bottom of their previous columns, in the order given.
 Unarchiving an active task does not do anything.
@@ -540,16 +755,20 @@ Each task's changed field is 'false' when it was already in the requested state.
 Example: zinn task unarchive MDR-1 MDR-2`,
   },
   delete: {
+    summary: "Permanently delete a task after confirmation.",
+    effects: { domain: "delete", storage: "normal-open" },
+    confirmation: { kind: "prompt", description: confirmationDescription },
+    input: taskInputs.delete,
     run: async (args: Array<string>) => {
       const { values, positionals, tokens } = parseArgs({
         args,
-        options: { yes: { type: "boolean" } },
+        options: taskInputs.delete.options,
         allowPositionals: true,
         strict: true,
         tokens: true,
       });
-      validateUniqueOptions(tokens);
-      validatePositionals(positionals, ["<task-key>"]);
+      validateUniqueOptions(tokens, taskInputs.delete.options);
+      validatePositionals(positionals, taskInputs.delete.forms[0]);
 
       const taskKey = positionals[0]!;
 
@@ -571,7 +790,7 @@ Example: zinn task unarchive MDR-1 MDR-2`,
         throw err;
       }
     },
-    help: `Usage: zinn task delete <task-key> [--yes]
+    help: `${generateCommandUsage("task delete", taskInputs.delete)}
 
 Permanently delete a task after confirmation.
 Use --yes to skip the confirmation prompt, for example in scripts or with --json.
@@ -582,21 +801,29 @@ Example: zinn task delete MDR-1`,
   comment: commentRouter,
   label: {
     add: {
+      summary: "Add existing labels to a task. Label names are matched case-insensitively.",
+      effects: { domain: "update", storage: "normal-open" },
+      confirmation: { kind: "none" },
+      input: taskInputs.label_add,
       run: (args) => {
         const props = parseTaskLabelArgs(args);
         output(presentTask(task.label.add(props, currentActor())), formatTaskRow);
       },
-      help: `Usage: zinn task label add <task-key> <label-name>...
+      help: `${generateCommandUsage("task label add", taskInputs.label_add)}
 
 Add existing labels to a task. Label names are matched case-insensitively.
 Already attached labels are unchanged.`,
     },
     remove: {
+      summary: "Remove existing labels from a task. Label names are matched case-insensitively.",
+      effects: { domain: "update", storage: "normal-open" },
+      confirmation: { kind: "none" },
+      input: taskInputs.label_add,
       run: (args) => {
         const props = parseTaskLabelArgs(args);
         output(presentTask(task.label.remove(props, currentActor())), formatTaskRow);
       },
-      help: `Usage: zinn task label remove <task-key> <label-name>...
+      help: `${generateCommandUsage("task label remove", taskInputs.label_add)}
 
 Remove existing labels from a task. Label names are matched case-insensitively.`,
     },
@@ -604,8 +831,14 @@ Remove existing labels from a task. Label names are matched case-insensitively.`
 } satisfies RouteDef;
 
 function parseTaskKeys(args: Array<string>) {
-  const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
-  validatePositionals(positionals, ["<task-key>..."]);
+  const { positionals } = parseArgs({
+    options: taskInputs.archive.options,
+    args,
+    allowPositionals: true,
+    strict: true,
+  });
+
+  validatePositionals(positionals, taskInputs.archive.forms[0]);
 
   return positionals;
 }
@@ -638,8 +871,14 @@ function outputTaskChanges(
 }
 
 function parseTaskLabelArgs(args: string[]) {
-  const { positionals } = parseArgs({ args, strict: true, allowPositionals: true });
-  validatePositionals(positionals, ["<task-key>", "<label-name>..."]);
+  const { positionals } = parseArgs({
+    options: taskInputs.label_add.options,
+    args,
+    strict: true,
+    allowPositionals: true,
+  });
+
+  validatePositionals(positionals, taskInputs.label_add.forms[0]);
 
   return { taskKey: positionals[0]!, labelNames: positionals.slice(1) };
 }
@@ -667,19 +906,20 @@ function parseNewTaskRelations(flags: NewTaskRelationFlags) {
 
 function parsePriority(value: string | undefined) {
   const normalizedPriority = value?.toLowerCase();
-  switch (normalizedPriority) {
-    case undefined:
-      return undefined;
-    case "none":
-      return null;
-    case "low":
-    case "medium":
-    case "high":
-    case "urgent":
-      return normalizedPriority;
-    default:
-      quit("Priority must be low, medium, high, urgent, or none", undefined, {
-        argument: "--priority",
-      });
+  if (normalizedPriority === undefined) {
+    return undefined;
   }
+
+  if (normalizedPriority === "none") {
+    return null;
+  }
+
+  const priority = prioritySchema.safeParse(normalizedPriority);
+  if (!priority.success) {
+    quit("Priority must be low, medium, high, urgent, or none", undefined, {
+      argument: "--priority",
+    });
+  }
+
+  return priority.data;
 }

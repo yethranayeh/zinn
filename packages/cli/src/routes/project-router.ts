@@ -1,31 +1,40 @@
 import type { RouteDef } from "../types.js";
+import type { CommandInput, InputConstraint } from "../input.js";
 import type {
   PresentedColumn,
   PresentedColumnTaskCount,
 } from "../presentation/column-presentation.js";
 
 import { parseArgs } from "node:util";
-import { column, project } from "@zinn-dev/core";
+import { column, project, columnOrderSchema } from "@zinn-dev/core";
 
 import { CliError } from "../errors.js";
+import { generateCommandUsage, getOptionInputs, noInput, violatesConstraint } from "../input.js";
 import {
+  confirmationDescription,
   canPrompt,
   confirmAction,
   dashValueHelp,
   diagnostic,
   output,
   quit,
-  UsageError,
   validatePositionals,
+  validateOrderForms,
+  requireStringOption,
   validateUniqueOptions,
 } from "../lib.js";
-import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit.js";
+import {
+  resolveTextEdit,
+  textEditHelp,
+  textEditOptions,
+  textEditConstraints,
+} from "../text-edit.js";
 import { formatColumnList } from "../presentation/column-presentation.js";
 import { formatDescriptionPreview } from "../presentation/description-presentation.js";
 import { formatCellSeparator, formatRows } from "../presentation/row-layout.js";
 import { formatSection } from "../presentation/section.js";
 import { currentActor } from "../actor.js";
-import { resolveProjectKey } from "../project.js";
+import { resolveProjectKey, requiredProjectDescription } from "../project.js";
 
 type PresentedProject = { key: string; name: string; description: string | null };
 type PresentedProjectView = PresentedProject & {
@@ -69,19 +78,152 @@ function formatColumn(presented: PresentedColumn) {
   return formatColumnList([presented], { showsProject: true });
 }
 
+const projectEditConstraint = {
+  kind: "atLeastOne",
+  members: ["option:name", "option:description"],
+} as const satisfies InputConstraint;
+
+const projectInputs = {
+  create: {
+    options: {
+      name: { type: "string", value: { kind: "text", name: "text" } },
+      description: { type: "string", value: { kind: "text", name: "text" } },
+    },
+    forms: [
+      {
+        id: "default",
+        positionals: [{ name: "project-key", min: 1, max: 1, value: { kind: "project-key" } }],
+      },
+    ],
+    constraints: [],
+  },
+  list: noInput,
+  view: {
+    options: {},
+    forms: [
+      {
+        id: "default",
+        positionals: [{ name: "project-key", min: 0, max: 1, value: { kind: "project-key" } }],
+      },
+    ],
+    constraints: [],
+    notes: [requiredProjectDescription],
+  },
+  edit: {
+    options: {
+      name: { type: "string", value: { kind: "text", name: "text" } },
+      description: { type: "string", value: { kind: "text", name: "text" } },
+      ...textEditOptions,
+    },
+    forms: [
+      {
+        id: "default",
+        positionals: [{ name: "project-key", min: 0, max: 1, value: { kind: "project-key" } }],
+      },
+    ],
+    constraints: [...textEditConstraints("--description"), projectEditConstraint],
+    notes: [requiredProjectDescription, textEditHelp("--description")],
+  },
+  delete: {
+    options: { yes: { type: "boolean" } },
+    forms: [
+      {
+        id: "default",
+        positionals: [{ name: "project-key", min: 0, max: 1, value: { kind: "project-key" } }],
+      },
+    ],
+    constraints: [],
+    notes: [requiredProjectDescription],
+  },
+  column_create: {
+    options: {},
+    forms: [
+      {
+        id: "default",
+        positionals: [
+          { name: "project-key", min: 1, max: 1, value: { kind: "project-key" } },
+          { name: "column-name", min: 1, max: 1, value: { kind: "column-name" } },
+        ],
+      },
+    ],
+    constraints: [],
+  },
+  column_list: {
+    options: {},
+    forms: [
+      {
+        id: "default",
+        positionals: [{ name: "project-key", min: 0, max: 1, value: { kind: "project-key" } }],
+      },
+    ],
+    constraints: [],
+    notes: [requiredProjectDescription],
+  },
+  column_edit: {
+    options: { name: { type: "string", required: true, value: { kind: "text", name: "text" } } },
+    forms: [
+      {
+        id: "default",
+        positionals: [
+          { name: "project-key", min: 1, max: 1, value: { kind: "project-key" } },
+          { name: "column-name", min: 1, max: 1, value: { kind: "column-name" } },
+        ],
+      },
+    ],
+    constraints: [],
+  },
+  column_order: {
+    options: {},
+    forms: [
+      {
+        id: "absolute",
+        positionals: [
+          { name: "project-key", min: 1, max: 1, value: { kind: "project-key" } },
+          { name: "column-name", min: 1, max: 1, value: { kind: "column-name" } },
+          {
+            name: "direction",
+            min: 1,
+            max: 1,
+            value: { kind: "enum", choices: columnOrderSchema.options[0].shape.direction.options },
+          },
+        ],
+      },
+      {
+        id: "relative",
+        positionals: [
+          { name: "project-key", min: 1, max: 1, value: { kind: "project-key" } },
+          { name: "column-name", min: 1, max: 1, value: { kind: "column-name" } },
+          {
+            name: "direction",
+            min: 1,
+            max: 1,
+            value: { kind: "enum", choices: columnOrderSchema.options[1].shape.direction.options },
+          },
+          { name: "target-column-name", min: 1, max: 1, value: { kind: "column-name" } },
+        ],
+      },
+    ],
+    constraints: [],
+  },
+} as const satisfies Record<string, CommandInput>;
+
 export const projectRouter = {
   create: {
+    summary: "Create a project with the default columns.",
+    effects: { domain: "create", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: projectInputs.create,
     run: (args: Array<string>) => {
       const { values, positionals, tokens } = parseArgs({
         args,
-        options: { name: { type: "string" }, description: { type: "string" } },
+        options: projectInputs.create.options,
         allowPositionals: true,
         strict: true,
         tokens: true,
       });
 
-      validateUniqueOptions(tokens);
-      validatePositionals(positionals, ["<project-key>"]);
+      validateUniqueOptions(tokens, projectInputs.create.options);
+      validatePositionals(positionals, projectInputs.create.forms[0]);
 
       const projectKey = positionals[0]!;
 
@@ -95,7 +237,7 @@ export const projectRouter = {
         throw err;
       }
     },
-    help: `Usage: zinn project create <project-key> [--name <text>] [--description <text>]
+    help: `${generateCommandUsage("project create", projectInputs.create)}
 
 Create a project with the default columns.
 Project keys are stored in uppercase.
@@ -109,24 +251,42 @@ ${dashValueHelp("--description")}
 Example: zinn project create MDR --name 'Macrodata Refinement'`,
   },
   list: {
+    summary: "List projects, their keys, and truncated description previews.",
+    effects: { domain: "read", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: projectInputs.list,
     run: (args: Array<string>) => {
-      const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
-      validatePositionals(positionals, []);
+      const { positionals } = parseArgs({
+        options: projectInputs.list.options,
+        args,
+        allowPositionals: true,
+        strict: true,
+      });
+      validatePositionals(positionals, projectInputs.list.forms[0]);
 
       const projects = project.getAll();
 
       output(projects.map(presentProject), formatProjectList);
     },
-    help: `Usage: zinn project list
+    help: `${generateCommandUsage("project list", projectInputs.list)}
 
 List projects, their keys, and truncated description previews.
 
 Example: zinn project list`,
   },
   view: {
+    summary: "Show a project with its description and the number of tasks in each column.",
+    effects: { domain: "read", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: projectInputs.view,
     run: (args: Array<string>) => {
-      const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
-      validatePositionals(positionals, ["[<project-key>]"]);
+      const { positionals } = parseArgs({
+        options: projectInputs.view.options,
+        args,
+        allowPositionals: true,
+        strict: true,
+      });
+      validatePositionals(positionals, projectInputs.view.forms[0]);
 
       const projectKey = resolveProjectKey(positionals[0], { required: true })!;
       const projectMatch = project.getByKey(projectKey);
@@ -166,32 +326,35 @@ Example: zinn project list`,
         return sections.join("\n\n");
       });
     },
-    help: `Usage: zinn project view [<project-key>]
+    help: `${generateCommandUsage("project view", projectInputs.view)}
 
 Show a project with its description and the number of tasks in each column.
-An omitted project key uses defaultProject from settings, if present.
-If no default project is set, the key is required.
+${requiredProjectDescription}
 The description prints in full, keeping its line breaks. Archived tasks are counted as one total.
 
 Example: zinn project view MDR`,
   },
   edit: {
+    summary: "Change the supplied project fields. At least one edit flag is required.",
+    effects: { domain: "update", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: projectInputs.edit,
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
-        options: { name: { type: "string" }, description: { type: "string" }, ...textEditOptions },
+        options: projectInputs.edit.options,
         allowPositionals: true,
         strict: true,
         tokens: true,
       });
 
-      validateUniqueOptions(tokens);
-      validatePositionals(positionals, ["[<project-key>]"]);
+      validateUniqueOptions(tokens, projectInputs.edit.options);
+      validatePositionals(positionals, projectInputs.edit.forms[0]);
 
       const projectKey = resolveProjectKey(positionals[0], { required: true })!;
       const description = resolveTextEdit(values.description, values, "--description");
 
-      if (values.name === undefined && description === undefined) {
+      if (violatesConstraint(projectEditConstraint, getOptionInputs({ ...values, description }))) {
         quit("Provide an edit flag: --name or --description", undefined, { field: [] });
       }
 
@@ -201,11 +364,10 @@ Example: zinn project view MDR`,
       );
       output(presentProject(editedProject), formatProject);
     },
-    help: `Usage: zinn project edit [<project-key>] [--name <text>] [--description <text> ${textEditUsage}]
+    help: `${generateCommandUsage("project edit", projectInputs.edit)}
 
 Change the supplied project fields. At least one edit flag is required.
-An omitted project key uses defaultProject from settings, if present.
-If no default project is set, the key is required.
+${requiredProjectDescription}
 Use --description '' to clear the description.
 
 ${textEditHelp("--description")}
@@ -217,16 +379,23 @@ Examples:
   zinn project edit MDR --description database --replacing board --all`,
   },
   delete: {
+    summary: "Permanently delete a project and all of its columns and tasks after confirmation.",
+    effects: { domain: "delete", storage: "normal-open" },
+    confirmation: {
+      kind: "project-delete",
+      description: `${confirmationDescription} When the project key is omitted, deleting the configured default project always requires a terminal prompt; --yes is ignored.`,
+    },
+    input: projectInputs.delete,
     run: async (args: Array<string>) => {
       const { values, positionals, tokens } = parseArgs({
         args,
-        options: { yes: { type: "boolean" } },
+        options: projectInputs.delete.options,
         allowPositionals: true,
         strict: true,
         tokens: true,
       });
-      validateUniqueOptions(tokens);
-      validatePositionals(positionals, ["[<project-key>]"]);
+      validateUniqueOptions(tokens, projectInputs.delete.options);
+      validatePositionals(positionals, projectInputs.delete.forms[0]);
 
       const typedProjectKey = positionals[0];
       const projectKey = resolveProjectKey(typedProjectKey, { required: true })!;
@@ -274,21 +443,29 @@ Examples:
         throw err;
       }
     },
-    help: `Usage: zinn project delete [<project-key>] [--yes]
+    help: `${generateCommandUsage("project delete", projectInputs.delete)}
 
 Permanently delete a project and all of its columns and tasks after confirmation.
-An omitted project key uses defaultProject from settings, if present.
-If no default project is set, the key is required.
-With the default, confirmation is always required: --yes is ignored, and without a terminal the command refuses.
+${requiredProjectDescription}
+When the project key is omitted, confirmation is always required: --yes is ignored, and without a terminal the command refuses.
 Use a typed project key and --yes to skip the prompt, including with --json.
 
 Example: zinn project delete MDR`,
   },
   column: {
     create: {
+      summary: "Add a column at the end of a project's board.",
+      effects: { domain: "create", storage: "normal-open" },
+      confirmation: { kind: "none" },
+      input: projectInputs.column_create,
       run: (args: Array<string>) => {
-        const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
-        validatePositionals(positionals, ["<project-key>", "<column-name>"]);
+        const { positionals } = parseArgs({
+          options: projectInputs.column_create.options,
+          args,
+          allowPositionals: true,
+          strict: true,
+        });
+        validatePositionals(positionals, projectInputs.column_create.forms[0]);
 
         const projectKey = positionals[0]!;
         const columnName = positionals[1]!;
@@ -300,7 +477,7 @@ Example: zinn project delete MDR`,
           throw err;
         }
       },
-      help: `Usage: zinn project column create <project-key> <column-name>
+      help: `${generateCommandUsage("project column create", projectInputs.column_create)}
 
 Add a column at the end of a project's board.
 Names are trimmed, cannot be blank or contain line breaks or control characters, and must be unique within the project regardless of casing.
@@ -308,9 +485,18 @@ Names are trimmed, cannot be blank or contain line breaks or control characters,
 Example: zinn project column create MDR Boardlog`,
     },
     list: {
+      summary: "List a project's columns in board order with their unarchived task counts.",
+      effects: { domain: "read", storage: "normal-open" },
+      confirmation: { kind: "none" },
+      input: projectInputs.column_list,
       run: (args: Array<string>) => {
-        const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
-        validatePositionals(positionals, ["[<project-key>]"]);
+        const { positionals } = parseArgs({
+          options: projectInputs.column_list.options,
+          args,
+          allowPositionals: true,
+          strict: true,
+        });
+        validatePositionals(positionals, projectInputs.column_list.forms[0]);
 
         const projectKey = resolveProjectKey(positionals[0], { required: true })!;
         const taskCounts = column.getTaskCountsByProjectKey(projectKey);
@@ -324,42 +510,48 @@ Example: zinn project column create MDR Boardlog`,
           }),
         );
       },
-      help: `Usage: zinn project column list [<project-key>]
+      help: `${generateCommandUsage("project column list", projectInputs.column_list)}
 
 List a project's columns in board order with their unarchived task counts.
-An omitted project key uses defaultProject from settings, if present.
-If no default project is set, the key is required.
+${requiredProjectDescription}
 
 Example: zinn project column list MDR`,
     },
     edit: {
+      summary: "Rename a column.",
+      effects: { domain: "update", storage: "normal-open" },
+      confirmation: { kind: "none" },
+      input: projectInputs.column_edit,
       run: (args: Array<string>) => {
         const { values, positionals, tokens } = parseArgs({
           args,
-          options: { name: { type: "string" } },
+          options: projectInputs.column_edit.options,
           allowPositionals: true,
           strict: true,
           tokens: true,
         });
 
-        validateUniqueOptions(tokens);
-        validatePositionals(positionals, ["<project-key>", "<column-name>"]);
+        validateUniqueOptions(tokens, projectInputs.column_edit.options);
+        validatePositionals(positionals, projectInputs.column_edit.forms[0]);
 
-        if (values.name === undefined) {
-          quit("Provide an edit flag: --name", undefined, { argument: "--name" });
-        }
+        const name = requireStringOption(
+          projectInputs.column_edit.options.name,
+          values.name,
+          "name",
+          "Provide an edit flag: --name",
+        );
 
         const editedColumn = column.edit(
           {
             projectKey: positionals[0]!,
             columnName: positionals[1]!,
-            name: values.name,
+            name,
           },
           currentActor(),
         );
         output(presentColumn(editedColumn), formatColumn);
       },
-      help: `Usage: zinn project column edit <project-key> <column-name> --name <text>
+      help: `${generateCommandUsage("project column edit", projectInputs.column_edit)}
 
 Rename a column.
 The --name flag is required.
@@ -373,55 +565,38 @@ ${dashValueHelp("--name")}
 Example: zinn project column edit MDR 'In Progress' --name Refining`,
     },
     order: {
+      summary: "Change a column's position on the project's board.",
+      effects: { domain: "update", storage: "normal-open" },
+      confirmation: { kind: "none" },
+      input: projectInputs.column_order,
       run: (args: Array<string>) => {
-        const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
-        /**
-         * The words every direction needs. Only whether they are there is checked here,
-         *  since the direction decides whether a target column follows.
-         */
-        const leadingWords = [
-          "<project-key>",
-          "<column-name>",
-          "{first|previous|next|last|before|after}",
-        ];
-        validatePositionals(positionals.slice(0, leadingWords.length), leadingWords);
-
+        const { positionals } = parseArgs({
+          options: projectInputs.column_order.options,
+          args,
+          allowPositionals: true,
+          strict: true,
+        });
+        const form = validateOrderForms(positionals, projectInputs.column_order.forms);
         const projectKey = positionals[0]!;
         const columnName = positionals[1]!;
-        const direction = positionals[2]!;
         let orderedColumn: ReturnType<typeof column.order>;
-
-        switch (direction) {
-          case "before":
-          case "after": {
-            validatePositionals(positionals, [...leadingWords, "<target-column-name>"]);
-
-            orderedColumn = column.order(
-              { projectKey, columnName, direction, targetColumnName: positionals[3]! },
-              currentActor(),
-            );
-            break;
-          }
-          case "first":
-          case "previous":
-          case "next":
-          case "last": {
-            validatePositionals(positionals, leadingWords);
-
-            orderedColumn = column.order({ projectKey, columnName, direction }, currentActor());
-            break;
-          }
-          default:
-            throw new UsageError(`Unknown order direction "${direction}"`, {
-              argument: "direction",
-            });
+        if (form.id === "relative") {
+          const direction =
+            positionals[2] as (typeof form)["positionals"][2]["value"]["choices"][number];
+          orderedColumn = column.order(
+            { projectKey, columnName, direction, targetColumnName: positionals[3]! },
+            currentActor(),
+          );
+        } else {
+          const direction =
+            positionals[2] as (typeof form)["positionals"][2]["value"]["choices"][number];
+          orderedColumn = column.order({ projectKey, columnName, direction }, currentActor());
         }
 
         // TODO: maybe also print the new full column state?
         output(presentColumn(orderedColumn), formatColumn);
       },
-      help: `Usage: zinn project column order <project-key> <column-name> {first|previous|next|last}
-       zinn project column order <project-key> <column-name> {before|after} <target-column-name>
+      help: `${generateCommandUsage("project column order", projectInputs.column_order)}
 
 Change a column's position on the project's board.
 Use first or last for either end, previous or next for one position,

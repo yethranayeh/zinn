@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 
 import packageJson from "./package.json" with { type: "json" };
+import { versionSpellings } from "./src/input.js";
 
 const args = process.argv.slice(2);
-const isVersionRequest = args.length === 1 && ["-v", "--version"].includes(args[0]!);
+const isVersionRequest = args.length === 1 && versionSpellings.includes(args[0]!);
 
 if (isVersionRequest) {
   console.info(packageJson.version);

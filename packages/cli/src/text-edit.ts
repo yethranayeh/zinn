@@ -1,22 +1,30 @@
 import type { TextEdit } from "@zinn-dev/core";
 
 import { quit } from "./lib.js";
+import { getOptionInputs, violatesConstraint, type InputConstraint } from "./input.js";
 
 /** The flags that change how a text flag (--description, --text) is applied to the stored text. */
 export const textEditOptions = {
   append: { type: "boolean" },
-  replacing: { type: "string" },
+  replacing: { type: "string", value: { kind: "text", name: "old" } },
   all: { type: "boolean" },
 } as const;
+
+export function textEditConstraints(textFlag: "--description" | "--text") {
+  const textInput = `option:${textFlag.slice(2)}` as const;
+  return [
+    { kind: "exclusive", members: ["option:append", "option:replacing"] },
+    { kind: "requires", input: "option:append", requires: textInput },
+    { kind: "requires", input: "option:replacing", requires: textInput },
+    { kind: "requires", input: "option:all", requires: "option:replacing" },
+  ] as const satisfies readonly InputConstraint[];
+}
 
 type TextEditFlags = {
   append?: boolean | undefined;
   replacing?: string | undefined;
   all?: boolean | undefined;
 };
-
-/** The usage form of the text-edit flags, to follow the text flag in a usage line. */
-export const textEditUsage = "[--append|--replacing <old> [--all]]";
 
 /** Help paragraph for the text-edit flags of a command whose text flag is `textFlag`. */
 export function textEditHelp(textFlag: "--description" | "--text") {
@@ -35,20 +43,25 @@ export function resolveTextEdit(
   textFlag: "--description" | "--text",
 ): string | TextEdit | undefined {
   const isAppending = flags.append === true;
-  const isReplacing = flags.replacing !== undefined;
+  const [exclusiveModifiers, appendRequiresText, replacingRequiresText, allRequiresReplacing] =
+    textEditConstraints(textFlag);
+  const inputs = getOptionInputs({ ...flags, [textFlag.slice(2)]: text });
 
-  if (isAppending && isReplacing) {
+  if (violatesConstraint(exclusiveModifiers, inputs)) {
     quit(`Option "--append" cannot be used with "--replacing"`, undefined, {
       argument: "--append",
     });
   }
 
-  if ((isAppending || isReplacing) && text === undefined) {
+  if (
+    violatesConstraint(appendRequiresText, inputs) ||
+    violatesConstraint(replacingRequiresText, inputs)
+  ) {
     const modifier = isAppending ? "--append" : "--replacing";
     quit(`Option "${modifier}" needs "${textFlag}"`, undefined, { argument: textFlag });
   }
 
-  if (flags.all === true && !isReplacing) {
+  if (violatesConstraint(allRequiresReplacing, inputs)) {
     quit(`Option "--all" needs "--replacing"`, undefined, { argument: "--all" });
   }
 

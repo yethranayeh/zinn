@@ -1,10 +1,13 @@
 import type { Command } from "../types.js";
+import type { CommandInput } from "../input.js";
 
 import { parseArgs } from "node:util";
 import { resolve } from "node:path";
 import { backup, RestoreRefusedError, getStorage } from "@zinn-dev/core";
 
 import { reportLockWait } from "../database.js";
+import { confirmationDescription } from "../lib.js";
+import { generateCommandUsage } from "../input.js";
 import {
   askConfirmation,
   diagnostic,
@@ -16,17 +19,32 @@ import packageJson from "../../package.json" with { type: "json" };
 
 const build = { client: "cli", version: packageJson.version };
 
+const restoreInputs = {
+  command: {
+    options: { yes: { type: "boolean" } },
+    forms: [
+      { id: "default", positionals: [{ name: "path", min: 1, max: 1, value: { kind: "path" } }] },
+    ],
+    constraints: [],
+  },
+} as const satisfies Record<string, CommandInput>;
+
 export const restoreCommand = {
+  summary:
+    "Replace the database with the one in a backup file, such as one saved by `zinn backup` or by an upgrade, after confirmation.",
+  effects: { domain: "replace", storage: "restore" },
+  confirmation: { kind: "prompt", description: confirmationDescription },
+  input: restoreInputs.command,
   run: async (args) => {
     const { positionals, values, tokens } = parseArgs({
       args,
       strict: true,
       allowPositionals: true,
       tokens: true,
-      options: { yes: { type: "boolean" } },
+      options: restoreInputs.command.options,
     });
-    validateUniqueOptions(tokens);
-    validatePositionals(positionals, ["<path>"]);
+    validateUniqueOptions(tokens, restoreInputs.command.options);
+    validatePositionals(positionals, restoreInputs.command.forms[0]);
 
     const path = resolve(positionals[0]!);
     const { databasePath, backupDirectory } = getStorage();
@@ -82,7 +100,7 @@ export const restoreCommand = {
       throw error;
     }
   },
-  help: `Usage: zinn restore <path> [--yes]
+  help: `${generateCommandUsage("restore", restoreInputs.command)}
 
 Replace the database with the one in a backup file, such as one saved by \`zinn backup\` or by an upgrade, after confirmation.
 

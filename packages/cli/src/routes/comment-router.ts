@@ -1,19 +1,27 @@
 import type { CommentWithKey } from "@zinn-dev/core";
+import type { CommandInput } from "../input.js";
 import type { RowCell } from "../presentation/row-layout.js";
 import type { RouteDef } from "../types.js";
 
 import { parseArgs } from "node:util";
 import { comment } from "@zinn-dev/core";
 
+import { generateCommandUsage, taskKeyPositional } from "../input.js";
 import {
+  confirmationDescription,
   confirmAction,
   dashValueHelp,
   output,
-  quit,
   validatePositionals,
+  requireStringOption,
   validateUniqueOptions,
 } from "../lib.js";
-import { resolveTextEdit, textEditHelp, textEditOptions, textEditUsage } from "../text-edit.js";
+import {
+  resolveTextEdit,
+  textEditHelp,
+  textEditOptions,
+  textEditConstraints,
+} from "../text-edit.js";
 import { currentActor } from "../actor.js";
 import { formatRows } from "../presentation/row-layout.js";
 import { formatLocalTime } from "../presentation/time.js";
@@ -57,50 +65,117 @@ export function formatComments(comments: Array<PresentedComment>) {
 function parseTextArgs(args: Array<string>) {
   const { values, positionals, tokens } = parseArgs({
     args,
-    options: { text: { type: "string" } },
+    options: commentInputs.create.options,
     allowPositionals: true,
     strict: true,
     tokens: true,
   });
 
-  validateUniqueOptions(tokens);
-  validatePositionals(positionals, ["<task-key>"]);
+  validateUniqueOptions(tokens, commentInputs.create.options);
+  validatePositionals(positionals, commentInputs.create.forms[0]);
 
-  if (values.text === undefined) {
-    quit("Comment text must be specified with --text", undefined, { argument: "--text" });
-  }
+  const text = requireStringOption(
+    commentInputs.create.options.text,
+    values.text,
+    "text",
+    "Comment text must be specified with --text",
+  );
 
-  return { key: positionals[0]!, text: values.text };
+  return { key: positionals[0]!, text };
 }
 
 function parseCommentEditArgs(args: Array<string>) {
   const { values, positionals, tokens } = parseArgs({
     args,
-    options: { text: { type: "string" }, ...textEditOptions },
+    options: commentInputs.edit.options,
     allowPositionals: true,
     strict: true,
     tokens: true,
   });
 
-  validateUniqueOptions(tokens);
-  validatePositionals(positionals, ["<comment-key>"]);
+  validateUniqueOptions(tokens, commentInputs.edit.options);
+  validatePositionals(positionals, commentInputs.edit.forms[0]);
 
   const text = resolveTextEdit(values.text, values, "--text");
-  if (text === undefined) {
-    quit("Comment text must be specified with --text", undefined, { argument: "--text" });
-  }
+  requireStringOption(
+    commentInputs.edit.options.text,
+    values.text,
+    "text",
+    "Comment text must be specified with --text",
+  );
 
-  return { key: positionals[0]!, text };
+  return { key: positionals[0]!, text: text! };
 }
+
+const commentInputs = {
+  create: {
+    options: { text: { type: "string", required: true, value: { kind: "text", name: "text" } } },
+    forms: [
+      {
+        id: "default",
+        positionals: [taskKeyPositional],
+      },
+    ],
+    constraints: [],
+  },
+  list: {
+    options: {},
+    forms: [
+      {
+        id: "default",
+        positionals: [taskKeyPositional],
+      },
+    ],
+    constraints: [],
+  },
+  view: {
+    options: {},
+    forms: [
+      {
+        id: "default",
+        positionals: [{ name: "comment-key", min: 1, max: 1, value: { kind: "comment-key" } }],
+      },
+    ],
+    constraints: [],
+  },
+  edit: {
+    options: {
+      text: { type: "string", required: true, value: { kind: "text", name: "text" } },
+      ...textEditOptions,
+    },
+    forms: [
+      {
+        id: "default",
+        positionals: [{ name: "comment-key", min: 1, max: 1, value: { kind: "comment-key" } }],
+      },
+    ],
+    constraints: [...textEditConstraints("--text")],
+    notes: [textEditHelp("--text")],
+  },
+  delete: {
+    options: { yes: { type: "boolean" } },
+    forms: [
+      {
+        id: "default",
+        positionals: [{ name: "comment-key", min: 1, max: 1, value: { kind: "comment-key" } }],
+      },
+    ],
+    constraints: [],
+  },
+} as const satisfies Record<string, CommandInput>;
 
 export const commentRouter = {
   create: {
+    summary: "Add a comment to a task. Comment text cannot be blank.",
+    effects: { domain: "create", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: commentInputs.create,
     run: (args) => {
       const props = parseTextArgs(args);
       const created = comment.create({ taskKey: props.key, text: props.text }, currentActor());
       output(presentComment(created), formatComment);
     },
-    help: `Usage: zinn task comment create <task-key> --text <text>
+    help: `${generateCommandUsage("task comment create", commentInputs.create)}
 
 Add a comment to a task. Comment text cannot be blank.
 Archived tasks can be commented on.
@@ -110,24 +185,42 @@ ${dashValueHelp("--text")}
 Example: zinn task comment create MDR-1 --text 'Ready for review'`,
   },
   list: {
+    summary: "List a task's comments by oldest first.",
+    effects: { domain: "read", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: commentInputs.list,
     run: (args) => {
-      const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
-      validatePositionals(positionals, ["<task-key>"]);
+      const { positionals } = parseArgs({
+        options: commentInputs.list.options,
+        args,
+        allowPositionals: true,
+        strict: true,
+      });
+      validatePositionals(positionals, commentInputs.list.forms[0]);
       output(presentComments(positionals[0]!), formatComments);
     },
-    help: `Usage: zinn task comment list <task-key>
+    help: `${generateCommandUsage("task comment list", commentInputs.list)}
 
 List a task's comments by oldest first.
 
 Example: zinn task comment list MDR-1`,
   },
   view: {
+    summary: "Show a comment's current text in full, keeping its line breaks.",
+    effects: { domain: "read", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: commentInputs.view,
     run: (args) => {
-      const { positionals } = parseArgs({ args, allowPositionals: true, strict: true });
-      validatePositionals(positionals, ["<comment-key>"]);
+      const { positionals } = parseArgs({
+        options: commentInputs.view.options,
+        args,
+        allowPositionals: true,
+        strict: true,
+      });
+      validatePositionals(positionals, commentInputs.view.forms[0]);
       output(presentComment(comment.getByKey(positionals[0]!)), formatComment);
     },
-    help: `Usage: zinn task comment view <comment-key>
+    help: `${generateCommandUsage("task comment view", commentInputs.view)}
 
 Show a comment's current text in full, keeping its line breaks.
 Comments on archived tasks can be viewed.
@@ -136,12 +229,16 @@ With --json, return one object with key, text, created_at and updated_at.
 Example: zinn task comment view 'MDR-1#1'`,
   },
   edit: {
+    summary: "Replace a comment's text. Comment text cannot be blank.",
+    effects: { domain: "update", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: commentInputs.edit,
     run: (args) => {
       const props = parseCommentEditArgs(args);
       const edited = comment.edit({ commentKey: props.key, text: props.text }, currentActor());
       output(presentComment(edited), formatComment);
     },
-    help: `Usage: zinn task comment edit <comment-key> --text <text> ${textEditUsage}
+    help: `${generateCommandUsage("task comment edit", commentInputs.edit)}
 
 Replace a comment's text. Comment text cannot be blank.
 
@@ -154,16 +251,20 @@ Examples:
   zinn task comment edit 'MDR-1#2' --text 'Also approved.' --append`,
   },
   delete: {
+    summary: "Permanently delete a comment after confirmation.",
+    effects: { domain: "delete", storage: "normal-open" },
+    confirmation: { kind: "prompt", description: confirmationDescription },
+    input: commentInputs.delete,
     run: async (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
-        options: { yes: { type: "boolean" } },
+        options: commentInputs.delete.options,
         allowPositionals: true,
         strict: true,
         tokens: true,
       });
-      validateUniqueOptions(tokens);
-      validatePositionals(positionals, ["<comment-key>"]);
+      validateUniqueOptions(tokens, commentInputs.delete.options);
+      validatePositionals(positionals, commentInputs.delete.forms[0]);
 
       const commentMatch = comment.getByKey(positionals[0]!);
       const canDelete = await confirmAction(
@@ -180,7 +281,7 @@ Examples:
       comment.delete({ commentKey: commentMatch.key }, currentActor());
       output(presented, (entry) => `Deleted ${entry.key}`);
     },
-    help: `Usage: zinn task comment delete <comment-key> [--yes]
+    help: `${generateCommandUsage("task comment delete", commentInputs.delete)}
 
 Permanently delete a comment after confirmation.
 Use --yes to skip the confirmation prompt, for example in scripts or with --json.

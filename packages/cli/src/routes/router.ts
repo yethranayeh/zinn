@@ -1,6 +1,7 @@
 import type { Command, ParsedRoute, RouteDef } from "../types.js";
 
 import { parseArgs } from "node:util";
+import { routerOptions, helpSpellings, versionSpellings, usageLabel } from "../input.js";
 
 import {
   dashValueHelp,
@@ -31,12 +32,12 @@ function getIsRunnable(obj: any): obj is Command {
 function validateRouterFlags(routableArgs: Array<string>) {
   const { tokens } = parseArgs({
     args: routableArgs.filter(isRouterFlag),
-    options: { json: { type: "boolean" }, "allow-legacy-read": { type: "boolean" } },
+    options: routerOptions,
     strict: true,
     tokens: true,
   });
 
-  validateUniqueOptions(tokens);
+  validateUniqueOptions(tokens, routerOptions);
 }
 
 /** The usage lines that open a command's help, up to its first blank line. */
@@ -81,11 +82,11 @@ function getRootHelp(parsedRoutes: Array<ParsedRoute>) {
   // TODO: maybe "brand" text that is exported and used here for title and desc
   return `ZINN - A kanban workflow in the terminal
 
-Usage: zinn <command>
+${usageLabel}zinn <command>
 
 Options:
-  -h, --help  Show help
-  -v, --version  Show version
+  ${helpSpellings.join(", ")}  Show help
+  ${versionSpellings.join(", ")}  Show version
   --json      Print command output as JSON
   --allow-legacy-read  Read a database without a schema version, best effort and read-only
 
@@ -107,7 +108,7 @@ function getNamespaceHelp(parsedRoutes: Array<ParsedRoute>, namespace: string) {
     return null;
   }
 
-  return `Usage: zinn ${namespace} <command>\n\nCommands:\n${commands}`;
+  return `${usageLabel}zinn ${namespace} <command>\n\nCommands:\n${commands}`;
 }
 
 // The longest leading run of words that names a namespace, or the root namespace "" when none does.

@@ -4,12 +4,23 @@ import { parseArgs } from "node:util";
 import { reindex } from "@zinn-dev/core";
 
 import { reportLockWait } from "../database.js";
+import { generateCommandUsage, noInput } from "../input.js";
 import { output, validatePositionals } from "../lib.js";
 
 export const reindexCommand = {
+  summary:
+    "Rebuild the search index that `zinn task search` uses from the tasks and their comments, archived tasks included.",
+  effects: { domain: "none", storage: "reindex" },
+  confirmation: { kind: "none" },
+  input: noInput,
   run: (args) => {
-    const { positionals } = parseArgs({ args, strict: true, allowPositionals: true });
-    validatePositionals(positionals, []);
+    const { positionals } = parseArgs({
+      options: noInput.options,
+      args,
+      strict: true,
+      allowPositionals: true,
+    });
+    validatePositionals(positionals, noInput.forms[0]);
 
     const result = reindex.run({ onWait: reportLockWait });
 
@@ -18,7 +29,7 @@ export const reindexCommand = {
       return `Rebuilt the search index from ${r.taskCount} ${noun}`;
     });
   },
-  help: `Usage: zinn reindex
+  help: `${generateCommandUsage("reindex", noInput)}
 
 Rebuild the search index that \`zinn task search\` uses from the tasks and their comments, archived tasks included.
 

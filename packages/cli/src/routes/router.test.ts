@@ -4,7 +4,15 @@ import { test, expect, mock, spyOn } from "bun:test";
 import { isLegacyReadAllowed, setLegacyReadAllowed } from "../lib";
 import { createRouter, parseRoutes } from "./router";
 
-const mockCommand: Command = { run: mock(() => {}), help: `` };
+// Routing reads only run and help; the rest fills the Command type
+const commandMetadata = {
+  input: { options: {}, forms: [{ id: "default", positionals: [] }], constraints: [] },
+  summary: "",
+  effects: { domain: "none", storage: "normal-open" },
+  confirmation: { kind: "none" },
+} satisfies Omit<Command, "run" | "help">;
+
+const mockCommand: Command = { ...commandMetadata, run: mock(() => {}), help: `` };
 
 test("command nesting is properly parsed", () => {
   const routes: RouteDef = {
@@ -32,7 +40,7 @@ test("command nesting is properly parsed", () => {
 test("router waits for an asynchronous handler to finish", async () => {
   const completion = Promise.withResolvers<void>();
   let finished = false;
-  const router = createRouter({ example: { help: "", run: async () => {
+  const router = createRouter({ example: { ...commandMetadata, help: "", run: async () => {
     await completion.promise;
     finished = true;
   } } });
@@ -93,9 +101,9 @@ test("router calls the deepest nesting command", async () => {
   const barCreate = mock(() => {});
   const routes = {
     foo: {
-      create: { run: fooCreate, help: "" },
+      create: { ...commandMetadata, run: fooCreate, help: "" },
       bar: {
-        create: { run: barCreate, help: "" },
+        create: { ...commandMetadata, run: barCreate, help: "" },
       },
     },
   } satisfies RouteDef;
@@ -108,7 +116,7 @@ test("router calls the deepest nesting command", async () => {
 
 test("only arguments before the first -- are treated as router flags", async () => {
   const run = mock(() => {});
-  const router = createRouter({ foo: { run, help: "" } });
+  const router = createRouter({ foo: { ...commandMetadata, run, help: "" } });
 
   await router.route(["foo", "--", "--json", "--help"]);
   expect(run).toHaveBeenCalledWith(["--", "--json", "--help"]);
@@ -116,7 +124,7 @@ test("only arguments before the first -- are treated as router flags", async () 
 
 test("router flags before a -- still apply", async () => {
   const run = mock(() => {});
-  const router = createRouter({ foo: { run, help: "" } });
+  const router = createRouter({ foo: { ...commandMetadata, run, help: "" } });
 
   await router.route(["foo", "--json", "--", "literal"]);
   expect(run).toHaveBeenCalledWith(["--", "literal"]);
@@ -125,7 +133,7 @@ test("router flags before a -- still apply", async () => {
 test("a help request never runs a command even when its help is empty", async () => {
   const run = mock(() => {});
   const info = spyOn(console, "info").mockImplementation(() => {});
-  const router = createRouter({ foo: { run, help: "" } });
+  const router = createRouter({ foo: { ...commandMetadata, run, help: "" } });
 
   try {
     await router.route(["foo", "--help"]);
@@ -139,7 +147,7 @@ test("a help request never runs a command even when its help is empty", async ()
 test("a help flag anywhere before -- prints help for the words before it and runs nothing", async () => {
   const run = mock(() => {});
   const info = spyOn(console, "info").mockImplementation(() => {});
-  const router = createRouter({ foo: { bar: { run, help: "bar help" } } });
+  const router = createRouter({ foo: { bar: { ...commandMetadata, run, help: "bar help" } } });
 
   try {
     await router.route(["foo", "bar", "--help", "--name", "x"]);
@@ -156,7 +164,7 @@ test("a help flag anywhere before -- prints help for the words before it and run
 
 test("--allow-legacy-read before a -- is taken out of the arguments and allows legacy reads", async () => {
   const run = mock(() => {});
-  const router = createRouter({ foo: { run, help: "" } });
+  const router = createRouter({ foo: { ...commandMetadata, run, help: "" } });
 
   try {
     await router.route(["foo", "--allow-legacy-read", "--", "literal"]);
@@ -169,7 +177,7 @@ test("--allow-legacy-read before a -- is taken out of the arguments and allows l
 
 test("--allow-legacy-read after a -- stays command input and allows nothing", async () => {
   const run = mock(() => {});
-  const router = createRouter({ foo: { run, help: "" } });
+  const router = createRouter({ foo: { ...commandMetadata, run, help: "" } });
 
   await router.route(["foo", "--", "--allow-legacy-read"]);
   expect(run).toHaveBeenCalledWith(["--", "--allow-legacy-read"]);

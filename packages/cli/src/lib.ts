@@ -1,4 +1,5 @@
 import type { parseArgs } from "node:util";
+import type { InputForm, InputOptions, InputOption } from "./input.js";
 
 import { createInterface } from "node:readline/promises";
 import {
@@ -9,6 +10,7 @@ import {
 } from "@zinn-dev/core";
 
 import { CliError, classifyFailure, type ErrorDetails } from "./errors.js";
+import { helpSpellings, routerOptionNames, positionalWords } from "./input.js";
 
 type ParsedTokens = NonNullable<ReturnType<typeof parseArgs>["tokens"]>;
 type OutputMode = "text" | "json";
@@ -45,11 +47,11 @@ export function flushDiagnostics() {
 }
 
 export function isJsonFlag(flag: string) {
-  return flag === "--json";
+  return flag === `--${routerOptionNames.json}`;
 }
 
 export function isAllowLegacyReadFlag(flag: string) {
-  return flag === "--allow-legacy-read";
+  return flag === `--${routerOptionNames.legacyRead}`;
 }
 
 /** A flag the router reads wherever it appears before --, for every command. */
@@ -89,6 +91,9 @@ export async function confirmAction(
 
   return askConfirmation(message, isPreconfirmed, jsonRefusal);
 }
+
+export const confirmationDescription =
+  "Requires --yes with --json or without a terminal. Otherwise prompts on stderr and only y or Y confirms. Declining exits successfully without the requested mutation; interruption exits 130.";
 
 /** Like confirmAction, without opening the database, for commands that bypass the open policy. */
 export async function askConfirmation(
@@ -218,9 +223,11 @@ export class UsageError extends CliError {
  * `<task-key>` is required, `[<project-key>]` is optional and `<task-key>...` repeats.
  * Optional words go last.
  */
-export function validatePositionals(positionals: Array<string>, words: Array<string>) {
+export function validatePositionals(positionals: Array<string>, form: InputForm) {
+  const words = positionalWords(form);
   const requiredWords = words.filter((word) => !word.startsWith("["));
   const missingWord = requiredWords[positionals.length];
+
   if (missingWord !== undefined) {
     throw new UsageError(`Missing argument ${missingWord}`, {
       argument: missingWord.replaceAll(/[\[\]<>]/g, "").replace(/\.\.\.$/, ""),
@@ -229,12 +236,14 @@ export function validatePositionals(positionals: Array<string>, words: Array<str
 
   const hasRepeatingWord = words.some((word) => word.endsWith("..."));
   const extraWord = positionals[words.length];
+
   if (!hasRepeatingWord && extraWord !== undefined) {
     throw new UsageError(`Unexpected argument "${extraWord}"`, { field: [] });
   }
 }
 
-export function validateUniqueOptions(tokens: ParsedTokens, repeatableOptions: Array<string> = []) {
+export function validateUniqueOptions(tokens: ParsedTokens, options: InputOptions) {
+  const repeatableOptions = Object.keys(options).filter((name) => options[name]!.multiple);
   const parsedArgs = new Set<string>();
 
   for (const token of tokens) {
@@ -253,8 +262,54 @@ export function validateUniqueOptions(tokens: ParsedTokens, repeatableOptions: A
   }
 }
 
+/** Selects an order form after checking its required leading words. */
+export function validateOrderForms<Form extends InputForm>(
+  positionals: string[],
+  forms: readonly Form[],
+): Form {
+  const firstForm = forms[0]!;
+  const directionIndex = firstForm.positionals.findIndex(({ name }) => name === "direction");
+  const leadingPositionals = firstForm.positionals.slice(0, directionIndex + 1);
+  const directions = forms.flatMap((form) => form.positionals[directionIndex]!.value.choices!);
+  leadingPositionals[directionIndex] = {
+    ...leadingPositionals[directionIndex]!,
+    value: { kind: "enum", choices: directions },
+  };
+
+  validatePositionals(positionals.slice(0, leadingPositionals.length), {
+    id: "leading",
+    positionals: leadingPositionals,
+  });
+
+  const direction = positionals[directionIndex]!;
+  const form = forms.find((candidate) =>
+    candidate.positionals[directionIndex]!.value.choices!.includes(direction),
+  );
+
+  if (form === undefined) {
+    throw new UsageError(`Unknown order direction "${direction}"`, { argument: "direction" });
+  }
+
+  validatePositionals(positionals, form);
+
+  return form;
+}
+
+export function requireStringOption(
+  option: InputOption & { required: true },
+  value: string | undefined,
+  name: string,
+  message: string,
+): string {
+  if (value === undefined) {
+    quit(message, undefined, { argument: `--${name}` });
+  }
+
+  return value;
+}
+
 export function isHelpFlag(flag: string) {
-  return ["-h", "--help"].includes(flag);
+  return helpSpellings.includes(flag);
 }
 
 /**
