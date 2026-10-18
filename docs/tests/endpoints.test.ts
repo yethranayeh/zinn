@@ -66,6 +66,12 @@ test.each(trustSources)("trust page %s has substantive HTML and an identical Mar
 	expect(html).toMatch(/<h1[^>]*>[^<]+<\/h1>/);
 	expect(html).toContain(`rel="alternate" type="text/markdown" href="/${page}.md"`);
 	expect(html).toContain(`rel="canonical" href="https://zinn.sh/${page}/"`);
+	const sourceText = await Bun.file(join(contentDirectory, source)).text();
+	const lastUpdated = sourceText.match(/^lastUpdated: "([^"]+)"$/m)?.[1];
+	const renderedDates = [...html.matchAll(/<time datetime="([^"]+)">([^<]+)<\/time>/g)]
+		.map(([, datetime, text]) => ({ datetime, text }));
+	const isoDate = lastUpdated?.replace(/^(\d{2})\.(\d{2})\.(\d{4})$/, "$3-$2-$1");
+	expect(renderedDates).toEqual(lastUpdated ? [{ datetime: isoDate, text: lastUpdated }] : []);
 	await expectMarkdownTwin(page, source);
 });
 
@@ -75,9 +81,14 @@ async function expectMarkdownTwin(page: string, source: string) {
 	expect(markdownResponse.headers.get("Content-Type")).toContain("text/markdown");
 	const markdown = await markdownResponse.text();
 	const sourceText = await Bun.file(join(contentDirectory, source)).text();
-	expect(markdown).toBe(sourceText.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trimStart()
+	const lastUpdated = sourceText.match(/^lastUpdated: "([^"]+)"$/m)?.[1];
+	let expectedMarkdown = sourceText.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trimStart()
       .replace('import AgentSetup from "../../components/AgentSetup.astro";\n\n', "")
-      .replace("<AgentSetup />\n\n", ""));
+      .replace("<AgentSetup />\n\n", "");
+	if (lastUpdated) {
+		expectedMarkdown = expectedMarkdown.replace(/^(# .+)$/m, `$1\n\nLast updated: ${lastUpdated}`);
+	}
+	expect(markdown).toBe(expectedMarkdown);
 	expect(markdown).toStartWith("# ");
 	expect(markdown).not.toContain("layout:");
 	return markdown;

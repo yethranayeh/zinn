@@ -7,7 +7,14 @@ export const getStaticPaths = (async () => {
   const docs = await getCollection("docs");
 
   return [
-    ...pages.map((entry) => ({ params: { page: entry.id }, props: { markdown: entry.body } })),
+    ...pages.map((entry) => ({
+      params: { page: entry.id },
+      props: {
+        markdown: entry.data.lastUpdated
+          ? entry.body?.replace(/^(# .+)$/m, `$1\n\nLast updated: ${entry.data.lastUpdated}`)
+          : entry.body,
+      },
+    })),
     ...docs.map((entry) => ({
       params: { page: ["docs", docsSlug(entry)].filter(Boolean).join("/") },
       props: {

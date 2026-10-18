@@ -2,6 +2,8 @@ import { defineCollection } from "astro:content";
 import { glob } from "astro/loaders";
 import { z } from "astro/zod";
 
+import { pageDate } from "./config/page-date";
+
 const page = z.object({
   title: z.string(),
   description: z.string(),
@@ -19,6 +21,6 @@ export const collections = {
   }),
   pages: defineCollection({
     loader: glob({ pattern: "**/*.mdx", base: "./src/content/pages" }),
-    schema: page,
+    schema: page.extend({ lastUpdated: pageDate.optional() }),
   }),
 };

@@ -1,14 +1,24 @@
 ---
 import PageLayout from "./PageLayout.astro";
 import Prose from "../components/Prose.astro";
+import Chip from "../components/Chip.astro";
+import { toIsoDate } from "../config/page-date";
 
 interface Props {
 	title: string;
 	description: string;
+	lastUpdated?: string;
 }
-const { title, description } = Astro.props;
+const { title, description, lastUpdated } = Astro.props;
 ---
 
 <PageLayout title={title} description={description}>
 	<Prose><slot /></Prose>
+	{
+		lastUpdated && (
+			<Chip>
+				Last updated: <time datetime={toIsoDate(lastUpdated)}>{lastUpdated}</time>
+			</Chip>
+		)
+	}
 </PageLayout>
