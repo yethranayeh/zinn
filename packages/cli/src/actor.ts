@@ -27,6 +27,8 @@ const SESSION_DECLARATIONS = [
   { session: "ZINN_SESSION_ID", thread: "ZINN_THREAD_ID" },
   { session: "CLAUDE_CODE_SESSION_ID", thread: null },
   { session: "CODEX_SESSION_ID", thread: "CODEX_THREAD_ID" },
+  // OpenCode exports the executing session's ID, which is a subagent's own ID in its shell.
+  { session: null, thread: "OPENCODE_SESSION_ID" },
 ] as const;
 
 function readDeclaration(env: Env, variable: string | null): string | null {

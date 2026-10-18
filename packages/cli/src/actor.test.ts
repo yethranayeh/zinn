@@ -167,11 +167,23 @@ test("deferred native session values stay unset while Copilot remains a marker",
   expect(
     detectAgent({
       COPILOT_AGENT_SESSION_ID: "copilot-session",
-      OPENCODE_SESSION_ID: "opencode-session",
       HERMES_SESSION_ID: "hermes-session",
       CLAUDE_CODE_CHILD_SESSION: "1",
     }),
   ).toEqual(agent("copilot", "env:COPILOT_AGENT_SESSION_ID"));
+});
+
+// ZINN-290: OpenCode's main shell carries the root ID and a subagent's shell its own ID.
+test("OPENCODE_SESSION_ID is a thread without a session, after the other declarers", () => {
+  expect(detectAgent({ OPENCODE: "1", OPENCODE_SESSION_ID: " ses_root " })).toEqual(
+    agent("opencode", "env:OPENCODE", { threadId: "ses_root" }),
+  );
+  expect(
+    detectAgent({ OPENCODE: "1", OPENCODE_SESSION_ID: "ses_child", ZINN_SESSION_ID: "plugin-root" }),
+  ).toEqual(agent("opencode", "env:OPENCODE", { sessionId: "plugin-root" }));
+  expect(
+    detectAgent({ CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: "claude-root", OPENCODE_SESSION_ID: "ses_inner" }),
+  ).toEqual(agent("claude-code", "env:CLAUDECODE", { sessionId: "claude-root" }));
 });
 
 // ZINN-290: a Claude Code subagent's shell carries its own CLAUDE_EFFORT.
