@@ -117,7 +117,7 @@ An omitted project key uses defaultProject from settings, if present.
 If no default project is set, the key is required.
 
 Column names are matched case-insensitively. An unknown column is an error and creates nothing.
-Priority defaults to none (unassigned).
+Priority defaults to none (unassigned). Priority values are case-insensitive.
 Repeat --label to attach multiple existing labels. Unknown labels are errors.
 Label names are matched case-insensitively.
 Titles are trimmed and cannot be blank or contain line breaks or control characters.
@@ -395,7 +395,7 @@ Examples:
     help: `Usage: zinn task edit <task-key> [--title <text>] [--description <text> ${textEditUsage}] [--priority {low|medium|high|urgent|none}] [--add-label <name>]... [--remove-label <name>]...
 
 Edit a task's title, description, priority, or label attachments.
-Use --priority none to clear priority.
+Use --priority none to clear priority. Priority values are case-insensitive.
 Provide at least one edit flag. Use --description '' to clear the description.
 
 ${textEditHelp("--description")}
@@ -666,7 +666,8 @@ function parseNewTaskRelations(flags: NewTaskRelationFlags) {
 }
 
 function parsePriority(value: string | undefined) {
-  switch (value) {
+  const normalizedPriority = value?.toLowerCase();
+  switch (normalizedPriority) {
     case undefined:
       return undefined;
     case "none":
@@ -675,7 +676,7 @@ function parsePriority(value: string | undefined) {
     case "medium":
     case "high":
     case "urgent":
-      return value;
+      return normalizedPriority;
     default:
       quit("Priority must be low, medium, high, urgent, or none", undefined, {
         argument: "--priority",

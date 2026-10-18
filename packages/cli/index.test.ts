@@ -11,6 +11,7 @@ import { routes } from "./src/routes/routes";
 import { errorDocumentSchema } from "./src/errors";
 import type { Activity } from "@zinn-dev/core";
 import { latestVersion, MIGRATIONS } from "../core/src/migrations/registry";
+import { taskPrioritySchema } from "../core/src/schemas/task";
 
 // ? End-to-end tests: each case spawns the real bin, so `ZINN_DIR` is passed
 // ? per-spawn rather than set on `process.env`. The route table is imported only
@@ -4859,6 +4860,49 @@ test("label edit validates changes, uniqueness, and missing labels", () => {
     expect(run("label", "list", "--json").stdout).toContain('"name": "Bug"');
     expect(run("label", "edit", "--help").stdout).toContain("Editing does not affect task attachments or task timestamps");
     expect(runZinn(["--help"], dir).stdout).toContain("label {create|list|edit|delete}");
+  });
+});
+
+test("priority inputs accept any letter case on create and edit and persist canonical values", () => {
+  withIsolatedZinnDir((directory) => {
+    expect(runZinn(["project", "create", "PRI"], directory).code).toBe(0);
+    for (const priority of [...taskPrioritySchema.options, "none"]) {
+      const expectedPriority = priority === "none" ? null : priority;
+      const inputs = [
+        priority.toUpperCase(),
+        priority[0]!.toUpperCase() + priority.slice(1),
+        [...priority].map((letter, index) => index % 2 === 0 ? letter : letter.toUpperCase()).join(""),
+      ];
+      for (const input of inputs) {
+        const created = runZinn(["task", "create", "PRI", "--title", "Case test", "--priority", input, "--json"], directory);
+        expect(created.code, created.stderr).toBe(0);
+        const taskKey = JSON.parse(created.stdout).key;
+        expect(JSON.parse(created.stdout).priority).toBe(expectedPriority);
+        const initialPriority = expectedPriority === "high" ? "low" : "high";
+        expect(runZinn(["task", "edit", taskKey, "--priority", initialPriority], directory).code).toBe(0);
+        const edited = runZinn(["task", "edit", taskKey, "--priority", input, "--json"], directory);
+        expect(edited.code, edited.stderr).toBe(0);
+        expect(JSON.parse(edited.stdout).priority).toBe(expectedPriority);
+        expect(JSON.parse(runZinn(["task", "view", taskKey, "--json"], directory).stdout).priority).toBe(expectedPriority);
+        withTestDb(directory, (db) => {
+          const stored = db.query<{ priority: string | null }, [number]>("SELECT priority FROM task WHERE number = ?").get(Number(taskKey.slice("PRI-".length)))!;
+          expect(stored.priority).toBe(expectedPriority);
+        });
+      }
+    }
+    const before = runZinn(["task", "list", "PRI", "--json"], directory).stdout;
+    for (const args of [
+      ["task", "create", "PRI", "--title", "Invalid"],
+      ["task", "edit", "PRI-1", "--title", "Invalid"],
+    ]) {
+      const invalid = runZinn([...args, "--priority", "CRITICAL", "--json"], directory);
+      expect(invalid.code).toBe(1);
+      expect(invalid.stdout).toBe("");
+      expect(errorDocumentSchema.parse(JSON.parse(invalid.stderr)).error).toMatchObject({
+        code: "invalid_input", details: { argument: "--priority" },
+      });
+    }
+    expect(runZinn(["task", "list", "PRI", "--json"], directory).stdout).toBe(before);
   });
 });
 

@@ -495,7 +495,7 @@ Deleting a task does not make its number available again within that project. De
 
 ## Task priority
 
-Priority is optional: `low`, `medium`, `high`, or `urgent`. New tasks have no assigned priority by default.
+Priority is optional: `low`, `medium`, `high`, or `urgent`. Priority values, including `none`, are case-insensitive. Stored values and JSON use lowercase. New tasks have no assigned priority by default.
 
 ```sh
 zinn task create MDR --title 'Review the numbers' --priority high
