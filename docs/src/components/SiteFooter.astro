@@ -1,5 +1,6 @@
 ---
 import Separator from "./Separator.astro";
+import NavLink from "./NavLink.astro";
 
 interface Props {
 	class?: string;
@@ -21,10 +22,11 @@ const { class: className, links = true } = Astro.props;
 			links && (
 				<>
 					<Separator orientation='vertical' class='hidden sm:block' />
+
 					<nav class='flex flex-wrap gap-x-5 gap-y-2' aria-label='Zinn project information'>
-						<a href='/about'>About</a>
-						<a href='/contact'>Contact</a>
-						<a href='/privacy'>Privacy</a>
+						<NavLink href='/about'>About</NavLink>
+						<NavLink href='/contact'>Contact</NavLink>
+						<NavLink href='/privacy'>Privacy</NavLink>
 					</nav>
 				</>
 			)

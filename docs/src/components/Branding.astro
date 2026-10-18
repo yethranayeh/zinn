@@ -1,19 +1,29 @@
 ---
 import z from "../../public/art/zinn-z.svg?raw";
 import sun from "../../public/art/sun-dark.svg?raw";
+
+const isHomepage = Astro.url.pathname === "/";
 ---
 
-<a class='mark relative block h-11 w-16 shrink-0 overflow-hidden' href='/' aria-label='Zinn homepage'>
+<a
+	class='mark relative block h-11 w-16 shrink-0 overflow-hidden'
+	data-homepage={isHomepage ? "" : undefined}
+	href='/'
+	aria-label='Zinn homepage'>
 	<span class='absolute top-0 left-0 w-16 [&>svg]:block [&>svg]:w-full' aria-hidden='true' set:html={sun} />
 	<span class='absolute bottom-0.5 left-[19px] size-[26px]' aria-hidden='true' set:html={z} />
 </a>
 
 <style>
-	.mark:hover :global(.sun-halo) {
+	.mark[data-homepage] :global(.sun-halo) {
 		stroke: var(--color-soot);
 	}
 
-	.mark:hover :global(.sun-halo-outer) {
+	.mark:not([data-homepage]):hover :global(.sun-halo) {
+		stroke: var(--color-soot);
+	}
+
+	.mark:not([data-homepage]):hover :global(.sun-halo-outer) {
 		transition: stroke 0s 250ms;
 	}
 </style>
