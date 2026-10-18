@@ -3,6 +3,7 @@ import type { ResolvedSettings, SettingsInputs } from "./settings.js";
 import { realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { z } from "zod";
 
 import { resolveSettings } from "./settings.js";
 
@@ -16,7 +17,8 @@ const HOME_SHORTHAND_PREFIX = "~/";
  * Where the store's folder came from: `ZINN_DIR`, storage.directory in the per-codebase or the global
  *  settings file, or the default folder in the home directory.
  */
-export type StorageSource = "env" | "local" | "global" | "default";
+export const storageSourceSchema = z.enum(["env", "local", "global", "default"]);
+export type StorageSource = z.infer<typeof storageSourceSchema>;
 
 type StoragePaths = {
   /** The store's folder. */

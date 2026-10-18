@@ -9,13 +9,20 @@ type StoredActivity = Omit<Activity, "changes"> & { changes: string | null };
 
 function parseActivity(row: StoredActivity): Activity {
   return {
-    ...row,
+    id: row.id,
+    created_at: row.created_at,
+    actor_name: row.actor_name,
+    actor_email: row.actor_email,
+    actor_kind: row.actor_kind,
     actor_source: row.actor_source ?? null,
     actor_session_id: row.actor_session_id ?? null,
     actor_thread_id: row.actor_thread_id ?? null,
     actor_agent: row.actor_agent ?? null,
     actor_model: row.actor_model ?? null,
     actor_effort: row.actor_effort ?? null,
+    entity_type: row.entity_type,
+    entity_id: row.entity_id,
+    action: row.action,
     changes: row.changes == null ? null : JSON.parse(row.changes),
   };
 }

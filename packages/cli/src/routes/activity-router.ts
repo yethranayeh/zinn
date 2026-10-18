@@ -60,12 +60,12 @@ export const activityRouter = {
         quit(activityLimitMessage, undefined, { argument: "--limit" });
       }
 
-      const events: Array<PresentedActivity> = activity.getAll({
+      const events = activity.getAll({
         taskKey: values.task,
         sessionId: values.session,
         threadId: values.thread,
         limit: values.limit === undefined ? undefined : Number(values.limit),
-      });
+      }) satisfies Array<PresentedActivity>;
 
       output(events, (items) =>
         formatActivityList(presentActivities(items, { taskKey: values.task })),
@@ -111,7 +111,7 @@ Examples:
 
       validatePositionals(positionals, activityInputs.view.forms[0]);
 
-      const viewed: PresentedActivity = activity.getById(positionals[0]!);
+      const viewed = activity.getById(positionals[0]!) satisfies PresentedActivity;
       output(viewed, (event) =>
         formatActivityList(presentActivities([event], { showsFullIds: true }), {
           showsDetails: true,

@@ -1,7 +1,11 @@
-import type { PresentedTaskDetail, PresentedTaskDetailHistory, PresentedTaskChange } from "../result-schemas.js";
+import type {
+  PresentedTask,
+  PresentedTaskDetail,
+  PresentedTaskDetailHistory,
+  PresentedTaskChange,
+} from "../result-schemas.js";
 import type { TaskChange, TaskRelationType } from "@zinn-dev/core";
 import type { RouteDef } from "../types.js";
-import type { PresentedTask } from "../presentation/task-presentation.js";
 import type { CommandInput, InputConstraint } from "../input.js";
 
 import { jsonResult, taskDetailResults, taskChangeResults } from "../results.js";
@@ -12,7 +16,7 @@ import {
   positiveIntegerPattern,
   searchLimitMessage,
   parseTaskKey,
-  taskCreateSchema,
+  taskPrioritySchema,
 } from "@zinn-dev/core";
 
 import { CliError } from "../errors.js";
@@ -73,13 +77,12 @@ function suggestTaskMove(args: Array<string>, options: ParseArgsOptionsConfig = 
   return ["task", "move", ...positionals, ...columnWords];
 }
 
-const prioritySchema = taskCreateSchema.shape.priority.unwrap().unwrap();
 const priorityOption = {
   type: "string",
   value: {
     kind: "enum",
     name: "priority",
-    choices: [...prioritySchema.options, "none"],
+    choices: [...taskPrioritySchema.options, "none"],
     caseInsensitive: true,
     description:
       "Omission leaves priority unassigned on creation and unchanged on edit. none clears priority; JSON uses null.",
@@ -497,21 +500,23 @@ Example: zinn task search 'refinement quota' MDR --limit 5`,
       validatePositionals(positionals, taskInputs.view.forms[0]);
 
       const taskMatch = task.getByKey(positionals[0]!);
-      const viewedTask = {
+      const detail = {
         ...presentTask(taskMatch),
         relations: presentRelations(taskMatch),
         comments: presentComments(taskMatch.key),
-        ...(values.history === true
-          ? {
+      };
+      const viewedTask =
+        values.history === true
+          ? ({
+              ...detail,
               activity: task
                 .activity(taskMatch.key)
                 .sort(
                   (left, right) =>
                     right.created_at - left.created_at || right.id.localeCompare(left.id),
                 ),
-            }
-          : {}),
-      } satisfies PresentedTaskDetail | PresentedTaskDetailHistory;
+            } satisfies PresentedTaskDetailHistory)
+          : ({ ...detail } satisfies PresentedTaskDetail);
 
       output(viewedTask, (t) => {
         const MIN_SECTION_SEPARATOR_WIDTH = 60;
@@ -541,7 +546,7 @@ Example: zinn task search 'refinement quota' MDR --limit 5`,
           sections.push(formatSection("Comments", comments, sectionOptions));
         }
 
-        if (t.activity !== undefined) {
+        if ("activity" in t) {
           const history = formatActivityList(presentActivities(t.activity));
           if (history.length > 0) {
             sections.push(formatSection("History", history, sectionOptions));
@@ -866,10 +871,19 @@ function outputTaskChanges(
   formatTasks: (presentedTasks: Array<PresentedTask>) => string,
   describeUnchanged: (presentedTask: PresentedTask) => string,
 ) {
-  const presentedChanges: Array<PresentedTaskChange> = changes.map((change) => ({
-    ...presentTask(change.task),
-    changed: change.changed,
-  }));
+  const presentedChanges = changes.map((change) => {
+    const presentedTask = presentTask(change.task);
+    return {
+      key: presentedTask.key,
+      status: presentedTask.status,
+      column: presentedTask.column,
+      title: presentedTask.title,
+      description: presentedTask.description,
+      priority: presentedTask.priority,
+      labels: presentedTask.labels,
+      changed: change.changed,
+    } satisfies PresentedTaskChange;
+  });
 
   if (presentedChanges.length === 1) {
     output(presentedChanges[0]!, (presentedChange) => formatTasks([presentedChange]));
@@ -928,7 +942,7 @@ function parsePriority(value: string | undefined) {
     return null;
   }
 
-  const priority = prioritySchema.safeParse(normalizedPriority);
+  const priority = taskPrioritySchema.safeParse(normalizedPriority);
   if (!priority.success) {
     quit("Priority must be low, medium, high, urgent, or none", undefined, {
       argument: "--priority",

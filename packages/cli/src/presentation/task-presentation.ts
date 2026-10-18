@@ -1,7 +1,6 @@
-import type { LabelColor, TaskPriority, TaskWithKey } from "@zinn-dev/core";
+import type { LabelColor, TaskWithKey } from "@zinn-dev/core";
 import type { RowCell } from "./row-layout.js";
 import type { PresentedTask } from "../result-schemas.js";
-export type { PresentedTask } from "../result-schemas.js";
 
 import { column, label, task } from "@zinn-dev/core";
 
@@ -12,7 +11,10 @@ import { formatCellSeparator, formatRows } from "./row-layout.js";
 const EMPTY_CELL_MARKER = "-";
 const LABEL_NAME_SEPARATOR = ", ";
 
-function taskPriorityCell(priority: TaskPriority | null, showsFullPriority: boolean): RowCell {
+function taskPriorityCell(
+  priority: PresentedTask["priority"],
+  showsFullPriority: boolean,
+): RowCell {
   if (priority == null) {
     return { text: EMPTY_CELL_MARKER, style: "dim" };
   }

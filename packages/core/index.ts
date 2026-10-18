@@ -51,6 +51,7 @@ export type { FailureKind, FailureFacts, ValidationIssue } from "./src/errors.js
 
 export {
   labelCreateSchema,
+  labelColorSchema,
   labelDeleteSchema,
   labelEditSchema,
   taskLabelSchema,
@@ -59,6 +60,7 @@ export { projectCreateSchema, projectEditSchema } from "./src/schemas/project.js
 export { columnCreateSchema, columnEditSchema, columnOrderSchema } from "./src/schemas/column.js";
 export {
   taskCreateSchema,
+  taskPrioritySchema,
   taskEditSchema,
   taskListSchema,
   taskSearchSchema,
@@ -66,9 +68,13 @@ export {
   searchLimitMessage,
   parseTaskKey,
 } from "./src/schemas/task.js";
-export { relationCreateSchema, relationDeleteSchema } from "./src/schemas/relation.js";
+export {
+  relationCreateSchema,
+  relationDeleteSchema,
+  relationTypeSchema,
+} from "./src/schemas/relation.js";
 export { textEditSchema } from "./src/schemas/text-edit.js";
-export { actorSchema } from "./src/schemas/actor.js";
+export { actorSchema, actorKindSchema } from "./src/schemas/actor.js";
 export {
   activityActionSchema,
   activityEntityTypeSchema,
@@ -84,7 +90,12 @@ export {
   commentEditSchema,
 } from "./src/schemas/comment.js";
 export { SETTINGS_VERSION, settingsSchema } from "./src/schemas/settings.js";
-export { chooseDefaultProject, resolveSettings } from "./src/settings.js";
+export {
+  chooseDefaultProject,
+  resolveSettings,
+  settingsFileSourceSchema,
+  settingsFileStateSchema,
+} from "./src/settings.js";
 export { project } from "./src/operations/project.js";
 export { column } from "./src/operations/column.js";
 export { task } from "./src/operations/task.js";
@@ -100,7 +111,8 @@ export { MigrationRefusedError } from "./src/migrations/migrate.js";
 export { RestoreRefusedError } from "./src/migrations/restore.js";
 export { assertWritable, configureDatabase } from "./src/db.js";
 export { ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./src/migrations/open-policy.js";
-export { getStorage } from "./src/constant.js";
-export { info } from "./src/operations/info.js";
+export { getStorage, storageSourceSchema } from "./src/constant.js";
+export { databaseStateSchema } from "./src/migrations/classify.js";
+export { info, infoDatabaseStateSchema } from "./src/operations/info.js";
 export { CoreError, InputValidationError } from "./src/errors.js";
 export { SqliteError } from "./src/sqlite/database.js";

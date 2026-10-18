@@ -1,17 +1,19 @@
 import type { StoreInfo } from "@zinn-dev/core";
 import type { PresentedInfo } from "../result-schemas.js";
-export type { PresentedInfo } from "../result-schemas.js";
 
 import packageJson from "../../package.json" with { type: "json" };
 
-export function presentInfo({ coreVersion, ...report }: StoreInfo): PresentedInfo {
+export function presentInfo(report: StoreInfo): PresentedInfo {
   const bunVersion = process.versions.bun;
 
   return {
-    ...report,
+    settingsFiles: report.settingsFiles,
+    storage: report.storage,
+    defaultProject: report.defaultProject,
+    database: report.database,
     versions: {
       cli: packageJson.version,
-      core: coreVersion,
+      core: report.coreVersion,
       runtime: {
         name: bunVersion === undefined ? "Node" : "Bun",
         version: bunVersion ?? process.versions.node,

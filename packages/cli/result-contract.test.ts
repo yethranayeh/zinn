@@ -213,6 +213,54 @@ for (const route of commands) {
   }
 }
 
+test("unknown stored vocabularies satisfy generated output schemas", () => {
+  const directory = fixtureDirectory();
+  editFixture(directory, `
+    UPDATE task SET priority = 'future-priority';
+    UPDATE label SET color = 'future-color';
+    UPDATE task_relations SET relation_type = 'future-relation';
+    UPDATE activity SET actor_kind = 'future-actor', entity_type = 'future-entity', action = 'future-action';
+  `);
+  const cases = [
+    { args: ["task", "list", "APP"], schema: "TaskList", fields: { priority: "future-priority" } },
+    { args: ["task", "move", "APP-1", "Done"], schema: "TaskChange", fields: { priority: "future-priority" } },
+    { args: ["label", "list"], schema: "LabelList", fields: { color: "future-color" } },
+    { args: ["task", "relation", "list", "APP-1"], schema: "RelationList", fields: { type: "future-relation" } },
+    { args: ["activity", "view", eventId], schema: "Activity", fields: {
+      actor_kind: "future-actor", entity_type: "future-entity", action: "future-action",
+    } },
+  ];
+  for (const { args, schema, fields } of cases) {
+    const value = success(directory, args);
+    const validate = ajv.getSchema(`results#/definitions/${schema}`)!;
+    expect(validate(value), JSON.stringify(validate.errors)).toBe(true);
+    expect(Array.isArray(value) ? value[0] : value).toMatchObject(fields);
+  }
+});
+
+test("newer database activity columns stay out of list, view and task history", () => {
+  const directory = fixtureDirectory();
+  editFixture(directory, `
+    ALTER TABLE activity ADD COLUMN future_column TEXT DEFAULT 'future';
+    PRAGMA user_version = 999;
+  `);
+  const cases = [
+    { args: ["activity", "list"], schema: "ActivityList" },
+    { args: ["activity", "view", eventId], schema: "Activity" },
+    { args: ["task", "view", "APP-1", "--history"], schema: "TaskDetailHistory" },
+  ];
+  for (const { args, schema } of cases) {
+    const value = success(directory, args);
+    const validate = ajv.getSchema(`results#/definitions/${schema}`)!;
+    expect(validate(value), JSON.stringify(validate.errors)).toBe(true);
+    const events = Array.isArray(value) ? value : value.activity ?? [value];
+    expect(events.length).toBeGreaterThan(0);
+    for (const event of events) {
+      expect(Object.hasOwn(event, "future_column")).toBe(false);
+    }
+  }
+});
+
 test("confirmation refusals and representative failures use the shared error schema", () => {
   const directory = fixtureDirectory();
   writeFileSync(join(directory, "settings.json"), JSON.stringify({ defaultProject: "APP" }));

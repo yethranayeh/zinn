@@ -1,6 +1,14 @@
 import { expect, test } from "bun:test";
 import Ajv from "ajv";
 import { z } from "zod";
+import {
+  activityActionSchema,
+  activityEntityTypeSchema,
+  actorKindSchema,
+  labelColorSchema,
+  relationTypeSchema,
+  taskPrioritySchema,
+} from "@zinn-dev/core";
 import { generateResultSchemas, resultSchemas } from "./result-schemas";
 
 const document = generateResultSchemas();
@@ -66,7 +74,7 @@ test("wire schemas distinguish null, omission, history and mutation cardinality"
     expect(accepts("Task", missing)).toBe(false);
   }
   expect(accepts("Task", { ...task, status: "active" })).toBe(false);
-  expect(accepts("Task", { ...task, priority: "none" })).toBe(false);
+  expect(accepts("Task", { ...task, priority: 1 })).toBe(false);
   expect(accepts("Task", { ...task, labels: null })).toBe(false);
   expect(accepts("Task", { ...task, id: "extra" })).toBe(false);
   const detail = { ...task, relations: [], comments: [] };
@@ -102,7 +110,7 @@ test("raw changes remain open while activity and administrative objects are clos
   for (const changes of [[], "text", 3]) {
     expect(validate({ ...activity, changes })).toBe(false);
   }
-  expect(validate({ ...activity, actor_kind: "Agent" })).toBe(false);
+  expect(validate({ ...activity, actor_kind: null })).toBe(false);
   expect(validate({ ...activity, extra: true })).toBe(false);
   const { changes, ...omitted } = activity;
   expect(validate(omitted)).toBe(false);
@@ -112,4 +120,26 @@ test("raw changes remain open while activity and administrative objects are clos
   expect(restore({ ...restored, backupPath: undefined })).toBe(false);
   expect(restore({ ...restored, previousVersion: null })).toBe(false);
   expect(restore({ ...restored, extra: true })).toBe(false);
+});
+
+test("stored vocabularies accept unknown strings while input enums stay closed", () => {
+  const vocabularies = [
+    { output: resultSchemas.Task.shape.priority, input: taskPrioritySchema },
+    { output: resultSchemas.Label.shape.color, input: labelColorSchema },
+    { output: resultSchemas.Relation.shape.type, input: relationTypeSchema },
+    { output: resultSchemas.RelationChange.shape.type, input: relationTypeSchema },
+    { output: resultSchemas.Activity.shape.actor_kind, input: actorKindSchema },
+    { output: resultSchemas.Activity.shape.entity_type, input: activityEntityTypeSchema },
+    { output: resultSchemas.Activity.shape.action, input: activityActionSchema },
+  ];
+  for (const { output, input } of vocabularies) {
+    const unknownValue = "future-value";
+    expect(input.safeParse(unknownValue).success).toBe(false);
+    expect(output.safeParse(unknownValue).success).toBe(true);
+    for (const knownValue of input.options) {
+      expect(output.description).toContain(knownValue);
+      expect(output.safeParse(knownValue).success).toBe(true);
+    }
+    expect(output.safeParse(1).success).toBe(false);
+  }
 });

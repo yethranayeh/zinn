@@ -8,7 +8,8 @@ import { runCli } from "./testing.ts";
 import cliPackage from "./package.json";
 import corePackage from "../core/package.json";
 import { latestVersion, MIGRATIONS } from "../core/src/migrations/registry.ts";
-import type { PresentedInfo } from "./src/presentation/info-presentation.ts";
+import type { PresentedInfo } from "./src/result-schemas.ts";
+import { presentInfo } from "./src/presentation/info-presentation.ts";
 
 let root: string;
 let home: string;
@@ -68,6 +69,13 @@ test("ZINN-133: text and JSON report paths and versions without creating the def
   expect(readdirSync(join(root, "repo"), { recursive: true })).toEqual([".git", "nested"]);
   const version = run(["--version"]);
   expect(version.stdout.trim()).toBe(cliPackage.version);
+});
+
+test("the info presenter selects public fields from an extended core report", () => {
+  const expected = report();
+  const { versions, ...fields } = expected;
+  const coreReport = { ...fields, coreVersion: versions.core, extraCoreField: true };
+  expect(presentInfo(coreReport)).toEqual(expected);
 });
 
 test("local settings and inherited default project are reported from a repository subfolder", () => {

@@ -2,11 +2,15 @@ import { z } from "zod";
 import {
   activityActionSchema,
   activityEntityTypeSchema,
-  actorSchema,
-  labelCreateSchema,
-  relationCreateSchema,
+  actorKindSchema,
+  infoDatabaseStateSchema,
+  labelColorSchema,
+  relationTypeSchema,
+  settingsFileSourceSchema,
+  settingsFileStateSchema,
   settingsSchema,
-  taskCreateSchema,
+  storageSourceSchema,
+  taskPrioritySchema,
 } from "@zinn-dev/core";
 
 import { errorDocumentSchema } from "./errors.js";
@@ -23,12 +27,21 @@ export const taskSchema = z.strictObject({
   column: z.string().describe("Current column name."),
   title: z.string(),
   description: nullableText,
-  priority: taskCreateSchema.shape.priority.unwrap(),
+  priority: z
+    .string()
+    .nullable()
+    .describe(
+      `Known priorities: ${taskPrioritySchema.options.join(", ")}. Other stored values may occur.`,
+    ),
   labels: z.array(z.string()).describe("Attached label names."),
 });
 
 export const relationSchema = z.strictObject({
-  type: relationCreateSchema.shape.relation_type,
+  type: z
+    .string()
+    .describe(
+      `Known relation types: ${relationTypeSchema.options.join(", ")}. Other stored values may occur.`,
+    ),
   direction: z
     .enum(["outgoing", "incoming"])
     .nullable()
@@ -36,7 +49,7 @@ export const relationSchema = z.strictObject({
   task: taskSchema.pick({ key: true, column: true, title: true, status: true }),
 });
 export const relationChangeSchema = z.strictObject({
-  type: relationCreateSchema.shape.relation_type,
+  type: relationSchema.shape.type,
   source: z.string().describe("Source task key, in the supplied direction."),
   target: z.string().describe("Target task key, in the supplied direction."),
 });
@@ -53,16 +66,28 @@ export const activitySchema = z.strictObject({
   created_at: timestamp,
   actor_name: nullableText,
   actor_email: nullableText,
-  actor_kind: actorSchema.shape.kind,
+  actor_kind: z
+    .string()
+    .describe(
+      `Known actor kinds: ${actorKindSchema.options.join(", ")}. Other stored values may occur.`,
+    ),
   actor_source: nullableText,
   actor_session_id: nullableText,
   actor_thread_id: nullableText,
   actor_agent: nullableText,
   actor_model: nullableText,
   actor_effort: nullableText,
-  entity_type: activityEntityTypeSchema,
+  entity_type: z
+    .string()
+    .describe(
+      `Known entity types: ${activityEntityTypeSchema.options.join(", ")}. Other stored values may occur.`,
+    ),
   entity_id: z.string().describe("Stored ID of the affected entity."),
-  action: activityActionSchema,
+  action: z
+    .string()
+    .describe(
+      `Known actions: ${activityActionSchema.options.join(", ")}. Other stored values may occur.`,
+    ),
   changes: z
     .looseObject({})
     .nullable()
@@ -97,25 +122,35 @@ export const projectViewSchema = projectSchema.extend({
 });
 export const labelSchema = z.strictObject({
   name: z.string(),
-  color: labelCreateSchema.shape.color.unwrap(),
+  color: z
+    .string()
+    .describe(
+      `Known label colors: ${labelColorSchema.options.join(", ")}. Other stored values may occur.`,
+    ),
   description: nullableText,
 });
 
 const settingsFileBase = z.strictObject({
   path: z.string(),
-  source: z.enum(["env", "global", "local"]),
+  source: settingsFileSourceSchema,
 });
 export const settingsFileSchema = z.discriminatedUnion("state", [
-  settingsFileBase.extend({ state: z.literal("found"), settings: settingsSchema }),
-  settingsFileBase.extend({ state: z.literal("missing") }),
-  settingsFileBase.extend({ state: z.literal("error"), error: z.string() }),
-  settingsFileBase.extend({ state: z.literal("not-read"), reason: z.literal("ZINN_DIR") }),
+  settingsFileBase.extend({
+    state: settingsFileStateSchema.extract(["found"]),
+    settings: settingsSchema,
+  }),
+  settingsFileBase.extend({ state: settingsFileStateSchema.extract(["missing"]) }),
+  settingsFileBase.extend({ state: settingsFileStateSchema.extract(["error"]), error: z.string() }),
+  settingsFileBase.extend({
+    state: settingsFileStateSchema.extract(["not-read"]),
+    reason: z.literal("ZINN_DIR"),
+  }),
 ]);
 export const infoSchema = z.strictObject({
   settingsFiles: z.array(settingsFileSchema),
   storage: z.strictObject({
     directory: nullableText,
-    source: z.enum(["env", "local", "global", "default"]).nullable(),
+    source: storageSourceSchema.nullable(),
     settingsPath: nullableText,
     exists: z.boolean().nullable(),
     error: nullableText,
@@ -127,7 +162,7 @@ export const infoSchema = z.strictObject({
   }),
   database: z.strictObject({
     path: nullableText,
-    state: z.enum(["absent", "empty", "unmarked", "current", "older", "newer", "unavailable"]),
+    state: infoDatabaseStateSchema,
     version: count.nullable(),
     latestVersion: count,
     error: nullableText,
@@ -143,7 +178,7 @@ export const backupSchema = z.strictObject({ path: z.string() });
 export const restoreSchema = z.strictObject({
   databasePath: z.string(),
   previousVersion: count.describe(
-    "Destination schema version before restore; zero for an empty destination.",
+    "Destination schema version before restore; zero when the destination had no schema version. backupPath says whether it was replaced.",
   ),
   restoredVersion: count,
   backupPath: nullableText.describe(

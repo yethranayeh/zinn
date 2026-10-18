@@ -35,11 +35,17 @@ export type ResolvedSettings = {
   merged: Omit<Settings, "$schema">;
 };
 
-export type SettingsFileInspection = { path: string; source: "env" | "global" | "local" } & (
-  | { state: "found"; settings: Settings }
-  | { state: "missing" }
-  | { state: "error"; error: string }
-  | { state: "not-read"; reason: "ZINN_DIR" }
+export const settingsFileSourceSchema = z.enum(["env", "global", "local"]);
+export const settingsFileStateSchema = z.enum(["found", "missing", "error", "not-read"]);
+
+export type SettingsFileInspection = {
+  path: string;
+  source: z.infer<typeof settingsFileSourceSchema>;
+} & (
+  | { state: typeof settingsFileStateSchema.enum.found; settings: Settings }
+  | { state: typeof settingsFileStateSchema.enum.missing }
+  | { state: typeof settingsFileStateSchema.enum.error; error: string }
+  | { state: (typeof settingsFileStateSchema.enum)["not-read"]; reason: "ZINN_DIR" }
 );
 
 export type SettingsInspection = Pick<ResolvedSettings, "global" | "local"> & {

@@ -6,7 +6,13 @@ import type { RouteDef } from "../types.js";
 
 import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
-import { label, labelCreateSchema, labelDeleteSchema, labelEditSchema } from "@zinn-dev/core";
+import {
+  label,
+  labelColorSchema,
+  labelCreateSchema,
+  labelDeleteSchema,
+  labelEditSchema,
+} from "@zinn-dev/core";
 
 import { CliError } from "../errors.js";
 import { generateCommandUsage, noInput } from "../input.js";
@@ -47,7 +53,8 @@ function formatLabelList(presentedLabels: Array<PresentedLabel>) {
        *  does not support color, it is explicitly printed instead
        */
       if (isColorEnabled()) {
-        return [{ text: presented.name, style: presented.color }, ...descriptionCells];
+        const style = labelColorSchema.options.find((color) => color === presented.color);
+        return [{ text: presented.name, style }, ...descriptionCells];
       }
 
       return [{ text: presented.name }, { text: presented.color }, ...descriptionCells];
@@ -60,7 +67,7 @@ const colorOption = {
   value: {
     kind: "enum",
     name: "color",
-    choices: labelCreateSchema.shape.color.unwrap().options,
+    choices: labelColorSchema.options,
   },
 } as const satisfies InputOption;
 

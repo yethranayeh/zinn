@@ -5,7 +5,7 @@ import type { RouteDef } from "../types.js";
 
 import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
-import { column, relation, relationCreateSchema, task } from "@zinn-dev/core";
+import { column, relation, relationTypeSchema, task } from "@zinn-dev/core";
 
 import { generateCommandUsage, taskKeyPositional } from "../input.js";
 import {
@@ -18,7 +18,6 @@ import {
 import { currentActor } from "../actor.js";
 import { formatCellSeparator, formatRows } from "../presentation/row-layout.js";
 import { columnNameCell } from "../presentation/column-presentation.js";
-
 
 export function presentRelations(taskMatch: TaskWithKey): Array<PresentedRelation> {
   return relation.getAll(taskMatch.key, { include: { tasks: true } }).map((entry) => {
@@ -51,7 +50,7 @@ export function formatRelations(relations: Array<PresentedRelation>) {
     relations.map((entry) => {
       const isOutgoing = entry.direction === "outgoing";
 
-      let label: string;
+      let label = entry.type;
       switch (entry.type) {
         case "related": {
           label = "Related to";
@@ -100,14 +99,12 @@ function parseRelationArgs(args: string[]) {
     "type",
     `--type must be one of these: ${relationInputs.create.options.type.value.choices.join(", ")}`,
   );
-  const typeResult = relationCreateSchema.shape.relation_type.safeParse(type);
+  const typeResult = relationTypeSchema.safeParse(type);
 
   if (!typeResult.success) {
-    quit(
-      `--type must be one of these: ${relationCreateSchema.shape.relation_type.options.join(", ")}`,
-      undefined,
-      { argument: "--type" },
-    );
+    quit(`--type must be one of these: ${relationTypeSchema.options.join(", ")}`, undefined, {
+      argument: "--type",
+    });
   }
   const sourceTaskKey = positionals[0]!;
   const targetTaskKey = positionals[1]!;
@@ -124,7 +121,7 @@ const relationInputs = {
         value: {
           kind: "enum",
           name: "type",
-          choices: relationCreateSchema.shape.relation_type.options,
+          choices: relationTypeSchema.options,
         },
       },
     },
@@ -250,7 +247,7 @@ Example: zinn task relation list APP-1`,
 
 Remove only the specified relation. No confirmation is required.
 
-Types: ${relationCreateSchema.shape.relation_type.options.join(", ")}.
+Types: ${relationTypeSchema.options.join(", ")}.
 
 For related, either task order works.
 For dependency, duplicate, and subtask, use the creation direction:

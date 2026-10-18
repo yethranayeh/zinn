@@ -1,16 +1,18 @@
 import type { SettingsFileInspection, SettingsInputs } from "../settings.js";
 import type { StorageSource } from "../constant.js";
-import type { DatabaseClassification } from "../migrations/classify.js";
 
 import { statSync } from "node:fs";
 import { homedir } from "node:os";
+import { z } from "zod";
 
 import packageJson from "../../package.json" with { type: "json" };
 import { chooseDefaultProject, inspectSettings } from "../settings.js";
 import { resolveStorage } from "../constant.js";
 import { errorMessage, isMissingFileError } from "../errors.js";
-import { classifyDatabase } from "../migrations/classify.js";
+import { classifyDatabase, databaseStateSchema } from "../migrations/classify.js";
 import { latestVersion, MIGRATIONS } from "../migrations/registry.js";
+
+export const infoDatabaseStateSchema = z.enum([...databaseStateSchema.options, "unavailable"]);
 
 export type StoreInfo = {
   coreVersion: string;
@@ -25,7 +27,7 @@ export type StoreInfo = {
   defaultProject: { key: string | null; settingsPath: string | null; error: string | null };
   database: {
     path: string | null;
-    state: DatabaseClassification["state"] | "unavailable";
+    state: z.infer<typeof infoDatabaseStateSchema>;
     version: number | null;
     latestVersion: number;
     error: string | null;

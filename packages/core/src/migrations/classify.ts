@@ -2,6 +2,7 @@ import type { Database } from "../sqlite/database.js";
 import type { Migration } from "./registry.js";
 
 import { statSync } from "node:fs";
+import { z } from "zod";
 
 import { openDatabase } from "#sqlite";
 
@@ -17,7 +18,15 @@ import { readSchemaVersion } from "./runner.js";
  * - unmarked: tables but no schema version, which no Zinn version before schema versions had
  * - current, older, newer: the schema version compared with the latest one this build reaches
  */
-export type DatabaseState = "absent" | "empty" | "unmarked" | "current" | "older" | "newer";
+export const databaseStateSchema = z.enum([
+  "absent",
+  "empty",
+  "unmarked",
+  "current",
+  "older",
+  "newer",
+]);
+export type DatabaseState = z.infer<typeof databaseStateSchema>;
 
 export type DatabaseClassification = {
   state: DatabaseState;

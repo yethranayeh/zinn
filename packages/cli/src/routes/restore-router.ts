@@ -2,11 +2,11 @@ import type { PresentedRestore } from "../result-schemas.js";
 import type { Command } from "../types.js";
 import type { CommandInput } from "../input.js";
 
-import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
 import { resolve } from "node:path";
 import { backup, RestoreRefusedError, getStorage } from "@zinn-dev/core";
 
+import { jsonResult } from "../results.js";
 import { reportLockWait } from "../database.js";
 import { confirmationDescription } from "../lib.js";
 import { generateCommandUsage } from "../input.js";

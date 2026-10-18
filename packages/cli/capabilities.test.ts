@@ -69,9 +69,10 @@ test("discovery bypasses settings, storage policy, SQLite and Bun process APIs",
   const coreSource = fileURLToPath(new URL("../core/src/", import.meta.url));
   writeFileSync(preload, `
     import { mock } from "bun:test";
+    const { settingsFileSourceSchema, settingsFileStateSchema } = await import(${JSON.stringify(join(coreSource, "settings.ts"))});
     const forbidden = () => { throw new Error("Forbidden discovery access"); };
     mock.module(${JSON.stringify(join(coreSource, "db.ts"))}, () => ({ configureDatabase: forbidden, assertWritable: forbidden, getDb: forbidden, writeTransaction: forbidden, closeDb: forbidden }));
-    mock.module(${JSON.stringify(join(coreSource, "settings.ts"))}, () => ({ resolveSettings: forbidden, chooseDefaultProject: forbidden, inspectSettings: forbidden }));
+    mock.module(${JSON.stringify(join(coreSource, "settings.ts"))}, () => ({ settingsFileSourceSchema, settingsFileStateSchema, resolveSettings: forbidden, chooseDefaultProject: forbidden, inspectSettings: forbidden }));
     mock.module("bun:sqlite", () => ({ Database: class { constructor() { forbidden(); } } }));
     Bun.spawn = Bun.spawnSync = Bun.connect = forbidden;
   `);
