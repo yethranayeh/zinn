@@ -1,15 +1,19 @@
 ---
-interface Props {
-	linked?: boolean;
-}
-
-const { linked = false } = Astro.props;
-const Tag = linked ? "a" : "p";
+import z from "../../public/art/zinn-z.svg?raw";
+import sun from "../../public/art/sun-dark.svg?raw";
 ---
 
-<Tag
-	class='block w-fit text-xl font-semibold tracking-[-2px]'
-	href={linked ? "/" : undefined}
-	aria-label={linked ? "Zinn homepage" : undefined}>
-	Z<span class='text-cinnabar tracking-[-3px]'>I</span><span class='tracking-[-4px]'>NN</span>
-</Tag>
+<a class='mark relative block h-11 w-16 shrink-0 overflow-hidden' href='/' aria-label='Zinn homepage'>
+	<span class='absolute top-0 left-0 w-16 [&>svg]:block [&>svg]:w-full' aria-hidden='true' set:html={sun} />
+	<span class='absolute bottom-0.5 left-[19px] size-[26px]' aria-hidden='true' set:html={z} />
+</a>
+
+<style>
+	.mark:hover :global(.sun-halo) {
+		stroke: var(--color-soot);
+	}
+
+	.mark:hover :global(.sun-halo-outer) {
+		transition: stroke 0s 250ms;
+	}
+</style>
