@@ -186,14 +186,10 @@ test("OPENCODE_SESSION_ID is a thread without a session, after the other declare
   ).toEqual(agent("claude-code", "env:CLAUDECODE", { sessionId: "claude-root" }));
 });
 
-// ZINN-290: a Claude Code subagent's shell carries its own CLAUDE_EFFORT.
-test("CLAUDE_EFFORT is the effort unless ZINN_EFFORT declares one", () => {
-  expect(detectAgent({ CLAUDECODE: "1", CLAUDE_EFFORT: " high " })).toEqual(
-    agent("claude-code", "env:CLAUDECODE", { effort: "high" }),
-  );
+// ZINN-320: CLAUDE_EFFORT reports a value even for models that take no effort.
+test("CLAUDE_EFFORT is not read as the effort", () => {
+  expect(detectAgent({ CLAUDECODE: "1", CLAUDE_EFFORT: "high" })).toEqual(agent("claude-code", "env:CLAUDECODE"));
   expect(detectAgent({ CLAUDECODE: "1", CLAUDE_EFFORT: "high", ZINN_EFFORT: "low" })?.effort).toBe("low");
-  expect(detectAgent({ CLAUDECODE: "1", CLAUDE_EFFORT: "high", ZINN_EFFORT: " " })?.effort).toBe("high");
-  expect(detectAgent({ CLAUDECODE: "1", CLAUDE_EFFORT: "" })?.effort).toBeNull();
 });
 
 test("empty or unrelated variables are not agents", () => {

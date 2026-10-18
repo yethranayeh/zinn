@@ -57,7 +57,7 @@ function readExecutionIdentity(env: Env) {
     threadId,
     agent: readDeclaration(env, "ZINN_AGENT"),
     model: readDeclaration(env, "ZINN_MODEL"),
-    effort: readDeclaration(env, "ZINN_EFFORT") ?? readDeclaration(env, "CLAUDE_EFFORT"),
+    effort: readDeclaration(env, "ZINN_EFFORT"),
   };
 }
 
