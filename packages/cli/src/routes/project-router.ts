@@ -2,9 +2,12 @@ import type { RouteDef } from "../types.js";
 import type { CommandInput, InputConstraint } from "../input.js";
 import type {
   PresentedColumn,
+  PresentedProject,
+  PresentedProjectView,
   PresentedColumnTaskCount,
-} from "../presentation/column-presentation.js";
+} from "../result-schemas.js";
 
+import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
 import { column, project, columnOrderSchema } from "@zinn-dev/core";
 
@@ -36,11 +39,6 @@ import { formatSection } from "../presentation/section.js";
 import { currentActor } from "../actor.js";
 import { resolveProjectKey, requiredProjectDescription } from "../project.js";
 
-type PresentedProject = { key: string; name: string; description: string | null };
-type PresentedProjectView = PresentedProject & {
-  columns: Array<PresentedColumnTaskCount>;
-  archivedTaskCount: number;
-};
 type ProjectRowOptions = { showsDescriptionPreview?: boolean };
 
 function presentProject(projectMatch: PresentedProject): PresentedProject {
@@ -213,6 +211,7 @@ export const projectRouter = {
     effects: { domain: "create", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: projectInputs.create,
+    results: [jsonResult("Project")],
     run: (args: Array<string>) => {
       const { values, positionals, tokens } = parseArgs({
         args,
@@ -255,6 +254,7 @@ Example: zinn project create MDR --name 'Macrodata Refinement'`,
     effects: { domain: "read", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: projectInputs.list,
+    results: [jsonResult("ProjectList")],
     run: (args: Array<string>) => {
       const { positionals } = parseArgs({
         options: projectInputs.list.options,
@@ -279,6 +279,7 @@ Example: zinn project list`,
     effects: { domain: "read", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: projectInputs.view,
+    results: [jsonResult("ProjectView")],
     run: (args: Array<string>) => {
       const { positionals } = parseArgs({
         options: projectInputs.view.options,
@@ -339,6 +340,7 @@ Example: zinn project view MDR`,
     effects: { domain: "update", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: projectInputs.edit,
+    results: [jsonResult("Project")],
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
@@ -386,6 +388,7 @@ Examples:
       description: `${confirmationDescription} When the project key is omitted, deleting the configured default project always requires a terminal prompt; --yes is ignored.`,
     },
     input: projectInputs.delete,
+    results: [jsonResult("Project")],
     run: async (args: Array<string>) => {
       const { values, positionals, tokens } = parseArgs({
         args,
@@ -458,6 +461,7 @@ Example: zinn project delete MDR`,
       effects: { domain: "create", storage: "normal-open" },
       confirmation: { kind: "none" },
       input: projectInputs.column_create,
+      results: [jsonResult("Column")],
       run: (args: Array<string>) => {
         const { positionals } = parseArgs({
           options: projectInputs.column_create.options,
@@ -489,6 +493,7 @@ Example: zinn project column create MDR Boardlog`,
       effects: { domain: "read", storage: "normal-open" },
       confirmation: { kind: "none" },
       input: projectInputs.column_list,
+      results: [jsonResult("ColumnList")],
       run: (args: Array<string>) => {
         const { positionals } = parseArgs({
           options: projectInputs.column_list.options,
@@ -500,7 +505,7 @@ Example: zinn project column create MDR Boardlog`,
 
         const projectKey = resolveProjectKey(positionals[0], { required: true })!;
         const taskCounts = column.getTaskCountsByProjectKey(projectKey);
-        const columns = taskCounts.columns.map((columnCount) => ({
+        const columns: Array<PresentedColumnTaskCount> = taskCounts.columns.map((columnCount) => ({
           name: columnCount.column.name,
           taskCount: columnCount.taskCount,
         }));
@@ -522,6 +527,7 @@ Example: zinn project column list MDR`,
       effects: { domain: "update", storage: "normal-open" },
       confirmation: { kind: "none" },
       input: projectInputs.column_edit,
+      results: [jsonResult("Column")],
       run: (args: Array<string>) => {
         const { values, positionals, tokens } = parseArgs({
           args,
@@ -569,6 +575,7 @@ Example: zinn project column edit MDR 'In Progress' --name Refining`,
       effects: { domain: "update", storage: "normal-open" },
       confirmation: { kind: "none" },
       input: projectInputs.column_order,
+      results: [jsonResult("Column")],
       run: (args: Array<string>) => {
         const { positionals } = parseArgs({
           options: projectInputs.column_order.options,

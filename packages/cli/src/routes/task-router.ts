@@ -1,8 +1,10 @@
+import type { PresentedTaskDetail, PresentedTaskDetailHistory, PresentedTaskChange } from "../result-schemas.js";
 import type { TaskChange, TaskRelationType } from "@zinn-dev/core";
 import type { RouteDef } from "../types.js";
 import type { PresentedTask } from "../presentation/task-presentation.js";
 import type { CommandInput, InputConstraint } from "../input.js";
 
+import { jsonResult, taskDetailResults, taskChangeResults } from "../results.js";
 import { parseArgs, type ParseArgsOptionsConfig } from "node:util";
 import {
   task,
@@ -282,6 +284,7 @@ export const taskRouter = {
     effects: { domain: "create", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: taskInputs.create,
+    results: [jsonResult("Task")],
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
@@ -353,6 +356,7 @@ Examples:
     effects: { domain: "read", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: taskInputs.list,
+    results: [jsonResult("TaskList")],
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
@@ -404,6 +408,7 @@ Example: zinn task list MDR --label cli`,
     effects: { domain: "read", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: taskInputs.search,
+    results: [jsonResult("TaskList")],
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
@@ -479,6 +484,7 @@ Example: zinn task search 'refinement quota' MDR --limit 5`,
     effects: { domain: "read", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: taskInputs.view,
+    results: taskDetailResults,
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
@@ -505,7 +511,7 @@ Example: zinn task search 'refinement quota' MDR --limit 5`,
                 ),
             }
           : {}),
-      };
+      } satisfies PresentedTaskDetail | PresentedTaskDetailHistory;
 
       output(viewedTask, (t) => {
         const MIN_SECTION_SEPARATOR_WIDTH = 60;
@@ -563,6 +569,7 @@ Examples:
     effects: { domain: "update", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: taskInputs.edit,
+    results: [jsonResult("Task")],
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
@@ -632,6 +639,7 @@ Examples:
     effects: { domain: "update", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: taskInputs.move,
+    results: taskChangeResults,
     run: (args) => {
       const { positionals } = parseArgs({
         options: taskInputs.move.options,
@@ -672,6 +680,7 @@ Example: zinn task move MDR-1 MDR-2 'In Progress'`,
     effects: { domain: "update", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: taskInputs.order,
+    results: [jsonResult("Task")],
     run: (args) => {
       const { positionals } = parseArgs({
         options: taskInputs.order.options,
@@ -709,6 +718,7 @@ Example: zinn task order MDR-2 before MDR-1`,
     effects: { domain: "update", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: taskInputs.archive,
+    results: taskChangeResults,
     run: (args: Array<string>) => {
       const taskKeys = parseTaskKeys(args);
       const archives = task.archiveMany(taskKeys, currentActor());
@@ -734,6 +744,7 @@ Example: zinn task archive MDR-1 MDR-2`,
     effects: { domain: "update", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: taskInputs.archive,
+    results: taskChangeResults,
     run: (args: Array<string>) => {
       const taskKeys = parseTaskKeys(args);
       const unarchives = task.unarchiveMany(taskKeys, currentActor());
@@ -759,6 +770,7 @@ Example: zinn task unarchive MDR-1 MDR-2`,
     effects: { domain: "delete", storage: "normal-open" },
     confirmation: { kind: "prompt", description: confirmationDescription },
     input: taskInputs.delete,
+    results: [jsonResult("Task")],
     run: async (args: Array<string>) => {
       const { values, positionals, tokens } = parseArgs({
         args,
@@ -805,6 +817,7 @@ Example: zinn task delete MDR-1`,
       effects: { domain: "update", storage: "normal-open" },
       confirmation: { kind: "none" },
       input: taskInputs.label_add,
+      results: [jsonResult("Task")],
       run: (args) => {
         const props = parseTaskLabelArgs(args);
         output(presentTask(task.label.add(props, currentActor())), formatTaskRow);
@@ -819,6 +832,7 @@ Already attached labels are unchanged.`,
       effects: { domain: "update", storage: "normal-open" },
       confirmation: { kind: "none" },
       input: taskInputs.label_add,
+      results: [jsonResult("Task")],
       run: (args) => {
         const props = parseTaskLabelArgs(args);
         output(presentTask(task.label.remove(props, currentActor())), formatTaskRow);
@@ -852,7 +866,7 @@ function outputTaskChanges(
   formatTasks: (presentedTasks: Array<PresentedTask>) => string,
   describeUnchanged: (presentedTask: PresentedTask) => string,
 ) {
-  const presentedChanges = changes.map((change) => ({
+  const presentedChanges: Array<PresentedTaskChange> = changes.map((change) => ({
     ...presentTask(change.task),
     changed: change.changed,
   }));

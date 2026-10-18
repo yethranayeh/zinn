@@ -1,7 +1,9 @@
 import type { CommandInput } from "./input.js";
+import type { CommandResult } from "./results.js";
 
 export type Command = {
   input: CommandInput;
+  results: readonly CommandResult[];
   summary: string;
   effects: {
     domain: "read" | "create" | "update" | "delete" | "replace" | "none";

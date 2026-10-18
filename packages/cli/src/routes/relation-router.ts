@@ -1,7 +1,9 @@
+import type { PresentedRelation, PresentedRelationChange } from "../result-schemas.js";
 import type { CommandInput } from "../input.js";
-import type { TaskRelationType, TaskWithKey } from "@zinn-dev/core";
+import type { TaskWithKey } from "@zinn-dev/core";
 import type { RouteDef } from "../types.js";
 
+import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
 import { column, relation, relationCreateSchema, task } from "@zinn-dev/core";
 
@@ -17,11 +19,6 @@ import { currentActor } from "../actor.js";
 import { formatCellSeparator, formatRows } from "../presentation/row-layout.js";
 import { columnNameCell } from "../presentation/column-presentation.js";
 
-type PresentedRelation = {
-  type: TaskRelationType;
-  direction: "outgoing" | "incoming" | null;
-  task: { key: string; column: string; title: string; status: "Active" | "Archived" };
-};
 
 export function presentRelations(taskMatch: TaskWithKey): Array<PresentedRelation> {
   return relation.getAll(taskMatch.key, { include: { tasks: true } }).map((entry) => {
@@ -84,8 +81,6 @@ export function formatRelations(relations: Array<PresentedRelation>) {
     }),
   );
 }
-
-type PresentedRelationChange = { type: TaskRelationType; source: string; target: string };
 
 function parseRelationArgs(args: string[]) {
   const { values, positionals, tokens } = parseArgs({
@@ -162,6 +157,7 @@ export const relationRouter = {
     effects: { domain: "create", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: relationInputs.create,
+    results: [jsonResult("RelationChange")],
     run: (args) => {
       const props = parseRelationArgs(args);
       const { sourceTaskKey, targetTaskKey } = props;
@@ -211,6 +207,7 @@ Example: zinn task relation create APP-1 APP-2 --type dependency`,
     effects: { domain: "read", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: relationInputs.list,
+    results: [jsonResult("RelationList")],
     run: (args) => {
       const { positionals } = parseArgs({
         options: relationInputs.list.options,
@@ -234,6 +231,7 @@ Example: zinn task relation list APP-1`,
     effects: { domain: "delete", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: relationInputs.create,
+    results: [jsonResult("RelationChange")],
     run: (args) => {
       const props = parseRelationArgs(args);
       relation.delete(props, currentActor());

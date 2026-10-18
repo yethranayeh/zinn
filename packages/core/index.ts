@@ -70,6 +70,8 @@ export { relationCreateSchema, relationDeleteSchema } from "./src/schemas/relati
 export { textEditSchema } from "./src/schemas/text-edit.js";
 export { actorSchema } from "./src/schemas/actor.js";
 export {
+  activityActionSchema,
+  activityEntityTypeSchema,
   activityIdSchema,
   activityListSchema,
   activityTaskKeySchema,
@@ -81,7 +83,7 @@ export {
   commentDeleteSchema,
   commentEditSchema,
 } from "./src/schemas/comment.js";
-export { SETTINGS_VERSION } from "./src/schemas/settings.js";
+export { SETTINGS_VERSION, settingsSchema } from "./src/schemas/settings.js";
 export { chooseDefaultProject, resolveSettings } from "./src/settings.js";
 export { project } from "./src/operations/project.js";
 export { column } from "./src/operations/column.js";

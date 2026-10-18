@@ -2,6 +2,8 @@ import type { LabelColor } from "./schemas/label.js";
 import type { TaskPriority } from "./schemas/task.js";
 import type { ActorKind } from "./schemas/actor.js";
 import type { RelationCreateInput } from "./schemas/relation.js";
+import type { ActivityAction, ActivityEntityType } from "./schemas/activity.js";
+export type { ActivityAction, ActivityEntityType } from "./schemas/activity.js";
 
 export type { LabelColor } from "./schemas/label.js";
 export type { TaskPriority } from "./schemas/task.js";
@@ -79,22 +81,6 @@ export type Comment = {
 };
 
 export type CommentWithKey = Comment & { key: string };
-
-export type ActivityAction =
-  | "create"
-  | "edit"
-  | "move"
-  | "order"
-  | "archive"
-  | "unarchive"
-  | "delete"
-  | "relation_create"
-  | "relation_delete"
-  | "comment_create"
-  | "comment_edit"
-  | "comment_delete";
-
-export type ActivityEntityType = "task" | "project" | "column" | "label";
 
 export type Activity = {
   id: string;

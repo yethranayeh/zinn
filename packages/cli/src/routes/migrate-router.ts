@@ -1,5 +1,7 @@
+import type { PresentedMigrate } from "../result-schemas.js";
 import type { Command } from "../types.js";
 
+import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
 import { migrate, MigrationRefusedError, getStorage } from "@zinn-dev/core";
 
@@ -13,6 +15,7 @@ export const migrateCommand = {
   effects: { domain: "none", storage: "migrate" },
   confirmation: { kind: "none" },
   input: noInput,
+  results: [jsonResult("Migrate")],
   run: (args) => {
     const { positionals } = parseArgs({
       options: noInput.options,
@@ -26,7 +29,7 @@ export const migrateCommand = {
     const { backupDirectory } = getStorage();
 
     try {
-      const result = migrate.run({
+      const result: PresentedMigrate = migrate.run({
         client: "cli",
         version: packageJson.version,
         onWait: reportLockWait,

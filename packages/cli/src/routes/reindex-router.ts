@@ -1,5 +1,7 @@
+import type { PresentedReindex } from "../result-schemas.js";
 import type { Command } from "../types.js";
 
+import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
 import { reindex } from "@zinn-dev/core";
 
@@ -13,6 +15,7 @@ export const reindexCommand = {
   effects: { domain: "none", storage: "reindex" },
   confirmation: { kind: "none" },
   input: noInput,
+  results: [jsonResult("Reindex")],
   run: (args) => {
     const { positionals } = parseArgs({
       options: noInput.options,
@@ -22,7 +25,7 @@ export const reindexCommand = {
     });
     validatePositionals(positionals, noInput.forms[0]);
 
-    const result = reindex.run({ onWait: reportLockWait });
+    const result: PresentedReindex = reindex.run({ onWait: reportLockWait });
 
     output(result, (r) => {
       const noun = r.taskCount === 1 ? "task" : "tasks";

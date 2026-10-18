@@ -7,6 +7,25 @@ export const minimumActivityIdLength = 8;
 export const activityLimitMessage = "Activity limit must be a positive safe integer";
 const UUID_HEX_LENGTH = 32;
 
+export const activityActionSchema = z.enum([
+  "create",
+  "edit",
+  "move",
+  "order",
+  "archive",
+  "unarchive",
+  "delete",
+  "relation_create",
+  "relation_delete",
+  "comment_create",
+  "comment_edit",
+  "comment_delete",
+]);
+export const activityEntityTypeSchema = z.enum(["task", "project", "column", "label"]);
+
+export type ActivityAction = z.infer<typeof activityActionSchema>;
+export type ActivityEntityType = z.infer<typeof activityEntityTypeSchema>;
+
 export const activityTaskKeySchema = z
   .string()
   .refine((value) => parseTaskKey(value) != null, "Invalid task key. Expected format PROJECT-1")

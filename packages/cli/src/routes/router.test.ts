@@ -3,10 +3,12 @@ import type { Command, RouteDef } from "../types";
 import { test, expect, mock, spyOn } from "bun:test";
 import { isLegacyReadAllowed, setLegacyReadAllowed } from "../lib";
 import { createRouter, parseRoutes } from "./router";
+import { jsonResult } from "../results";
 
 // Routing reads only run and help; the rest fills the Command type
 const commandMetadata = {
   input: { options: {}, forms: [{ id: "default", positionals: [] }], constraints: [] },
+  results: [jsonResult("Task")],
   summary: "",
   effects: { domain: "none", storage: "normal-open" },
   confirmation: { kind: "none" },

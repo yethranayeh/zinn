@@ -57,5 +57,8 @@
 	"dependencies": {
 		"@zinn-dev/core": "workspace:*",
 		"zod": "4.6.4"
+	},
+	"devDependencies": {
+		"ajv": "8.20.0"
 	}
 }

@@ -1,6 +1,8 @@
+import type { PresentedRestore } from "../result-schemas.js";
 import type { Command } from "../types.js";
 import type { CommandInput } from "../input.js";
 
+import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
 import { resolve } from "node:path";
 import { backup, RestoreRefusedError, getStorage } from "@zinn-dev/core";
@@ -35,6 +37,7 @@ export const restoreCommand = {
   effects: { domain: "replace", storage: "restore" },
   confirmation: { kind: "prompt", description: confirmationDescription },
   input: restoreInputs.command,
+  results: [jsonResult("Restore")],
   run: async (args) => {
     const { positionals, values, tokens } = parseArgs({
       args,
@@ -66,7 +69,7 @@ export const restoreCommand = {
     }
 
     try {
-      const result = backup.restore({ ...build, path, onWait: reportLockWait });
+      const result: PresentedRestore = backup.restore({ ...build, path, onWait: reportLockWait });
 
       output(result, (r) => {
         const restored = `Restored the database from ${path} at schema version ${r.restoredVersion}.`;

@@ -1,8 +1,10 @@
+import type { PresentedLabel } from "../result-schemas.js";
 import type { CommandInput, InputOption } from "../input.js";
 import type { Label } from "@zinn-dev/core";
 import type { RowCell } from "../presentation/row-layout.js";
 import type { RouteDef } from "../types.js";
 
+import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
 import { label, labelCreateSchema, labelDeleteSchema, labelEditSchema } from "@zinn-dev/core";
 
@@ -25,8 +27,6 @@ import {
 import { currentActor } from "../actor.js";
 import { isColorEnabled } from "../presentation/color.js";
 import { formatRows } from "../presentation/row-layout.js";
-
-type PresentedLabel = Omit<Label, "id">;
 
 function presentLabel(labelMatch: Label): PresentedLabel {
   return { name: labelMatch.name, color: labelMatch.color, description: labelMatch.description };
@@ -112,6 +112,7 @@ export const labelRouter = {
     effects: { domain: "create", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: labelInputs.create,
+    results: [jsonResult("Label")],
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
@@ -147,6 +148,7 @@ Example: zinn label create bug --description 'Unexpected behavior' --color red`,
     effects: { domain: "read", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: labelInputs.list,
+    results: [jsonResult("LabelList")],
     run: (args) => {
       const { positionals } = parseArgs({
         options: labelInputs.list.options,
@@ -167,6 +169,7 @@ List all global label definitions.`,
     effects: { domain: "update", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: labelInputs.edit,
+    results: [jsonResult("Label")],
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
@@ -212,6 +215,7 @@ Examples:
     effects: { domain: "delete", storage: "normal-open" },
     confirmation: { kind: "prompt", description: confirmationDescription },
     input: labelInputs.delete,
+    results: [jsonResult("Label")],
     run: async (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,

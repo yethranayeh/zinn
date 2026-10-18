@@ -2,8 +2,7 @@ import type { RowCell } from "./row-layout.js";
 
 import { formatRows } from "./row-layout.js";
 
-export type PresentedColumn = { name: string; project?: string; taskCount?: number };
-export type PresentedColumnTaskCount = PresentedColumn & { taskCount: number };
+type ColumnRow = { name: string; project?: string; taskCount?: number };
 
 /** Archived tasks are off the board, so they share one row below the columns instead of a column of their own. */
 const ARCHIVED_ROW_LABEL = "Archived";
@@ -23,7 +22,7 @@ export function columnNameCell(columnName: string): RowCell {
 
 /** The archived row is left out when there are no archived tasks. */
 export function formatColumnList(
-  presentedColumns: Array<PresentedColumn>,
+  presentedColumns: Array<ColumnRow>,
   options: { showsProject?: boolean; showsTaskCounts?: boolean; archivedTaskCount?: number } = {},
 ) {
   const rows: Array<Array<RowCell>> = presentedColumns.map((presentedColumn) => {

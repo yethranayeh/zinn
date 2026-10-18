@@ -1,6 +1,8 @@
+import type { PresentedActivity } from "../result-schemas.js";
 import type { RouteDef } from "../types.js";
 import type { CommandInput } from "../input.js";
 
+import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
 import { activity, activityLimitMessage, positiveIntegerPattern } from "@zinn-dev/core";
 
@@ -40,6 +42,7 @@ export const activityRouter = {
     effects: { domain: "read", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: activityInputs.list,
+    results: [jsonResult("ActivityList")],
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
@@ -57,7 +60,7 @@ export const activityRouter = {
         quit(activityLimitMessage, undefined, { argument: "--limit" });
       }
 
-      const events = activity.getAll({
+      const events: Array<PresentedActivity> = activity.getAll({
         taskKey: values.task,
         sessionId: values.session,
         threadId: values.thread,
@@ -97,6 +100,7 @@ Examples:
     effects: { domain: "read", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: activityInputs.view,
+    results: [jsonResult("Activity")],
     run: (args) => {
       const { positionals } = parseArgs({
         options: activityInputs.view.options,
@@ -104,8 +108,11 @@ Examples:
         allowPositionals: true,
         strict: true,
       });
+
       validatePositionals(positionals, activityInputs.view.forms[0]);
-      output(activity.getById(positionals[0]!), (event) =>
+
+      const viewed: PresentedActivity = activity.getById(positionals[0]!);
+      output(viewed, (event) =>
         formatActivityList(presentActivities([event], { showsFullIds: true }), {
           showsDetails: true,
         }),

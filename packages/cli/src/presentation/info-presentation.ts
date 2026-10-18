@@ -1,7 +1,10 @@
 import type { StoreInfo } from "@zinn-dev/core";
+import type { PresentedInfo } from "../result-schemas.js";
+export type { PresentedInfo } from "../result-schemas.js";
+
 import packageJson from "../../package.json" with { type: "json" };
 
-export function presentInfo({ coreVersion, ...report }: StoreInfo) {
+export function presentInfo({ coreVersion, ...report }: StoreInfo): PresentedInfo {
   const bunVersion = process.versions.bun;
 
   return {
@@ -16,8 +19,6 @@ export function presentInfo({ coreVersion, ...report }: StoreInfo) {
     },
   };
 }
-
-export type PresentedInfo = ReturnType<typeof presentInfo>;
 
 function storeSource(storage: PresentedInfo["storage"]): string {
   if (storage.settingsPath !== null) {

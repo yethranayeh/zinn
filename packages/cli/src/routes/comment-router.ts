@@ -1,8 +1,10 @@
+import type { PresentedComment } from "../result-schemas.js";
 import type { CommentWithKey } from "@zinn-dev/core";
 import type { CommandInput } from "../input.js";
 import type { RowCell } from "../presentation/row-layout.js";
 import type { RouteDef } from "../types.js";
 
+import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
 import { comment } from "@zinn-dev/core";
 
@@ -25,8 +27,6 @@ import {
 import { currentActor } from "../actor.js";
 import { formatRows } from "../presentation/row-layout.js";
 import { formatLocalTime } from "../presentation/time.js";
-
-type PresentedComment = Pick<CommentWithKey, "key" | "text" | "created_at" | "updated_at">;
 
 function presentComment(commentMatch: CommentWithKey): PresentedComment {
   return {
@@ -170,6 +170,7 @@ export const commentRouter = {
     effects: { domain: "create", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: commentInputs.create,
+    results: [jsonResult("Comment")],
     run: (args) => {
       const props = parseTextArgs(args);
       const created = comment.create({ taskKey: props.key, text: props.text }, currentActor());
@@ -189,6 +190,7 @@ Example: zinn task comment create MDR-1 --text 'Ready for review'`,
     effects: { domain: "read", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: commentInputs.list,
+    results: [jsonResult("CommentList")],
     run: (args) => {
       const { positionals } = parseArgs({
         options: commentInputs.list.options,
@@ -210,6 +212,7 @@ Example: zinn task comment list MDR-1`,
     effects: { domain: "read", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: commentInputs.view,
+    results: [jsonResult("Comment")],
     run: (args) => {
       const { positionals } = parseArgs({
         options: commentInputs.view.options,
@@ -233,6 +236,7 @@ Example: zinn task comment view 'MDR-1#1'`,
     effects: { domain: "update", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: commentInputs.edit,
+    results: [jsonResult("Comment")],
     run: (args) => {
       const props = parseCommentEditArgs(args);
       const edited = comment.edit({ commentKey: props.key, text: props.text }, currentActor());
@@ -255,6 +259,7 @@ Examples:
     effects: { domain: "delete", storage: "normal-open" },
     confirmation: { kind: "prompt", description: confirmationDescription },
     input: commentInputs.delete,
+    results: [jsonResult("Comment")],
     run: async (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,

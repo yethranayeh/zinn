@@ -1,21 +1,13 @@
 import type { LabelColor, TaskPriority, TaskWithKey } from "@zinn-dev/core";
 import type { RowCell } from "./row-layout.js";
+import type { PresentedTask } from "../result-schemas.js";
+export type { PresentedTask } from "../result-schemas.js";
 
 import { column, label, task } from "@zinn-dev/core";
 
 import { styleOutputText } from "./color.js";
 import { columnNameCell } from "./column-presentation.js";
 import { formatCellSeparator, formatRows } from "./row-layout.js";
-
-export type PresentedTask = {
-  key: string;
-  status: "Active" | "Archived";
-  column: string;
-  title: string;
-  description: string | null;
-  priority: TaskPriority | null;
-  labels: Array<string>;
-};
 
 const EMPTY_CELL_MARKER = "-";
 const LABEL_NAME_SEPARATOR = ", ";

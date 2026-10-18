@@ -1,5 +1,7 @@
+import type { PresentedBackup } from "../result-schemas.js";
 import type { Command } from "../types.js";
 
+import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
 import { backup } from "@zinn-dev/core";
 
@@ -13,6 +15,7 @@ export const backupCommand = {
   effects: { domain: "none", storage: "backup" },
   confirmation: { kind: "none" },
   input: noInput,
+  results: [jsonResult("Backup")],
   run: (args) => {
     const { positionals } = parseArgs({
       options: noInput.options,
@@ -22,7 +25,7 @@ export const backupCommand = {
     });
     validatePositionals(positionals, noInput.forms[0]);
 
-    const created = backup.create({ client: "cli", version: packageJson.version });
+    const created: PresentedBackup = backup.create({ client: "cli", version: packageJson.version });
 
     output(created, (b) => `Saved a backup to ${b.path}`);
   },

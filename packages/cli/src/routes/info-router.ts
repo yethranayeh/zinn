@@ -1,5 +1,6 @@
 import type { Command } from "../types.js";
 
+import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
 import { info } from "@zinn-dev/core";
 
@@ -13,6 +14,7 @@ export const infoCommand = {
   effects: { domain: "none", storage: "inspect" },
   confirmation: { kind: "none" },
   input: noInput,
+  results: [jsonResult("Info")],
   run: (args) => {
     const { positionals } = parseArgs({
       options: noInput.options,
