@@ -8,11 +8,14 @@ const links = [
 ];
 ---
 
-<header class='sticky top-0 z-20 shrink-0 border-b border-soot bg-limestone'>
-	<div class='site-container flex items-end justify-between gap-6'>
+<header
+	class='sticky top-0 z-20 min-h-[calc(var(--site-brand-height)_+_1px)] shrink-0 border-b border-soot bg-limestone'>
+	<div class='site-container flex min-h-[var(--site-brand-height)] items-end justify-between gap-x-4'>
 		<Branding />
 
-		<nav class='flex items-center gap-4 md:gap-7 font-mono text-xs leading-normal' aria-label='Zinn documentation'>
+		<nav
+			class='flex min-w-0 flex-1 flex-wrap items-center justify-end gap-x-4 md:gap-x-7 font-mono text-xs leading-normal'
+			aria-label='Zinn documentation'>
 			{
 				links.map((link) => (
 					<NavLink class='pb-1' href={link.path}>
@@ -23,3 +26,16 @@ const links = [
 		</nav>
 	</div>
 </header>
+
+<script>
+	const header = document.querySelector<HTMLElement>("header");
+
+	if (header) {
+		const updateHeaderHeight = () => {
+			document.documentElement.style.setProperty("--site-header-height", `${header.getBoundingClientRect().height}px`);
+		};
+
+		updateHeaderHeight();
+		new ResizeObserver(updateHeaderHeight).observe(header);
+	}
+</script>

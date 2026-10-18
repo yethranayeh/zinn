@@ -14,13 +14,18 @@ const { id, labelledBy, surface = "limestone", split = false, first = false, dec
 ---
 
 <section id={id} aria-labelledby={labelledBy} class='relative border-t border-soot bg-limestone'>
-	<div
-		class:list={[
-			"reading-frame relative mx-auto w-[calc(100%_-_2_*_var(--frame-inset))] max-w-[calc(var(--site-content-width)_-_2_*_var(--frame-inset))] border-x border-pewter py-4 px-[calc(var(--site-gutter)_-_var(--frame-inset)_-_1px)] md:py-20 [--frame-inset:10px] md:[--frame-inset:32px]",
-			{ "grid gap-8 xl:grid-cols-2 xl:gap-12": split, "frame-start": first },
-			surface === "bone" ? "bg-bone" : "bg-limestone"
-		]}>
-		{decorated && <CornerSun />}
-		<slot />
+	<div class='site-container relative'>
+		<div
+			aria-hidden='true'
+			class:list={[
+				"reading-frame pointer-events-none absolute inset-y-0 inset-x-2.5 border-x border-pewter md:inset-x-8",
+				{ "frame-start": first },
+				surface === "bone" ? "bg-bone" : "bg-limestone"
+			]}>
+			{decorated && <CornerSun />}
+		</div>
+		<div class:list={["relative py-4 md:py-20", { "grid gap-8 xl:grid-cols-2 xl:gap-12": split }]}>
+			<slot />
+		</div>
 	</div>
 </section>

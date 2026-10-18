@@ -20,7 +20,9 @@ const workflowCommands = [
 ---
 
 <BaseLayout title={homepage.title} description={homepage.description}>
-	<section class='hero site-container flex flex-col pb-6 md:pb-8' aria-label='Install Zinn'>
+	<section
+		class='site-container flex min-h-[calc(100dvh_-_var(--site-header-height))] flex-col pb-6 md:pb-8'
+		aria-label='Install Zinn'>
 		<div class='my-auto w-full max-w-3xl pt-10 pb-14 md:pt-14 md:pb-16'>
 			<h1 class='max-w-xl text-4xl leading-tighter tracking-tight md:text-5xl'>
 				A kanban workflow<br />in the <span class='text-cinnabar'>terminal</span>.
@@ -135,12 +137,6 @@ const workflowCommands = [
 		<a href={projectLinks.bluesky} data-site-event='bluesky-click'>Bluesky</a>
 	</nav>
 </BaseLayout>
-
-<style>
-	.hero {
-		min-height: calc(100dvh - var(--site-header-height));
-	}
-</style>
 
 <script>
 	import { trackEvent } from "../scripts/analytics";
