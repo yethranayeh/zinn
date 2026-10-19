@@ -60,6 +60,20 @@ Names and titles are trimmed and cannot be blank or contain line breaks or contr
 - Entity mutations record the actor and activity in the same transaction as the change.
 - Bulk task moves, archives, and unarchives apply in input order and succeed or fail together.
 
+## Activity selection
+
+`activity.getAll` returns full activity records, newest first by timestamp and then event ID. Without a task selector it reads across the database.
+
+- `{ taskKey: "APP-1", showDeleted: false }` selects the existing active or archived task. A missing task raises a `CoreError` with kind `missing`; its `facts` identify entity `task` and the requested key.
+- `{ taskKey: "APP-1", showDeleted: true }` includes every recoverable existing or deleted task identity sharing that key. Omitting `showDeleted` also includes all known identities.
+- `{ taskId: createdTask.id }` selects one exact task identity, including a deleted task. IDs accept full, case-insensitive UUIDs with canonical hyphens or 32 hexadecimal digits. Task ID prefixes are rejected.
+
+`taskKey` and `taskId` are mutually exclusive. `showDeleted` requires `taskKey`, including when it is `false`. A valid exact ID or explicit deleted-history query with no recorded matches returns an empty array.
+
+Task selection includes original project-deletion events whose snapshots contain the selected task IDs. These events retain their project identity and full payloads. `sessionId` and `threadId` match complete, case-sensitive stored values; all supplied filters must match. `limit` applies after filtering.
+
+`activity.getTaskIdentities` accepts a task key string or an object containing `taskKey`, `taskId`, and `showDeleted` with the same selection rules. It returns each recoverable task's ID, key, title, and active, archived, or deleted status.
+
 ## Database compatibility
 
 Opening a database can upgrade it, even for a read operation. Upgrades save a backup first and apply completely or not at all. Upgrades and restores check that foreign keys reference existing tables and rows before committing.

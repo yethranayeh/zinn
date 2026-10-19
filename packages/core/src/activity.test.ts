@@ -285,6 +285,125 @@ test("activity finds archived and explicitly deleted tasks without requiring a l
   `);
 });
 
+test("explicit current-task selection includes archived tasks and reports missing tasks without CLI guidance", () => {
+  runActivityCheck(`
+    const item = task.create({ project_id: app.id, title: "Current" }, human);
+    const current = { taskKey: item.key, showDeleted: false };
+    assert.deepEqual(activity.getAll(current), task.activity(item.key).toReversed());
+    assert.equal(activity.getTaskIdentities(current)[0].status, "active");
+    task.archive(item.key, agent);
+    assert.deepEqual(activity.getAll(current), task.activity(item.key).toReversed());
+    assert.equal(activity.getTaskIdentities(current)[0].status, "archived");
+    task.delete(item.key, agent);
+    const missingTask = (error) => error.kind === "missing" && error.facts.entity === "task" && error.facts.key === item.key;
+    assert.throws(() => activity.getAll(current), missingTask);
+    assert.throws(() => activity.getTaskIdentities(current), missingTask);
+    assert.deepEqual(activity.getAll({ taskKey: "APP-99", showDeleted: true }), []);
+    project.delete("APP", human);
+    assert.throws(() => activity.getAll(current), missingTask);
+    assert.throws(() => activity.getAll({ taskKey: "UNKNOWN-1", showDeleted: false }), (error) =>
+      error.kind === "missing" && error.facts.entity === "task" && error.facts.key === "UNKNOWN-1");
+    assert.deepEqual(activity.getAll({ taskKey: item.key, showDeleted: true }), activity.getAll({ taskKey: item.key }));
+  `);
+});
+
+test("explicit selectors separate reused task identities and preserve original project deletions", () => {
+  runActivityCheck(`
+    const runActor = { ...agent, sessionId: "session/one", threadId: "thread/one" };
+    const first = task.create({ project_id: app.id, title: "First" }, runActor);
+    task.archive(first.key, runActor);
+    const firstHistory = task.activity(first.key).toReversed();
+    project.delete("APP", runActor);
+    const firstDeletion = activity.getAll().find((event) => event.entity_type === "project" && event.action === "delete");
+    const secondProject = project.create({ key: "APP" }, human);
+    const second = task.create({ project_id: secondProject.id, title: "Second" }, human);
+    task.delete(second.key, runActor);
+    const secondHistory = activity.getAll({ taskKey: second.key }).filter((event) => event.entity_id === second.id);
+    project.delete("APP", runActor);
+    const secondDeletion = activity.getAll().find((event) => event.entity_id === secondProject.id && event.action === "delete");
+    const thirdProject = project.create({ key: "APP" }, human);
+    const third = task.create({ project_id: thirdProject.id, title: "Third" }, human);
+    const thirdHistory = task.activity(third.key).toReversed();
+    const beforeRows = getDb().query("SELECT * FROM activity ORDER BY id").all();
+    const changesBefore = getDb().query("SELECT total_changes() AS count").get().count;
+
+    assert.deepEqual(activity.getAll({ taskKey: "app-1", showDeleted: false }), thirdHistory);
+    const expanded = activity.getAll({ taskKey: "APP-1", showDeleted: true });
+    assert.deepEqual(expanded, [...thirdHistory, ...secondHistory, firstDeletion, ...firstHistory]);
+    assert.deepEqual(expanded, activity.getAll({ taskKey: "APP-1" }));
+    assert.ok(!expanded.some((event) => event.id === secondDeletion.id));
+    assert.equal(activity.getTaskIdentities("APP-1").length, 3);
+
+    for (const [item, expected, status] of [
+      [first, [firstDeletion, ...firstHistory], "deleted"],
+      [second, secondHistory, "deleted"],
+      [third, thirdHistory, "active"],
+    ]) {
+      for (const taskId of [item.id, item.id.toUpperCase(), item.id.replaceAll("-", ""), item.id.replaceAll("-", "").toUpperCase()]) {
+        assert.deepEqual(activity.getAll({ taskId }), expected);
+        assert.deepEqual(activity.getAll({ taskId, limit: 1 }), expected.slice(0, 1));
+        assert.deepEqual(activity.getTaskIdentities({ taskId }), [{ id: item.id, key: item.key, title: item.title, status }]);
+      }
+    }
+    assert.deepEqual(activity.getAll({ taskId: first.id, sessionId: "session/one", threadId: "thread/one", limit: 2 }), [firstDeletion, ...firstHistory].slice(0, 2));
+    assert.deepEqual(activity.getAll({ taskId: first.id, sessionId: "Session/one" }), []);
+    assert.deepEqual(activity.getAll({ taskKey: "APP-1", showDeleted: false, sessionId: "session/one" }), []);
+    const matching = expanded.filter((event) => event.actor_session_id === "session/one" && event.actor_thread_id === "thread/one");
+    assert.deepEqual(activity.getAll({ taskKey: "APP-1", showDeleted: true, sessionId: "session/one", threadId: "thread/one", limit: 2 }), matching.slice(0, 2));
+    assert.deepEqual(getDb().query("SELECT * FROM activity ORDER BY id").all(), beforeRows);
+    assert.equal(getDb().query("SELECT total_changes() AS count").get().count, changesBefore);
+  `);
+});
+
+test("exact task IDs select orphan events and snapshot identities with stable time and ID ordering", () => {
+  runActivityCheck(`
+    const taskId = "abcdef12-1234-7000-8000-123456abcdef";
+    const otherId = "abcdef12-1234-7000-8000-123456abcdee";
+    const earlier = "11111111-1111-7111-8111-111111111111";
+    const tiedLower = "11111111-2111-7111-8111-111111111111";
+    const tiedHigher = "11111111-3111-7111-8111-111111111111";
+    const unrelated = "11111111-4111-7111-8111-111111111111";
+    const changes = { unknown: { full: "  Full\\ntext  ", values: [null, 3] } };
+    insertEvent({ id: earlier, created_at: 1, entity_id: taskId, changes });
+    insertEvent({ id: tiedLower, created_at: 2, entity_id: taskId });
+    insertEvent({ id: unrelated, created_at: 3, entity_id: otherId });
+    assert.deepEqual(activity.getAll({ taskId }).map((event) => event.id), [tiedLower, earlier]);
+    insertEvent({ id: tiedHigher, created_at: 2, entity_type: "project", entity_id: "old-project", action: "delete", changes: { tasks: [
+      { id: taskId, key: "GONE-1", title: "Gone" },
+      { id: taskId, key: "GONE-1", title: "Gone" },
+      { id: otherId, key: "GONE-2", title: "Other" },
+    ] } });
+    const expected = [tiedHigher, tiedLower, earlier].map((id) => activity.getById(id));
+    assert.deepEqual(activity.getAll({ taskId }), expected);
+    assert.deepEqual(activity.getAll({ taskId, limit: 2 }), expected.slice(0, 2));
+    assert.deepEqual(activity.getTaskIdentities({ taskId }), [{ id: taskId, key: "GONE-1", title: "Gone", status: "deleted" }]);
+    assert.deepEqual(expected[2].changes, changes);
+    const unknownId = "ffffffff-ffff-7fff-8fff-ffffffffffff";
+    assert.deepEqual(activity.getAll({ taskId: unknownId }), []);
+    assert.deepEqual(activity.getTaskIdentities({ taskId: unknownId }), []);
+    const empty = task.create({ project_id: app.id, title: "Empty" }, human);
+    getDb().query("DELETE FROM activity WHERE entity_type = 'task' AND entity_id = ?").run(empty.id);
+    assert.deepEqual(activity.getAll({ taskId: empty.id }), []);
+    assert.deepEqual(activity.getAll({ taskKey: empty.key, showDeleted: false }), []);
+    task.archive(empty.key, agent);
+    assert.equal(activity.getTaskIdentities({ taskId: empty.id })[0].status, "archived");
+    assert.throws(() => activity.getAll({ taskId: taskId.slice(0, -1) }), (error) => error.kind === "input" && error.facts.field[0] === "taskId");
+    assert.throws(() => activity.getTaskIdentities({ taskId: "abcdef12" }), (error) => error.kind === "input");
+    assert.throws(() => activity.getAll({ taskKey: empty.key, taskId }), (error) => error.kind === "input");
+    assert.throws(() => activity.getAll({ taskId, showDeleted: false }), (error) => error.kind === "input");
+    assert.throws(() => activity.getAll({ showDeleted: true }), (error) => error.kind === "input");
+  `);
+});
+
+test("current-task selection propagates database failures without reporting a missing task", () => {
+  runActivityCheck(`
+    task.create({ project_id: app.id, title: "Present" }, human);
+    getDb().exec("ALTER TABLE task RENAME TO unavailable_task");
+    assert.throws(() => activity.getAll({ taskKey: "APP-1", showDeleted: false }), (error) =>
+      error.kind !== "missing" && error.message.includes("task"));
+  `);
+});
+
 test("task history includes the original aggregate project deletion and every reused-key lifetime", () => {
   runActivityCheck(`
     const first = task.create({ project_id: app.id, title: "First lifetime" }, human);
@@ -364,6 +483,11 @@ test.each([0, 9])("activity reads obey the existing read-only policy at schema v
     assert.equal(all.length, 2);
     assert.deepEqual(activity.getById(all[0].id), all[0]);
     assert.equal(activity.getAll({ taskKey: "APP-1" }).length, 1);
+    assert.equal(activity.getAll({ taskKey: "APP-1", showDeleted: false }).length, 1);
+    assert.equal(activity.getAll({ taskKey: "APP-1", showDeleted: true }).length, 1);
+    const taskId = activity.getTaskIdentities("APP-1")[0].id;
+    assert.equal(activity.getAll({ taskId }).length, 1);
+    assert.equal(activity.getTaskIdentities({ taskId })[0].status, "active");
     assert.equal(activity.getTaskIdentities("APP-1")[0].status, "active");
     assert.equal(activity.getIds().length, 2);
     assert.equal(getDb().query("PRAGMA query_only").get().query_only, 1);

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { activityIdSchema, activityListSchema, activityTaskKeySchema } from "./activity";
+import { activityIdSchema, activityListSchema, activityTaskIdSchema, activityTaskKeySchema } from "./activity";
 
 test("activity IDs normalize full, compact and canonical left-prefix spellings", () => {
   const id = "019ABCDF-1234-7000-8000-123456ABCDEF";
@@ -36,6 +36,35 @@ test("activity lists accept optional filters and positive safe-integer limits", 
     expect(() => activityListSchema.parse({ limit })).toThrow("Activity limit must be a positive safe integer");
   }
   expect(activityListSchema.safeParse({ projectKey: "APP" }).success).toBe(false);
+});
+
+test("task identity selectors normalize only full UUIDs and locate invalid inputs", () => {
+  const id = "019abcdf-1234-7000-8000-123456abcdef";
+  for (const input of [id, id.toUpperCase(), id.replaceAll("-", ""), id.replaceAll("-", "").toUpperCase()]) {
+    expect(activityTaskIdSchema.parse(input)).toBe(id);
+    expect(activityListSchema.parse({ taskId: input })).toEqual({ taskId: id });
+  }
+  for (const input of ["019abcdf", id.slice(0, -1), id + "0", "019a-bcdf123470008000123456abcdef", id + " ", "", null, 1]) {
+    const result = activityListSchema.safeParse({ taskId: input });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toEqual(["taskId"]);
+      expect(result.error.issues[0]?.message.toLowerCase()).toContain("task");
+    }
+  }
+});
+
+test("deleted-history selection requires a key and excludes exact task IDs", () => {
+  for (const showDeleted of [false, true]) {
+    expect(activityListSchema.parse({ taskKey: "app-1", showDeleted }))
+      .toEqual({ taskKey: "APP-1", showDeleted });
+    expect(activityListSchema.safeParse({ showDeleted }).success).toBe(false);
+    expect(activityListSchema.safeParse({ taskId: "019abcdf-1234-7000-8000-123456abcdef", showDeleted }).success).toBe(false);
+  }
+  expect(activityListSchema.safeParse({ taskKey: "APP-1", taskId: "019abcdf-1234-7000-8000-123456abcdef" }).success).toBe(false);
+  for (const showDeleted of [null, "false", 0]) {
+    expect(activityListSchema.safeParse({ taskKey: "APP-1", showDeleted }).success).toBe(false);
+  }
 });
 
 test("session and thread filters preserve exact opaque values and reject empty or non-string inputs", () => {

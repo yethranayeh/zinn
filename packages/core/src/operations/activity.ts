@@ -1,15 +1,12 @@
 import { CoreError } from "../errors.js";
 import type { ActivityListInput } from "../schemas/activity.js";
 
-import {
-  activityIdSchema,
-  activityListSchema,
-  activityTaskKeySchema,
-} from "../schemas/activity.js";
+import { activityIdSchema, activityListSchema } from "../schemas/activity.js";
 import { validateTaskInput } from "../schemas/task.js";
 import { standardizeProjectKey } from "../lib.js";
-import { findTaskByExactKey } from "./shared.js";
+import { attachTaskKey, findTaskByExactKey } from "./shared.js";
 import * as dbActivity from "../db/activity.js";
+import * as dbTask from "../db/task.js";
 
 export type ActivityTaskIdentity = {
   id: string;
@@ -18,10 +15,23 @@ export type ActivityTaskIdentity = {
   status: "active" | "archived" | "deleted";
 };
 
-function resolveTaskHistory(taskKey: string) {
+type ActivityTaskSelector = Pick<ActivityListInput, "taskKey" | "taskId" | "showDeleted">;
+
+function resolveTaskHistory({ taskKey, taskId, showDeleted }: ActivityTaskSelector) {
   const identities = new Map<string, ActivityTaskIdentity>();
   const projectDeletionIds: Array<string> = [];
-  const currentTask = findTaskByExactKey(taskKey);
+  let currentTask = taskKey === undefined ? null : findTaskByExactKey(taskKey);
+  if (taskId !== undefined) {
+    const taskById = dbTask.getById(taskId);
+    currentTask = taskById == null ? null : attachTaskKey(taskById);
+  }
+
+  if (showDeleted === false && currentTask == null) {
+    throw new CoreError(`Task "${taskKey}" does not exist`, "missing", {
+      entity: "task",
+      key: taskKey,
+    });
+  }
 
   if (currentTask != null) {
     identities.set(currentTask.id, {
@@ -32,12 +42,16 @@ function resolveTaskHistory(taskKey: string) {
     });
   }
 
+  if (showDeleted === false) {
+    return { identities: [...identities.values()], projectDeletionIds };
+  }
+
   function addSnapshot(id: unknown, key: unknown, title: unknown) {
     const isMatchingSnapshot =
       typeof id === "string" &&
       typeof key === "string" &&
       typeof title === "string" &&
-      standardizeProjectKey(key) === taskKey;
+      (taskId === undefined ? standardizeProjectKey(key) === taskKey : id === taskId);
 
     if (!isMatchingSnapshot) {
       return false;
@@ -69,12 +83,12 @@ export const activity = {
     const props = validateTaskInput(activityListSchema, input);
     let events;
 
-    if (props.taskKey === undefined) {
+    if (props.taskKey === undefined && props.taskId === undefined) {
       events = dbActivity.getAll();
     } else {
-      const { identities, projectDeletionIds } = resolveTaskHistory(props.taskKey);
+      const { identities, projectDeletionIds } = resolveTaskHistory(props);
       events = dbActivity.getAllForTasks(
-        identities.map((identity) => identity.id),
+        props.taskId === undefined ? identities.map((identity) => identity.id) : [props.taskId],
         projectDeletionIds,
       );
     }
@@ -119,8 +133,12 @@ export const activity = {
     return matches[0]!;
   },
   getIds: dbActivity.getIds,
-  getTaskIdentities: (taskKey: string) => {
-    const normalizedKey = validateTaskInput(activityTaskKeySchema, taskKey);
-    return resolveTaskHistory(normalizedKey).identities;
+  getTaskIdentities: (input: string | ActivityTaskSelector) => {
+    const props = validateTaskInput(
+      activityListSchema,
+      typeof input === "string" ? { taskKey: input } : input,
+    );
+
+    return resolveTaskHistory(props).identities;
   },
 };

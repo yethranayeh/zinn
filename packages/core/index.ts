@@ -82,6 +82,7 @@ export {
   activityIdSchema,
   activityListSchema,
   activityTaskKeySchema,
+  activityTaskIdSchema,
   activityLimitMessage,
   minimumActivityIdLength,
 } from "./src/schemas/activity.js";

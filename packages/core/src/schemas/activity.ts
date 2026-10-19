@@ -57,15 +57,55 @@ export const activityIdSchema = z
   })
   .transform((value) => value.replaceAll("-", "").toLowerCase());
 
-export const activityListSchema = z.strictObject({
-  taskKey: activityTaskKeySchema.optional(),
-  sessionId: z.string().min(1, "Session ID cannot be empty").optional(),
-  threadId: z.string().min(1, "Thread ID cannot be empty").optional(),
-  limit: z
-    .number({ error: activityLimitMessage })
-    .int(activityLimitMessage)
-    .min(1, activityLimitMessage)
-    .optional(),
-});
+/** Accepts the full UUID spellings used by activity lookup, without any prefixes */
+export const activityTaskIdSchema = z
+  .string({ error: "Task ID must be a string" })
+  .transform((value, context) => {
+    const parsed = activityIdSchema.safeParse(value);
+    if (!parsed.success || parsed.data.length !== UUID_HEX_LENGTH) {
+      context.addIssue({
+        code: "custom",
+        message: "Invalid task ID. Use a full UUID with canonical hyphens or 32 hexadecimal digits",
+      });
+      return z.NEVER;
+    }
+
+    return parsed.data.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+  });
+
+export const activityListSchema = z
+  .strictObject({
+    taskKey: activityTaskKeySchema.optional(),
+    taskId: activityTaskIdSchema.optional(),
+    showDeleted: z.boolean().optional(),
+    sessionId: z.string().min(1, "Session ID cannot be empty").optional(),
+    threadId: z.string().min(1, "Thread ID cannot be empty").optional(),
+    limit: z
+      .number({ error: activityLimitMessage })
+      .int(activityLimitMessage)
+      .min(1, activityLimitMessage)
+      .optional(),
+  })
+  .superRefine((value, context) => {
+    const hasBothTaskSelectors = value.taskKey !== undefined && value.taskId !== undefined;
+    if (hasBothTaskSelectors) {
+      context.addIssue({
+        code: "custom",
+        path: ["taskId"],
+        message: "Use either taskKey or taskId",
+      });
+    }
+
+    const hasUnscopedDeletedSelection =
+      value.showDeleted !== undefined && value.taskKey === undefined;
+
+    if (hasUnscopedDeletedSelection) {
+      context.addIssue({
+        code: "custom",
+        path: ["showDeleted"],
+        message: "showDeleted requires taskKey",
+      });
+    }
+  });
 
 export type ActivityListInput = z.input<typeof activityListSchema>;
