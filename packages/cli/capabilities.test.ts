@@ -22,11 +22,23 @@ test("the emitted contract covers every route and finite result, including itsel
     runtime: process.execPath, entryPoint, packageDirectory,
     directory: join(root, "discovery"), env, expected: manifest,
   });
-  expect(actual.commands).toEqual(parseRoutes(routes).map(({ command, summary, input, effects, confirmation, results }) => ({
-    path: command.split(" "), summary, input, effects, confirmation, results,
-  })));
-  const validate = capabilityValidator(actual).getSchema("results#/definitions/Capabilities")!;
+  const commands = new Map(actual.commands.map((command) => [command.path.join(" "), command]));
+  expect(commands.size).toBe(actual.commands.length);
+  expect(commands.size).toBe(parseRoutes(routes).length);
+  const validator = capabilityValidator(actual);
+  for (const route of parseRoutes(routes)) {
+    const command = commands.get(route.command);
+    expect(command).toBeDefined();
+    expect(command!.results.length).toBeGreaterThan(0);
+    for (const result of command!.results) {
+      expect(validator.getSchema(`results#${result.schemaRef.slice("#/schemas".length)}`)).toBeDefined();
+    }
+  }
+  const validate = validator.getSchema("results#/definitions/Capabilities")!;
   expect(validate({ ...actual, manifestVersion: 2 })).toBe(false);
+  const canonicalArgv = actual.invocation.canonicalArgv;
+  expect(validate({ ...actual, invocation: { ...actual.invocation, canonicalArgv: [...canonicalArgv].reverse() } })).toBe(false);
+  expect(validate({ ...actual, invocation: { ...actual.invocation, canonicalArgv: canonicalArgv.map(() => canonicalArgv[0]) } })).toBe(false);
   expect(validate({ ...actual, commands: [{ ...actual.commands[0], run: "implementation" }] })).toBe(false);
   const { error, ...missing } = actual;
   expect(validate(missing)).toBe(false);
@@ -109,6 +121,13 @@ test("text summary, help precedence and invalid invocations preserve the CLI con
   expect(text.stdout).toContain(manifest.cli.name);
   expect(text.stdout).toContain(manifest.cli.version);
   expect(text.stdout).toContain("zinn capabilities --json");
+  const debug = runCli(["capabilities", "--json"], {
+    ...options, env: { ...options.env, ZINN_DEBUG: "1" },
+  });
+  expect(debug.code, debug.stderr).toBe(0);
+  const parsedGroups = debug.stderr.split("\n").filter((line) => line.startsWith("::router.parseRoutes["));
+  expect(parsedGroups.length).toBeGreaterThan(0);
+  expect(new Set(parsedGroups).size).toBe(parsedGroups.length);
   const help = runCli(["capabilities", "--help", "--json", "--unknown"], options);
   expect(help.code, help.stderr).toBe(0);
   expect(help.stdout).toContain("Usage:");
@@ -118,4 +137,28 @@ test("text summary, help precedence and invalid invocations preserve the CLI con
     expect(result.stdout).toBe("");
     expect(JSON.parse(result.stderr).error.code).toBe("invalid_input");
   }
+});
+
+test("text discovery does not generate result schemas", () => {
+  const directory = join(root, "summary");
+  mkdirSync(directory);
+  const preload = join(directory, "guard.ts");
+  const schemas = fileURLToPath(new URL("./src/result-schemas.ts", import.meta.url));
+  writeFileSync(preload, `
+    import { mock } from "bun:test";
+    const schemas = await import(${JSON.stringify(schemas)});
+    mock.module(${JSON.stringify(schemas)}, () => ({
+      ...schemas,
+      generateResultSchemas() { throw new Error("Unexpected schema generation"); },
+    }));
+  `);
+  const invoke = (args: string[]) => Bun.spawnSync([process.execPath, "--preload", preload, entryPoint, "capabilities", ...args], {
+    cwd: directory, env: { ...env, ZINN_DIR: join(directory, "store") },
+  });
+  const text = invoke([]);
+  expect(text.exitCode, text.stderr.toString()).toBe(0);
+  expect(text.stdout.toString()).toContain(manifest.cli.name);
+  const json = invoke(["--json"]);
+  expect(json.exitCode).toBe(1);
+  expect(JSON.parse(json.stderr.toString()).error.code).toBe("internal");
 });

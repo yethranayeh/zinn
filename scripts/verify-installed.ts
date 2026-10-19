@@ -18,6 +18,10 @@ import { createPackageTestCopy, PACKAGE_NAMES, readNodeMinimum } from "./package
 import { readVerifiedDownload } from "./archive-cache.ts";
 import { checkSkillExamples, readWorkflowSkill } from "./skill-checks.ts";
 import { runCli } from "../packages/cli/testing.ts";
+import {
+  checkCapabilityDiscovery,
+  checkCapabilityConsumer,
+} from "../packages/cli/capability-checks.ts";
 import type { Capabilities } from "../packages/cli/src/capabilities.ts";
 
 const REPOSITORY_DIRECTORY = fileURLToPath(new URL("..", import.meta.url));
@@ -178,7 +182,6 @@ async function prepareNodeRuntimes(
 }
 
 async function installPackedZinnPackages(root: string) {
-  const { checkCapabilityDiscovery } = await import("../packages/cli/capability-checks.ts");
   console.log(
     "Building and packing Zinn in a temporary copy, then installing it in an empty test folder...",
   );
@@ -249,6 +252,7 @@ async function installPackedZinnPackages(root: string) {
     entryPoint: join(repository, "packages/cli/index.ts"),
     packageDirectory: join(repository, "packages/cli"),
     directory: join(root, "capabilities-source"),
+    timeoutMs: COMMAND_TIMEOUT_MS,
     env: TOOL_ENVIRONMENT,
   });
   checkCapabilityDiscovery({
@@ -256,6 +260,7 @@ async function installPackedZinnPackages(root: string) {
     entryPoint: join(repository, "packages/cli/dist/index.js"),
     packageDirectory: join(repository, "packages/cli/dist"),
     directory: join(root, "capabilities-build"),
+    timeoutMs: COMMAND_TIMEOUT_MS,
     env: TOOL_ENVIRONMENT,
     expected: sourceContract,
   });
@@ -269,8 +274,6 @@ async function checkRuntime(
   installedCli: string,
   sourceContract: Capabilities,
 ) {
-  const { checkCapabilityDiscovery, checkCapabilityConsumer } =
-    await import("../packages/cli/capability-checks.ts");
   const directory = join(root, runtime.adapter + "-" + runtime.name.replaceAll(" ", "-"));
   const home = join(directory, "home");
   mkdirSync(home, { recursive: true });
@@ -297,6 +300,7 @@ async function checkRuntime(
     entryPoint: join(installedCli, manifest.bin.zinn),
     packageDirectory: installedCli,
     directory: join(directory, "capabilities"),
+    timeoutMs: COMMAND_TIMEOUT_MS,
     env,
     expected: sourceContract,
   });
@@ -305,6 +309,7 @@ async function checkRuntime(
       runtime: runtime.executable,
       cliPath: join(installedCli, manifest.bin.zinn),
       cwd: consumer,
+      timeoutMs: COMMAND_TIMEOUT_MS,
       env: { ...env, ZINN_DIR: join(directory, "capability-consumer") },
     }),
   );

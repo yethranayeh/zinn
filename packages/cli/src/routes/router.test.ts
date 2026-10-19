@@ -1,9 +1,10 @@
-import type { Command, RouteDef } from "../types";
+import type { Command, ParsedRoute, RouteDef } from "../types";
 
 import { test, expect, mock, spyOn } from "bun:test";
 import { isLegacyReadAllowed, setLegacyReadAllowed } from "../lib";
 import { createRouter, parseRoutes } from "./router";
 import { jsonResult } from "../results";
+import { getCliOpenPolicy } from "../database";
 
 // Routing reads only run and help; the rest fills the Command type
 const commandMetadata = {
@@ -15,6 +16,45 @@ const commandMetadata = {
 } satisfies Omit<Command, "run" | "help">;
 
 const mockCommand: Command = { ...commandMetadata, run: mock(() => {}), help: `` };
+
+test("beforeRun receives the matched route after flags and completes once before the handler", async () => {
+  const events: string[] = [];
+  const completion = Promise.withResolvers<void>();
+  const run = mock(() => { events.push("run"); });
+  const beforeRun = mock(async (command: ParsedRoute) => {
+    expect(command.command).toBe("foo bar");
+    expect(getCliOpenPolicy().allowsLegacyRead).toBe(true);
+    events.push("beforeRun");
+    await completion.promise;
+    events.push("ready");
+  });
+  const router = createRouter({ foo: { bar: { ...commandMetadata, run, help: "" } } }, beforeRun);
+  try {
+    const routed = router.route(["foo", "bar", "--allow-legacy-read", "value"]);
+    expect(events).toEqual(["beforeRun"]);
+    expect(run).not.toHaveBeenCalled();
+    completion.resolve();
+    await routed;
+    expect(events).toEqual(["beforeRun", "ready", "run"]);
+    expect(beforeRun).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledWith(["value"]);
+  } finally {
+    setLegacyReadAllowed(false);
+  }
+});
+
+test("help skips beforeRun", async () => {
+  const beforeRun = mock(() => {});
+  const run = mock(() => {});
+  const info = spyOn(console, "info").mockImplementation(() => {});
+  try {
+    await createRouter({ foo: { ...commandMetadata, run, help: "" } }, beforeRun).route(["foo", "--help"]);
+    expect(beforeRun).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+  } finally {
+    info.mockRestore();
+  }
+});
 
 test("command nesting is properly parsed", () => {
   const routes: RouteDef = {

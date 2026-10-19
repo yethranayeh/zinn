@@ -258,10 +258,10 @@ async function route(
 }
 
 export function createRouter(
-  routesDef: RouteDef,
+  routesDef: RouteDef | Array<ParsedRoute>,
   beforeRun?: (command: ParsedRoute) => void | Promise<void>,
 ) {
-  const parsedRoutes = parseRoutes(routesDef);
+  const parsedRoutes = Array.isArray(routesDef) ? routesDef : parseRoutes(routesDef);
 
   return {
     route: async (args: Array<string>) => {

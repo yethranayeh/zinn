@@ -16,8 +16,8 @@ if (isVersionRequest) {
 
   try {
     const { createRouter } = await import("./src/routes/router.js");
-    const { routes } = await import("./src/routes/routes.js");
-    const router = createRouter(routes, async (command) => {
+    const { parsedRoutes } = await import("./src/routes/routes.js");
+    const router = createRouter(parsedRoutes, async (command) => {
       if (command.effects.storage === "none") {
         return;
       }

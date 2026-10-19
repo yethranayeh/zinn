@@ -27,10 +27,7 @@ export function getCliOpenPolicy(): OpenPolicy {
     // The script the CLI runs from; the runtime itself when there is none.
     executable: process.argv[1] ?? process.execPath,
     release: RELEASE_MODE,
-    // Read when the database opens, after the router has handled `--allow-legacy-read`
-    get allowsLegacyRead() {
-      return isLegacyReadAllowed();
-    },
+    allowsLegacyRead: isLegacyReadAllowed(),
     onWait: reportLockWait,
     onLegacyRead: reportLegacyRead,
   };

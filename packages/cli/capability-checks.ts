@@ -1,4 +1,5 @@
 import type { Capabilities } from "./src/capabilities";
+import type { InputOption } from "./src/input";
 
 import { strict as assert } from "node:assert";
 import { createHash } from "node:crypto";
@@ -74,6 +75,7 @@ export function checkCapabilityDiscovery(options: {
   directory: string;
   env: Record<string, string | undefined>;
   expected?: Capabilities;
+  timeoutMs?: number;
 }): Capabilities {
   const { directory } = options;
   const home = join(directory, "home");
@@ -84,7 +86,8 @@ export function checkCapabilityDiscovery(options: {
   writeFileSync(unavailableStore, "a file cannot contain a database directory");
   const guard = join(directory, "discovery-guard.mjs");
   copyFileSync(new URL("./discovery-guard.mjs", import.meta.url), guard);
-  const before = inventory(directory);
+  const inventoriedDirectories = [...new Set([directory, options.packageDirectory])];
+  const before = inventoriedDirectories.map(inventory);
   const env = {
     ...options.env,
     HOME: home,
@@ -99,6 +102,7 @@ export function checkCapabilityDiscovery(options: {
     cliPath: options.entryPoint,
     cwd: directory,
     env,
+    timeoutMs: options.timeoutMs,
   });
   assert.equal(discovered.code, 0, discovered.stderr);
   const manifest: Capabilities = JSON.parse(discovered.stdout);
@@ -107,6 +111,7 @@ export function checkCapabilityDiscovery(options: {
     cliPath: guard,
     cwd: directory,
     env,
+    timeoutMs: options.timeoutMs,
   });
   assert.equal(intercepted.code, 0, intercepted.stderr);
   assert.deepEqual(JSON.parse(intercepted.stdout), manifest);
@@ -114,7 +119,7 @@ export function checkCapabilityDiscovery(options: {
   assert.deepEqual(manifest.cli, { name: identity.name, version: identity.version });
   capabilityValidator(manifest);
   assert.ok(manifest.commands.some(({ path }) => path.join(" ") === "capabilities"));
-  assert.deepEqual(inventory(directory), before);
+  assert.deepEqual(inventoriedDirectories.map(inventory), before);
   if (options.expected) {
     const { cli: expectedIdentity, ...expected } = options.expected;
     const { cli: actualIdentity, ...actual } = manifest;
@@ -158,7 +163,7 @@ export function capabilityConsumer(
     assert.ok(form, "No matching positional form");
     const args = [...command.path];
     for (const [name, value] of Object.entries(options)) {
-      const option = command.input.options[name];
+      const option: InputOption | undefined = command.input.options[name];
       assert.ok(option, `Unknown option ${name}`);
       if (option.type === "boolean") {
         assert.equal(typeof value, "boolean");

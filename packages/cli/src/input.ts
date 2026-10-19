@@ -1,40 +1,62 @@
-import type { ParseArgsOptionsConfig } from "node:util";
+import { z } from "zod";
 
-export type InputValue = {
-  kind: string;
-  name?: string;
-  choices?: readonly string[];
-  caseInsensitive?: boolean;
-  pattern?: string;
-  description?: string;
-};
+export const inputValueSchema = z.strictObject({
+  kind: z.string(),
+  name: z.string().optional(),
+  choices: z.array(z.string()).readonly().optional(),
+  caseInsensitive: z.boolean().optional(),
+  pattern: z.string().optional(),
+  description: z.string().optional(),
+});
+export const inputOptionSchema = z.strictObject({
+  type: z.enum(["string", "boolean"]),
+  short: z.string().optional(),
+  multiple: z.boolean().optional(),
+  default: z.union([z.string(), z.boolean(), z.array(z.string()), z.array(z.boolean())]).optional(),
+  required: z.boolean().optional(),
+  value: inputValueSchema.optional(),
+  description: z.string().optional(),
+});
+export const inputOptionsSchema = z.record(z.string(), inputOptionSchema);
+const inputReferenceSchema = z.templateLiteral([
+  z.enum(["option:", "positional:"]),
+  z.string().min(1),
+]);
+const members = z.array(inputReferenceSchema).readonly();
+const inputConstraintSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("exclusive"), members }),
+  z.strictObject({
+    kind: z.literal("requires"),
+    input: inputReferenceSchema,
+    requires: inputReferenceSchema,
+  }),
+  z.strictObject({ kind: z.literal("atLeastOne"), members }),
+]);
+const positionalInputSchema = z.strictObject({
+  name: z.string(),
+  min: z.union([z.literal(0), z.literal(1)]),
+  max: z.literal(1).nullable(),
+  value: inputValueSchema,
+});
+const inputFormSchema = z.strictObject({
+  id: z.string(),
+  positionals: z.array(positionalInputSchema).readonly(),
+});
+export const commandInputSchema = z.strictObject({
+  options: inputOptionsSchema,
+  forms: z.array(inputFormSchema).min(1).readonly(),
+  constraints: z.array(inputConstraintSchema).readonly(),
+  notes: z.array(z.string()).readonly().optional(),
+});
 
-export type InputOption = ParseArgsOptionsConfig[string] & {
-  required?: boolean;
-  value?: InputValue;
-  description?: string;
-};
-
-export type InputOptions = Record<string, InputOption>;
-export type PositionalInput = {
-  name: string;
-  min: 0 | 1;
-  max: 1 | null;
-  value: InputValue;
-};
-export type InputForm = { id: string; positionals: readonly PositionalInput[] };
-export type InputReference = `option:${string}` | `positional:${string}`;
-export type InputConstraint =
-  | { kind: "exclusive"; members: readonly InputReference[] }
-  | { kind: "requires"; input: InputReference; requires: InputReference }
-  | { kind: "atLeastOne"; members: readonly InputReference[] };
-
-export type CommandInput = {
-  options: InputOptions;
-  forms: readonly InputForm[];
-  constraints: readonly InputConstraint[];
-  notes?: readonly string[];
-};
+export type InputValue = z.infer<typeof inputValueSchema>;
+export type InputOption = z.infer<typeof inputOptionSchema>;
+export type InputOptions = z.infer<typeof inputOptionsSchema>;
+export type PositionalInput = z.infer<typeof positionalInputSchema>;
+export type InputForm = z.infer<typeof inputFormSchema>;
+export type InputReference = z.infer<typeof inputReferenceSchema>;
+export type InputConstraint = z.infer<typeof inputConstraintSchema>;
+export type CommandInput = z.infer<typeof commandInputSchema>;
 
 export const taskKeyPositional = {
   name: "task-key",

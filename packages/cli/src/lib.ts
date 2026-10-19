@@ -24,6 +24,10 @@ export function setOutputMode(mode: OutputMode) {
   outputMode = mode;
 }
 
+export function getOutputMode(): OutputMode {
+  return outputMode;
+}
+
 /** Selects output before routing, without treating words after `--` as flags. */
 export function prepareOutput(args: Array<string>) {
   const separatorIndex = args.indexOf(DOUBLE_DASH);

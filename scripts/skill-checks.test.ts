@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readWorkflowSkill, checkSkillExamples } from "./skill-checks.ts";
@@ -44,7 +44,10 @@ test.each(["0.0.0", "999.0.0", undefined])("pnpm publish blocks an unmatched ski
     for (const file of ["verify-installed.ts", "skill-checks.ts", "package-fixture.ts", "archive-cache.ts"]) {
       copyFileSync(join(import.meta.dir, file), join(directory, "scripts", file));
     }
-    copyFileSync(join(cliDirectory, "testing.ts"), join(packageDirectory, "testing.ts"));
+    for (const file of ["testing.ts", "capability-checks.ts"]) {
+      copyFileSync(join(cliDirectory, file), join(packageDirectory, file));
+    }
+    symlinkSync(join(cliDirectory, "node_modules"), join(packageDirectory, "node_modules"), "junction");
     const packagePath = join(packageDirectory, "package.json");
     const fixtureManifest = JSON.parse(readFileSync(packagePath, "utf8"));
     fixtureManifest.scripts.prepack = "bun ../../prepack.ts";

@@ -2,8 +2,7 @@ import type { Command } from "./types.js";
 
 import { invocation } from "./input.js";
 import { generateResultSchemas } from "./result-schemas.js";
-import { parseRoutes } from "./routes/router.js";
-import { routes } from "./routes/routes.js";
+import { parsedRoutes } from "./routes/routes.js";
 
 import packageJson from "../package.json" with { type: "json" };
 
@@ -18,21 +17,29 @@ export type Capabilities = {
   schemas: ReturnType<typeof generateResultSchemas>;
 };
 
+export function getCapabilitySummary() {
+  return {
+    cli: { name: packageJson.name, version: packageJson.version },
+    commandCount: parsedRoutes.length,
+    manifestVersion: 1,
+  };
+}
+
 export function generateCapabilities(): Capabilities {
+  const { cli } = getCapabilitySummary();
+
   return {
     manifestVersion: 1,
-    cli: { name: packageJson.name, version: packageJson.version },
+    cli,
     invocation,
-    commands: parseRoutes(routes).map(
-      ({ command, summary, input, effects, confirmation, results }) => ({
-        path: command.split(" "),
-        summary,
-        input,
-        effects,
-        confirmation,
-        results,
-      }),
-    ),
+    commands: parsedRoutes.map(({ command, summary, input, effects, confirmation, results }) => ({
+      path: command.split(" "),
+      summary,
+      input,
+      effects,
+      confirmation,
+      results,
+    })),
     error: { schemaRef: "#/schemas/definitions/ErrorEnvelope", exitCode: 1, stream: "stderr" },
     schemas: generateResultSchemas(),
   };

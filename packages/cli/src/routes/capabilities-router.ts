@@ -3,7 +3,8 @@ import type { Command } from "../types.js";
 import { parseArgs } from "node:util";
 
 import { generateCommandUsage, noInput } from "../input.js";
-import { output, validatePositionals } from "../lib.js";
+import { getOutputMode, output, validatePositionals } from "../lib.js";
+import { formatCapabilities } from "../presentation/capabilities-presentation.js";
 import { jsonResult } from "../results.js";
 
 export const capabilitiesCommand = {
@@ -22,12 +23,12 @@ export const capabilitiesCommand = {
 
     validatePositionals(positionals, noInput.forms[0]);
 
-    const { generateCapabilities } = await import("../capabilities.js");
-    output(
-      generateCapabilities(),
-      (manifest) =>
-        `${manifest.cli.name} ${manifest.cli.version} (Experimental): ${manifest.commands.length} commands, manifest format ${manifest.manifestVersion}.\nRun zinn capabilities --json for the full contract.`,
-    );
+    const { generateCapabilities, getCapabilitySummary } = await import("../capabilities.js");
+    if (getOutputMode() === "json") {
+      output(generateCapabilities(), () => formatCapabilities(getCapabilitySummary()));
+    } else {
+      output(getCapabilitySummary(), formatCapabilities);
+    }
   },
   help: `${generateCommandUsage("capabilities", noInput)}
 

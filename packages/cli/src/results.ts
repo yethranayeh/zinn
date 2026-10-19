@@ -1,16 +1,28 @@
 import type { ResultSchemaName } from "./result-schemas.js";
 
-export type ResultSelector =
-  | { kind: "always" }
-  | { kind: "booleanOption"; name: string; value: boolean }
-  | { kind: "positionalCount"; name: string; min: number; max: number | null };
+import { z } from "zod";
 
-export type CommandResult = {
-  selector: ResultSelector;
+export const resultSelectorSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("always") }),
+  z.strictObject({ kind: z.literal("booleanOption"), name: z.string(), value: z.boolean() }),
+  z.strictObject({
+    kind: z.literal("positionalCount"),
+    name: z.string(),
+    min: z.number().int().nonnegative(),
+    max: z.number().int().nonnegative().nullable(),
+  }),
+]);
+export const resultReferenceSchema = z.string().regex(/^#\/schemas\/definitions\/[^/]+$/);
+export const commandResultSchema = z.strictObject({
+  selector: resultSelectorSchema,
+  schemaRef: resultReferenceSchema,
+  mode: z.literal("json"),
+  stream: z.literal("stdout"),
+  exitCode: z.literal(0),
+});
+export type ResultSelector = z.infer<typeof resultSelectorSchema>;
+export type CommandResult = z.infer<typeof commandResultSchema> & {
   schemaRef: `#/schemas/definitions/${ResultSchemaName}`;
-  mode: "json";
-  stream: "stdout";
-  exitCode: 0;
 };
 
 export function jsonResult(

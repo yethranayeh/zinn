@@ -29,12 +29,10 @@ test("the CLI opens the database as the cli client of its own release mode, with
 });
 
 test("the policy allows legacy reads only once --allow-legacy-read was handled", () => {
-  const policy = getCliOpenPolicy();
-
   try {
-    expect(policy.allowsLegacyRead).toBe(false);
+    expect(getCliOpenPolicy().allowsLegacyRead).toBe(false);
     setLegacyReadAllowed(true);
-    expect(policy.allowsLegacyRead).toBe(true);
+    expect(getCliOpenPolicy().allowsLegacyRead).toBe(true);
   } finally {
     setLegacyReadAllowed(false);
   }

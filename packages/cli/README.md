@@ -632,22 +632,23 @@ zinn capabilities --json
 The JSON document contains `manifestVersion`, `cli` (package `name` and `version`), `invocation`, `commands`, `error`, and `schemas`. Commands follow route order and include capabilities itself. Each command has a token-array `path`, `summary`, `input`, `effects`, `confirmation`, and finite `results`.
 
 - `input.options` is keyed by option name. Each option declares its `type`; omitted `required` and `multiple` mean false. String values can carry named placeholders, choices, patterns and descriptions. Positional `forms` declare ordered names, minimum and maximum occurrences (`null` means no upper bound), and value facts. Choose the form that matches the supplied values. `constraints` describes mutual exclusion, requirements and requests needing at least one input. Optional `notes` explain resolver and domain behavior.
-- `invocation` describes router options, help/version precedence and literal values. Build argv from the command path, command options (`--name=value` for strings), `--json`, then `--` and the positional words. Repeat an option only when `multiple` is true. Tokens after `--` are literal words.
+- `invocation` describes router options, help/version precedence and literal values. Build argv from the command path, command options (`--name=value` for strings), `--json`, then `--` and the positional words when there are any. Repeat an option only when `multiple` is true. Tokens after `--` are literal words.
 - `results` selects a JSON success schema: `always`, `booleanOption` (an absent boolean is false), or `positionalCount` (inclusive bounds, counting supplied occurrences, including repeated keys). Each result declares its `mode`, `stream` and `exitCode`.
 - A descriptor's `schemaRef`, such as `#/schemas/definitions/TaskList`, resolves against the whole manifest. JSON Schema `$ref` values resolve against the extracted `schemas` document, which uses draft-07. All references are local. The finite `Capabilities` definition describes the manifest without embedding another manifest value.
 - `effects.domain` describes the domain operation. `effects.storage: "normal-open"` can create or upgrade storage under the normal open policy, including for reads. `"none"` performs no storage access. Administrative commands declare their own storage operation. `confirmation` describes the existing prompt and project-deletion rules; see [Confirmations](#confirmations).
 
-Check the process exit status before selecting a stream. Successful JSON goes to stdout, and notices may appear as text on stderr. A handled failure exits `1` and emits one error document on stderr, described by root `error.schemaRef`, with no success stdout.
+See [Scripting and JSON output](#scripting-and-json-output) for success and failure streams, error codes, details and exceptions. The manifest's `error.schemaRef` describes the error document. Help remains text even with `--json`.
 
-See [Scripting and JSON output](#scripting-and-json-output) for error codes, details and exceptions. Help remains text even with `--json`.
-
-For example, this Node.js consumer discovers task-list syntax and its result reference, then lists a project in the selected store:
+For example, with `@zinn-dev/cli` installed in the consumer project, this Node.js consumer discovers task-list syntax and its result reference, then lists a project in the selected store. It invokes the package entrypoint directly on every platform:
 
 ```js
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const entryPoint = fileURLToPath(import.meta.resolve("@zinn-dev/cli"));
 
 function json(args) {
-	const result = spawnSync("zinn", args, { encoding: "utf8" });
+	const result = spawnSync(process.execPath, [entryPoint, ...args], { encoding: "utf8" });
 	if (result.error) {
 		throw result.error;
 	}
@@ -664,7 +665,11 @@ const command = manifest.commands.find(({ path }) => path.join(" ") === "task li
 const form = command.input.forms[0];
 const values = { "project-key": "APP" };
 const words = form.positionals.flatMap(({ name }) => (values[name] === undefined ? [] : [values[name]]));
-const tasks = json([...command.path, "--json", manifest.invocation.optionSeparator, ...words]);
+const args = [...command.path, "--json"];
+if (words.length > 0) {
+	args.push(manifest.invocation.optionSeparator, ...words);
+}
+const tasks = json(args);
 const result = command.results.find(({ selector }) => selector.kind === "always");
 
 console.log({ schemaRef: result.schemaRef, tasks });
