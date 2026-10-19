@@ -19,17 +19,15 @@ Read the [installation guide](https://zinn.sh/docs/installation) for requirement
 
 ## Zinn: a kanban CLI for your terminal
 
-Zinn is an Experimental kanban task manager for the terminal.
+Zinn is an Experimental task manager for you and the agents you work with.
 
-Organize work into projects, columns and tasks. Manage it from the command line, with descriptions, priorities, labels and comments to keep the detail close. Projects and tasks are stored in a local SQLite database.
-
-For developers who already work in the terminal, the board is another command away. Scripts and agents can read and write tasks using the CLI's JSON output.
+Each project is a board of columns and tasks. You and your agents create, move and comment on the same tasks with the same commands, and all of it lives in one SQLite database on your machine.
 
 ## Start a project. Move the work.
 
 Create a project, add a task, then move it into In Progress. Each project begins with Backlog, TODO, In Progress, Review and Done columns, which you can rename or extend.
 
-Use descriptions for scope, comments for updates and labels and priorities to organize tasks. Connect work with related, dependency, duplicate and subtask relations. Search titles, descriptions and comments, and archive tasks when they no longer belong in the active list.
+Descriptions hold the scope and comments the updates. Labels and priorities organize the work, and related, dependency, duplicate and subtask relations connect it. Search covers titles, descriptions and comments, and archiving hides finished tasks from active lists.
 
 \`\`\`sh
 zinn project create DEMO --name 'Release work'
@@ -38,19 +36,25 @@ zinn task move DEMO-1 'In Progress'
 zinn task list DEMO --json
 \`\`\`
 
-Add \`--json\` to any command for a single JSON document on stdout. Empty lists return \`[]\`; errors go to stderr as JSON with exit code 1. Use \`--yes\` to skip confirmation prompts in scripts and agent workflows.
+## Work alongside your agents
+
+Zinn doesn't stop at who changed a task. It takes you back into the conversation that made the change.
+
+[Activity](https://zinn.sh/docs/cli#activity) records the agent and session behind a change, and \`zinn activity list --task <task-key>\` lists the changes to a task. Claude Code and Codex sessions are recorded without setup.
+
+The Zinn workflow skill teaches an agent to find its task, keep context in comments, record follow-ups and hand off at the project's review column. [Set it up for your agent](https://zinn.sh/docs/installation#use-with-coding-agents).
+
+For scripts, \`--json\` prints one JSON document on stdout. A failure exits with code 1 and writes a JSON error to stderr, with a code scripts can match. \`zinn capabilities --json\` describes every command's inputs, effects and result schemas, and \`--yes\` confirms prompts. Read [scripting and JSON output](https://zinn.sh/docs/scripting) for the details.
 
 ## Keep the work local
 
-The default database is \`~/.zinn/data/zinn.sqlite\`. Set \`storage.directory\` in a codebase's \`zinn.local.json\` or in \`~/.zinn/settings.json\` to keep it elsewhere. \`ZINN_DIR\` overrides both for the commands that carry it.
+Every project lives in one SQLite database, \`~/.zinn/data/zinn.sqlite\` by default. Keep it elsewhere with [settings](https://zinn.sh/docs/settings).
 
-\`zinn backup\` saves a database snapshot, and \`zinn restore\` puts one back after saving the current database. A newer Zinn upgrades an older database, and \`zinn migrate\` runs that upgrade after saving a backup.
-
-Read [Settings](https://zinn.sh/docs/settings) and [Data and backups](https://zinn.sh/docs/data) for storage, backup, restore and upgrade details.
+\`zinn backup\` saves a database snapshot, and \`zinn restore\` puts one back after saving the current database. A newer release upgrades an older database the first time it opens it, saving a backup first. Read [data and backups](https://zinn.sh/docs/data) for the details.
 
 ## Take the next command
 
-Read the [quick start](https://zinn.sh/docs/quick-start) or [CLI reference](https://zinn.sh/docs/cli), browse the [Zinn source on GitHub](${projectLinks.github}) or find the [Zinn CLI package on npm](${projectLinks.npm}).
+Read the [quick start](https://zinn.sh/docs/quick-start) or [project reference](https://zinn.sh/docs/cli#start-a-project), browse the [Zinn source on GitHub](${projectLinks.github}) or find the [Zinn CLI package on npm](${projectLinks.npm}).
 
 Read [About Zinn](https://zinn.sh/about), [Contact](https://zinn.sh/contact) and [Privacy](https://zinn.sh/privacy).
 

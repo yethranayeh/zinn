@@ -58,14 +58,12 @@ const workflowCommands = [
 	<ReadingSection id='what-is-zinn' labelledBy='definition-heading' first decorated>
 		<Prose>
 			<h2 id='definition-heading' tabindex='-1' class='pr-16 md:pr-24'>Zinn: a kanban CLI for your terminal</h2>
-			<p class='lead'>Zinn is an Experimental kanban task manager for the terminal.</p>
-			<p>
-				Organize work into projects, columns and tasks. Manage it from the command line, with descriptions, priorities,
-				labels and comments to keep the detail close. Projects and tasks are stored in a local SQLite database.
+			<p class='lead'>
+				Zinn is an Experimental task manager for you <span class='block'>and the agents you work with.</span>
 			</p>
 			<p>
-				For developers who already work in the terminal, the board is another command away. Scripts and agents can read
-				and write tasks using the CLI's JSON output.
+				Each project is a board of columns and tasks. You and your agents create, move and comment on the same tasks
+				with the same commands, and all of it lives in one SQLite database on your machine.
 			</p>
 		</Prose>
 	</ReadingSection>
@@ -74,51 +72,72 @@ const workflowCommands = [
 		<Prose>
 			<h2 id='workflow-heading'>Start a project. Move the work.</h2>
 			<p>
-				Create a project, add a task, then move it into In Progress. Each project begins with Backlog, TODO, In
-				Progress, Review and Done columns, which you can rename or extend.
+				Create a project, add a task, then move it into In Progress. <span class='block'
+					>Each project begins with Backlog, TODO, In Progress, Review and Done columns, which you can rename or extend.</span
+				>
 			</p>
 			<p>
-				Use descriptions for scope, comments for updates and labels and priorities to organize tasks. Connect work with
-				related, dependency, duplicate and subtask relations. Search titles, descriptions and comments, and archive
-				tasks when they no longer belong in the active list.
+				Descriptions hold the scope and comments the updates. Labels and priorities organize the work, and related,
+				dependency, duplicate and subtask relations connect it. Search covers titles, descriptions and comments, and
+				archiving hides finished tasks from active lists.
 			</p>
 		</Prose>
 		<Prose>
 			<TerminalCommands
-				class='workflow-sequence'
+				class='workflow-sequence mb-0!'
 				label='Project workflow commands, horizontally scrollable'
 				commands={workflowCommands}
 			/>
+		</Prose>
+	</ReadingSection>
+
+	<ReadingSection labelledBy='agents-heading' surface='limestone'>
+		<Prose>
+			<h2 id='agents-heading'>Work alongside your agents</h2>
+			<p class='lead'>
+				Zinn doesn't stop at who changed a task. It takes you back into the conversation that made the change.
+			</p>
 			<p>
-				Add <code>--json</code> to any command for a single JSON document on stdout. Use <code>--yes</code> to skip confirmation
-				prompts in scripts and agent workflows.
+				<a href='/docs/cli#activity'>Activity</a> records the agent and session behind a change, and <code
+					>zinn activity list --task &lt;task-key&gt;</code
+				> lists the changes to a task. Claude Code and Codex sessions are recorded without setup.
+			</p>
+			<p>
+				The Zinn workflow skill teaches an agent to find its task, keep context in comments, record follow-ups and hand
+				off at the project's review column. <a href='/docs/installation#use-with-coding-agents'
+					>Set it up for your agent</a
+				>.
+			</p>
+			<p>
+				For scripts, <code>--json</code> prints one JSON document on <strong>stdout</strong>. A failure exits with code
+				{" "}<code>1</code> and writes a JSON error to <strong>stderr</strong>, so scripts can match its code. <code
+					>zinn capabilities --json</code
+				> describes every command's inputs, effects and result schemas, and <code>--yes</code> confirms prompts. Read <a
+					href='/docs/scripting'>scripting and JSON output</a
+				> for the details.
 			</p>
 		</Prose>
 	</ReadingSection>
 
-	<ReadingSection labelledBy='storage-heading' surface='limestone'>
+	<ReadingSection labelledBy='storage-heading' surface='bone'>
 		<Prose>
 			<h2 id='storage-heading'>Keep the work local</h2>
 			<p>
-				The default database is <code>~/.zinn/data/zinn.sqlite</code>. Set <code>storage.directory</code> in a codebase's
-				<code>zinn.local.json</code> or in <code>~/.zinn/settings.json</code> to keep it elsewhere. <code>ZINN_DIR</code
-				>
-				overrides both for the commands that carry it.
+				Every project lives in one SQLite database, <code>~/.zinn/data/zinn.sqlite</code> by default. Keep it elsewhere with{
+					" "
+				}
+				<a href='/docs/settings'>settings</a>.
 			</p>
 			<p>
 				<code>zinn backup</code> saves a database snapshot, and <code>zinn restore</code> puts one back after saving the current
-				database. A newer Zinn upgrades an older database, and <code>zinn migrate</code> runs that upgrade after saving a
-				backup.
-			</p>
-			<p>
-				Read <a href='/docs/settings'>settings</a>, <a href='/docs/data#back-up-the-database'>database backups</a>, <a
-					href='/docs/data#restore-a-database'>database restores</a
-				> and <a href='/docs/data#upgrade-a-database'>database upgrades</a> instructions.
+				database. A newer release upgrades an older database after making a backup. Read <a href='/docs/data'
+					>data and backups</a
+				> for the details.
 			</p>
 		</Prose>
 	</ReadingSection>
 
-	<ReadingSection labelledBy='next-heading' surface='bone'>
+	<ReadingSection labelledBy='next-heading' surface='limestone'>
 		<Prose>
 			<h2 id='next-heading'>Take the next command</h2>
 			<p>
