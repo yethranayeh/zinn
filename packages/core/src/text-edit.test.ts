@@ -142,16 +142,71 @@ test("replace changes the one match in each description field", () => {
   );
 });
 
-test("replace is exact: case, whitespace and line endings are not folded", () => {
+test("replace remains exact for case and whitespace after CRLF normalization", () => {
   forEachDescriptionField(
     "Line one\r\nLine two  end",
     `
-      for (const find of ["line one", "Line one\\nLine two", "Line two end"]) {
+      assert.equal(record.read().text, "Line one\\nLine two  end");
+      for (const find of ["line one", "Line one\\rLine two", "Line two end"]) {
         assert.throws(() => record.edit({ find, replace: "x" }), matchError(0, target));
       }
       assert.equal(record.edit({ find: "Line one\\r\\nLine two", replace: "Joined" }).description, "Joined  end");
     `,
   );
+});
+
+test("description writes and partial edits normalize before persistence and no-op detection", () => {
+  forEachDescriptionField(
+    "  First\r\nSecond\nThird\rFourth  ",
+    `
+      const normalized = "  First\\nSecond\\nThird\\rFourth  ";
+      const before = record.read();
+      const historyBefore = record.history();
+      assert.equal(before.text, normalized);
+      record.edit("  First\\r\\nSecond\\r\\nThird\\rFourth  ");
+      assert.deepEqual(record.read(), before);
+      assert.deepEqual(record.history(), historyBefore);
+      record.edit({ find: "First\\nSecond", replace: "First\\r\\nSecond" });
+      assert.deepEqual(record.read(), before);
+      assert.deepEqual(record.history(), historyBefore);
+
+      record.edit({ find: "First\\nSecond", replace: "Joined\\r\\nLine" });
+      assert.equal(record.read().text, "  Joined\\nLine\\nThird\\rFourth  ");
+      record.edit({ append: "Tail\\r\\n  Indent\\rEnd" });
+      assert.equal(record.read().text, "  Joined\\nLine\\nThird\\rFourth  \\n\\nTail\\n  Indent\\rEnd");
+      record.edit("  Edited\\r\\nText\\rEnd  ");
+      assert.equal(record.read().text, "  Edited\\nText\\rEnd  ");
+      assert.deepEqual(record.history().at(-1).changes.description, [
+        "  Joined\\nLine\\nThird\\rFourth  \\n\\nTail\\n  Indent\\rEnd",
+        "  Edited\\nText\\rEnd  ",
+      ]);
+    `,
+  );
+});
+
+test("comment writes and partial edits normalize before persistence and no-op detection", () => {
+  runTextEditCheck(`
+    task.create({ project_id: app.id, title: "Task" }, human);
+    comment.create({ taskKey: "APP-1", text: "  First\\r\\nSecond\\nThird\\rEnd  " }, human);
+    const read = () => getDb().query("SELECT text, updated_at FROM comment").get();
+    const before = read();
+    const historyBefore = task.activity("APP-1");
+    assert.equal(before.text, "  First\\nSecond\\nThird\\rEnd  ");
+    comment.edit({ commentKey: "APP-1#1", text: "  First\\r\\nSecond\\r\\nThird\\rEnd  " }, human);
+    comment.edit({ commentKey: "APP-1#1", text: { find: "First\\r\\nSecond", replace: "First\\r\\nSecond" } }, human);
+    assert.deepEqual(read(), before);
+    assert.deepEqual(task.activity("APP-1"), historyBefore);
+    comment.edit({ commentKey: "APP-1#1", text: { find: "First\\nSecond", replace: "Joined\\r\\nLine" } }, human);
+    assert.equal(read().text, "  Joined\\nLine\\nThird\\rEnd  ");
+    comment.edit({ commentKey: "APP-1#1", text: { append: "Tail\\r\\n  Indent\\rEnd" } }, human);
+    assert.equal(read().text, "  Joined\\nLine\\nThird\\rEnd  \\n\\nTail\\n  Indent\\rEnd");
+    comment.edit({ commentKey: "APP-1#1", text: "  Edited\\r\\nText\\rEnd  " }, human);
+    assert.equal(read().text, "  Edited\\nText\\rEnd  ");
+    assert.deepEqual(task.activity("APP-1").at(-1).changes.text, [
+      "  Joined\\nLine\\nThird\\rEnd  \\n\\nTail\\n  Indent\\rEnd",
+      "  Edited\\nText\\rEnd  ",
+    ]);
+  `);
 });
 
 test("a replace that finds nothing throws a typed error and leaves the record unchanged", () => {

@@ -1,12 +1,14 @@
 import { z } from "zod";
 
 import { fullTextOrPartialEdit } from "./text-edit.js";
+import { normalizeTextLineEndings } from "./text.js";
 
 const commentTextMessage = "Comment text cannot be blank";
 
 export const commentTextSchema = z
   .string({ error: commentTextMessage })
-  .refine((value) => value.trim().length > 0, commentTextMessage);
+  .refine((value) => value.trim().length > 0, commentTextMessage)
+  .transform(normalizeTextLineEndings);
 
 export const commentCreateSchema = z.strictObject({
   taskKey: z.string(),

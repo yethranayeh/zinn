@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { normalizeTextLineEndings } from "./text.js";
+
 const textEditMessage =
   "A text edit takes either { append } or { find, replace, all? }, and no other fields";
 
@@ -9,11 +11,12 @@ export const textEditSchema = z.union(
     z.strictObject({
       append: z
         .string()
-        .refine((value) => value.trim().length > 0, "Text to append cannot be blank"),
+        .refine((value) => value.trim().length > 0, "Text to append cannot be blank")
+        .transform(normalizeTextLineEndings),
     }),
     z.strictObject({
-      find: z.string().min(1, "Text to find cannot be empty"),
-      replace: z.string(),
+      find: z.string().min(1, "Text to find cannot be empty").transform(normalizeTextLineEndings),
+      replace: z.string().transform(normalizeTextLineEndings),
       all: z.boolean().optional(),
     }),
   ],

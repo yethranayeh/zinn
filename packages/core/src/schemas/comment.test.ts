@@ -24,3 +24,13 @@ test("comment schemas reject unsupported fields", () => {
   ).toThrow();
   expect(() => commentDeleteSchema.parse({ commentKey: "APP-1#1", text: "Comment" })).toThrow();
 });
+
+test("comment creation and editing normalize only CRLF pairs", () => {
+  for (const [text, normalized] of [
+    ["Plain text", "Plain text"],
+    ["  First\r\n\tSecond\nThird\rFourth  \r\n", "  First\n\tSecond\nThird\rFourth  \n"],
+  ]) {
+    expect(commentCreateSchema.parse({ taskKey: "APP-1", text }).text).toBe(normalized);
+    expect(commentEditSchema.parse({ commentKey: "APP-1#1", text }).text).toBe(normalized);
+  }
+});

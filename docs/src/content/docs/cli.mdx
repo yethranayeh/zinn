@@ -35,7 +35,7 @@ Move, order, archive, unarchive, and task-label attachment commands also succeed
 
 Names and titles are trimmed and cannot be blank or contain line breaks or control characters, such as tabs.
 
-Project, task, and label descriptions may contain multiple lines. Omitted descriptions on creation, empty strings, and whitespace-only strings are stored as `null`. Text containing a non-whitespace character is preserved exactly, including leading and trailing whitespace. Use `--description ''` on an edit to clear a description. JSON returns the full text or `null`.
+Project, task, and label descriptions may contain multiple lines. Omitted descriptions on creation, empty strings, and whitespace-only strings are stored as `null`. Note that non-blank descriptions and comment text normalize CRLF line endings to LF, preserving all other whitespace, including lone carriage returns. Use `--description ''` on an edit to clear a description. JSON returns the full text or `null`.
 
 To change part of a description, or of a comment's text, `--append` and `--replacing` modify how `--description` (or `--text` on `task comment edit`) is applied to the stored text:
 
@@ -53,6 +53,8 @@ Flags:
 
 A command with no match, or with several matches and no `--all`, fails without changing anything.
 An empty text with `--replacing` deletes the match. `--append` and `--replacing` cannot be combined.
+
+Append text and both the old and new text in a replacement use the same CRLF-to-LF normalization.
 
 ## Text values
 

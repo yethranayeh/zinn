@@ -55,6 +55,7 @@ Names and titles are trimmed and cannot be blank or contain line breaks or contr
 
 - Edits change only supplied fields. Valid edits that leave values unchanged preserve modification timestamps and record no activity.
 - Descriptions default to `null`. Passing `null` or blank text clears them. Non-blank text input keeps its whitespace.
+- Descriptions and comment text normalize CRLF line endings to LF, including append, find and replacement inputs. All other whitespace, including lone carriage returns, is preserved.
 - Entity mutations record the actor and activity in the same transaction as the change.
 - Bulk task moves, archives, and unarchives apply in input order and succeed or fail together.
 

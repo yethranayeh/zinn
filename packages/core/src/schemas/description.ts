@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { fullTextOrPartialEdit } from "./text-edit.js";
+import { normalizeTextLineEndings } from "./text.js";
 
 /**
  * A standard description field schema reused by many fields.
@@ -11,7 +12,9 @@ export const descriptionSchema = z
   .string()
   .nullable()
   .transform((description) =>
-    description === null || description.trim().length === 0 ? null : description,
+    description === null || description.trim().length === 0
+      ? null
+      : normalizeTextLineEndings(description),
   );
 
 /** A description in an edit: the full text, or one text edit applied to the stored description. */

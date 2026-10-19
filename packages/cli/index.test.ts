@@ -6093,6 +6093,31 @@ const storedTextOf = (dir: string) =>
     comment: db.query<{ text: string }, []>("SELECT text FROM comment").get()!.text,
   }));
 
+test("CRLF text normalizes through CLI creation, replacement and append for every text field", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = seedEditableText(dir, "  First\r\nSecond\nThird\rEnd  ");
+    const normalized = "  First\nSecond\nThird\rEnd  ";
+    expect(storedTextOf(dir)).toEqual({ project: normalized, task: normalized, label: normalized, comment: normalized });
+
+    const edits = [
+      { args: ["project", "edit", "APP"], flag: "--description" },
+      { args: ["task", "edit", "APP-1"], flag: "--description" },
+      { args: ["label", "edit", "bug"], flag: "--description" },
+      { args: ["task", "comment", "edit", "APP-1#1"], flag: "--text" },
+    ];
+    for (const { args, flag } of edits) {
+      const result = run(...args, flag, "Joined\r\nLine", "--replacing", "First\r\nSecond", "--json");
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe("");
+      const entity = JSON.parse(result.stdout);
+      expect(entity.description ?? entity.text).toBe("  Joined\nLine\nThird\rEnd  ");
+      expect(run(...args, flag, "Tail\r\n  Indent", "--append").code).toBe(0);
+    }
+    const appended = "  Joined\nLine\nThird\rEnd  \n\nTail\n  Indent";
+    expect(storedTextOf(dir)).toEqual({ project: appended, task: appended, label: appended, comment: appended });
+  });
+});
+
 test("--append adds a paragraph to a task description and to a comment's text", () => {
   withIsolatedZinnDir((dir) => {
     const run = seedEditableText(dir, "First.\n");
