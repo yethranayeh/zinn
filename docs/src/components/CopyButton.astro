@@ -11,6 +11,7 @@ type Props = ComponentProps<typeof Button> & {
 	success: string;
 	stateTarget?: string;
 	event?: WebsiteEvent;
+	feedback?: "label" | "tooltip";
 };
 
 const {
@@ -20,6 +21,7 @@ const {
 	success,
 	stateTarget,
 	event,
+	feedback = "label",
 	size = "default",
 	class: className,
 	...attributes
@@ -31,19 +33,29 @@ const labelClass = size === "icon" ? "sr-only" : size === "responsive-icon" ? "m
 <Button
 	{...attributes}
 	{size}
-	class:list={["group/copy data-[error]:w-auto!", className]}
+	class:list={["group/copy", feedback === "label" && "data-[error]:w-auto!", className]}
 	hidden
 	data-copy-value={value}
 	data-copy-url={url}
 	data-copy-success={success}
 	data-copy-state-target={stateTarget}
+	data-copy-feedback={feedback}
 	data-copy-event={event}>
-	<Icon name='copy' class={`${iconSize} group-data-[copied]/copy:hidden group-data-[error]/copy:hidden`} />
+	<Icon
+		name='copy'
+		class:list={[iconSize, "group-data-[copied]/copy:hidden", feedback === "label" && "group-data-[error]/copy:hidden"]}
+	/>
 	<Icon name='check' class={`hidden ${iconSize} group-data-[copied]/copy:block group-data-[error]/copy:hidden`} />
 
-	<span class:list={[labelClass, "group-data-[error]/copy:hidden"]}>{label}</span>
+	<span class:list={[labelClass, feedback === "label" && "group-data-[error]/copy:hidden"]}>{label}</span>
 
-	<span class='hidden whitespace-nowrap group-data-[error]/copy:inline' aria-hidden='true'>Failed to copy</span>
+	{
+		feedback === "label" && (
+			<span class='hidden whitespace-nowrap group-data-[error]/copy:inline' aria-hidden='true'>
+				Failed to copy
+			</span>
+		)
+	}
 	<span class='sr-only' data-copy-announcement role='status' aria-live='polite' aria-atomic='true'></span>
 </Button>
 
@@ -65,7 +77,13 @@ const labelClass = size === "icon" ? "sr-only" : size === "responsive-icon" ? "m
 			button.removeAttribute("data-copied");
 			button.removeAttribute("data-error");
 			announcement.textContent = "";
+
+			if (button.dataset.copyFeedback === "tooltip") {
+				button.dispatchEvent(new CustomEvent("tooltip-message", { bubbles: true, detail: null }));
+			}
+
 			button.title = originalTitle;
+
 			if (originalLabel !== null) {
 				button.setAttribute("aria-label", originalLabel);
 			} else {
@@ -75,8 +93,13 @@ const labelClass = size === "icon" ? "sr-only" : size === "responsive-icon" ? "m
 
 		function announce(message: string) {
 			announcement.textContent = message;
-			button.title = message;
-			button.setAttribute("aria-label", message);
+			if (button.dataset.copyFeedback === "tooltip") {
+				button.dispatchEvent(new CustomEvent("tooltip-message", { bubbles: true, detail: message }));
+			} else {
+				button.title = message;
+				button.setAttribute("aria-label", message);
+			}
+
 			resetTimer = setTimeout(reset, copyStatusDurationMs);
 		}
 

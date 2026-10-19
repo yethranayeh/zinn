@@ -1,18 +1,34 @@
 ---
 import Icon from "./Icon.astro";
 import CopyButton from "./CopyButton.astro";
+import Tooltip from "./Tooltip.astro";
+
 const markdownUrl = `${Astro.url.pathname.replace(/\/$/, "")}.md`;
 ---
 
-<div class='flex flex-wrap items-center gap-x-2 font-mono text-xs'>
-	<CopyButton
-		url={markdownUrl}
-		label='Copy as Markdown'
-		success='Markdown copied to clipboard.'
-		event='markdown-copy'
-	/>
+<div
+	class='inline-flex max-w-full items-stretch border border-soot/20 font-mono text-xs/normal'
+	role='group'
+	aria-label='Markdown actions'>
+	<span class='inline-flex shrink-0 items-center px-3.5'>Markdown</span>
+	<Tooltip text='Copy as Markdown' class='border-l border-soot/20'>
+		<CopyButton
+			url={markdownUrl}
+			label='Copy as Markdown'
+			success='Markdown copied'
+			event='markdown-copy'
+			size='icon'
+			feedback='tooltip'
+			class='h-full min-h-11 shrink-0 focus-visible:-outline-offset-3'
+		/>
+	</Tooltip>
 
-	<a class='inline-flex min-h-11 items-center gap-2 py-2' href={markdownUrl}>
-		View as Markdown <Icon name='external-link' class='size-4' />
-	</a>
+	<Tooltip text='Open Markdown' class='border-l border-soot/20'>
+		<a
+			class='inline-flex min-h-11 min-w-11 items-center justify-center no-underline hover:bg-soot/8 hover:no-underline focus-visible:-outline-offset-3'
+			href={markdownUrl}
+			aria-label='Open Markdown'>
+			<Icon name='external-link' class='size-4' />
+		</a>
+	</Tooltip>
 </div>
