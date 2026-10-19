@@ -89,6 +89,62 @@ function forEachDescriptionField(initial: string | null, body: string) {
   `);
 }
 
+test("oversized description edits preserve the entity, timestamp, activity and search records", () => {
+  runTextEditCheck(`
+    const { MAX_TEXT_BYTES, InputValidationError } = await import(${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)});
+    const atLimit = "a".repeat(MAX_TEXT_BYTES - 4) + "😀";
+    for (const field of fields) {
+      const record = field.make(atLimit);
+      const before = record.read();
+      const history = record.history();
+      const search = getDb().query("SELECT * FROM task_search ORDER BY rowid").all();
+      for (const edit of [atLimit + "a", { append: "x" }, { find: "😀", replace: "😀x" }]) {
+        assert.throws(() => record.edit(edit), InputValidationError);
+        assert.deepEqual(record.read(), before);
+        assert.deepEqual(record.history(), history);
+        assert.deepEqual(getDb().query("SELECT * FROM task_search ORDER BY rowid").all(), search);
+      }
+      const shortened = record.edit({ find: "😀", replace: "" });
+      assert.equal(shortened.description.length, MAX_TEXT_BYTES - 4);
+      getDb().exec("DELETE FROM task; DELETE FROM label; DELETE FROM project WHERE key != 'APP'");
+    }
+  `);
+});
+
+test("oversized comment edits preserve text, timestamp, activity and search records", () => {
+  runTextEditCheck(`
+    const { MAX_TEXT_BYTES, InputValidationError } = await import(${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)});
+    task.create({ project_id: app.id, title: "Task" }, human);
+    const atLimit = "a".repeat(MAX_TEXT_BYTES - 4) + "😀";
+    comment.create({ taskKey: "APP-1", text: atLimit }, human);
+    const before = comment.getByKey("APP-1#1");
+    const history = task.activity("APP-1");
+    const search = getDb().query("SELECT * FROM task_search ORDER BY rowid").all();
+    for (const text of [atLimit + "a", { append: "x" }, { find: "😀", replace: "😀x" }]) {
+      assert.throws(() => comment.edit({ commentKey: "APP-1#1", text }, human), InputValidationError);
+      assert.deepEqual(comment.getByKey("APP-1#1"), before);
+      assert.deepEqual(task.activity("APP-1"), history);
+      assert.deepEqual(getDb().query("SELECT * FROM task_search ORDER BY rowid").all(), search);
+    }
+    assert.equal(comment.edit({ commentKey: "APP-1#1", text: { find: "😀", replace: "" } }, human).text.length, MAX_TEXT_BYTES - 4);
+  `);
+});
+
+test("unrelated edits allow existing oversized descriptions", () => {
+  runTextEditCheck(`
+    const { MAX_TEXT_BYTES } = await import(${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)});
+    task.create({ project_id: app.id, title: "Task" }, human);
+    label.create({ name: "bug" }, human);
+    const oversized = "a".repeat(MAX_TEXT_BYTES + 1);
+    for (const table of ["project", "task", "label"]) {
+      getDb().query("UPDATE " + table + " SET description = ?").run(oversized);
+    }
+    assert.equal(project.edit({ projectKey: "APP", name: "Renamed" }, human).description, oversized);
+    assert.equal(task.edit({ taskKey: "APP-1", title: "Renamed" }, human).description, oversized);
+    assert.equal(label.edit({ labelName: "bug", color: "red" }, human).description, oversized);
+  `);
+});
+
 test("text edit schema accepts one append or one find/replace and nothing else", () => {
   expect(textEditSchema.parse({ append: "More" })).toEqual({ append: "More" });
   expect(textEditSchema.parse({ find: "a", replace: "" })).toEqual({ find: "a", replace: "" });

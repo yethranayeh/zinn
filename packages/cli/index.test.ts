@@ -12,6 +12,7 @@ import { errorDocumentSchema } from "./src/errors";
 import type { Activity } from "@zinn-dev/core";
 import { latestVersion, MIGRATIONS } from "../core/src/migrations/registry";
 import { taskPrioritySchema } from "../core/src/schemas/task";
+import { MAX_TEXT_BYTES } from "@zinn-dev/core";
 
 // ? End-to-end tests: each case spawns the real bin, so `ZINN_DIR` is passed
 // ? per-spawn rather than set on `process.env`. The route table is imported only
@@ -6092,6 +6093,38 @@ const storedTextOf = (dir: string) =>
     label: db.query<{ text: string | null }, []>("SELECT description AS text FROM label").get()!.text,
     comment: db.query<{ text: string }, []>("SELECT text FROM comment").get()!.text,
   }));
+
+test("oversized partial text edits exit 1 with empty stdout and leave the database unchanged", () => {
+  withIsolatedZinnDir((dir) => {
+    const run = seedEditableText(dir, "Seed");
+    const atLimit = "a".repeat(MAX_TEXT_BYTES - 4) + "😀";
+    withTestDb(dir, (db) => {
+      for (const table of ["project", "task", "label"]) {
+        db.query(`UPDATE ${table} SET description = ?`).run(atLimit);
+      }
+      db.query("UPDATE comment SET text = ?").run(atLimit);
+    });
+    const before = storedTextOf(dir);
+    const activities = run("activity", "list", "--json").stdout;
+    const edits = [
+      { args: ["project", "edit", "APP"], flag: "--description" },
+      { args: ["task", "edit", "APP-1"], flag: "--description" },
+      { args: ["label", "edit", "bug"], flag: "--description" },
+      { args: ["task", "comment", "edit", "APP-1#1"], flag: "--text" },
+    ];
+    for (const { args, flag } of edits) {
+      for (const options of [[flag, "x", "--append"], [flag, "😀x", "--replacing", "😀"]]) {
+        const result = run(...args, ...options);
+        expect(result.code).toBe(1);
+        expect(result.stdout).toBe("");
+        expect(result.stderr).toContain(String(MAX_TEXT_BYTES));
+        expect(result.stderr).toContain(String(MAX_TEXT_BYTES + (options.includes("--append") ? 3 : 1)));
+        expect(storedTextOf(dir)).toEqual(before);
+        expect(run("activity", "list", "--json").stdout).toBe(activities);
+      }
+    }
+  });
+});
 
 test("CRLF text normalizes through CLI creation, replacement and append for every text field", () => {
   withIsolatedZinnDir((dir) => {

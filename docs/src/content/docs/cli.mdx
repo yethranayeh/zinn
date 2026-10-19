@@ -56,6 +56,8 @@ An empty text with `--replacing` deletes the match. `--append` and `--replacing`
 
 Append text and both the old and new text in a replacement use the same CRLF-to-LF normalization.
 
+Descriptions and comment text have a limit of 1 MiB (1,048,576 UTF-8 bytes). Full text is checked **before** normalization, and partial edits check the resulting text. Exceeding the limit fails without writing changes.
+
 ## Text values
 
 A value that begins with a dash, such as a Markdown bullet, must be joined to its flag with `=`. Otherwise the command fails without changing anything:

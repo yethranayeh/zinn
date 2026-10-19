@@ -74,6 +74,7 @@ export {
   relationTypeSchema,
 } from "./src/schemas/relation.js";
 export { textEditSchema } from "./src/schemas/text-edit.js";
+export { MAX_TEXT_BYTES } from "./src/schemas/text.js";
 export { actorSchema, actorKindSchema } from "./src/schemas/actor.js";
 export {
   activityActionSchema,
