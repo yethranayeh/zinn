@@ -1,7 +1,7 @@
 ---
 import TerminalCommands from "./TerminalCommands.astro";
+import { splitShellCommands } from "../markdown/shell-commands";
 
-// Renders fenced code from MDX; a blank line separates shell commands.
 interface Props {
 	"data-label"?: string;
 	"data-commands": string;
@@ -11,7 +11,7 @@ interface Props {
 const { "data-label": sourceLabel, "data-commands": commands, "data-language": language = "text" } = Astro.props;
 const isShell = ["sh", "bash", "shell"].includes(language);
 const label = sourceLabel ?? `${language === "text" ? "Code" : language} ${isShell ? "commands" : "example"}`;
-const commandList = isShell ? commands.trim().split(/\n\s*\n/) : [commands.replace(/^\n|\n$/g, "")];
+const commandList = isShell ? splitShellCommands(commands) : [commands.replace(/^\n|\n$/g, "")];
 ---
 
 <TerminalCommands label={label} commands={commandList} showsPrompt={isShell} />

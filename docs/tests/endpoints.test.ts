@@ -1,4 +1,5 @@
 import { agentSetupPrompt, installCommand, minimumNodeVersion } from "../src/config/site";
+import { splitShellCommands } from "../src/markdown/shell-commands";
 import { expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -111,7 +112,7 @@ test.each(docsSources)("docs page %s has a Markdown twin and breadcrumbs matchin
 	for (const [index, block] of blocks.entries()) {
 		const [, language, sourceLabel, sourceCommands] = fences[index]!;
 		const isShell = ["sh", "bash", "shell"].includes(language!);
-		const commands = isShell ? sourceCommands!.trim().split(/\n\s*\n/) : [sourceCommands!.replace(/^\n|\n$/g, "")];
+		const commands = isShell ? splitShellCommands(sourceCommands!) : [sourceCommands!.replace(/^\n|\n$/g, "")];
 		const expectedLabel = sourceLabel ?? (language === "text" ? "Code" : language) + (isShell ? " commands" : " example");
 		const promptCount = block[2]!.match(/aria-hidden="true">\$ <\/span>/g)?.length ?? 0;
 		const blockTail = html.slice(block.index! + block[0].length);
