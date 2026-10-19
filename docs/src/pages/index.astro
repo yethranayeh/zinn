@@ -32,19 +32,19 @@ const workflowCommands = [
 
 			<div class='flex flex-wrap justify-between w-full'>
 				<nav
-					class='flex flex-wrap items-center gap-x-7 gap-y-2 font-mono text-xs leading-normal'
+					class='flex flex-col md:flex-row items-start md:items-center gap-1 md:gap-4 pt-2 font-mono text-xs leading-normal'
 					aria-label='Zinn links'>
 					<a
-						class='inline-flex items-center gap-2 py-2'
+						class='inline-flex items-center gap-1'
 						href={projectLinks.github}
 						aria-label='Zinn source on GitHub'
-						data-site-event='github-click'>GitHub <Icon name='external-link' class='size-4.5' /></a
+						data-site-event='github-click'>GitHub <Icon name='external-link' class='size-[1.5cap]' /></a
 					>
 					<a
-						class='inline-flex items-center gap-2 py-2'
+						class='inline-flex items-center gap-1'
 						href={projectLinks.npm}
 						aria-label='Zinn CLI package on npm'
-						data-site-event='npm-click'>npm <Icon name='external-link' class='size-4.5' /></a
+						data-site-event='npm-click'>npm <Icon name='external-link' class='size-[1.5cap]' /></a
 					>
 				</nav>
 
