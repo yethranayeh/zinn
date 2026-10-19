@@ -1,0 +1,479 @@
+---
+title: CLI reference | Zinn
+description: Reference for Zinn project, task, label, relation, comment, and activity commands.
+breadcrumb: CLI reference
+---
+
+# CLI reference
+
+Use this page for command behavior, shared input rules, and practical examples. For JSON contracts, discovery, and unattended commands, see [Scripting and JSON output](/docs/scripting). For database settings and upgrades, see [Settings](/docs/settings) and [Data and backups](/docs/data).
+
+## Contents
+
+- [Shared conventions](#editing-conventions)
+  - [Text values](#text-values)
+  - [Words and repeated flags](#words-and-repeated-flags)
+  - [Changing tasks in bulk](#changing-tasks-in-bulk)
+- [Projects and columns](#start-a-project)
+- [Tasks](#create-and-read-tasks)
+  - [Search tasks](#search-tasks)
+  - [Edit tasks](#edit-tasks)
+  - [Move and order tasks](#move-and-order-tasks)
+  - [Archive and delete tasks](#archive-and-delete-tasks)
+  - [Task priority](#task-priority)
+- [Labels](#labels)
+- [Task relations](#task-relations)
+- [Task comments](#task-comments)
+- [Activity](#activity)
+- [Help](#help)
+
+## Editing conventions
+
+Edit commands change only the fields you supply, whereas omitted fields keep their current values. At least one edit field is required. After input normalization, a valid edit that leaves all values unchanged succeeds without writing changes, updating modification timestamps, or recording activity.
+
+Move, order, archive, unarchive, and task-label attachment commands also succeed without changes when the requested state is already satisfied. This does not apply to creation: creating an existing relation, for example, is an error.
+
+Names and titles are trimmed and cannot be blank or contain line breaks or control characters, such as tabs.
+
+Project, task, and label descriptions may contain multiple lines. Omitted descriptions on creation, empty strings, and whitespace-only strings are stored as `null`. Text containing a non-whitespace character is preserved exactly, including leading and trailing whitespace. Use `--description ''` on an edit to clear a description. JSON returns the full text or `null`.
+
+To change part of a description, or of a comment's text, `--append` and `--replacing` modify how `--description` (or `--text` on `task comment edit`) is applied to the stored text:
+
+```sh title="Edit descriptions"
+zinn task edit MDR-1 --description 'Bring waffles.' --append
+zinn task edit MDR-1 --description 'new sentence' --replacing 'old sentence'
+zinn project edit MDR --description database --replacing board --all
+```
+
+Flags:
+
+- `--append` adds the text as a new paragraph,
+- `--replacing <old>` replaces the one place where `<old>` appears, matching exactly and respecting case.
+- `--all` replaces every match.
+
+A command with no match, or with several matches and no `--all`, fails without changing anything.
+An empty text with `--replacing` deletes the match. `--append` and `--replacing` cannot be combined.
+
+## Text values
+
+A value that begins with a dash, such as a Markdown bullet, must be joined to its flag with `=`. Otherwise the command fails without changing anything:
+
+```sh title="Edit a description with a leading dash"
+zinn task edit MDR-1 --description='- Bring waffles.' --append
+```
+
+For multi-line text, such as Markdown, pass a heredoc with a quoted delimiter (`'EOF'`) in bash or zsh. The shell then passes `$`, backticks, quotes and leading dashes as written:
+
+```sh title="Edit multi-line text"
+zinn task edit MDR-1 --description="$(cat <<'EOF'
+- Bring waffles.
+- Count the `numbers` for $5 and "Kier".
+EOF
+)"
+```
+
+`$(...)` drops trailing line breaks, so the stored text ends with the last character of the last line.
+
+## Words and repeated flags
+
+`--` ends the options. Every word after the first `--` is considered a plain word, even a secondary instance of `--` or anything else that starts with a dash. Flags after it, such as `--json`, are not read. A trailing `--` changes nothing:
+
+```sh title="End option parsing with double dash"
+zinn project column create MDR -- -later
+zinn task search -- -flag
+```
+
+A flag can be given once.
+Only these flags repeat:
+
+- `--label` on `task create`, `task list` and `task search`,
+- `--depends-on` and `--related` on `task create`,
+- `--add-label` and `--remove-label` on `task edit`.
+
+Any other flag given twice, `--json` and `--yes` included, **fails** without changing anything.
+A help flag is the _exception_: the first one shows help and the rest of the line is ignored, so `-h --help` works and help is given whenever needed! No problem!
+
+## Changing tasks in bulk
+
+`task move`, `task archive` and `task unarchive` accept multiple task keys, so several tasks can be changed in one command:
+
+- Tasks are changed in the order given.
+- If any task fails, for example because of an unknown key, none change.
+- A task already in the requested state is unchanged, with a note on stderr. This includes a key given twice: by its second occurrence, the task is already in the requested state.
+- With `--json`, one task prints an object and several print an array. Each task has a `changed` field, which is `false` when the task was already in the requested state.
+
+## Start a project
+
+Create a project with a key and optionally provide a name and description:
+
+```sh title="Create a project"
+zinn project create MDR --name 'Macrodata Refinement' --description 'Refine macrodata'
+```
+
+Project keys are stored in uppercase. An omitted name defaults to the key.
+
+Descriptions print in full with `project view`. See [Editing conventions](#editing-conventions) for name validation and description storage and clearing.
+
+Each project starts with _Backlog_, _TODO_, _In Progress_, _Review_, and _Done_ columns.
+
+You can list projects or inspect a project's columns with:
+
+```sh title="List projects and columns"
+zinn project list
+zinn project view MDR
+zinn project column list MDR
+```
+
+`project view` shows the project's description and task counts. Use `zinn task list <project-key>` to read its tasks.
+
+`project view` and `project column list` accept an omitted project key when [defaultProject](/docs/settings) is configured.
+
+`project column list` counts unarchived tasks. With `--json`, it returns `[{ "name": "Backlog", "taskCount": 3 }, ...]`.
+
+Edit a project:
+
+```sh title="Edit a project"
+zinn project edit MDR --name 'Macrodata Refinement (Morning Shift)'
+zinn project edit MDR --description 'Meet the quarterly quota'
+zinn project edit MDR --description ''
+```
+
+Provide `--name`, `--description`, or both.
+The project key can be omitted when [defaultProject](/docs/settings) is configured.
+See [Text values](#text-values) for values that begin with a dash and multi-line text.
+
+Add another column at the end of the board:
+
+```sh title="Add a column"
+zinn project column create MDR Boardlog
+```
+
+Rename a column:
+
+```sh title="Rename a column"
+zinn project column edit MDR 'In Progress' --name Refining
+```
+
+Column names follow the shared [name and title rules](#editing-conventions) and match case-insensitively. Names must be unique within the project; changing only the casing is allowed. Renaming keeps tasks in the column.
+
+Change a column's position on the board:
+
+```sh title="Order columns"
+zinn project column order MDR Review first
+zinn project column order MDR Review previous
+zinn project column order MDR Review next
+zinn project column order MDR Review last
+zinn project column order MDR Review before Refining
+zinn project column order MDR Review after Done
+```
+
+Directions follow board order: `first` is the start of the board and `last` is its end.
+Moving a column to the position it already has, or before or after itself, does nothing. Tasks stay in their columns.
+
+`zinn project delete MDR` asks for confirmation, then permanently deletes the project and all of its columns and tasks. `--yes` skips confirmation when the project key is **typed**. With an _omitted_ key and [defaultProject](/docs/settings), it always asks: `--yes` is ignored with a warning, and without a terminal the command refuses with exit code 1. With `--json`, type the key and pass `--yes` (see [Confirmations](/docs/scripting#confirmations-in-scripts)).
+
+## Create and read tasks
+
+Create a task with a title and an optional description. Titles follow the shared [name and title rules](#editing-conventions). New tasks enter the project's first column:
+
+```sh title="Create tasks"
+zinn task create MDR --title 'Refine 75% of the numbers'
+zinn task create MDR --title 'Review the employee handbook' --description 'Prepare for a 75% Dance Experience'
+```
+
+The project key can be omitted when [defaultProject](/docs/settings) is configured.
+
+`--column <name>` starts the task at the bottom of a specific column. The column name matching is case insensitive:
+
+```sh title="Create a task in a column"
+zinn task create MDR --title 'Compile the Lexington letters' --column 'In Progress'
+```
+
+Tasks are created with keys such as `MDR-1`. Task numbers increase in creation order within each project. List active tasks, optionally limited to one project, or view one task:
+
+```sh title="List and view tasks"
+zinn task list
+zinn task list MDR
+zinn task list --all-projects
+zinn task list MDR --label CLI --label Groom
+zinn task list MDR --column 'In Progress'
+zinn task list --column Done --all
+zinn task view MDR-1
+zinn task view MDR-1 --history
+```
+
+Task lists are previews, so they _omit_ descriptions, but `task view` prints the full description.
+
+An omitted project key uses [defaultProject](/docs/settings), or every project when none is configured. `--all-projects` overrides the default.
+
+`task view --history` includes the inspected task's recorded activity, newest first by time, then event ID. Reorders and comment changes are included. Use `activity view <activity-id>` for full recorded changes. See [Activity](#activity) for timestamps, event IDs, and record fields.
+
+With `--history --json`, the task gains an `activity` array of full activity records. It returns `[]` when no events are recorded. Without `--history`, this field is _omitted_.
+
+If a project is deleted and recreated with the same key, `task view --history` shows only the _current_ task’s history. `activity list --task <key>` can also show history for **deleted tasks** that previously had that same key.
+
+Repeat `--label <name>` to require every specified label. Matching ignores case.
+
+Use `--column <name>` to filter by an exact column name, ignoring case, within one project or across projects. Column, label, and archive filters apply together. No matches is a successful empty result (`[]` with `--json`).
+
+## Search tasks
+
+Search task titles, descriptions, and comments, optionally in one project:
+
+```sh title="Search tasks"
+zinn task search refine
+zinn task search refine --all-projects
+zinn task search 'quarterly quota' MDR
+zinn task search MDR-1
+zinn task search auth --all --limit 5
+zinn task search auth MDR --label cli
+```
+
+Each query matches the start of a word, ignoring case and accents, so `cafe` finds "Café" and `auth` finds "Authentication". Every word must match somewhere in the task: its title, its description, or any of its comments. A comment match lists the task the comment belongs to.
+
+The query comes first, then the optional project key. An omitted key uses [defaultProject](/docs/settings), or every project when none is configured. `--all-projects` overrides the default.
+
+If the whole query is an existing task key, such as `mdr-1`, that task comes first. Other results follow by relevance, with title matches weighted highest. Equally relevant tasks are ordered by project key, then task number.
+
+An exact task-key query overrides the configured default project. A project key supplied after the query still filters the search.
+
+Search defaults to active tasks. `--archived` searches archived tasks and `--all` searches both. A note on stderr reports hidden archived matches. `--limit <n>` caps the results.
+
+`--label` works as it does for `task list`: repeat it to require every specified label. Label filtering happens before `--limit` and before archived matches are counted.
+
+With `--json`, search returns an array of tasks like `task list` does. A search with no results succeeds. A query that begins with a dash goes after `--` (see [Words and repeated flags](#words-and-repeated-flags)).
+
+Search uses an index that Zinn keeps up to date as tasks and comments change. `zinn reindex` rebuilds it from the tasks and their comments, archived tasks included:
+
+```sh title="Rebuild the task search index"
+zinn reindex
+```
+
+Only the index changes, completely or not at all, so no backup is saved. With `--json`, it prints `{ "databasePath": "...", "taskCount": 12 }`. The command fails without changing anything when there is no database yet, or when Zinn refuses changes to the database, such as one with a newer schema version (see [Upgrade the database](/docs/data#upgrade-a-database)).
+
+## Labels
+
+Labels are global and reusable across projects.
+
+```sh title="Create and edit labels"
+zinn label create urgent --color red --description 'Needs attention soon'
+zinn label create review
+zinn label edit review --color green
+zinn label list
+```
+
+### Adding to tasks
+
+```sh title="Add and remove task labels"
+zinn task create MDR --title 'Check the numbers' --label urgent --label review
+zinn task label add MDR-1 urgent review
+zinn task label remove MDR-1 review
+zinn task edit MDR-1 --add-label review --remove-label urgent
+```
+
+Repeat `--label`, `--add-label`, or `--remove-label` for several labels. Each value is one name, so commas are part of the name. Quote names containing spaces: `--label 'needs review'`.
+
+Label names follow the shared [name and title rules](#editing-conventions), preserve their stored casing, and match case-insensitively. Changing only the casing is allowed; names that differ only in case _cannot_ coexist.
+
+Label colors default to white. Available colors are _red_, _green_, _yellow_, _blue_, _magenta_, _cyan_, _white_, and _gray_.
+
+`--json` includes each label's color as a value.
+
+`label edit` accepts name, color, and description. Renaming preserves every task attachment because attachments refer to the label's internal ID. Updating a label definition does not affect attached tasks' timestamps.
+
+Task creation and edits apply content and label changes together, or roll back together on failure.
+Changing a task's label attachments updates that task's modification timestamp. Archived tasks can also have their labels edited.
+
+`--json` lists a task's labels as names.
+
+`zinn label delete urgent` asks for confirmation, then deletes the definition and removes it from every task. Declining confirmation leaves the label and its attachments unchanged. `--yes` skips the confirmation (see [Confirmations](/docs/scripting#confirmations-in-scripts)).
+Use `task label remove` to remove a label attachment from one task instead. Task/project deletion cleans up label attachments, but does not affect labels themselves.
+
+## Task relations
+
+```sh title="Create and list task relations"
+zinn task relation create MDR-1 MDR-2 --type dependency
+zinn task relation create MDR-1 MDR-2 --type duplicate
+zinn task relation create MDR-1 OTHER-1 --type related
+zinn task relation list MDR-1
+```
+
+`dependency` means the first task depends on the second; `duplicate` means the first is a duplicate of the second. `related` is symmetric.
+
+Relations do not automatically move, complete, or archive tasks.
+Tasks from separate projects can be related to each other. Tasks can also be related to archived tasks.
+
+JSON relation arrays from `task relation list` and `task view` are ordered by creation timestamp ascending, then relation ID ascending for ties.
+
+Use `zinn task relation create APP-2 APP-1 --type subtask` to make APP-2 a child of APP-1. Each task can have one parent and any number of subtasks, including nested subtasks.
+
+Remove the existing subtask relation before assigning a different parent. Moving or archiving a parent does not change its children, and deleting a parent removes its child relations while retaining child task data.
+
+`task create` can relate the new task with `--parent`, `--depends-on`, `--duplicate-of` and `--related`. Repeat `--depends-on` and `--related` to relate several tasks:
+
+```sh title="Create a task with relations"
+zinn task create MDR --title 'Sort the files' --parent MDR-1 --depends-on MDR-2
+```
+
+Remove a relation with `zinn task relation delete MDR-1 MDR-2 --type dependency`, using its original direction for `dependency`, `duplicate`, and `subtask`. For `related`, order does not matter.
+Relation deletion requires no confirmation.
+
+## Task comments
+
+Add and list comments on a task:
+
+```sh title="Create and list comments"
+zinn task comment create MDR-1 --text 'Ready for review'
+zinn task comment list MDR-1
+```
+
+Comments receive keys per task like `MDR-1#1`.
+
+View, edit or delete a comment using its key:
+
+```sh title="View, edit, and delete a comment"
+zinn task comment view 'MDR-1#1'
+zinn task comment edit 'MDR-1#1' --text Approved
+zinn task comment delete 'MDR-1#1'
+```
+
+`task comment view` shows the current text in full, keeping its line breaks, including on archived tasks. With `--json`, it returns one object with `key`, `text`, `created_at` and `updated_at`.
+
+Deletion asks for confirmation, unless `--yes` is used (see [Confirmations](/docs/scripting#confirmations-in-scripts)). Comments can be added to archived tasks. Comment mutations are recorded in the activity log without changing the task's modification timestamp.
+
+## Edit tasks
+
+Edit a task's title, description, priority, or labels:
+
+```sh title="Edit tasks"
+zinn task edit MDR-1 --title 'Meet the quarterly refinement quota'
+zinn task edit MDR-1 --description 'Complete refinement before the waffle party'
+zinn task edit MDR-1 --title 'Meet the quarterly refinement quota' --description ''
+```
+
+See [Editing conventions](#editing-conventions) for title validation, partial edits and clearing descriptions.
+
+Archived tasks can be edited without unarchiving them.
+See [Text values](#text-values) for values that begin with a dash and multi-line text.
+
+## Move and order tasks
+
+Move a task to another column in its project:
+
+```sh title="Move a task"
+zinn task move MDR-1 'In Progress'
+```
+
+A moved task appears at the bottom of its destination column. Moving it to its current column does nothing. Archived tasks must be unarchived before they can be moved.
+
+For multiple tasks, give their keys before the column. They move in input order; tasks already in that column retain their positions. Each task's column is looked up in its own project:
+
+```sh title="Move tasks in bulk"
+zinn task move MDR-1 MDR-2 APP-4 'In Progress'
+```
+
+See [Changing tasks in bulk](#changing-tasks-in-bulk).
+
+Change a task's position within its current column:
+
+```sh title="Order tasks"
+zinn task order MDR-2 top
+zinn task order MDR-2 up
+zinn task order MDR-2 down
+zinn task order MDR-2 bottom
+zinn task order MDR-2 before MDR-1
+zinn task order MDR-2 after MDR-1
+```
+
+The task being reordered and the target of `before` or `after` must be active tasks in the same column.
+
+## Archive and delete tasks
+
+Active tasks are shown by default. Archive one or more tasks to hide them from active lists, then list archived tasks or all tasks:
+
+```sh title="Archive and list tasks"
+zinn task archive MDR-1
+zinn task archive MDR-2 MDR-3
+zinn task list MDR --archived
+zinn task list MDR --all
+```
+
+`--archived` and `--all` cannot be used together.
+
+Unarchiving puts a task at the bottom of its previous column:
+
+```sh title="Unarchive tasks"
+zinn task unarchive MDR-1
+zinn task unarchive MDR-2 MDR-3
+```
+
+Archive or unarchive multiple tasks by giving several keys. Unarchived tasks land in the order given. See [Changing tasks in bulk](#changing-tasks-in-bulk).
+
+Delete a task permanently with `zinn task delete MDR-1`. It asks for confirmation before performing the action, unless `--yes` is used (see [Confirmations](/docs/scripting#confirmations-in-scripts)).
+
+Deleting a task does not make its number available again within that project. Deleting and recreating the project starts its task numbering again at 1.
+
+## Task priority
+
+Priority is optional: `low`, `medium`, `high`, or `urgent`. Priority values, including `none`, are case-insensitive. Stored values and JSON use lowercase. New tasks have no assigned priority by default.
+
+```sh title="Set task priority"
+zinn task create MDR --title 'Review the numbers' --priority high
+zinn task edit MDR-1 --priority urgent
+zinn task edit MDR-1 --priority none
+```
+
+Use `none` to clear priority. Priority does not affect board ordering.
+
+## Activity
+
+Zinn records changes to tasks, projects, columns, labels, relations, and comments, including who made them.
+
+Deleting a project records one project deletion rather than separate deletion activity for every cascaded row.
+
+```sh title="List and view activity"
+zinn activity list
+zinn activity list --limit 10
+zinn activity list --task MDR-1
+zinn activity list --session conversation-id
+zinn activity list --session conversation-id --thread child-thread-id
+zinn activity view 019abcdf-1234-7
+```
+
+`--limit` caps the newest matching events and must be a positive safe integer. Reorders and both affected-task events from relation changes are included.
+
+`--task` includes active, archived, and deleted tasks by readable key, with history recovered from current tasks and recorded deletion snapshots. A reused key includes all known task lifetimes. A project deletion that removed the task is included as the original project event. A valid key with no recoverable history returns an empty list.
+
+`--session` and `--thread` match the complete stored IDs exactly, including case and whitespace. All supplied filters must match, and `--limit` applies after filtering. Rows without the requested identity do not match. No matches return empty output, or `[]` with `--json`, and exit successfully. Session activity records committed changes.
+
+`activity view` accepts a full UUID or a unique prefix of at least eight hexadecimal digits for convenience. The match ignores case and accepts both the full hyphenated or compact forms. Prefixes must be unique across all activity. Use a full ID for reliable reference results. Using prefixes may result in unreliable results over time as history grows.
+
+`activity view` preserves full recorded text and line breaks, including unknown change fields.
+
+With `--json`, list returns an array and view returns one event object. Both include `id`, `created_at` (epoch milliseconds), `actor_name`, `actor_email`, `actor_kind`, `actor_source`, `actor_session_id`, `actor_thread_id`, `actor_agent`, `actor_model`, `actor_effort`, `entity_type`, `entity_id`, `action`, and `changes` (parsed JSON or `null`). `actor_name` can be `null` for an unnamed agent. The six additional actor fields are `null` when absent, including on events recorded before schema version 2. Payloads and IDs are preserved in full, including after deletion.
+
+**Warning:** A readable task key can identify different tasks after a project is deleted and recreated. Group JSON records by (`entity_type`, `entity_id`) to keep their histories distinct. The `id` identifies the activity event itself. Project deletion events keep the project's `entity_id`, with removed task IDs in `changes.tasks`.
+
+Each mutation records the actor identity supplied by the CLI. Zinn checks `AI_AGENT` and `AGENT` declarations before known tool markers for Claude Code, Codex, OpenCode, Gemini CLI, Cline, Cursor, Copilot's coding agent, and Crush. Set `AI_AGENT` to name another tool. Numeric-only and boolean-word values for `AI_AGENT` or `AGENT` are treated as flags, not names, and do not prevent a later marker from identifying the agent. If only a generic flag is set, the actor kind is `agent` and its name is `null`.
+
+With no agent marker, Zinn uses your git `user.name` and `user.email`, then your system username. `actor_source` records the deciding `env:<VARIABLE>`, `git-config` or `os-user`.
+
+Integrations can supply `ZINN_SESSION_ID` and `ZINN_THREAD_ID`. When either is set, Zinn uses that pair. Otherwise it uses the first available pair: `CLAUDE_CODE_SESSION_ID` with a `null` thread, `CODEX_SESSION_ID` with `CODEX_THREAD_ID`, or OpenCode's `OPENCODE_SESSION_ID` as the thread with a `null` session. If a member is missing, it stays `null`; Zinn does not combine values from different pairs.
+
+`ZINN_AGENT`, `ZINN_MODEL` and `ZINN_EFFORT` declare the host agent name, running model and effort for the execution making the change. Zinn trims surrounding whitespace, treats blank declarations as _unset_ and preserves other text. These values are declarations rather than authenticated identities. Activity JSON keeps these values with the event.
+
+## Help
+
+Use root or namespace help to discover commands, then open a command's help for its arguments and behavior:
+
+```sh title="Show command help"
+zinn --help
+zinn project --help
+zinn project column --help
+zinn task --help
+zinn task move --help
+```
+
+The short `-h` form works in the same positions. `--help` shows help for the command words before it and runs nothing. The rest of the line is ignored.
+
+Running `zinn` without a command shows help. Use `zinn --version` (or `-v`) to print the CLI version.

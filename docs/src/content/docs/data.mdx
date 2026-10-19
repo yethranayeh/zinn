@@ -1,0 +1,61 @@
+---
+title: Data and backups | Zinn
+description: Learn where Zinn stores data and how database backups, restores, and schema upgrades work.
+breadcrumb: Data and backups
+---
+
+# Data and backups
+
+Zinn stores every project in one local SQLite database. The default database is `~/.zinn/data/zinn.sqlite`. The backups of the database are stored in `~/.zinn/backups/`. `ZINN_DIR` or a settings file can select another Zinn directory. See [Settings](/docs/settings) for directory selection and precedence.
+
+The CLI and core library can share the selected database. On a local filesystem, commands can share it too: Zinn waits up to 30 seconds for each lock acquisition, then fails if the lock is still held. Of course, the command's total running time can exceed 30 seconds.
+
+## Back up the database
+
+Save a snapshot before installing a new version:
+
+```sh title="Back up the database"
+zinn backup
+```
+
+The snapshot includes committed changes and can be taken while Zinn is in use. It is saved to `backups/` in the selected Zinn directory, and an existing backup is never overwritten. With `--json`, the command returns `{ "path": "..." }`. It fails when there is no database yet.
+
+## Restore a database
+
+Restore the whole database from a backup saved by `zinn backup` or an upgrade:
+
+```sh title="Restore a database"
+zinn restore ~/.zinn/backups/2026-09-29T12-30-05Z-cli-0.32.0-b38178c0.sqlite
+```
+
+Restore asks for confirmation unless `--yes` is used. It saves the current database first, then applies the restore completely or not at all. Restoring to a missing database creates it. With `--json`, it returns `databasePath`, `previousVersion`, `restoredVersion`, and `backupPath`; `backupPath` is `null` if the destination database was missing or empty. See [Scripting and JSON output](/docs/scripting) for confirmation behavior in unattended commands.
+
+A backup with an older schema version is restored at that version, then Zinn upgrades it under the normal upgrade policy. Restore works regardless of the version of the destination database, so you can return to an older Zinn and restore a backup saved by an upgrade. Missing, damaged, unmarked, non-Zinn, or newer-schema backups are refused without changes. Any later failure rolls back the restore and retains the saved backup. If the destination database is damaged, restore leaves it unchanged and prints recovery steps.
+
+## Upgrade a database
+
+A newer Zinn upgrades an older database completely or not at all, saving a backup first. A published release upgrades an older database on first use. A source build upgrades only a separate database selected with `ZINN_DIR`; other older databases open read-only until explicitly migrated.
+
+To upgrade explicitly, run:
+
+```sh title="Upgrade a database"
+zinn migrate
+```
+
+An up to date database is unchanged when a migration is attempted, which means no backup is saved for it either. With `--json`, the result includes `databasePath`, `previousVersion`, `finalVersion`, `changed`, and `backupPath`. When nothing is supposed to happen on a `migrate` call (like the aforementioned case), `backupPath` is `null`. An upgrade failure leaves the database unchanged and keeps backups from each attempt. `zinn migrate` fails without attempting an upgrade when no database with data exists, when the database has no schema version, or when it is newer than this Zinn.
+
+A database with a newer schema can be read, but Zinn refuses changes to it. Use a newer Zinn to change it.
+
+## Databases without a schema version
+
+A database created before version [Eridu/cli-0.37.0/core-0.26.0](/changelog#0370-eridu---2026-10-08), is **unmarked**. Zinn refuses to open it, and `zinn migrate` does not upgrade it. Add `--allow-legacy-read` to a command to request best-effort, read-only access:
+
+```sh title="Read an unmarked database"
+zinn task list MDR --allow-legacy-read
+```
+
+Reads may fail or omit data. Anything can go wrong, really. Zinn warns on **stderr** once per command. The flag never permits a command to change the database. It can appear anywhere except after `--`, where it is treated as a regular argument. `zinn backup` works on an unmarked database without the flag.
+
+## Core library compatibility
+
+Core has client-specific database operation rules. See [Core library compatibility](/docs/core#database-compatibility).

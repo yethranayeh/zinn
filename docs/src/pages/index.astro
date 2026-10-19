@@ -10,7 +10,7 @@ import Icon from "../components/Icon.astro";
 
 import { homepage, projectLinks } from "../config/site";
 
-const documentation = `${projectLinks.github}/blob/main/packages/cli/README.md`;
+const documentation = "/docs/cli";
 const workflowCommands = [
 	"zinn project create DEMO --name 'Release work'",
 	"zinn task create DEMO \\\n  --title 'Write release notes' \\\n  --priority high",
@@ -111,11 +111,9 @@ const workflowCommands = [
 				backup.
 			</p>
 			<p>
-				Read the <a href={`${documentation}#settings-files`}>settings files</a>, <a
-					href={`${documentation}#back-up-the-database`}>database backup</a
-				>, <a href={`${documentation}#restore-the-database`}>database restore</a> and <a
-					href={`${documentation}#upgrade-the-database`}>database upgrade</a
-				> instructions.
+				Read <a href='/docs/settings'>settings</a>, <a href='/docs/data#back-up-the-database'>database backups</a>, <a
+					href='/docs/data#restore-a-database'>database restores</a
+				> and <a href='/docs/data#upgrade-a-database'>database upgrades</a> instructions.
 			</p>
 		</Prose>
 	</ReadingSection>
@@ -124,10 +122,12 @@ const workflowCommands = [
 		<Prose>
 			<h2 id='next-heading'>Take the next command</h2>
 			<p>
-				Read the <a href={`${documentation}#start-a-project`}>first-project guide</a>, browse the <a
-					href={projectLinks.github}
-					data-site-event='github-click'>Zinn source on GitHub</a
-				> or find the <a href={projectLinks.npm} data-site-event='npm-click'>Zinn CLI package on npm</a>.
+				Read the <a href='/docs/quick-start'>quick start</a> or <a href={`${documentation}#start-a-project`}
+					>project reference</a
+				>, browse the <a href={projectLinks.github} data-site-event='github-click'>Zinn source on GitHub</a> or find the <a
+					href={projectLinks.npm}
+					data-site-event='npm-click'>Zinn CLI package on npm</a
+				>.
 			</p>
 		</Prose>
 	</ReadingSection>

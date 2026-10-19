@@ -1,0 +1,105 @@
+---
+title: Settings | Zinn
+description: Choose Zinn's data directory and default project, and inspect the selected store.
+breadcrumb: Settings
+---
+
+# Settings
+
+Without `ZINN_DIR`, Zinn reads the global `~/.zinn/settings.json` and the nearest optional `zinn.local.json` in a codebase. They can choose the data directory and a default project. With `ZINN_DIR`, Zinn reads only `settings.json` inside that selected directory. Note that `storage.directory` does not cause settings from its target directory to be read.
+
+For the files and paths that make up a store, see [Data and backups](/docs/data).
+
+## Choose the data directory
+
+The first configured location wins:
+
+1. `ZINN_DIR` selects that directory for the operation.
+2. `storage.directory` in the nearest `zinn.local.json` selects a directory for the current codebase.
+3. `storage.directory` in `~/.zinn/settings.json` selects the global directory.
+4. If none is set, Zinn uses `~/.zinn` as its directory.
+
+If a `ZINN_DIR` is provided, Zinn reads only `settings.json` inside that directory. It does not read the home or codebase settings files. While the selected `settings.json` can set `defaultProject`, `ZINN_DIR` itself selects the directory.
+
+Without `ZINN_DIR`, Zinn looks for `zinn.local.json` from the current directory up to the Git root. Outside a Git repository, it checks only the current directory. It reads the global `~/.zinn/settings.json` too, then merges the local file over it field by field. A local setting overrides the same global setting. You can omit fields in the local setting to inherit global values. The local settings file is not meant to be committed, as it can cause unexpected behavior on others' Zinn setups who install the same repo with the tracked local setting.
+
+`storage.directory` is relative to the folder containing the file that sets it. A leading `~` or `~/` expands to your home directory. It names the Zinn directory, which contains `data/zinn.sqlite` and `backups/`.
+
+For example, this `zinn.local.json` selects a shared data directory and its default project:
+
+```json
+{
+	"$schema": "https://zinn.sh/schemas/settings/v1.json",
+	"defaultProject": "MDR",
+	"storage": {
+		"directory": "~/work/zinn-data"
+	}
+}
+```
+
+The `$schema` field is optional and gives editors a schema for autocomplete and validation. Zinn ignores it. Settings files are JSON without comments. Unknown keys, invalid JSON, and values of the wrong type stop normal commands with an error naming the file. Zinn **does not** fall back to defaults. A settings version changes only when a change would make existing settings files invalid. When `ZINN_DIR` is set, malformed home and codebase settings are not read.
+
+## Choose a default project
+
+`defaultProject` names the project used when a command supports omitting its project key. Project keys are matched case-insensitively. An explicitly typed key takes precedence, then `zinn.local.json`, then the global settings file. With `ZINN_DIR`, only the selected directory's `settings.json` can provide the default.
+
+The default applies to `task create`, `task list`, `task search`, `project view`, `project column list`, `project edit`, and `project delete` when their project key is omitted. A `null` value is not accepted. Without a default, `task list` and `task search` cover every project; the other commands require a key. A configured default that names a missing project causes a command that uses it to fail and identify the key and settings file. `--all-projects` makes `task list` and `task search` cover every project even when a default is configured; it works with `--all` or `--archived` and cannot be combined with a typed project key.
+
+The `defaultProject` setting applies only to commands that support an omitted key. For example, task-key commands use the project in the task key, and column creation, editing, and ordering require an explicit project key. See the [CLI reference](/docs/cli#start-a-project) for command details.
+
+## Inspect the selected store
+
+Use `zinn info` to inspect the selected store and settings without initializing or upgrading the database:
+
+```sh title="Inspect the selected store"
+zinn info
+zinn info --json
+```
+
+The report includes the selected store directory and source, settings files and their state, default project, database path and schema state, and CLI, core, and runtime versions. Settings states are `found`, `missing`, `error`, or `not-read` when `ZINN_DIR` selects a different settings file. Database state is `absent`, `empty`, `unmarked`, `current`, `older`, `newer`, or `unavailable`.
+
+`zinn info --json` returns one object with stable top-level keys:
+
+- `settingsFiles` lists each inspected settings file with its `path`, `source` (`env`, `global`, or `local`), `state`, and either its parsed `settings` or an `error`. Unread home and codebase files with `ZINN_DIR` have state `not-read` and reason `ZINN_DIR`.
+- `storage` contains the selected `directory`, its `source` (`env`, `local`, `global`, or `default`), the `settingsPath` that chose it (or `null` for `env` and `default`), whether it exists, and an `error`.
+- `defaultProject` contains its `key`, the `settingsPath` that supplied it, and an `error`; the key and path are `null` when there is no configured default.
+- `database` contains the database `path`, its `state`, its `version`, the `latestVersion` supported by this CLI, and an `error`. The version is `0` for `absent`, `empty`, and `unmarked` states.
+- `versions` contains `cli`, `core`, and `runtime` (`name` and `version`).
+
+For example, when settings and the database can be inspected, the report has this shape:
+
+```json
+{
+	"settingsFiles": [
+		{
+			"path": "/home/me/.zinn/settings.json",
+			"source": "global",
+			"state": "found",
+			"settings": { "defaultProject": "DEMO" }
+		},
+		{ "path": "/work/app/zinn.local.json", "source": "local", "state": "missing" }
+	],
+	"storage": {
+		"directory": "/home/me/.zinn",
+		"source": "default",
+		"settingsPath": null,
+		"exists": true,
+		"error": null
+	},
+	"defaultProject": { "key": "DEMO", "settingsPath": "/home/me/.zinn/settings.json", "error": null },
+	"database": {
+		"path": "/home/me/.zinn/data/zinn.sqlite",
+		"state": "current",
+		"version": 2,
+		"latestVersion": 2,
+		"error": null
+	},
+	"versions": {
+		"cli": "<installed CLI version>",
+		"core": "<installed core version>",
+		"runtime": { "name": "Node", "version": "<runtime version>" }
+	}
+}
+```
+
+When settings are unusable or a database cannot be inspected, `info` reports the errors and exits with code 0. `unavailable` means settings left the store undecided (`path` and `version` are `null`), or the selected file could not be read as a database (`path` is set, `version` is `null`, and `error` explains why). Every `error` is `null` when there is no problem. A settings error is carried on `storage`, `defaultProject`, and `database` as well as its `settingsFiles` entry, so the same string can appear several times. With `ZINN_DIR`, an unusable selected `settings.json` sets only `defaultProject.error`, since the store is already chosen. SQLite may perform normal file housekeeping and crash recovery while `info` inspects a database.

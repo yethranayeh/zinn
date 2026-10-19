@@ -1,13 +1,17 @@
 ---
 import TerminalCommands from "./TerminalCommands.astro";
 
-// Renders a fenced shell block from MDX; a blank line separates its commands.
+// Renders fenced code from MDX; a blank line separates shell commands.
 interface Props {
-	"data-label": string;
+	"data-label"?: string;
 	"data-commands": string;
+	"data-language"?: string;
 }
 
-const { "data-label": label, "data-commands": commands } = Astro.props;
+const { "data-label": sourceLabel, "data-commands": commands, "data-language": language = "text" } = Astro.props;
+const isShell = ["sh", "bash", "shell"].includes(language);
+const label = sourceLabel ?? `${language === "text" ? "Code" : language} ${isShell ? "commands" : "example"}`;
+const commandList = isShell ? commands.trim().split(/\n\s*\n/) : [commands.replace(/^\n|\n$/g, "")];
 ---
 
-<TerminalCommands label={label} commands={commands.trim().split(/\n\s*\n/)} />
+<TerminalCommands label={label} commands={commandList} showsPrompt={isShell} />

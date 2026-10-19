@@ -5,8 +5,9 @@ interface Props {
 	label: string;
 	commands: string[];
 	class?: string;
+	showsPrompt?: boolean;
 }
-const { label, commands, class: className } = Astro.props;
+const { label, commands, class: className, showsPrompt = true } = Astro.props;
 ---
 
 <div class:list={["group/terminal mb-6", className]} data-terminal>
@@ -19,7 +20,7 @@ const { label, commands, class: className } = Astro.props;
 			<code class='block'>
 				{commands.map((command) => (
 					<span data-terminal-command class='block [&:not(:first-child)]:mt-[1.8em]'>
-						<span data-terminal-prompt class='text-bronze select-none' aria-hidden='true'>$ </span>
+						{showsPrompt && <span data-terminal-prompt class='text-bronze select-none' aria-hidden='true'>$ </span>}
 						<span class='whitespace-pre' set:text={command} />
 					</span>
 				))}
@@ -31,9 +32,9 @@ const { label, commands, class: className } = Astro.props;
 			variant='ghost-inverted'
 			size='icon'
 			value={commands.join("\n")}
-			label={`Copy commands: ${label}`}
-			title='Copy commands'
-			success='Commands copied to clipboard.'
+			label={`${showsPrompt ? "Copy commands" : "Copy code"}: ${label}`}
+			title={showsPrompt ? "Copy commands" : "Copy code"}
+			success={showsPrompt ? "Commands copied to clipboard." : "Code copied to clipboard."}
 		/>
 	</div>
 </div>

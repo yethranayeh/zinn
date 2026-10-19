@@ -46,11 +46,11 @@ The default database is \`~/.zinn/data/zinn.sqlite\`. Set \`storage.directory\` 
 
 \`zinn backup\` saves a database snapshot, and \`zinn restore\` puts one back after saving the current database. A newer Zinn upgrades an older database, and \`zinn migrate\` runs that upgrade after saving a backup.
 
-Read the [settings files](${projectLinks.github}/blob/main/packages/cli/README.md#settings-files), [database backup](${projectLinks.github}/blob/main/packages/cli/README.md#back-up-the-database), [database restore](${projectLinks.github}/blob/main/packages/cli/README.md#restore-the-database) and [database upgrade](${projectLinks.github}/blob/main/packages/cli/README.md#upgrade-the-database) instructions.
+Read [Settings](https://zinn.sh/docs/settings) and [Data and backups](https://zinn.sh/docs/data) for storage, backup, restore and upgrade details.
 
 ## Take the next command
 
-Read the [first-project guide](${projectLinks.github}/blob/main/packages/cli/README.md#start-a-project), browse the [Zinn source on GitHub](${projectLinks.github}) or find the [Zinn CLI package on npm](${projectLinks.npm}).
+Read the [quick start](https://zinn.sh/docs/quick-start) or [CLI reference](https://zinn.sh/docs/cli), browse the [Zinn source on GitHub](${projectLinks.github}) or find the [Zinn CLI package on npm](${projectLinks.npm}).
 
 Read [About Zinn](https://zinn.sh/about), [Contact](https://zinn.sh/contact) and [Privacy](https://zinn.sh/privacy).
 

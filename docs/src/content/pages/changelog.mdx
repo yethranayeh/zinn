@@ -3,7 +3,7 @@ title: Changelog | Zinn
 description: Release notes for Zinn, an Experimental kanban CLI and core library, including breaking changes and database upgrades.
 ---
 
-# Changelog
+# CHANGELOG
 
 Notable changes to Zinn. Each CLI release names the core version it includes. **Breaking** changes include the action needed when upgrading.
 
@@ -92,7 +92,7 @@ Notable changes to Zinn. Each CLI release names the core version it includes. **
 
 ### Changed
 
-- **Breaking database compatibility:** databases now record a schema version. Published releases upgrade supported older versions after saving a backup. Unmarked databases created before version tracking require `--allow-legacy-read` for best-effort read-only access and cannot be upgraded with `zinn migrate`. Save a snapshot with `zinn backup` before upgrading. See [database upgrades](https://github.com/yethranayeh/zinn/blob/main/packages/cli/README.md#upgrade-the-database).
+- **Breaking database compatibility:** databases now record a schema version. Published releases upgrade supported older versions after saving a backup. Unmarked databases created before version tracking require `--allow-legacy-read` for best-effort read-only access and cannot be upgraded with `zinn migrate`. Save a snapshot with `zinn backup` before upgrading. See [database upgrades](/docs/data#upgrade-a-database).
 - **Breaking JSON:** `zinn project view --json` replaces `tasks` with `columns` containing `name` and `taskCount`, plus `archivedTaskCount`. Use `zinn task list <project-key> --json` to read tasks. Move, archive and unarchive return an object for one task or an array for several, with a `changed` flag on each result.
 
 ### Fixed

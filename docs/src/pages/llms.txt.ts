@@ -11,14 +11,19 @@ When to use Zinn: track development work locally, carry task scope and progress 
 
 ## When to use
 
-- [CLI workflow](https://raw.githubusercontent.com/yethranayeh/zinn/main/packages/cli/README.md): Track local development work with projects, tasks and progress comments; read and update a board with JSON output. Start with \`zinn --help\` and inspect each command's help before calling it.
+- [CLI workflow](https://zinn.sh/docs/cli.md): Track local development work with projects, tasks and progress comments; read and update a board with JSON output. Start with \`zinn --help\` and inspect each command's help before calling it.
 
 ## Documentation
 
 - [Zinn overview](https://zinn.sh/index.md): Product, installation, project workflow and local storage.
+- [Documentation index](https://zinn.sh/docs.md): Guide to installing Zinn, starting a workflow, and finding reference pages.
 - [Installation](https://zinn.sh/docs/installation.md): Requirements, installing, upgrading and uninstalling the CLI and core, and running them on Bun.
-- [CLI reference](https://raw.githubusercontent.com/yethranayeh/zinn/main/packages/cli/README.md): Commands, flags, confirmations, JSON contracts and database configuration.
-- [Core library](https://raw.githubusercontent.com/yethranayeh/zinn/main/packages/core/README.md): TypeScript library installation and operations.
+- [Quick start](https://zinn.sh/docs/quick-start.md): Create a project, add a task, and move it through the board.
+- [CLI reference](https://zinn.sh/docs/cli.md): Project, task, label, relation, comment, and activity commands.
+- [Settings](https://zinn.sh/docs/settings.md): Data-directory selection, default projects, and store inspection.
+- [Scripting and JSON output](https://zinn.sh/docs/scripting.md): JSON contracts, command discovery, and confirmations.
+- [Data and backups](https://zinn.sh/docs/data.md): Local storage, backups, restores, and database compatibility.
+- [Core library](https://zinn.sh/docs/core.md): TypeScript setup, shared guarantees, and database compatibility.
 - [Changelog](https://zinn.sh/changelog.md): Release changes, bundled core versions and breaking changes.
 
 ## Project information

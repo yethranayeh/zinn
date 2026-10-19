@@ -3,7 +3,8 @@ import Branding from "./Branding.astro";
 import NavLink from "./NavLink.astro";
 
 const links = [
-	{ name: "Installation", path: "/docs/installation" },
+	{ name: "Docs", path: "/docs" },
+	{ name: "Install", path: "/docs/installation" },
 	{ name: "CHANGELOG", path: "/changelog" }
 ];
 ---
@@ -14,7 +15,7 @@ const links = [
 		<Branding />
 
 		<nav
-			class='flex min-w-0 flex-1 flex-wrap items-center justify-end gap-x-4 md:gap-x-7 font-mono text-xs leading-normal'
+			class='flex min-w-0 flex-1 flex-wrap items-center justify-end gap-x-4 font-mono text-xs leading-normal'
 			aria-label='Zinn documentation'>
 			{
 				links.map((link) => (

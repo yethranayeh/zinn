@@ -1,7 +1,7 @@
 ---
-title: Install Zinn | Kanban CLI and core library
+title: Install | Zinn
 description: Install, upgrade and uninstall the Zinn CLI and core library with npm. Zinn runs on Node.js 24.15.0 or newer, and on Bun.
-breadcrumb: Installation
+breadcrumb: Install
 ---
 
 import AgentSetup from "../../components/AgentSetup.astro";
@@ -28,7 +28,7 @@ Check that the `zinn` command is available:
 zinn --version
 ```
 
-The [quick start](https://github.com/yethranayeh/zinn#quick-start) creates a first project and task.
+The [quick start](/docs/quick-start) creates a first project and task.
 
 ### Run the CLI on Bun
 
@@ -68,7 +68,7 @@ This repository uses Zinn for work tracking. Before substantial work, on resume,
 npm i @zinn-dev/core
 ```
 
-The [core README](https://github.com/yethranayeh/zinn/blob/main/packages/core/README.md) has a runnable example with database configuration.
+See the [Core library guide](/docs/core) for a runnable example with database configuration.
 
 ## Upgrade
 
@@ -100,7 +100,7 @@ Name `@latest`: npm saves core with a `^0.x` range, which stays within one minor
 
 A newer release upgrades an older database the first time it opens it, saving a backup first. Older releases then open that database read-only, so upgrade the CLI and core together when they share a database.
 
-The CLI reference covers [backups](https://github.com/yethranayeh/zinn/blob/main/packages/cli/README.md#back-up-the-database), [restoring a backup](https://github.com/yethranayeh/zinn/blob/main/packages/cli/README.md#restore-the-database) and [database upgrades](https://github.com/yethranayeh/zinn/blob/main/packages/cli/README.md#upgrade-the-database).
+See [Data and backups](/docs/data) for backup, restore, and database-upgrade behavior.
 
 ## Uninstall
 
@@ -116,4 +116,4 @@ In a project that uses core, remove it there:
 npm uninstall @zinn-dev/core
 ```
 
-Uninstalling leaves your data in place. The Zinn directory holds the database, backups and settings. It is `~/.zinn` unless `ZINN_DIR` or a [settings file](https://github.com/yethranayeh/zinn/blob/main/packages/cli/README.md#settings-files) chooses another. Deleting it removes every project and backup.
+Uninstalling leaves your data in place. The Zinn directory holds the database, backups and settings. It is `~/.zinn` unless `ZINN_DIR` or a [settings file](/docs/settings) chooses another. Deleting it removes every project and backup.

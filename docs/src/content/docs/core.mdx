@@ -1,0 +1,71 @@
+---
+title: Core | Zinn
+description: Use Zinn's core library with an explicitly configured database and actor.
+breadcrumb: Core
+---
+
+# Core library
+
+`@zinn-dev/core` provides Zinn's shared operations, input schemas, and SQLite storage. Install it in a Node.js project:
+
+```sh title="Install core"
+npm i @zinn-dev/core
+```
+
+Core requires Node.js 24.15.0 or newer and also runs on Bun.
+
+Configure the database before the first operation. Supply an explicit actor to every mutation:
+
+```ts title="Configure core and create a project"
+import type { Actor } from "@zinn-dev/core";
+import { fileURLToPath } from "node:url";
+import { configureDatabase, project, task } from "@zinn-dev/core";
+
+configureDatabase({
+	client: "example",
+	version: "0.1.0",
+	executable: fileURLToPath(import.meta.url),
+	release: "source",
+	allowsLegacyRead: false
+});
+
+const actor: Actor = { name: "Alper", email: null, kind: "human" };
+const app = project.create({ key: "APP", name: "My project" }, actor);
+const createdTask = task.create({ project_id: app.id, title: "Ship the first feature" }, actor);
+
+console.log(createdTask.key); // APP-1
+console.log(task.getAll({ projectKey: app.key }));
+```
+
+Save the example as `example.ts` and run it with a separate Zinn directory:
+
+```sh title="Run the example in an isolated store"
+ZINN_DIR=./.zinn-example node example.ts
+```
+
+Core opens the database on first use.
+
+By default it shares `~/.zinn/data/zinn.sqlite` with the CLI, but `ZINN_DIR` and settings files can select another location. See [Settings](/docs/settings) for directory selection.
+
+The client supplies its own `release` identity: `source` for development and `published` for prepared release artifacts. Core identifies its own build independently. Core throws errors while the client handles output, prompts, and optional database-wait and legacy-read callbacks.
+
+## Shared behavior
+
+Names and titles are trimmed and cannot be blank or contain line breaks or control characters.
+
+- Edits change only supplied fields. Valid edits that leave values unchanged preserve modification timestamps and record no activity.
+- Descriptions default to `null`. Passing `null` or blank text clears them. Non-blank text input keeps its whitespace.
+- Entity mutations record the actor and activity in the same transaction as the change.
+- Bulk task moves, archives, and unarchives apply in input order and succeed or fail together.
+
+## Database compatibility
+
+Opening a database can upgrade it, even for a read operation. Upgrades save a backup first and apply completely or not at all. Upgrades and restores check that foreign keys reference existing tables and rows before committing.
+
+- Older databases upgrade automatically when both the core package and client are published releases, or when `ZINN_DIR` explicitly selects a separate database. Source clients otherwise open older databases read-only until an explicit `migrate.run`.
+- Databases newer than core supports open read-only.
+- Databases without a schema version are refused unless `allowsLegacyRead` enables best-effort, read-only access.
+
+Core backup and restore operations use the selected store independently of the normal database-opening policy. See [Data and backups](/docs/data) for shared storage and restore behavior.
+
+The [public exports](https://github.com/yethranayeh/zinn/blob/main/packages/core/index.ts), [input schemas](https://github.com/yethranayeh/zinn/tree/main/packages/core/src/schemas), and [operation implementations](https://github.com/yethranayeh/zinn/tree/main/packages/core/src/operations) document the available API.

@@ -1,0 +1,40 @@
+---
+title: Quick start | Zinn
+description: Create a project, add a task, move it through the board, and find it again with the Zinn CLI.
+breadcrumb: Quick start
+---
+
+# Quick start
+
+If you have not installed the CLI, start with [Install](/docs/installation).
+
+Create a project, add a task, and move it through the board:
+
+```sh title="Create a project and move a task"
+zinn project create MDR --name 'Macrodata Refinement'
+zinn task create MDR --title 'Refine 75% of the numbers'
+zinn task list MDR
+zinn task move MDR-1 'In Progress'
+zinn task view MDR-1
+```
+
+New projects start with Backlog, TODO, In Progress, Review, and Done columns. Task keys combine the project key and an increasing number, such as `MDR-1`. Use `zinn project column list MDR` to inspect a project's columns.
+
+Search tasks and comments, leave a progress note, and inspect recent activity:
+
+```sh title="Search and add a progress note"
+zinn task search numbers MDR
+zinn task comment create MDR-1 --text 'Ready for review'
+zinn activity list --task MDR-1
+```
+
+When the task is finished, archive it and list archived tasks:
+
+```sh title="Archive finished work"
+zinn task archive MDR-1
+zinn task list MDR --archived
+```
+
+`zinn --help` lists command groups. Add `--help` after a command to see its usage. Add `--json` to get machine-readable output for scripts and agents.
+
+For the full command behavior and shared text rules, see the [CLI reference](/docs/cli). If you are working on a specific project when inside a specific folder, you can make Zinn [default to a project](/docs/settings#choose-a-default-project) on all suitable commands. To protect or upgrade the local database, see [Data and backups](/docs/data).

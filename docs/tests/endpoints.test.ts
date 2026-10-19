@@ -53,7 +53,7 @@ test("homepage preserves product metadata, structured data and install commands"
 	for (const page of trustPages) {
 		expect(html).toContain(`href="/${page}"`);
 	}
-	expect(html).toContain('href="/docs/installation"');
+	expect(html).toContain('href="/docs"');
 });
 
 test.each(trustSources)("trust page %s has substantive HTML and an identical Markdown body", async (source) => {
@@ -103,14 +103,25 @@ test.each(docsSources)("docs page %s has a Markdown twin and breadcrumbs matchin
 	expect(html).toContain(`rel="alternate" type="text/markdown" href="/${page}.md"`);
 	expect(html).toContain(`rel="canonical" href="https://zinn.sh/${page}/"`);
 	const markdown = await expectMarkdownTwin(page, source);
-	// Every fenced block renders as a labelled terminal block with a prompt per command.
-	const fences = [...markdown.matchAll(/^```sh title="([^"]+)"\n([\s\S]*?)^```$/gm)];
+	// Shell blocks keep one prompt per command; other code blocks preserve their text without a prompt.
+	const fences = [...markdown.matchAll(/^```([^\s`]+)(?: title="([^"]+)")?\n([\s\S]*?)^```$/gm)];
 	const blocks = [...html.matchAll(/<pre class="command-block[^"]*"[^>]*aria-label="([^"]+)"[^>]*>([\s\S]*?)<\/pre>/g)];
 	expect(markdown.match(/^```/gm)?.length ?? 0).toBe(fences.length * 2);
-	expect(blocks.map((block) => block[1])).toEqual(fences.map((fence) => fence[1]!));
+	expect(blocks).toHaveLength(fences.length);
 	for (const [index, block] of blocks.entries()) {
-		const commands = fences[index]![2]!.trim().split(/\n\s*\n/);
-		expect(block[2]!.match(/aria-hidden="true">\$ <\/span>/g)?.length).toBe(commands.length);
+		const [, language, sourceLabel, sourceCommands] = fences[index]!;
+		const isShell = ["sh", "bash", "shell"].includes(language!);
+		const commands = isShell ? sourceCommands!.trim().split(/\n\s*\n/) : [sourceCommands!.replace(/^\n|\n$/g, "")];
+		const expectedLabel = sourceLabel ?? (language === "text" ? "Code" : language) + (isShell ? " commands" : " example");
+		const promptCount = block[2]!.match(/aria-hidden="true">\$ <\/span>/g)?.length ?? 0;
+		const blockTail = html.slice(block.index! + block[0].length);
+		const copyButton = blockTail.match(/<button\b[^>]*data-copy-value="([\s\S]*?)"[^>]*>([\s\S]*?)<\/button>/);
+		expect(block[1]).toBe(expectedLabel);
+		expect(promptCount).toBe(isShell ? commands.length : 0);
+		expect(copyButton).toBeDefined();
+		const copiedValue = copyButton?.[1]
+			?.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+		expect(copiedValue).toBe(commands.join("\n"));
 	}
 
 	const isDocsHome = page === "docs";
@@ -150,7 +161,7 @@ test("llms.txt follows the published structure and all local links work", async 
 		expect(target.status).toBe(200);
 		expect(target.headers.get("Content-Type")).toContain("text/markdown");
 	}
-	for (const fact of ["zinn --help", "projects", "tasks", "comments", "JSON", "Experimental", "packages/cli/README.md"]) {
+	for (const fact of ["zinn --help", "projects", "tasks", "comments", "JSON", "Experimental", "/docs/cli.md", "/docs/quick-start.md"]) {
 		expect(markdown).toContain(fact);
 	}
 });

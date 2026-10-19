@@ -1,0 +1,120 @@
+---
+title: Scripting and JSON | Zinn
+description: Use Zinn's JSON output and command manifest in scripts, including errors and confirmations.
+breadcrumb: Scripting
+---
+
+# Scripting and JSON output
+
+Add `--json` to a command to get JSON instead of text. The flag can appear anywhere in the command except after `--`, where it is a positional value.
+
+```sh title="Read and create tasks as JSON"
+zinn task list MDR --json
+zinn task create MDR --title 'Refine the numbers' --json
+```
+
+Read commands return the data they list or show. Write commands return the entity they create, change, or delete. Output is one JSON document on stdout; an empty list is `[]`.
+
+## Handle errors and notices
+
+Handled errors are written to stderr as one JSON document. Stdout stays empty and the command exits with code 1. An error contains a code and message, and may include known details, help, and diagnostics:
+
+```json
+{
+  "error": {
+    "code": "not_found",
+    "message": "...",
+    "details": { "entity": "task", "key": "MDR-999", "source": "explicit" }
+  }
+}
+```
+
+The error codes are:
+
+- `invalid_input` for an invalid invocation or settings;
+- `not_found` when a required entity or requested file is absent;
+- `conflict` when current state or database compatibility prevents the request;
+- `storage` for filesystem or SQLite operational failures;
+- `internal` for an unexpected failure.
+
+Optional `error.details` carries known facts: `argument`, `field` (an array of string or number path segments), `entity`, `key`, `source` (`explicit` or `defaultProject`), `settingsPath`, `reason`, `matchCount`, `candidateIds`, `path`, `databasePath`, `backupDirectory`, `backupPath`, `schemaVersion`, `supportedSchemaVersion`, and `cause` (`message` and optional native `code` or `errcode`). Unknown facts are omitted. Optional `error.help` retains usage guidance. Prior notices are collected in optional `error.diagnostics`, an array of strings. In text mode, notices are written to stderr as they occur. A successful JSON command writes notices as text to stderr after completion; on failure, prior notices are collected in `error.diagnostics`. This includes database lock waits.
+
+Check the exit status before parsing stdout or stderr. Scripts should use JSON fields such as `code` and `details`; message, help, and diagnostic wording is for people. Signals, runtime loading failures, and broken output channels are outside the handled-error contract.
+
+Text output is colored only in a terminal unless `NO_COLOR` disables it. `FORCE_COLOR=0` disables color; any other nonempty value enables it, including when output is piped. `ZINN_DEBUG=1` prints route details to stderr without changing stdout. Other `ZINN_DEBUG` values do nothing.
+
+For command input conventions, including repeated flags and values beginning with a dash, see [Text values in the CLI reference](/docs/cli#text-values).
+
+## Discover the command contract
+
+`zinn capabilities --json` describes the installed CLI without reading settings, opening a database, prompting, or using the network. It works when the store is missing or settings are invalid. Without `--json`, it prints a short summary and the command to retrieve the full contract.
+
+The JSON object contains `manifestVersion` (currently `1`), `cli` (package name and version), `invocation`, `commands`, `error`, and `schemas`. Commands follow route order and include the `capabilities` command itself. Each command describes its token-array `path`, summary, input, effects, confirmation, and finite set of results.
+
+- `input.options` is keyed by option name. Each option declares its `type`; omitted `required` and `multiple` mean `false`. String values can carry named placeholders, choices, patterns, and descriptions. Positional `forms` declare ordered names, minimum and maximum occurrences (`null` means no upper bound), and value facts. Choose the form that matches supplied values. `constraints` describes mutual exclusion, requirements, and requests that need at least one input. Optional `notes` explain resolver and domain behavior.
+- `invocation` describes router options, help and version precedence, and literal values. Build argv from the command path, command options (use `--name=value` for string values), `--json`, then `--` and positional words when needed. Repeat an option only when `multiple` is `true`; words after `--` are literal values.
+- `results` selects a JSON success schema: `always`, `booleanOption` (an absent boolean is false), or `positionalCount` (inclusive bounds, counting supplied occurrences, including repeated keys). Each result declares its `mode`, `stream`, and `exitCode`.
+- A descriptor's `schemaRef`, such as `#/schemas/definitions/TaskList`, resolves against the whole manifest. JSON Schema `$ref` values resolve against the extracted `schemas` document, which uses draft-07. All references are local. The finite `Capabilities` definition describes the manifest without embedding another manifest value.
+- `effects.domain` describes the operation. `effects.storage: "normal-open"` may create or upgrade storage under the normal open policy, including for reads; `"none"` performs no storage access. Administrative commands declare their own storage operation. `confirmation` describes prompts and project-deletion rules.
+
+Help stays text even with `--json`. The CLI package release version identifies the command contract; `manifestVersion` describes how to interpret the manifest and changes only when that interpretation becomes incompatible. Development builds can change the contract without changing their version, so use the manifest content rather than its version alone as a cache key.
+
+For example, with `@zinn-dev/cli` installed in the consumer project and an `APP` project in the selected store, a Node.js script can read the manifest, find the task-list command, and build argv from its positional-form descriptor:
+
+```js title="Discover and invoke task list"
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const entryPoint = fileURLToPath(import.meta.resolve("@zinn-dev/cli"));
+
+function json(args) {
+  const result = spawnSync(process.execPath, [entryPoint, ...args], { encoding: "utf8" });
+  if (result.error) {
+    throw result.error;
+  }
+
+  if (result.status !== 0) {
+    throw new Error(result.stderr);
+  }
+
+  return JSON.parse(result.stdout);
+}
+
+const manifest = json(["capabilities", "--json"]);
+const command = manifest.commands.find(({ path }) => path.join(" ") === "task list");
+const form = command.input.forms[0];
+const values = { "project-key": "APP" };
+const words = form.positionals.flatMap(({ name }) => (values[name] === undefined ? [] : [values[name]]));
+const args = [...command.path, "--json"];
+if (words.length > 0) {
+  args.push(manifest.invocation.optionSeparator, ...words);
+}
+
+const tasks = json(args);
+const result = command.results.find(({ selector }) => selector.kind === "always");
+console.log({ schemaRef: result.schemaRef, tasks });
+```
+
+Use a JSON Schema validator with `manifest.schemas` to validate successful values against the selected definition. Task lists are arrays, including `[]`; task details are objects. History selects a detail schema with a required `activity` array. Single and bulk mutations can select different schemas, so select the result before validating it.
+
+## Confirmations in scripts
+
+Project, task, label, and comment deletion, and database restore, ask for confirmation. Use `--yes` to skip a prompt:
+
+```sh title="Delete a task without prompting"
+zinn task delete MDR-1 --yes --json
+```
+
+With `--json`, `--yes` is required for commands that ask for confirmation. Without a terminal, the same commands require `--yes` and refuse before asking. Piped input such as `echo y` does not answer the prompt. In a terminal, only `y` or `Y` confirms; pressing Enter declines. Declining changes nothing and exits successfully. `task relation delete` does not ask for confirmation and does not accept `--yes`.
+
+Project deletion has an additional rule: `--yes` skips confirmation only when the project key is typed in the command. A configured default project still requires confirmation and cannot be deleted with `--json`.
+
+For the exact command syntax, run root or namespace help, then command help:
+
+```sh title="Discover command help"
+zinn --help
+zinn project --help
+zinn task move --help
+```
+
+The short `-h` form works in the same positions. Help shows usage for the command words before it and runs no command. Running `zinn` without a command shows help; `zinn --version` (or `-v`) prints the CLI version.
