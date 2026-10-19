@@ -48,8 +48,9 @@ test("ZINN-283: operational causes survive wrappers; unknown failures and constr
     expect(result).toMatchObject({ code: "storage", details: { reason, cause: { code: error.code, errcode } } });
     expect(JSON.stringify(result)).not.toContain("driver internals");
   }
-  for (const [code, reason] of [["EACCES", "permission_denied"], ["EPERM", "permission_denied"], ["EROFS", "read_only"], ["ENOSPC", "disk_full"], ["EIO", "io"]]) {
+  for (const [code, reason] of [["EACCES", "permission_denied"], ["EPERM", "permission_denied"], ["EROFS", "read_only"], ["ENOSPC", "disk_full"], ["EIO", "io"], ["ENAMETOOLONG", "io"], ["ELOOP", "io"]]) {
     const cause = Object.assign(new Error("filesystem operation failed"), { code, path: "/known/path", sql: "secret", bindings: ["secret"] });
+    expect(classifyFailure(cause)).toMatchObject({ code: "storage", details: { reason, path: "/known/path", cause: { code } } });
     const failure = classifyFailure(new CoreError("cannot read settings", "storage", { settingsPath: "/known/settings" }, { cause }));
     expect(failure).toMatchObject({ code: "storage", details: { reason, path: "/known/path", settingsPath: "/known/settings", cause: { code } } });
     expect(JSON.stringify(failure)).not.toContain("secret");

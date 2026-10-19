@@ -280,10 +280,37 @@ test("missing files and directories fail with source facts", async () => {
       code: "storage",
       details: { path: missing, argument: "--text-file", cause: { code: "ENOENT" } },
     });
+    const result = runReader(directory, missing);
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    const failure = errorDocumentSchema.parse(JSON.parse(result.stderr)).error;
+    expect(failure.message).toContain("--description-file");
+    expect(failure.message.split(missing)).toHaveLength(2);
+    expect(failure.details?.cause?.message).toContain(missing);
+    expect(failure.message).not.toContain(failure.details!.cause!.message);
     await expect(resolveTextInput(undefined, directory, "--text")).rejects.toMatchObject({
       code: "invalid_input",
       details: { path: directory, argument: "--text-file" },
     });
+  });
+});
+
+test.skipIf(!isPosix)("overlong filenames and symlink loops report storage failures with OS causes", async () => {
+  await withDirectory(async (directory) => {
+    const filenameBeyondComponentLimit = "a".repeat(330);
+    const loopingPath = join(directory, "loop");
+    symlinkSync(loopingPath, loopingPath);
+    for (const [path, code] of [[join(directory, filenameBeyondComponentLimit), "ENAMETOOLONG"], [loopingPath, "ELOOP"]]) {
+      const result = runReader(directory, path!);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      const failure = errorDocumentSchema.parse(JSON.parse(result.stderr)).error;
+      expect(failure).toMatchObject({
+        code: "storage",
+        details: { argument: "--description-file", path, reason: "io", cause: { code } },
+      });
+      expect(failure.details?.cause?.message).toContain(path!);
+    }
   });
 });
 

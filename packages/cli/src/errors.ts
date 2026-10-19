@@ -117,6 +117,8 @@ const osReasons: Record<string, ErrorDetails["reason"]> = {
   EBUSY: "busy",
   EIO: "io",
   ENOENT: "io",
+  ENAMETOOLONG: "io",
+  ELOOP: "io",
   ENOTDIR: "io",
   EISDIR: "io",
   EMFILE: "io",

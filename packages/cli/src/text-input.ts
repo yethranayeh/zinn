@@ -136,11 +136,11 @@ export async function resolveTextInput(
     }
 
     const failure = classifyFailure(error);
-    throw new CliError(
-      `Cannot read ${fileFlag} ${JSON.stringify(path)}: ${error instanceof Error ? error.message : "Read failed"}`,
-      failure.code,
-      { ...failure.details, argument: fileFlag, path },
-    );
+    throw new CliError(`Cannot read ${fileFlag} ${JSON.stringify(path)}.`, failure.code, {
+      ...failure.details,
+      argument: fileFlag,
+      path,
+    });
   }
 
   let decoded: string;
