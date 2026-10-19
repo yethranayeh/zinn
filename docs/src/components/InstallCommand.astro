@@ -1,6 +1,6 @@
 ---
 import CopyButton from "./CopyButton.astro";
-import SuperwhiteTerminalText from "./SuperwhiteTerminalText.astro";
+import AccentTerminalText from "./AccentTerminalText.astro";
 import { installCommand as command } from "../config/site";
 ---
 
@@ -13,13 +13,13 @@ import { installCommand as command } from "../config/site";
 					><span
 						class='mr-1.5 inline-block w-[2ch] text-bronze select-none group-data-[copied]/install:invisible md:mr-2.5'
 						aria-hidden='true'>$</span
-					><SuperwhiteTerminalText text={command} command='install' /></code
+					><AccentTerminalText text={command} command='install' /></code
 				>
 				<code class='block text-bone/70 group-data-[copied]/install:text-limestone'
 					><span
 						class='invisible mr-1.5 inline-block w-[2ch] text-bronze select-none group-data-[copied]/install:visible md:mr-2.5'
 						aria-hidden='true'>&gt;_</span
-					><SuperwhiteTerminalText text='zinn --help' command='help' /></code
+					><AccentTerminalText text='zinn --help' command='help' /></code
 				>
 			</div>
 		</div>
@@ -40,14 +40,14 @@ import { installCommand as command } from "../config/site";
 </div>
 
 <style>
-	:global([data-install] [data-superwhite-command="help"]),
-	:global([data-install][data-copied] [data-superwhite-command="install"]) {
-		--superwhite-display: none;
-		--superwhite-ink: currentColor;
+	:global([data-install] [data-accent-command="help"]),
+	:global([data-install][data-copied] [data-accent-command="install"]) {
+		--accent-display: none;
+		--accent-ink: currentColor;
 	}
 
-	:global([data-install][data-copied] [data-superwhite-command="help"]) {
-		--superwhite-display: block;
-		--superwhite-ink: transparent;
+	:global([data-install][data-copied] [data-accent-command="help"]) {
+		--accent-display: block;
+		--accent-ink: transparent;
 	}
 </style>

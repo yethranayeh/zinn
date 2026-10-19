@@ -1,14 +1,175 @@
 ---
-import PageLayout from "../layouts/PageLayout.astro";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import AccentVideo from "../components/AccentVideo.astro";
+import z from "../../public/art/zinn-z.svg?raw";
+
+const zPath = z.match(/\sd="([^"]+)"/)![1];
+const zParts = zPath.split(/(?=M)/);
 ---
 
-<PageLayout
+<BaseLayout
 	title='Page not found | Zinn'
 	description='This page could not be found. Return to the Zinn homepage.'
 	noindex>
-	<p class='mb-6 font-mono text-xs'>404</p>
-	<h1 class='mb-6 text-3xl leading-tight tracking-tight sm:text-4xl md:text-5xl'>Page not found.</h1>
-	<p class='mb-9 max-w-xl'>There is nothing else to see, <span class='text-cinnabar'>yet</span>.</p>
-	<a class='inline-block py-2 font-mono text-sm underline' href='/'>Return to the homepage</a>
-	<p class='mt-9 text-xs leading-normal'>Experimental.</p>
-</PageLayout>
+	<div class='relative isolate flex flex-1 flex-col bg-soot text-limestone selection:bg-limestone selection:text-soot'>
+		<div class='site-container flex flex-1 flex-col py-6 md:py-8'>
+			<section
+				class='relative isolate flex min-h-96 flex-1 flex-col justify-between p-4 sm:p-6'
+				aria-labelledby='not-found'>
+				<div class='hatching pointer-events-none absolute inset-0 -z-10' aria-hidden='true'>
+					<AccentVideo class='accent-video' />
+					<canvas class='accent-cutout'></canvas>
+					<div class='knockout absolute top-1/2 left-1/2 aspect-square w-3/5 max-w-96 -translate-1/2'>
+						<svg class='size-full' xmlns='http://www.w3.org/2000/svg' viewBox='-8 -8 316 316'>
+							{zParts.map((part) => <path d={part} fill-rule='evenodd' />)}
+						</svg>
+					</div>
+				</div>
+				<h1 id='not-found' class='flex justify-between gap-4 text-2xl sm:text-3xl'>
+					<span>404</span>
+					<span class='sr-only'>Page not found.</span>
+					<span aria-hidden='true'>Page</span>
+				</h1>
+				<div class='flex justify-between gap-4 text-2xl sm:text-3xl' aria-hidden='true'>
+					<span>Not</span>
+					<span class='found'>Found</span>
+				</div>
+			</section>
+			<div class='flex flex-wrap items-center justify-between gap-x-6 gap-y-3 pt-6 font-mono text-xs'>
+				<a class='inline-block py-2 underline' href='/'>Return to the homepage</a>
+				<p>Experimental.</p>
+			</div>
+		</div>
+	</div>
+</BaseLayout>
+
+<style>
+	.hatching {
+		--line-spacing: 12px;
+
+		background: repeating-linear-gradient(
+			135deg,
+			transparent 0 calc(var(--line-spacing) / 2),
+			var(--color-cinnabar) calc(var(--line-spacing) / 2) calc(var(--line-spacing) / 2 + 1px),
+			transparent calc(var(--line-spacing) / 2 + 1px) var(--line-spacing)
+		);
+	}
+
+	.knockout path {
+		fill: var(--color-soot);
+		pointer-events: visiblePainted;
+	}
+
+	.knockout path:hover,
+	section:has(.found:hover) .knockout path {
+		fill: var(--color-limestone);
+	}
+
+	.hatching :global(.accent-video),
+	.accent-cutout {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		visibility: hidden;
+		pointer-events: none;
+	}
+
+	.hatching :global(.accent-video) {
+		object-fit: fill;
+	}
+
+	[data-accent-ready] :global(.accent-video),
+	[data-accent-ready] .accent-cutout {
+		visibility: visible;
+	}
+
+	[data-accent-ready] .knockout path:hover,
+	section:has(.found:hover) [data-accent-ready] .knockout path {
+		fill: transparent;
+	}
+</style>
+
+<script>
+	const hatching = document.querySelector<HTMLElement>(".hatching")!;
+	const knockout = hatching.querySelector<HTMLElement>(".knockout")!;
+	const paths = [...knockout.querySelectorAll<SVGPathElement>("path")];
+	const cutouts = paths.map((path) => new Path2D(path.getAttribute("d")!));
+	const found = document.querySelector<HTMLElement>(".found")!;
+	const canvas = hatching.querySelector<HTMLCanvasElement>("canvas")!;
+	const video = hatching.querySelector<HTMLVideoElement>("video")!;
+	const context = canvas.getContext("2d")!;
+	let hoveredPart: number | null = null;
+	let foundHovered = false;
+
+	function drawCutout() {
+		const bounds = hatching.getBoundingClientRect();
+		const markBounds = knockout.getBoundingClientRect();
+		const style = getComputedStyle(hatching);
+		const pixelRatio = window.devicePixelRatio;
+		canvas.width = Math.ceil(bounds.width * pixelRatio);
+		canvas.height = Math.ceil(bounds.height * pixelRatio);
+		context.scale(canvas.width / bounds.width, canvas.height / bounds.height);
+		context.fillStyle = style.getPropertyValue("--color-soot").trim();
+		context.fillRect(0, 0, bounds.width, bounds.height);
+
+		// Match the 135-degree CSS hatch while leaving the HDR video unfiltered.
+		const spacing = parseFloat(style.getPropertyValue("--line-spacing"));
+		const lineWidth = 1;
+		const diagonalLength = (bounds.width + bounds.height) / Math.SQRT2;
+		context.strokeStyle = style.getPropertyValue("--color-cinnabar").trim();
+		context.lineWidth = lineWidth;
+		context.beginPath();
+		for (let distance = spacing / 2 + lineWidth / 2; distance < diagonalLength; distance += spacing) {
+			const intercept = distance * Math.SQRT2;
+			context.moveTo(intercept, 0);
+			context.lineTo(0, intercept);
+		}
+		context.stroke();
+
+		const viewBox = knockout.querySelector("svg")!.viewBox.baseVal;
+		context.translate(markBounds.left - bounds.left, markBounds.top - bounds.top);
+		context.scale(markBounds.width / viewBox.width, markBounds.height / viewBox.height);
+		context.translate(-viewBox.x, -viewBox.y);
+		context.globalCompositeOperation = "destination-out";
+		for (const [index, cutout] of cutouts.entries()) {
+			if (foundHovered || hoveredPart === index) {
+				context.fill(cutout, "evenodd");
+			}
+		}
+	}
+
+	for (const [index, path] of paths.entries()) {
+		path.addEventListener("pointerenter", () => {
+			hoveredPart = index;
+			drawCutout();
+		});
+		path.addEventListener("pointerleave", () => {
+			hoveredPart = null;
+			drawCutout();
+		});
+	}
+	found.addEventListener("pointerenter", () => {
+		foundHovered = true;
+		drawCutout();
+	});
+	found.addEventListener("pointerleave", () => {
+		foundHovered = false;
+		drawCutout();
+	});
+
+	function reveal() {
+		if (!hatching.hasAttribute("data-accent-ready") && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+			drawCutout();
+			hatching.setAttribute("data-accent-ready", "");
+		}
+	}
+
+	video.addEventListener("loadeddata", reveal);
+	video.addEventListener("canplay", reveal);
+	video.addEventListener("error", () => {
+		hatching.removeAttribute("data-accent-ready");
+	});
+	new ResizeObserver(drawCutout).observe(hatching);
+	reveal();
+</script>

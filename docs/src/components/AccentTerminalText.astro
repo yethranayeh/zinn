@@ -1,5 +1,5 @@
 ---
-import SuperwhiteVideo from "./SuperwhiteVideo.astro";
+import AccentVideo from "./AccentVideo.astro";
 
 interface Props {
 	text: string;
@@ -9,19 +9,19 @@ interface Props {
 const { text, command } = Astro.props;
 ---
 
-<span class='superwhite-text' data-superwhite-command={command}>
-	<SuperwhiteVideo class='superwhite-video' />
+<span class='accent-text' data-accent-command={command}>
+	<AccentVideo class='accent-video' />
 	<canvas aria-hidden='true'></canvas>
 	<span class='command-text'>{text}</span>
 </span>
 
 <style>
-	.superwhite-text {
+	.accent-text {
 		position: relative;
 		display: inline-block;
 	}
 
-	.superwhite-text :global(.superwhite-video),
+	.accent-text :global(.accent-video),
 	canvas {
 		position: absolute;
 		inset: 0;
@@ -31,7 +31,7 @@ const { text, command } = Astro.props;
 		display: none;
 	}
 
-	.superwhite-text :global(.superwhite-video) {
+	.accent-text :global(.accent-video) {
 		object-fit: fill;
 	}
 
@@ -41,9 +41,9 @@ const { text, command } = Astro.props;
 		height: calc(100% + 2px);
 	}
 
-	[data-superwhite-ready] :global(.superwhite-video),
-	[data-superwhite-ready] canvas {
-		display: var(--superwhite-display, block);
+	[data-accent-ready] :global(.accent-video),
+	[data-accent-ready] canvas {
+		display: var(--accent-display, block);
 	}
 
 	.command-text {
@@ -51,13 +51,13 @@ const { text, command } = Astro.props;
 		display: inline-block;
 	}
 
-	[data-superwhite-ready] .command-text {
-		color: var(--superwhite-ink, transparent);
+	[data-accent-ready] .command-text {
+		color: var(--accent-ink, transparent);
 	}
 </style>
 
 <script>
-	for (const element of document.querySelectorAll<HTMLElement>("[data-superwhite-command]")) {
+	for (const element of document.querySelectorAll<HTMLElement>("[data-accent-command]")) {
 		const text = element.querySelector<HTMLElement>(".command-text")!;
 		const canvas = element.querySelector<HTMLCanvasElement>("canvas")!;
 		const video = element.querySelector<HTMLVideoElement>("video")!;
@@ -87,7 +87,7 @@ const { text, command } = Astro.props;
 
 		function reveal() {
 			if (fontReady && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-				element.setAttribute("data-superwhite-ready", "");
+				element.setAttribute("data-accent-ready", "");
 			}
 		}
 
