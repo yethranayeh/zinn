@@ -21,11 +21,11 @@ Handled errors are written to stderr as one JSON document. Stdout stays empty an
 
 ```json
 {
-  "error": {
-    "code": "not_found",
-    "message": "...",
-    "details": { "entity": "task", "key": "MDR-999", "source": "explicit" }
-  }
+	"error": {
+		"code": "not_found",
+		"message": "...",
+		"details": { "entity": "task", "key": "MDR-999", "source": "explicit" }
+	}
 }
 ```
 
@@ -49,7 +49,7 @@ For command input conventions, including repeated flags and values beginning wit
 
 `zinn capabilities --json` describes the installed CLI without reading settings, opening a database, prompting, or using the network. It works when the store is missing or settings are invalid. Without `--json`, it prints a short summary and the command to retrieve the full contract.
 
-The JSON object contains `manifestVersion` (currently `1`), `cli` (package name and version), `invocation`, `commands`, `error`, and `schemas`. Commands follow route order and include the `capabilities` command itself. Each command describes its token-array `path`, summary, input, effects, confirmation, and finite set of results.
+The JSON object contains `manifestVersion` (currently `1`), `cli` (package name and version), `invocation`, `commands`, `error`, and `schemas`. Commands follow route order and include the `capabilities` command itself. Each command describes its token-array `path`, `aliases`, summary, input, effects, confirmation, and finite set of results. `aliases` lists complete token paths, such as `[["task", "show"]]` for `task view`, and is `[]` for a command without aliases. Aliases share the canonical command's descriptor and do not add commands to the count.
 
 - `input.options` is keyed by option name. Each option declares its `type`; omitted `required` and `multiple` mean `false`. String values can carry named placeholders, choices, patterns, and descriptions. Positional `forms` declare ordered names, minimum and maximum occurrences (`null` means no upper bound), and value facts. Choose the form that matches supplied values. `constraints` describes mutual exclusion, requirements, and requests that need at least one input. Optional `notes` explain resolver and domain behavior.
 - `invocation` describes router options, help and version precedence, and literal values. Build argv from the command path, command options (use `--name=value` for string values), `--json`, then `--` and positional words when needed. Repeat an option only when `multiple` is `true`; words after `--` are literal values.
@@ -68,16 +68,16 @@ import { fileURLToPath } from "node:url";
 const entryPoint = fileURLToPath(import.meta.resolve("@zinn-dev/cli"));
 
 function json(args) {
-  const result = spawnSync(process.execPath, [entryPoint, ...args], { encoding: "utf8" });
-  if (result.error) {
-    throw result.error;
-  }
+	const result = spawnSync(process.execPath, [entryPoint, ...args], { encoding: "utf8" });
+	if (result.error) {
+		throw result.error;
+	}
 
-  if (result.status !== 0) {
-    throw new Error(result.stderr);
-  }
+	if (result.status !== 0) {
+		throw new Error(result.stderr);
+	}
 
-  return JSON.parse(result.stdout);
+	return JSON.parse(result.stdout);
 }
 
 const manifest = json(["capabilities", "--json"]);
@@ -87,7 +87,7 @@ const values = { "project-key": "APP" };
 const words = form.positionals.flatMap(({ name }) => (values[name] === undefined ? [] : [values[name]]));
 const args = [...command.path, "--json"];
 if (words.length > 0) {
-  args.push(manifest.invocation.optionSeparator, ...words);
+	args.push(manifest.invocation.optionSeparator, ...words);
 }
 
 const tasks = json(args);

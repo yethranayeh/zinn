@@ -1,7 +1,9 @@
 import type { Command, ParsedRoute, RouteDef } from "../types.js";
 
 import { parseArgs } from "node:util";
+
 import { routerOptions, helpSpellings, versionSpellings, usageLabel } from "../input.js";
+import { getCommandAliases } from "./aliases.js";
 
 import {
   dashValueHelp,
@@ -43,6 +45,16 @@ function validateRouterFlags(routableArgs: Array<string>) {
 /** The usage lines that open a command's help, up to its first blank line. */
 function getUsage(help: string) {
   return help.split("\n\n")[0]!;
+}
+
+function getCommandHelp(help: string, aliases: string[][]) {
+  if (aliases.length === 0) {
+    return help;
+  }
+
+  const [usage, ...details] = help.split("\n\n");
+  const aliasLine = `Alias: ${aliases.map((path) => `zinn ${path.join(" ")}`).join(", ")}`;
+  return [usage, aliasLine, ...details].join("\n\n");
 }
 
 function toCommand(args: Array<string>) {
@@ -165,7 +177,13 @@ export function parseRoutes(routesDef: RouteDef, prefix?: string) {
     const isRunnable = getIsRunnable(definition);
     const combinedRoute = prefix ? `${prefix} ${key}` : key;
     if (isRunnable) {
-      routeDefinitions.push({ command: combinedRoute, ...definition });
+      const aliases = getCommandAliases(combinedRoute);
+      routeDefinitions.push({
+        ...definition,
+        command: combinedRoute,
+        aliases,
+        help: getCommandHelp(definition.help, aliases),
+      });
     } else {
       const result = parseRoutes(definition, combinedRoute);
       routeDefinitions.push(...result);
@@ -203,7 +221,9 @@ async function route(
 
   for (let endIndex = args.length; endIndex >= 0; endIndex--) {
     const command = toCommand(args.slice(0, endIndex));
-    const matchedRoute = parsedRoutes.find((r) => r.command === command);
+    const matchedRoute = parsedRoutes.find(
+      (r) => r.command === command || r.aliases.some((path) => toCommand(path) === command),
+    );
 
     if (matchedRoute) {
       match = matchedRoute;

@@ -5,6 +5,8 @@ import { isLegacyReadAllowed, setLegacyReadAllowed } from "../lib";
 import { createRouter, parseRoutes } from "./router";
 import { jsonResult } from "../results";
 import { getCliOpenPolicy } from "../database";
+import { parsedRoutes } from "./routes";
+import { commandAliases } from "./aliases";
 
 // Routing reads only run and help; the rest fills the Command type
 const commandMetadata = {
@@ -16,6 +18,45 @@ const commandMetadata = {
 } satisfies Omit<Command, "run" | "help">;
 
 const mockCommand: Command = { ...commandMetadata, run: mock(() => {}), help: `` };
+
+test("every declared alias dispatches the canonical route and leaves argument words literal", async () => {
+  for (const route of parsedRoutes) {
+    const words = route.command.split(" ");
+    const name = words.pop()!;
+    for (const alias of commandAliases[name] ?? []) {
+      const run = mock(() => {});
+      const beforeRun = mock((_command: ParsedRoute) => {});
+      const router = createRouter([{ ...route, run }], beforeRun);
+      const args = ["rm", "show", "new", "ls", "--", "--help", "--json"];
+      await router.route([...words, alias, "--json", ...args]);
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(run).toHaveBeenCalledWith(args);
+      expect(beforeRun).toHaveBeenCalledTimes(1);
+      expect(beforeRun.mock.calls[0]![0]).toMatchObject({ command: route.command });
+    }
+  }
+});
+
+test("aliases preserve root and namespace help", async () => {
+  const router = createRouter(parsedRoutes);
+  const canonicalRouter = createRouter(parsedRoutes.map((route) => ({ ...route, aliases: [] })));
+  expect(router.help).toBe(canonicalRouter.help);
+  const namespaces = new Set(parsedRoutes.flatMap(({ command }) => {
+    const words = command.split(" ");
+    return words.slice(1).map((_, index) => words.slice(0, index + 1));
+  }).map((path) => path.join(" ")));
+  const info = spyOn(console, "info").mockImplementation(() => {});
+  try {
+    for (const namespace of namespaces) {
+      await router.route([...namespace.split(" "), "--help"]);
+      const help = info.mock.calls.at(-1)![0];
+      await canonicalRouter.route([...namespace.split(" "), "--help"]);
+      expect(info.mock.calls.at(-1)![0]).toBe(help);
+    }
+  } finally {
+    info.mockRestore();
+  }
+});
 
 test("beforeRun receives the matched route after flags and completes once before the handler", async () => {
   const events: string[] = [];

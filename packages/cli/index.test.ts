@@ -374,7 +374,7 @@ test("a help flag before command words prints help for the words before it", () 
 test("an unknown command with a help flag fails with the nearest namespace help on stderr", () => {
   withIsolatedZinnDir((dir) => {
     const cases = [
-      { args: ["task", "show", "APP-1", "--help"], usage: "Usage: zinn task <command>" },
+      { args: ["task", "shwo", "APP-1", "--help"], usage: "Usage: zinn task <command>" },
       { args: ["task", "relation", "shwo", "-h"], usage: "Usage: zinn task relation <command>" },
       { args: ["bogus", "--help"], usage: ROOT_USAGE },
     ];
@@ -399,7 +399,7 @@ test("an unknown command with a help flag fails with the nearest namespace help 
 test("an unknown command without a help flag points to the nearest namespace help", () => {
   withIsolatedZinnDir((dir) => {
     const cases = [
-      { args: ["task", "show", "APP-1"], helpCommand: "zinn task --help" },
+      { args: ["task", "shwo", "APP-1"], helpCommand: "zinn task --help" },
       { args: ["bogus"], helpCommand: "zinn --help" },
     ];
 

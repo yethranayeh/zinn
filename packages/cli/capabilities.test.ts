@@ -9,6 +9,7 @@ import { parseRoutes } from "./src/routes/router";
 import { routes } from "./src/routes/routes";
 import { runCli } from "./testing";
 import { capabilityValidator, checkCapabilityConsumer, checkCapabilityDiscovery, inventory } from "./capability-checks";
+import { commandAliases } from "./src/routes/aliases";
 
 const root = mkdtempSync(join(tmpdir(), "zinn-capabilities-"));
 const packageDirectory = fileURLToPath(new URL(".", import.meta.url));
@@ -34,6 +35,12 @@ test("the emitted contract covers every route and finite result, including itsel
   for (const route of parseRoutes(routes)) {
     const command = commands.get(route.command);
     expect(command).toBeDefined();
+    const words = route.command.split(" ");
+    const name = words.pop()!;
+    expect(command!.aliases).toEqual((commandAliases[name] ?? []).map((alias) => [...words, alias]));
+    if (command!.aliases.length === 0) {
+      expect(route.help).not.toMatch(/^Alias:/m);
+    }
     expect(command!.results.length).toBeGreaterThan(0);
     for (const result of command!.results) {
       expect(validator.getSchema(`results#${result.schemaRef.slice("#/schemas".length)}`)).toBeDefined();
@@ -47,7 +54,7 @@ test("the emitted contract covers every route and finite result, including itsel
   expect(validate({ ...actual, commands: [{ ...actual.commands[0], run: "implementation" }] })).toBe(false);
   const { error, ...missing } = actual;
   expect(validate(missing)).toBe(false);
-});
+}, 15000);
 
 test("discovery is deterministic across settings, stores, cwd, locale and debug environments", () => {
   const directory = join(root, "environments");

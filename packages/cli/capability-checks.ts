@@ -119,6 +119,30 @@ export function checkCapabilityDiscovery(options: {
   assert.deepEqual(manifest.cli, { name: identity.name, version: identity.version });
   capabilityValidator(manifest);
   assert.ok(manifest.commands.some(({ path }) => path.join(" ") === "capabilities"));
+  const canonicalPaths = new Set(manifest.commands.map(({ path }) => path.join(" ")));
+  for (const { path, aliases } of manifest.commands) {
+    if (aliases.length === 0) {
+      continue;
+    }
+
+    const invokeHelp = (command: string[]) =>
+      runCli([...command, "--help"], {
+        runtime: options.runtime,
+        cliPath: options.entryPoint,
+        cwd: directory,
+        env,
+        timeoutMs: options.timeoutMs,
+      });
+    const canonicalHelp = invokeHelp(path);
+
+    assert.equal(canonicalHelp.code, 0, canonicalHelp.stderr);
+
+    for (const alias of aliases) {
+      assert.ok(!canonicalPaths.has(alias.join(" ")));
+      assert.deepEqual(invokeHelp(alias), canonicalHelp);
+      assert.ok(canonicalHelp.stdout.includes(`zinn ${alias.join(" ")}`));
+    }
+  }
   assert.deepEqual(inventoriedDirectories.map(inventory), before);
   if (options.expected) {
     const { cli: expectedIdentity, ...expected } = options.expected;

@@ -1,4 +1,4 @@
-import type { Command } from "./types.js";
+import type { ParsedRoute } from "./types.js";
 
 import { invocation } from "./input.js";
 import { generateResultSchemas } from "./result-schemas.js";
@@ -11,7 +11,9 @@ export type Capabilities = {
   cli: { name: string; version: string };
   invocation: typeof invocation;
   commands: Array<
-    Pick<Command, "summary" | "input" | "effects" | "confirmation" | "results"> & { path: string[] }
+    Pick<ParsedRoute, "aliases" | "summary" | "input" | "effects" | "confirmation" | "results"> & {
+      path: Array<string>;
+    }
   >;
   error: { schemaRef: "#/schemas/definitions/ErrorEnvelope"; exitCode: 1; stream: "stderr" };
   schemas: ReturnType<typeof generateResultSchemas>;
@@ -32,14 +34,17 @@ export function generateCapabilities(): Capabilities {
     manifestVersion: 1,
     cli,
     invocation,
-    commands: parsedRoutes.map(({ command, summary, input, effects, confirmation, results }) => ({
-      path: command.split(" "),
-      summary,
-      input,
-      effects,
-      confirmation,
-      results,
-    })),
+    commands: parsedRoutes.map(
+      ({ command, aliases, summary, input, effects, confirmation, results }) => ({
+        path: command.split(" "),
+        aliases,
+        summary,
+        input,
+        effects,
+        confirmation,
+        results,
+      }),
+    ),
     error: { schemaRef: "#/schemas/definitions/ErrorEnvelope", exitCode: 1, stream: "stderr" },
     schemas: generateResultSchemas(),
   };

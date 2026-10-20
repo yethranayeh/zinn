@@ -25,6 +25,7 @@ Use this page for command behavior, shared input rules, and practical examples. 
 - [Task relations](#task-relations)
 - [Task comments](#task-comments)
 - [Activity](#activity)
+- [Command aliases](#command-aliases)
 - [Help](#help)
 
 ## Editing conventions
@@ -475,6 +476,25 @@ With no agent marker, Zinn uses your git `user.name` and `user.email`, then your
 Integrations can supply `ZINN_SESSION_ID` and `ZINN_THREAD_ID`. When either is set, Zinn uses that pair. Otherwise it uses the first available pair: `CLAUDE_CODE_SESSION_ID` with a `null` thread, `CODEX_SESSION_ID` with `CODEX_THREAD_ID`, or OpenCode's `OPENCODE_SESSION_ID` as the thread with a `null` session. If a member is missing, it stays `null`; Zinn does not combine values from different pairs.
 
 `ZINN_AGENT`, `ZINN_MODEL` and `ZINN_EFFORT` declare the host agent name, running model and effort for the execution making the change. Zinn trims surrounding whitespace, treats blank declarations as _unset_ and preserves other text. These values are declarations rather than authenticated identities. Activity JSON keeps these values with the event.
+
+## Command aliases
+
+These aliases work in every namespace that has the primary command, with the same arguments, options and confirmations:
+
+<div class='my-6 [&_table]:w-full [&_th]:pb-2 [&_th]:pr-6 [&_th]:text-left [&_td]:py-1 [&_td]:pr-6'>
+
+| Primary command | Alias  |
+| --------------- | ------ |
+| `view`          | `show` |
+| `list`          | `ls`   |
+| `delete`        | `rm`   |
+| `create`        | `new`  |
+
+</div>
+
+For example, `zinn task show APP-1` runs `zinn task view APP-1`, and `zinn task comment new APP-1 --text 'Verified'` creates a comment. Alias words used as values stay values: `zinn task list rm` lists tasks in project `rm`.
+
+A command's help names its full alias command. Root and namespace help use primary command names. [Command discovery](/docs/scripting#discover-the-command-contract) includes alias paths in each command descriptor.
 
 ## Help
 

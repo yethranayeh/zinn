@@ -25,6 +25,7 @@ export type Command = {
 };
 export type ParsedRoute = {
   command: string;
+  aliases: Array<Array<string>>;
 } & Command;
 
 export type RouteDef = { [key: string]: Command | RouteDef };

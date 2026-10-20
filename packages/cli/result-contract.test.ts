@@ -214,6 +214,70 @@ for (const route of commands) {
   }
 }
 
+for (const route of commands) {
+  for (const alias of route.aliases) {
+    test(`${alias.join(" ")}: canonical results, errors and confirmations`, () => {
+      const fixture = fixtures[route.command]![0]!;
+      const directory = fixtureDirectory(fixture.empty);
+      fixture.prepare?.(directory);
+      const replacements: Record<string, string> = { $comment: commentKey, $event: eventId, $backup: backupPath };
+      const args = fixture.args.map((arg) => replacements[arg] ?? arg);
+      const canonicalPath = route.command.split(" ");
+      const invalid = invoke(directory, [...canonicalPath, "--unknown"]);
+      expect(invalid.code).toBe(1);
+      expect(invoke(directory, [...alias, "--unknown"])).toEqual(invalid);
+
+      if (route.confirmation.kind !== "none") {
+        const withoutYes = args.filter((arg) => arg !== "--yes");
+        for (const flags of [[], ["--json"]]) {
+          const options = { cwd: root, env: { ...process.env, ZINN_DIR: directory, FORCE_COLOR: "0" } };
+          const canonicalRefusal = runCli([...canonicalPath, ...withoutYes, ...flags], options);
+          expect(canonicalRefusal.code).toBe(1);
+          expect(runCli([...alias, ...withoutYes, ...flags], options)).toEqual(canonicalRefusal);
+        }
+      }
+
+      if (route.effects.domain === "read") {
+        const options = { cwd: root, env: { ...process.env, ZINN_DIR: directory, FORCE_COLOR: "0" } };
+        const canonicalText = runCli([...canonicalPath, ...args], options);
+        expect(canonicalText.code, canonicalText.stderr).toBe(0);
+        expect(runCli([...alias, ...args], options)).toEqual(canonicalText);
+        expect(invoke(directory, [...alias, ...args])).toEqual(invoke(directory, [...canonicalPath, ...args]));
+      }
+
+      const value = success(directory, [...alias, ...args]);
+      const descriptor = selectResult(route, args);
+      const validate = ajv.getSchema(descriptor.schemaRef.replace("#/schemas/", "results#/"))!;
+      expect(validate(value), JSON.stringify(validate.errors)).toBe(true);
+      fixture.check?.(value);
+    });
+  }
+}
+
+test("alias words stay literal in project keys and task titles", () => {
+  const directory = fixtureDirectory(true);
+  success(directory, ["project", "new", "rm"]);
+  const created = success(directory, ["task", "new", "rm", "--title", "show"]);
+  expect(created.title).toBe("show");
+  const listed = invoke(directory, ["task", "list", "rm"]);
+  expect(listed.code, listed.stderr).toBe(0);
+  expect(JSON.parse(listed.stdout).map((task: { key: string }) => task.key)).toEqual([created.key]);
+  expect(invoke(directory, ["task", "ls", "rm"])).toEqual(listed);
+});
+
+test("unselected synonyms and aliases without a matching command stay unknown", () => {
+  const directory = fixtureDirectory(true);
+  for (const args of [
+    ["show", "APP-1"], ["task", "read", "APP-1"], ["task", "mv", "APP-1", "Done"],
+    ["task", "add", "APP"], ["task", "remove", "APP-1"], ["task", "label", "rm", "APP-1", "bug"],
+  ]) {
+    const result = invoke(directory, args);
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(JSON.parse(result.stderr).error).toMatchObject({ code: "invalid_input", details: { argument: "command" } });
+  }
+});
+
 test("unknown stored vocabularies satisfy generated output schemas", () => {
   const directory = fixtureDirectory();
   editFixture(directory, `

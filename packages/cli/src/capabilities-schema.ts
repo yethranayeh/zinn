@@ -41,6 +41,7 @@ export const capabilitiesSchema = z.strictObject({
     .array(
       z.strictObject({
         path: z.array(z.string()).min(1),
+        aliases: z.array(z.array(z.string()).min(1)),
         summary: z.string(),
         input: commandInputSchema,
         effects: commandEffectsSchema,
