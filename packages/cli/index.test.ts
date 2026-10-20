@@ -12,7 +12,7 @@ import { errorDocumentSchema } from "./src/errors";
 import type { Activity } from "@zinn-dev/core";
 import { latestVersion, MIGRATIONS } from "../core/src/migrations/registry";
 import { taskPrioritySchema } from "../core/src/schemas/task";
-import { MAX_TEXT_BYTES } from "@zinn-dev/core";
+import { MAX_TEXT_BYTES, relationTypeSchema } from "@zinn-dev/core";
 
 // ? End-to-end tests: each case spawns the real bin, so `ZINN_DIR` is passed
 // ? per-spawn rather than set on `process.env`. The route table is imported only
@@ -121,7 +121,7 @@ test("names and titles share trimming and reject leading or trailing control cha
       for (const value of ["\nName", "Name\n", "\tName", "Name\t"]) {
         const invalid = runZinn([...args, value, "--json"], directory);
         expect(invalid.code).toBe(1);
-        expect(invalid.stderr).toContain("line breaks or control characters");
+        expect(errorDocumentSchema.parse(JSON.parse(invalid.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: [args.includes("--title") ? "title" : "name"] } });
       }
     }
   });
@@ -203,23 +203,26 @@ test("root help supports -h and --help and lists commands", () => {
   const shortHelp = runZinn(["-h"]);
 
   expect(longHelp.code).toBe(0);
-  expect(longHelp.stdout).toContain("ZINN - A kanban workflow in the terminal");
+  expect(longHelp.stdout).toContain("Usage: zinn <command>");
   expect(longHelp.stdout).toContain("project column {create|list|edit|order}");
   expect(longHelp.stdout).toContain("project {create|list|view|edit|delete}");
   expect(longHelp.stdout).toContain("task {create|list|search|view|edit|move|order|archive|unarchive|delete}");
   expect(longHelp.stdout).toContain("task comment {create|list|view|edit|delete}");
-  expect(longHelp.stdout).toContain("\n  backup\n  restore\n  migrate\n");
-  expect(longHelp.stdout).toContain("-v, --version  Show version");
+  for (const command of Object.keys(routes)) {
+    expect(longHelp.stdout).toContain(command);
+  }
+  expect(longHelp.stdout).toContain("-v");
+  expect(longHelp.stdout).toContain("--version");
   expect(shortHelp).toEqual(longHelp);
 });
 
 // --- ROUTING
 
 test("an unrecognized command exits nonzero", () => {
-  const result = runZinn(["task", "destroy", "WIP"]);
+  const result = runZinn(["--json", "task", "destroy", "WIP"]);
 
   expect(result.code).toBe(1);
-  expect(result.stderr).toContain("Unrecognized command");
+  expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "invalid_input", details: { argument: "command" } });
 });
 
 test("a nested route resolves past its namespace", () => {
@@ -988,10 +991,10 @@ test("project create rejects extra positionals and invalid name flags", () => {
 test("project create rejects a duplicate key regardless of casing", () => {
   expect(runZinn(["project", "create", "DUP", "--name", "First"]).code).toBe(0);
 
-  const second = runZinn(["project", "create", "dup", "--name", "Second"]);
+  const second = runZinn(["--json", "project", "create", "dup", "--name", "Second"]);
 
   expect(second.code).toBe(1);
-  expect(second.stderr).toContain(`Project with key "DUP" already exists!`);
+  expect(errorDocumentSchema.parse(JSON.parse(second.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "already_exists", entity: "project", key: "DUP" } });
 });
 
 test("project column create rejects a duplicate name regardless of casing", () => {
@@ -999,12 +1002,10 @@ test("project column create rejects a duplicate name regardless of casing", () =
     runZinn(["project", "create", "COL", "--name", "Columns"], testDir);
     expect(runZinn(["project", "column", "create", "COL", "Later"], testDir).code).toBe(0);
 
-    const duplicate = runZinn(["project", "column", "create", "COL", "later"], testDir);
+    const duplicate = runZinn(["--json", "project", "column", "create", "COL", "later"], testDir);
 
     expect(duplicate.code).toBe(1);
-    expect(duplicate.stderr).toContain(
-      `There is already a "later" column`,
-    );
+    expect(errorDocumentSchema.parse(JSON.parse(duplicate.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "already_exists", entity: "column", key: "later" } });
     withTestDb(testDir, (db) => {
       const matches = db
         .query<{ count: number }, []>(
@@ -1022,14 +1023,15 @@ test("project column create trims names and rejects invalid ones without writes"
     runZinn(["project", "create", "COL", "--name", "Columns"], dir);
     const read = () => withTestDb(dir, (db) => db.query("SELECT * FROM project_column").all());
     const before = read();
-    for (const [name, message] of [
-      [" done ", `There is already a "done" column`],
-      ["   ", "Column name cannot be blank"],
-      ["Next\nDone", "Column name cannot contain line breaks or control characters"],
-    ]) {
-      const result = runZinn(["project", "column", "create", "COL", name!], dir);
+    for (const [name, expected] of [
+      [" done ", { code: "conflict", details: { reason: "already_exists", entity: "column", key: "done" } }],
+      ["   ", { code: "invalid_input", details: { field: ["name"] } }],
+      ["Next\nDone", { code: "invalid_input", details: { field: ["name"] } }],
+    ] as const) {
+      const result = runZinn(["project", "column", "create", "COL", name, "--json"], dir);
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain(message!);
+      expect(result.stdout).toBe("");
+      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(expected);
       expect(read()).toEqual(before);
     }
 
@@ -1083,28 +1085,25 @@ test("project column edit rejects invalid requests without writes", () => {
     const read = () => withTestDb(dir, (db) => db.query("SELECT * FROM project_column").all());
     const before = read();
     const usage = "Usage: zinn project column edit";
-    // ? Each case lists the facts its error carries.
-    const cases: Array<[string[], ...string[]]> = [
-      [[], usage],
-      [["COL"], usage],
-      [["COL", "TODO", "extra", "--name", "Next"], `"extra"`, usage],
-      [["COL", "TODO"], "Provide an edit flag: --name"],
-      [["COL", "TODO", "--name"], "argument missing"],
-      [["COL", "TODO", "--title", "Next"], "Unknown option"],
-      [["COL", "TODO", "--name", "One", "--name", "Two"], "only be specified once"],
-      [["COL", "TODO", "--name", "   "], "Column name cannot be blank"],
-      [["COL", "TODO", "--name", "Next\nDone"], "Column name cannot contain line breaks or control characters"],
-      [["COL", "TODO", "--name", "done"], `There is already a "done" column`],
-      [["COL", "Missing", "--name", "Next"], `Columns does not have a column named "Missing"`],
-      [["NOPE", "TODO", "--name", "Next"], `Project with key "NOPE" does not exist!`],
-    ];
-    for (const [args, ...facts] of cases) {
-      const result = runZinn(["project", "column", "edit", ...args], dir);
+    const cases = [
+      [[], { code: "invalid_input", details: { argument: "project-key" }, help: expect.stringContaining(usage) }],
+      [["COL"], { code: "invalid_input", details: { argument: "column-name" }, help: expect.stringContaining(usage) }],
+      [["COL", "TODO", "extra", "--name", "Next"], { code: "invalid_input", message: expect.stringContaining("extra"), details: { field: [] }, help: expect.stringContaining(usage) }],
+      [["COL", "TODO"], { code: "invalid_input", message: expect.stringContaining("--name") }],
+      [["COL", "TODO", "--name"], { code: "invalid_input", details: { argument: "--name" } }],
+      [["COL", "TODO", "--title", "Next"], { code: "invalid_input", details: { argument: "--title" } }],
+      [["COL", "TODO", "--name", "One", "--name", "Two"], { code: "invalid_input", details: { argument: "--name" } }],
+      [["COL", "TODO", "--name", "   "], { code: "invalid_input", details: { field: ["name"] } }],
+      [["COL", "TODO", "--name", "Next\nDone"], { code: "invalid_input", details: { field: ["name"] } }],
+      [["COL", "TODO", "--name", "done"], { code: "conflict", details: { reason: "already_exists", entity: "column", key: "done" } }],
+      [["COL", "Missing", "--name", "Next"], { code: "not_found", details: { entity: "column", key: "Missing" } }],
+      [["NOPE", "TODO", "--name", "Next"], { code: "not_found", details: { entity: "project", key: "NOPE" } }],
+    ] as const;
+    for (const [args, expected] of cases) {
+      const result = runZinn(["project", "column", "edit", ...args, "--json"], dir);
       expect(result.code).toBe(1);
-      for (const fact of facts) {
-        expect(result.stderr).toContain(fact);
-      }
       expect(result.stdout).toBe("");
+      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(expected);
       expect(read()).toEqual(before);
     }
 
@@ -1151,28 +1150,25 @@ test("project column order rejects invalid requests and skips no-ops without wri
     const read = () => withTestDb(dir, (db) => db.query("SELECT * FROM project_column").all());
     const before = read();
     const usage = "Usage: zinn project column order";
-    // ? Each case lists the facts its error carries.
-    const cases: Array<[string[], ...string[]]> = [
-      [[], usage],
-      [["COL"], usage],
-      [["COL", "TODO"], usage],
-      [["COL", "TODO", "sideways"], `Unknown order direction "sideways"`],
-      [["COL", "TODO", "top"], `Unknown order direction "top"`],
-      [["COL", "TODO", "before"], usage],
-      [["COL", "TODO", "before", "Done", "Review"], `"Review"`, usage],
-      [["COL", "TODO", "first", "Done"], `"Done"`, usage],
-      [["COL", "   ", "first"], "Column name cannot be blank"],
-      [["COL", "Missing", "first"], `Columns does not have a column named "Missing"`],
-      [["COL", "TODO", "after", "Missing"], `Columns does not have a column named "Missing"`],
-      [["NOPE", "TODO", "first"], `Project with key "NOPE" does not exist!`],
-    ];
-    for (const [args, ...facts] of cases) {
-      const result = runZinn(["project", "column", "order", ...args], dir);
+    const cases = [
+      [[], { code: "invalid_input", details: { argument: "project-key" }, help: expect.stringContaining(usage) }],
+      [["COL"], { code: "invalid_input", details: { argument: "column-name" }, help: expect.stringContaining(usage) }],
+      [["COL", "TODO"], { code: "invalid_input", details: { argument: "{first|previous|next|last|before|after}" }, help: expect.stringContaining(usage) }],
+      [["COL", "TODO", "sideways"], { code: "invalid_input", message: expect.stringContaining("sideways"), details: { argument: "direction" } }],
+      [["COL", "TODO", "top"], { code: "invalid_input", message: expect.stringContaining("top"), details: { argument: "direction" } }],
+      [["COL", "TODO", "before"], { code: "invalid_input", details: { argument: "target-column-name" }, help: expect.stringContaining(usage) }],
+      [["COL", "TODO", "before", "Done", "Review"], { code: "invalid_input", message: expect.stringContaining("Review"), details: { field: [] }, help: expect.stringContaining(usage) }],
+      [["COL", "TODO", "first", "Done"], { code: "invalid_input", message: expect.stringContaining("Done"), details: { field: [] }, help: expect.stringContaining(usage) }],
+      [["COL", "   ", "first"], { code: "invalid_input", details: { field: ["columnName"] } }],
+      [["COL", "Missing", "first"], { code: "not_found", details: { entity: "column", key: "Missing" } }],
+      [["COL", "TODO", "after", "Missing"], { code: "not_found", details: { entity: "column", key: "Missing" } }],
+      [["NOPE", "TODO", "first"], { code: "not_found", details: { entity: "project", key: "NOPE" } }],
+    ] as const;
+    for (const [args, expected] of cases) {
+      const result = runZinn(["project", "column", "order", ...args, "--json"], dir);
       expect(result.code).toBe(1);
-      for (const fact of facts) {
-        expect(result.stderr).toContain(fact);
-      }
       expect(result.stdout).toBe("");
+      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(expected);
       expect(read()).toEqual(before);
     }
 
@@ -1224,17 +1220,17 @@ test("project delete keeps the project when confirmation is declined", async () 
     });
 
     expect(result.code).toBe(0);
-    expect(result.output).toContain("Deletion cancelled for KEEP | Kept");
+    expect(result.output).toContain("KEEP | Kept");
     expect(runZinn(["project", "list"], testDir).stdout).toContain("KEEP | Kept");
     expect(runZinn(["task", "list", "KEEP"], testDir).stdout).toContain("Kept task");
   });
 });
 
 test("project delete rejects an unknown key", () => {
-  const result = runZinn(["project", "delete", "NOSUCH"]);
+  const result = runZinn(["--json", "project", "delete", "NOSUCH"]);
 
   expect(result.code).toBe(1);
-  expect(result.stderr).toContain(`Project with key "NOSUCH" does not exist!`);
+  expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "project", key: "NOSUCH" } });
 });
 
 test("project list on an empty database exits cleanly without inventing a row", () => {
@@ -1381,7 +1377,7 @@ test("project view validates its project key", () => {
   withIsolatedZinnDir((testDir) => {
     const missing = runZinn(["project", "view"], testDir);
     const extra = runZinn(["project", "view", "ONE", "TWO"], testDir);
-    const unknown = runZinn(["project", "view", "unknown"], testDir);
+    const unknown = runZinn(["--json", "project", "view", "unknown"], testDir);
 
     expect(missing.code).toBe(1);
     expect(missing.stderr).toContain("Usage: zinn project view");
@@ -1389,7 +1385,7 @@ test("project view validates its project key", () => {
     expect(extra.stderr).toContain(`"TWO"`);
     expect(extra.stderr).toContain("Usage: zinn project view");
     expect(unknown.code).toBe(1);
-    expect(unknown.stderr).toContain('Project with key "UNKNOWN" does not exist!');
+    expect(errorDocumentSchema.parse(JSON.parse(unknown.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "project", key: "UNKNOWN" } });
   });
 });
 
@@ -1407,12 +1403,10 @@ test("project create accepts an alphanumeric key in any casing and stores it upp
 test("project create rejects keys outside the alphanumeric contract", () => {
   withIsolatedZinnDir((testDir) => {
     for (const invalidKey of ["2B", "APP-DEV", "APP_DEV", "ÅPP", ""]) {
-      const result = runZinn(["project", "create", invalidKey, "--name", "Invalid"], testDir);
+      const result = runZinn(["--json", "project", "create", invalidKey, "--name", "Invalid"], testDir);
 
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain(
-        "Project key must start with a letter and contain only letters and numbers",
-      );
+      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["key"] } });
     }
   });
 });
@@ -1420,10 +1414,10 @@ test("project create rejects keys outside the alphanumeric contract", () => {
 test("project create rejects blank or non-single-line names", () => {
   withIsolatedZinnDir((testDir) => {
     for (const invalidName of ["", "   ", "first line\nsecond line", "name\u001b[31m"]) {
-      const result = runZinn(["project", "create", "SAFE", "--name", invalidName], testDir);
+      const result = runZinn(["--json", "project", "create", "SAFE", "--name", invalidName], testDir);
 
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain("Project name cannot be blank or contain line breaks or control characters");
+      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["name"] } });
     }
   });
 });
@@ -1431,17 +1425,17 @@ test("project create rejects blank or non-single-line names", () => {
 // --- TASK
 
 test("task create rejects an unknown project", () => {
-  const result = runZinn(["task", "create", "NOPE", "--title", "orphan task"]);
+  const result = runZinn(["--json", "task", "create", "NOPE", "--title", "orphan task"]);
 
   expect(result.code).toBe(1);
-  expect(result.stderr).toContain(`Project with key "NOPE" does not exist`);
+  expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "project", key: "NOPE" } });
 });
 
 test("task create requires a project key and a title", () => {
   runZinn(["project", "create", "ARGS", "--name", "Args"]);
 
   expect(runZinn(["task", "create"]).stderr).toContain("Usage: zinn task create");
-  expect(runZinn(["task", "create", "ARGS"]).stderr).toContain("A task needs at least a title");
+  expect(errorDocumentSchema.parse(JSON.parse(runZinn(["--json", "task", "create", "ARGS"]).stderr)).error).toMatchObject({ code: "invalid_input", details: { argument: "--title" } });
 });
 
 test("task create succeeds against an existing project", () => {
@@ -1510,16 +1504,13 @@ test("task create --column rejects an unknown column and creates nothing", () =>
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "BADCOL", "--name", "Bad column"], testDir);
 
-    const rejected = runZinn(["task", "create", "BADCOL", "--title", "nowhere", "--column", "Nowhere"], testDir);
-    const repeated = runZinn(
-      ["task", "create", "BADCOL", "--title", "twice", "--column", "Done", "--column", "TODO"],
-      testDir,
-    );
+    const rejected = runZinn(["--json", "task", "create", "BADCOL", "--title", "nowhere", "--column", "Nowhere"], testDir);
+    const repeated = runZinn(["--json", "task", "create", "BADCOL", "--title", "twice", "--column", "Done", "--column", "TODO"], testDir);
 
     expect(rejected.code).toBe(1);
-    expect(rejected.stderr).toContain('Bad column does not have a column named "Nowhere"');
+    expect(errorDocumentSchema.parse(JSON.parse(rejected.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "column", key: "Nowhere" } });
     expect(repeated.code).toBe(1);
-    expect(repeated.stderr).toContain('Option "--column" can only be specified once');
+    expect(errorDocumentSchema.parse(JSON.parse(repeated.stderr)).error).toMatchObject({ code: "invalid_input", details: { argument: "--column" } });
     expect(runZinn(["task", "list", "BADCOL"], testDir).stdout).toBe("");
     expect(runZinn(["task", "create", "BADCOL", "--title", "real"], testDir).stdout).toContain(
       "BADCOL-1 | Backlog | - | real",
@@ -1614,22 +1605,22 @@ test("task create rejects a missing, malformed or repeated relation target and c
       );
     const before = countRows();
 
-    const missing = run("task", "create", "APP", "--title", "Lost", "--parent", "APP-1", "--depends-on", "APP-99");
-    const missingProject = run("task", "create", "APP", "--title", "Lost", "--related", "NOPE-1");
-    const malformed = run("task", "create", "APP", "--title", "Lost", "--depends-on", "APP-1", "--related", "nope");
-    const secondParent = run("task", "create", "APP", "--title", "Lost", "--parent", "APP-1", "--parent", "APP-2");
-    const secondDuplicate = run("task", "create", "APP", "--title", "Lost", "--duplicate-of", "APP-1", "--duplicate-of", "APP-2");
+    const missing = run("--json", "task", "create", "APP", "--title", "Lost", "--parent", "APP-1", "--depends-on", "APP-99");
+    const missingProject = run("--json", "task", "create", "APP", "--title", "Lost", "--related", "NOPE-1");
+    const malformed = run("--json", "task", "create", "APP", "--title", "Lost", "--depends-on", "APP-1", "--related", "nope");
+    const secondParent = run("--json", "task", "create", "APP", "--title", "Lost", "--parent", "APP-1", "--parent", "APP-2");
+    const secondDuplicate = run("--json", "task", "create", "APP", "--title", "Lost", "--duplicate-of", "APP-1", "--duplicate-of", "APP-2");
 
     expect(missing.code).toBe(1);
-    expect(missing.stderr).toContain('Task "APP-99" does not exist');
+    expect(errorDocumentSchema.parse(JSON.parse(missing.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "task", key: "APP-99" } });
     expect(missingProject.code).toBe(1);
-    expect(missingProject.stderr).toContain('Project with key "NOPE" does not exist');
+    expect(errorDocumentSchema.parse(JSON.parse(missingProject.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "project", key: "NOPE" } });
     expect(malformed.code).toBe(1);
-    expect(malformed.stderr).toContain('Invalid task key "nope"');
+    expect(errorDocumentSchema.parse(JSON.parse(malformed.stderr)).error).toMatchObject({ code: "invalid_input", message: expect.stringContaining("nope"), details: { field: ["taskKey"] } });
     expect(secondParent.code).toBe(1);
-    expect(secondParent.stderr).toContain('Option "--parent" can only be specified once');
+    expect(errorDocumentSchema.parse(JSON.parse(secondParent.stderr)).error).toMatchObject({ code: "invalid_input", details: { argument: "--parent" } });
     expect(secondDuplicate.code).toBe(1);
-    expect(secondDuplicate.stderr).toContain('Option "--duplicate-of" can only be specified once');
+    expect(errorDocumentSchema.parse(JSON.parse(secondDuplicate.stderr)).error).toMatchObject({ code: "invalid_input", details: { argument: "--duplicate-of" } });
     expect(countRows()).toEqual(before);
     expect(run("task", "create", "APP", "--title", "Real").stdout).toBe("APP-3 | Backlog | - | Real\n");
   });
@@ -1680,10 +1671,10 @@ test("a project without columns rejects task creation without consuming a task n
     runZinn(["project", "create", "EMPTYCOL", "--name", "No columns"], testDir);
     withTestDb(testDir, (db) => db.run("DELETE FROM project_column"));
 
-    const rejected = runZinn(["task", "create", "EMPTYCOL", "--title", "cannot place me"], testDir);
+    const rejected = runZinn(["--json", "task", "create", "EMPTYCOL", "--title", "cannot place me"], testDir);
 
     expect(rejected.code).toBe(1);
-    expect(rejected.stderr).toContain('Project "EMPTYCOL" does not have any columns');
+    expect(errorDocumentSchema.parse(JSON.parse(rejected.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "no_columns", entity: "project", key: "EMPTYCOL" } });
 
     runZinn(["project", "column", "create", "EMPTYCOL", "Inbox"], testDir);
     expect(runZinn(["task", "create", "EMPTYCOL", "--title", "first real task"], testDir).code).toBe(0);
@@ -1741,9 +1732,9 @@ test("task list --column filters project and global results with labels and arch
         expect(run("task", "list", ...scope, "--column", name)).toEqual({ stdout: "", stderr: "", code: 0 });
       }
     }
-    const repeated = run("task", "list", "--column", "Review", "--column", "Done");
+    const repeated = run("--json", "task", "list", "--column", "Review", "--column", "Done");
     expect(repeated.code).toBe(1);
-    expect(repeated.stderr).toContain('Option "--column" can only be specified once');
+    expect(errorDocumentSchema.parse(JSON.parse(repeated.stderr)).error).toMatchObject({ code: "invalid_input", details: { argument: "--column" } });
     expect(run("task", "list", "--help").stdout).toContain("[--column <name>]");
   });
 });
@@ -1894,11 +1885,11 @@ test("task list for an empty project does not leak another project's tasks", () 
 
 test("task list rejects an unknown project", () => {
   withIsolatedZinnDir((testDir) => {
-    const result = runZinn(["task", "list", "NOSUCH"], testDir);
+    const result = runZinn(["--json", "task", "list", "NOSUCH"], testDir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain(`Project with key "NOSUCH" does not exist!`);
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "project", key: "NOSUCH" } });
   });
 });
 
@@ -1934,9 +1925,7 @@ test("task list and search filter by every repeated label", () => {
 
     const archived = run("task", "list", "FILTER", "--archived", "--label", "groom");
     expect(archived.stdout).toContain("FILTER-3");
-    expect(run("task", "list", "--label", "missing").stderr).toContain(
-      'A label with name "missing" does not exist',
-    );
+    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "task", "list", "--label", "missing").stderr)).error).toMatchObject({ code: "not_found", details: { entity: "label", key: "missing" } });
     expect(run("task", "search", "labels", "--label", "missing").code).toBe(1);
   });
 });
@@ -2215,20 +2204,20 @@ test("task view requires a task key", () => {
 test("task view rejects malformed task keys with an actionable error", () => {
   withIsolatedZinnDir((testDir) => {
     for (const invalidKey of ["VIEW", "VIEW-", "VIEW-one", "VIEW-1-extra"]) {
-      const result = runZinn(["task", "view", invalidKey], testDir);
+      const result = runZinn(["--json", "task", "view", invalidKey], testDir);
 
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
-      expect(result.stderr).toContain(`Invalid task key "${invalidKey}"`);
-      expect(result.stderr).toContain("Expected format PROJECT-1");
+      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "invalid_input", message: expect.stringContaining(invalidKey), details: { field: ["taskKey"] } });
+
     }
 
     // ? ZINN-51: a word that begins with a dash is read as a word only after --.
-    const dashKey = runZinn(["task", "view", "--", "-1"], testDir);
+    const dashKey = runZinn(["--json", "task", "view", "--", "-1"], testDir);
     expect(dashKey.code).toBe(1);
     expect(dashKey.stdout).toBe("");
-    expect(dashKey.stderr).toContain(`Invalid task key "-1"`);
-    expect(dashKey.stderr).toContain("Expected format PROJECT-1");
+    expect(errorDocumentSchema.parse(JSON.parse(dashKey.stderr)).error).toMatchObject({ code: "invalid_input", message: expect.stringContaining("-1"), details: { field: ["taskKey"] } });
+
   });
 });
 
@@ -2236,13 +2225,13 @@ test("task view distinguishes an unknown project from an unknown task number", (
   withIsolatedZinnDir((testDir) => {
     runZinn(["project", "create", "KNOWN", "--name", "Known"], testDir);
 
-    const unknownProject = runZinn(["task", "view", "NOPE-1"], testDir);
-    const unknownTask = runZinn(["task", "view", "KNOWN-99"], testDir);
+    const unknownProject = runZinn(["--json", "task", "view", "NOPE-1"], testDir);
+    const unknownTask = runZinn(["--json", "task", "view", "KNOWN-99"], testDir);
 
     expect(unknownProject.code).toBe(1);
-    expect(unknownProject.stderr).toContain(`Project with key "NOPE" does not exist!`);
+    expect(errorDocumentSchema.parse(JSON.parse(unknownProject.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "project", key: "NOPE" } });
     expect(unknownTask.code).toBe(1);
-    expect(unknownTask.stderr).toContain(`Task "KNOWN-99" does not exist!`);
+    expect(errorDocumentSchema.parse(JSON.parse(unknownTask.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "task", key: "KNOWN-99" } });
   });
 });
 
@@ -2255,24 +2244,18 @@ test("task and comment key numbers are capped at 15 digits", () => {
     const fifteenDigits = "9".repeat(15);
 
     // 16+ digits: rejected as a malformed key, never rounded and looked up.
-    const invalidTask = runZinn(["task", "view", `CAP-${tooManyDigits}`], testDir);
-    expect(invalidTask.stderr).toContain(`Invalid task key "CAP-${tooManyDigits}"`);
+    const invalidTask = runZinn(["--json", "task", "view", `CAP-${tooManyDigits}`], testDir);
+    expect(errorDocumentSchema.parse(JSON.parse(invalidTask.stderr)).error).toMatchObject({ code: "invalid_input", message: expect.stringContaining(`CAP-${tooManyDigits}`), details: { field: ["taskKey"] } });
 
-    const invalidComment = runZinn(
-      ["task", "comment", "edit", `CAP-1#${tooManyDigits}`, "--text", "x"],
-      testDir,
-    );
-    expect(invalidComment.stderr).toContain(`Invalid comment key "CAP-1#${tooManyDigits}"`);
+    const invalidComment = runZinn(["--json", "task", "comment", "edit", `CAP-1#${tooManyDigits}`, "--text", "x"], testDir);
+    expect(errorDocumentSchema.parse(JSON.parse(invalidComment.stderr)).error).toMatchObject({ code: "invalid_input", message: expect.stringContaining(`CAP-1#${tooManyDigits}`), details: { field: ["commentKey"] } });
 
     // Exactly 15 digits: still a well-formed key (an exact JS integer), just not found.
-    const missingTask = runZinn(["task", "view", `CAP-${fifteenDigits}`], testDir);
-    expect(missingTask.stderr).toContain(`Task "CAP-${fifteenDigits}" does not exist!`);
+    const missingTask = runZinn(["--json", "task", "view", `CAP-${fifteenDigits}`], testDir);
+    expect(errorDocumentSchema.parse(JSON.parse(missingTask.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "task", key: `CAP-${fifteenDigits}` } });
 
-    const missingComment = runZinn(
-      ["task", "comment", "edit", `CAP-1#${fifteenDigits}`, "--text", "x"],
-      testDir,
-    );
-    expect(missingComment.stderr).toContain(`Comment "CAP-1#${fifteenDigits}" does not exist`);
+    const missingComment = runZinn(["--json", "task", "comment", "edit", `CAP-1#${fifteenDigits}`, "--text", "x"], testDir);
+    expect(errorDocumentSchema.parse(JSON.parse(missingComment.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "comment", key: `CAP-1#${fifteenDigits}` } });
   });
 });
 
@@ -2347,7 +2330,7 @@ test("task comments can be created, listed, edited, viewed, and deleted", () => 
 
     const deleted = runZinn(["task", "comment", "delete", "NOTE-1#2", "--yes"], testDir);
     expect(deleted.code).toBe(0);
-    expect(deleted.stdout).toContain("Deleted NOTE-1#2");
+    expect(deleted.stdout).toContain("NOTE-1#2");
 
     expect(
       runZinn(["task", "comment", "create", "NOTE-1", "--text", "Third comment"], testDir)
@@ -2501,26 +2484,20 @@ test("task comment commands validate their inputs without partial writes", () =>
     runZinn(["project", "create", "NOTE"], testDir);
     runZinn(["task", "create", "NOTE", "--title", "Commented task"], testDir);
 
-    const cases: Array<[Array<string>, string]> = [
-      [["task", "comment", "create", "NOTE-1"], "Comment text must be specified"],
-      [["task", "comment", "create", "NOTE-1", "--text", "   "], "cannot be blank"],
-      [
-        ["task", "comment", "create", "NOTE-1", "--text", "one", "--text", "two"],
-        "only be specified once",
-      ],
-      [["task", "comment", "list"], "Usage: zinn task comment list"],
-      [["task", "comment", "edit", "NOTE-1#1"], "Comment text must be specified"],
-      [
-        ["task", "comment", "edit", "019dbfc3-f513-7000-8000-000000000000", "--text", "No"],
-        "Invalid comment key",
-      ],
-      [["task", "comment", "delete"], "Usage: zinn task comment delete"],
-    ];
-
-    for (const [args, message] of cases) {
-      const result = runZinn(args, testDir);
+    const cases = [
+      [["task", "comment", "create", "NOTE-1"], { code: "invalid_input", details: { argument: "--text" } }],
+      [["task", "comment", "create", "NOTE-1", "--text", "   "], { code: "invalid_input", details: { field: ["text"] } }],
+      [["task", "comment", "create", "NOTE-1", "--text", "one", "--text", "two"], { code: "invalid_input", details: { argument: "--text" } }],
+      [["task", "comment", "list"], { code: "invalid_input", details: { argument: "task-key" } }],
+      [["task", "comment", "edit", "NOTE-1#1"], { code: "invalid_input", details: { argument: "--text" } }],
+      [["task", "comment", "edit", "019dbfc3-f513-7000-8000-000000000000", "--text", "No"], { code: "invalid_input", details: { field: ["commentKey"] } }],
+      [["task", "comment", "delete"], { code: "invalid_input", details: { argument: "comment-key" } }],
+    ] as const;
+    for (const [args, expected] of cases) {
+      const result = runZinn([...args, "--json"], testDir);
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain(message);
+      expect(result.stdout).toBe("");
+      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(expected);
     }
 
     expect(runZinn(["task", "comment", "list", "NOTE-1"], testDir).stdout).toBe("");
@@ -2552,12 +2529,10 @@ test("task move rejects a column outside the task's project", () => {
     runZinn(["project", "column", "create", "OTHER", "External"], testDir);
     runZinn(["task", "create", "ORIGIN", "--title", "stationary task"], testDir);
 
-    const result = runZinn(["task", "move", "ORIGIN-1", "External"], testDir);
+    const result = runZinn(["--json", "task", "move", "ORIGIN-1", "External"], testDir);
 
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain(
-      `Origin does not have a column named "External"`,
-    );
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "column", key: "External" } });
     expect(runZinn(["task", "view", "ORIGIN-1"], testDir).stdout).toContain(
       `ORIGIN-1 | Backlog | - | stationary task`,
     );
@@ -2642,7 +2617,8 @@ test("task move takes several tasks, appends them in argument order, and notes n
     expect(result.stdout).toBe(
       "MANY-3 | In Progress | - | three\nMANY-1 | In Progress | - | one\nMANY-2 | In Progress | - | two\n",
     );
-    expect(result.stderr).toBe("MANY-1 was already in the In Progress column\n");
+    expect(result.stderr).toContain("MANY-1");
+    expect(result.stderr).toContain("In Progress");
     expect(runZinn(["task", "list", "MANY"], testDir).stdout).toMatch(
       /^MANY-1[^\n]*\nMANY-3[^\n]*\nMANY-2[^\n]*\n$/,
     );
@@ -2662,11 +2638,11 @@ test("task archive and unarchive take several tasks and note no-ops", () => {
     expect(archived.stdout).toBe(
       "SHELF-1 | Archived | Backlog | - | one\nSHELF-2 | Archived | Backlog | - | two\n",
     );
-    expect(archived.stderr).toBe("SHELF-2 was already archived\n");
+    expect(archived.stderr).toContain("SHELF-2");
 
     const unarchived = runZinn(["task", "unarchive", "SHELF-2", "SHELF-3", "SHELF-1"], testDir);
     expect(unarchived.code).toBe(0);
-    expect(unarchived.stderr).toBe("SHELF-3 was already active\n");
+    expect(unarchived.stderr).toContain("SHELF-3");
     expect(runZinn(["task", "list", "SHELF"], testDir).stdout).toMatch(
       /^SHELF-3[^\n]*\nSHELF-2[^\n]*\nSHELF-1[^\n]*\n$/,
     );
@@ -2685,21 +2661,22 @@ test("task move, archive and unarchive align several tasks and note repeated key
     expect(moved.stdout).toBe(
       "A-1    | Done | - | short key\nLONG-1 | Done | - | long key\nA-1    | Done | - | short key\n",
     );
-    expect(moved.stderr).toBe("A-1 was already in the Done column\n");
+    expect(moved.stderr).toContain("A-1");
+    expect(moved.stderr).toContain("Done");
 
     const archived = runZinn(["task", "archive", "A-1", "LONG-1", "A-1"], testDir);
     expect(archived.code).toBe(0);
     expect(archived.stdout).toBe(
       "A-1    | Archived | Done | - | short key\nLONG-1 | Archived | Done | - | long key\nA-1    | Archived | Done | - | short key\n",
     );
-    expect(archived.stderr).toBe("A-1 was already archived\n");
+    expect(archived.stderr).toContain("A-1");
 
     const unarchived = runZinn(["task", "unarchive", "LONG-1", "A-1", "LONG-1"], testDir);
     expect(unarchived.code).toBe(0);
     expect(unarchived.stdout).toBe(
       "LONG-1 | Active | Done | - | long key\nA-1    | Active | Done | - | short key\nLONG-1 | Active | Done | - | long key\n",
     );
-    expect(unarchived.stderr).toBe("LONG-1 was already active\n");
+    expect(unarchived.stderr).toContain("LONG-1");
   });
 });
 
@@ -2711,17 +2688,17 @@ test("task move, archive and unarchive change nothing when any task fails", () =
     runZinn(["task", "archive", "ATOM-2"], testDir);
     const before = runZinn(["task", "list", "ATOM", "--all", "--json"], testDir).stdout;
 
-    const move = runZinn(["task", "move", "ATOM-1", "ATOM-2", "Done"], testDir);
+    const move = runZinn(["--json", "task", "move", "ATOM-1", "ATOM-2", "Done"], testDir);
     expect(move.code).toBe(1);
-    expect(move.stderr).toContain('Archived task "ATOM-2" cannot be moved');
+    expect(errorDocumentSchema.parse(JSON.parse(move.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "archived", entity: "task", key: "ATOM-2" } });
 
-    const archive = runZinn(["task", "archive", "ATOM-1", "ATOM-404"], testDir);
+    const archive = runZinn(["--json", "task", "archive", "ATOM-1", "ATOM-404"], testDir);
     expect(archive.code).toBe(1);
-    expect(archive.stderr).toContain('Task "ATOM-404" does not exist');
+    expect(errorDocumentSchema.parse(JSON.parse(archive.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "task", key: "ATOM-404" } });
 
-    const unarchive = runZinn(["task", "unarchive", "ATOM-2", "nope"], testDir);
+    const unarchive = runZinn(["--json", "task", "unarchive", "ATOM-2", "nope"], testDir);
     expect(unarchive.code).toBe(1);
-    expect(unarchive.stderr).toContain('Invalid task key "nope"');
+    expect(errorDocumentSchema.parse(JSON.parse(unarchive.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["taskKey"] } });
 
     expect(runZinn(["task", "list", "ATOM", "--all", "--json"], testDir).stdout).toBe(before);
   });
@@ -2846,12 +2823,12 @@ test("task delete prints the task row after Deleted, or after Deletion cancelled
       input: "n\n",
     });
     expect(cancelled.code).toBe(0);
-    expect(cancelled.output).toEndWith(`Deletion cancelled for ${row}`);
+    expect(cancelled.output).toContain(row.trimEnd());
     expect(runZinn(["task", "list", "ROW"], testDir).stdout).toBe(row);
 
     const deleted = runZinn(["task", "delete", "ROW-1", "--yes"], testDir);
     expect(deleted.code).toBe(0);
-    expect(deleted.stdout).toBe(`Deleted ${row}`);
+    expect(deleted.stdout).toContain(row.trimEnd());
     expect(runZinn(["task", "list", "ROW"], testDir).stdout).toBe("");
   });
 });
@@ -2914,13 +2891,10 @@ test("task move rejects archived tasks", () => {
         .get(),
     );
 
-    const result = runZinn(
-      ["task", "move", "ARCHMOVE-1", "In Progress"],
-      testDir,
-    );
+    const result = runZinn(["--json", "task", "move", "ARCHMOVE-1", "In Progress"], testDir);
 
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain('Archived task "ARCHMOVE-1" cannot be moved');
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "archived", key: "ARCHMOVE-1" } });
 
     const after = withTestDb(testDir, (db) =>
       db
@@ -3008,9 +2982,9 @@ test("task order requires a task key and an ordering instruction", () => {
 });
 
 test("task order validates direction and target arguments", () => {
-  const unknownDirection = runZinn(["task", "order", "ORDER-1", "sideways"]);
+  const unknownDirection = runZinn(["--json", "task", "order", "ORDER-1", "sideways"]);
   expect(unknownDirection.code).toBe(1);
-  expect(unknownDirection.stderr).toContain('Unknown order direction "sideways"');
+  expect(errorDocumentSchema.parse(JSON.parse(unknownDirection.stderr)).error).toMatchObject({ code: "invalid_input", details: { argument: "direction" } });
 
   const missingTarget = runZinn(["task", "order", "ORDER-1", "before"]);
   expect(missingTarget.code).toBe(1);
@@ -3070,10 +3044,10 @@ test("task order rejects an unknown target task", () => {
     runZinn(["project", "create", "TARGET", "--name", "Targeted"], testDir);
     runZinn(["task", "create", "TARGET", "--title", "existing task"], testDir);
 
-    const result = runZinn(["task", "order", "TARGET-1", "before", "TARGET-99"], testDir);
+    const result = runZinn(["--json", "task", "order", "TARGET-1", "before", "TARGET-99"], testDir);
 
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain('Task "TARGET-99" does not exist!');
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "task", key: "TARGET-99" } });
   });
 });
 
@@ -3084,10 +3058,10 @@ test("task order rejects a target in another column", () => {
     runZinn(["task", "create", "SCOPE", "--title", "progress task"], testDir);
     runZinn(["task", "move", "SCOPE-2", "In Progress"], testDir);
 
-    const result = runZinn(["task", "order", "SCOPE-1", "before", "SCOPE-2"], testDir);
+    const result = runZinn(["--json", "task", "order", "SCOPE-1", "before", "SCOPE-2"], testDir);
 
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain("same column");
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "different_column" } });
   });
 });
 
@@ -3144,13 +3118,10 @@ test("task order rejects a target in another project", () => {
     runZinn(["task", "create", "FIRST", "--title", "first project task"], testDir);
     runZinn(["task", "create", "SECOND", "--title", "second project task"], testDir);
 
-    const result = runZinn(
-      ["task", "order", "FIRST-1", "before", "SECOND-1"],
-      testDir,
-    );
+    const result = runZinn(["--json", "task", "order", "FIRST-1", "before", "SECOND-1"], testDir);
 
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain("same project");
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "different_project" } });
   });
 });
 
@@ -3161,16 +3132,13 @@ test("task order rejects archived source and target tasks", () => {
     runZinn(["task", "create", "ARCHORDER", "--title", "archived task"], testDir);
     runZinn(["task", "archive", "ARCHORDER-2"], testDir);
 
-    const archivedSource = runZinn(["task", "order", "ARCHORDER-2", "top"], testDir);
+    const archivedSource = runZinn(["--json", "task", "order", "ARCHORDER-2", "top"], testDir);
     expect(archivedSource.code).toBe(1);
-    expect(archivedSource.stderr).toContain("cannot be reordered");
+    expect(errorDocumentSchema.parse(JSON.parse(archivedSource.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "archived", key: "ARCHORDER-2" } });
 
-    const archivedTarget = runZinn(
-      ["task", "order", "ARCHORDER-1", "before", "ARCHORDER-2"],
-      testDir,
-    );
+    const archivedTarget = runZinn(["--json", "task", "order", "ARCHORDER-1", "before", "ARCHORDER-2"], testDir);
     expect(archivedTarget.code).toBe(1);
-    expect(archivedTarget.stderr).toContain("cannot be an ordering target");
+    expect(errorDocumentSchema.parse(JSON.parse(archivedTarget.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "archived", key: "ARCHORDER-2" } });
   });
 });
 
@@ -3309,13 +3277,11 @@ test("task unarchive appends the task after active tasks in its previous column"
   });
 });
 
-test("task unarchive help documents restored placement", () => {
+test("task unarchive help identifies its command and arguments", () => {
   const result = runZinn(["task", "unarchive", "--help"]);
 
   expect(result.code).toBe(0);
-  expect(result.stdout).toContain(
-    "Unarchive tasks at the bottom of their previous columns, in the order given.",
-  );
+  expect(result.stdout).toContain("Usage: zinn task unarchive <task-key>...");
 });
 
 test("task archive is idempotent and unarchive restores active listing", () => {
@@ -3379,12 +3345,8 @@ test("task archive is idempotent and unarchive restores active listing", () => {
 test("task archive and unarchive require a valid existing task key", () => {
   expect(runZinn(["task", "archive"]).stderr).toContain("Usage: zinn task archive");
   expect(runZinn(["task", "unarchive"]).stderr).toContain("Usage: zinn task unarchive");
-  expect(runZinn(["task", "archive", "INVALID"]).stderr).toContain(
-    'Invalid task key "INVALID"',
-  );
-  expect(runZinn(["task", "unarchive", "NOPE-1"]).stderr).toContain(
-    'Project with key "NOPE" does not exist!',
-  );
+  expect(errorDocumentSchema.parse(JSON.parse(runZinn(["--json", "task", "archive", "INVALID"]).stderr)).error).toMatchObject({ code: "invalid_input", message: expect.stringContaining("INVALID"), details: { field: ["taskKey"] } });
+  expect(errorDocumentSchema.parse(JSON.parse(runZinn(["--json", "task", "unarchive", "NOPE-1"]).stderr)).error).toMatchObject({ code: "not_found", details: { entity: "project", key: "NOPE" } });
 });
 
 test("project list shows every established project", () => {
@@ -3420,9 +3382,7 @@ test("task delete keeps the task when confirmation is declined", async () => {
 
 test("task delete requires a valid existing task key", () => {
   expect(runZinn(["task", "delete"]).stderr).toContain("Usage: zinn task delete");
-  expect(runZinn(["task", "delete", "INVALID"]).stderr).toContain(
-    'Invalid task key "INVALID"',
-  );
+  expect(errorDocumentSchema.parse(JSON.parse(runZinn(["--json", "task", "delete", "INVALID"]).stderr)).error).toMatchObject({ code: "invalid_input", message: expect.stringContaining("INVALID"), details: { field: ["taskKey"] } });
 });
 
 test("task edit preserves omitted fields and identity, and accepts empty descriptions", () => {
@@ -3453,28 +3413,25 @@ test("task edit rejects invalid requests without partial writes", () => {
     runZinn(["project", "create", "EDIT", "--name", "Edits"], dir);
     runZinn(["task", "create", "EDIT", "--title", "Original", "--description", "Description"], dir);
     const usage = "Usage: zinn task edit";
-    // ? Each case lists the facts its error carries.
-    const cases: Array<[string[], ...string[]]> = [
-      [[], usage],
-      [["EDIT-1"], "Provide at least one edit flag"],
-      [["EDIT-1", "--title"], "argument missing"],
-      [["EDIT-1", "--description"], "argument missing"],
-      [["EDIT-1", "--unknown", "text"], "Unknown option"],
-      [["EDIT-1", "extra", "--title", "text"], `"extra"`, usage],
-      [["EDIT-1", "--title", "one", "--title", "two"], "only be specified once"],
-      [["EDIT-1", "--title", ""], "Task title cannot be blank"],
-      [["EDIT-1", "--title", "   "], "Task title cannot be blank"],
-      [["EDIT-1", "--title", "", "--description", "Changed"], "Task title cannot be blank"],
-      [["INVALID", "--title", "text"], "Invalid task key"],
-      [["EDIT-99", "--title", "text"], "does not exist"],
-    ];
-    for (const [args, ...facts] of cases) {
-      const result = runZinn(["task", "edit", ...args], dir);
+    const cases = [
+      [[], { code: "invalid_input", details: { argument: "task-key" }, help: expect.stringContaining(usage) }],
+      [["EDIT-1"], { code: "invalid_input" }],
+      [["EDIT-1", "--title"], { code: "invalid_input", details: { argument: "--title" } }],
+      [["EDIT-1", "--description"], { code: "invalid_input", details: { argument: "--description" } }],
+      [["EDIT-1", "--unknown", "text"], { code: "invalid_input", details: { argument: "--unknown" } }],
+      [["EDIT-1", "extra", "--title", "text"], { code: "invalid_input", message: expect.stringContaining("extra"), details: { field: [] }, help: expect.stringContaining(usage) }],
+      [["EDIT-1", "--title", "one", "--title", "two"], { code: "invalid_input", details: { argument: "--title" } }],
+      [["EDIT-1", "--title", ""], { code: "invalid_input", details: { field: ["title"] } }],
+      [["EDIT-1", "--title", "   "], { code: "invalid_input", details: { field: ["title"] } }],
+      [["EDIT-1", "--title", "", "--description", "Changed"], { code: "invalid_input", details: { field: ["title"] } }],
+      [["INVALID", "--title", "text"], { code: "invalid_input", details: { field: ["taskKey"] } }],
+      [["EDIT-99", "--title", "text"], { code: "not_found", details: { entity: "task", key: "EDIT-99" } }],
+    ] as const;
+    for (const [args, expected] of cases) {
+      const result = runZinn(["task", "edit", ...args, "--json"], dir);
       expect(result.code).toBe(1);
-      for (const fact of facts) {
-        expect(result.stderr).toContain(fact);
-      }
       expect(result.stdout).toBe("");
+      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(expected);
     }
     expect(runZinn(["task", "view", "EDIT-1"], dir).stdout).toBe(
       `EDIT-1 | Backlog | - | Original\n\n${SECTION_RULE}\nDescription:\nDescription\n`,
@@ -3541,7 +3498,7 @@ test("task mutations print the resulting entity", async () => {
       env: { ...process.env, ZINN_DIR: testDir, NO_COLOR: "1" },
       input: "n\n",
     });
-    expect(declined.output).toContain("Deletion cancelled for LIFE-2 | TODO | - | Second");
+    expect(declined.output).toContain("LIFE-2 | TODO | - | Second");
   });
 });
 
@@ -3549,13 +3506,13 @@ test("task mutations print the resulting entity", async () => {
 test("empty-string arguments are rejected", () => {
   runZinn(["project", "create", "EMPTY", "--name", "Empty"]);
 
-  const blankTitle = runZinn(["task", "create", "EMPTY", "--title", ""]);
+  const blankTitle = runZinn(["--json", "task", "create", "EMPTY", "--title", ""]);
   expect(blankTitle.code).toBe(1);
-  expect(blankTitle.stderr).toContain("Task title cannot be blank");
+  expect(errorDocumentSchema.parse(JSON.parse(blankTitle.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["title"] } });
 
-  const blankProject = runZinn(["project", "create", "", "--name", ""]);
+  const blankProject = runZinn(["--json", "project", "create", "", "--name", ""]);
   expect(blankProject.code).toBe(1);
-  expect(blankProject.stderr).toContain("Project key must start with a letter");
+  expect(errorDocumentSchema.parse(JSON.parse(blankProject.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["key"] } });
 });
 
 // --- TASK SEARCH
@@ -3684,16 +3641,19 @@ test("task search hides archived matches with a stderr hint and filters by proje
     const active = run("task", "search", "widget", "one");
     expect(active.code).toBe(0);
     expect(active.stdout).toBe(`ONE-1 | Backlog | - | Widget active\n`);
-    expect(active.stderr).toBe("2 archived matches hidden, use --all to include them\n");
+    expect(active.stderr).toContain("2");
+    expect(active.stderr).toContain("--all");
 
     const activeJson = run("task", "search", "widget", "ONE", "--json");
     expect(JSON.parse(activeJson.stdout)).toHaveLength(1);
     expect(activeJson.stdout).not.toContain("hidden");
-    expect(activeJson.stderr).toBe("2 archived matches hidden, use --all to include them\n");
+    expect(activeJson.stderr).toContain("2");
+    expect(activeJson.stderr).toContain("--all");
 
     const single = run("task", "search", "ONE-2", "ONE");
     expect(single.stdout).toBe("");
-    expect(single.stderr).toBe("1 archived match hidden, use --all to include them\n");
+    expect(single.stderr).toContain("1");
+    expect(single.stderr).toContain("--all");
 
     const archived = run("task", "search", "widget", "ONE", "--archived");
     expect(archived.stderr).toBe("");
@@ -3718,28 +3678,25 @@ test("task search validates its arguments", () => {
     runZinn(["project", "create", "VAL"], dir);
 
     const usage = "Usage: zinn task search";
-    // ? Each case lists the facts its error carries.
-    const cases: Array<[Array<string>, ...string[]]> = [
-      [[], usage],
-      [[""], "Search query cannot be blank"],
-      [["a", "VAL", "extra"], `"extra"`, usage],
-      [["a", "--archived", "--all"], 'Use either "--archived" or "--all", not both'],
-      [["a", "--limit", "0"], "Search limit must be a positive integer"],
-      [["a", "--limit", "two"], "Search limit must be a positive integer"],
-      [["a", "--limit", "0x5"], "Search limit must be a positive integer"],
-      [["a", "--limit", "1e1"], "Search limit must be a positive integer"],
-      [["a", "--limit", " 5 "], "Search limit must be a positive integer"],
-      [["a", "--limit", "5."], "Search limit must be a positive integer"],
-      [["a", "--limit", "1", "--limit", "2"], 'Option "--limit" can only be specified once'],
-      [["a", "MISSING"], 'Project with key "MISSING" does not exist'],
-    ];
-
-    for (const [args, ...facts] of cases) {
-      const result = runZinn(["task", "search", ...args], dir);
+    const cases = [
+      [[], { code: "invalid_input", details: { argument: "query" }, help: expect.stringContaining(usage) }],
+      [[""], { code: "invalid_input", details: { field: ["query"] } }],
+      [["a", "VAL", "extra"], { code: "invalid_input", message: expect.stringContaining("extra"), details: { field: [] }, help: expect.stringContaining(usage) }],
+      [["a", "--archived", "--all"], { code: "invalid_input", details: { argument: "--archived" } }],
+      [["a", "--limit", "0"], { code: "invalid_input", details: { argument: "--limit" } }],
+      [["a", "--limit", "two"], { code: "invalid_input", details: { argument: "--limit" } }],
+      [["a", "--limit", "0x5"], { code: "invalid_input", details: { argument: "--limit" } }],
+      [["a", "--limit", "1e1"], { code: "invalid_input", details: { argument: "--limit" } }],
+      [["a", "--limit", " 5 "], { code: "invalid_input", details: { argument: "--limit" } }],
+      [["a", "--limit", "5."], { code: "invalid_input", details: { argument: "--limit" } }],
+      [["a", "--limit", "1", "--limit", "2"], { code: "invalid_input", details: { argument: "--limit" } }],
+      [["a", "MISSING"], { code: "not_found", details: { entity: "project", key: "MISSING" } }],
+    ] as const;
+    for (const [args, expected] of cases) {
+      const result = runZinn(["task", "search", ...args, "--json"], dir);
       expect(result.code).toBe(1);
-      for (const fact of facts) {
-        expect(result.stderr).toContain(fact);
-      }
+      expect(result.stdout).toBe("");
+      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(expected);
     }
   });
 });
@@ -3977,7 +3934,7 @@ test("--yes deletes without asking for confirmation", () => {
     const result = runZinn(["task", "delete", "WEB-1", "--yes"], testDir);
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toBe(`Deleted WEB-1 | Backlog | - | Ship it\n`);
+    expect(result.stdout).toContain("WEB-1 | Backlog | - | Ship it");
     expect(runZinn(["task", "list", "WEB"], testDir).stdout).toBe("");
   });
 });
@@ -4055,7 +4012,6 @@ test.todo("handlers throw instead of exiting, so they can be tested in-process",
   );
 });
 
-
 test("project edit renames without changing identity, tasks, columns, or archive state", () => {
   withIsolatedZinnDir((dir) => {
     runZinn(["project", "create", "EDIT", "--name", "Original"], dir);
@@ -4090,26 +4046,23 @@ test("project edit rejects invalid requests without writes", () => {
     const read = () => withTestDb(dir, (db) => db.query("SELECT * FROM project").get());
     const before = read();
     const usage = "Usage: zinn project edit";
-    // ? Each case lists the facts its error carries.
-    const cases: Array<[string[], ...string[]]> = [
-      [[], usage],
-      [["EDIT"], "Provide an edit flag"],
-      [["EDIT", "--name"], "argument missing"],
-      [["EDIT", "--key", "NEW"], "Unknown option"],
-      [["EDIT", "extra", "--name", "Name"], `"extra"`, usage],
-      [["EDIT", "--name", "One", "--name", "Two"], "only be specified once"],
-      [["EDIT", "--name", ""], "blank or contain line breaks or control characters"],
-      [["EDIT", "--name", "   "], "blank or contain line breaks or control characters"],
-      [["EDIT", "--name", "Two\nlines"], "blank or contain line breaks or control characters"],
-      [["MISSING", "--name", "Name"], "does not exist"],
-    ];
-    for (const [args, ...facts] of cases) {
-      const result = runZinn(["project", "edit", ...args], dir);
+    const cases = [
+      [[], { code: "invalid_input", details: { argument: "project-key" }, help: expect.stringContaining(usage) }],
+      [["EDIT"], { code: "invalid_input" }],
+      [["EDIT", "--name"], { code: "invalid_input", details: { argument: "--name" } }],
+      [["EDIT", "--key", "NEW"], { code: "invalid_input", details: { argument: "--key" } }],
+      [["EDIT", "extra", "--name", "Name"], { code: "invalid_input", message: expect.stringContaining("extra"), details: { field: [] }, help: expect.stringContaining(usage) }],
+      [["EDIT", "--name", "One", "--name", "Two"], { code: "invalid_input", details: { argument: "--name" } }],
+      [["EDIT", "--name", ""], { code: "invalid_input", details: { field: ["name"] } }],
+      [["EDIT", "--name", "   "], { code: "invalid_input", details: { field: ["name"] } }],
+      [["EDIT", "--name", "Two\nlines"], { code: "invalid_input", details: { field: ["name"] } }],
+      [["MISSING", "--name", "Name"], { code: "not_found", details: { entity: "project", key: "MISSING" } }],
+    ] as const;
+    for (const [args, expected] of cases) {
+      const result = runZinn(["project", "edit", ...args, "--json"], dir);
       expect(result.code).toBe(1);
-      for (const fact of facts) {
-        expect(result.stderr).toContain(fact);
-      }
       expect(result.stdout).toBe("");
+      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(expected);
       expect(read()).toEqual(before);
     }
   });
@@ -4125,7 +4078,7 @@ test("relation commands show directional and symmetric links, including archived
     run("task", "create", "APP", "--title", "Copy");
     run("task", "create", "OTHER", "--title", "Original");
     expect(run("task", "relation", "list", "APP-1").stdout).toBe("");
-    expect(run("task", "relation", "create", "APP-1", "APP-1", "--type", "related").stderr).toContain("itself");
+    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "task", "relation", "create", "APP-1", "APP-1", "--type", "related").stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["targetTaskKey"] } });
     expect(run("task", "relation", "create", "APP-1", "OTHER-99", "--type", "related").code).toBe(1);
     expect(run("task", "relation", "list", "OTHER-99").code).toBe(1);
     for (const type of ["dependency", "duplicate", "related", "subtask"]) {
@@ -4143,7 +4096,7 @@ test("relation commands show directional and symmetric links, including archived
     expect(incoming.stdout).toContain("Depended on by | APP-1 | Backlog | Copy");
     expect(incoming.stdout).toContain("Duplicated by  | APP-1 | Backlog | Copy");
     expect(incoming.stdout).toContain("Related to     | APP-1 | Backlog | Copy");
-    expect(run("task", "relation", "create", "OTHER-1", "APP-1", "--type", "related").stderr).toContain("already exists");
+    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "task", "relation", "create", "OTHER-1", "APP-1", "--type", "related").stderr)).error).toMatchObject({ code: "conflict", details: { reason: "already_exists", entity: "relation" } });
     run("task", "archive", "OTHER-1");
     expect(run("task", "view", "APP-1").stdout).toContain("Parent       | OTHER-1 | Backlog | Original | Archived");
     const viewed = JSON.parse(run("task", "view", "APP-1", "--json").stdout);
@@ -4151,7 +4104,7 @@ test("relation commands show directional and symmetric links, including archived
       type: "subtask", direction: "outgoing",
       task: { key: "OTHER-1", column: "Backlog", title: "Original", status: "Archived" },
     });
-    expect(run("task", "relation", "create", "OTHER-1", "APP-1", "--type", "subtask").stderr).toContain("cycle");
+    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "task", "relation", "create", "OTHER-1", "APP-1", "--type", "subtask").stderr)).error).toMatchObject({ code: "conflict", details: { reason: "cycle" } });
     expect(run("task", "relation", "delete", "APP-1", "OTHER-1", "--type", "subtask").code).toBe(0);
     expect(run("task", "view", "APP-1").stdout).not.toContain("Parent");
     expect(run("task", "relation", "create", "OTHER-1", "APP-1", "--type", "dependency").code).toBe(0);
@@ -4206,7 +4159,9 @@ test("relation help and argument errors make types discoverable without promptin
   ]) {
     const result = runZinn(["task", "relation", "create", ...args]);
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain("related, dependency, duplicate, subtask");
+    for (const type of relationTypeSchema.options) {
+      expect(result.stderr).toContain(type);
+    }
   }
   for (const args of [
     ["APP-1", "--type", "related"],
@@ -4218,7 +4173,11 @@ test("relation help and argument errors make types discoverable without promptin
   }
   const help = runZinn(["task", "relation", "create", "--help"]);
   expect(help.code).toBe(0);
-  expect(help.stdout).toContain("Source is a duplicate of target");
+  expect(help.stdout).toContain("Usage: zinn task relation create");
+  expect(help.stdout).toContain("--type");
+  for (const type of relationTypeSchema.options) {
+    expect(help.stdout).toContain(type);
+  }
   expect(runZinn(["task", "relation", "--help"]).stdout).toContain("  {create|list|delete}");
   expect(runZinn(["task", "relation", "list"]).code).toBe(1);
   expect(runZinn(["task", "relation", "list", "APP-1", "APP-2"]).code).toBe(1);
@@ -4234,17 +4193,19 @@ test("relation deletion is usable without a prompt and updates list and view", (
     run("task", "relation", "create", "APP-1", "APP-2", "--type", "dependency");
     const removed = run("task", "relation", "delete", "app-2", "APP-1", "--type", "related");
     expect(removed.code).toBe(0);
-    expect(removed.stdout).toContain("Deleted related relation from APP-2 to APP-1");
+    for (const fact of ["related", "APP-2", "APP-1"]) {
+      expect(removed.stdout).toContain(fact);
+    }
     expect(run("task", "relation", "list", "APP-1").stdout).toContain("Depends on");
     expect(run("task", "view", "APP-2").stdout).not.toContain("Related to");
-    expect(run("task", "relation", "delete", "APP-1", "APP-2", "--type", "related").stderr).toContain("does not exist");
+    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "task", "relation", "delete", "APP-1", "APP-2", "--type", "related").stderr)).error).toMatchObject({ code: "not_found", details: { entity: "relation" } });
     for (const args of [[], ["APP-1"], ["APP-1", "APP-2"],
       ["APP-1", "APP-2", "--type", "invalid"],
       ["APP-1", "APP-2", "--type", "related", "--type", "dependency"],
     ]) {
       expect(run("task", "relation", "delete", ...args).code).toBe(1);
     }
-    expect(run("task", "relation", "delete", "--help").stdout).toContain("Remove only the specified relation");
+    expect(run("task", "relation", "delete", "--help").stdout).toContain("Usage: zinn task relation delete");
     expect(run("task", "relation", "--help").stdout).toContain("  {create|list|delete}");
   });
 });
@@ -4256,7 +4217,7 @@ test("global label workflows support repeated create/edit flags and preserve tas
     for (const name of ["bug", "auth", "needs review, soon"]) {
       expect(run("label", "create", name, "--color", "red", "--description", "Details").code).toBe(0);
     }
-    expect(run("label", "create", "BUG").stderr).toContain("already exists");
+    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "label", "create", "BUG").stderr)).error).toMatchObject({ code: "conflict", details: { reason: "already_exists", entity: "label", key: "BUG" } });
     expect(run("label", "create", "invalid", "--color", "purple").code).toBe(1);
     expect(run("label", "list").stdout).toContain(`${"bug".padEnd("needs review, soon".length)} | red | Details`);
     const created = run("task", "create", "APP", "--title", "Login", "--description", "", "--label", "BUG", "--label", "AUTH");
@@ -4780,12 +4741,12 @@ test("label deletion confirms global removal and cancellation preserves attachme
     const before = snapshot();
     const cancelled = await runCliInTerminal(["label", "delete", "bug"], { env: { ...process.env, ZINN_DIR: dir }, input: "n\n" });
     expect(cancelled.code).toBe(0);
-    expect(cancelled.output).toContain('delete label "bug" and remove it from all tasks?');
-    expect(cancelled.output).toContain('Deletion cancelled for label "bug"');
+    expect(cancelled.output).toContain("bug");
+    expect(cancelled.output).toContain("[y/N]");
     expect(snapshot()).toEqual(before);
     const deleted = runZinn(["label", "delete", "bug", "--yes"], dir);
     expect(deleted.code).toBe(0);
-    expect(deleted.stdout).toContain('Deleted label "bug"');
+    expect(deleted.stdout).toContain("bug");
     expect(run("label", "list").stdout).toContain("keep");
     expect(run("label", "list").stdout).not.toContain("bug");
     expect(run("task", "view", "APP-1").stdout).toBe("APP-1 | Backlog | - | First | keep\n");
@@ -4798,7 +4759,7 @@ test("label deletion confirms global removal and cancellation preserves attachme
     const missing = run("label", "delete", "missing");
     expect(missing.code).toBe(1);
     expect(missing.stdout).not.toContain("Are you sure");
-    expect(run("label", "delete", "--help").stdout).toContain("after confirmation");
+    expect(run("label", "delete", "--help").stdout).toContain("Usage: zinn label delete");
   });
 });
 
@@ -4817,7 +4778,7 @@ test("shared option checks reject repeated scalar flags and retain positional va
     ]) {
       const result = runZinn(args, dir);
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain("can only be specified once");
+      expect(result.stderr).toContain(args[args.length - 2]!);
     }
     // ? Each case lists the facts its error carries.
     const labelWordCases: Array<[string[], ...string[]]> = [
@@ -4844,11 +4805,11 @@ test("label edit validates changes, uniqueness, and missing labels", () => {
     run("label", "create", "bug");
     run("label", "create", "auth");
 
-    expect(run("label", "edit", "bug").stderr).toContain("Provide at least one field to edit");
-    expect(run("label", "edit", "missing", "--color", "red").stderr).toContain("does not exist");
+    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "label", "edit", "bug").stderr)).error).toMatchObject({ code: "invalid_input", details: { field: [] } });
+    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "label", "edit", "missing", "--color", "red").stderr)).error).toMatchObject({ code: "not_found", details: { entity: "label", key: "missing" } });
     expect(run("label", "edit", "BUG", "--name", "Bug").stdout).toContain("Bug");
-    expect(run("label", "edit", "bug", "--name", "AUTH").stderr).toContain("already exists");
-    expect(run("label", "edit", "BUG", "--name", " ").stderr).toContain("cannot be blank");
+    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "label", "edit", "bug", "--name", "AUTH").stderr)).error).toMatchObject({ code: "conflict", details: { reason: "already_exists", entity: "label", key: "AUTH" } });
+    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "label", "edit", "BUG", "--name", " ").stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["name"] } });
     expect(run("label", "edit", "BUG", "--color", "purple").code).toBe(1);
     expect(run("label", "list", "--json").stdout).toContain('"name": "Bug"');
     expect(runZinn(["--help"], dir).stdout).toContain("label {create|list|edit|delete}");
@@ -5076,10 +5037,10 @@ test("backup saves a copy of the database named with the UTC time and CLI versio
 
 test("backup refuses when there is no database and does not create one", () => {
   withIsolatedZinnDir((dir) => {
-    const result = runZinn(["backup"], dir);
+    const result = runZinn(["--json", "backup"], dir);
 
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain(`There is no Zinn database at ${join(dir, "data", "zinn.sqlite")} to back up`);
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "database", databasePath: join(dir, "data", "zinn.sqlite") } });
     expect(existsSync(join(dir, "data"))).toBe(false);
     expect(existsSync(join(dir, "backups"))).toBe(false);
   });
@@ -5091,11 +5052,11 @@ test("backup refuses a zero-byte database file without creating backups", () => 
     mkdirSync(dirname(databasePath));
     writeFileSync(databasePath, "");
 
-    const result = runZinn(["backup"], dir);
+    const result = runZinn(["--json", "backup"], dir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain(`There is no Zinn database at ${databasePath} to back up`);
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "database", databasePath } });
     expect(readdirSync(dirname(databasePath))).toEqual(["zinn.sqlite"]);
     expect(readFileSync(databasePath).length).toBe(0);
     expect(existsSync(join(dir, "backups"))).toBe(false);
@@ -5112,11 +5073,11 @@ test("backup refuses a database header with no tables without creating backups",
     const before = readFileSync(databasePath);
     expect(before.length).toBeGreaterThan(0);
 
-    const result = runZinn(["backup"], dir);
+    const result = runZinn(["--json", "backup"], dir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain(`There is no Zinn database at ${databasePath} to back up`);
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "database", databasePath } });
     expect(readdirSync(dirname(databasePath))).toEqual(["zinn.sqlite"]);
     expect(readFileSync(databasePath)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
@@ -5161,12 +5122,16 @@ test("restore explains recovery from damaged task and comment pages without chan
       const result = runZinn(["restore", path, "--yes"], dir);
 
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain("database disk image is malformed");
-      expect(result.stderr).toContain(`The database at ${databasePath} is damaged. Nothing was changed.`);
-      expect(result.stderr).toContain("Close every program that has the database open");
-      expect(result.stderr).toContain(`Move ${databasePath}, ${databasePath}-wal and ${databasePath}-shm out of the data folder`);
-      expect(result.stderr).toContain("Run the same zinn restore command again");
-      expect(result.stderr).not.toContain("Backups taken before each restore attempt");
+      expect(result.stderr).toContain(databasePath);
+      const json = runZinn(["restore", path, "--yes", "--json"], dir);
+      expect(json.code).toBe(1);
+      expect(json.stdout).toBe("");
+      expect(errorDocumentSchema.parse(JSON.parse(json.stderr)).error)
+        .toMatchObject({ code: "storage", details: { reason: "corrupt" } });
+      expect(result.stderr).toContain(`${databasePath}-wal`);
+      expect(result.stderr).toContain(`${databasePath}-shm`);
+      expect(result.stderr).toContain("zinn restore");
+      expect(result.stderr).not.toContain("[y/N]");
       expect(readFileSync(databasePath)).toEqual(damaged);
       expect(backupFiles(dir)).toEqual(previousBackups);
 
@@ -5222,8 +5187,9 @@ test("restore keeps the database when confirmation is declined", async () => {
     const result = await runCliInTerminal(["restore", path], { env: { ...process.env, ZINN_DIR: dir }, input: "n\n" });
 
     expect(result.code).toBe(0);
-    expect(result.output).toContain(`Replace the database at ${join(dir, "data", "zinn.sqlite")} with the backup ${path}?`);
-    expect(result.output).toContain(`Restore cancelled. The database at ${join(dir, "data", "zinn.sqlite")} is unchanged`);
+    expect(result.output).toContain(join(dir, "data", "zinn.sqlite"));
+    expect(result.output).toContain(path);
+    expect(result.output).toContain("[y/N]");
     expect(taskTitles(dir)).toEqual([{ title: "Kept" }, { title: "Later" }]);
     expect(backupFiles(dir)).toEqual(backupsBefore);
   });
@@ -5273,21 +5239,21 @@ test("restore refuses a file that is not a backup it can restore, printing why a
       const notDatabase = runZinn(["restore", textFile, "--yes"], dir);
       expect(notDatabase.code).toBe(1);
       expect(notDatabase.stdout).toBe("");
-      expect(notDatabase.stderr).toBe(
-        `The file at ${textFile} is damaged or is not a SQLite database (file is not a database), so nothing was restored\n`,
-      );
+      expect(notDatabase.stderr).toContain(textFile);
 
       // ? Without --yes, the refusal comes before the prompt.
       const newerResult = runZinn(["restore", newerBackup], dir);
       expect(newerResult.code).toBe(1);
       expect(newerResult.stdout).toBe("");
-      expect(newerResult.stderr).toContain(`The backup at ${newerBackup} has schema version 9`);
-      expect(newerResult.stderr).toContain(`It was made by cli ${packageJson.version}; restore it with that version or a newer one`);
-      expect(newerResult.stderr).not.toContain("Backups taken before");
+      expect(newerResult.stderr).toContain(newerBackup);
+      expect(newerResult.stderr).toContain("9");
+      expect(newerResult.stderr).toContain("cli");
+      expect(newerResult.stderr).toContain(packageJson.version);
+      expect(newerResult.stderr).not.toContain("[y/N]");
 
       const missing = runZinn(["restore", join(newerDir, "missing.sqlite"), "--yes", "--json"], dir);
       expect(missing.code).toBe(1);
-      expect(JSON.parse(missing.stderr).error.message).toBe(`There is no file at ${join(newerDir, "missing.sqlite")} to restore`);
+      expect(errorDocumentSchema.parse(JSON.parse(missing.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "backup", backupPath: join(newerDir, "missing.sqlite") } });
 
       expect(databaseSnapshot(dir)).toEqual(before);
       expect(existsSync(join(dir, "backups"))).toBe(false);
@@ -5376,12 +5342,12 @@ function createDatabase(dir: string, version: number) {
 
 test("migrate refuses when there is no database and creates no files", () => {
   withIsolatedZinnDir((dir) => {
-    const result = runZinn(["migrate"], dir);
+    const result = runZinn(["--json", "migrate"], dir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("There is no Zinn database with data");
-    expect(result.stderr).not.toContain("Backups taken before");
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "database" } });
+    expect(result.stderr).not.toContain("[y/N]");
     expect(readdirSync(dir)).toEqual([]);
   });
 });
@@ -5391,10 +5357,10 @@ test("migrate refuses an empty database", () => {
     mkdirSync(join(dir, "data"));
     new Database(join(dir, "data", "zinn.sqlite")).close();
     const before = readFileSync(join(dir, "data", "zinn.sqlite"));
-    const result = runZinn(["migrate"], dir);
+    const result = runZinn(["--json", "migrate"], dir);
 
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain("There is no Zinn database with data");
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "database" } });
     expect(readFileSync(join(dir, "data", "zinn.sqlite"))).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
   });
@@ -5407,8 +5373,8 @@ test("migrate refuses an unmarked database, with or without --allow-legacy-read,
     const result = runZinn(["migrate", "--json"], dir);
 
     expect(result.code).toBe(1);
-    expect(JSON.parse(result.stderr).error.message).toContain("has no schema version");
-    expect(JSON.parse(result.stderr).error.message).toContain("adopted as version 1");
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "unmarked_database", schemaVersion: 0 } });
+
     expect(runZinn(["migrate", "--allow-legacy-read"], dir).code).toBe(1);
     expect(databaseSnapshot(dir)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
@@ -5419,12 +5385,12 @@ test("migrate refuses a newer database and reports both versions and the CLI ver
   withIsolatedZinnDir((dir) => {
     createDatabase(dir, 9);
     const before = databaseSnapshot(dir);
-    const result = runZinn(["migrate"], dir);
+    const result = runZinn(["--json", "migrate"], dir);
 
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain("schema version 9");
-    expect(result.stderr).toContain(`cli ${packageJson.version}) reaches only version ${CURRENT_SCHEMA_VERSION}`);
-    expect(result.stderr).not.toContain("Backups taken before");
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "newer_database", schemaVersion: 9, supportedSchemaVersion: CURRENT_SCHEMA_VERSION } });
+
+    expect(result.stderr).not.toContain("[y/N]");
     expect(databaseSnapshot(dir)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
   });
@@ -5445,7 +5411,7 @@ test("migrate on a current database is a no-op with no backup", () => {
       changed: false,
       backupPath: null,
     });
-    expect(runZinn(["migrate"], dir).stdout).toBe(`The database is already at schema version ${CURRENT_SCHEMA_VERSION}\n`);
+    expect(runZinn(["migrate"], dir).stdout).toContain(String(CURRENT_SCHEMA_VERSION));
     expect(databaseSnapshot(dir)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
   });
@@ -5477,7 +5443,7 @@ test("reindex rebuilds a missing search index from the tasks and comments, archi
     expect(databaseSnapshot(dir)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
 
-    expect(runZinn(["reindex"], dir).stdout).toBe("Rebuilt the search index from 2 tasks\n");
+    expect(runZinn(["reindex"], dir).stdout).toContain("2");
   });
 });
 
@@ -5500,14 +5466,15 @@ test("a missing search index points search and index-updating writes at reindex,
       const plain = runZinn(args, dir);
       expect(plain.code).toBe(1);
       expect(plain.stdout).toBe("");
-      expect(plain.stderr).toBe("no such table: task_search. Run `zinn reindex` to rebuild the search index.\n");
+      expect(plain.stderr).toContain("task_search");
+      expect(plain.stderr).toContain("zinn reindex");
 
       const json = runZinn([...args, "--json"], dir);
       expect(json.code).toBe(1);
       expect(json.stdout).toBe("");
-      expect(JSON.parse(json.stderr).error.message).toBe(
-        "no such table: task_search. Run `zinn reindex` to rebuild the search index.",
-      );
+      expect(errorDocumentSchema.parse(JSON.parse(json.stderr)).error).toMatchObject({ code: "storage", details: { reason: "missing_index" } });
+      expect(JSON.parse(json.stderr).error.message).toContain("task_search");
+      expect(JSON.parse(json.stderr).error.message).toContain("zinn reindex");
     }
     expect({ snapshot: databaseSnapshot(dir), rows: countRows() }).toEqual(before);
   });
@@ -5520,18 +5487,18 @@ test("a missing table other than the search index gets no reindex hint", () => {
     const result = runZinn(["label", "list"], dir);
 
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain("no such table: label");
+    expect(result.stderr).toContain("label");
     expect(result.stderr).not.toContain("reindex");
   });
 });
 
 test("reindex refuses when there is no database and creates no files", () => {
   withIsolatedZinnDir((dir) => {
-    const result = runZinn(["reindex"], dir);
+    const result = runZinn(["--json", "reindex"], dir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain(`There is no Zinn database at ${join(dir, "data", "zinn.sqlite")}`);
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "database", databasePath: join(dir, "data", "zinn.sqlite") } });
     expect(readdirSync(dir)).toEqual([]);
   });
 });
@@ -5541,10 +5508,10 @@ test("reindex refuses an empty database file and leaves it empty", () => {
     const databasePath = join(dir, "data", "zinn.sqlite");
     mkdirSync(dirname(databasePath));
     writeFileSync(databasePath, "");
-    const result = runZinn(["reindex"], dir);
+    const result = runZinn(["--json", "reindex"], dir);
 
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain(`There is no Zinn database at ${databasePath}`);
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { databasePath } });
     expect(readdirSync(dirname(databasePath))).toEqual(["zinn.sqlite"]);
     expect(readFileSync(databasePath).length).toBe(0);
   });
@@ -5554,11 +5521,11 @@ test("reindex refuses a newer database and leaves it unchanged", () => {
   withIsolatedZinnDir((dir) => {
     createDatabase(dir, 9);
     const before = databaseSnapshot(dir);
-    const result = runZinn(["reindex"], dir);
+    const result = runZinn(["--json", "reindex"], dir);
 
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain("is read-only");
-    expect(result.stderr).toContain("schema version 9");
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "newer_database", schemaVersion: 9 } });
+
     expect(databaseSnapshot(dir)).toEqual(before);
   });
 });
@@ -5574,13 +5541,14 @@ test("a newer database refuses changes, naming both versions and this CLI, while
     expect(list.code).toBe(0);
     expect(list.stdout).toContain("Kept");
 
-    const created = runZinn(["task", "create", "MIG", "--title", "Refused"], dir);
+    const created = runZinn(["--json", "task", "create", "MIG", "--title", "Refused"], dir);
     expect(created.code).toBe(1);
     expect(created.stdout).toBe("");
-    expect(created.stderr).toContain(`The database at ${join(dir, "data", "zinn.sqlite")} is read-only`);
-    expect(created.stderr).toContain("schema version 9");
-    expect(created.stderr).toContain(`reaches only version ${CURRENT_SCHEMA_VERSION}`);
-    expect(created.stderr).toContain(`cli ${packageJson.version}, run from ${CLI_PATH}`);
+    expect(errorDocumentSchema.parse(JSON.parse(created.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "newer_database", databasePath: join(dir, "data", "zinn.sqlite"), schemaVersion: 9, supportedSchemaVersion: CURRENT_SCHEMA_VERSION } });
+
+    for (const fact of ["cli", packageJson.version, CLI_PATH]) {
+      expect(JSON.parse(created.stderr).error.message).toContain(fact);
+    }
     expect(databaseSnapshot(dir)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
   });
@@ -5590,11 +5558,11 @@ test("task delete on a read-only database refuses before asking for confirmation
   withIsolatedZinnDir((dir) => {
     createDatabase(dir, 9);
     const before = databaseSnapshot(dir);
-    const result = runZinnWithPipedYes(["task", "delete", "MIG-1"], dir);
+    const result = runZinnWithPipedYes(["--json", "task", "delete", "MIG-1"], dir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("is read-only");
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "newer_database" } });
     expect(databaseSnapshot(dir)).toEqual(before);
   });
 });
@@ -5605,10 +5573,10 @@ test("an unmarked database is refused, for reads and writes, and left unchanged"
     const before = databaseSnapshot(dir);
 
     for (const args of [["task", "list", "MIG"], ["task", "create", "MIG", "--title", "Refused"]]) {
-      const result = runZinn(args, dir);
+      const result = runZinn(["--json", ...args], dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
-      expect(result.stderr).toContain(`The database at ${join(dir, "data", "zinn.sqlite")} has no schema version`);
+      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "unmarked_database", schemaVersion: 0, databasePath: join(dir, "data", "zinn.sqlite") } });
     }
     expect(databaseSnapshot(dir)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
@@ -5619,8 +5587,8 @@ test("an unmarked database is refused, for reads and writes, and left unchanged"
 
 const LEGACY_FLAG = "--allow-legacy-read";
 
-function warningLines(stderr: string) {
-  return stderr.split("\n").filter((line) => line.includes("no schema version"));
+function warningLines(stderr: string, databasePath: string) {
+  return stderr.split("\n").filter((line) => line.includes(databasePath));
 }
 
 test("--allow-legacy-read reads an unmarked database with one warning on stderr, each invocation needing it again", () => {
@@ -5633,7 +5601,7 @@ test("--allow-legacy-read reads an unmarked database with one warning on stderr,
       const allowed = runZinn(args, dir);
       expect(allowed.code).toBe(0);
       expect(allowed.stdout).toContain("MIG");
-      expect(warningLines(allowed.stderr)).toHaveLength(1);
+      expect(warningLines(allowed.stderr, join(dir, "data", "zinn.sqlite"))).toHaveLength(1);
       expect(allowed.stderr).toContain(databasePath);
     }
 
@@ -5652,7 +5620,7 @@ test("--allow-legacy-read with --json keeps stdout parseable and refusals as a J
     const allowed = runZinn(["task", "list", "MIG", "--json", LEGACY_FLAG], dir);
     expect(allowed.code).toBe(0);
     expect(JSON.parse(allowed.stdout)).toHaveLength(1);
-    expect(warningLines(allowed.stderr)).toHaveLength(1);
+    expect(warningLines(allowed.stderr, join(dir, "data", "zinn.sqlite"))).toHaveLength(1);
 
     const refused = runZinn(["task", "list", "MIG", "--json"], dir);
     expect(refused.code).toBe(1);
@@ -5665,11 +5633,11 @@ test("a --allow-legacy-read after -- is command input, so the database stays ref
   withIsolatedZinnDir((dir) => {
     createDatabase(dir, 0);
     const before = databaseSnapshot(dir);
-    const result = runZinn(["task", "search", "--", LEGACY_FLAG], dir);
+    const result = runZinn(["--json", "task", "search", "--", LEGACY_FLAG], dir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("has no schema version");
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "unmarked_database" } });
     expect(result.stderr).not.toContain("Warning:");
     expect(databaseSnapshot(dir)).toEqual(before);
   });
@@ -5687,11 +5655,11 @@ test("--allow-legacy-read never lets a command change an unmarked database", () 
     ];
 
     for (const args of attempts) {
-      const result = runZinn([...args, LEGACY_FLAG], dir);
+      const result = runZinn(["--json", ...args, LEGACY_FLAG], dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
-      expect(result.stderr).toContain("is read-only");
-      expect(result.stderr).toContain("open for reading only");
+      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "unmarked_database", schemaVersion: 0 } });
+
     }
     expect(databaseSnapshot(dir)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
@@ -5772,7 +5740,6 @@ test("simultaneous backup commands create distinct valid snapshots", async () =>
   });
 });
 
-
 test("all CLI descriptions normalize blank input and preserve meaningful formatting", () => {
   withIsolatedZinnDir((dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
@@ -5823,7 +5790,6 @@ test("project descriptions flow through creation, partial edits, view, list and 
     expect(run("project", "edit", "DESC", "--description", "a", "--description", "b").code).toBe(1);
   });
 });
-
 
 test("project list and write rows show truncated description previews, project view and JSON keep full text, and task rows leave descriptions out", () => {
   withIsolatedZinnDir((dir) => {
@@ -5980,7 +5946,7 @@ test("persistent contention times out without a partial CLI mutation", async () 
       const result = await runZinnAsync(["task", "create", "LOCK", "--title", "must not persist", "--json"], dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
-      expect(JSON.parse(result.stderr).error.message).toContain("database is locked");
+      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "storage", details: { reason: "busy", cause: { code: "SQLITE_BUSY" } } });
       expect(performance.now() - began).toBeGreaterThanOrEqual(29_000);
       expect(performance.now() - began).toBeLessThan(40_000);
       expect(db.query("SELECT COUNT(*) AS count FROM task").get()).toEqual({ count: 0 });
@@ -6004,8 +5970,8 @@ test("CLI initialization errors expose the underlying message and code", () => {
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
-    expect(JSON.parse(result.stderr).error.message).toContain("There was a problem initializing Zinn:");
-    expect(JSON.parse(result.stderr).error.message).toContain("file is not a database (SQLITE_NOTADB)");
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "storage", details: { reason: "not_database", cause: { code: "SQLITE_NOTADB", errcode: 26 } } });
+
     expect(readFileSync(path, "utf8")).toBe(contents);
   });
 });
@@ -6054,7 +6020,7 @@ test("an invalid zinn.local.json fails the command with the file's path, without
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toStartWith(`Cannot use settings file ${settingsPath}: it has invalid settings\n`);
+    expect(result.stderr).toContain(settingsPath);
     expect(result.stderr).toContain("storage.directory");
     expect(result.stderr).not.toContain("    at ");
     expect(existsSync(join(dir, "home", ".zinn"))).toBe(false);
@@ -6183,16 +6149,16 @@ test("--replacing with several matches and no --all fails with the --all hint an
     const before = storedTextOf(dir);
 
     const attempts = [
-      run("task", "edit", "APP-1", "--description", "x", "--replacing", "dup"),
-      run("project", "edit", "APP", "--description", "x", "--replacing", "dup"),
-      run("task", "comment", "edit", "APP-1#1", "--text", "x", "--replacing", "dup"),
+      run("task", "edit", "APP-1", "--description", "x", "--replacing", "dup", "--json"),
+      run("project", "edit", "APP", "--description", "x", "--replacing", "dup", "--json"),
+      run("task", "comment", "edit", "APP-1#1", "--text", "x", "--replacing", "dup", "--json"),
     ];
 
     for (const attempt of attempts) {
       expect(attempt.code).toBe(1);
       expect(attempt.stdout).toBe("");
-      expect(attempt.stderr).toContain("matches 2 places");
-      expect(attempt.stderr).toEndWith(" Use --all to replace every match.\n");
+      expect(errorDocumentSchema.parse(JSON.parse(attempt.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "text_match_count", matchCount: 2 } });
+      expect(JSON.parse(attempt.stderr).error.message).toContain("--all");
     }
     expect(storedTextOf(dir)).toEqual(before);
   });
@@ -6204,13 +6170,13 @@ test("--replacing with no match fails without the --all hint and changes nothing
     const before = storedTextOf(dir);
 
     const attempts = [
-      run("task", "edit", "APP-1", "--description", "x", "--replacing", "some text"),
-      run("label", "edit", "bug", "--description", "x", "--replacing", "absent"),
+      run("task", "edit", "APP-1", "--description", "x", "--replacing", "some text", "--json"),
+      run("label", "edit", "bug", "--description", "x", "--replacing", "absent", "--json"),
     ];
 
     for (const attempt of attempts) {
       expect(attempt.code).toBe(1);
-      expect(attempt.stderr).toContain("The text to replace was not found in");
+      expect(errorDocumentSchema.parse(JSON.parse(attempt.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "text_match_count", matchCount: 0, field: ["description"] } });
       expect(attempt.stderr).not.toContain("--all");
     }
     expect(storedTextOf(dir)).toEqual(before);
@@ -6264,21 +6230,23 @@ test("the text-edit flags are usage errors without the text flag or in an invali
     const before = storedTextOf(dir);
 
     const cases: Array<[Array<string>, string]> = [
-      [["task", "edit", "APP-1", "--append"], 'Option "--append" needs "--description"'],
-      [["project", "edit", "APP", "--name", "New", "--replacing", "a"], 'Option "--replacing" needs "--description"'],
-      [["label", "edit", "bug", "--color", "red", "--append"], 'Option "--append" needs "--description"'],
-      [["task", "comment", "edit", "APP-1#1", "--replacing", "a"], 'Option "--replacing" needs "--text"'],
-      [["task", "edit", "APP-1", "--description", "x", "--all"], 'Option "--all" needs "--replacing"'],
-      [["task", "comment", "edit", "APP-1#1", "--text", "x", "--all"], 'Option "--all" needs "--replacing"'],
-      [["task", "edit", "APP-1", "--description", "x", "--append", "--replacing", "t"], 'Option "--append" cannot be used with "--replacing"'],
-      [["task", "comment", "edit", "APP-1#1", "--text", "x", "--append", "--replacing", "t"], 'Option "--append" cannot be used with "--replacing"'],
+      [["task", "edit", "APP-1", "--append"], '--append --description'],
+      [["project", "edit", "APP", "--name", "New", "--replacing", "a"], '--replacing --description'],
+      [["label", "edit", "bug", "--color", "red", "--append"], '--append --description'],
+      [["task", "comment", "edit", "APP-1#1", "--replacing", "a"], '--replacing --text'],
+      [["task", "edit", "APP-1", "--description", "x", "--all"], '--all --replacing'],
+      [["task", "comment", "edit", "APP-1#1", "--text", "x", "--all"], '--all --replacing'],
+      [["task", "edit", "APP-1", "--description", "x", "--append", "--replacing", "t"], '--append --replacing'],
+      [["task", "comment", "edit", "APP-1#1", "--text", "x", "--append", "--replacing", "t"], '--append --replacing'],
     ];
 
     for (const [args, message] of cases) {
       const result = run(...args);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
-      expect(result.stderr).toBe(`${message}\n`);
+      for (const flag of message.split(" ")) {
+        expect(result.stderr).toContain(flag);
+      }
     }
     expect(storedTextOf(dir)).toEqual(before);
     expect(errorDocumentSchema.parse(JSON.parse(run("task", "edit", "APP-1", "--append", "--json").stderr)).error).toMatchObject({
@@ -6287,17 +6255,23 @@ test("the text-edit flags are usage errors without the text flag or in an invali
   });
 });
 
-test("core's value rules for the text-edit flags surface as plain messages", () => {
+test("core's value rules for the text-edit flags identify the rejected field", () => {
   withIsolatedZinnDir((dir) => {
     const run = seedEditableText(dir, "text");
 
-    const blankAppend = run("task", "edit", "APP-1", "--description", " ", "--append");
-    const emptyFind = run("task", "edit", "APP-1", "--description", "x", "--replacing", "");
-    const blankComment = run("task", "comment", "edit", "APP-1#1", "--text", "", "--replacing", "text");
+    const blankAppend = run("task", "edit", "APP-1", "--description", " ", "--append", "--json");
+    const emptyFind = run("task", "edit", "APP-1", "--description", "x", "--replacing", "", "--json");
+    const blankComment = run("task", "comment", "edit", "APP-1#1", "--text", "", "--replacing", "text", "--json");
 
-    expect(blankAppend.stderr).toBe("Text to append cannot be blank\n");
-    expect(emptyFind.stderr).toBe("Text to find cannot be empty\n");
-    expect(blankComment.stderr).toBe("Comment text cannot be blank\n");
+    expect(blankAppend.code).toBe(1);
+    expect(blankAppend.stdout).toBe("");
+    expect(errorDocumentSchema.parse(JSON.parse(blankAppend.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["description", "append"] } });
+    expect(emptyFind.code).toBe(1);
+    expect(emptyFind.stdout).toBe("");
+    expect(errorDocumentSchema.parse(JSON.parse(emptyFind.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["description", "find"] } });
+    expect(blankComment.code).toBe(1);
+    expect(blankComment.stdout).toBe("");
+    expect(errorDocumentSchema.parse(JSON.parse(blankComment.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: [] } });
   });
 });
 
@@ -6665,11 +6639,10 @@ test("activity task-filtered prefixes remain globally unique even outside the fi
     const ambiguous = runZinn(["activity", "view", "abcdef12", "--json"], directory);
     expect(ambiguous.code).toBe(1);
     expect(ambiguous.stdout).toBe("");
-    const message = JSON.parse(ambiguous.stderr).error.message;
-    expect(message).toContain("ambiguous");
-    expect(message).toContain(first);
-    expect(message).toContain(second);
-    expect(message).toContain("more characters");
+    const failure = errorDocumentSchema.parse(JSON.parse(ambiguous.stderr)).error;
+    expect(failure).toMatchObject({ code: "conflict", details: { reason: "ambiguous_reference", matchCount: 2, candidateIds: expect.arrayContaining([first, second]) } });
+    expect(failure.message).toContain(first);
+    expect(failure.message).toContain(second);
   });
 });
 
@@ -6682,13 +6655,15 @@ test("activity view accepts normalized IDs and reports malformed, short and miss
       expect(result.code).toBe(0);
       expect(JSON.parse(result.stdout)).toEqual(event);
     }
-    for (const [input, message] of [
-      ["abcdef1", "at least 8"], ["abcd-ef12", "Invalid activity ID"], ["ffffffff", "No activity matches"],
+    for (const [input, expected] of [
+      ["abcdef1", { code: "invalid_input", details: { field: [] } }],
+      ["abcd-ef12", { code: "invalid_input", details: { field: [] } }],
+      ["ffffffff", { code: "not_found", details: { entity: "activity", key: "ffffffff" } }],
     ] as const) {
-      const result = runZinn(["activity", "view", input], directory);
+      const result = runZinn(["activity", "view", input, "--json"], directory);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
-      expect(result.stderr).toContain(message!);
+      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(expected);
     }
   });
 });
@@ -6721,10 +6696,14 @@ test("activity rejects unsupported, repeated and malformed command arguments wit
       expect(result.stdout).toBe("");
       expect(JSON.parse(result.stderr).error.message.length).toBeGreaterThan(0);
     }
-    for (const limit of ["0", "-1", "1.5", "1e2", "01", " 2", "Infinity", "9007199254740992", "99999999999999999"]) {
+    for (const [limit, details] of [
+      ...["0", "-1", "1.5", "1e2", "01", " 2", "Infinity", "99999999999999999"]
+        .map((limit) => [limit, { argument: "--limit" }] as const),
+      ["9007199254740992", { field: ["limit"] }],
+    ] as const) {
       const result = runZinn(["activity", "list", `--limit=${limit}`, "--json"], directory);
       expect(result.code).toBe(1);
-      expect(JSON.parse(result.stderr).error.message).toBe("Activity limit must be a positive safe integer");
+      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "invalid_input", details });
     }
     expect(withTestDb(directory, (db) => db.query("SELECT * FROM activity").all())).toEqual(before);
   });

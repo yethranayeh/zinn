@@ -45,7 +45,7 @@ test("comments have stable per-task keys", () => {
     assert.equal(otherTask.key, "APP-2#1");
     assert.equal(first.created_at, first.updated_at);
     assert.equal(comment.getByKey("app-1#1").id, first.id);
-    assert.throws(() => comment.getByKey(second.id), /Invalid comment key/);
+    assert.throws(() => comment.getByKey(second.id), (error) => error.kind === "input" && error.facts.field[0] === "commentKey");
     assert.deepEqual(comment.getAll("APP-1").map((entry) => entry.key), ["APP-1#1", "APP-1#2"]);
 
     // Listing follows comment numbers even when storage IDs disagree.
@@ -55,7 +55,7 @@ test("comments have stable per-task keys", () => {
     comment.delete({ commentKey: "APP-1#2" }, human);
     const third = comment.create({ taskKey: "APP-1", text: "Third comment" }, human);
     assert.equal(third.key, "APP-1#3");
-    assert.throws(() => comment.getByKey("APP-1#2"), /does not exist/);
+    assert.throws(() => comment.getByKey("APP-1#2"), (error) => error.kind === "missing");
   `);
 });
 
@@ -109,11 +109,11 @@ test("comments preserve text, reject blank text, and cascade with their task", (
     const text = "  Keep indentation\\n    code  ";
     const created = comment.create({ taskKey: "APP-1", text }, human);
     assert.equal(created.text, text);
-    assert.throws(() => comment.create({ taskKey: "APP-1", text: "   \\n" }, human), /cannot be blank/);
-    assert.throws(() => comment.edit({ commentKey: created.key, text: "\\t" }, human), /cannot be blank/);
-    assert.throws(() => comment.getByKey("APP-1#0"), /Expected format PROJECT-1#1/);
-    assert.throws(() => comment.getByKey("NOPE-1#0"), /Invalid comment key "NOPE-1#0"/);
-    assert.throws(() => comment.getByKey("APP-1#2#3"), /Invalid comment key "APP-1#2#3"/);
+    assert.throws(() => comment.create({ taskKey: "APP-1", text: "   \\n" }, human), (error) => error.kind === "input" && error.facts.field[0] === "text");
+    assert.throws(() => comment.edit({ commentKey: created.key, text: "\\t" }, human), (error) => error.kind === "input" && error.facts.field[0] === "text");
+    assert.throws(() => comment.getByKey("APP-1#0"), (error) => error.kind === "input" && error.facts.field[0] === "commentKey");
+    assert.throws(() => comment.getByKey("NOPE-1#0"), (error) => error.kind === "input" && error.facts.field[0] === "commentKey" && error.message.includes("NOPE-1#0"));
+    assert.throws(() => comment.getByKey("APP-1#2#3"), (error) => error.kind === "input" && error.facts.field[0] === "commentKey" && error.message.includes("APP-1#2#3"));
 
     task.delete("APP-1", human);
     assert.equal(getDb().query("SELECT COUNT(*) AS count FROM comment").get().count, 0);

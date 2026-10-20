@@ -40,7 +40,7 @@ test("a test run without ZINN_DIR refuses the user's own default folder", () => 
 
   expect(result.code).not.toBe(0);
   expect(result.stdout).toBe("");
-  expect(result.stderr).toContain(`Refusing to use ${join(USER_HOME, ".zinn")} in a test run`);
+  expect(result.stderr).toContain(join(USER_HOME, ".zinn"));
 });
 
 test("a test run with a temporary HOME gets that HOME's default folder", () => {
@@ -99,7 +99,7 @@ test("the resolver refuses a test run's default folder outside the temporary dir
   const cwd = join(tmpdir(), "zinn-constant-unused-cwd");
 
   expect(() => resolveStorage({ cwd, env: { NODE_ENV: "test" }, home: USER_HOME })).toThrow(
-    `Refusing to use ${join(USER_HOME, ".zinn")} in a test run`,
+    join(USER_HOME, ".zinn"),
   );
 });
 
@@ -289,7 +289,7 @@ test("an invalid codebase settings file fails without ZINN_DIR and is ignored wi
     const { home, repository, localFile } = layout(root);
     writeSettings(localFile, { storage: { directory: 42 } });
 
-    expect(() => resolveStorage({ cwd: repository, env: {}, home })).toThrow(`Cannot use settings file ${localFile}`);
+    expect(() => resolveStorage({ cwd: repository, env: {}, home })).toThrow(localFile);
 
     const zinnDirectory = join(root, "env-store");
     expect(resolveStorage({ cwd: repository, env: { ZINN_DIR: zinnDirectory }, home }).directory).toBe(zinnDirectory);
@@ -305,7 +305,7 @@ test("invalid settings in the ZINN_DIR directory fail with that file's path", ()
     writeSettings(settingsFile, { defaultProject: 42 });
 
     expect(() => resolveStorage({ cwd: repository, env: { ZINN_DIR: zinnDirectory }, home })).toThrow(
-      `Cannot use settings file ${settingsFile}`,
+      settingsFile,
     );
     expect(existsSync(join(zinnDirectory, "data"))).toBe(false);
   });
@@ -319,13 +319,15 @@ test("a test run refuses a store chosen by a settings file outside the temporary
     const testRun = { NODE_ENV: "test" };
 
     writeSettings(globalFile, storageSettings(outside));
+    expect(() => resolveStorage({ cwd: repository, env: testRun, home })).toThrow(globalFile);
     expect(() => resolveStorage({ cwd: repository, env: testRun, home })).toThrow(
-      `Refusing to use ${outside}, chosen by the settings file ${globalFile}, in a test run`,
+      outside,
     );
 
     writeSettings(localFile, storageSettings(outside));
+    expect(() => resolveStorage({ cwd: repository, env: testRun, home })).toThrow(localFile);
     expect(() => resolveStorage({ cwd: repository, env: testRun, home })).toThrow(
-      `Refusing to use ${outside}, chosen by the settings file ${localFile}, in a test run`,
+      outside,
     );
     expect(existsSync(outside)).toBe(false);
   });

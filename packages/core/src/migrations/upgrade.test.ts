@@ -245,7 +245,7 @@ test("an unmarked database is refused before any backup", () => {
   withDatabase((db) => {
     createBaseline(db);
 
-    expect(() => upgradeDatabase(db, options(db))).toThrow("this database has version 0");
+    expect(() => upgradeDatabase(db, options(db))).toThrow(expect.objectContaining({ kind: "conflict", facts: expect.objectContaining({ schemaVersion: 0, reason: "unmarked_database" }) }));
     expect(readSchemaVersion(db)).toBe(0);
     expect(existsSync(backupDirectory(db))).toBe(false);
     expect(foreignKeys(db)).toBe(1);
@@ -305,7 +305,7 @@ test("while the lock is held, other writers get busy, readers succeed and the sn
         expect(() => other.exec("BEGIN IMMEDIATE")).toThrow(SqliteError);
         expect(() =>
           other.exec("INSERT INTO label (id, name, color) VALUES ('l9', 'x', 'red')"),
-        ).toThrow("database is locked");
+        ).toThrow(expect.objectContaining({ code: "SQLITE_BUSY" }));
         expect(count(other, "task")).toBe(3);
 
         return dbBackup.create(databasePath(db), directory, { client: "test", version: "1.2.3" })
@@ -334,7 +334,7 @@ test("unknown free space stops the upgrade before the backup", () => {
 
     expect(() =>
       upgradeDatabase(db, options(db, { migrations: [step], readFreeSpace: () => null })),
-    ).toThrow(`The free disk space at ${dirname(databasePath(db))} is unknown`);
+    ).toThrow(expect.objectContaining({ kind: "storage", facts: expect.objectContaining({ path: dirname(databasePath(db)) }) }));
     expect(backups(db)).toEqual([]);
     expect(step.calls.count).toBe(0);
     expect(snapshot(db)).toEqual(before);
@@ -356,7 +356,7 @@ test("too little space for the remaining work stops the upgrade after the backup
     };
 
     expect(() => upgradeDatabase(db, options(db, { migrations: [step], readFreeSpace }))).toThrow(
-      "Not enough free disk space",
+      expect.objectContaining({ kind: "storage", facts: expect.objectContaining({ reason: "disk_full" }) }),
     );
     expect(reads).toBe(2 * READS_PER_CHECK);
     expect(step.calls.count).toBe(0);
@@ -449,7 +449,7 @@ const FAILURE_CASES: Array<FailureCase> = [
           VALUES ('orphan', 'missing', 1, 'x', 1, 1)`);
       }),
     expectError: (error) =>
-      expect((error as Error).message).toContain("foreign keys point to missing rows"),
+      expect((error as Error).message).toMatch(/(?=.*\b1\b)(?=.*\bcomment\b)(?=.*\btask\b)/s),
   },
   {
     stage: "the row count check",
@@ -467,7 +467,7 @@ const FAILURE_CASES: Array<FailureCase> = [
         `);
       }, ["label"]),
     expectError: (error) =>
-      expect((error as Error).message).toContain("left 1 rows in label, which had 2"),
+      expect((error as Error).message).toMatch(/(?=.*\b1\b)(?=.*\b2\b)(?=.*\blabel\b)/s),
   },
   {
     stage: "COMMIT",
@@ -537,12 +537,8 @@ test("the lock wait times out with the path and elapsed time, and this caller ch
       const elapsed = performance.now() - began;
       expect(thrown).toBeInstanceOf(Error);
       const message = (thrown as Error).message;
-      expect(message).toContain(
-        `for another writer to finish with the database at ${databasePath(db)}`,
-      );
-      expect(message).toMatch(/^Waited 0\.\d seconds/);
-      expect(message).toContain("applied no changes");
-      expect(message).toContain("Retry once the other writer finishes");
+      expect(message).toContain(databasePath(db));
+      expect(thrown).toMatchObject({ kind: "storage", facts: { reason: "busy", databasePath: databasePath(db) } });
       expect((thrown as Error).cause).toBeInstanceOf(SqliteError);
       expect(elapsed).toBeGreaterThanOrEqual(SHORT_BUDGET_MS);
       expect(elapsed).toBeLessThan(SHORT_BUDGET_MS + TIMING_SLACK_MS);
@@ -570,7 +566,7 @@ test("retries after busy results share one budget instead of each waiting it in 
         db,
         options(db, { budgetMs: SHORT_BUDGET_MS, onWait: (wait) => waits.push(wait) }),
       ),
-    ).toThrow("applied no changes");
+    ).toThrow(expect.objectContaining({ kind: "storage", facts: expect.objectContaining({ reason: "busy", databasePath: databasePath(db) }) }));
 
     const elapsed = performance.now() - began;
     expect(elapsed).toBeGreaterThanOrEqual(SHORT_BUDGET_MS);

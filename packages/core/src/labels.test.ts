@@ -20,7 +20,7 @@ test("global and attached labels sort alphabetically without case differences, w
       assert.deepEqual(label.getAll().map(entry => entry.name), expected);
       assert.deepEqual(task.label.getAll(created.key).map(entry => entry.name), expected);
       assert.equal(label.getByName("ÄPFEL").name, "äpfel");
-      assert.throws(() => label.create({ name: "ÄPFEL" }, actor), /already exists/);
+      assert.throws(() => label.create({ name: "ÄPFEL" }, actor), (error) => error.kind === "conflict" && error.facts.reason === "already_exists");
 
       label.edit({ labelName: "äther", name: "äther" }, actor);
       label.edit({ labelName: "äpfel", name: "Äpfel" }, actor);
@@ -52,8 +52,8 @@ test("labels preserve atomic edits, no-op timestamps, uniqueness, and cascade in
       assert.equal(bug.description, null);
       const auth = label.create({ name: "auth" }, actor);
       assert.equal(auth.color, "white");
-      assert.throws(() => label.create({ name: "bug" }, actor), /already exists/);
-      assert.throws(() => label.create({ name: "BUG" }, actor), /already exists/);
+      assert.throws(() => label.create({ name: "bug" }, actor), (error) => error.kind === "conflict" && error.facts.reason === "already_exists");
+      assert.throws(() => label.create({ name: "BUG" }, actor), (error) => error.kind === "conflict" && error.facts.reason === "already_exists");
       assert.throws(() => label.create({ name: " ", color: "red" }, actor));
       assert.throws(() => label.create({ name: "bad", color: "purple" }, actor));
       assert.throws(() => task.create({ project_id: app.id, title: "Bad", description: null, labelNames: ["missing"] }, actor));
@@ -68,9 +68,9 @@ test("labels preserve atomic edits, no-op timestamps, uniqueness, and cascade in
       assert.deepEqual(task.label.getAll(first.key).map(l => l.name), ["auth", "defect"]);
       assert.deepEqual(task.label.getAll(second.key).map(l => l.name), ["defect"]);
       assert.deepEqual(db.query("SELECT updated_at FROM task ORDER BY id").all(), [{ updated_at: 1 }, { updated_at: 1 }]);
-      assert.throws(() => label.edit({ labelName: "DEFECT", name: "AUTH" }, actor), /already exists/);
+      assert.throws(() => label.edit({ labelName: "DEFECT", name: "AUTH" }, actor), (error) => error.kind === "conflict" && error.facts.reason === "already_exists");
       assert.equal(label.getByName("DeFeCt").id, bug.id);
-      assert.throws(() => label.edit({ labelName: "missing", color: "red" }, actor), /does not exist/);
+      assert.throws(() => label.edit({ labelName: "missing", color: "red" }, actor), (error) => error.kind === "missing");
       assert.throws(() => db.query("INSERT INTO task_label VALUES (?, ?)").run(first.id, bug.id));
       assert.throws(() => db.query("INSERT INTO task_label VALUES (?, ?)").run(first.id, "missing"));
       const unchanged = task.getByKey(first.key);
@@ -105,7 +105,7 @@ test("labels preserve atomic edits, no-op timestamps, uniqueness, and cascade in
       assert.deepEqual(task.label.getAll(first.key).map(l => l.name), ["auth"]);
       assert.equal(task.label.getAll(second.key).length, 0);
       assert.equal(task.getAll({ archive: "all" }).length, 2);
-      assert.throws(() => label.delete({ name: "defect" }, actor), /does not exist/);
+      assert.throws(() => label.delete({ name: "defect" }, actor), (error) => error.kind === "missing");
       task.label.add({ taskKey: second.key, labelNames: ["auth"] }, actor);
       task.delete(first.key, actor);
       assert.equal(db.query("SELECT COUNT(*) AS n FROM task_label WHERE task_id = ?").get(first.id).n, 0);
@@ -140,8 +140,8 @@ test("task lists filter by every requested label without changing their order", 
       const keys = (options) => task.getAll(options).map((entry) => entry.key);
       assert.deepEqual(keys({ labelNames: ["BUG"] }), ["APP-1", "APP-2", "OTHER-1"]);
       assert.deepEqual(keys({ projectKey: "app", labelNames: ["bug", "groom", "BUG"] }), ["APP-1"]);
-      assert.throws(() => task.getAll({ labelNames: ["missing"] }), /does not exist/);
-      assert.throws(() => task.getAll({ labelNames: [" "] }), /Label name cannot be blank/);
+      assert.throws(() => task.getAll({ labelNames: ["missing"] }), (error) => error.kind === "missing");
+      assert.throws(() => task.getAll({ labelNames: [" "] }), (error) => error.kind === "input" && error.facts.field[0] === "labelNames");
 
       task.archive("APP-1", actor);
       assert.deepEqual(keys({ labelNames: ["bug", "groom"] }), ["OTHER-1"]);

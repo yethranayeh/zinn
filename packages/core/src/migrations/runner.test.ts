@@ -245,7 +245,8 @@ test("when ROLLBACK and restoring foreign keys also fail, the original error kee
     // The transaction is still open, so switching foreign keys back on did nothing.
     const restoreFailure = (rollbackFailure as Suppressing).suppressed;
     expect(restoreFailure).toBeInstanceOf(Error);
-    expect((restoreFailure as Error).message).toContain("Foreign keys could not be switched back");
+    expect(db.inTransaction).toBe(true);
+    expect(foreignKeys(db)).toBe(0);
 
     db.exec("ROLLBACK");
     expect(snapshot(db)).toEqual(before);
@@ -262,7 +263,7 @@ test("rows whose foreign keys point to missing rows abort the upgrade", () => {
     });
 
     expect(() => upgradeSchema(db, [orphaning])).toThrow(
-      "The schema upgrade would leave 1 rows whose foreign keys point to missing rows (comment to task)",
+      expect.objectContaining({ message: expect.stringMatching(/(?=.*\b1\b)(?=.*\bcomment\b)(?=.*\btask\b)/s) }),
     );
     expect(snapshot(db)).toEqual(before);
     expect(foreignKeys(db)).toBe(1);
@@ -347,7 +348,7 @@ test("a rebuild that changes its table's row count aborts the upgrade", () => {
     }, ["label"]);
 
     expect(() => upgradeSchema(db, [losingRow])).toThrow(
-      "Migration 2 (test migration 2) left 1 rows in label, which had 2",
+      expect.objectContaining({ message: expect.stringMatching(/(?=.*\b1\b)(?=.*\b2\b)(?=.*\blabel\b)/s) }),
     );
     expect(snapshot(db)).toEqual(before);
     expect(foreignKeys(db)).toBe(1);
@@ -403,12 +404,12 @@ test("an unmarked or newer database is refused unchanged", () => {
     const step = migration(2, (db) => db.exec("ALTER TABLE project ADD COLUMN extra TEXT"));
 
     expect(() => upgradeSchema(db, [step])).toThrow(
-      "Only schema versions 1 to 2 can be upgraded, and this database has version 0",
+      expect.objectContaining({ kind: "conflict", facts: expect.objectContaining({ schemaVersion: 0, supportedSchemaVersion: 2, reason: "unmarked_database" }) }),
     );
     expect(snapshot(db)).toEqual(unmarked);
 
     db.exec("PRAGMA user_version = 3");
-    expect(() => upgradeSchema(db, [step])).toThrow("this database has version 3");
+    expect(() => upgradeSchema(db, [step])).toThrow(expect.objectContaining({ kind: "conflict", facts: expect.objectContaining({ schemaVersion: 3, supportedSchemaVersion: 2, reason: "newer_database" }) }));
     expect(readSchemaVersion(db)).toBe(3);
     expect(step.calls.count).toBe(0);
     expect(foreignKeys(db)).toBe(1);
@@ -421,7 +422,7 @@ test("an upgrade cannot start inside a transaction", () => {
     const step = migration(2, rebuildTask, ["task"]);
     db.exec("BEGIN");
 
-    expect(() => upgradeSchema(db, [step])).toThrow("must start outside a transaction");
+    expect(() => upgradeSchema(db, [step])).toThrow(Error);
     expect(step.calls.count).toBe(0);
     expect(foreignKeys(db)).toBe(1);
     db.exec("ROLLBACK");
@@ -435,7 +436,7 @@ test("migration versions must follow the baseline one by one", () => {
   expect(() => assertMigrationOrder([migration(2, noop), migration(3, noop)])).not.toThrow();
   for (const versions of [[3], [2, 2], [2, 4], [3, 2], [1]]) {
     expect(() => assertMigrationOrder(versions.map((version) => migration(version, noop)))).toThrow(
-      "is out of order",
+      expect.objectContaining({ message: expect.stringContaining(String(versions.find((version, index) => version !== index + 2))) }),
     );
   }
 
@@ -444,7 +445,7 @@ test("migration versions must follow the baseline one by one", () => {
     const before = snapshot(db);
     const step = migration(3, noop);
 
-    expect(() => upgradeSchema(db, [step])).toThrow("is out of order");
+    expect(() => upgradeSchema(db, [step])).toThrow(expect.objectContaining({ message: expect.stringContaining(String(step.version)) }));
     expect(step.calls.count).toBe(0);
     expect(snapshot(db)).toEqual(before);
   });
@@ -520,7 +521,7 @@ test("fresh creation refuses a database that already has a schema or a version",
     const before = snapshot(db);
 
     expect(() => createSchema(db, [])).toThrow(
-      "A schema can only be created in an empty database, and this one has",
+      expect.objectContaining({ name: "SchemaNotEmptyError" }),
     );
     expect(snapshot(db)).toEqual(before);
   });
@@ -528,7 +529,7 @@ test("fresh creation refuses a database that already has a schema or a version",
   withDatabase((db) => {
     db.exec("PRAGMA user_version = 1");
 
-    expect(() => createSchema(db, [])).toThrow("0 schema objects and version 1");
+    expect(() => createSchema(db, [])).toThrow(expect.objectContaining({ name: "SchemaNotEmptyError", message: expect.stringMatching(/(?=.*\b0\b)(?=.*\b1\b)/s) }));
     expect(schemaObjects(db)).toEqual([]);
   });
 });

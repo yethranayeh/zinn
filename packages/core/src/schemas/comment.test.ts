@@ -9,12 +9,10 @@ test("comment schemas reject blank text without changing accepted text", () => {
   expect(commentEditSchema.parse({ commentKey: "APP-1#1", text }).text).toBe(text);
 
   for (const blankText of ["", "   ", "\n\t"]) {
-    expect(() => commentCreateSchema.parse({ taskKey: "APP-1", text: blankText })).toThrow(
-      "Comment text cannot be blank",
-    );
-    expect(() => commentEditSchema.parse({ commentKey: "APP-1#1", text: blankText })).toThrow(
-      "Comment text cannot be blank",
-    );
+    expect(commentCreateSchema.safeParse({ taskKey: "APP-1", text: blankText }).error?.issues)
+      .toMatchObject([{ path: ["text"] }]);
+    expect(commentEditSchema.safeParse({ commentKey: "APP-1#1", text: blankText }).error?.issues)
+      .toMatchObject([{ path: ["text"] }]);
   }
 });
 

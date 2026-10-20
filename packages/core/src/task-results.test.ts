@@ -73,7 +73,7 @@ test("bulk task operations log activity per task and roll back entirely when one
       assert.deepEqual(actions("OTHER-1"), ["create", "move"]);
 
       task.archive("APP-2", actor);
-      assert.throws(() => task.moveMany({ taskKeys: ["APP-3", "APP-2"], targetColumn: "Done" }, actor), /Archived task "APP-2" cannot be moved/);
+      assert.throws(() => task.moveMany({ taskKeys: ["APP-3", "APP-2"], targetColumn: "Done" }, actor), (error) => error.kind === "conflict" && error.facts.reason === "archived" && error.facts.key === "APP-2");
       assert.throws(() => task.archiveMany(["APP-1", "APP-404"], actor), /APP-404/);
       assert.throws(() => task.unarchiveMany(["APP-2", "APP-404"], actor), /APP-404/);
       assert.equal(task.getByKey("APP-3").column_id, task.getByKey("APP-1").column_id);
@@ -173,7 +173,7 @@ test("column filtering narrows ordered project and global lists together with la
       }
       assert.deepEqual(keys({ projectKey: "CCC", columnName: "In Progress" }), []);
       assert.throws(() => task.getAll({ columnName: "Nowhere", labelNames: ["missing"] }), /label/);
-      assert.throws(() => task.getAll({ projectKey: "NOPE", columnName: "Nowhere" }), /does not exist/);
+      assert.throws(() => task.getAll({ projectKey: "NOPE", columnName: "Nowhere" }), (error) => error.kind === "missing");
     `], { env: { ...process.env, ZINN_DIR: directory } });
     expect(result.stderr.toString()).toBe("");
     expect(result.exitCode).toBe(0);
@@ -210,7 +210,7 @@ test("task create places a task last in the named column and a bad column saves 
       const activityBefore = count("activity");
       assert.throws(
         () => task.create({ project_id: app.id, title: "Lost", description: null, columnName: "Nowhere" }, actor),
-        /App does not have a column named "Nowhere"/,
+        (error) => error.kind === "missing" && error.facts.entity === "column" && error.facts.key === "Nowhere",
       );
       assert.equal(count("task"), tasksBefore);
       assert.equal(count("activity"), activityBefore);
@@ -354,7 +354,7 @@ test("task create with a bad relation target or a broken relation rule saves not
           { relation_type: "subtask", targetTaskKey: "APP-1" },
           { relation_type: "dependency", targetTaskKey: "APP-99" },
         ]),
-        /Task "APP-99" does not exist/,
+        (error) => error.kind === "missing" && error.facts.entity === "task" && error.facts.key === "APP-99",
       );
       assert.deepEqual(snapshot(), before);
 
@@ -363,11 +363,11 @@ test("task create with a bad relation target or a broken relation rule saves not
           { relation_type: "related", targetTaskKey: "APP-2" },
           { relation_type: "dependency", targetTaskKey: "not a key" },
         ]),
-        /Invalid task key "not a key"/,
+        (error) => error.kind === "input" && error.facts.field[0] === "taskKey" && error.message.includes("not a key"),
       );
       assert.deepEqual(snapshot(), before);
 
-      assert.throws(createWith([{ relation_type: "related", targetTaskKey: "NOPE-1" }]), /Project with key "NOPE" does not exist/);
+      assert.throws(createWith([{ relation_type: "related", targetTaskKey: "NOPE-1" }]), (error) => error.kind === "missing" && error.facts.entity === "project" && error.facts.key === "NOPE");
       assert.deepEqual(snapshot(), before);
 
       // The relation rules of relation create apply: a task has one parent.
@@ -376,7 +376,7 @@ test("task create with a bad relation target or a broken relation rule saves not
           { relation_type: "subtask", targetTaskKey: "APP-1" },
           { relation_type: "subtask", targetTaskKey: "APP-2" },
         ]),
-        /already has a parent/,
+        (error) => error.kind === "conflict" && error.facts.reason === "parent_exists",
       );
       assert.deepEqual(snapshot(), before);
 

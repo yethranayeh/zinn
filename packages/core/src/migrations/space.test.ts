@@ -183,21 +183,21 @@ test("each filesystem is checked on its own and shared ones combine their allowa
   // Backup and temporary share a device: 800 rounds up to 1024, more than the 512 available.
   const shared = { "/db": space(1024, 1), "/backup": space(512, 2), "/tmp": space(512, 2) };
   expect(() => assertFreeSpace(PATHS, REQUIRED, (path) => shared[path as keyof typeof shared]!)).toThrow(
-    "Not enough free disk space at /backup, /tmp: 1024 bytes are required and 512 are available",
+    expect.objectContaining({ kind: "storage", facts: expect.objectContaining({ reason: "disk_full" }), message: expect.stringMatching(/(?=.*\/backup)(?=.*\/tmp)(?=.*\b1024\b)(?=.*\b512\b)/s) }),
   );
 });
 
 test("insufficient space names the path, the required and the available bytes", () => {
   const read = (path: string) => (path === "/db" ? space(1000, 1) : space(10000, 2));
   expect(() => assertFreeSpace(PATHS, REQUIRED, read)).toThrow(
-    "Not enough free disk space at /db: 1024 bytes are required and 1000 are available",
+    expect.objectContaining({ kind: "storage", facts: expect.objectContaining({ reason: "disk_full", path: "/db" }), message: expect.stringMatching(/(?=.*\b1024\b)(?=.*\b1000\b)/s) }),
   );
 });
 
 test("unknown free space names the path and the required bytes", () => {
   const read = (path: string) => (path === "/backup" ? null : space(10000, 1));
   expect(() => assertFreeSpace(PATHS, REQUIRED, read)).toThrow(
-    "The free disk space at /backup is unknown, and 500 bytes are required",
+    expect.objectContaining({ kind: "storage", facts: expect.objectContaining({ path: "/backup" }), message: expect.stringContaining("500") }),
   );
 });
 
@@ -211,7 +211,7 @@ test("work that saves no backup reads no backup directory", () => {
 
   // 1000 + 300 rounds up to 1536.
   expect(() => assertFreeSpace(withoutBackup, { ...REQUIRED, backup: 0 }, read)).toThrow(
-    "Not enough free disk space at /db, /tmp: 1536 bytes are required and 512 are available",
+    expect.objectContaining({ kind: "storage", facts: expect.objectContaining({ reason: "disk_full" }), message: expect.stringMatching(/(?=.*\/db)(?=.*\/tmp)(?=.*\b1536\b)(?=.*\b512\b)/s) }),
   );
   expect(readPaths).toEqual(["/db", "/tmp"]);
 });

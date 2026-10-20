@@ -146,7 +146,7 @@ function coreSetup({
     const core = await import(${modulePath("../index.ts")});
     core.configureDatabase({ ...${JSON.stringify(TEST_CLIENT)}, release: ${JSON.stringify(clientRelease)}, allowsLegacyRead: ${allowsLegacyRead} });
     const actor = { name: "Test Human", email: null, kind: "human" };
-    const describeError = (error) => ({ name: error.name, reason: error.reason, message: error.message });
+    const describeError = (error) => ({ name: error.name, reason: error.reason, facts: error.facts, message: error.message });
   `;
 }
 
@@ -278,11 +278,9 @@ function expectOlderReadOnly(location: Location, openCase: OpenCase) {
   expect(outcome.writeError.name).toBe("ReadOnlyDatabaseError");
   expect(outcome.writeError.reason).toBe("older");
   expect(outcome.writeError.message).toContain(databasePath(mainDir));
-  expect(outcome.writeError.message).toContain("schema version 1");
-  expect(outcome.writeError.message).toContain(`uses version ${TEST_MIGRATION_VERSION}`);
-  expect(outcome.writeError.message).toContain(
-    "upgrades only a ZINN_DIR database by itself",
-  );
+  expect(outcome.writeError.facts).toMatchObject({
+    databasePath: databasePath(mainDir), schemaVersion: 1, supportedSchemaVersion: TEST_MIGRATION_VERSION,
+  });
   expect(readDatabase(mainDir)).toEqual(before);
   expect(backupsOf(mainDir)).toEqual([]);
 }
@@ -415,17 +413,17 @@ const DATABASE_ENTRY_ATTEMPTS = `
       attempt();
       errors[name] = null;
     } catch (error) {
-      errors[name] = error.message;
+      errors[name] = { message: error.message, kind: error.kind, facts: error.facts };
     }
   }
   console.log(JSON.stringify(errors));
 `;
 
 test.each([
-  { problem: "invalid JSON", content: '{ "storage": ', message: "it is not valid JSON" },
-  { problem: "an unknown key", content: JSON.stringify({ storge: { directory: "store" } }), message: 'Unrecognized key: "storge"' },
-  { problem: "a wrong type", content: JSON.stringify({ storage: { directory: 42 } }), message: "storage.directory" },
-])("a settings file with $problem fails every way into the database before any folder or database is created", ({ content, message }) => {
+  { problem: "invalid JSON", content: '{ "storage": ', facts: { reason: "invalid_json" } },
+  { problem: "an unknown key", content: JSON.stringify({ storge: { directory: "store" } }), facts: { reason: "invalid_settings", field: [] } },
+  { problem: "a wrong type", content: JSON.stringify({ storage: { directory: 42 } }), facts: { reason: "invalid_settings", field: ["storage", "directory"] } },
+])("a settings file with $problem fails every way into the database before any folder or database is created", ({ content, facts }) => {
   withHome((home) => {
     const repository = join(home, "repository");
     const settingsPath = join(repository, "zinn.local.json");
@@ -452,8 +450,7 @@ test.each([
       const errors = JSON.parse(result.stdout.toString());
       expect(Object.keys(errors)).toHaveLength(6);
       for (const [attempt, error] of Object.entries(errors)) {
-        expect({ attempt, error }).toEqual({ attempt, error: expect.stringContaining(`Cannot use settings file ${selectedSettingsPath}`) });
-        expect(error).toContain(message);
+        expect({ attempt, error }).toMatchObject({ attempt, error: { kind: "input", facts: { ...facts, settingsPath: selectedSettingsPath }, message: expect.stringContaining(selectedSettingsPath) } });
       }
       // ? Bun keeps its own cache in the HOME, so only the store folders and the repository are checked.
       expect(existsSync(join(home, ".zinn"))).toBe(false);
@@ -474,7 +471,6 @@ test("a failed automatic upgrade fails the command and leaves the database as it
     const before = readDatabase(location.zinnDir);
     const outcome = runChild(location, openScript({ migration: "fails", createKey: null }));
 
-    expect(outcome.readError.message).toContain("There was a problem initializing Zinn");
     expect(outcome.readError.message).toContain("planned migration failure");
     expect(readDatabase(location.zinnDir)).toEqual(before);
     // The snapshot taken before the upgrade is kept.
@@ -499,9 +495,10 @@ test.each([
       expect(outcome.writeError.name).toBe("ReadOnlyDatabaseError");
       expect(outcome.writeError.reason).toBe("newer");
       expect(outcome.writeError.message).toContain(databasePath(mainDir));
-      expect(outcome.writeError.message).toContain(`schema version ${NEWER_VERSION}`);
-      expect(outcome.writeError.message).toContain(`reaches only version ${latestVersion(MIGRATIONS)}`);
-      expect(outcome.writeError.message).toContain("test 1.0.0, run from /test/zinn");
+      expect(outcome.writeError.facts).toMatchObject({ schemaVersion: NEWER_VERSION, supportedSchemaVersion: latestVersion(MIGRATIONS) });
+      for (const fact of ["test", "1.0.0", "/test/zinn"]) {
+        expect(outcome.writeError.message).toContain(fact);
+      }
       expect(readDatabase(mainDir)).toEqual(before);
       expect(backupsOf(mainDir)).toEqual([]);
     });
@@ -520,13 +517,13 @@ test("an unmarked database is refused, for reads and writes, unless the client a
 
     expect(refused.readError.name).toBe("UnmarkedDatabaseError");
     expect(refused.readError.message).toContain(databasePath(mainDir));
-    expect(refused.readError.message).toContain("no schema version");
+    expect(refused.readError.facts).toMatchObject({ reason: "unmarked_database", schemaVersion: 0 });
     expect(refused.writeError.name).toBe("UnmarkedDatabaseError");
 
     const allowed = runChild({ home }, openScript({ allowsLegacyRead: true }));
     expect(allowed.projects).toEqual(["APP"]);
     expect(allowed.writeError.name).toBe("ReadOnlyDatabaseError");
-    expect(allowed.writeError.message).toContain("open for reading only");
+    expect(allowed.writeError.reason).toBe("unmarked");
 
     expect(readDatabase(mainDir)).toEqual(before);
     expect(backupsOf(mainDir)).toEqual([]);

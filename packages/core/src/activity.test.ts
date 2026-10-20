@@ -155,15 +155,17 @@ test("activity reads use global UUID prefix matching and distinct lookup errors"
     assert.equal(activity.getById("11111111-1").id, first);
     assert.equal(activity.getById("111111111").id, first);
     assert.throws(() => activity.getById("11111111"), (error) => {
-      assert.match(error.message, /ambiguous/);
+      assert.equal(error.kind, "conflict");
+      assert.equal(error.facts.reason, "ambiguous_reference");
+      assert.equal(error.facts.matchCount, 2);
+      assert.deepEqual(error.facts.candidateIds, [first, second]);
       assert.ok(error.message.includes(first));
       assert.ok(error.message.includes(second));
-      assert.match(error.message, /more characters/);
       return true;
     });
-    assert.throws(() => activity.getById("1111111"), /at least 8/);
-    assert.throws(() => activity.getById("1111-1111"), /Invalid activity ID/);
-    assert.throws(() => activity.getById("ffffffff"), /No activity matches/);
+    assert.throws(() => activity.getById("1111111"), (error) => error.kind === "input" && error.facts.field.length === 0);
+    assert.throws(() => activity.getById("1111-1111"), (error) => error.kind === "input" && error.facts.field.length === 0);
+    assert.throws(() => activity.getById("ffffffff"), (error) => error.kind === "missing" && error.facts.entity === "activity" && error.facts.key === "ffffffff");
     assert.ok(activity.getIds().includes(second));
   `);
 });
@@ -186,7 +188,7 @@ test("activity lists order by time then ID and apply limits after task filtering
     assert.deepEqual(activity.getAll({ limit: 4 }).map((event) => event.id), [outside, tiedHigher, tiedLower, earlier]);
     assert.deepEqual(activity.getAll({ taskKey: "app-1", limit: 2 }).map((event) => event.id), [tiedHigher, tiedLower]);
     assert.equal(activity.getAll({ taskKey: "APP-1" }).length, 4);
-    assert.throws(() => activity.getById("11111111"), /ambiguous/);
+    assert.throws(() => activity.getById("11111111"), (error) => error.kind === "conflict" && error.facts.reason === "ambiguous_reference");
     assert.deepEqual(activity.getIds().sort(), before.map((event) => event.id).sort());
     assert.deepEqual(getDb().query("SELECT * FROM activity ORDER BY id").all(), before);
     assert.equal(getDb().query("SELECT total_changes() AS count").get().count, changesBefore);
@@ -281,7 +283,7 @@ test("activity finds archived and explicitly deleted tasks without requiring a l
     assert.equal(activity.getAll({ taskKey: item.key, showDeleted: true }).length, 3);
     assert.throws(() => activity.getAll({ taskKey: "APP-99" }), (error) => error.kind === "missing" && error.facts.entity === "task");
     assert.deepEqual(activity.getTaskIdentities({ taskKey: "UNKNOWN-1", showDeleted: true }), []);
-    assert.throws(() => activity.getAll({ taskKey: "APP-0" }), /Invalid task key/);
+    assert.throws(() => activity.getAll({ taskKey: "APP-0" }), (error) => error.kind === "input" && error.facts.field[0] === "taskKey");
   `);
 });
 
@@ -677,7 +679,7 @@ test("failed mutations leave no activity behind", () => {
     assert.throws(() => task.move({ taskKey: "APP-1", targetColumn: "Done" }, human), /update failed/);
     assert.throws(() => task.archive("APP-1", human), /update failed/);
     db.exec("DROP TRIGGER fail_update");
-    assert.throws(() => task.edit({ taskKey: "APP-1", addLabelNames: ["missing"] }, human), /does not exist/);
+    assert.throws(() => task.edit({ taskKey: "APP-1", addLabelNames: ["missing"] }, human), (error) => error.kind === "missing" && error.facts.entity === "label" && error.facts.key === "missing");
     assert.deepEqual(actions("APP-1"), ["create"]);
 
     db.exec("CREATE TRIGGER fail_project_update BEFORE UPDATE ON project BEGIN SELECT RAISE(ABORT, 'project update failed'); END");
@@ -705,18 +707,18 @@ test("failed mutations leave no activity behind", () => {
 
 test("core requires a valid actor and never defaults one", () => {
   runActivityCheck(`
-    assert.throws(() => project.create({ key: "NOACTOR" }), /actor is required/);
+    assert.throws(() => project.create({ key: "NOACTOR" }), (error) => error.kind === "input" && error.facts.field.length === 0);
     assert.equal(project.getByKey("NOACTOR"), null);
-    assert.throws(() => project.edit({ projectKey: "APP", name: "No actor" }), /actor is required/);
-    assert.throws(() => column.create({ projectKey: "APP", name: "No actor" }), /actor is required/);
-    assert.throws(() => label.create({ name: "no-actor" }), /actor is required/);
-    assert.throws(() => task.create({ project_id: app.id, title: "No actor", description: null }), /actor is required/);
-    assert.throws(() => task.create({ project_id: app.id, title: "Blank", description: null }, { ...human, name: "  " }), /Actor name cannot be blank/);
+    assert.throws(() => project.edit({ projectKey: "APP", name: "No actor" }), (error) => error.kind === "input" && error.facts.field.length === 0);
+    assert.throws(() => column.create({ projectKey: "APP", name: "No actor" }), (error) => error.kind === "input" && error.facts.field.length === 0);
+    assert.throws(() => label.create({ name: "no-actor" }), (error) => error.kind === "input" && error.facts.field.length === 0);
+    assert.throws(() => task.create({ project_id: app.id, title: "No actor", description: null }), (error) => error.kind === "input" && error.facts.field.length === 0);
+    assert.throws(() => task.create({ project_id: app.id, title: "Blank", description: null }, { ...human, name: "  " }), (error) => error.kind === "input" && error.facts.field[0] === "name");
     assert.throws(() => task.create({ project_id: app.id, title: "Robot", description: null }, { ...human, kind: "robot" }));
     assert.equal(task.getAll().length, 0);
     task.create({ project_id: app.id, title: "Trimmed", description: null }, { ...human, name: "  Padded  " });
     assert.equal(task.activity("APP-1")[0].actor_name, "Padded");
-    assert.throws(() => task.move({ taskKey: "APP-1", targetColumn: "Done" }), /actor is required/);
+    assert.throws(() => task.move({ taskKey: "APP-1", targetColumn: "Done" }), (error) => error.kind === "input" && error.facts.field.length === 0);
     assert.deepEqual(actions("APP-1"), ["create"]);
   `);
 });

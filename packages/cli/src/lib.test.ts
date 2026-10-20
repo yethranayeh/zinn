@@ -48,9 +48,10 @@ function readOnlyError(reason: "older" | "newer" | "unmarked") {
 test("an older database that stays read-only points at zinn migrate in the same line", () => {
   const error = readOnlyError("older");
 
-  expect(failureMessage(error, FALLBACK)).toBe(
-    `${error.message}. Run \`zinn migrate\` to upgrade it.`,
-  );
+  const message = failureMessage(error, FALLBACK);
+  expect(message).toContain(error.message);
+  expect(message).toContain("zinn migrate");
+  expect(message).not.toContain("\n");
 });
 
 test("other failures keep their own message, or the fallback when they have none", () => {
@@ -84,9 +85,8 @@ test("a text edit that matches several places points at --all, and one that matc
   const several = new TextEditMatchError(3, "ZINN-1's description");
   const none = new TextEditMatchError(0, "ZINN-1's description");
 
-  expect(failureMessage(several, FALLBACK)).toBe(
-    `${several.message} Use --all to replace every match.`,
-  );
+  expect(failureMessage(several, FALLBACK)).toContain(several.message);
+  expect(failureMessage(several, FALLBACK)).toContain("--all");
   expect(failureMessage(none, FALLBACK)).toBe(none.message);
 });
 

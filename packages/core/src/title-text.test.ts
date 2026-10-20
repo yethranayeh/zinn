@@ -39,8 +39,8 @@ test("normalized titles persist before no-op detection, activity and search; bod
       assert.deepEqual(db.query("SELECT * FROM activity ORDER BY id").all(), before);
       assert.deepEqual(task.getAll({ columnName: " Next " }).map(t => t.key), [first.key]);
       for (const targetColumn of [" Next\\n", "\\tNext", " "]) {
-        assert.throws(() => task.move({ taskKey: first.key, targetColumn }, actor), /Column name/);
-        assert.throws(() => task.moveMany({ taskKeys: [first.key], targetColumn }, actor), /Column name/);
+        assert.throws(() => task.move({ taskKey: first.key, targetColumn }, actor), (error) => error.kind === "input" && error.facts.field.length === 0);
+        assert.throws(() => task.moveMany({ taskKeys: [first.key], targetColumn }, actor), (error) => error.kind === "input" && error.facts.field.length === 0);
       }
       assert.equal(task.edit({ taskKey: first.key, title: " Renamed " }, actor).title, "Renamed");
       assert.deepEqual(task.search({ query: "Renamed" }).tasks.map(t => t.key), [first.key]);

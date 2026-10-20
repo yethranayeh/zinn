@@ -140,7 +140,7 @@ test("an unmarked database is refused and keeps schema, data and version", () =>
     const before = snapshotOf(path);
 
     expect(() => migrateDatabase(path, options(directory, [upgradeTask]))).toThrow(
-      /no schema version.*adopted/,
+      expect.objectContaining({ kind: "conflict", facts: expect.objectContaining({ reason: "unmarked_database", schemaVersion: 0, databasePath: path }) }),
     );
     expect(snapshotOf(path)).toEqual(before);
     expect(existsSync(join(directory, "backups"))).toBe(false);
@@ -153,7 +153,7 @@ test("a newer database is refused with both versions and the running build, and 
     const before = snapshotOf(path);
 
     expect(() => migrateDatabase(path, options(directory, [upgradeTask]))).toThrow(
-      /version 7.*test 1\.2\.3.*version 2/,
+      expect.objectContaining({ kind: "conflict", facts: expect.objectContaining({ reason: "newer_database", schemaVersion: 7, supportedSchemaVersion: 2, databasePath: path }), message: expect.stringMatching(/(?=.*test)(?=.*1\.2\.3)/s) }),
     );
     expect(snapshotOf(path)).toEqual(before);
     expect(existsSync(join(directory, "backups"))).toBe(false);

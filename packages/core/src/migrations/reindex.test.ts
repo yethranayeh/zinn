@@ -124,13 +124,13 @@ test("a database at another version than this build's latest is refused and left
 
     // Older: this build would regenerate with the next version's layout.
     expect(() => reindexSearch(db, { ...options, migrations: [...MIGRATIONS, regenerating] })).toThrow(
-      `has schema version ${CURRENT_VERSION}, and this build rebuilds the search index only at version ${regenerating.version}. It was left unchanged`,
+      expect.objectContaining({ kind: "conflict", facts: expect.objectContaining({ reason: "older_database", schemaVersion: CURRENT_VERSION, supportedSchemaVersion: regenerating.version }) }),
     );
 
     // Newer: another process upgraded it with a newer build.
     db.exec(`PRAGMA user_version = ${CURRENT_VERSION + 1}`);
     const newer = snapshot(db);
-    expect(() => reindexSearch(db, options)).toThrow(`has schema version ${CURRENT_VERSION + 1}`);
+    expect(() => reindexSearch(db, options)).toThrow(expect.objectContaining({ kind: "conflict", facts: expect.objectContaining({ reason: "newer_database", schemaVersion: CURRENT_VERSION + 1, supportedSchemaVersion: CURRENT_VERSION }) }));
     expect(snapshot(db)).toEqual(newer);
     db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
     expect(snapshot(db)).toEqual(before);
@@ -143,7 +143,7 @@ test("too little free space stops the reindex before it writes", () => {
     const before = snapshot(db);
 
     expect(() => reindexSearch(db, { readFreeSpace: () => NO_SPACE })).toThrow(
-      "Not enough free disk space",
+      expect.objectContaining({ kind: "storage", facts: expect.objectContaining({ reason: "disk_full" }) }),
     );
     expect(snapshot(db)).toEqual(before);
   });
@@ -161,7 +161,7 @@ test("a full database partway through filling the index rolls back to the old in
     db.exec(`PRAGMA max_page_count = ${pages}`);
     const before = snapshot(db);
 
-    expect(() => reindexSearch(db, options)).toThrow("full");
+    expect(() => reindexSearch(db, options)).toThrow(expect.objectContaining({ code: "SQLITE_FULL" }));
 
     expect(snapshot(db)).toEqual(before);
     expect(matches(db, '"one two"')).toEqual(["t1"]);
@@ -178,7 +178,7 @@ test("a reindex that waits out its budget for another writer names itself and ch
     try {
       other.exec("BEGIN IMMEDIATE");
       expect(() => reindexSearch(db, { ...options, budgetMs: SHORT_BUDGET_MS })).toThrow(
-        "so this reindex stopped and applied no changes",
+        expect.objectContaining({ kind: "storage", facts: expect.objectContaining({ reason: "busy", databasePath: readDatabaseFile(db) }), message: expect.stringContaining("reindex"), cause: expect.objectContaining({ code: "SQLITE_BUSY" }) }),
       );
       other.exec("ROLLBACK");
     } finally {

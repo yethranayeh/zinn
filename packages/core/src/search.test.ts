@@ -162,7 +162,7 @@ test("project filter, limit, and result shape", () => {
 
     assert.deepEqual(keys("shared", { projectKey: "other" }), ["OTHER-1"]);
     assert.deepEqual(keys("OTHER-1", { projectKey: "APP" }), [], "a pinned key outside the project is left out");
-    assert.throws(() => task.search({ query: "shared", projectKey: "MISSING" }), /does not exist/);
+    assert.throws(() => task.search({ query: "shared", projectKey: "MISSING" }), (error) => error.kind === "missing" && error.facts.entity === "project" && error.facts.key === "MISSING");
 
     assert.equal(keys("shared").length, 3);
     assert.equal(keys("shared", { limit: 2 }).length, 2);
@@ -196,18 +196,18 @@ test("label filters apply before archive counting and limits", () => {
     assert.equal(bothMatches.hiddenArchivedCount, 0);
     assert.deepEqual(keys("APP-3", { labelNames: ["bug"] }), []);
     assert.deepEqual(keys("widget", { labelNames: ["later"], limit: 1 }), ["APP-3"]);
-    assert.throws(() => task.search({ query: "widget", labelNames: ["missing"] }), /does not exist/);
+    assert.throws(() => task.search({ query: "widget", labelNames: ["missing"] }), (error) => error.kind === "missing" && error.facts.entity === "label" && error.facts.key === "missing");
   `);
 });
 
 test("search input is validated", () => {
   runSearchCheck(`
     create("Anything", null);
-    assert.throws(() => task.search({ query: "" }), /Search query cannot be blank/);
-    assert.throws(() => task.search({ query: " \\t\\n" }), /Search query cannot be blank/);
-    assert.throws(() => task.search({ query: "a", limit: 0 }), /positive integer/);
-    assert.throws(() => task.search({ query: "a", limit: 1.5 }), /positive integer/);
-    assert.throws(() => task.search({ query: "a", limit: Number.NaN }), /positive integer/);
+    assert.throws(() => task.search({ query: "" }), (error) => error.kind === "input" && error.facts.field[0] === "query");
+    assert.throws(() => task.search({ query: " \\t\\n" }), (error) => error.kind === "input" && error.facts.field[0] === "query");
+    assert.throws(() => task.search({ query: "a", limit: 0 }), (error) => error.kind === "input" && error.facts.field[0] === "limit");
+    assert.throws(() => task.search({ query: "a", limit: 1.5 }), (error) => error.kind === "input" && error.facts.field[0] === "limit");
+    assert.throws(() => task.search({ query: "a", limit: Number.NaN }), (error) => error.kind === "input" && error.facts.field[0] === "limit");
     assert.throws(() => task.search({ query: "a", archive: "done" }));
     assert.throws(() => task.search({ query: "a", column: "TODO" }));
   `);

@@ -39,8 +39,8 @@ for (const inputOrder of ["smaller first", "larger first"]) {
       const related = create(source, target);
       assert.equal(related.source_task_id, smaller.id);
       assert.equal(related.target_task_id, larger.id);
-      assert.throws(() => create(source, target), /already exists/);
-      assert.throws(() => create(target, source), /already exists/);
+      assert.throws(() => create(source, target), (error) => error.kind === "conflict" && error.facts.reason === "already_exists");
+      assert.throws(() => create(target, source), (error) => error.kind === "conflict" && error.facts.reason === "already_exists");
       assert.equal(relation.getAll("APP-1").length, 1);
       assert.equal(relation.getAll("APP-2")[0].id, related.id);
     `);
@@ -82,8 +82,8 @@ test("relations clean up without deleting connected tasks", () => {
       assert.ok(related.id);
       assert.ok(related.created_at > 0);
       assert.ok(related.source_task_id < related.target_task_id);
-      assert.throws(() => create("APP-1", "APP-2", "related"), /already exists/);
-      assert.throws(() => create("APP-1", "APP-1", "related"), /itself/);
+      assert.throws(() => create("APP-1", "APP-2", "related"), (error) => error.kind === "conflict" && error.facts.reason === "already_exists");
+      assert.throws(() => create("APP-1", "APP-1", "related"), (error) => error.kind === "input" && error.facts.field[0] === "targetTaskKey");
       assert.equal(relation.getAll("APP-1")[0].id, related.id);
       assert.equal(relation.getAll("APP-2")[0].id, related.id);
       const dependency = create("APP-4", "APP-3", "dependency");
@@ -114,7 +114,7 @@ test("duplicate direction and optional task enrichment preserve raw lookup", () 
     assert.equal(created.source_task_id, task.getByKey("APP-1").id);
     assert.equal(created.target_task_id, before.id);
     assert.deepEqual(task.getByKey("OTHER-1"), before);
-    assert.throws(() => relation.create({ sourceTaskKey: "APP-1", targetTaskKey: "OTHER-1", relation_type: "duplicate" }, actor), /already exists/);
+    assert.throws(() => relation.create({ sourceTaskKey: "APP-1", targetTaskKey: "OTHER-1", relation_type: "duplicate" }, actor), (error) => error.kind === "conflict" && error.facts.reason === "already_exists");
     const raw = relation.getAll("APP-1");
     assert.equal("source" in raw[0], false);
     assert.deepEqual(relation.getAll("APP-1", { include: { tasks: false } }), raw);
@@ -168,7 +168,7 @@ test("relation deletion matches type and direction, preserving tasks and other r
     const related = relation.create(input, actor);
     for (const relation_type of ["dependency", "duplicate"]) {
       const forward = relation.create({ ...input, relation_type }, actor);
-      assert.throws(() => relation.delete({ ...reverse, relation_type }, actor), /does not exist/);
+      assert.throws(() => relation.delete({ ...reverse, relation_type }, actor), (error) => error.kind === "missing" && error.facts.entity === "relation");
       const backward = relation.create({ ...reverse, relation_type }, actor);
       assert.deepEqual(relation.delete({ ...input, relation_type }, actor), forward);
       assert.ok(relation.getAll("APP-1").some(r => r.id === backward.id));
@@ -176,7 +176,7 @@ test("relation deletion matches type and direction, preserving tasks and other r
     assert.throws(() => relation.delete({ ...input, relation_type: "invalid" }, actor));
     assert.throws(() => relation.delete({ ...input, targetTaskKey: "OTHER-99" }, actor));
     assert.deepEqual(relation.delete({ ...input, ...reverse }, actor), related);
-    assert.throws(() => relation.delete(input, actor), /does not exist/);
+    assert.throws(() => relation.delete(input, actor), (error) => error.kind === "missing" && error.facts.entity === "relation");
     assert.equal(relation.getAll("APP-1").length, 2);
     assert.deepEqual([task.getByKey("APP-1"), task.getByKey("OTHER-1")], before);
     assert.deepEqual(getDb().query("PRAGMA foreign_key_check").all(), []);
@@ -196,16 +196,16 @@ test("subtasks allow branching and nesting but reject multiple parents and cycle
     create("APP-4", "APP-2");
     const activityCount = () => getDb().query("SELECT count(*) AS n FROM activity").get().n;
     const before = activityCount();
-    assert.throws(() => create("APP-2", "APP-1"), /already exists/);
-    assert.throws(() => create("APP-2", "APP-5"), /already has a parent/);
-    assert.throws(() => create("APP-1", "APP-2"), /cycle/);
-    assert.throws(() => create("APP-1", "APP-4"), /cycle/);
-    assert.throws(() => create("APP-1", "APP-1"), /itself/);
+    assert.throws(() => create("APP-2", "APP-1"), (error) => error.kind === "conflict" && error.facts.reason === "already_exists");
+    assert.throws(() => create("APP-2", "APP-5"), (error) => error.kind === "conflict" && error.facts.reason === "parent_exists");
+    assert.throws(() => create("APP-1", "APP-2"), (error) => error.kind === "conflict" && error.facts.reason === "cycle");
+    assert.throws(() => create("APP-1", "APP-4"), (error) => error.kind === "conflict" && error.facts.reason === "cycle");
+    assert.throws(() => create("APP-1", "APP-1"), (error) => error.kind === "input" && error.facts.field[0] === "targetTaskKey");
     assert.equal(activityCount(), before);
     assert.equal(relation.getAll("APP-1").length, 2);
     // Other relation types do not participate in the hierarchy.
     relation.create({ ...input("APP-1", "APP-4"), relation_type: "dependency" }, actor);
-    assert.throws(() => relation.delete(input("APP-1", "APP-2"), actor), /does not exist/);
+    assert.throws(() => relation.delete(input("APP-1", "APP-2"), actor), (error) => error.kind === "missing" && error.facts.entity === "relation");
     relation.delete(input("APP-2", "APP-1"), actor);
     create("APP-2", "APP-5");
     assert.equal(relation.getAll("APP-4").filter(r => r.relation_type === "subtask").length, 1);

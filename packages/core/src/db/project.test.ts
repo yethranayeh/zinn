@@ -38,7 +38,7 @@ test("project.create rejects a duplicate key", () => {
 
   // ? "dupe" standardizes to the already-taken "DUPE".
   expect(() => project.create({ key: "dupe", name: "Second" })).toThrow(
-    "UNIQUE constraint failed: project.key",
+    expect.objectContaining({ code: "SQLITE_CONSTRAINT_UNIQUE" }),
   );
 });
 

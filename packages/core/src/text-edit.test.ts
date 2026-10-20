@@ -154,10 +154,8 @@ test("text edit schema accepts one append or one find/replace and nothing else",
     all: true,
   });
 
-  expect(() => textEditSchema.parse({ append: "  \n" })).toThrow("Text to append cannot be blank");
-  expect(() => textEditSchema.parse({ find: "", replace: "b" })).toThrow(
-    "Text to find cannot be empty",
-  );
+  expect(textEditSchema.safeParse({ append: "  \n" }).error?.issues).toMatchObject([{ path: ["append"] }]);
+  expect(textEditSchema.safeParse({ find: "", replace: "b" }).error?.issues).toMatchObject([{ path: ["find"] }]);
   expect(() => textEditSchema.parse({ find: "a" })).toThrow();
   expect(() => textEditSchema.parse({ append: "x", find: "a", replace: "b" })).toThrow();
   expect(() => textEditSchema.parse({ append: "x", all: true })).toThrow();
@@ -176,12 +174,8 @@ test("edit schemas take full text or an edit object in each text field", () => {
 
   expect(taskEditSchema.parse({ taskKey: "APP-1", description: "  " }).description).toBeNull();
   expect(commentEditSchema.parse({ commentKey: "APP-1#1", text: "Full" }).text).toBe("Full");
-  expect(() => commentEditSchema.parse({ commentKey: "APP-1#1", text: " " })).toThrow(
-    "Comment text cannot be blank",
-  );
-  expect(() => commentEditSchema.parse({ commentKey: "APP-1#1", text: { append: " " } })).toThrow(
-    "Text to append cannot be blank",
-  );
+  expect(commentEditSchema.safeParse({ commentKey: "APP-1#1", text: " " }).error?.issues).toMatchObject([{ path: ["text"] }]);
+  expect(commentEditSchema.safeParse({ commentKey: "APP-1#1", text: { append: " " } }).error?.issues).toMatchObject([{ path: ["text", "append"] }]);
 });
 
 test("replace changes the one match in each description field", () => {
@@ -273,7 +267,7 @@ test("a replace that finds nothing throws a typed error and leaves the record un
       const historyBefore = record.history();
       assert.throws(
         () => record.edit({ find: "missing", replace: "x", all: true }),
-        (error) => matchError(0, target)(error) && error.message === "The text to replace was not found in " + target + ".",
+        matchError(0, target),
       );
       assert.deepEqual(record.read(), before);
       assert.deepEqual(record.history(), historyBefore);
@@ -298,9 +292,7 @@ test("several matches need all, and the error carries the count", () => {
       const before = record.read();
       assert.throws(
         () => record.edit({ find: "board", replace: "database" }),
-        (error) =>
-          matchError(4, target)(error) &&
-          error.message === "The text to replace matches 4 places in " + target + ". Include more of the surrounding text so it matches one place.",
+        matchError(4, target),
       );
       assert.deepEqual(record.read(), before);
 
@@ -376,8 +368,8 @@ test("blank append and empty find are validation errors", () => {
   forEachDescriptionField(
     "Text",
     `
-      assert.throws(() => record.edit({ append: " \\n" }), /Text to append cannot be blank/);
-      assert.throws(() => record.edit({ find: "", replace: "x" }), /Text to find cannot be empty/);
+      assert.throws(() => record.edit({ append: " \\n" }), (error) => error.kind === "input" && error.facts.field.includes("append"));
+      assert.throws(() => record.edit({ find: "", replace: "x" }), (error) => error.kind === "input" && error.facts.field.includes("find"));
       assert.throws(() => record.edit({ append: "x", find: "Text", replace: "y" }));
       assert.equal(record.read().text, "Text");
     `,
@@ -439,9 +431,9 @@ test("a comment replace that blanks the text is rejected and a no-op records not
 
     assert.throws(
       () => comment.edit({ commentKey: "APP-1#1", text: { find: "Only this", replace: " " } }, human),
-      /Comment text cannot be blank/,
+      (error) => error.kind === "input" && error.facts.field.length === 0,
     );
-    assert.throws(() => comment.edit({ commentKey: "APP-1#1", text: { append: "  " } }, human), /Text to append cannot be blank/);
+    assert.throws(() => comment.edit({ commentKey: "APP-1#1", text: { append: "  " } }, human), (error) => error.kind === "input" && error.facts.field.includes("append"));
     assert.deepEqual(readRow(), before);
 
     const unchanged = comment.edit({ commentKey: "APP-1#1", text: { find: "Only", replace: "Only" } }, human);

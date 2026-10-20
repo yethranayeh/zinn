@@ -109,7 +109,10 @@ test("persistent startup contention stops retrying and retains the cause", () =>
   expect(result.closed).toBe(result.opened);
   expect(result.normalized).toBe(true);
   expect(result.retainedCause).toBe(true);
-  expect(result.message).toBe("There was a problem initializing Zinn: controlled startup failure (SQLITE_BUSY)");
+  expect(result.code).toBe(SQLITE_BUSY.code);
+  expect(result.errcode).toBe(SQLITE_BUSY.errno);
+  expect(result.message).toContain("controlled startup failure");
+  expect(result.message).toContain(SQLITE_BUSY.code);
 });
 
 test("initialization does not repeat a wait that already consumed the retry budget", () => {
@@ -136,7 +139,8 @@ test.each([
   expect(result.retainedCause).toBe(true);
   expect(result.code).toBe(failure.code);
   expect(result.errcode).toBe(failure.errno);
-  expect(result.message).toContain(`controlled startup failure (${failure.code})`);
+  expect(result.message).toContain("controlled startup failure");
+  expect(result.message).toContain(failure.code);
 });
 
 test("initialization does not retry an error that is not a SQLite failure", () => {

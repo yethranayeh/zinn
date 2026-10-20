@@ -25,19 +25,19 @@ test("column renames keep identity and tasks, reject duplicates, and skip no-op 
       assert.equal(task.move({ taskKey: first.key, targetColumn: "NEXT UP" }, actor).column_id, todo.id);
 
       assert.deepEqual(column.edit({ projectKey: "APP", columnName: "next up", name: "NEXT UP" }, actor), { ...todo, name: "NEXT UP" });
-      assert.throws(() => column.edit({ projectKey: "APP", columnName: "next up", name: "done" }, actor), /There is already a "done" column/);
-      assert.throws(() => column.edit({ projectKey: "APP", columnName: "next up", name: " " }, actor), /Column name cannot be blank/);
-      assert.throws(() => column.edit({ projectKey: "APP", columnName: "missing", name: "Later" }, actor), /App does not have a column named "missing"/);
-      assert.throws(() => column.edit({ projectKey: "nope", columnName: "Done", name: "Later" }, actor), /Project with key "NOPE" does not exist!/);
+      assert.throws(() => column.edit({ projectKey: "APP", columnName: "next up", name: "done" }, actor), (error) => error.kind === "conflict" && error.facts.entity === "column" && error.facts.key === "done");
+      assert.throws(() => column.edit({ projectKey: "APP", columnName: "next up", name: " " }, actor), (error) => error.kind === "input" && error.facts.field.some((field) => ["name", "columnName"].includes(field)));
+      assert.throws(() => column.edit({ projectKey: "APP", columnName: "missing", name: "Later" }, actor), (error) => error.kind === "missing" && error.facts.entity === "column" && error.facts.key === "missing");
+      assert.throws(() => column.edit({ projectKey: "nope", columnName: "Done", name: "Later" }, actor), (error) => error.kind === "missing" && error.facts.entity === "project" && error.facts.key === "NOPE");
       assert.equal(column.edit({ projectKey: "OTHER", columnName: "Done", name: "NEXT UP" }, actor).name, "NEXT UP");
 
       db.exec("CREATE TRIGGER fail_column_update BEFORE UPDATE ON project_column BEGIN SELECT RAISE(ABORT, 'column written'); END");
       assert.deepEqual(column.edit({ projectKey: "APP", columnName: "next up", name: " NEXT UP " }, actor), { ...todo, name: "NEXT UP" });
       db.exec("DROP TRIGGER fail_column_update");
 
-      assert.throws(() => column.create({ projectKey: "APP", name: "next up" }, actor), /There is already a "next up" column/);
-      assert.throws(() => column.create({ projectKey: "APP", name: " next up " }, actor), /There is already a "next up" column/);
-      assert.throws(() => column.create({ projectKey: "APP", name: " " }, actor), /Column name cannot be blank/);
+      assert.throws(() => column.create({ projectKey: "APP", name: "next up" }, actor), (error) => error.kind === "conflict" && error.facts.entity === "column" && error.facts.key === "next up");
+      assert.throws(() => column.create({ projectKey: "APP", name: " next up " }, actor), (error) => error.kind === "conflict" && error.facts.entity === "column" && error.facts.key === "next up");
+      assert.throws(() => column.create({ projectKey: "APP", name: " " }, actor), (error) => error.kind === "input" && error.facts.field.some((field) => ["name", "columnName"].includes(field)));
       assert.equal(column.create({ projectKey: "APP", name: " Later " }, actor).name, "Later");
       assert.equal(column.edit({ projectKey: "APP", columnName: " later ", name: "Someday" }, actor).name, "Someday");
     `], { env: { ...process.env, ZINN_DIR: directory } });
@@ -98,10 +98,10 @@ test("column orders move only the moved column and skip no-op writes", () => {
       db.exec("DROP TRIGGER fail_column_update");
       assert.deepEqual(column.getAllByProjectKey("APP"), rowsBeforeNoOps);
 
-      assert.throws(() => order("missing", "first"), /App does not have a column named "missing"/);
-      assert.throws(() => order("Review", "before", "missing"), /App does not have a column named "missing"/);
-      assert.throws(() => column.order({ projectKey: "nope", columnName: "Done", direction: "first" }, actor), /Project with key "NOPE" does not exist!/);
-      assert.throws(() => order(" ", "first"), /Column name cannot be blank/);
+      assert.throws(() => order("missing", "first"), (error) => error.kind === "missing" && error.facts.entity === "column" && error.facts.key === "missing");
+      assert.throws(() => order("Review", "before", "missing"), (error) => error.kind === "missing" && error.facts.entity === "column" && error.facts.key === "missing");
+      assert.throws(() => column.order({ projectKey: "nope", columnName: "Done", direction: "first" }, actor), (error) => error.kind === "missing" && error.facts.entity === "project" && error.facts.key === "NOPE");
+      assert.throws(() => order(" ", "first"), (error) => error.kind === "input" && error.facts.field.some((field) => ["name", "columnName"].includes(field)));
       assert.deepEqual(column.getAllByProjectKey("APP"), rowsBeforeNoOps);
     `], { env: { ...process.env, ZINN_DIR: directory } });
     expect(result.stderr.toString()).toBe("");
@@ -146,7 +146,7 @@ test("column task counts cover each column in board order, with archived tasks i
         archivedTaskCount: 2,
       });
       assert.deepEqual(column.getTaskCountsByProjectKey("APP").columns.map(entry => entry.column), column.getAllByProjectKey("APP"));
-      assert.throws(() => column.getTaskCountsByProjectKey("nope"), /Project with key "NOPE" does not exist!/);
+      assert.throws(() => column.getTaskCountsByProjectKey("nope"), (error) => error.kind === "missing" && error.facts.entity === "project" && error.facts.key === "NOPE");
     `], { env: { ...process.env, ZINN_DIR: directory } });
     expect(result.stderr.toString()).toBe("");
     expect(result.exitCode).toBe(0);

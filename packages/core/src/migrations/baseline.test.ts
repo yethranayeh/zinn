@@ -129,19 +129,19 @@ test("structural constraints still reject", () => {
         ...relation,
         target_task_id: "t1",
       }),
-    ).toThrow(/CHECK constraint failed/);
+    ).toThrow(expect.objectContaining({ code: "SQLITE_CONSTRAINT_CHECK" }));
     // UNIQUE (source_task_id, target_task_id, relation_type)
     expect(() =>
       insert(db, "task_relations", { id: "r3", ...relation }),
-    ).toThrow(/UNIQUE constraint failed/);
+    ).toThrow(expect.objectContaining({ code: "SQLITE_CONSTRAINT_UNIQUE" }));
     // Label name uniqueness
     expect(() =>
       insert(db, "label", { id: "l2", name: "bug", color: "blue" }),
-    ).toThrow(/UNIQUE constraint failed/);
+    ).toThrow(expect.objectContaining({ code: "SQLITE_CONSTRAINT_UNIQUE" }));
     // NOT NULL on a vocabulary column and on another column
     expect(() =>
       insert(db, "label", { id: "l3", name: "none", color: null }),
-    ).toThrow(/NOT NULL constraint failed/);
+    ).toThrow(expect.objectContaining({ code: "SQLITE_CONSTRAINT_NOTNULL" }));
     expect(() =>
       insert(db, "task", {
         id: "t9",
@@ -151,7 +151,7 @@ test("structural constraints still reject", () => {
         created_at: 1,
         updated_at: 1,
       }),
-    ).toThrow(/NOT NULL constraint failed/);
+    ).toThrow(expect.objectContaining({ code: "SQLITE_CONSTRAINT_NOTNULL" }));
     // Foreign keys
     expect(() =>
       insert(db, "task_relations", {
@@ -159,10 +159,10 @@ test("structural constraints still reject", () => {
         ...relation,
         target_task_id: "missing",
       }),
-    ).toThrow(/FOREIGN KEY constraint failed/);
+    ).toThrow(expect.objectContaining({ code: "SQLITE_CONSTRAINT_FOREIGNKEY" }));
     expect(() =>
       insert(db, "task_label", { task_id: "t1", label_id: "missing" }),
-    ).toThrow(/FOREIGN KEY constraint failed/);
+    ).toThrow(expect.objectContaining({ code: "SQLITE_CONSTRAINT_FOREIGNKEY" }));
     // ON DELETE CASCADE still removes the relation with its task
     db.exec("DELETE FROM task WHERE id = 't2'");
     expect(

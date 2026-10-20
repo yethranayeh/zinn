@@ -421,25 +421,24 @@ test("a backup that cannot be restored is refused, and the database and backups 
     writeFileSync(newerUnnamed, readFileSync(newer));
 
     const cases = [
-      { path: join(directory, "missing.sqlite"), message: "There is no file at" },
-      { path: textFile, message: "is damaged or is not a SQLite database (file is not a database)" },
-      { path: brokenIndex, message: "failed SQLite's integrity check (row 2 missing from index sqlite_autoindex_label_2)" },
-      { path: otherApp, message: "is not a Zinn database" },
-      { path: emptyFile, message: "has no schema version" },
-      { path: unmarked, message: "has no schema version" },
-      {
-        path: newer,
-        message: `has schema version 2, but this build (test 1.2.3) reaches only version 1, so nothing was restored. It was made by cli 0.40.0; restore it with that version or a newer one`,
-      },
-      { path: newerUnnamed, message: "so nothing was restored. Restore it with a newer Zinn version" },
+      { path: join(directory, "missing.sqlite"), kind: "missing", facts: { entity: "backup" } },
+      { path: textFile, kind: "storage", facts: { reason: "not_database" } },
+      { path: brokenIndex, kind: "storage", facts: { reason: "corrupt" }, messageFacts: ["sqlite_autoindex_label_2", "2"] },
+      { path: otherApp, kind: "conflict", facts: { reason: "invalid_backup" } },
+      { path: emptyFile, kind: "conflict", facts: { reason: "invalid_backup", schemaVersion: 0 } },
+      { path: unmarked, kind: "conflict", facts: { reason: "invalid_backup", schemaVersion: 0 } },
+      { path: newer, kind: "conflict", facts: { reason: "newer_database", schemaVersion: 2, supportedSchemaVersion: 1 }, messageFacts: ["test", "1.2.3", "cli", "0.40.0"] },
+      { path: newerUnnamed, kind: "conflict", facts: { reason: "newer_database", schemaVersion: 2, supportedSchemaVersion: 1 } },
     ];
 
-    for (const { path, message } of cases) {
+    for (const { path, kind, facts, messageFacts = [] } of cases) {
       const error = catchError(() => restoreDatabase(live, path, options(directory)));
-
       expect(error).toBeInstanceOf(RestoreRefusedError);
+      expect(error).toMatchObject({ kind, facts: { ...facts, backupPath: path } });
       expect((error as Error).message).toContain(path);
-      expect((error as Error).message).toContain(message);
+      for (const fact of messageFacts) {
+        expect((error as Error).message).toContain(fact);
+      }
     }
 
     expect(readDatabaseState(live)).toEqual(before);
@@ -542,7 +541,7 @@ test("a backup whose rows point to missing rows is rolled back before committing
     });
 
     expect(() => restoreDatabase(live, backupPath, options(directory))).toThrow(
-      "The restore would leave 1 rows whose foreign keys point to missing rows (comment to task)",
+      expect.objectContaining({ message: expect.stringMatching(/(?=.*\b1\b)(?=.*\bcomment\b)(?=.*\btask\b)/s) }),
     );
     expect(readDatabaseState(live)).toEqual(before);
     expect(savedBackups(directory)).toHaveLength(1);
@@ -622,7 +621,7 @@ test("a restore that cannot get the write lock in time stops before changing or 
             options(directory, { budgetMs: SHORT_BUDGET_MS, onWait: (wait) => waits.push(wait) }),
           ),
         ).toThrow(
-          /^Waited \d+\.\d seconds for another writer to finish with the database at .+, so this restore stopped and applied no changes\. Retry once the other writer finishes\.$/,
+          expect.objectContaining({ kind: "storage", facts: expect.objectContaining({ reason: "busy", databasePath: realpathSync(live) }) }),
         );
       } finally {
         other.exec("ROLLBACK");

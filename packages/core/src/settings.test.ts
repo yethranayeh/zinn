@@ -201,7 +201,7 @@ test("a settings file that is not valid JSON throws an error naming the file", (
   const path = join(cwd, "zinn.local.json");
   writeJson(path, '{ "storage": ');
 
-  expect(() => resolveSettings({ cwd, env: {}, home })).toThrow(`Cannot use settings file ${path}: it is not valid JSON`);
+  expect(() => resolveSettings({ cwd, env: {}, home })).toThrow(expect.objectContaining({ kind: "input", facts: expect.objectContaining({ settingsPath: path, reason: "invalid_json" }), cause: expect.any(SyntaxError) }));
 });
 
 test("defaultProject merges independently of storage and preserves the chosen key", () => {
@@ -266,10 +266,10 @@ test("an unknown key, at the top or inside storage, throws an error naming the f
   const path = join(cwd, "zinn.local.json");
 
   writeJson(path, { storge: { directory: "store" } });
-  expect(() => resolveSettings({ cwd, env: {}, home })).toThrow(new RegExp(`${path}.*Unrecognized key: "storge"`, "s"));
+  expect(() => resolveSettings({ cwd, env: {}, home })).toThrow(expect.objectContaining({ kind: "input", facts: expect.objectContaining({ settingsPath: path, reason: "invalid_settings", field: [] }), cause: expect.objectContaining({ issues: expect.arrayContaining([expect.objectContaining({ code: "unrecognized_keys", keys: ["storge"] })]) }) }));
 
   writeJson(path, { storage: { directory: "store", path: "x" } });
-  expect(() => resolveSettings({ cwd, env: {}, home })).toThrow(new RegExp(`${path}.*Unrecognized key: "path".*storage`, "s"));
+  expect(() => resolveSettings({ cwd, env: {}, home })).toThrow(expect.objectContaining({ kind: "input", facts: expect.objectContaining({ settingsPath: path, reason: "invalid_settings", field: ["storage"] }), cause: expect.objectContaining({ issues: expect.arrayContaining([expect.objectContaining({ code: "unrecognized_keys", keys: ["path"] })]) }) }));
 });
 
 test("a wrong type or a storage without a directory throws an error naming the file and the setting", () => {
@@ -278,10 +278,10 @@ test("a wrong type or a storage without a directory throws an error naming the f
   const path = join(cwd, "zinn.local.json");
 
   writeJson(path, { storage: { directory: 42 } });
-  expect(() => resolveSettings({ cwd, env: {}, home })).toThrow(new RegExp(`${path}.*storage.directory`, "s"));
+  expect(() => resolveSettings({ cwd, env: {}, home })).toThrow(expect.objectContaining({ kind: "input", facts: expect.objectContaining({ settingsPath: path, reason: "invalid_settings", field: ["storage", "directory"] }) }));
 
   writeJson(path, { storage: {} });
-  expect(() => resolveSettings({ cwd, env: {}, home })).toThrow(new RegExp(`${path}.*storage.directory`, "s"));
+  expect(() => resolveSettings({ cwd, env: {}, home })).toThrow(expect.objectContaining({ kind: "input", facts: expect.objectContaining({ settingsPath: path, reason: "invalid_settings", field: ["storage", "directory"] }) }));
 });
 
 test("an invalid global file throws an error naming the global file", () => {
@@ -296,7 +296,7 @@ test("a settings file that exists but cannot be read throws instead of counting 
   const path = join(cwd, "zinn.local.json");
   mkdirSync(path);
 
-  expect(() => resolveSettings({ cwd, env: {}, home })).toThrow(`Cannot use settings file ${path}: it cannot be read`);
+  expect(() => resolveSettings({ cwd, env: {}, home })).toThrow(expect.objectContaining({ kind: "storage", facts: expect.objectContaining({ settingsPath: path }), cause: expect.objectContaining({ code: "EISDIR" }) }));
 });
 
 test("reading settings creates no file or folder", () => {
