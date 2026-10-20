@@ -14,6 +14,15 @@ import { formatActivityList, presentActivities } from "../presentation/activity-
 const activityInputs = {
   list: {
     options: {
+      project: { type: "string", value: { kind: "project-key", name: "project-key" } },
+      "project-id": {
+        type: "string",
+        value: {
+          kind: "project-id",
+          name: "project-id",
+          description: "Full project UUID; canonical or compact, case-insensitive",
+        },
+      },
       task: { type: "string", value: { kind: "task-key", name: "task-key" } },
       "task-id": {
         type: "string",
@@ -33,8 +42,15 @@ const activityInputs = {
     },
     forms: [{ id: "default", positionals: [] }],
     constraints: [
-      { kind: "exclusive", members: ["option:task", "option:task-id"] },
-      { kind: "requires", input: "option:show-deleted", requires: "option:task" },
+      {
+        kind: "exclusive",
+        members: ["option:project", "option:project-id", "option:task", "option:task-id"],
+      },
+      {
+        kind: "requiresAny",
+        input: "option:show-deleted",
+        members: ["option:project", "option:task"],
+      },
     ],
   },
   view: {
@@ -67,15 +83,23 @@ export const activityRouter = {
       validateUniqueOptions(tokens, activityInputs.list.options);
       validatePositionals(positionals, activityInputs.list.forms[0]);
 
-      const [taskSelectorConstraint, deletedHistoryConstraint] = activityInputs.list.constraints;
+      const [selectorConstraint, deletedHistoryConstraint] = activityInputs.list.constraints;
       const optionInputs = getOptionInputs(values);
 
-      if (violatesConstraint(taskSelectorConstraint, optionInputs)) {
-        quit("Use either --task or --task-id", undefined, { argument: "--task-id" });
+      if (violatesConstraint(selectorConstraint, optionInputs)) {
+        const conflictingSelector = selectorConstraint.members.filter(
+          (member) => optionInputs[member] !== undefined,
+        )[1]!;
+
+        quit("Use one of --project, --project-id, --task or --task-id", undefined, {
+          argument: conflictingSelector.replace("option:", "--"),
+        });
       }
 
       if (violatesConstraint(deletedHistoryConstraint, optionInputs)) {
-        quit("--show-deleted requires --task", undefined, { argument: "--show-deleted" });
+        quit("--show-deleted requires --project or --task", undefined, {
+          argument: "--show-deleted",
+        });
       }
 
       // Safe integers can have one more digit than readable task numbers.
@@ -87,6 +111,8 @@ export const activityRouter = {
       let events: ReturnType<typeof activity.getAll>;
       try {
         events = activity.getAll({
+          projectKey: values.project,
+          projectId: values["project-id"],
           taskKey: values.task,
           taskId: values["task-id"],
           showDeleted: values["show-deleted"],
@@ -95,19 +121,25 @@ export const activityRouter = {
           limit: values.limit === undefined ? undefined : Number(values.limit),
         });
       } catch (error) {
-        const isMissingCurrentTask =
-          values.task !== undefined &&
+        const isMissingCurrentSelection =
+          (values.task !== undefined || values.project !== undefined) &&
           values["show-deleted"] !== true &&
           error instanceof CoreError &&
           error.kind === "missing" &&
-          error.facts.entity === "task";
+          error.facts.entity === (values.project !== undefined ? "project" : "task");
 
-        if (isMissingCurrentTask) {
+        if (isMissingCurrentSelection) {
+          const selector = error.facts.entity === "project" ? "--project" : "--task";
           throw new CliError(
             error.message,
             "not_found",
-            { entity: "task", key: error.facts.key, source: "explicit", argument: "--task" },
-            `Use --task ${values.task} --show-deleted to include deleted task history.`,
+            {
+              entity: error.facts.entity,
+              key: error.facts.key,
+              source: "explicit",
+              argument: selector,
+            },
+            `Use ${selector} ${values.project ?? values.task} --show-deleted to include deleted history.`,
           );
         }
 
@@ -116,7 +148,13 @@ export const activityRouter = {
 
       output(events, (items) =>
         formatActivityList(
-          presentActivities(items, { taskKey: values.task, taskId: values["task-id"] }),
+          presentActivities(items, {
+            projectKey: values.project,
+            projectId: values["project-id"],
+            showDeleted: values["show-deleted"],
+            taskKey: values.task,
+            taskId: values["task-id"],
+          }),
         ),
       );
     },
@@ -126,14 +164,18 @@ List recorded activity across the database, newest first.
 Returns all matching events unless --limit is supplied.
 
 --task <key>       Select an existing active or archived task.
---show-deleted     Also include deleted tasks sharing that key.
+--project <key>    Select an existing project's activity, including deleted tasks.
+--project-id <uuid> Select one project identity, including deleted projects.
+                   Requires a full UUID.
+--show-deleted     Also include deleted identities sharing the selected key.
 --task-id <uuid>   Select one task identity, including deleted tasks.
                    Requires a full UUID.
 --session <id>     Match an exact session ID, including case.
 --thread <id>      Match an exact thread ID, including case.
 --limit <n>        Return at most n matching events.
 
-Use either --task or --task-id. --show-deleted requires --task.
+Use one of --project, --project-id, --task or --task-id.
+--show-deleted requires --project or --task.
 All supplied filters must match.
 
 Use activity view <activity-id> for complete recorded changes.
@@ -141,6 +183,7 @@ With --json, return an array of full activity records.
 
 Examples:
   zinn activity list --limit 10
+  zinn activity list --project APP
   zinn activity list --task APP-2
   zinn activity list --task APP-2 --show-deleted`,
   },

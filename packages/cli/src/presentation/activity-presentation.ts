@@ -181,7 +181,14 @@ function getTaskNavigation(events: Array<Activity>, taskKey?: string, taskId?: s
 
 export function presentActivities(
   events: Array<Activity>,
-  options: { taskKey?: string; taskId?: string; showsFullIds?: boolean } = {},
+  options: {
+    projectKey?: string;
+    projectId?: string;
+    showDeleted?: boolean;
+    taskKey?: string;
+    taskId?: string;
+    showsFullIds?: boolean;
+  } = {},
 ): Array<PresentedActivity> {
   if (events.length === 0) {
     return [];
@@ -190,7 +197,15 @@ export function presentActivities(
   const prefixes = options.showsFullIds
     ? new Map<string, string>()
     : abbreviateActivityIds(activity.getIds());
-  const tasks = getTaskNavigation(events, options.taskKey, options.taskId);
+  const hasProjectSelector = options.projectKey !== undefined || options.projectId !== undefined;
+  const navigationEvents = hasProjectSelector
+    ? activity.getAll({
+        projectKey: options.projectKey,
+        projectId: options.projectId,
+        showDeleted: options.showDeleted,
+      })
+    : events;
+  const tasks = getTaskNavigation(navigationEvents, options.taskKey, options.taskId);
   const tasksById = new Map(tasks.map((identity) => [identity.id, identity]));
   const taskIdsByKey = new Map<string, number>();
 
@@ -203,6 +218,34 @@ export function presentActivities(
     ? new Map(label.getAll().map((item) => [item.id, item]))
     : new Map();
   const navigationByEntity = new Map<string, NavigationIdentity | undefined>();
+  const recordedNames = new Map<string, string>();
+  if (hasProjectSelector) {
+    for (const event of navigationEvents) {
+      const isSnapshot = event.action === "create" || event.action === "delete";
+      if (!isSnapshot) {
+        continue;
+      }
+      const name = event.changes?.key ?? event.changes?.name;
+      const entityKey = `${event.entity_type}:${event.entity_id}`;
+      if (typeof name === "string" && !recordedNames.has(entityKey)) {
+        recordedNames.set(entityKey, name);
+      }
+      if (event.entity_type === "project" && Array.isArray(event.changes?.columns)) {
+        for (const snapshot of event.changes.columns) {
+          if (
+            isRecord(snapshot) &&
+            typeof snapshot.id === "string" &&
+            typeof snapshot.name === "string"
+          ) {
+            const columnKey = `column:${snapshot.id}`;
+            if (!recordedNames.has(columnKey)) {
+              recordedNames.set(columnKey, snapshot.name);
+            }
+          }
+        }
+      }
+    }
+  }
 
   return events.map((event) => {
     const entityKey = `${event.entity_type}:${event.entity_id}`;
@@ -253,7 +296,9 @@ export function presentActivities(
     // Every existing entity was found above, so it means that a missing one has been *deleted*.
     if (navigation === undefined) {
       navigation = {
-        name: isSnapshot && typeof recordedName === "string" ? recordedName : undefined,
+        name:
+          recordedNames.get(entityKey) ??
+          (isSnapshot && typeof recordedName === "string" ? recordedName : undefined),
         status: "deleted",
       };
     }
@@ -269,7 +314,7 @@ export function presentActivities(
       displayId: options.showsFullIds ? event.id : prefixes.get(event.id)!,
       navigation,
       removedTasks:
-        options.taskKey === undefined && options.taskId === undefined
+        !hasProjectSelector && options.taskKey === undefined && options.taskId === undefined
           ? []
           : tasks.filter((identity) => removedTaskIds.has(identity.id)),
     };

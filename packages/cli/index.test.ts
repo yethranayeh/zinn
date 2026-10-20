@@ -6608,6 +6608,154 @@ test("activity JSON preserves full matching records, parsed payloads and determi
   });
 });
 
+test("project activity filters retain original member events and project lifetimes through the CLI", () => {
+  withIsolatedZinnDir((directory) => {
+    const run = (...args: Array<string>) => {
+      const result = runZinn(args, directory, { ZINN_SESSION_ID: "project/run", ZINN_THREAD_ID: "project/thread" });
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stderr).toBe("");
+      return result.stdout;
+    };
+    const list = (...flags: Array<string>): Array<Activity> => JSON.parse(run("activity", "list", ...flags, "--json"));
+    run("project", "create", "APP");
+    const firstProject = { id: list()[0]!.entity_id };
+    run("project", "create", "OUT");
+    run("project", "column", "create", "APP", "Extra");
+    run("task", "create", "APP", "--title", "Deleted before project");
+    run("task", "create", "APP", "--title", "Archived member");
+    run("task", "create", "OUT", "--title", "Outside");
+    run("task", "comment", "create", "APP-1", "--text", "Preserved note");
+    run("label", "create", "Attached");
+    run("task", "edit", "APP-1", "--add-label", "Attached");
+    run("label", "delete", "Attached", "--yes");
+    run("task", "relation", "create", "APP-1", "APP-2", "--type", "related");
+    run("task", "relation", "create", "APP-1", "OUT-1", "--type", "related");
+    run("task", "archive", "APP-2");
+    const memberIds = withTestDb(directory, (db) => new Set([
+      firstProject.id,
+      ...db.query<{ id: string }, [string]>("SELECT id FROM task WHERE project_id = ?").all(firstProject.id).map(row => row.id),
+      ...db.query<{ id: string }, [string]>("SELECT id FROM project_column WHERE project_id = ?").all(firstProject.id).map(row => row.id),
+    ]));
+    run("task", "delete", "APP-1", "--yes");
+    const beforeDeletion = list().filter(event => memberIds.has(event.entity_id));
+    expect(list("--project", "app")).toEqual(beforeDeletion);
+    expect(beforeDeletion.filter(event => event.action === "relation_create")).toHaveLength(3);
+    expect(beforeDeletion.some(event => event.entity_type === "label")).toBe(false);
+    expect(beforeDeletion.some(event => event.action === "comment_create")).toBe(true);
+    const text = run("activity", "list", "--project", "APP");
+    const displayedIds = text.split("\n").map(line => line.match(/^([0-9a-f-]{8,})\s/)?.[1]).filter(Boolean);
+    expect(displayedIds).toHaveLength(beforeDeletion.length);
+    expect(displayedIds.map(prefix => beforeDeletion.find(event => event.id.startsWith(prefix!))?.id))
+      .toEqual(beforeDeletion.map(event => event.id));
+    run("project", "delete", "APP", "--yes");
+    const firstLifetime = list().filter(event => memberIds.has(event.entity_id));
+    expect(list("--project", "APP", "--show-deleted")).toEqual(firstLifetime);
+    const aggregate = firstLifetime.find(event => event.entity_type === "project" && event.action === "delete")!;
+    expect(aggregate.changes!.tasks).toHaveLength(1);
+    run("project", "create", "APP");
+    run("task", "create", "APP", "--title", "New lifetime");
+    const current = list("--task", "APP-1");
+    expect(list("--project", "APP").filter(event => event.entity_type === "task")).toEqual(current);
+    const all = list("--project", "APP", "--show-deleted");
+    expect(all).toEqual([...list("--project", "APP"), ...firstLifetime]);
+    for (const id of [firstProject.id, firstProject.id.toUpperCase(), firstProject.id.replaceAll("-", ""), firstProject.id.replaceAll("-", "").toUpperCase()]) {
+      expect(list("--project-id", id)).toEqual(firstLifetime);
+    }
+    expect(list("--project", "APP", "--show-deleted", "--session", "project/run", "--thread", "project/thread", "--limit", "2")).toEqual(all.slice(0, 2));
+    expect(list("--project", "APP", "--session", "Project/run")).toEqual([]);
+    const limited = run("activity", "list", "--project", "APP", "--show-deleted", "--limit", "1");
+    expect(limited).toContain(current[0]!.entity_id);
+    const deletionText = run("activity", "list", "--project-id", firstProject.id, "--limit", "1");
+    expect(deletionText).toContain("APP");
+    expect(deletionText).toContain((aggregate.changes!.tasks as Array<{ id: string }>)[0]!.id);
+    const beforeReads = withTestDb(directory, db => db.query("SELECT * FROM activity ORDER BY id").all());
+    for (const flags of [["--project", "UNKNOWN", "--show-deleted"], ["--project-id", "ffffffff-ffff-7fff-8fff-ffffffffffff"]]) {
+      expect(list(...flags)).toEqual([]);
+      expect(run("activity", "list", ...flags)).toBe("");
+    }
+    expect(withTestDb(directory, db => db.query("SELECT * FROM activity ORDER BY id").all())).toEqual(beforeReads);
+  });
+});
+
+test("project activity refuses missing current projects and invalid selectors without changing data", () => {
+  withIsolatedZinnDir((directory) => {
+    expect(runZinn(["project", "create", "APP"], directory).code).toBe(0);
+    const id = "abcdef12-1234-7000-8000-123456abcdef";
+    const selector = routes.activity.list.input.constraints.find(constraint => constraint.kind === "exclusive")!;
+    const values: Record<string, string> = { project: "APP", "project-id": id, task: "APP-1", "task-id": id };
+    const invalid: Array<Array<string>> = [
+      ["--project"], ["--project", ""], ["--project", "9APP"], ["--project", "APP-1"],
+      ["--project", "APP", "--project", "OUT"], ["--project-id", id, "--project-id", id],
+      ["--project-id"], ["--project-id", "abcdef12"], ["--project-id", id.slice(0, -1)],
+      ["--project-id", "abcd-ef12123470008000123456abcdef"],
+      ["--project-id", id, "--show-deleted"],
+      ["--project", "APP", "--show-deleted", "--show-deleted"], ["--show-deleted"],
+    ];
+    const names = selector.members.map(member => member.slice("option:".length));
+    for (const [index, left] of names.entries()) {
+      for (const right of names.slice(index + 1)) {
+        invalid.push([`--${left}`, values[left]!, `--${right}`, values[right]!]);
+      }
+    }
+    const before = withTestDb(directory, db => db.query("SELECT * FROM activity ORDER BY id").all());
+    for (const flags of invalid) {
+      const result = runZinn(["activity", "list", ...flags, "--json"], directory);
+      expect(result.code, flags.join(" ")).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(JSON.parse(result.stderr).error.code).toBe("invalid_input");
+    }
+    const missing = runZinn(["activity", "list", "--project", "gone", "--json"], directory);
+    expect(missing.code).toBe(1);
+    expect(missing.stdout).toBe("");
+    expect(JSON.parse(missing.stderr).error).toMatchObject({ code: "not_found", details: { entity: "project", key: "GONE", argument: "--project" } });
+    expect(JSON.parse(missing.stderr).error.help).toContain("--show-deleted");
+    expect(JSON.parse(missing.stderr).error.help).toContain("gone");
+    expect(withTestDb(directory, db => db.query("SELECT * FROM activity ORDER BY id").all())).toEqual(before);
+    withTestDb(directory, db => db.run("ALTER TABLE project RENAME TO unavailable_project"));
+    const broken = runZinn(["activity", "list", "--project", "APP", "--json"], directory);
+    expect(broken.code).toBe(1);
+    expect(JSON.parse(broken.stderr).error.code).not.toBe("not_found");
+    expect(broken.stderr).not.toContain("--show-deleted");
+  });
+});
+
+test("limited project activity keeps deleted task and column names when identity snapshots are filtered out", () => {
+  withIsolatedZinnDir((directory) => {
+    const run = (args: Array<string>, session = "setup") => {
+      const result = runZinn(args, directory, { ZINN_SESSION_ID: session });
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stderr).toBe("");
+      return result.stdout;
+    };
+    run(["project", "create", "APP"]);
+    const projectId = JSON.parse(run(["activity", "list", "--json"]))[0].entity_id;
+    run(["project", "column", "create", "APP", "Extra"]);
+    run(["task", "create", "APP", "--title", "Original"]);
+    const taskId = JSON.parse(run(["activity", "list", "--task", "APP-1", "--json"]))[0].entity_id;
+    run(["task", "edit", "APP-1", "--title", "Edited"], "task/edit");
+    run(["project", "edit", "APP", "--name", "Renamed"], "project/edit");
+    run(["project", "column", "edit", "APP", "Extra", "--name", "Renamed column"], "column/edit");
+    run(["task", "delete", "APP-1", "--yes"]);
+    run(["project", "delete", "APP", "--yes"]);
+    run(["project", "create", "APP"]);
+    run(["task", "create", "APP", "--title", "Reused key"]);
+    const flags = ["activity", "list", "--project-id", projectId, "--limit", "1", "--session"];
+    const taskText = run([...flags, "task/edit"]);
+    expect(taskText).toContain("APP-1");
+    expect(taskText).toContain(taskId);
+    expect(taskText).toContain("deleted");
+    const taskEvents = JSON.parse(run([...flags, "task/edit", "--json"]));
+    expect(taskEvents).toHaveLength(1);
+    expect(taskEvents[0]).toMatchObject({ entity_id: taskId, action: "edit", changes: { title: ["Original", "Edited"] } });
+    expect(run([...flags, "project/edit"])).toContain("project APP [deleted]");
+    expect(run([...flags, "column/edit"])).toContain("column Renamed column [deleted]");
+    const help = run(["activity", "list", "--help"]);
+    for (const flag of ["--project", "--project-id", "--task", "--task-id", "--show-deleted"]) {
+      expect(help).toContain(flag);
+    }
+  });
+});
+
 test("activity returns all events by default and limits only after selecting matches", () => {
   withIsolatedZinnDir((directory) => {
     const events = seedRecordedActivity(directory, Array.from({ length: 55 }, (_, index) => ({
@@ -6673,7 +6821,7 @@ test("activity rejects unsupported, repeated and malformed command arguments wit
     const [event] = seedRecordedActivity(directory, [{ id: "abcdef12-1234-7000-8000-123456abcdef" }]);
     const before = withTestDb(directory, (db) => db.query("SELECT * FROM activity").all());
     const invalid = [
-      ["list", "APP-1"], ["list", "--project", "APP"],
+      ["list", "APP-1"], ["list", "--project", "APP-1"],
       ["list", "--task", "APP-1", "--task", "APP-2"],
       ["list", "--limit", "1", "--limit", "2"], ["list", "--task", "APP-0"],
       ["list", "--session", "first", "--session", "second"],
@@ -6940,7 +7088,7 @@ test.each([0, 9])("activity commands read schema version %i under the existing p
       expect(JSON.parse(refused.stderr).error.message).toContain("--allow-legacy-read");
     }
     const flags = version === 0 ? ["--allow-legacy-read"] : [];
-    for (const args of [["list"], ["list", "--task", "GONE-1", "--show-deleted"], ["list", "--task-id", event!.entity_id], ["view", event!.id]]) {
+    for (const args of [["list"], ["list", "--project", "GONE", "--show-deleted"], ["list", "--project-id", event!.entity_id], ["list", "--task", "GONE-1", "--show-deleted"], ["list", "--task-id", event!.entity_id], ["view", event!.id]]) {
       for (const mode of [[], ["--json"]]) {
         const result = runZinn(["activity", ...args, ...flags, ...mode], directory);
         expect(result.code).toBe(0);

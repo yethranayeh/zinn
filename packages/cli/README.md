@@ -514,6 +514,7 @@ Deleting a project records one project deletion rather than separate deletion ac
 ```sh
 zinn activity list
 zinn activity list --limit 10
+zinn activity list --project MDR
 zinn activity list --task MDR-1
 zinn activity list --session conversation-id
 zinn activity list --session conversation-id --thread child-thread-id
@@ -522,7 +523,7 @@ zinn activity view 019abcdf-1234-7
 
 `--limit` caps the newest matching events and must be a positive safe integer. Reorders and both affected-task events from relation changes are included.
 
-`--task` selects the existing active or archived task by readable key. Use `--show-deleted` to include every recoverable existing or deleted identity sharing the key, or `--task-id` to select one exact task UUID. A missing existing task fails with guidance to `--show-deleted`. See the [Activity reference](https://zinn.sh/docs/cli#activity) for selector rules and examples.
+`--project` selects an existing project's activity, including its deleted tasks. `--task` selects an existing active or archived task. See the [Activity reference](https://zinn.sh/docs/cli#activity) for exact IDs, deleted-history selection, and examples.
 
 `--session` and `--thread` match the complete stored IDs exactly, including case and whitespace. All supplied filters must match, and `--limit` applies after filtering. Rows without the requested identity do not match. No matches return empty output, or `[]` with `--json`, and exit successfully. Session activity records committed changes.
 

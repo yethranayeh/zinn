@@ -57,6 +57,8 @@ The JSON object contains `manifestVersion` (currently `1`), `cli` (package name 
 - A descriptor's `schemaRef`, such as `#/schemas/definitions/TaskList`, resolves against the whole manifest. JSON Schema `$ref` values resolve against the extracted `schemas` document, which uses draft-07. All references are local. The finite `Capabilities` definition describes the manifest without embedding another manifest value.
 - `effects.domain` describes the operation. `effects.storage: "normal-open"` may create or upgrade storage under the normal open policy, including for reads; `"none"` performs no storage access. Administrative commands declare their own storage operation. `confirmation` describes prompts and project-deletion rules.
 
+A `requiresAny` constraint means that supplying its `input` requires at least one of its `members`. For example, `--show-deleted` requires either `--project` or `--task` on `activity list`.
+
 Help stays text even with `--json`. The CLI package release version identifies the command contract; `manifestVersion` describes how to interpret the manifest and changes only when that interpretation becomes incompatible. Development builds can change the contract without changing their version, so use the manifest content rather than its version alone as a cache key.
 
 For example, with `@zinn-dev/cli` installed in the consumer project and an `APP` project in the selected store, a Node.js script can read the manifest, find the task-list command, and build argv from its positional-form descriptor:

@@ -30,6 +30,7 @@ const inputConstraintSchema = z.discriminatedUnion("kind", [
     input: inputReferenceSchema,
     requires: inputReferenceSchema,
   }),
+  z.strictObject({ kind: z.literal("requiresAny"), input: inputReferenceSchema, members }),
   z.strictObject({ kind: z.literal("atLeastOne"), members }),
 ]);
 const positionalInputSchema = z.strictObject({
@@ -131,6 +132,8 @@ export function violatesConstraint(
       return constraint.members.filter(supplied).length > 1;
     case "requires":
       return supplied(constraint.input) && !supplied(constraint.requires);
+    case "requiresAny":
+      return supplied(constraint.input) && !constraint.members.some(supplied);
     case "atLeastOne":
       return !constraint.members.some(supplied);
   }

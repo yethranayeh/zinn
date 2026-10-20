@@ -38,6 +38,30 @@ beforeAll(() => {
 }, BUILD_CHECK_TIMEOUT_MS);
 
 for (const runtime of ["node", "bun"]) {
+  test(`${runtime}: built project activity selectors preserve deleted identities and full records`, () => {
+    withDirectory((directory) => {
+      const run = (args: string[]) => {
+        const result = runBuilt(runtime, args, directory, { NODE_NO_WARNINGS: "1" });
+        expect(result.code, result.stderr).toBe(0);
+        expect(result.stderr).toBe("");
+        return JSON.parse(result.stdout);
+      };
+      run(["project", "create", "APP", "--json"]);
+      const projectId = run(["activity", "list", "--json"])[0].entity_id;
+      run(["task", "create", "APP", "--title", "Original", "--json"]);
+      const first = run(["activity", "list", "--project", "APP", "--json"]);
+      expect(first).toEqual(run(["activity", "list", "--json"]));
+      run(["project", "delete", "APP", "--yes", "--json"]);
+      const deleted = run(["activity", "list", "--project-id", projectId.replaceAll("-", "").toUpperCase(), "--json"]);
+      expect(deleted.slice(1)).toEqual(first);
+      expect(deleted[0]).toMatchObject({ entity_type: "project", entity_id: projectId, action: "delete" });
+      run(["project", "create", "APP", "--json"]);
+      expect(run(["activity", "list", "--project", "APP", "--json"])).toHaveLength(1);
+      expect(run(["activity", "list", "--project", "APP", "--show-deleted", "--json"])).toEqual(run(["activity", "list", "--json"]));
+      expect(run(["activity", "list", "--project-id", projectId, "--limit", "1", "--json"])).toEqual([deleted[0]]);
+    });
+  });
+
   test(`${runtime}: explicit store refusals leave files unchanged across reads, writes and administration`, () => {
     withDirectory((temporaryDirectory) => {
       const directory = realpathSync(temporaryDirectory);

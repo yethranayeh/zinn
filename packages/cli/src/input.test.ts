@@ -34,6 +34,7 @@ test("every runnable route declares its inputs, effects, confirmation and genera
         const references =
           constraint.kind === "requires"
             ? [constraint.input, constraint.requires]
+            : constraint.kind === "requiresAny" ? [constraint.input, ...constraint.members]
             : constraint.members;
         for (const reference of references) {
           expect(inputs.has(reference), `${command.command}: ${reference}`).toBe(true);
@@ -125,6 +126,13 @@ test("structural presence retains empty text and treats false flags as absent", 
   expect(violatesConstraint(all, getOptionInputs({ all: false }))).toBe(false);
   expect(violatesConstraint(all, getOptionInputs({ all: true }))).toBe(true);
   expect(violatesConstraint(all, getOptionInputs({ all: true, replacing: "" }))).toBe(false);
+  const deleted = routes.activity.list.input.constraints.find(constraint => constraint.kind === "requiresAny")!;
+  expect(violatesConstraint(deleted, getOptionInputs({}))).toBe(false);
+  expect(violatesConstraint(deleted, getOptionInputs({ "show-deleted": true }))).toBe(true);
+  expect(violatesConstraint(deleted, getOptionInputs({ "show-deleted": true, "project-id": "id" }))).toBe(true);
+  for (const name of ["project", "task"]) {
+    expect(violatesConstraint(deleted, getOptionInputs({ "show-deleted": true, [name]: "key" }))).toBe(false);
+  }
 });
 
 type SuppliedValues = Record<string, string | string[] | boolean>;
