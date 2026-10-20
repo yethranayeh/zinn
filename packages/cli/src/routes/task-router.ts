@@ -335,19 +335,15 @@ Create a task at the bottom of a column. Without --column, it starts in the proj
 
 ${requiredProjectDescription}
 
-Column names are matched case-insensitively. An unknown column is an error and creates nothing.
-Priority defaults to none (unassigned). Priority values are case-insensitive.
-Priority values: ${priorityOption.value.choices.join(", ")}.
-Repeat --label to attach multiple existing labels. Unknown labels are errors.
-Label names are matched case-insensitively.
-Titles are trimmed and cannot be blank or contain line breaks or control characters.
+Priority values: ${priorityOption.value.choices.join(", ")}; defaults to none.
+Repeat --label to attach multiple existing labels.
 
 ${dashValueHelp("--description")}
 
-Relations are set from the new task's perspective: it becomes a subtask of --parent, depends on --depends-on,
+The new task is a subtask of --parent, depends on --depends-on,
 is a duplicate of --duplicate-of, and is related to --related.
 Repeat --depends-on and --related to name several tasks.
-A target task that does not exist causes an error, and task creation is aborted.
+Unknown columns, labels or related tasks abort creation.
 
 Examples:
   zinn task create MDR --title 'Refine the numbers' --description 'Meet the quarterly quota' --label urgent
@@ -395,12 +391,10 @@ Examples:
 List active tasks by default.
 ${projectScopeDescription}
 Use --archived to list archived tasks or --all to list both.
-Use --label to filter for tasks with a specific label, no case-sensitivity is applied for matching.
-Use --column to filter by an exact column name without case sensitivty.
-Column, label and archive filters can be combined together. No matches print nothing, or return [] for --json, and exit successfully.
+Repeat --label to require every specified label.
+--column matches an exact column name. Column and label matching ignore case.
+All supplied filters must match.
 
-Each row shows a task's key, column, priority marker, title, and labels. --all adds an Active or Archived status after the key.
-Priority markers: - unassigned, L low, M medium, H high, U urgent.
 Use 'task view' to see a task's full details, including its description.
 
 Example: zinn task list MDR --label cli`,
@@ -469,16 +463,11 @@ ${projectScopeDescription}
 Each word matches the start of a word, ignoring case and accents: e.g. "auth" finds "Authentication".
 Every word must match. Quote a query with several words.
 
-A query that is exactly a task key, such as MDR-1, lists that task first.
-If given, a task key query overrides the configured default, and a typed project key still filters the search.
-Other results are ordered by relevance, with title matches weighted highest.
-Equally relevant tasks are ordered by project key, then task number.
+A task-key query overrides the configured default project; a typed project key still filters it.
 
 By default, only active tasks are searched. Use --archived to search archived tasks or --all to search both.
-When archived matches are hidden, a note is printed to say how many.
 Use --limit to show at most <n> results.
-Use --label to filter for tasks with a specific label, no case-sensitivity is applied for matching.
-A search result's output matches that of 'task list'.
+Repeat --label to require every specified label, ignoring case.
 
 Example: zinn task search 'refinement quota' MDR --limit 5`,
   },
@@ -615,19 +604,15 @@ Examples:
     help: `${generateCommandUsage("task edit", taskInputs.edit)}
 
 Edit a task's title, description, priority, or label attachments.
-Use --priority none to clear priority. Priority values are case-insensitive.
+Use --priority none to clear priority.
 Priority values: ${priorityOption.value.choices.join(", ")}.
 Provide at least one edit flag. Use --description '' to clear the description.
 
 ${textEditHelp("--description")}
 
-Repeat --add-label or --remove-label for multiple existing labels.
-Label names are matched case-insensitively.
-Adding an attached label or removing an unattached label does not do anything.
-Archived tasks can be edited.
-
+Repeat --add-label or --remove-label for multiple existing labels, ignoring case.
 The same label cannot be both added and removed.
-Titles are trimmed and cannot be blank or contain line breaks or control characters.
+Archived tasks can be edited.
 
 ${dashValueHelp("--description")}
 
@@ -666,16 +651,12 @@ Examples:
     help: `${generateCommandUsage("task move", taskInputs.move)}
 
 Move tasks to another column in their projects.
-Moving a task to a different column lists it last in that column,
-matching placement at the bottom of a visual kanban column.
-Several tasks are moved in the order given, and each task's column is looked up in its own project.
+Moved tasks go to the bottom of the destination column in the order given.
+Each task's column is looked up in its own project.
 
-Giving a task's current column as the target will not do anything, and a note says so.
+Moving to the current column leaves the task unchanged.
 Archived tasks must be unarchived before they can be moved.
-On bulk changes, if any task cannot be moved, the bulk operation is aborted.
-
-With --json, one task prints an object and several print an array.
-Each task's changed field is 'false' when it was already in the requested state.
+If any task cannot be moved, none change.
 
 Example: zinn task move MDR-1 MDR-2 'In Progress'`,
     guessedFlags: { "--status": suggestTaskMove, "--column": suggestTaskMove },

@@ -13,10 +13,10 @@ export const projectScopeConstraint = {
 } as const satisfies InputConstraint;
 
 export const requiredProjectDescription =
-  "An omitted project key uses defaultProject from settings. Without a configured default, a project key is required. A missing configured project is an error.";
+  "Omit the project key to use defaultProject from settings; otherwise a project key is required.";
 
 export const projectScopeDescription =
-  "An omitted project key defaults to all projects unless defaultProject is configured. --all-projects overrides the defaultProject and excludes a typed project. A missing configured project is an error.";
+  "An omitted project key uses defaultProject, or all projects if unset. --all-projects overrides the default and cannot be combined with a project key.";
 
 /** Chooses the explicit project or the configured default, retaining unscoped list/search behavior. */
 export function resolveProjectKey(

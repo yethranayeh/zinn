@@ -28,12 +28,9 @@ type TextEditFlags = {
 
 /** Help paragraph for the text-edit flags of a command whose text flag is `textFlag`. */
 export function textEditHelp(textFlag: "--description" | "--text") {
-  return `With --append, the ${textFlag} text is added as a new paragraph.
-With --replacing <old>, it replaces the one exact, case-sensitive match of <old>
---all replaces every match.
-
-No match, or several matches without --all, fails without changing anything.
-An empty ${textFlag} with --replacing deletes the match.`;
+  return `--append adds ${textFlag} as a new paragraph.
+--replacing <old> replaces one exact, case-sensitive match; --all replaces every match.
+No match, or several without --all, fails without changes. Empty replacement text deletes the match.`;
 }
 
 /** The value to send to core for a text flag: the full text, or one edit object. */

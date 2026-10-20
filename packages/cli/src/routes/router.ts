@@ -80,7 +80,7 @@ function formatCommands(parsedRoutes: Array<ParsedRoute>, prefix: string) {
 
 function getRootHelp(parsedRoutes: Array<ParsedRoute>) {
   // TODO: maybe "brand" text that is exported and used here for title and desc
-  return `ZINN - A kanban workflow in the terminal
+  return `ZINN - A kanban workflow in the terminal. Experimental.
 
 ${usageLabel}zinn <command>
 
@@ -95,10 +95,8 @@ ${formatCommands(parsedRoutes, "")}
 
 Run zinn <namespace> --help or zinn <command> --help for more information.
 --help shows help for the command words before it and runs nothing. The rest of the line is ignored.
--- ends the options: everything after it is considered a plain word, even if it starts with a dash (e.g. 'zinn project column create SHOP -- -later').
-Flags after it are not read.
-${dashValueHelp("--description")}
-Running zinn without a command shows this help.`;
+-- ends the options; every word after it is positional, even if it starts with a dash.
+${dashValueHelp("--description")}`;
 }
 
 function getNamespaceHelp(parsedRoutes: Array<ParsedRoute>, namespace: string) {

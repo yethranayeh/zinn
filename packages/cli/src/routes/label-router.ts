@@ -207,9 +207,7 @@ Valid colors: ${labelInputs.edit.options.color.value.choices.join(", ")}.
 
 ${textEditHelp("--description")}
 
-Names are matched and kept unique case-insensitively while preserving their casing.
-Names are trimmed. Changing only the casing is allowed.
-Editing does not affect task attachments or task timestamps.
+Label names match without case sensitivity.
 
 ${dashValueHelp("--description")}
 

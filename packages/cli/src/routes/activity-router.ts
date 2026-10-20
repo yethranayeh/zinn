@@ -123,31 +123,26 @@ export const activityRouter = {
     help: `${generateCommandUsage("activity list", activityInputs.list)}
 
 List recorded activity across the database, newest first.
-By default, all matching events are returned. --limit takes a positive safe integer.
---task selects the existing active or archived task; a missing task is an error.
-Add --show-deleted to include every recoverable existing/deleted identity sharing the key.
---task-id selects one exact task identity, including deleted tasks.
-Task IDs accept full case-insensitive UUIDs with canonical hyphens or 32 hex digits, without prefixes.
---task and --task-id are mutually exclusive; --show-deleted requires --task.
-Historical selection includes the original project deletion whose snapshot contains the task.
-A valid task ID or --show-deleted query without recorded matches returns an empty list.
---session and --thread match the complete stored IDs exactly, including case.
-All supplied filters must match; --limit applies afterwards.
+Returns all matching events unless --limit is supplied.
 
-Text times are local dates/times with a UTC offset.
-Event IDs are the shortest globally unique left prefixes of at least eight hex digits.
-Use activity view for full recorded changes; full IDs are durable, short prefixes may become ambiguous.
-With --json, output is an array of full activity records, with parsed changes or null.
-Group JSON records by entity_type and entity_id to distinguish tasks sharing a readable key.
-id identifies the activity event.
-A project deletion event's entity_id is the project ID and removed task IDs are in changes.tasks.
+--task <key>       Select an existing active or archived task.
+--show-deleted     Also include deleted tasks sharing that key.
+--task-id <uuid>   Select one task identity, including deleted tasks.
+                   Requires a full UUID.
+--session <id>     Match an exact session ID, including case.
+--thread <id>      Match an exact thread ID, including case.
+--limit <n>        Return at most n matching events.
+
+Use either --task or --task-id. --show-deleted requires --task.
+All supplied filters must match.
+
+Use activity view <activity-id> for complete recorded changes.
+With --json, return an array of full activity records.
 
 Examples:
   zinn activity list --limit 10
-  zinn activity list --task APP-2 --json
-  zinn activity list --task APP-2 --show-deleted
-  zinn activity list --task-id 019abcdf-1234-7000-8000-123456abcdef
-  zinn activity list --session conversation-id --thread child-thread-id`,
+  zinn activity list --task APP-2
+  zinn activity list --task APP-2 --show-deleted`,
   },
   view: {
     summary: "Show one recorded event with full activity/entity IDs, actor and complete changes.",
@@ -175,14 +170,10 @@ Examples:
     help: `${generateCommandUsage("activity view", activityInputs.view)}
 
 Show one recorded event with full activity/entity IDs, actor and complete changes.
-Text and line breaks are preserved; unknown change fields remain available as raw JSON.
-Text times are local dates/times with a UTC offset.
+Recorded text and line breaks are preserved.
 
 Accept a full UUID or unique left prefix with at least eight hexadecimal digits.
-Matching ignores case and accepts canonical hyphens or uninterrupted hexadecimal digits.
-An ambiguous prefix lists candidate IDs and requires more characters.
-With --json, output is one full activity record, with parsed changes or null.
-id identifies this event itself, while entity_type and entity_id identify its affected entity.
+With --json, return one full activity record.
 
 Example: zinn activity view 019abcdf-1234-7`,
   },

@@ -421,6 +421,8 @@ Deleting a task does not make its number available again within that project. De
 
 Priority is optional: `low`, `medium`, `high`, or `urgent`. Priority values, including `none`, are case-insensitive. Stored values and JSON use lowercase. New tasks have no assigned priority by default.
 
+Text priority markers are `-` (unassigned), `L` (low), `M` (medium), `H` (high), and `U` (urgent).
+
 ```sh title="Set task priority"
 zinn task create MDR --title 'Review the numbers' --priority high
 zinn task edit MDR-1 --priority urgent
@@ -456,7 +458,9 @@ Deleted history and exact ID selection include the original project-deletion eve
 
 `--session` and `--thread` match the complete stored IDs exactly, including case and whitespace. All supplied filters must match, and `--limit` applies after filtering. Rows without the requested identity do not match. No matches return empty output, or `[]` with `--json`, and exit successfully. Session activity records committed changes.
 
-`activity view` accepts a full UUID or a unique prefix of at least eight hexadecimal digits for convenience. The match ignores case and accepts both the full hyphenated or compact forms. Prefixes must be unique across all activity. Use a full ID for reliable reference results. Using prefixes may result in unreliable results over time as history grows.
+Activity text uses local dates and times with a UTC offset. `activity list` uses the shortest globally unique left prefixes of at least eight hexadecimal digits for event IDs.
+
+`activity view` accepts a full UUID or a unique prefix of at least eight hexadecimal digits for convenience. The match ignores case and accepts both the full hyphenated or compact forms. Prefixes must be unique across all activity. An ambiguous prefix lists candidate IDs and requires more characters. Use a full ID for reliable reference results. Using prefixes may result in unreliable results over time as history grows.
 
 `activity view` preserves full recorded text and line breaks, including unknown change fields.
 

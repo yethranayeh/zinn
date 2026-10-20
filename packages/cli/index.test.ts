@@ -2534,22 +2534,13 @@ test("task move requires a task key and target column", () => {
   });
 });
 
-test("task move help documents destination placement", () => {
+test("task move help identifies its command with either help flag", () => {
   const longHelp = runZinn(["task", "move", "--help"]);
   const shortHelp = runZinn(["task", "move", "-h"]);
 
   expect(longHelp.code).toBe(0);
   expect(longHelp.stderr).toBe("");
   expect(longHelp.stdout).toContain("Usage: zinn task move <task-key>... <target-column>");
-  expect(longHelp.stdout).toContain(
-    "Moving a task to a different column lists it last in that column,",
-  );
-  expect(longHelp.stdout).toContain(
-    "Giving a task's current column as the target will not do anything, and a note says so.",
-  );
-  expect(longHelp.stdout).toContain(
-    "Archived tasks must be unarchived before they can be moved.",
-  );
   expect(shortHelp.code).toBe(0);
   expect(shortHelp.stdout).toBe(longHelp.stdout);
 });
@@ -4860,7 +4851,6 @@ test("label edit validates changes, uniqueness, and missing labels", () => {
     expect(run("label", "edit", "BUG", "--name", " ").stderr).toContain("cannot be blank");
     expect(run("label", "edit", "BUG", "--color", "purple").code).toBe(1);
     expect(run("label", "list", "--json").stdout).toContain('"name": "Bug"');
-    expect(run("label", "edit", "--help").stdout).toContain("Editing does not affect task attachments or task timestamps");
     expect(runZinn(["--help"], dir).stdout).toContain("label {create|list|edit|delete}");
   });
 });
@@ -4910,9 +4900,6 @@ test("priority inputs accept any letter case on create and edit and persist cano
 
 test("priority persists across CLI creation, editing, listing, clearing, and no-op edits", () => {
   withIsolatedZinnDir((directory) => {
-    expect(runZinn(["task", "list", "--help"], directory).stdout).toContain(
-      "Priority markers: - unassigned, L low, M medium, H high, U urgent.",
-    );
     expect(runZinn(["project", "create", "PRI"], directory).code).toBe(0);
     expect(runZinn(["task", "create", "PRI", "--title", "Default"], directory).code).toBe(0);
     withTestDb(directory, (db) => {
