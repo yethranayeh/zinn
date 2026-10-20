@@ -290,7 +290,7 @@ An omitted project key uses [defaultProject](#settings-files), or every project 
 
 With `--history --json`, the task gains an `activity` array of full activity records. It returns `[]` when no events are recorded. Without `--history`, this field is _omitted_.
 
-If a project is deleted and recreated with the same key, `task view --history` shows only the _current_ task’s history. `activity list --task <key>` can also show history for **deleted tasks** that previously had that same key.
+If a project is deleted and recreated with the same key, `task view --history` shows only the _current_ task's history. `activity list --task <key> --show-deleted` also includes history for **deleted tasks** that previously had that same key.
 
 Repeat `--label <name>` to require every specified label. Matching ignores case.
 
@@ -522,7 +522,7 @@ zinn activity view 019abcdf-1234-7
 
 `--limit` caps the newest matching events and must be a positive safe integer. Reorders and both affected-task events from relation changes are included.
 
-`--task` includes active, archived, and deleted tasks by readable key, with history recovered from current tasks and recorded deletion snapshots. A reused key includes all known task lifetimes. A project deletion that removed the task is included as the original project event. A valid key with no recoverable history returns an empty list.
+`--task` selects the existing active or archived task by readable key. Use `--show-deleted` to include every recoverable existing or deleted identity sharing the key, or `--task-id` to select one exact task UUID. A missing existing task fails with guidance to `--show-deleted`. See the [Activity reference](https://zinn.sh/docs/cli#activity) for selector rules and examples.
 
 `--session` and `--thread` match the complete stored IDs exactly, including case and whitespace. All supplied filters must match, and `--limit` applies after filtering. Rows without the requested identity do not match. No matches return empty output, or `[]` with `--json`, and exit successfully. Session activity records committed changes.
 
@@ -533,7 +533,7 @@ zinn activity view 019abcdf-1234-7
 With `--json`, list returns an array and view returns one event object. Both include `id`, `created_at` (epoch milliseconds), `actor_name`, `actor_email`, `actor_kind`, `actor_source`, `actor_session_id`, `actor_thread_id`, `actor_agent`, `actor_model`, `actor_effort`, `entity_type`, `entity_id`, `action`, and `changes` (parsed JSON or `null`). `actor_name` can be `null` for an unnamed agent. The six additional actor fields are `null` when absent, including on events recorded before schema version 2. Payloads and IDs are preserved in full, including after deletion.
 
 > [!WARNING]
-> A readable task key can identify different tasks after a project is deleted and recreated. Group JSON records by (`entity_type`, `entity_id`) to keep their histories distinct. The `id` identifies the activity event itself. Project deletion events keep the project's `entity_id`, with removed task IDs in `changes.tasks`.
+> With `--show-deleted`, a readable task key can include different tasks after a project is deleted and recreated. Group JSON records by (`entity_type`, `entity_id`) to keep their histories distinct, or use `--task-id` for one identity. The `id` identifies the activity event itself. Project deletion events keep the project's `entity_id`, with removed task IDs in `changes.tasks`.
 
 When a coding agent performs a mutation with `zinn`, the change is recorded under that agent's name.
 

@@ -254,14 +254,14 @@ test("identity filters include deleted and reused task-key lifetimes and project
     const changesBefore = getDb().query("SELECT total_changes() AS count").get().count;
 
     const filtered = activity.getAll({
-      sessionId: "run/one", threadId: "thread/one", taskKey: "RUN-1",
+      sessionId: "run/one", threadId: "thread/one", taskKey: "RUN-1", showDeleted: true,
     });
     assert.deepEqual(filtered.map((event) => event.id), [secondTaskCreate.id, aggregateDeletion.id, firstTaskCreate.id]);
     assert.equal(filtered.filter((event) => event.entity_type === "task").length, 2);
     assert.equal(filtered.filter((event) => event.entity_type === "project" && event.action === "delete").length, 1);
     assert.ok(!filtered.some((event) => event.id === unrelatedCreate.id));
     assert.deepEqual(activity.getAll({
-      sessionId: "run/one", threadId: "thread/other", taskKey: "RUN-1",
+      sessionId: "run/one", threadId: "thread/other", taskKey: "RUN-1", showDeleted: true,
     }), []);
     assert.deepEqual(getDb().query("SELECT * FROM activity ORDER BY id").all(), beforeRows);
     assert.equal(getDb().query("SELECT total_changes() AS count").get().count, changesBefore);
@@ -275,12 +275,12 @@ test("activity finds archived and explicitly deleted tasks without requiring a l
     assert.equal(activity.getTaskIdentities("app-1")[0].status, "archived");
     assert.deepEqual(activity.getAll({ taskKey: item.key }).map((event) => event.action).sort(), ["archive", "create"]);
     task.delete(item.key, agent);
-    assert.deepEqual(activity.getTaskIdentities(item.key), [{ id: item.id, key: item.key, title: item.title, status: "deleted" }]);
-    assert.deepEqual(activity.getAll({ taskKey: item.key }).map((event) => event.action).sort(), ["archive", "create", "delete"]);
+    assert.deepEqual(activity.getTaskIdentities({ taskKey: item.key, showDeleted: true }), [{ id: item.id, key: item.key, title: item.title, status: "deleted" }]);
+    assert.deepEqual(activity.getAll({ taskKey: item.key, showDeleted: true }).map((event) => event.action).sort(), ["archive", "create", "delete"]);
     project.delete("APP", human);
-    assert.equal(activity.getAll({ taskKey: item.key }).length, 3);
-    assert.deepEqual(activity.getAll({ taskKey: "APP-99" }), []);
-    assert.deepEqual(activity.getTaskIdentities("UNKNOWN-1"), []);
+    assert.equal(activity.getAll({ taskKey: item.key, showDeleted: true }).length, 3);
+    assert.throws(() => activity.getAll({ taskKey: "APP-99" }), (error) => error.kind === "missing" && error.facts.entity === "task");
+    assert.deepEqual(activity.getTaskIdentities({ taskKey: "UNKNOWN-1", showDeleted: true }), []);
     assert.throws(() => activity.getAll({ taskKey: "APP-0" }), /Invalid task key/);
   `);
 });
@@ -297,13 +297,15 @@ test("explicit current-task selection includes archived tasks and reports missin
     task.delete(item.key, agent);
     const missingTask = (error) => error.kind === "missing" && error.facts.entity === "task" && error.facts.key === item.key;
     assert.throws(() => activity.getAll(current), missingTask);
+    assert.throws(() => activity.getAll({ taskKey: item.key }), missingTask);
+    assert.throws(() => activity.getTaskIdentities(item.key), missingTask);
     assert.throws(() => activity.getTaskIdentities(current), missingTask);
     assert.deepEqual(activity.getAll({ taskKey: "APP-99", showDeleted: true }), []);
     project.delete("APP", human);
     assert.throws(() => activity.getAll(current), missingTask);
     assert.throws(() => activity.getAll({ taskKey: "UNKNOWN-1", showDeleted: false }), (error) =>
       error.kind === "missing" && error.facts.entity === "task" && error.facts.key === "UNKNOWN-1");
-    assert.deepEqual(activity.getAll({ taskKey: item.key, showDeleted: true }), activity.getAll({ taskKey: item.key }));
+    assert.equal(activity.getAll({ taskKey: item.key, showDeleted: true }).length, 3);
   `);
 });
 
@@ -318,7 +320,7 @@ test("explicit selectors separate reused task identities and preserve original p
     const secondProject = project.create({ key: "APP" }, human);
     const second = task.create({ project_id: secondProject.id, title: "Second" }, human);
     task.delete(second.key, runActor);
-    const secondHistory = activity.getAll({ taskKey: second.key }).filter((event) => event.entity_id === second.id);
+    const secondHistory = activity.getAll({ taskKey: second.key, showDeleted: true }).filter((event) => event.entity_id === second.id);
     project.delete("APP", runActor);
     const secondDeletion = activity.getAll().find((event) => event.entity_id === secondProject.id && event.action === "delete");
     const thirdProject = project.create({ key: "APP" }, human);
@@ -330,9 +332,10 @@ test("explicit selectors separate reused task identities and preserve original p
     assert.deepEqual(activity.getAll({ taskKey: "app-1", showDeleted: false }), thirdHistory);
     const expanded = activity.getAll({ taskKey: "APP-1", showDeleted: true });
     assert.deepEqual(expanded, [...thirdHistory, ...secondHistory, firstDeletion, ...firstHistory]);
-    assert.deepEqual(expanded, activity.getAll({ taskKey: "APP-1" }));
+    assert.deepEqual(thirdHistory, activity.getAll({ taskKey: "APP-1" }));
     assert.ok(!expanded.some((event) => event.id === secondDeletion.id));
-    assert.equal(activity.getTaskIdentities("APP-1").length, 3);
+    assert.equal(activity.getTaskIdentities("APP-1").length, 1);
+    assert.equal(activity.getTaskIdentities({ taskKey: "APP-1", showDeleted: true }).length, 3);
 
     for (const [item, expected, status] of [
       [first, [firstDeletion, ...firstHistory], "deleted"],
@@ -414,21 +417,21 @@ test("task history includes the original aggregate project deletion and every re
     const deletion = activity.getAll().find((event) => event.entity_type === "project" && event.action === "delete");
     const recreatedProject = project.create({ key: "APP" }, human);
     const second = task.create({ project_id: recreatedProject.id, title: "Second lifetime" }, human);
-    const all = activity.getAll({ taskKey: "APP-1" });
+    const all = activity.getAll({ taskKey: "APP-1", showDeleted: true });
     assert.equal(all.length, firstHistory.length + 2);
     assert.equal(all.filter((event) => event.id === deletion.id).length, 1);
     assert.deepEqual(all.find((event) => event.id === deletion.id), deletion);
     assert.ok(!all.some((event) => event.entity_id === unrelated.id));
     assert.deepEqual(new Set(all.filter((event) => event.entity_type === "task").map((event) => event.entity_id)), new Set([first.id, second.id]));
-    assert.deepEqual(activity.getTaskIdentities("app-1"), [
+    assert.deepEqual(activity.getTaskIdentities({ taskKey: "app-1", showDeleted: true }), [
       { id: second.id, key: second.key, title: second.title, status: "active" },
       { id: first.id, key: first.key, title: first.title, status: "deleted" },
     ]);
-    assert.deepEqual(activity.getAll({ taskKey: "APP-1", limit: 1 }), all.slice(0, 1));
-    assert.equal(activity.getTaskIdentities("APP-1").length, 2);
+    assert.deepEqual(activity.getAll({ taskKey: "APP-1", showDeleted: true, limit: 1 }), all.slice(0, 1));
+    assert.equal(activity.getTaskIdentities({ taskKey: "APP-1", showDeleted: true }).length, 2);
     project.delete("APP", human);
-    assert.equal(activity.getTaskIdentities("APP-1").length, 2);
-    assert.equal(activity.getAll({ taskKey: "APP-1" }).filter((event) => event.entity_type === "project").length, 2);
+    assert.equal(activity.getTaskIdentities({ taskKey: "APP-1", showDeleted: true }).length, 2);
+    assert.equal(activity.getAll({ taskKey: "APP-1", showDeleted: true }).filter((event) => event.entity_type === "project").length, 2);
   `);
 });
 
@@ -441,11 +444,11 @@ test("deletion snapshots alone recover task identities and preserve the recorded
       { id: "cascaded-task", key: "GONE-1", title: "Another lifetime" },
       { id: "cascaded-task", key: "GONE-1", title: "Another lifetime" },
     ] } });
-    const events = activity.getAll({ taskKey: "gone-1" });
+    const events = activity.getAll({ taskKey: "gone-1", showDeleted: true });
     assert.deepEqual(events.map((event) => event.id), [aggregate, explicit]);
     assert.deepEqual(events[0], activity.getById(aggregate));
     assert.equal(events[0].entity_id, "old-project");
-    assert.equal(activity.getTaskIdentities("GONE-1").length, 2);
+    assert.equal(activity.getTaskIdentities({ taskKey: "GONE-1", showDeleted: true }).length, 2);
   `);
 });
 

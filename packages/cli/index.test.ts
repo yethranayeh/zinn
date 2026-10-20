@@ -6447,7 +6447,7 @@ test("task view history keeps archived tasks separate from deleted lifetimes wit
     run("task", "create", "APP", "--title", "Current lifetime");
     run("task", "archive", "APP-1");
     const currentTaskId = withTestDb(directory, (db) => db.query<{ id: string }, []>("SELECT id FROM task").get()!.id);
-    const allLifetimes: Array<Activity> = JSON.parse(run("activity", "list", "--task", "APP-1", "--json"));
+    const allLifetimes: Array<Activity> = JSON.parse(run("activity", "list", "--task", "APP-1", "--show-deleted", "--json"));
     expect(allLifetimes.some((event) => event.entity_id !== currentTaskId)).toBe(true);
     const viewed = JSON.parse(run("task", "view", "APP-1", "--history", "--json"));
     expect(viewed.status).toBe("Archived");
@@ -6494,12 +6494,125 @@ function seedRecordedActivity(
 
 test("activity empty lists and unrecoverable task histories return empty results", () => {
   withIsolatedZinnDir((directory) => {
-    for (const args of [["activity", "list"], ["activity", "list", "--task", "gone-2"]]) {
+    for (const args of [["activity", "list"], ["activity", "list", "--task", "gone-2", "--show-deleted"], ["activity", "list", "--task-id", "ffffffff-ffff-7fff-8fff-ffffffffffff"]]) {
       const text = runZinn(args, directory);
       expect(text).toEqual({ code: 0, stdout: "", stderr: "" });
       const json = runZinn([...args, "--json"], directory);
       expect(json.code).toBe(0);
       expect(JSON.parse(json.stdout)).toEqual([]);
+    }
+  });
+});
+
+test("activity task-key selection refuses missing current tasks with explicit deleted-history guidance", () => {
+  withIsolatedZinnDir((directory) => {
+    const run = (...args: Array<string>) => runZinn(args, directory);
+    expect(run("project", "create", "APP").code).toBe(0);
+    expect(run("task", "create", "APP", "--title", "Deleted task").code).toBe(0);
+    expect(run("task", "delete", "APP-1", "--yes").code).toBe(0);
+    const before = withTestDb(directory, (db) => db.query("SELECT * FROM activity ORDER BY id").all());
+    for (const key of ["app-1", "APP-99", "GONE-1"]) {
+      const result = run("activity", "list", "--task", key, "--json");
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      const failure = JSON.parse(result.stderr).error;
+      expect(failure.code).toBe("not_found");
+      expect(failure.details).toMatchObject({ entity: "task", key: key.toUpperCase(), argument: "--task" });
+      expect(failure.help).toContain("--show-deleted");
+      expect(failure.help).toContain(key);
+      const text = run("activity", "list", "--task", key);
+      expect(text.code).toBe(1);
+      expect(text.stdout).toBe("");
+      expect(text.stderr).toContain("--show-deleted");
+    }
+    const history = run("activity", "list", "--task", "APP-1", "--show-deleted", "--json");
+    expect(history.code).toBe(0);
+    expect(JSON.parse(history.stdout).map((event: Activity) => event.action)).toEqual(["delete", "create"]);
+    expect(withTestDb(directory, (db) => db.query("SELECT * FROM activity ORDER BY id").all())).toEqual(before);
+    withTestDb(directory, (db) => db.run("ALTER TABLE task RENAME TO unavailable_task"));
+    const broken = run("activity", "list", "--task", "APP-1", "--json");
+    expect(broken.code).toBe(1);
+    expect(JSON.parse(broken.stderr).error.code).not.toBe("not_found");
+    expect(broken.stderr).not.toContain("--show-deleted");
+  });
+});
+
+test("activity exact task IDs retain identity, status and original project deletion under limits", () => {
+  withIsolatedZinnDir((directory) => {
+    const run = (...args: Array<string>) => {
+      const result = runZinn(args, directory);
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stderr).toBe("");
+      return result.stdout;
+    };
+    run("project", "create", "APP");
+    run("task", "create", "APP", "--title", "Original task");
+    run("task", "edit", "APP-1", "--title", "Changed task");
+    const firstHistory = JSON.parse(run("activity", "list", "--task", "APP-1", "--json"));
+    const first = { id: firstHistory[0].entity_id as string };
+    run("project", "delete", "APP", "--yes");
+    const deletion = JSON.parse(run("activity", "list", "--json")).find((event: Activity) => event.entity_type === "project" && event.action === "delete");
+    run("project", "create", "APP");
+    run("task", "create", "APP", "--title", "New task");
+    const secondHistory = JSON.parse(run("activity", "list", "--task", "APP-1", "--json"));
+    const second = { id: secondHistory[0].entity_id as string };
+    for (const [taskId, expected] of [[first.id, [deletion, ...firstHistory]], [second.id, secondHistory]] as const) {
+      for (const spelling of [taskId, taskId.toUpperCase(), taskId.replaceAll("-", ""), taskId.replaceAll("-", "").toUpperCase()]) {
+        expect(JSON.parse(run("activity", "list", "--task-id", spelling, "--json"))).toEqual(expected);
+      }
+      expect(JSON.parse(run("activity", "list", "--task-id", taskId, "--limit", "1", "--json"))).toEqual(expected.slice(0, 1));
+    }
+    const boundary = run("activity", "list", "--task-id", first.id, "--limit", "1");
+    expect(boundary).toContain("project APP");
+    expect(boundary).toContain("deleted");
+    expect(boundary).toContain("APP-1");
+    expect(boundary).toContain(first.id);
+    expect(boundary).not.toContain(second.id);
+    const active = run("activity", "list", "--task-id", second.id, "--limit", "1");
+    expect(active).toContain(second.id);
+    expect(active).toContain("current");
+    run("task", "archive", "APP-1");
+    const archived = run("activity", "list", "--task-id", second.id, "--limit", "1");
+    expect(archived).toContain(second.id);
+    expect(archived).toContain("[archived]");
+    expect(run("activity", "list", "--task", "APP-1")).not.toContain("[archived]");
+    const archivedEvents = JSON.parse(run("activity", "list", "--task", "APP-1", "--json"));
+    expect(archivedEvents.every((event: Activity) => event.entity_id === second.id)).toBe(true);
+    expect(JSON.parse(run("activity", "list", "--task-id", first.id, "--session", "missing", "--limit", "1", "--json"))).toEqual([]);
+    run("task", "delete", "APP-1", "--yes");
+    const deleted = run("activity", "list", "--task-id", second.id, "--limit", "1");
+    expect(deleted).toContain(second.id);
+    expect(deleted).toContain("deleted");
+    expect(deleted).not.toContain(first.id);
+  });
+});
+
+test("activity exact task IDs preserve empty histories and conjunctive session/thread filtering", () => {
+  withIsolatedZinnDir((directory) => {
+    const taskId = "abcdef12-1234-7000-8000-123456abcdef";
+    const events = seedRecordedActivity(directory, [
+      { id: "11111111-1111-7111-8111-111111111111", entity_id: taskId, created_at: 1, actor_session_id: "Session/one", actor_thread_id: "Thread/one", changes: { future: { text: "Full\ntext", values: [null, 2] } } },
+      { id: "11111111-2111-7111-8111-111111111111", entity_id: taskId, created_at: 2, actor_session_id: "Session/one", actor_thread_id: "Thread/two" },
+      { id: "11111111-3111-7111-8111-111111111111", entity_id: taskId, created_at: 1, actor_session_id: "Session/one", actor_thread_id: "Thread/one" },
+      { id: "11111111-4111-7111-8111-111111111111", entity_id: "abcdef12-1234-7000-8000-123456abcdee", created_at: 3 },
+    ]);
+    const before = withTestDb(directory, (db) => db.query("SELECT * FROM activity ORDER BY id").all());
+    const query = (...flags: Array<string>) => runZinn(["activity", "list", "--task-id", taskId, ...flags, "--json"], directory);
+    expect(JSON.parse(query().stdout)).toEqual([events[1], events[2], events[0]]);
+    expect(JSON.parse(query("--session", "Session/one", "--thread", "Thread/one", "--limit", "1").stdout)).toEqual([events[2]]);
+    expect(JSON.parse(query("--session", "Session/one", "--thread", "Thread/one").stdout)).toEqual([events[2], events[0]]);
+    expect(JSON.parse(query("--session", "session/one").stdout)).toEqual([]);
+    expect(withTestDb(directory, (db) => db.query("SELECT * FROM activity ORDER BY id").all())).toEqual(before);
+    expect(runZinn(["project", "create", "APP"], directory).code).toBe(0);
+    expect(runZinn(["task", "create", "APP", "--title", "No recorded history"], directory).code).toBe(0);
+    const emptyId = withTestDb(directory, (db) => {
+      const id = db.query<{ id: string }, []>("SELECT id FROM task").get()!.id;
+      db.query("DELETE FROM activity WHERE entity_type = 'task' AND entity_id = ?").run(id);
+      return id;
+    });
+    for (const selector of [["--task", "APP-1"], ["--task-id", emptyId]]) {
+      expect(runZinn(["activity", "list", ...selector], directory)).toEqual({ code: 0, stdout: "", stderr: "" });
+      expect(JSON.parse(runZinn(["activity", "list", ...selector, "--json"], directory).stdout)).toEqual([]);
     }
   });
 });
@@ -6601,6 +6714,14 @@ test("activity rejects unsupported, repeated and malformed command arguments wit
       ["list", "--limit", "1", "--limit", "2"], ["list", "--task", "APP-0"],
       ["list", "--session", "first", "--session", "second"],
       ["list", "--thread", "first", "--thread", "second"],
+      ["list", "--task-id", event!.entity_id, "--task-id", event!.entity_id],
+      ["list", "--task", "APP-1", "--show-deleted", "--show-deleted"],
+      ["list", "--task", "APP-1", "--task-id", event!.entity_id],
+      ["list", "--show-deleted"], ["list", "--task-id", event!.entity_id, "--show-deleted"],
+      ["list", "--task-id"], ["list", "--task-id", ""],
+      ["list", "--task-id", "abcdef12"], ["list", "--task-id", event!.id.slice(0, -1)],
+      ["list", "--task-id", "abcd-ef12123470008000123456abcdef"],
+      ["list", "--task", "APP-1", "--show-deleted=true"],
       ["list", "--session", ""], ["list", "--thread", ""],
       ["view"], ["view", event!.id, "extra"], ["view", event!.id, "--task", "APP-1"],
       ["view", event!.id, "--session", "session"],
@@ -6704,20 +6825,23 @@ test("activity recovers deleted and reused task lifetimes, retaining the origina
     expect(run("project", "create", "APP").code).toBe(0);
     expect(run("task", "create", "APP", "--title", "New lifetime").code).toBe(0);
     const newTaskId = withTestDb(directory, (db) => db.query<{ id: string }, []>("SELECT id FROM task WHERE number = 1").get()!.id);
-    const events: Array<Activity> = JSON.parse(run("activity", "list", "--task", "app-1", "--json").stdout);
+    const current = JSON.parse(run("activity", "list", "--task", "APP-1", "--json").stdout);
+    expect(current).toHaveLength(1);
+    expect(current[0].entity_id).toBe(newTaskId);
+    const events: Array<Activity> = JSON.parse(run("activity", "list", "--task", "app-1", "--show-deleted", "--json").stdout);
     expect(events).toHaveLength(4);
     expect(events.find((event) => event.id === deletion.id)).toEqual(deletion);
     expect(new Set(events.filter((event) => event.entity_type === "task").map((event) => event.entity_id))).toEqual(new Set([oldTaskId, newTaskId]));
-    const text = run("activity", "list", "--task", "APP-1").stdout;
+    const text = run("activity", "list", "--task", "APP-1", "--show-deleted").stdout;
     const projectDeletionRow = text.split("\n").find((line) => line.includes("project APP"))!;
     expect(projectDeletionRow.split(" · ")[0]).toContain("deleted");
     expect(text).toContain(newTaskId);
     expect(text).toContain(`removed APP-1 (${oldTaskId})`);
-    const limited = run("activity", "list", "--task", "APP-1", "--limit", "1").stdout;
+    const limited = run("activity", "list", "--task", "APP-1", "--show-deleted", "--limit", "1").stdout;
     expect(limited.split("\n")[0]!.split(" · ")[0]).not.toContain("deleted");
     expect(limited).toContain(newTaskId);
     expect(limited).not.toContain(oldTaskId);
-    expect(JSON.parse(run("activity", "list", "--task", "APP-99", "--json").stdout)).toEqual([]);
+    expect(JSON.parse(run("activity", "list", "--task", "APP-99", "--show-deleted", "--json").stdout)).toEqual([]);
     const viewedDeletion = run("activity", "view", deletion.id).stdout;
     expect(viewedDeletion).toContain(oldTaskId);
     expect(viewedDeletion.split("\n")[0]).toContain("deleted");
@@ -6738,11 +6862,11 @@ test("activity marks deleted lifetimes of a reused key and keeps every task ID",
     }
     expect(run("task", "archive", "APP-1").code).toBe(0);
     const [firstId, secondId, archivedId] = taskIds as [string, string, string];
-    const events: Array<Activity> = JSON.parse(run("activity", "list", "--task", "APP-1", "--json").stdout);
+    const events: Array<Activity> = JSON.parse(run("activity", "list", "--task", "APP-1", "--show-deleted", "--json").stdout);
     expect(new Set(events.filter((event) => event.entity_type === "task").map((event) => event.entity_id))).toEqual(new Set(taskIds));
 
     // A task row's ID line follows the row; project rows list removed tasks instead.
-    const lines = run("activity", "list", "--task", "APP-1").stdout.split("\n");
+    const lines = run("activity", "list", "--task", "APP-1", "--show-deleted").stdout.split("\n");
     const taskRowIds = (isDeleted: boolean) =>
       new Set(lines.flatMap((line, index) => {
         const identity = line.split(" · ")[0]!;
@@ -6761,7 +6885,7 @@ test("activity finds explicit task deletions and deletion-only historical snapsh
     expect(runZinn(["project", "create", "APP"], directory).code).toBe(0);
     expect(runZinn(["task", "create", "APP", "--title", "Delete me"], directory).code).toBe(0);
     expect(runZinn(["task", "delete", "APP-1", "--yes"], directory).code).toBe(0);
-    const explicit = runZinn(["activity", "list", "--task", "APP-1"], directory);
+    const explicit = runZinn(["activity", "list", "--task", "APP-1", "--show-deleted"], directory);
     expect(explicit.code).toBe(0);
     const explicitRows = explicit.stdout.trimEnd().split("\n");
     expect(explicitRows).toHaveLength(2);
@@ -6769,8 +6893,8 @@ test("activity finds explicit task deletions and deletion-only historical snapsh
     expect(explicit.stdout).toContain("Delete me");
     const [snapshot] = seedRecordedActivity(directory, [{ id: "abcdef12-1234-7000-8000-123456abcdef", entity_type: "project", action: "delete",
       changes: { key: "GONE", tasks: [{ id: "old-task", key: "GONE-2", title: "Snapshot only" }] } }]);
-    expect(JSON.parse(runZinn(["activity", "list", "--task", "gone-2", "--json"], directory).stdout)).toEqual([snapshot]);
-    expect(runZinn(["activity", "list", "--task", "GONE-2"], directory).stdout).toContain("removed GONE-2 (old-task)");
+    expect(JSON.parse(runZinn(["activity", "list", "--task", "gone-2", "--show-deleted", "--json"], directory).stdout)).toEqual([snapshot]);
+    expect(runZinn(["activity", "list", "--task", "GONE-2", "--show-deleted"], directory).stdout).toContain("removed GONE-2 (old-task)");
   });
 });
 
@@ -6848,7 +6972,7 @@ test.each([0, 9])("activity commands read schema version %i under the existing p
       expect(JSON.parse(refused.stderr).error.message).toContain("--allow-legacy-read");
     }
     const flags = version === 0 ? ["--allow-legacy-read"] : [];
-    for (const args of [["list"], ["list", "--task", "GONE-1"], ["view", event!.id]]) {
+    for (const args of [["list"], ["list", "--task", "GONE-1", "--show-deleted"], ["list", "--task-id", event!.entity_id], ["view", event!.id]]) {
       for (const mode of [[], ["--json"]]) {
         const result = runZinn(["activity", ...args, ...flags, ...mode], directory);
         expect(result.code).toBe(0);

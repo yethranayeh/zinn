@@ -19,6 +19,7 @@ type NavigationIdentity = {
   name?: string;
   status: "current" | "archived" | "deleted";
   distinguishesTaskId?: boolean;
+  showsStatus?: boolean;
 };
 
 export type PresentedActivity = {
@@ -125,9 +126,13 @@ export function abbreviateActivityIds(ids: Array<string>) {
   return prefixes;
 }
 
-function getTaskNavigation(events: Array<Activity>, taskKey?: string) {
+function getTaskNavigation(events: Array<Activity>, taskKey?: string, taskId?: string) {
+  if (taskId !== undefined) {
+    return activity.getTaskIdentities({ taskId });
+  }
+
   if (taskKey !== undefined) {
-    return activity.getTaskIdentities(taskKey);
+    return activity.getTaskIdentities({ taskKey, showDeleted: true });
   }
 
   const identities = new Map<string, ActivityTaskIdentity>();
@@ -166,7 +171,7 @@ function getTaskNavigation(events: Array<Activity>, taskKey?: string) {
     }
   }
   for (const key of historicalKeys) {
-    for (const identity of activity.getTaskIdentities(key)) {
+    for (const identity of activity.getTaskIdentities({ taskKey: key, showDeleted: true })) {
       identities.set(identity.id, identity);
     }
   }
@@ -176,7 +181,7 @@ function getTaskNavigation(events: Array<Activity>, taskKey?: string) {
 
 export function presentActivities(
   events: Array<Activity>,
-  options: { taskKey?: string; showsFullIds?: boolean } = {},
+  options: { taskKey?: string; taskId?: string; showsFullIds?: boolean } = {},
 ): Array<PresentedActivity> {
   if (events.length === 0) {
     return [];
@@ -185,7 +190,7 @@ export function presentActivities(
   const prefixes = options.showsFullIds
     ? new Map<string, string>()
     : abbreviateActivityIds(activity.getIds());
-  const tasks = getTaskNavigation(events, options.taskKey);
+  const tasks = getTaskNavigation(events, options.taskKey, options.taskId);
   const tasksById = new Map(tasks.map((identity) => [identity.id, identity]));
   const taskIdsByKey = new Map<string, number>();
 
@@ -211,7 +216,9 @@ export function presentActivities(
             navigation = {
               name: identity.key,
               status: identity.status === "active" ? "current" : identity.status,
-              distinguishesTaskId: taskIdsByKey.get(identity.key)! > 1,
+              distinguishesTaskId:
+                options.taskId !== undefined || taskIdsByKey.get(identity.key)! > 1,
+              showsStatus: options.taskId !== undefined,
             };
           }
           break;
@@ -262,7 +269,7 @@ export function presentActivities(
       displayId: options.showsFullIds ? event.id : prefixes.get(event.id)!,
       navigation,
       removedTasks:
-        options.taskKey === undefined
+        options.taskKey === undefined && options.taskId === undefined
           ? []
           : tasks.filter((identity) => removedTaskIds.has(identity.id)),
     };
@@ -386,7 +393,11 @@ function formatActivityContent(entry: PresentedActivity) {
     navigation.status === "current" &&
     (event.entity_type === "label" || event.entity_type === "column");
   const marker =
-    navigation.status === "deleted" ? " [deleted]" : isMutableCurrentName ? " [current name]" : "";
+    navigation.status === "deleted" || navigation.showsStatus
+      ? ` [${navigation.status}]`
+      : isMutableCurrentName
+        ? " [current name]"
+        : "";
   const action = ACTION_LABELS[event.action] ?? event.action;
   const summary = formatChangeSummary(entry, { showsRemovedTasks: false, omitsIdentity: true });
   const lines = [

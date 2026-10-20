@@ -25,6 +25,11 @@ test("the emitted contract covers every route and finite result, including itsel
   const commands = new Map(actual.commands.map((command) => [command.path.join(" "), command]));
   expect(commands.size).toBe(actual.commands.length);
   expect(commands.size).toBe(parseRoutes(routes).length);
+  const activityInput = commands.get("activity list")!.input;
+  expect(activityInput.options["task-id"]).toMatchObject({ type: "string", value: { kind: "task-id" } });
+  expect(activityInput.options["show-deleted"]).toMatchObject({ type: "boolean" });
+  expect(activityInput.constraints).toContainEqual({ kind: "exclusive", members: ["option:task", "option:task-id"] });
+  expect(activityInput.constraints).toContainEqual({ kind: "requires", input: "option:show-deleted", requires: "option:task" });
   const validator = capabilityValidator(actual);
   for (const route of parseRoutes(routes)) {
     const command = commands.get(route.command);

@@ -126,7 +126,7 @@ const fixtures: Record<string, Fixture[]> = {
   "label list": [{ schema: "LabelList", args: [] }, { schema: "LabelList", args: [], empty: true }],
   "label edit": [{ schema: "Label", args: ["bug", "--color", "green"] }],
   "label delete": [{ schema: "Label", args: ["bug", "--yes"] }],
-  "activity list": [{ schema: "ActivityList", args: [] }, { schema: "ActivityList", args: ["--task", "APP-999"] }],
+  "activity list": [{ schema: "ActivityList", args: [] }, { schema: "ActivityList", args: ["--task", "APP-999", "--show-deleted"] }],
   "activity view": [{ schema: "Activity", args: ["$event"] }],
   "backup": [{ schema: "Backup", args: [] }],
   "restore": [

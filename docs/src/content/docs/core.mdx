@@ -65,7 +65,7 @@ Names and titles are trimmed and cannot be blank or contain line breaks or contr
 `activity.getAll` returns full activity records, newest first by timestamp and then event ID. Without a task selector it reads across the database.
 
 - `{ taskKey: "APP-1", showDeleted: false }` selects the existing active or archived task. A missing task raises a `CoreError` with kind `missing`; its `facts` identify entity `task` and the requested key.
-- `{ taskKey: "APP-1", showDeleted: true }` includes every recoverable existing or deleted task identity sharing that key. Omitting `showDeleted` also includes all known identities.
+- `{ taskKey: "APP-1", showDeleted: true }` includes every recoverable existing or deleted task identity sharing that key. Omitting `showDeleted` selects only the existing task, as with `false`.
 - `{ taskId: createdTask.id }` selects one exact task identity, including a deleted task. IDs accept full, case-insensitive UUIDs with canonical hyphens or 32 hexadecimal digits. Task ID prefixes are rejected.
 
 `taskKey` and `taskId` are mutually exclusive. `showDeleted` requires `taskKey`, including when it is `false`. A valid exact ID or explicit deleted-history query with no recorded matches returns an empty array.

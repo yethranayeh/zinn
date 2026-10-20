@@ -26,7 +26,8 @@ function resolveTaskHistory({ taskKey, taskId, showDeleted }: ActivityTaskSelect
     currentTask = taskById == null ? null : attachTaskKey(taskById);
   }
 
-  if (showDeleted === false && currentTask == null) {
+  const selectsCurrentTask = taskKey !== undefined && showDeleted !== true;
+  if (selectsCurrentTask && currentTask == null) {
     throw new CoreError(`Task "${taskKey}" does not exist`, "missing", {
       entity: "task",
       key: taskKey,
@@ -42,7 +43,7 @@ function resolveTaskHistory({ taskKey, taskId, showDeleted }: ActivityTaskSelect
     });
   }
 
-  if (showDeleted === false) {
+  if (selectsCurrentTask) {
     return { identities: [...identities.values()], projectDeletionIds };
   }
 
