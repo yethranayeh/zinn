@@ -63,13 +63,18 @@ Names and titles are trimmed and cannot be blank or contain line breaks or contr
 
 ## Activity selection
 
-`activity.getAll` returns full activity records, newest first by timestamp and then event ID. Without a task selector it reads across the database.
+`activity.getAll` returns full activity records, newest first by timestamp and then event ID. Without a project or task selector it reads across the database.
 
 - `{ taskKey: "APP-1", showDeleted: false }` selects the existing active or archived task. A missing task raises a `CoreError` with kind `missing`; its `facts` identify entity `task` and the requested key.
 - `{ taskKey: "APP-1", showDeleted: true }` includes every recoverable existing or deleted task identity sharing that key. Omitting `showDeleted` selects only the existing task, as with `false`.
 - `{ taskId: createdTask.id }` selects one exact task identity, including a deleted task. IDs accept full, case-insensitive UUIDs with canonical hyphens or 32 hexadecimal digits. Task ID prefixes are rejected.
+- `{ projectKey: "APP" }` selects the existing project's events, its columns, and all its tasks, including archived and explicitly deleted tasks. A missing project raises a `CoreError` with kind `missing`, entity `project`, and the requested key.
+- `{ projectKey: "APP", showDeleted: true }` includes every recorded existing or deleted project identity sharing that key. Omitting `showDeleted` or setting it to `false` selects only the existing project.
+- `{ projectId: createdProject.id }` selects one exact project identity, including after deletion. Project IDs accept the same full UUID spellings as task IDs, without prefixes.
 
-`taskKey` and `taskId` are mutually exclusive. `showDeleted` requires `taskKey`, including when it is `false`. A valid exact ID or explicit deleted-history query with no recorded matches returns an empty array.
+`projectKey`, `projectId`, `taskKey`, and `taskId` are mutually exclusive. `showDeleted` requires `projectKey` or `taskKey`, including when it is `false`. A valid exact ID or explicit deleted-history query with no recorded matches returns an empty array.
+
+Project selection includes task comments, label attachments, reorders, and original project-deletion snapshots. Global label-definition events are excluded. Cross-project relations include only the selected project's task event and within-project relations include both task events.
 
 Task selection includes original project-deletion events whose snapshots contain the selected task IDs. These events retain their project identity and full payloads. `sessionId` and `threadId` match complete, case-sensitive stored values; all supplied filters must match. `limit` applies after filtering.
 

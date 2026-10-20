@@ -2,10 +2,15 @@ import { z } from "zod";
 
 import { standardizeProjectKey } from "../lib.js";
 import { parseTaskKey } from "./task.js";
+import { projectCreateSchema } from "./project.js";
 
 export const minimumActivityIdLength = 8;
 export const activityLimitMessage = "Activity limit must be a positive safe integer";
 const UUID_HEX_LENGTH = 32;
+export const activityIdentitySelectors = ["projectKey", "projectId", "taskKey", "taskId"] as const;
+
+export const activityProjectKeySchema =
+  projectCreateSchema.shape.key.transform(standardizeProjectKey);
 
 export const activityActionSchema = z.enum([
   "create",
@@ -58,23 +63,28 @@ export const activityIdSchema = z
   .transform((value) => value.replaceAll("-", "").toLowerCase());
 
 /** Accepts the full UUID spellings used by activity lookup, without any prefixes */
-export const activityTaskIdSchema = z
-  .string({ error: "Task ID must be a string" })
-  .transform((value, context) => {
+function fullActivityEntityIdSchema(entity: string) {
+  return z.string({ error: `${entity} ID must be a string` }).transform((value, context) => {
     const parsed = activityIdSchema.safeParse(value);
     if (!parsed.success || parsed.data.length !== UUID_HEX_LENGTH) {
       context.addIssue({
         code: "custom",
-        message: "Invalid task ID. Use a full UUID with canonical hyphens or 32 hexadecimal digits",
+        message: `Invalid ${entity.toLowerCase()} ID. Use a full UUID with canonical hyphens or 32 hexadecimal digits`,
       });
       return z.NEVER;
     }
 
     return parsed.data.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
   });
+}
+
+export const activityTaskIdSchema = fullActivityEntityIdSchema("Task");
+export const activityProjectIdSchema = fullActivityEntityIdSchema("Project");
 
 export const activityListSchema = z
   .strictObject({
+    projectKey: activityProjectKeySchema.optional(),
+    projectId: activityProjectIdSchema.optional(),
     taskKey: activityTaskKeySchema.optional(),
     taskId: activityTaskIdSchema.optional(),
     showDeleted: z.boolean().optional(),
@@ -87,23 +97,28 @@ export const activityListSchema = z
       .optional(),
   })
   .superRefine((value, context) => {
-    const hasBothTaskSelectors = value.taskKey !== undefined && value.taskId !== undefined;
-    if (hasBothTaskSelectors) {
+    const suppliedSelectors = activityIdentitySelectors.filter(
+      (selector) => value[selector] !== undefined,
+    );
+
+    if (suppliedSelectors.length > 1) {
       context.addIssue({
         code: "custom",
-        path: ["taskId"],
-        message: "Use either taskKey or taskId",
+        path: [suppliedSelectors[1]!],
+        message: "Use one of projectKey, projectId, taskKey or taskId",
       });
     }
 
     const hasUnscopedDeletedSelection =
-      value.showDeleted !== undefined && value.taskKey === undefined;
+      value.showDeleted !== undefined &&
+      value.taskKey === undefined &&
+      value.projectKey === undefined;
 
     if (hasUnscopedDeletedSelection) {
       context.addIssue({
         code: "custom",
         path: ["showDeleted"],
-        message: "showDeleted requires taskKey",
+        message: "showDeleted requires projectKey or taskKey",
       });
     }
   });

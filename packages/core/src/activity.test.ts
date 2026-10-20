@@ -478,6 +478,92 @@ test("activity preserves every action, relation pair, null and unknown payload f
   `);
 });
 
+test("project selection retains every member event across explicit deletion and reused lifetimes", () => {
+  runActivityCheck(`
+    const actor = { ...agent, sessionId: "project/run", threadId: "project/thread" };
+    const outside = project.create({ key: "OUT" }, actor);
+    const outsideTask = task.create({ project_id: outside.id, title: "Outside" }, actor);
+    const extraColumn = column.create({ projectKey: "APP", name: "Extra" }, actor);
+    const first = task.create({ project_id: app.id, title: "Explicitly deleted" }, actor);
+    const second = task.create({ project_id: app.id, title: "Archived" }, actor);
+    const third = task.create({ project_id: app.id, title: "Custom column", columnName: "Extra" }, actor);
+    project.edit({ projectKey: "APP", name: "Renamed" }, actor);
+    column.edit({ projectKey: "APP", columnName: "Extra", name: "Renamed column" }, actor);
+    column.order({ projectKey: "APP", columnName: "Renamed column", direction: "first" }, actor);
+    task.order({ taskKey: second.key, direction: "top" }, actor);
+    task.move({ taskKey: first.key, targetColumn: "TODO" }, actor);
+    const note = comment.create({ taskKey: first.key, text: "Recorded comment" }, actor);
+    comment.edit({ commentKey: note.key, text: "Changed comment" }, actor);
+    comment.delete({ commentKey: note.key }, actor);
+    const tag = label.create({ name: "Attached" }, actor);
+    task.edit({ taskKey: first.key, addLabelNames: [tag.name] }, actor);
+    label.delete({ name: tag.name }, actor);
+    relation.create({ sourceTaskKey: first.key, targetTaskKey: second.key, relation_type: "related" }, actor);
+    relation.create({ sourceTaskKey: first.key, targetTaskKey: outsideTask.key, relation_type: "related" }, actor);
+    task.archive(second.key, actor);
+    task.delete(first.key, actor);
+    task.delete(third.key, actor);
+    const memberIds = new Set([app.id, ...column.getAllByProjectKey("APP").map(entry => entry.id), first.id, second.id, third.id]);
+    const expected = () => activity.getAll().filter(event => memberIds.has(event.entity_id));
+    assert.deepEqual(activity.getAll({ projectKey: "app" }), expected());
+    assert.deepEqual(activity.getAll({ projectId: app.id }), expected());
+    assert.equal(expected().filter(event => event.action === "relation_create").length, 3);
+    for (const action of ["comment_create", "comment_edit", "comment_delete", "order", "move", "archive"]) {
+      assert.ok(expected().some(event => event.action === action), action);
+    }
+    assert.ok(expected().some(event => event.entity_id === first.id && event.changes?.labels?.removed));
+    assert.ok(expected().every(event => event.entity_type !== "label"));
+    project.delete("APP", actor);
+    const firstLifetime = expected();
+    const deletion = firstLifetime.find(event => event.entity_type === "project" && event.action === "delete");
+    assert.deepEqual(deletion.changes.tasks.map(entry => entry.id), [second.id]);
+    assert.deepEqual(activity.getAll({ projectKey: "APP", showDeleted: true }), firstLifetime);
+    assert.throws(() => activity.getAll({ projectKey: "APP" }), error => error.kind === "missing" && error.facts.entity === "project" && error.facts.key === "APP");
+    const next = project.create({ key: "APP" }, actor);
+    const nextTask = task.create({ project_id: next.id, title: "Next" }, actor);
+    const nextLifetime = activity.getAll().filter(event => event.entity_id === next.id || event.entity_id === nextTask.id);
+    assert.deepEqual(activity.getAll({ projectKey: "APP" }), nextLifetime);
+    project.delete("APP", actor);
+    const last = project.create({ key: "APP" }, actor);
+    const lastTask = task.create({ project_id: last.id, title: "Last" }, actor);
+    const expanded = activity.getAll().filter(event => memberIds.has(event.entity_id) || [next.id, nextTask.id, last.id, lastTask.id].includes(event.entity_id));
+    const before = getDb().query("SELECT * FROM activity ORDER BY id").all();
+    const changes = getDb().query("SELECT total_changes() AS count").get().count;
+    for (const id of [app.id, app.id.toUpperCase(), app.id.replaceAll("-", ""), app.id.replaceAll("-", "").toUpperCase()]) {
+      assert.deepEqual(activity.getAll({ projectId: id }), firstLifetime);
+    }
+    assert.deepEqual(activity.getAll({ projectKey: "APP", showDeleted: true }), expanded);
+    const matching = expanded.filter(event => event.actor_session_id === actor.sessionId && event.actor_thread_id === actor.threadId);
+    assert.deepEqual(activity.getAll({ projectKey: "APP", showDeleted: true, sessionId: actor.sessionId, threadId: actor.threadId, limit: 2 }), matching.slice(0, 2));
+    assert.deepEqual(activity.getAll({ projectId: app.id, sessionId: "other" }), []);
+    assert.deepEqual(getDb().query("SELECT * FROM activity ORDER BY id").all(), before);
+    assert.equal(getDb().query("SELECT total_changes() AS count").get().count, changes);
+  `);
+});
+
+test("exact project selection preserves orphan project events, empty histories and tie ordering", () => {
+  runActivityCheck(`
+    const id = "abcdef12-1234-7000-8000-123456abcdef";
+    const earlier = "11111111-1111-7111-8111-111111111111";
+    const tiedLower = "11111111-2111-7111-8111-111111111111";
+    const tiedHigher = "11111111-3111-7111-8111-111111111111";
+    const changes = { future: { text: "  unchanged  ", values: [null, 2] } };
+    insertEvent({ id: earlier, created_at: 1, entity_type: "project", entity_id: id, changes });
+    insertEvent({ id: tiedLower, created_at: 2, entity_type: "project", entity_id: id });
+    insertEvent({ id: tiedHigher, created_at: 2, entity_type: "project", entity_id: id });
+    assert.deepEqual(activity.getAll({ projectId: id }).map(event => event.id), [tiedHigher, tiedLower, earlier]);
+    assert.deepEqual(activity.getAll({ projectId: id, limit: 2 }).map(event => event.id), [tiedHigher, tiedLower]);
+    assert.deepEqual(activity.getAll({ projectId: id })[2].changes, changes);
+    assert.equal(activity.getAll({ projectId: id })[0].changes, null);
+    assert.deepEqual(activity.getAll({ projectId: "ffffffff-ffff-7fff-8fff-ffffffffffff" }), []);
+    assert.deepEqual(activity.getAll({ projectKey: "UNKNOWN", showDeleted: true }), []);
+    getDb().query("DELETE FROM activity WHERE entity_id = ?").run(app.id);
+    assert.deepEqual(activity.getAll({ projectKey: "APP" }), []);
+    getDb().exec("DROP TABLE activity");
+    assert.throws(() => activity.getAll({ projectKey: "APP" }), error => error.kind !== "missing");
+  `);
+});
+
 test.each([0, 9])("activity reads obey the existing read-only policy at schema version %i", (version) => {
   const reader = `
     import { strict as assert } from "node:assert";
@@ -490,6 +576,9 @@ test.each([0, 9])("activity reads obey the existing read-only policy at schema v
     assert.equal(activity.getAll({ taskKey: "APP-1" }).length, 1);
     assert.equal(activity.getAll({ taskKey: "APP-1", showDeleted: false }).length, 1);
     assert.equal(activity.getAll({ taskKey: "APP-1", showDeleted: true }).length, 1);
+    assert.deepEqual(activity.getAll({ projectKey: "APP" }), all);
+    assert.deepEqual(activity.getAll({ projectKey: "APP", showDeleted: true }), all);
+    assert.deepEqual(activity.getAll({ projectId: all.find(event => event.entity_type === "project").entity_id }), all);
     const taskId = activity.getTaskIdentities("APP-1")[0].id;
     assert.equal(activity.getAll({ taskId }).length, 1);
     assert.equal(activity.getTaskIdentities({ taskId })[0].status, "active");

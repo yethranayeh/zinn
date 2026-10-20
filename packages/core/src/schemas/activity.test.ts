@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { activityIdSchema, activityListSchema, activityTaskIdSchema, activityTaskKeySchema } from "./activity";
+import { activityIdSchema, activityListSchema, activityTaskIdSchema, activityTaskKeySchema, activityIdentitySelectors } from "./activity";
 
 test("activity IDs normalize full, compact and canonical left-prefix spellings", () => {
   const id = "019ABCDF-1234-7000-8000-123456ABCDEF";
@@ -35,7 +35,7 @@ test("activity lists accept optional filters and positive safe-integer limits", 
   for (const limit of [0, -1, 1.5, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1, "2", null]) {
     expect(activityListSchema.safeParse({ limit }).error?.issues).toMatchObject([{ path: ["limit"] }]);
   }
-  expect(activityListSchema.safeParse({ projectKey: "APP" }).success).toBe(false);
+  expect(activityListSchema.safeParse({ unknown: "APP" }).success).toBe(false);
 });
 
 test("task identity selectors normalize only full UUIDs and locate invalid inputs", () => {
@@ -73,5 +73,29 @@ test("session and thread filters preserve exact opaque values and reject empty o
     for (const value of ["", null, 1, true, []]) {
       expect(activityListSchema.safeParse({ [field]: value }).success).toBe(false);
     }
+  }
+});
+
+test("project selectors share key and full UUID normalization and reject every selector pair", () => {
+  const id = "019abcdf-1234-7000-8000-123456abcdef";
+  expect(activityListSchema.parse({ projectKey: "app9" })).toEqual({ projectKey: "APP9" });
+  for (const projectKey of ["", "9APP", "APP-1", " APP", "APP ", null]) {
+    expect(activityListSchema.safeParse({ projectKey }).success).toBe(false);
+  }
+  for (const projectId of [id, id.toUpperCase(), id.replaceAll("-", ""), id.replaceAll("-", "").toUpperCase()]) {
+    expect(activityListSchema.parse({ projectId })).toEqual({ projectId: id });
+  }
+  for (const projectId of ["019abcdf", id.slice(0, -1), id + "0", "019a-bcdf123470008000123456abcdef", "", null, 1]) {
+    expect(activityListSchema.safeParse({ projectId }).success).toBe(false);
+  }
+  const values = { projectKey: "APP", projectId: id, taskKey: "APP-1", taskId: id };
+  for (const [index, left] of activityIdentitySelectors.entries()) {
+    for (const right of activityIdentitySelectors.slice(index + 1)) {
+      expect(activityListSchema.safeParse({ [left]: values[left], [right]: values[right] }).success).toBe(false);
+    }
+  }
+  for (const showDeleted of [false, true]) {
+    expect(activityListSchema.parse({ projectKey: "app", showDeleted })).toEqual({ projectKey: "APP", showDeleted });
+    expect(activityListSchema.safeParse({ projectId: id, showDeleted }).success).toBe(false);
   }
 });
