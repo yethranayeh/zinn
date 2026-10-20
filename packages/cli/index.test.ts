@@ -6756,6 +6756,60 @@ test("limited project activity keeps deleted task and column names when identity
   });
 });
 
+test("project activity navigation scans history a bounded number of times for many deleted tasks", () => {
+  withIsolatedZinnDir((directory) => {
+    const result = Bun.spawnSync([process.execPath, "--eval", `
+      import { strict as assert } from "node:assert";
+      import { spyOn } from "bun:test";
+      import { activity, project, task } from ${JSON.stringify(join(import.meta.dir, "../core/index.ts"))};
+      import * as dbActivity from ${JSON.stringify(join(import.meta.dir, "../core/src/db/activity.ts"))};
+      import { presentActivities } from ${JSON.stringify(join(import.meta.dir, "src/presentation/activity-presentation.ts"))};
+      const actor = { name: "Test", email: null, kind: "human" };
+      const app = project.create({ key: "APP" }, actor);
+      const first = task.create({ project_id: app.id, title: "First" }, actor);
+      task.edit({ taskKey: first.key, title: "Edited" }, { ...actor, sessionId: "selected" });
+      task.delete(first.key, actor);
+      for (let index = 0; index < 100; index++) {
+        const item = task.create({ project_id: app.id, title: "Deleted " + index }, actor);
+        task.delete(item.key, actor);
+      }
+      const retained = task.create({ project_id: app.id, title: "Retained until project deletion" }, actor);
+      project.delete("APP", actor);
+      const currentProject = project.create({ key: "APP" }, actor);
+      const current = task.create({ project_id: currentProject.id, title: "Reused key" }, actor);
+      task.archive(current.key, actor);
+      const selected = activity.getAll({ projectId: app.id, sessionId: "selected", limit: 1 });
+      const deletion = activity.getAll({ projectId: app.id, limit: 1 });
+      const globalHistory = spyOn(dbActivity, "getAll");
+      const deletionHistory = spyOn(dbActivity, "getTaskDeletionEvents");
+      const maxFullHistoryScans = 2;
+      const checkScans = () => {
+        assert.ok(globalHistory.mock.calls.length <= maxFullHistoryScans);
+        assert.ok(deletionHistory.mock.calls.length <= 1,
+          "Deletion history must not be reread for each historical task key");
+        globalHistory.mockClear();
+        deletionHistory.mockClear();
+      };
+      const [historical] = presentActivities(selected, { projectId: app.id });
+      assert.equal(historical.navigation.name, first.key);
+      assert.equal(historical.navigation.status, "deleted");
+      assert.equal(historical.navigation.distinguishesTaskId, true);
+      checkScans();
+      const [aggregate] = presentActivities(deletion, { projectId: app.id });
+      assert.deepEqual(aggregate.removedTasks, [{ id: retained.id, key: retained.key,
+        title: retained.title, status: "deleted" }]);
+      checkScans();
+      const currentEvents = activity.getAll({ projectKey: "APP", limit: 1 });
+      globalHistory.mockClear();
+      const [archived] = presentActivities(currentEvents, { projectKey: "APP" });
+      assert.equal(archived.navigation.name, current.key);
+      assert.equal(archived.navigation.status, "archived");
+      checkScans();
+    `], { env: { ...process.env, ZINN_DIR: directory } });
+    expect(result.exitCode, result.stderr.toString()).toBe(0);
+  });
+});
+
 test("activity returns all events by default and limits only after selecting matches", () => {
   withIsolatedZinnDir((directory) => {
     const events = seedRecordedActivity(directory, Array.from({ length: 55 }, (_, index) => ({

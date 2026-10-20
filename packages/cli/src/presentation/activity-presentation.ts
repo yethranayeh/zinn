@@ -135,18 +135,6 @@ function getTaskNavigation(events: Array<Activity>, taskKey?: string, taskId?: s
     return activity.getTaskIdentities({ taskKey, showDeleted: true });
   }
 
-  const identities = new Map<string, ActivityTaskIdentity>();
-  if (events.some((event) => event.entity_type === "task")) {
-    for (const item of task.getAll({ archive: "all" })) {
-      identities.set(item.id, {
-        id: item.id,
-        key: item.key,
-        title: item.title,
-        status: item.archived_at == null ? "active" : "archived",
-      });
-    }
-  }
-
   const historicalKeys = new Set<string>();
   function addKey(key: unknown) {
     const parsed = activityTaskKeySchema.safeParse(key);
@@ -170,9 +158,47 @@ function getTaskNavigation(events: Array<Activity>, taskKey?: string, taskId?: s
       }
     }
   }
-  for (const key of historicalKeys) {
-    for (const identity of activity.getTaskIdentities({ taskKey: key, showDeleted: true })) {
-      identities.set(identity.id, identity);
+  const identities = new Map<string, ActivityTaskIdentity>();
+  const needsTaskIdentities =
+    historicalKeys.size > 0 || events.some((event) => event.entity_type === "task");
+  if (needsTaskIdentities) {
+    for (const item of task.getAll({ archive: "all" })) {
+      identities.set(item.id, {
+        id: item.id,
+        key: item.key,
+        title: item.title,
+        status: item.archived_at == null ? "active" : "archived",
+      });
+    }
+  }
+
+  function addSnapshot(id: unknown, key: unknown, title: unknown) {
+    const parsedKey = activityTaskKeySchema.safeParse(key);
+    const isMatchingSnapshot =
+      typeof id === "string" &&
+      typeof key === "string" &&
+      typeof title === "string" &&
+      parsedKey.success &&
+      historicalKeys.has(parsedKey.data);
+    if (isMatchingSnapshot && !identities.has(id)) {
+      identities.set(id, { id, key, title, status: "deleted" });
+    }
+  }
+
+  if (historicalKeys.size > 0) {
+    for (const event of activity.getAll()) {
+      if (event.action !== "delete") {
+        continue;
+      }
+      if (event.entity_type === "task") {
+        addSnapshot(event.entity_id, event.changes?.key, event.changes?.title);
+      } else if (event.entity_type === "project" && Array.isArray(event.changes?.tasks)) {
+        for (const snapshot of event.changes.tasks) {
+          if (isRecord(snapshot)) {
+            addSnapshot(snapshot.id, snapshot.key, snapshot.title);
+          }
+        }
+      }
     }
   }
 
