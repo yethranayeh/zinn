@@ -280,6 +280,8 @@ async function checkRuntime(
 
   // Runtime commands receive no inherited flags, warning suppression, preload, or module paths.
   const env = { HOME: home, ZINN_DIR: join(directory, "store"), PATH: runtime.path };
+  mkdirSync(env.ZINN_DIR);
+  mkdirSync(join(directory, "capability-consumer"));
   const prefix = `[${runtime.name}]`;
   const coreCheck = join(consumer, "runtime.mjs");
   copyFileSync(join(PACKAGE_CHECKS_DIRECTORY, "runtime.mjs"), coreCheck);

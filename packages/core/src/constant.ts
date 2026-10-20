@@ -1,11 +1,12 @@
 import type { ResolvedSettings, SettingsInputs } from "./settings.js";
 
-import { realpathSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 
 import { resolveSettings } from "./settings.js";
+import { CoreError, isMissingFileError } from "./errors.js";
 
 export const MAIN_FOLDER_NAME = ".zinn";
 export const DB_FILE_NAME = "zinn.sqlite";
@@ -177,10 +178,57 @@ export function resolveStorage(
 
 let processStorage: Storage | null = null;
 
+/** Selected store folder must exist before any contents can be initialized. */
+function assertStoreDirectory(directory: string, settingsPath: string | null) {
+  const absoluteDirectory = resolve(directory);
+  const source = settingsPath === null ? "ZINN_DIR" : `the settings file ${settingsPath}`;
+  let problem: string | null = null;
+  let cause: unknown;
+
+  if (directory === "") {
+    problem = "ZINN_DIR is empty. Set it to a folder path";
+  } else {
+    try {
+      if (!statSync(absoluteDirectory).isDirectory()) {
+        problem = "it is not a folder";
+      }
+    } catch (error) {
+      if (!isMissingFileError(error)) {
+        throw error;
+      }
+      problem = "it does not exist";
+      cause = error;
+    }
+  }
+
+  if (problem !== null) {
+    const quotedDirectory = `'${absoluteDirectory.replaceAll("'", "'\\''")}'`;
+    throw new CoreError(
+      `Cannot use ${absoluteDirectory}, chosen by ${source}: ${problem}. Create the folder with \`mkdir -p ${quotedDirectory}\`.`,
+      "storage",
+      {
+        reason: "invalid_storage",
+        path: absoluteDirectory,
+        ...(settingsPath === null ? {} : { settingsPath }),
+      },
+      { cause },
+    );
+  }
+}
+
 /** This process's store, resolved from its working folder, environment and home directory on first use, then kept. */
 export function getStorage() {
   if (processStorage === null) {
-    processStorage = resolveStorage({ cwd: process.cwd(), env: process.env, home: homedir() });
+    const inputs = { cwd: process.cwd(), env: process.env, home: homedir() };
+    if (inputs.env.ZINN_DIR !== undefined) {
+      assertStoreDirectory(inputs.env.ZINN_DIR, null);
+    }
+
+    const storage = resolveStorage(inputs);
+    if (storage.source === "local" || storage.source === "global") {
+      assertStoreDirectory(storage.directory, storage.settingsPath);
+    }
+    processStorage = storage;
   }
 
   return processStorage;

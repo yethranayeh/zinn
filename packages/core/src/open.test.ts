@@ -235,6 +235,7 @@ test("a default-database fixture resolves inside the test's HOME, and ZINN_DIR s
     });
 
     const isolated = join(home, "isolated");
+    mkdirSync(isolated);
     expect(
       runChild({ home, zinnDir: isolated }, `console.log(JSON.stringify({ MAIN_DIR: directory }));`),
     ).toEqual({ MAIN_DIR: isolated });

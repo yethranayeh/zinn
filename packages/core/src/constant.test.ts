@@ -107,6 +107,7 @@ test("importing core resolves nothing, so a ZINN_DIR set after the import is the
   const coreModule = JSON.stringify(fileURLToPath(new URL("../index.ts", import.meta.url)));
   const directory = mkdtempSync(join(tmpdir(), "zinn-constant-lazy-"));
   const later = join(directory, "later");
+  mkdirSync(later);
   const childEnvironment: Record<string, string | undefined> = { ...process.env };
   delete childEnvironment.ZINN_DIR;
 
@@ -126,6 +127,37 @@ test("importing core resolves nothing, so a ZINN_DIR set after the import is the
       source: "env",
       sameOnReuse: true,
     });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("a refused store is not cached, and its mkdir hint handles spaces and shell quotes", () => {
+  const directory = mkdtempSync(join(tmpdir(), "zinn-constant-refusal-"));
+  const selected = join(directory, "store with ' quote");
+
+  try {
+    const result = Bun.spawnSync([process.execPath, "--eval", `
+      import { strict as assert } from "node:assert";
+      import { existsSync } from "node:fs";
+      import { getStorage } from ${constantModule};
+      let refusal;
+      try {
+        getStorage();
+      } catch (error) {
+        refusal = error;
+      }
+      assert.equal(refusal.kind, "storage");
+      assert.equal(refusal.facts.reason, "invalid_storage");
+      assert.equal(refusal.facts.path, process.env.ZINN_DIR);
+      assert.equal(existsSync(process.env.ZINN_DIR), false);
+      const command = refusal.message.match(/\x60(mkdir -p [^\x60]+)\x60/)[1];
+      assert.equal(Bun.spawnSync(["/bin/sh", "-c", command]).exitCode, 0);
+      assert.equal(getStorage().directory, process.env.ZINN_DIR);
+      assert.equal(existsSync(getStorage().dataDirectory), false);
+    `], { cwd: directory, env: { ...process.env, ZINN_DIR: selected } });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.toString()).toBe("");
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -321,6 +353,7 @@ test("importing core reads no settings file, so a zinn.local.json written after 
     const { home, repository, localFile } = layout(root);
     const childEnvironment: Record<string, string | undefined> = { ...process.env };
     delete childEnvironment.ZINN_DIR;
+    mkdirSync(join(repository, "store"));
 
     // ? The child starts in an empty folder, then writes the file and moves into the repository.
     const result = Bun.spawnSync([process.execPath, "--eval", `

@@ -5850,6 +5850,7 @@ test("concurrent fresh initialization supports readers and project creators", as
     for (const operation of ["list", "create"]) {
       for (let round = 0; round < 3; round++) {
         const store = join(dir, `${operation}-${round}`);
+        mkdirSync(store);
         const results = await Promise.all(Array.from({ length: 40 }, (_, index) =>
           runZinnAsync(operation === "list"
             ? ["project", "list", "--json"]
@@ -6033,6 +6034,7 @@ function repositoryWithSettings(testDir: string, content: string) {
 test("storage.directory in zinn.local.json chooses the store, from any folder of the repository", () => {
   withIsolatedZinnDir((dir) => {
     const repository = repositoryWithSettings(dir, JSON.stringify({ storage: { directory: "../store" } }));
+    mkdirSync(join(dir, "store"));
     const nested = join(repository, "src");
     mkdirSync(nested);
 

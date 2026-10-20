@@ -17,6 +17,7 @@ export type FailureFacts = {
   reason?:
     | "invalid_json"
     | "invalid_settings"
+    | "invalid_storage"
     | "already_exists"
     | "archived"
     | "parent_exists"

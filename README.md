@@ -51,9 +51,10 @@ See [agent setup and updates](https://zinn.sh/docs/installation#use-with-coding-
 
 ## Data location
 
-Projects share the local database at `~/.zinn/data/zinn.sqlite`. Set `ZINN_DIR` to use another Zinn directory:
+Projects share the local database at `~/.zinn/data/zinn.sqlite`. Set `ZINN_DIR` to use another Zinn directory. The folder must exist beforehand:
 
 ```sh
+mkdir -p ./.zinn-local
 ZINN_DIR=./.zinn-local zinn project list
 ```
 

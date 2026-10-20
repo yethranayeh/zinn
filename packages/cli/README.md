@@ -17,7 +17,7 @@ Requires [Node.js](https://nodejs.org/) 24.15.0 or newer.
 For a first project and task, see the [quick start](../../README.md#quick-start).
 
 Zinn stores projects and tasks in the shared local database at `~/.zinn/data/zinn.sqlite`.
-Set `ZINN_DIR` to use another Zinn directory and keep using the same value for commands that should share that database. A relative `ZINN_DIR` stays relative to the current folder. A settings file can also choose the directory (see [Settings files](#settings-files)).
+Set `ZINN_DIR` to use another Zinn directory and keep using the same value for commands that should share that database. The folder must exist; create it with `mkdir -p <path>`. A relative `ZINN_DIR` stays relative to the current folder. A settings file can also choose the directory (see [Settings files](#settings-files)).
 
 ## Settings files
 
@@ -44,7 +44,7 @@ The files are plain JSON, without comments:
 
 `$schema` is optional and lets editors handle autocomplete and check the file, but Zinn itself ignores it. New settings are added to the same number and is bumped only when changes that would make existing files invalid. An unknown key, a value of the wrong type or invalid JSON in a selected settings file stops commands with an error that names the file, except for the inspection report below. Zinn _does not fall back to the defaults_.
 
-`storage.directory` names a Zinn directory with the same layout as `ZINN_DIR`: `data/zinn.sqlite` and `backups/`. The first of these that is set decides the directory: `ZINN_DIR`, `storage.directory` in `zinn.local.json`, `storage.directory` in the global `settings.json`, then `~/.zinn`. A relative path is relative to the folder of the file that sets it. A leading `~` or `~/` means your home folder.
+`storage.directory` names a Zinn directory with the same layout as `ZINN_DIR`: `data/zinn.sqlite` and `backups/`. The folder must exist; create it with `mkdir -p <path>`. The first of these that is set decides the directory: `ZINN_DIR`, `storage.directory` in `zinn.local.json`, `storage.directory` in the global `settings.json`, then `~/.zinn`. A relative path is relative to the folder of the file that sets it. A leading `~` or `~/` means your home folder.
 
 `defaultProject` names the project used when its key is omitted from `task create`, `task list`, `task search`, `project view`, `project column list`, `project edit`, or `project delete`. Project keys are matched case-insensitively. A key typed in the command wins, then the local setting, then the global setting. A local file that omits this field keeps the global value; `null` is not accepted.
 

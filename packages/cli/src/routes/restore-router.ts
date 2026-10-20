@@ -109,7 +109,7 @@ Replace the database with the one in a backup file, such as one saved by \`zinn 
 
 The current database is saved first, in the same place as \`zinn backup\`, and the restore is applied completely or not at all.
 A backup with an older schema version is restored at that version. Zinn then upgrades it like any older database: by itself, except for ~/.zinn run from a source checkout, which needs \`zinn migrate\`.
-Restoring onto a missing database creates it.
+Restoring onto a missing database creates it inside an existing Zinn folder.
 Fails, leaving the database as it is, when the backup has a newer schema version than this Zinn or none at all, is damaged, or is not a Zinn database.
 Use --yes to skip the confirmation prompt, for example in scripts or with --json.
 

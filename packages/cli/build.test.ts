@@ -1,5 +1,5 @@
 import { beforeAll, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -38,6 +38,125 @@ beforeAll(() => {
 }, BUILD_CHECK_TIMEOUT_MS);
 
 for (const runtime of ["node", "bun"]) {
+  test(`${runtime}: explicit store refusals leave files unchanged across reads, writes and administration`, () => {
+    withDirectory((temporaryDirectory) => {
+      const directory = realpathSync(temporaryDirectory);
+      const origin = join(directory, "origin");
+      mkdirSync(origin);
+      expect(runBuilt(runtime, ["project", "create", "BACKUP"], origin).code).toBe(0);
+      const saved = runBuilt(runtime, ["backup", "--json"], origin);
+      expect(saved.code).toBe(0);
+      const backupPath = JSON.parse(saved.stdout).path;
+      const commands = [
+        ["project", "list"],
+        ["project", "create", "REFUSED"],
+        ["backup"],
+        ["migrate"],
+        ["restore", backupPath, "--yes"],
+      ];
+      const cases = [
+        { source: "env", state: "missing" },
+        { source: "env", state: "file" },
+        { source: "local", state: "missing" },
+        { source: "local", state: "file" },
+        { source: "global", state: "missing" },
+        { source: "global", state: "file" },
+        { source: "env", state: "empty" },
+        { source: "env", state: "relative" },
+      ];
+
+      for (const { source, state } of cases) {
+        const cwd = join(directory, `${source}-${state}`);
+        const home = join(cwd, "home");
+        mkdirSync(home, { recursive: true });
+        const selected = state === "empty" ? cwd : join(cwd, "store with ' quote");
+        const env: Record<string, string | undefined> = {
+          ...process.env, HOME: home, BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0",
+        };
+        delete env.ZINN_DIR;
+        let chosenBy = "ZINN_DIR";
+        if (source === "env") {
+          env.ZINN_DIR = state === "empty" ? "" : state === "relative" ? "store with ' quote" : selected;
+        } else {
+          chosenBy = source === "local"
+            ? join(cwd, "zinn.local.json")
+            : join(home, ".zinn", "settings.json");
+          mkdirSync(join(home, ".zinn"));
+          writeFileSync(chosenBy, JSON.stringify({ storage: { directory: selected } }));
+        }
+        if (state === "file") {
+          writeFileSync(selected, "Existing file\n");
+        }
+        const snapshot = () => Object.fromEntries(
+          readdirSync(cwd, { recursive: true }).map((entry) => {
+            const path = join(cwd, String(entry));
+            return [String(entry), statSync(path).isDirectory() ? null : readFileSync(path, "utf8")];
+          }),
+        );
+        const before = snapshot();
+
+        for (const args of commands) {
+          for (const flags of [[], ["--json"]]) {
+            const result = runCli([...args, ...flags], { runtime, cliPath: CLI_PATH, cwd, env });
+            expect(result.code).toBe(1);
+            expect(result.stdout).toBe("");
+            const message = flags.length === 0
+              ? result.stderr
+              : errorDocumentSchema.parse(JSON.parse(result.stderr)).error.message;
+            expect(message).toContain(selected);
+            expect(message).toContain(chosenBy);
+            expect(message).toContain("mkdir -p");
+            if (flags.length > 0) {
+              expect(JSON.parse(result.stderr).error).toMatchObject({
+                code: "storage",
+                details: { reason: "invalid_storage", path: selected },
+              });
+            }
+          }
+        }
+
+        for (const args of [["--version"], ["--help"], ["task", "--help"], ["info", "--json"]]) {
+          const result = runCli(args, { runtime, cliPath: CLI_PATH, cwd, env });
+          expect(result.code).toBe(0);
+          expect(result.stderr).toBe("");
+          if (args[0] === "info" && state !== "empty") {
+            expect(JSON.parse(result.stdout).storage.exists).toBe(false);
+          }
+        }
+        expect(snapshot()).toEqual(before);
+      }
+    });
+  }, BUILD_CHECK_TIMEOUT_MS);
+
+  test(`${runtime}: existing empty folders and the default store initialize, and restore creates data inside an existing folder`, () => {
+    withDirectory((directory) => {
+      const empty = join(directory, "empty");
+      mkdirSync(empty);
+      const listed = runBuilt(runtime, ["project", "list", "--json"], empty);
+      expect(listed.code).toBe(0);
+      expect(JSON.parse(listed.stdout)).toEqual([]);
+      expect(existsSync(join(empty, "data", "zinn.sqlite"))).toBe(true);
+      expect(runBuilt(runtime, ["project", "create", "RESTORED"], empty).code).toBe(0);
+      const saved = runBuilt(runtime, ["backup", "--json"], empty);
+      expect(saved.code).toBe(0);
+      const destination = join(directory, "destination");
+      mkdirSync(destination);
+      const restored = runBuilt(runtime, ["restore", JSON.parse(saved.stdout).path, "--yes", "--json"], destination);
+      expect(restored.code).toBe(0);
+      expect(existsSync(join(destination, "data", "zinn.sqlite"))).toBe(true);
+      expect(JSON.parse(runBuilt(runtime, ["project", "list", "--json"], destination).stdout)[0].key).toBe("RESTORED");
+
+      const home = join(directory, "home");
+      mkdirSync(home);
+      const env: Record<string, string | undefined> = { ...process.env, HOME: home };
+      delete env.ZINN_DIR;
+      const created = runCli(["project", "create", "DEFAULT", "--json"], { runtime, cliPath: CLI_PATH, cwd: home, env });
+      expect(created.code).toBe(0);
+      expect(JSON.parse(created.stdout).key).toBe("DEFAULT");
+      expect(existsSync(join(home, ".zinn", "data", "zinn.sqlite"))).toBe(true);
+    });
+  });
+
   test(`${runtime}: large handled errors reach piped stderr completely`, () => {
     const libUrl = pathToFileURL(join(outputDirectory, "src/lib.js")).href;
     // Exceed pipe buffers so an immediate process.exit would truncate the JSON document.

@@ -110,6 +110,7 @@ test("discovery bypasses settings, storage policy, SQLite and Bun process APIs",
 test("a manifest consumer constructs argv and validates list, history, cardinality and order forms", () => {
   const directory = join(root, "consumer");
   mkdirSync(directory);
+  mkdirSync(join(directory, "store"));
   const result = runCli(["capabilities", "--json"], { cwd: directory, env: { ...env, ZINN_DIR: join(directory, "store") } });
   expect(result.code, result.stderr).toBe(0);
   checkCapabilityConsumer(JSON.parse(result.stdout), (args) => runCli(args, {

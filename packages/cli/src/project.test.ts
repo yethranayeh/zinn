@@ -93,6 +93,7 @@ function writeGlobalSettings(directory: string, settings: Record<string, unknown
 }
 
 function seedProjects(directory: string, store = join(directory, "store")) {
+  mkdirSync(store, { recursive: true });
   expect(runZinn(["project", "create", "DEF", "--name", "Default"], store).code).toBe(0);
   expect(runZinn(["project", "create", "ALT", "--name", "Alternate"], store).code).toBe(0);
   expect(runZinn(["task", "create", "DEF", "--title", "needle default"], store).code).toBe(0);
@@ -105,6 +106,7 @@ test("ZINN_DIR selects an empty or populated store without applying the reposito
   withTestDirectory((directory) => {
     const { repository } = makeRepository(directory, { defaultProject: "DEF" });
     const emptyStore = join(directory, "empty-store");
+    mkdirSync(emptyStore);
     const emptyRun = (...args: Array<string>) => runZinnFrom(args, directory, repository, { ZINN_DIR: emptyStore });
 
     for (const args of [["task", "list"], ["task", "search", "needle"]]) {
@@ -157,6 +159,7 @@ test("ZINN_DIR ignores malformed repository and home settings but validates its 
     const store = join(directory, "store");
     writeFileSync(localSettingsPath, "{");
     writeFileSync(globalSettingsPath, "{");
+    mkdirSync(store);
     const invoke = (...args: Array<string>) => runZinnFrom(args, directory, repository, { ZINN_DIR: store });
 
     const ignoredMalformedFiles = invoke("task", "list", "--json");

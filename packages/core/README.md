@@ -41,6 +41,7 @@ console.log(task.getAll({ projectKey: app.key }));
 Save this as `example.ts` and run it with a new Zinn directory:
 
 ```sh
+mkdir -p ./.zinn-example
 ZINN_DIR=./.zinn-example node example.ts
 ```
 

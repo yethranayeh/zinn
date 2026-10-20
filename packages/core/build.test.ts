@@ -36,6 +36,7 @@ test("emitted core works on both runtimes and its declarations need no Bun types
     writeFileSync(runtimeCheck, `
       import { test } from "node:test";
       import { strict as assert } from "node:assert";
+      import { mkdirSync } from "node:fs";
       import { defineContractChecks } from "./contract.mjs";
       import * as core from ${JSON.stringify(outputUrl("index.js"))};
       import { getDb } from ${JSON.stringify(outputUrl("src/db.js"))};
@@ -46,6 +47,7 @@ test("emitted core works on both runtimes and its declarations need no Bun types
 
       test("emitted public API uses the runtime adapter and retains source identity", () => {
         process.env.ZINN_DIR = ${JSON.stringify(join(directory, "store"))} + "-" + adapterPath;
+        mkdirSync(process.env.ZINN_DIR);
         assert.equal(readCoreReleaseMode(), "source");
         core.configureDatabase({ client: "build check", version: "1.0.0", executable: "runtime.test.mjs", release: "published", allowsLegacyRead: false });
         const actor = { name: "build check", email: "build@example.test", kind: "agent" };
@@ -98,6 +100,7 @@ test("emitted core works on both runtimes and its declarations need no Bun types
     copyFileSync(join(packageChecksDirectory, "runtime.mjs"), installedCheck);
     for (const runtime of ["bun", "node"]) {
       const env = { ...process.env, ZINN_DIR: join(directory, `installed-store-${runtime}`) };
+      mkdirSync(env.ZINN_DIR);
       expect(JSON.parse(run([runtime, installedCheck], env)).adapter).toBe(runtime);
     }
 

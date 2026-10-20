@@ -143,6 +143,7 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
         packageDirectory: packedCli, directory: join(root, `capabilities-packed-${runtime}`),
         env: process.env, expected: sourceContract,
       });
+      mkdirSync(join(root, `capabilities-consumer-${runtime}`));
       checkCapabilityConsumer(contract, (args) => runCli(args, {
         runtime: Bun.which(runtime)!, cliPath: join(packedCli, "index.js"), cwd: root,
         env: { ...process.env, ZINN_DIR: join(root, `capabilities-consumer-${runtime}`), ZINN_DEBUG: undefined, DEBUG: undefined },

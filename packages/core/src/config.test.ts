@@ -9,6 +9,7 @@ test("data directory creation tolerates concurrent callers", async () => {
   const store = join(directory, "store");
   const barrier = join(directory, "barrier");
   const configModule = fileURLToPath(new URL("./config.ts", import.meta.url));
+  mkdirSync(store);
   mkdirSync(barrier);
 
   try {
@@ -84,7 +85,7 @@ test("data directory creation leaves an existing directory and its contents alon
     const blocked = Bun.spawnSync([process.execPath, "--eval", `
       import { strict as assert } from "node:assert";
       import { ensureDataDirectory } from ${JSON.stringify(configModule)};
-      assert.throws(() => ensureDataDirectory(), (error) => error.code === "ENOTDIR" || error.code === "EEXIST");
+      assert.throws(() => ensureDataDirectory(), (error) => error.kind === "storage" && error.facts.reason === "invalid_storage" && error.facts.path === ${JSON.stringify(blockedStore)});
     `], { env: { ...process.env, ZINN_DIR: blockedStore } });
     expect(blocked.exitCode).toBe(0);
     expect(blocked.stderr.toString()).toBe("");

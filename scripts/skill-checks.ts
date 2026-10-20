@@ -63,6 +63,7 @@ export function checkSkillExamples(options: {
   const skill = readWorkflowSkill(packageDirectory);
 
   mkdirSync(directory, { recursive: true });
+  mkdirSync(join(directory, "store"), { recursive: true });
 
   const env = {
     ...options.env,

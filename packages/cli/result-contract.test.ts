@@ -52,6 +52,7 @@ function editFixture(directory: string, sql: string) {
 }
 
 beforeAll(() => {
+  mkdirSync(seed);
   success(seed, ["project", "create", "APP"]);
   success(seed, ["label", "create", "bug", "--color", "red"]);
   success(seed, ["task", "create", "APP", "--title", "Alpha", "--label", "bug"]);
