@@ -267,6 +267,7 @@ zinn label create urgent --color red --description 'Needs attention soon'
 zinn label create review
 zinn label edit review --color green
 zinn label list
+zinn label view urgent
 ```
 
 ### Adding to tasks
@@ -288,7 +289,7 @@ Label colors default to white. Available colors are _red_, _green_, _yellow_, _b
 
 `label edit` accepts name, color, and description. Renaming preserves every task attachment because attachments refer to the label's internal ID. Updating a label definition does not affect attached tasks' timestamps.
 
-After creating or editing a label, the description echo is limited to its first line and 80 characters, including an ellipsis when text is omitted. `label list` and `--json` keep the full description.
+`label create`, `label edit`, and `label list` show a preview of the descriptions. `label view <name>` shows the full description, which preserves line breaks and whitespace. `label view --json` returns one object with `name`, `color`, and the `description` in full.
 
 Task creation and edits apply content and label changes together, or roll back together on failure.
 Changing a task's label attachments updates that task's modification timestamp. Archived tasks can also have their labels edited.

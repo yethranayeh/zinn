@@ -93,6 +93,16 @@ const labelInputs = {
     constraints: [],
   },
   list: noInput,
+  view: {
+    options: {},
+    forms: [
+      {
+        id: "default",
+        positionals: [{ name: "name", min: 1, max: 1, value: { kind: "label-name" } }],
+      },
+    ],
+    constraints: [],
+  },
   edit: {
     options: {
       name: { type: "string", value: { kind: "text", name: "text" } },
@@ -154,7 +164,7 @@ export const labelRouter = {
 Create a global label. Names preserve casing, but uniqueness is case-insensitive.
 Names are trimmed and cannot be blank or contain line breaks or control characters.
 Description is optional.
-The printed result is a preview. 'label list' and --json show the full text.
+The printed result is a preview. 'label view' and --json show the full text.
 
 Color defaults to white.
 Valid colors: ${labelInputs.create.options.color.value.choices.join(", ")}.
@@ -178,11 +188,49 @@ Example: zinn label create bug --description 'Unexpected behavior' --color red`,
       });
       validatePositionals(positionals, labelInputs.list.forms[0]);
 
-      output(label.getAll().map(presentLabel), formatLabelList);
+      output(label.getAll().map(presentLabel), (entries) =>
+        formatLabelList(entries, { showsDescriptionPreview: true }),
+      );
     },
     help: `${generateCommandUsage("label list", labelInputs.list)}
 
-List all global label definitions.`,
+List all global label definitions.
+Descriptions are previews.
+Use label view <name> for the full description. --json keeps the full text.`,
+  },
+  view: {
+    summary: "Show a global label with its full description.",
+    effects: { domain: "read", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: labelInputs.view,
+    results: [jsonResult("Label")],
+    run: (args) => {
+      const { positionals } = parseArgs({
+        args,
+        options: labelInputs.view.options,
+        strict: true,
+        allowPositionals: true,
+      });
+      validatePositionals(positionals, labelInputs.view.forms[0]);
+
+      const props = labelDeleteSchema.parse({ name: positionals[0] });
+      const labelMatch = label.getByName(props.name);
+      if (labelMatch == null) {
+        throw new CliError(`A label with name "${props.name}" does not exist`, "not_found", {
+          entity: "label",
+          key: props.name,
+          source: "explicit",
+        });
+      }
+
+      output(presentLabel(labelMatch), formatLabel);
+    },
+    help: `${generateCommandUsage("label view", labelInputs.view)}
+
+Show a global label with its full description, preserving line breaks and whitespace.
+Label names are matched case-insensitively.
+
+Example: zinn label view bug`,
   },
   edit: {
     summary: "Change specified fields.",
@@ -218,7 +266,7 @@ List all global label definitions.`,
 
 Change specified fields.
 Provide at least one edit flag. Use --description '' to clear the description.
-Description echoes use a preview; label list and --json keep the full text.
+Description echoes use a preview; label view and --json keep the full text.
 Valid colors: ${labelInputs.edit.options.color.value.choices.join(", ")}.
 
 ${textEditHelp("--description")}

@@ -501,6 +501,7 @@ const commandWords: Record<string, CommandWords> = {
   "task label remove": { words: ["SHOP-1", "bug"], required: 2, repeats: true },
   "label create": { words: ["bug"], required: 1 },
   "label list": { words: [], required: 0 },
+  "label view": { words: ["bug"], required: 1 },
   "label edit": { words: ["bug"], required: 1 },
   "label delete": { words: ["bug"], required: 1 },
   "activity list": { words: [], required: 0 },
@@ -2463,6 +2464,12 @@ test("Unicode characters stay intact at comment, label and project preview cutof
         expect(result.stdout).toEndWith(` | ${preview}\n`);
       }
 
+      const listed = run("label", "list");
+      expect(listed.code).toBe(0);
+      expect(listed.stderr).toBe("");
+      expect(listed.stdout).toContain(` | ${preview}\n`);
+      expect(listed.stdout).not.toContain("\uFFFD");
+
       const comment = run("task", "comment", "view", "NOTE-1#1", "--json");
       expect(comment.code).toBe(0);
       expect(JSON.parse(comment.stdout).text).toBe(text);
@@ -4414,7 +4421,7 @@ test("label text output colors the name in a terminal and names the color when p
   });
 });
 
-test("label create and edit cap description echoes while lists and JSON retain the full text", () => {
+test("label create, edit and list preview descriptions while view and JSON retain the full text", () => {
   withIsolatedZinnDir((directory) => {
     const run = (...args: Array<string>) => runZinn(args, directory);
     const description = `${"x".repeat(100)}\nFull description`;
@@ -4428,7 +4435,12 @@ test("label create and edit cap description echoes while lists and JSON retain t
     expect(edited.code).toBe(0);
     expect(edited.stderr).toBe("");
     expect(edited.stdout).toEndWith(" | First line…\n");
-    expect(run("label", "list").stdout).toContain(description);
+    const listed = run("label", "list");
+    expect(listed.code).toBe(0);
+    expect(listed.stderr).toBe("");
+    expect(listed.stdout).toEndWith(" | First line…\n");
+    expect(listed.stdout).not.toContain(description);
+    expect(run("label", "view", "bug").stdout).toContain(`First line\n${description}`);
 
     for (const args of [["label", "create", "docs"], ["label", "edit", "bug"]]) {
       const result = run(...args, "--description", description, "--json");
@@ -4438,6 +4450,84 @@ test("label create and edit cap description echoes while lists and JSON retain t
         name: args[2], color: "white", description,
       });
     }
+
+    const labels = run("label", "list", "--json");
+    expect(labels.code).toBe(0);
+    expect(labels.stderr).toBe("");
+    expect(JSON.parse(labels.stdout)).toEqual([
+      { name: "bug", color: "white", description },
+      { name: "docs", color: "white", description },
+    ]);
+    const listedLongDescriptions = run("label", "list");
+    expect(listedLongDescriptions.code).toBe(0);
+    expect(listedLongDescriptions.stdout.trimEnd().split("\n")).toHaveLength(2);
+    for (const line of listedLongDescriptions.stdout.trimEnd().split("\n")) {
+      expect(line).toEndWith(` | ${preview}`);
+    }
+  });
+});
+
+test("label view preserves full descriptions and reads one case-insensitive name without writes", () => {
+  withIsolatedZinnDir((directory) => {
+    const run = (...args: Array<string>) => runZinn(args, directory);
+    const description = "  First line\n\tSecond line\n" + "Full description. ".repeat(20) + "\n";
+    expect(run("project", "create", "APP").code).toBe(0);
+    expect(run("label", "create", "Needs Review", "--color", "red", "--description", description).code).toBe(0);
+    expect(run("label", "create", "Empty").code).toBe(0);
+    expect(run("task", "create", "APP", "--title", "Attached", "--label", "Needs Review").code).toBe(0);
+    const snapshot = () => withTestDb(directory, (db) => ({
+      labels: db.query("SELECT * FROM label ORDER BY id").all(),
+      tasks: db.query("SELECT * FROM task ORDER BY id").all(),
+      attachments: db.query("SELECT * FROM task_label ORDER BY task_id, label_id").all(),
+      activity: db.query("SELECT * FROM activity ORDER BY id").all(),
+    }));
+    const before = snapshot();
+    for (const env of [{ FORCE_COLOR: "0" }, { FORCE_COLOR: "1" }]) {
+      const viewed = runZinn(["label", "view", " needs REVIEW "], directory, env);
+      expect(viewed.code).toBe(0);
+      expect(viewed.stderr).toBe("");
+      expect(viewed.stdout).toContain("Needs Review");
+      expect(viewed.stdout).toContain(description);
+      expect(viewed.stdout).not.toContain("Empty");
+      const viewedJson = runZinn(["label", "view", "NEEDS review", "--json"], directory, env);
+      expect(viewedJson.code).toBe(0);
+      expect(viewedJson.stderr).toBe("");
+      expect(JSON.parse(viewedJson.stdout)).toEqual({ name: "Needs Review", color: "red", description });
+      const empty = runZinn(["label", "view", "empty", "--json"], directory, env);
+      expect(empty.code).toBe(0);
+      expect(JSON.parse(empty.stdout)).toEqual({ name: "Empty", color: "white", description: null });
+      const listed = runZinn(["label", "list"], directory, env);
+      expect(listed.code).toBe(0);
+      expect(listed.stdout).toContain("First line…");
+      expect(listed.stdout).not.toContain("Second line");
+    }
+    expect(run("label", "view", "Empty").stdout).toBe("Empty | white\n");
+    expect(snapshot()).toEqual(before);
+  });
+});
+
+test("label view rejects invalid arguments and missing labels with structured errors", () => {
+  withIsolatedZinnDir((directory) => {
+    const run = (...args: Array<string>) => runZinn(args, directory);
+    expect(run("label", "create", "bug").code).toBe(0);
+    const cases = [
+      { args: ["missing"], error: { code: "not_found", details: { entity: "label", key: "missing", source: "explicit" } } },
+      { args: [" "], error: { code: "invalid_input", details: { field: ["name"] } } },
+      { args: ["bad\nname"], error: { code: "invalid_input", details: { field: ["name"] } } },
+      { args: [], error: { code: "invalid_input" } },
+      { args: ["bug", "extra"], error: { code: "invalid_input" } },
+      { args: ["bug", "--unknown"], error: { code: "invalid_input" } },
+    ];
+    for (const { args, error } of cases) {
+      const result = run("label", "view", ...args, "--json");
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(error);
+    }
+    const missing = run("label", "view", "missing");
+    expect(missing.code).toBe(1);
+    expect(missing.stdout).toBe("");
+    expect(missing.stderr).toContain("missing");
   });
 });
 
@@ -4958,7 +5048,7 @@ test("label edit validates changes, uniqueness, and missing labels", () => {
     expect(errorDocumentSchema.parse(JSON.parse(run("--json", "label", "edit", "BUG", "--name", " ").stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["name"] } });
     expect(run("label", "edit", "BUG", "--color", "purple").code).toBe(1);
     expect(run("label", "list", "--json").stdout).toContain('"name": "Bug"');
-    expect(runZinn(["--help"], dir).stdout).toContain("label {create|list|edit|delete}");
+    expect(runZinn(["--help"], dir).stdout).toContain("label {create|list|view|edit|delete}");
   });
 });
 
