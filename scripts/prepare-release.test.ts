@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT } from "./test-isolation.ts";
 import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,7 +9,7 @@ import cliPackageJson from "../packages/cli/package.json";
 const SCRIPT = fileURLToPath(new URL("prepare-release.ts", import.meta.url));
 const SOURCE_IDENTITY = 'export const RELEASE_MODE = "source";\n';
 const STAGING_DIRECTORY = cliPackageJson.publishConfig.directory;
-const PREPARATION_ENV = { ...process.env, npm_config_user_agent: "pnpm/test" };
+const PREPARATION_ENV = { ...TEST_ENVIRONMENT, npm_config_user_agent: "pnpm/test" };
 
 function readOutputIdentity(directory: string, outputName = "dist") {
   const identityUrl = pathToFileURL(join(directory, outputName, "src", "release-identity.js")).href;

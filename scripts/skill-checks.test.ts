@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT } from "./test-isolation.ts";
 import { expect, test } from "bun:test";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -56,7 +57,7 @@ test.each(["0.0.0", "999.0.0", undefined])("pnpm publish blocks an unmatched ski
 
     const result = Bun.spawnSync(["pnpm", "publish", "--dry-run", "--no-git-checks"], {
       cwd: packageDirectory,
-      env: process.env,
+      env: TEST_ENVIRONMENT,
       timeout: 30_000,
     });
     const output = result.stdout.toString() + result.stderr.toString();
@@ -84,7 +85,7 @@ test("a failed skill example stops verification in an isolated store", () => {
       runtime: process.execPath,
       entryPoint: join(cliDirectory, "index.ts"),
       directory: join(directory, "examples"),
-      env: { ...process.env, ZINN_DIR: inheritedStore },
+      env: { ...TEST_ENVIRONMENT, ZINN_DIR: inheritedStore },
     })).toThrow();
     expect(existsSync(inheritedStore)).toBe(false);
   } finally {

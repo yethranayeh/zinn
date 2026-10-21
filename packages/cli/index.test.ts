@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import { test, expect, afterAll } from "bun:test";
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -17,13 +18,6 @@ import { MAX_TEXT_BYTES, relationTypeSchema } from "@zinn-dev/core";
 // ? End-to-end tests: each case spawns the real bin, so `ZINN_DIR` is passed
 // ? per-spawn rather than set on `process.env`. The route table is imported only
 // ? to list the commands; nothing in this process opens a database.
-// ? Subprocesses are the only option while `quit()` calls
-// ? `process.exit` — see the refactor TODO at the bottom of this file.
-//
-// ? `.todo` cases below cover behavior that cannot be asserted yet. Bun skips
-// ? them by default; `bun test --todo` runs them and fails any that *pass*
-// ? ("marked as todo but passes"), so each one retires itself once its blocker
-// ? is built.
 
 const PREFIX = join(tmpdir(), "zinntest-");
 const TEST_DIR = mkdtempSync(PREFIX);
@@ -81,7 +75,7 @@ function runZinn(
   testDir = TEST_DIR,
   additionalEnv: Record<string, string> = {},
 ) {
-  return runCli(args, { env: { ...process.env, ...additionalEnv, ZINN_DIR: testDir } });
+  return runCli(args, { env: { ...TEST_ENVIRONMENT, ...additionalEnv, ZINN_DIR: testDir } });
 }
 
 test("names and titles share trimming and reject leading or trailing control characters", () => {
@@ -131,7 +125,7 @@ test("names and titles share trimming and reject leading or trailing control cha
 function runZinnWithPipedYes(args: Array<string>, testDir = TEST_DIR) {
   const proc = Bun.spawnSync(
     ["/bin/sh", "-c", 'printf "y\\n" | exec bun "$@"', "zinn-confirm", CLI_PATH, ...args],
-    { env: { ...process.env, ZINN_DIR: testDir } },
+    { env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir } },
   );
 
   return {
@@ -144,7 +138,7 @@ function runZinnWithPipedYes(args: Array<string>, testDir = TEST_DIR) {
 // Unlike runZinn's synchronous subprocess, this lets independent CLI writers overlap.
 async function runZinnAsync(args: Array<string>, testDir: string) {
   const proc = Bun.spawn([process.execPath, CLI_PATH, ...args], {
-    env: { ...process.env, ZINN_DIR: testDir, AI_AGENT: "concurrency-test" },
+    env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir, AI_AGENT: "concurrency-test" },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -162,7 +156,7 @@ function runZinnInTerminal(
   additionalEnv: Record<string, string> = {},
   columns?: number,
 ) {
-  return runCliInTerminal(args, { env: { ...process.env, ...additionalEnv, ZINN_DIR: testDir }, columns });
+  return runCliInTerminal(args, { env: { ...TEST_ENVIRONMENT, ...additionalEnv, ZINN_DIR: testDir }, columns });
 }
 
 function withTestDb<T>(testDir: string, inspect: (db: Database) => T) {
@@ -641,7 +635,7 @@ test("the command shown for a word that begins with a single dash runs as shown,
     expect(error.help).toContain("Usage: zinn project column create");
     const shownArgs = error.message.match(/zinn (.*)$/)[1];
     const proc = Bun.spawnSync(["/bin/sh", "-c", `exec bun "$0" ${shownArgs}`, CLI_PATH], {
-      env: { ...process.env, ZINN_DIR: dir },
+      env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir },
     });
     expect(proc.exitCode).toBe(0);
     expect(JSON.parse(proc.stdout.toString())).toMatchObject({ name: "-later" });
@@ -675,7 +669,7 @@ test("a guessed --status or --column on task edit or task move suggests the task
       expect(error.help).toContain(`Usage: zinn ${args.slice(0, 2).join(" ")}`);
       const shownArgs = error.message.match(/zinn (task move .*)$/)[1];
       const proc = Bun.spawnSync(["/bin/sh", "-c", `exec bun "$0" ${shownArgs}`, CLI_PATH], {
-        env: { ...process.env, ZINN_DIR: dir },
+        env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir },
       });
       expect(proc.exitCode).toBe(0);
       expect(() => JSON.parse(proc.stdout.toString())).not.toThrow();
@@ -712,7 +706,7 @@ test("the command shown for a value that begins with a dash runs as shown", () =
     expect(error.help).toContain("Usage: zinn task create");
     const shownArgs = error.message.match(/zinn (.*)$/)[1];
     const proc = Bun.spawnSync(["/bin/sh", "-c", `exec bun "$0" ${shownArgs}`, CLI_PATH], {
-      env: { ...process.env, ZINN_DIR: dir },
+      env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir },
     });
     expect(proc.exitCode).toBe(0);
     expect(JSON.parse(proc.stdout.toString())).toMatchObject({ title: "Fix it's bug", description: "- item" });
@@ -1217,7 +1211,7 @@ test("project delete keeps the project when confirmation is declined", async () 
     runZinn(["task", "create", "KEEP", "--title", "Kept task"], testDir);
 
     const result = await runCliInTerminal(["project", "delete", "keep"], {
-      env: { ...process.env, ZINN_DIR: testDir, NO_COLOR: "1" },
+      env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir, NO_COLOR: "1" },
       input: "n\n",
     });
 
@@ -2946,7 +2940,7 @@ test("task delete prints the task row after Deleted, or after Deletion cancelled
     const row = "ROW-1 | Backlog | H | one | urgent\n";
 
     const cancelled = await runCliInTerminal(["task", "delete", "ROW-1"], {
-      env: { ...process.env, ZINN_DIR: testDir, NO_COLOR: "1" },
+      env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir, NO_COLOR: "1" },
       input: "n\n",
     });
     expect(cancelled.code).toBe(0);
@@ -3501,7 +3495,7 @@ test("task delete keeps the task when confirmation is declined", async () => {
     runZinn(["project", "create", "KEEP", "--name", "Keep"], testDir);
     runZinn(["task", "create", "KEEP", "--title", "surviving task"], testDir);
 
-    const declined = await runCliInTerminal(["task", "delete", "KEEP-1"], { env: { ...process.env, ZINN_DIR: testDir }, input: "n\n" });
+    const declined = await runCliInTerminal(["task", "delete", "KEEP-1"], { env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir }, input: "n\n" });
     expect(declined.code).toBe(0);
     expect(runZinn(["task", "list", "KEEP"], testDir).stdout).toContain("surviving task");
   });
@@ -3622,7 +3616,7 @@ test("task mutations print the resulting entity", async () => {
       "Deleted LIFE-1 | TODO | - | Updated",
     );
     const declined = await runCliInTerminal(["task", "delete", "LIFE-2"], {
-      env: { ...process.env, ZINN_DIR: testDir, NO_COLOR: "1" },
+      env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir, NO_COLOR: "1" },
       input: "n\n",
     });
     expect(declined.output).toContain("LIFE-2 | TODO | - | Second");
@@ -3985,7 +3979,7 @@ test("confirming commands in a terminal act on y and cancel on n with exit code 
   for (const { argsFor, isDone } of CONFIRMING_COMMANDS) {
     await withIsolatedZinnDirAsync(async (dir) => {
       const args = argsFor(seedConfirmationDatabase(dir));
-      const env = { ...process.env, ZINN_DIR: dir };
+      const env = { ...TEST_ENVIRONMENT, ZINN_DIR: dir };
       const before = confirmationSnapshot(dir);
 
       for (const input of ["n\n", "\n"]) {
@@ -4006,7 +4000,7 @@ test("confirmation prompts use stderr, preserve exact affirmative answers, and d
     seedConfirmationDatabase(dir);
     const before = confirmationSnapshot(dir);
     const stderrPath = join(dir, "prompt.stderr");
-    const options = { env: { ...process.env, ZINN_DIR: dir }, stderrPath };
+    const options = { env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir }, stderrPath };
 
     for (const input of ["yes\n", " y \n", "\x04"]) {
       const result = await runCliInTerminal(["task", "delete", "CONF-1"], { ...options, input });
@@ -4031,7 +4025,7 @@ test("interrupting a confirmation exits 130 and changes nothing", async () => {
     seedConfirmationDatabase(dir);
     const before = confirmationSnapshot(dir);
     const result = await runCliInTerminal(["task", "delete", "CONF-1"], {
-      env: { ...process.env, ZINN_DIR: dir }, input: "\x03", inputWhen: "[y/N]",
+      env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir }, input: "\x03", inputWhen: "[y/N]",
     });
     expect(result.code).toBe(130);
     expect(confirmationSnapshot(dir)).toEqual(before);
@@ -4116,27 +4110,6 @@ test("delete commands with --yes and --json print the deleted entity", () => {
       { key: "WEB", name: "Web", description: null },
     ]);
   });
-});
-
-// #TODO(build): distinct nonzero exit codes for not-found vs invalid-input vs
-// #TODO DB error. Everything currently exits 1 via `quit`, so the tests above
-// #TODO cannot distinguish "project missing" from "wrong number of args".
-test.todo("failure classes have distinct exit codes", () => {
-  expect(runZinn(["project", "delete", "NOSUCH"]).code).toBe(4); // ? not found
-  expect(runZinn(["project", "create"]).code).toBe(2); // ? invalid input
-});
-
-// #TODO(refactor): `quit()` calls `process.exit`, so a handler cannot be called
-// #TODO in-process without taking the runner down — every case here pays a
-// #TODO subprocess spawn for it. ZINN-1 tracks the fix: handlers throw,
-// #TODO `index.ts` catches and exits. Then the router/handler layer gets fast
-// #TODO in-process unit tests and this file shrinks to a thin smoke suite.
-test.todo("handlers throw instead of exiting, so they can be tested in-process", async () => {
-  const { projectRouter } = await import("./src/routes/project-router");
-
-  expect(() => projectRouter.create.run([])).toThrow(
-    "Project key must be specified",
-  );
 });
 
 test("project edit renames without changing identity, tasks, columns, or archive state", () => {
@@ -4976,7 +4949,7 @@ test("label deletion confirms global removal and cancellation preserves attachme
       tasks: db.query("SELECT * FROM task ORDER BY id").all(),
     }));
     const before = snapshot();
-    const cancelled = await runCliInTerminal(["label", "delete", "bug"], { env: { ...process.env, ZINN_DIR: dir }, input: "n\n" });
+    const cancelled = await runCliInTerminal(["label", "delete", "bug"], { env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir }, input: "n\n" });
     expect(cancelled.code).toBe(0);
     expect(cancelled.output).toContain("bug");
     expect(cancelled.output).toContain("[y/N]");
@@ -5156,21 +5129,9 @@ test("priority persists across CLI creation, editing, listing, clearing, and no-
 
 // --- ACTIVITY ACTOR
 
-const ACTOR_VARIABLES = [
-  "AI_AGENT", "AGENT", "CLAUDECODE", "CODEX_THREAD_ID", "CODEX_SANDBOX", "OPENCODE", "GEMINI_CLI", "CLINE_ACTIVE", "CURSOR_AGENT", "COPILOT_AGENT_SESSION_ID", "CRUSH",
-  "ZINN_SESSION_ID", "ZINN_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "CODEX_SESSION_ID",
-  "ZINN_AGENT", "ZINN_MODEL", "ZINN_EFFORT", "OPENCODE_SESSION_ID", "HERMES_SESSION_ID", "CLAUDE_EFFORT", "CLAUDE_CODE_CHILD_SESSION", "ZINN_CLIENT", "ZINN_ENV_LABEL",
-];
-
-// ? Agent shells carry these variables, so each case starts from an env without them.
 function runZinnAs(args: Array<string>, testDir: string, env: Record<string, string>) {
-  const baseEnv: Record<string, string | undefined> = { ...process.env, ZINN_DIR: testDir, GIT_CONFIG_NOSYSTEM: "1" };
-  for (const variable of ACTOR_VARIABLES) {
-    delete baseEnv[variable];
-  }
-
   // ? cwd outside any repository, so only the identity file given per case applies.
-  const proc = Bun.spawnSync(["bun", CLI_PATH, ...args], { cwd: testDir, env: { ...baseEnv, ...env } });
+  const proc = Bun.spawnSync(["bun", CLI_PATH, ...args], { cwd: testDir, env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir, ...env } });
   return { stdout: proc.stdout.toString(), stderr: proc.stderr.toString(), code: proc.exitCode };
 }
 
@@ -5195,7 +5156,7 @@ test("mutations record the invoking agent, then the git identity, then the OS us
     expect(runZinnAs(["task", "move", "ACT-1", "TODO"], dir, { GIT_CONFIG_GLOBAL: identityFile }).code).toBe(0);
     expect(lastActor(dir)).toEqual({ action: "move", actor_name: "Git Person", actor_email: "git@example.com", actor_kind: "human", actor_source: "git-config" });
 
-    expect(runZinnAs(["task", "archive", "ACT-1"], dir, { GIT_CONFIG_GLOBAL: "/dev/null" }).code).toBe(0);
+    expect(runZinnAs(["task", "archive", "ACT-1"], dir, { GIT_CONFIG_GLOBAL: "/dev/null", USER: userInfo().username }).code).toBe(0);
     expect(lastActor(dir)).toEqual({ action: "archive", actor_name: userInfo().username, actor_email: null, actor_kind: "human", actor_source: "os-user" });
   });
 });
@@ -5421,7 +5382,7 @@ test("restore keeps the database when confirmation is declined", async () => {
     runZinn(["task", "create", "RST", "--title", "Later"], dir);
     const backupsBefore = backupFiles(dir);
 
-    const result = await runCliInTerminal(["restore", path], { env: { ...process.env, ZINN_DIR: dir }, input: "n\n" });
+    const result = await runCliInTerminal(["restore", path], { env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir }, input: "n\n" });
 
     expect(result.code).toBe(0);
     expect(result.output).toContain(join(dir, "data", "zinn.sqlite"));
@@ -6217,7 +6178,7 @@ test("CLI initialization errors expose the underlying message and code", () => {
 
 // ? Runs the bin from cwd with ZINN_DIR unset and a temporary HOME inside testDir, so the settings files choose the store.
 function runZinnFrom(args: Array<string>, testDir: string, cwd: string) {
-  const env: Record<string, string | undefined> = { ...process.env, HOME: join(testDir, "home") };
+  const env: Record<string, string | undefined> = { ...TEST_ENVIRONMENT, HOME: join(testDir, "home") };
   delete env.ZINN_DIR;
   const proc = Bun.spawnSync(["bun", CLI_PATH, ...args], { cwd, env });
 
@@ -7042,7 +7003,7 @@ test("project activity navigation scans history a bounded number of times for ma
       assert.equal(archived.navigation.name, current.key);
       assert.equal(archived.navigation.status, "archived");
       checkScans();
-    `], { env: { ...process.env, ZINN_DIR: directory } });
+    `], { env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory } });
     expect(result.exitCode, result.stderr.toString()).toBe(0);
   });
 });

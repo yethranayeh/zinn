@@ -80,11 +80,12 @@ From the repository root, install dependencies and run the tests:
 
 ```sh
 bun install
-bun test packages scripts
+bun run typecheck
+bun run test
 bun run test:node
 ```
 
-The tests also pack and run the built packages, so they need pnpm, Node.js and Git on `PATH`. `bun run test:node` runs core's SQLite checks under Node.js. The website has its own tests; see [docs](docs/README.md).
+The tests also pack and run the built packages, so they need `pnpm`, **Node.js 24.15.0** or newer and **Git** on `PATH`. `bun run test` runs the package and script tests, while `bun test` invokes Bun's runner directly. `bun run typecheck` checks tracked TypeScript outside the website. `bun run test:node` runs core's SQLite checks under Node.js. The website has its own tests; see [docs](docs/README.md).
 
 ### Development data
 

@@ -1,12 +1,12 @@
 /** Points ZINN_DIR at a temporary directory before any test module loads, so tests never reach ~/.zinn. */
-import { setDefaultTimeout } from "bun:test";
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const DEFAULT_TEST_TIMEOUT_MS = 30_000;
-setDefaultTimeout(DEFAULT_TEST_TIMEOUT_MS);
+// Conflicting inherited color flags make node:assert emit warnings in test subprocesses.
+delete process.env.NO_COLOR;
+delete process.env.FORCE_COLOR;
 
 const packagesDirectory = fileURLToPath(new URL("../packages", import.meta.url));
 export const SOURCE_IDENTITY_MODULES = readdirSync(packagesDirectory, { withFileTypes: true })
@@ -30,6 +30,21 @@ for (const identity of SOURCE_IDENTITY_MODULES) {
 const PREFIX = join(tmpdir(), "zinn-test-run-");
 /** This run's directory, shared by every test that loads core in the test process. */
 export const TEST_RUN_DIR = mkdtempSync(PREFIX);
+
+const home = join(TEST_RUN_DIR, "home");
+mkdirSync(home);
+
+/** CLI subprocesses inherit only tool paths; each case supplies its own application variables. */
+export const TEST_ENVIRONMENT: Record<string, string | undefined> = {
+  PATH: process.env.PATH,
+  TMPDIR: tmpdir(),
+  HOME: home,
+  TZ: "UTC",
+  LANG: "en_US.UTF-8",
+  LC_ALL: "en_US.UTF-8",
+  TERM: "xterm-256color",
+  GIT_CONFIG_NOSYSTEM: "1",
+};
 
 process.env.ZINN_DIR = TEST_RUN_DIR;
 

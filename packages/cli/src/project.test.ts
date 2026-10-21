@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT } from "../../../scripts/test-isolation.ts";
 import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -40,7 +41,7 @@ function removeTestDirectory(directory: string) {
 }
 
 function runZinn(args: Array<string>, zinnDirectory: string) {
-  return runCli(args, { env: { ...process.env, ZINN_DIR: zinnDirectory } });
+  return runCli(args, { env: { ...TEST_ENVIRONMENT, ZINN_DIR: zinnDirectory } });
 }
 
 function runZinnFrom(
@@ -49,7 +50,7 @@ function runZinnFrom(
   cwd: string,
   additionalEnv: Record<string, string> = {},
 ) {
-  const env: Record<string, string | undefined> = { ...process.env, HOME: join(directory, "home") };
+  const env: Record<string, string | undefined> = { ...TEST_ENVIRONMENT, HOME: join(directory, "home") };
   delete env.ZINN_DIR;
   Object.assign(env, additionalEnv);
 
@@ -57,7 +58,7 @@ function runZinnFrom(
 }
 
 function runZinnWithPipedYes(args: Array<string>, directory: string, cwd: string) {
-  const env: Record<string, string | undefined> = { ...process.env, HOME: join(directory, "home") };
+  const env: Record<string, string | undefined> = { ...TEST_ENVIRONMENT, HOME: join(directory, "home") };
   delete env.ZINN_DIR;
   const cliPath = join(import.meta.dir, "..", "index.ts");
   const proc = Bun.spawnSync(
@@ -70,7 +71,7 @@ function runZinnWithPipedYes(args: Array<string>, directory: string, cwd: string
 
 /** Runs the CLI attached to a pseudo-terminal and types the input; stdout and stderr arrive together. */
 function runZinnInTerminal(args: Array<string>, directory: string, cwd: string, input: string) {
-  const env: Record<string, string | undefined> = { ...process.env, HOME: join(directory, "home") };
+  const env: Record<string, string | undefined> = { ...TEST_ENVIRONMENT, HOME: join(directory, "home") };
   delete env.ZINN_DIR;
 
   return runCliInTerminal(args, { cwd, env, input });

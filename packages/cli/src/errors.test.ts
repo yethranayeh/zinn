@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT } from "../../../scripts/test-isolation.ts";
 import { expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -16,7 +17,7 @@ function fixture() {
   const invoke = (...args: string[]) => {
     const result = Bun.spawnSync([process.execPath, CLI_PATH, ...args], {
       cwd: directory,
-      env: { ...process.env, ZINN_DIR: directory, ZINN_DEBUG: undefined },
+      env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory, ZINN_DEBUG: undefined },
     });
     return { code: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
   };
@@ -76,7 +77,7 @@ test("ZINN-283: rare injected failures include buffered notices once and never s
       prepareOutput(['--json']);
       diagnostic('prior notice');
       renderFailure(${expression});
-    `]);
+    `], { env: TEST_ENVIRONMENT });
     expect(result.exitCode).toBe(1);
     expect(result.stdout.toString()).toBe("");
     const stderr = result.stderr.toString();

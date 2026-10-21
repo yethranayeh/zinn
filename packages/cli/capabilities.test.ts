@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import { afterAll, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,7 +16,7 @@ const root = mkdtempSync(join(tmpdir(), "zinn-capabilities-"));
 const packageDirectory = fileURLToPath(new URL(".", import.meta.url));
 const entryPoint = join(packageDirectory, "index.ts");
 const manifest = generateCapabilities();
-const env = { ...process.env, ZINN_DEBUG: undefined, DEBUG: undefined, FORCE_COLOR: "0", BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0" };
+const env = { ...TEST_ENVIRONMENT, ZINN_DEBUG: undefined, DEBUG: undefined, FORCE_COLOR: "0", BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0" };
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 test("the emitted contract covers every route and finite result, including itself", () => {

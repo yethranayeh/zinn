@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT } from "../../../scripts/test-isolation.ts";
 import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -61,7 +62,7 @@ test("every runnable route declares its inputs, effects, confirmation and genera
 
 test("every declared singular option rejects repetition before storage access", () => {
   withDirectory((directory) => {
-    const env = { ...process.env, ZINN_DIR: directory };
+    const env = { ...TEST_ENVIRONMENT, ZINN_DIR: directory };
     for (const command of commands) {
       for (const [name, option] of Object.entries(command.input.options)) {
         if (option.multiple) {
@@ -83,7 +84,7 @@ test("every declared singular option rejects repetition before storage access", 
 
 test("every positional form rejects missing and excess words before storage access", () => {
   withDirectory((directory) => {
-    const env = { ...process.env, ZINN_DIR: directory };
+    const env = { ...TEST_ENVIRONMENT, ZINN_DIR: directory };
     for (const command of commands) {
       for (const form of command.input.forms) {
         const words = form.positionals.map(
@@ -172,7 +173,7 @@ function declaredArgv(
 
 test("declared forms construct list, history, repeated-key move and both order invocations", () => {
   withDirectory((directory) => {
-    const env = { ...process.env, ZINN_DIR: directory };
+    const env = { ...TEST_ENVIRONMENT, ZINN_DIR: directory };
     const invoke = (
       path: string,
       positionals: SuppliedValues = {},
@@ -240,7 +241,7 @@ test("declared forms construct list, history, repeated-key move and both order i
 
 test("project resolution and order errors retain their validation precedence", () => {
   withDirectory((directory) => {
-    const env = { ...process.env, ZINN_DIR: directory };
+    const env = { ...TEST_ENVIRONMENT, ZINN_DIR: directory };
     const project = runCli(["project", "edit", "--append", "--json"], { env });
     expect(JSON.parse(project.stderr).error.details.argument).toBe("project-key");
     for (const path of ["task order", "project column order"]) {

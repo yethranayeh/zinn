@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,7 +27,7 @@ let eventId: string;
 function invoke(directory: string, args: string[]) {
   return runCli([...args, "--json"], {
     cwd: root,
-    env: { ...process.env, ZINN_DIR: directory, AI_AGENT: "contract-test", FORCE_COLOR: "0", ZINN_DEBUG: undefined, DEBUG: undefined },
+    env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory, AI_AGENT: "contract-test", FORCE_COLOR: "0", ZINN_DEBUG: undefined, DEBUG: undefined },
   });
 }
 function success(directory: string, args: string[]) {
@@ -231,7 +232,7 @@ for (const route of commands) {
       if (route.confirmation.kind !== "none") {
         const withoutYes = args.filter((arg) => arg !== "--yes");
         for (const flags of [[], ["--json"]]) {
-          const options = { cwd: root, env: { ...process.env, ZINN_DIR: directory, FORCE_COLOR: "0" } };
+          const options = { cwd: root, env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory, FORCE_COLOR: "0" } };
           const canonicalRefusal = runCli([...canonicalPath, ...withoutYes, ...flags], options);
           expect(canonicalRefusal.code).toBe(1);
           expect(runCli([...alias, ...withoutYes, ...flags], options)).toEqual(canonicalRefusal);
@@ -239,7 +240,7 @@ for (const route of commands) {
       }
 
       if (route.effects.domain === "read") {
-        const options = { cwd: root, env: { ...process.env, ZINN_DIR: directory, FORCE_COLOR: "0" } };
+        const options = { cwd: root, env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory, FORCE_COLOR: "0" } };
         const canonicalText = runCli([...canonicalPath, ...args], options);
         expect(canonicalText.code, canonicalText.stderr).toBe(0);
         expect(runCli([...alias, ...args], options)).toEqual(canonicalText);
@@ -354,7 +355,7 @@ test("info with unresolved storage still produces a valid successful report", ()
   mkdirSync(join(cwd, ".git"), { recursive: true });
   writeFileSync(join(cwd, "zinn.local.json"), "{");
   const result = runCli(["info", "--json"], {
-    cwd, env: { ...process.env, HOME: home, ZINN_DIR: undefined, ZINN_DEBUG: undefined, DEBUG: undefined },
+    cwd, env: { ...TEST_ENVIRONMENT, HOME: home, ZINN_DIR: undefined, ZINN_DEBUG: undefined, DEBUG: undefined },
   });
   expect(result.code).toBe(0);
   expect(result.stderr).toBe("");
@@ -367,7 +368,7 @@ test("info with unresolved storage still produces a valid successful report", ()
 test("a declined text confirmation succeeds and preserves the task", async () => {
   const directory = fixtureDirectory();
   const result = await runCliInTerminal(["task", "delete", "APP-1"], {
-    cwd: root, env: { ...process.env, ZINN_DIR: directory }, input: "n\n", inputWhen: "[y/N]",
+    cwd: root, env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory }, input: "n\n", inputWhen: "[y/N]",
   });
   expect(result.code).toBe(0);
   expect(success(directory, ["task", "view", "APP-1"]).key).toBe("APP-1");

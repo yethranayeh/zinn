@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT } from "../../../scripts/test-isolation.ts";
 import { expect, spyOn, test } from "bun:test";
 import {
   chmodSync,
@@ -56,7 +57,7 @@ function runReader(directory: string, path: string, input = Buffer.alloc(0)) {
   `;
   const result = Bun.spawnSync([process.execPath, "--eval", program], {
     cwd: directory,
-    env: { ...process.env, ZINN_DIR: join(directory, "store") },
+    env: { ...TEST_ENVIRONMENT, ZINN_DIR: join(directory, "store") },
     stdin: input,
     timeout: SUBPROCESS_TIMEOUT_MS,
   });

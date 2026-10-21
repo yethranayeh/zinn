@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -36,7 +37,7 @@ function run(args: Array<string>, directory?: string) {
     runtime,
     cliPath,
     cwd,
-    env: { ...process.env, HOME: home, NODE_ENV: "test", ZINN_DIR: directory, ZINN_DEBUG: undefined, DEBUG: undefined, FORCE_COLOR: "0" },
+    env: { ...TEST_ENVIRONMENT, HOME: home, NODE_ENV: "test", ZINN_DIR: directory, ZINN_DEBUG: undefined, DEBUG: undefined, FORCE_COLOR: "0" },
   });
 }
 

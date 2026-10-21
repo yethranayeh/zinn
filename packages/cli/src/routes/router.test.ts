@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT } from "../../../../scripts/test-isolation.ts";
 import type { Command, ParsedRoute, RouteDef } from "../types";
 
 import { test, expect, mock, spyOn } from "bun:test";
@@ -147,7 +148,7 @@ test("asynchronous handler failures use the router's JSON error boundary", () =>
         run: async () => { await Promise.resolve(); throw new ${errorType}("<value>"); },
       } });
       await router.route(["example", "--json"]);
-    `]);
+    `], { env: TEST_ENVIRONMENT });
     expect(result.exitCode).toBe(1);
     expect(result.stdout.toString()).toBe("");
     const { error } = JSON.parse(result.stderr.toString());

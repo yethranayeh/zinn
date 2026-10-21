@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,7 +27,7 @@ test("every shell example runs against an isolated project and completes its han
       runtime: process.execPath,
       entryPoint: join(import.meta.dir, "index.ts"),
       directory,
-      env: process.env,
+      env: TEST_ENVIRONMENT,
     })).not.toThrow();
   } finally {
     rmSync(directory, { recursive: true, force: true });

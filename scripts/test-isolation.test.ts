@@ -36,15 +36,34 @@ test.each(cases)("test preload with $name", ({ published }) => {
       import { writeFileSync } from "node:fs";
       import { tmpdir } from "node:os";
       import { join } from "node:path";
+      import { TEST_ENVIRONMENT, TEST_RUN_DIR } from "./scripts/test-isolation.ts";
       test("the preload isolates the database before tests run", () => {
         expect(process.env.ZINN_DIR?.startsWith(join(tmpdir(), "zinn-test-run-"))).toBe(true);
+        expect(process.env.NO_COLOR).toBeUndefined();
+        expect(process.env.FORCE_COLOR).toBeUndefined();
+        const child = Bun.spawnSync([process.execPath, "--eval", "console.log(JSON.stringify(process.env))"], { env: TEST_ENVIRONMENT });
+        expect(child.exitCode).toBe(0);
+        const env = JSON.parse(child.stdout.toString());
+        expect(env.HOME).toBe(join(TEST_RUN_DIR, "home"));
+        expect(env.TZ).toBe("UTC");
+        expect(env.LANG).toBe("en_US.UTF-8");
+        expect(env.LC_ALL).toBe(env.LANG);
+        expect(env.GIT_CONFIG_NOSYSTEM).toBe("1");
+        for (const name of ["GIT_CONFIG_GLOBAL", "GIT_DIR", "XDG_CONFIG_HOME", "NO_COLOR", "FORCE_COLOR", "AI_AGENT", "ZINN_DIR"]) {
+          expect(env[name]).toBeUndefined();
+        }
         writeFileSync("test-ran", process.env.ZINN_DIR!);
       });
     `);
 
     const result = Bun.spawnSync([process.execPath, "test", "./probe.test.ts"], {
       cwd: directory,
-      env: { ...process.env, TMPDIR: join(directory, "temp"), ZINN_DIR: join(directory, "inherited-store") },
+      env: {
+        ...process.env, TMPDIR: join(directory, "temp"), ZINN_DIR: join(directory, "inherited-store"),
+        HOME: directory, TZ: "Pacific/Honolulu", LANG: "tr_TR.UTF-8", LC_ALL: "tr_TR.UTF-8",
+        GIT_CONFIG_GLOBAL: join(directory, "foreign-gitconfig"), GIT_DIR: directory,
+        XDG_CONFIG_HOME: directory, NO_COLOR: "1", FORCE_COLOR: "1", AI_AGENT: "inherited-agent",
+      },
     });
 
     if (published.length === 0) {

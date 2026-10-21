@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import { beforeAll, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,6 +9,7 @@ import packageJson from "./package.json";
 import { runCli, runCliInTerminal } from "./testing";
 import { withDirectory } from "../core/src/migrations/testing";
 import { errorDocumentSchema } from "./src/errors";
+import { readNodeMinimum } from "../../scripts/package-fixture.ts";
 
 const packageDirectory = fileURLToPath(new URL(".", import.meta.url));
 const repositoryDirectory = fileURLToPath(new URL("../..", import.meta.url));
@@ -17,21 +19,28 @@ const CLI_PATH = join(outputDirectory, "index.js");
 const BUILD_CHECK_TIMEOUT_MS = 30_000;
 
 function runBuilt(runtime: string, args: string[], directory: string, env: Record<string, string> = {}) {
-  return runCli(args, { runtime, cliPath: CLI_PATH, env: { ...process.env, ZINN_DIR: directory, ...env } });
+  return runCli(args, { runtime, cliPath: CLI_PATH, env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory, ...env } });
 }
 
 beforeAll(() => {
+  const minimum = readNodeMinimum(repositoryDirectory);
+  const node = Bun.spawnSync(["node", "--version"], { env: TEST_ENVIRONMENT });
+  const version = node.stdout.toString().trim();
+  if (node.exitCode !== 0 || !Bun.semver.satisfies(version, `>=${minimum.version}`)) {
+    throw new Error(`CLI build tests require Node.js >=${minimum.version} on PATH; found ${version || "no usable Node.js"}.`);
+  }
+
   // A development build refreshes both outputs, including old release identity.
   for (const directory of [outputDirectory, coreOutputDirectory]) {
     mkdirSync(join(directory, "src"), { recursive: true });
     writeFileSync(join(directory, "src/release-identity.js"), 'export const RELEASE_MODE = "published";');
   }
 
-  const result = Bun.spawnSync(["bun", "run", "--cwd", packageDirectory, "build"]);
+  const result = Bun.spawnSync(["bun", "run", "--cwd", packageDirectory, "build"], { env: TEST_ENVIRONMENT });
   expect(result.exitCode, result.stderr.toString() + result.stdout.toString()).toBe(0);
   for (const directory of [outputDirectory, coreOutputDirectory]) {
     const identityUrl = pathToFileURL(join(directory, "src/release-identity.js")).href;
-    const identity = Bun.spawnSync(["bun", "--eval", `console.log((await import(${JSON.stringify(identityUrl)})).RELEASE_MODE)`]);
+    const identity = Bun.spawnSync(["bun", "--eval", `console.log((await import(${JSON.stringify(identityUrl)})).RELEASE_MODE)`], { env: TEST_ENVIRONMENT });
     expect(identity.exitCode, identity.stderr.toString()).toBe(0);
     expect(identity.stdout.toString().trim()).toBe("source");
   }
@@ -95,7 +104,7 @@ for (const runtime of ["node", "bun"]) {
         mkdirSync(home, { recursive: true });
         const selected = state === "empty" ? cwd : join(cwd, "store with ' quote");
         const env: Record<string, string | undefined> = {
-          ...process.env, HOME: home, BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0",
+          ...TEST_ENVIRONMENT, HOME: home, BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0",
         };
         delete env.ZINN_DIR;
         let chosenBy = "ZINN_DIR";
@@ -172,7 +181,7 @@ for (const runtime of ["node", "bun"]) {
 
       const home = join(directory, "home");
       mkdirSync(home);
-      const env: Record<string, string | undefined> = { ...process.env, HOME: home };
+      const env: Record<string, string | undefined> = { ...TEST_ENVIRONMENT, HOME: home };
       delete env.ZINN_DIR;
       const created = runCli(["project", "create", "DEFAULT", "--json"], { runtime, cliPath: CLI_PATH, cwd: home, env });
       expect(created.code).toBe(0);
@@ -192,7 +201,7 @@ for (const runtime of ["node", "bun"]) {
       }
       renderFailure(new Error("failure"));
     });`;
-    const result = Bun.spawnSync([runtime, "--eval", code]);
+    const result = Bun.spawnSync([runtime, "--eval", code], { env: TEST_ENVIRONMENT });
     expect(result.exitCode).toBe(1);
     expect(result.stdout.toString()).toBe("");
     const failure = errorDocumentSchema.parse(JSON.parse(result.stderr.toString())).error;
@@ -256,7 +265,7 @@ for (const runtime of ["node", "bun"]) {
       expect(runBuilt(runtime, ["project", "create", "BUILD"], directory).code).toBe(0);
       expect(runBuilt(runtime, ["task", "create", "BUILD", "--title", "Confirmation"], directory).code).toBe(0);
       const stderrPath = join(directory, "prompt.stderr");
-      const options = { runtime, cliPath: CLI_PATH, env: { ...process.env, ZINN_DIR: directory }, stderrPath };
+      const options = { runtime, cliPath: CLI_PATH, env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory }, stderrPath };
       const declined = await runCliInTerminal(["task", "delete", "BUILD-1"], { ...options, input: "n\n" });
       expect(declined.code).toBe(0);
       expect(declined.output).not.toContain("[y/N]");
@@ -284,7 +293,7 @@ for (const runtime of ["node", "bun"]) {
         const router = createRouter({ fail: { help: "Usage: zinn fail", async run() { throw new Error("async build failure"); } } });
         await router.route(["fail", "--json"]);
       });`;
-      const result = Bun.spawnSync([runtime, "--eval", code], { env: { ...process.env, ZINN_DIR: directory } });
+      const result = Bun.spawnSync([runtime, "--eval", code], { env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory } });
       expect(result.exitCode).toBe(1);
       expect(result.stdout.toString()).toBe("");
       expect(JSON.parse(result.stderr.toString()).error.message).toContain("async build failure");
@@ -294,7 +303,7 @@ for (const runtime of ["node", "bun"]) {
 
 test("the emitted bin runs directly with its Node shebang", () => {
   withDirectory((directory) => {
-    const result = Bun.spawnSync([CLI_PATH, "--version"], { env: { ...process.env, ZINN_DIR: directory } });
+    const result = Bun.spawnSync([CLI_PATH, "--version"], { env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory } });
     expect(result.exitCode).toBe(0);
     expect(result.stdout.toString().trim()).toBe(packageJson.version);
   });
@@ -314,7 +323,7 @@ test("the emitted bin ignores the run folder's bunfig.toml and .env", () => {
     writeFileSync(join(runFolder, ".env"), `ZINN_DIR=${dotenvStore}\n`);
 
     // Node and Bun keep a variable the launching environment set, so ZINN_DIR must be unset for a loaded .env to show.
-    const env: Record<string, string | undefined> = { ...process.env, HOME: home };
+    const env: Record<string, string | undefined> = { ...TEST_ENVIRONMENT, HOME: home };
     delete env.ZINN_DIR;
     const result = Bun.spawnSync([CLI_PATH, "project", "create", "BUILD", "--json"], { cwd: runFolder, env });
 
@@ -329,6 +338,7 @@ test("the emitted bin ignores the run folder's bunfig.toml and .env", () => {
 test("the CLI build checks against core declarations rather than source modules", () => {
   const result = Bun.spawnSync(["bunx", "--no-install", "tsc", "-p", join(packageDirectory, "tsconfig.build.json"), "--noEmit", "--listFiles"], {
     cwd: repositoryDirectory,
+    env: TEST_ENVIRONMENT,
   });
   expect(result.exitCode, result.stdout.toString() + result.stderr.toString()).toBe(0);
   expect(result.stdout.toString()).toContain("packages/core/dist/index.d.ts");
@@ -350,7 +360,7 @@ test("source entrypoints ignore leftover release output and development identiti
       builtCore: builtCore.readCoreReleaseMode(), sourceCore: sourceCore.readCoreReleaseMode()
     })));`;
     const readIdentities = () => {
-      const result = Bun.spawnSync(["bun", "--eval", code], { env: { ...process.env, ZINN_DIR: directory } });
+      const result = Bun.spawnSync(["bun", "--eval", code], { env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory } });
       expect(result.exitCode, result.stderr.toString()).toBe(0);
       return JSON.parse(result.stdout.toString());
     };
@@ -370,7 +380,7 @@ test("source entrypoints ignore leftover release output and development identiti
 
       expect(readIdentities()).toEqual({ builtCli: "published", sourceCli: "source", builtCore: "published", sourceCore: "source" });
       const sourceVersion = Bun.spawnSync(["bun", join(packageDirectory, "index.ts"), "--version"], {
-        env: { ...process.env, ZINN_DIR: directory },
+        env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory },
       });
       expect(sourceVersion.exitCode).toBe(0);
       expect(sourceVersion.stdout.toString().trim()).toBe(packageJson.version);

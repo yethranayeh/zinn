@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT } from "./test-isolation.ts";
 import { expect, test } from "bun:test";
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,7 +17,7 @@ import { runCli } from "../packages/cli/testing.ts";
 const REPOSITORY_DIRECTORY = fileURLToPath(new URL("..", import.meta.url));
 const PACK_CHECK_TIMEOUT_MS = 60_000;
 
-function run(command: string[], cwd: string, env = process.env) {
+function run(command: string[], cwd: string, env = TEST_ENVIRONMENT) {
   const result = Bun.spawnSync(command, { cwd, env });
   expect(result.exitCode, result.stdout.toString() + result.stderr.toString()).toBe(0);
   return result.stdout.toString();
@@ -129,31 +130,31 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
       runtime: process.execPath,
       entryPoint: join(cliDirectory, "index.ts"),
       packageDirectory: cliDirectory,
-      directory: join(root, "capabilities-source"), env: process.env,
+      directory: join(root, "capabilities-source"), env: TEST_ENVIRONMENT,
     });
     checkCapabilityDiscovery({
       runtime: process.execPath,
       entryPoint: join(cliDirectory, "dist/index.js"),
       packageDirectory: join(cliDirectory, "dist"),
-      directory: join(root, "capabilities-build"), env: process.env, expected: sourceContract,
+      directory: join(root, "capabilities-build"), env: TEST_ENVIRONMENT, expected: sourceContract,
     });
     for (const runtime of ["bun", "node"]) {
       const contract = checkCapabilityDiscovery({
         runtime: Bun.which(runtime)!, entryPoint: join(packedCli, "index.js"),
         packageDirectory: packedCli, directory: join(root, `capabilities-packed-${runtime}`),
-        env: process.env, expected: sourceContract,
+        env: TEST_ENVIRONMENT, expected: sourceContract,
       });
       mkdirSync(join(root, `capabilities-consumer-${runtime}`));
       checkCapabilityConsumer(contract, (args) => runCli(args, {
         runtime: Bun.which(runtime)!, cliPath: join(packedCli, "index.js"), cwd: root,
-        env: { ...process.env, ZINN_DIR: join(root, `capabilities-consumer-${runtime}`), ZINN_DEBUG: undefined, DEBUG: undefined },
+        env: { ...TEST_ENVIRONMENT, ZINN_DIR: join(root, `capabilities-consumer-${runtime}`), ZINN_DEBUG: undefined, DEBUG: undefined },
       }));
       checkSkillExamples({
         packageDirectory: packedCli,
         runtime: Bun.which(runtime)!,
         entryPoint: join(packedCli, "index.js"),
         directory: join(root, `skill-${runtime}`),
-        env: process.env,
+        env: TEST_ENVIRONMENT,
       });
     }
     const coreStagingDirectory = join(coreDirectory, JSON.parse(sourceSnapshots[0]!.manifest).publishConfig.directory);
@@ -190,7 +191,7 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
       const seed = openDatabase(databasePath);
       seedBaseline(seed);
       seed.close();
-      const env = { ...process.env, HOME: home, ZINN_DIR: store };
+      const env = { ...TEST_ENVIRONMENT, HOME: home, ZINN_DIR: store };
       run(["bun", join(packedCli, "index.js"), "project", "list", "--json"], home, env);
       let database = openDatabase(databasePath);
       expect(database.query<{ user_version: number }>("PRAGMA user_version").get()!.user_version).toBe(state.upgrades ? testMigrationVersion : BASELINE_VERSION);

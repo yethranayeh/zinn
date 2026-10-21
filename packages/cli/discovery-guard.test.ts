@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import { afterAll, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,7 +17,7 @@ if (node === null) {
   throw new Error("Node is required to check discovery isolation on both runtimes.");
 }
 const runtimes = [{ name: "Bun", path: process.execPath }, { name: "Node", path: node }];
-const env = { ...process.env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0" };
+const env = { ...TEST_ENVIRONMENT, BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0" };
 const timeoutMs = 5000;
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
