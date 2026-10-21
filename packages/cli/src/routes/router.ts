@@ -4,10 +4,12 @@ import { parseArgs } from "node:util";
 
 import { routerOptions, helpSpellings, versionSpellings, usageLabel } from "../input.js";
 import { getCommandAliases } from "./aliases.js";
+import { classifyFailure, CliError } from "../errors.js";
 
 import {
   dashValueHelp,
   diagnostic,
+  failureMessage,
   flushDiagnostics,
   isAllowLegacyReadFlag,
   isHelpFlag,
@@ -257,6 +259,21 @@ async function route(
     if (err instanceof UsageError) {
       err.help = getUsage(match.help);
       throw err;
+    }
+
+    if (match.command === "task search") {
+      const failure = classifyFailure(err);
+      const isMissingProject =
+        failure.code === "not_found" && failure.details?.entity === "project";
+
+      if (isMissingProject) {
+        throw new CliError(
+          failureMessage(err, "Search failed"),
+          failure.code,
+          failure.details,
+          getUsage(match.help),
+        );
+      }
     }
 
     const suggestFor = (flag: string) => match.guessedFlags?.[flag]?.(commandArgs);

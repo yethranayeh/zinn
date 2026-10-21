@@ -238,6 +238,8 @@ Each query matches the start of a word, ignoring case and accents, so `cafe` fin
 
 The query comes first, then the optional project key. An omitted key uses [defaultProject](/docs/settings), or every project when none is configured. `--all-projects` overrides the default.
 
+If the project key does not exist, the error includes the search usage line to clarify the argument order. With `--json`, this guidance is in `error.help`.
+
 If the whole query is an existing task key, such as `mdr-1`, that task comes first. Other results follow by relevance, with title matches weighted highest. Equally relevant tasks are ordered by project key, then task number.
 
 An exact task-key query overrides the configured default project. A project key supplied after the query still filters the search.

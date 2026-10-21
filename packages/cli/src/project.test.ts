@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -318,6 +318,59 @@ test("task-key search queries use the matching project instead of a default and 
     expect(conflict.code).toBe(1);
     expect(conflict.stdout).toBe("");
     expect(conflict.stderr).toContain("--all-projects");
+  });
+});
+
+test("task search reports missing projects with query-first usage and preserves error details", () => {
+  withTestDirectory((directory) => {
+    const { repository, localSettingsPath } = makeRepository(directory);
+    seedProjects(directory);
+    const invoke = (...args: Array<string>) => runZinnFrom(args, directory, repository);
+
+    for (const settings of [{}, { defaultProject: "DEF" }]) {
+      writeFileSync(localSettingsPath, JSON.stringify(settings));
+
+      const plain = invoke("task", "search", "DEF", "needle");
+      expect(plain.code).toBe(1);
+      expect(plain.stdout).toBe("");
+      expect(plain.stderr).toContain("needle");
+      expect(plain.stderr).toContain("zinn task search <query>");
+      expect(plain.stderr).toContain("<project-key>");
+      expect(plain.stderr.indexOf("needle")).toBeLessThan(plain.stderr.indexOf("<query>"));
+
+      const json = invoke("task", "search", "DEF", "needle", "--json");
+      expect(json.code).toBe(1);
+      expect(json.stdout).toBe("");
+      const failure = errorDocumentSchema.parse(JSON.parse(json.stderr)).error;
+      expect(failure).toMatchObject({
+        code: "not_found",
+        details: { entity: "project", key: "needle", source: "explicit" },
+      });
+      expect(failure.help).toContain("zinn task search <query>");
+      expect(failure.help).toContain("<project-key>");
+      expect(plain.stderr).toBe(`${failure.message}\n\n${failure.help}\n`);
+
+      const correct = invoke("task", "search", "needle", "DEF", "--json");
+      expect(correct.code).toBe(0);
+      expect(correct.stderr).toBe("");
+      expect(JSON.parse(correct.stdout).map((task: { key: string }) => task.key)).toEqual(["DEF-1"]);
+    }
+
+    writeFileSync(localSettingsPath, JSON.stringify({ defaultProject: "NOPE" }));
+    const unknownDefault = invoke("task", "search", "needle", "--json");
+    expect(unknownDefault.code).toBe(1);
+    expect(unknownDefault.stdout).toBe("");
+    const failure = errorDocumentSchema.parse(JSON.parse(unknownDefault.stderr)).error;
+    expect(failure).toMatchObject({
+      code: "not_found",
+      details: { entity: "project", key: "NOPE", source: "defaultProject", settingsPath: realpathSync(localSettingsPath) },
+    });
+    expect(failure.help).toContain("zinn task search <query>");
+    expect(failure.help).toContain("<project-key>");
+
+    const otherCommand = invoke("task", "list", "needle", "--json");
+    expect(otherCommand.code).toBe(1);
+    expect(errorDocumentSchema.parse(JSON.parse(otherCommand.stderr)).error.help).toBeUndefined();
   });
 });
 
