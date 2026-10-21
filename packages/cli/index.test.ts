@@ -2340,7 +2340,7 @@ test("task comments can be created, listed, edited, viewed, and deleted", () => 
     expect(
       runZinn(["task", "comment", "create", "NOTE-1", "--text", "Line one\nLine two"], testDir)
         .stdout,
-    ).toBe("NOTE-1#4 | Line one\n           Line two\n");
+    ).toBe("NOTE-1#4 | Line one…\n");
 
     withTestDb(testDir, (db) => {
       db.run("UPDATE comment SET created_at = ? WHERE number = 4", [
@@ -2354,6 +2354,82 @@ test("task comments can be created, listed, edited, viewed, and deleted", () => 
         TZ: "Europe/Berlin",
       }).stdout,
     ).toContain(`${multilinePrefix}Line one\n${" ".repeat(multilinePrefix.length)}Line two\n`);
+  });
+});
+
+test("comment create and edit cap human echoes while reads and JSON retain the full text", () => {
+  withIsolatedZinnDir((directory) => {
+    const run = (...args: Array<string>) => runZinn(args, directory);
+    expect(run("project", "create", "NOTE").code).toBe(0);
+    expect(run("task", "create", "NOTE", "--title", "Commented task").code).toBe(0);
+
+    const cases = [
+      { text: "Short comment", preview: "Short comment" },
+      { text: "x".repeat(80), preview: "x".repeat(80) },
+      { text: "x".repeat(81), preview: `${"x".repeat(79)}…` },
+      { text: "First line\nLater text", preview: "First line…" },
+      { text: `${"x".repeat(80)}\r\nLater text`, preview: `${"x".repeat(79)}…` },
+      { text: "\nLater text", preview: "…" },
+    ];
+    for (const { text, preview } of cases) {
+      const created = run("task", "comment", "create", "NOTE-1", "--text", text);
+      expect(created.code).toBe(0);
+      expect(created.stderr).toBe("");
+      expect(created.stdout.trimEnd().split("\n")).toHaveLength(1);
+      expect(created.stdout).toEndWith(` | ${preview}\n`);
+
+      const key = created.stdout.split(" | ")[0]!;
+      const storedText = text.replaceAll("\r\n", "\n");
+      const json = run("task", "comment", "create", "NOTE-1", "--text", text, "--json");
+      expect(json.code).toBe(0);
+      expect(json.stderr).toBe("");
+      const jsonComment = JSON.parse(json.stdout);
+      expect(jsonComment).toEqual({
+        key: expect.stringMatching(/^NOTE-1#\d+$/),
+        text: storedText,
+        created_at: expect.any(Number),
+        updated_at: expect.any(Number),
+      });
+
+      const editText = `Edited ${text}`;
+      const edited = run("task", "comment", "edit", key, "--text", editText);
+      expect(edited.code).toBe(0);
+      expect(edited.stderr).toBe("");
+      const echo = edited.stdout.slice(`${key} | `.length).trimEnd();
+      expect(edited.stdout).toStartWith(`${key} | `);
+      expect(echo.split("\n")).toHaveLength(1);
+      expect(echo.length).toBeLessThanOrEqual(80);
+      if (editText.length > 80 || editText.includes("\n")) {
+        expect(echo).toEndWith("…");
+      } else {
+        expect(echo).toBe(editText);
+      }
+
+      const editedJson = run("task", "comment", "edit", key, "--text", text, "--json");
+      expect(editedJson.code).toBe(0);
+      expect(editedJson.stderr).toBe("");
+      const comment = JSON.parse(editedJson.stdout);
+      expect(comment).toEqual({
+        key, text: storedText, created_at: expect.any(Number), updated_at: expect.any(Number),
+      });
+      const viewed = run("task", "comment", "view", key, "--json");
+      expect(viewed.code).toBe(0);
+      expect(JSON.parse(viewed.stdout)).toEqual(comment);
+    }
+
+    const fullText = "First line\n" + "Full comment text. ".repeat(20);
+    const created = run("task", "comment", "create", "NOTE-1", "--text", fullText, "--json");
+    const { key } = JSON.parse(created.stdout);
+    for (const args of [
+      ["task", "comment", "view", key],
+      ["task", "comment", "list", "NOTE-1"],
+      ["task", "view", "NOTE-1"],
+    ]) {
+      const result = run(...args);
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toContain(fullText.split("\n")[1]!);
+    }
   });
 });
 
@@ -2450,7 +2526,7 @@ test("comment lists pad the key so #1 lines up with #10 and keep continuation li
     });
 
     // One comment on its own has nothing to line up with and prints no timestamp.
-    expect(tenth.stdout).toBe("PAD-1#10 | Comment 10\n           second line\n");
+    expect(tenth.stdout).toBe("PAD-1#10 | Comment 10…\n");
 
     const timestamp = "2026-09-25 20:07 +02:00";
     // Later lines start under the text of the first line, after the padded key.
@@ -4292,6 +4368,33 @@ test("label text output colors the name in a terminal and names the color when p
     const listedJson = run("label", "list", "--json").stdout;
     expect(listedJson).not.toContain("\x1b[");
     expect(JSON.parse(listedJson)).toContainEqual({ name: "bug", color: "red", description: "Broken" });
+  });
+});
+
+test("label create and edit cap description echoes while lists and JSON retain the full text", () => {
+  withIsolatedZinnDir((directory) => {
+    const run = (...args: Array<string>) => runZinn(args, directory);
+    const description = `${"x".repeat(100)}\nFull description`;
+    const preview = `${"x".repeat(79)}…`;
+    const created = run("label", "create", "bug", "--description", description);
+    expect(created.code).toBe(0);
+    expect(created.stderr).toBe("");
+    expect(created.stdout).toEndWith(` | ${preview}\n`);
+
+    const edited = run("label", "edit", "bug", "--description", `First line\n${description}`);
+    expect(edited.code).toBe(0);
+    expect(edited.stderr).toBe("");
+    expect(edited.stdout).toEndWith(" | First line…\n");
+    expect(run("label", "list").stdout).toContain(description);
+
+    for (const args of [["label", "create", "docs"], ["label", "edit", "bug"]]) {
+      const result = run(...args, "--description", description, "--json");
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(JSON.parse(result.stdout)).toEqual({
+        name: args[2], color: "white", description,
+      });
+    }
   });
 });
 

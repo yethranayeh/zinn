@@ -33,20 +33,30 @@ import {
 import { currentActor } from "../actor.js";
 import { isColorEnabled } from "../presentation/color.js";
 import { formatRows } from "../presentation/row-layout.js";
+import { formatDescriptionPreview } from "../presentation/description-presentation.js";
 
 function presentLabel(labelMatch: Label): PresentedLabel {
   return { name: labelMatch.name, color: labelMatch.color, description: labelMatch.description };
 }
 
-function formatLabel(presented: PresentedLabel) {
-  return formatLabelList([presented]);
+function formatLabel(
+  presented: PresentedLabel,
+  options: { showsDescriptionPreview?: boolean } = {},
+) {
+  return formatLabelList([presented], options);
 }
 
-function formatLabelList(presentedLabels: Array<PresentedLabel>) {
+function formatLabelList(
+  presentedLabels: Array<PresentedLabel>,
+  options: { showsDescriptionPreview?: boolean } = {},
+) {
   return formatRows(
     presentedLabels.map((presented) => {
-      const descriptionCells: Array<RowCell> =
-        presented.description == null ? [] : [{ text: presented.description }];
+      const description =
+        options.showsDescriptionPreview && presented.description != null
+          ? formatDescriptionPreview(presented.description, { firstLineOnly: true })
+          : presented.description;
+      const descriptionCells: Array<RowCell> = description == null ? [] : [{ text: description }];
 
       /**
        * The colored name shows the color, and if the environment
@@ -135,13 +145,16 @@ export const labelRouter = {
       const input = labelCreateSchema.parse({ name: positionals[0], ...values });
       const created = label.create(input, currentActor());
 
-      output(presentLabel(created), formatLabel);
+      output(presentLabel(created), (entry) =>
+        formatLabel(entry, { showsDescriptionPreview: true }),
+      );
     },
     help: `${generateCommandUsage("label create", labelInputs.create)}
 
 Create a global label. Names preserve casing, but uniqueness is case-insensitive.
 Names are trimmed and cannot be blank or contain line breaks or control characters.
 Description is optional.
+The printed result is a preview. 'label list' and --json show the full text.
 
 Color defaults to white.
 Valid colors: ${labelInputs.create.options.color.value.choices.join(", ")}.
@@ -197,12 +210,15 @@ List all global label definitions.`,
       });
       const edited = label.edit(input, currentActor());
 
-      output(presentLabel(edited), formatLabel);
+      output(presentLabel(edited), (entry) =>
+        formatLabel(entry, { showsDescriptionPreview: true }),
+      );
     },
     help: `${generateCommandUsage("label edit", labelInputs.edit)}
 
 Change specified fields.
 Provide at least one edit flag. Use --description '' to clear the description.
+Description echoes use a preview; label list and --json keep the full text.
 Valid colors: ${labelInputs.edit.options.color.value.choices.join(", ")}.
 
 ${textEditHelp("--description")}

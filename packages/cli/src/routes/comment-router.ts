@@ -27,6 +27,7 @@ import {
 import { currentActor } from "../actor.js";
 import { formatRows } from "../presentation/row-layout.js";
 import { formatLocalTime } from "../presentation/time.js";
+import { formatDescriptionPreview } from "../presentation/description-presentation.js";
 
 function presentComment(commentMatch: CommentWithKey): PresentedComment {
   return {
@@ -41,16 +42,26 @@ export function presentComments(taskKey: string) {
   return comment.getAll(taskKey).map(presentComment);
 }
 
-function commentRow(commentMatch: PresentedComment, options: { showsCreatedAt: boolean }) {
+function commentRow(
+  commentMatch: PresentedComment,
+  options: { showsCreatedAt: boolean; showsTextPreview?: boolean },
+) {
   const createdAtCells: Array<RowCell> = options.showsCreatedAt
     ? [{ text: formatLocalTime(commentMatch.created_at), style: "dim" }]
     : [];
 
-  return [{ text: commentMatch.key }, ...createdAtCells, { text: commentMatch.text }];
+  const text = options.showsTextPreview
+    ? formatDescriptionPreview(commentMatch.text, { firstLineOnly: true })
+    : commentMatch.text;
+
+  return [{ text: commentMatch.key }, ...createdAtCells, { text }];
 }
 
-export function formatComment(commentMatch: PresentedComment) {
-  return formatRows([commentRow(commentMatch, { showsCreatedAt: false })], {
+export function formatComment(
+  commentMatch: PresentedComment,
+  options: { showsTextPreview?: boolean } = {},
+) {
+  return formatRows([commentRow(commentMatch, { ...options, showsCreatedAt: false })], {
     indentsContinuationLines: true,
   });
 }
@@ -174,12 +185,13 @@ export const commentRouter = {
     run: (args) => {
       const props = parseTextArgs(args);
       const created = comment.create({ taskKey: props.key, text: props.text }, currentActor());
-      output(presentComment(created), formatComment);
+      output(presentComment(created), (entry) => formatComment(entry, { showsTextPreview: true }));
     },
     help: `${generateCommandUsage("task comment create", commentInputs.create)}
 
 Add a comment to a task. Comment text cannot be blank.
 Archived tasks can be commented on.
+The printed result is a preview. 'task comment view' shows the full text. --json keeps the full text.
 
 ${dashValueHelp("--text")}
 
@@ -240,11 +252,12 @@ Example: zinn task comment view 'MDR-1#1'`,
     run: (args) => {
       const props = parseCommentEditArgs(args);
       const edited = comment.edit({ commentKey: props.key, text: props.text }, currentActor());
-      output(presentComment(edited), formatComment);
+      output(presentComment(edited), (entry) => formatComment(entry, { showsTextPreview: true }));
     },
     help: `${generateCommandUsage("task comment edit", commentInputs.edit)}
 
 Replace a comment's text. Comment text cannot be blank.
+The printed result is a preview. 'task comment view' shows the full text. --json keeps the full text.
 
 ${textEditHelp("--text")}
 
