@@ -1,7 +1,9 @@
-import type { Database } from "../sqlite/database";
-
 import { expect, test } from "bun:test";
-
+import { strict as assert } from "node:assert";
+import { label, project, relation, task } from "../../index";
+import { getDb } from "../db";
+import type { Database } from "../sqlite/database";
+import { withStore } from "../testing";
 import { createSchema } from "./runner";
 import { schemaObjects, withDatabase, withDirectory } from "./testing";
 
@@ -166,48 +168,43 @@ test("structural constraints still reject", () => {
     // ON DELETE CASCADE still removes the relation with its task
     db.exec("DELETE FROM task WHERE id = 't2'");
     expect(
-      db.query("SELECT COUNT(*) AS count FROM task_relations").get(),
+      db.query<{ count: number }>("SELECT COUNT(*) AS count FROM task_relations").get(),
     ).toEqual({ count: 0 });
   });
 });
 
 test("core rejects values outside each vocabulary before SQL and writes nothing", () => {
   withDirectory((directory) => {
-    const result = Bun.spawnSync(
-      [
-        process.execPath,
-        "--eval",
-        `
-      import { strict as assert } from "node:assert";
-      import { project, task, label, relation } from ${JSON.stringify(new URL("../../index.ts", import.meta.url).pathname)};
-      import { getDb } from ${JSON.stringify(new URL("../db.ts", import.meta.url).pathname)};
-      const actor = { name: "Test Human", email: null, kind: "human" };
+    withStore(directory, () => {
+
+      const actor = { name: "Test Human", email: null, kind: "human" as const };
       const app = project.create({ key: "APP" }, actor);
       const first = task.create({ project_id: app.id, title: "First" }, actor);
       const second = task.create({ project_id: app.id, title: "Second" }, actor);
-      const rowCount = (table) => getDb().query("SELECT COUNT(*) AS count FROM " + table).get().count;
+      const rowCount = (table: string) => getDb().query<{ count: number }>("SELECT COUNT(*) AS count FROM " + table).get()!.count;
       const activityBefore = rowCount("activity");
 
+      // @ts-expect-error Exercise runtime validation of invalid input.
       assert.throws(() => task.create({ project_id: app.id, title: "Bad", priority: "someday" }, actor));
+      // @ts-expect-error Exercise runtime validation of invalid input.
       assert.throws(() => task.edit({ taskKey: first.key, priority: "someday" }, actor));
+      // @ts-expect-error Exercise runtime validation of invalid input.
       assert.throws(() => label.create({ name: "bad", color: "purple" }, actor));
       label.create({ name: "good" }, actor);
+      // @ts-expect-error Exercise runtime validation of invalid input.
       assert.throws(() => label.edit({ labelName: "good", color: "purple" }, actor));
+      // @ts-expect-error Exercise runtime validation of invalid input.
       assert.throws(() => relation.create({ sourceTaskKey: first.key, targetTaskKey: second.key, relation_type: "blocks" }, actor));
+      // @ts-expect-error Exercise runtime validation of invalid input.
       assert.throws(() => project.create({ key: "BAD" }, { ...actor, kind: "robot" }));
 
       assert.equal(rowCount("task"), 2);
-      assert.equal(getDb().query("SELECT COUNT(*) AS count FROM task WHERE priority IS NOT NULL").get().count, 0);
-      assert.equal(label.getByName("good").color, "white");
+      assert.equal(getDb().query<{ count: number }>("SELECT COUNT(*) AS count FROM task WHERE priority IS NOT NULL").get()!.count, 0);
+      assert.equal(label.getByName("good")!.color, "white");
       assert.equal(rowCount("task_relations"), 0);
       assert.equal(rowCount("project"), 1);
       assert.equal(rowCount("activity"), activityBefore + 1);
-    `,
-      ],
-      { env: { ...process.env, ZINN_DIR: directory } },
-    );
+    });
 
-    expect(result.stderr.toString()).toBe("");
-    expect(result.exitCode).toBe(0);
   });
 });

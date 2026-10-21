@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, wri
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensureDataDirectory } from "./config";
+import { withStore } from "./testing";
 
 test("data directory creation tolerates concurrent callers", async () => {
   const directory = mkdtempSync(join(tmpdir(), "zinn-config-"));
@@ -70,25 +72,18 @@ test("data directory creation leaves an existing directory and its contents alon
   writeFileSync(join(directory, "data", "existing.txt"), content);
 
   try {
-    const result = Bun.spawnSync([process.execPath, "--eval", `
-      import { ensureDataDirectory } from ${JSON.stringify(configModule)};
+    withStore(directory, () => {
       ensureDataDirectory();
       ensureDataDirectory();
-    `], { env: { ...process.env, ZINN_DIR: directory } });
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr.toString()).toBe("");
+    });
     expect(readFileSync(join(directory, "data", "existing.txt"), "utf8")).toBe(content);
     expect(existsSync(join(directory, "settings.json"))).toBe(false);
 
     const blockedStore = join(directory, "blocked");
     writeFileSync(blockedStore, "a file cannot contain a data directory");
-    const blocked = Bun.spawnSync([process.execPath, "--eval", `
-      import { strict as assert } from "node:assert";
-      import { ensureDataDirectory } from ${JSON.stringify(configModule)};
-      assert.throws(() => ensureDataDirectory(), (error) => error.kind === "storage" && error.facts.reason === "invalid_storage" && error.facts.path === ${JSON.stringify(blockedStore)});
-    `], { env: { ...process.env, ZINN_DIR: blockedStore } });
-    expect(blocked.exitCode).toBe(0);
-    expect(blocked.stderr.toString()).toBe("");
+    withStore(blockedStore, () => {
+      expect(() => ensureDataDirectory()).toThrow(expect.objectContaining({ kind: "storage", facts: { reason: "invalid_storage", path: blockedStore } }));
+    });
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

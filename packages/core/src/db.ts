@@ -10,7 +10,7 @@ import type {
 import { existsSync } from "node:fs";
 import { openDatabase } from "#sqlite";
 
-import { getStorage } from "./constant.js";
+import { getStorage, resetStorageForTests } from "./constant.js";
 import { ensureDataDirectory } from "./config.js";
 import { applyConnectionSettings } from "./connection.js";
 import { classifyConnection } from "./migrations/classify.js";
@@ -35,6 +35,15 @@ let readOnly: { reason: ReadOnlyReason; facts: DatabaseFacts } | null = null;
 
 const INITIALIZATION_RETRY_BUDGET_MS = 1_000;
 const INITIALIZATION_ATTEMPTS = 5;
+
+/** Closes the cached connection before clearing process state for internal tests. */
+export function resetDatabaseForTests() {
+  db?.close();
+  db = null;
+  policy = DEFAULT_OPEN_POLICY;
+  readOnly = null;
+  resetStorageForTests();
+}
 
 /** Sets how core opens the database. A client calls it once, before anything opens the database. */
 export function configureDatabase(openPolicy: OpenPolicy) {

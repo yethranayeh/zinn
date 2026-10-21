@@ -1,92 +1,83 @@
-import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import * as adapter from "#sqlite";
+import { expect, spyOn, test } from "bun:test";
+import { strict as assert } from "node:assert";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { getStorage } from "./constant";
+import { assertWritable, configureDatabase, getDb, resetDatabaseForTests } from "./db";
+import { ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./migrations/open-policy";
+import { createSchema } from "./migrations/runner";
+import type { OpenOptions } from "./sqlite/database";
+import { openWith, SqliteError } from "./sqlite/database";
+import { withTestStore } from "./testing";
 
 type ControlledFailure = { code: string; errno: number } | { apiError: true };
 
-function runInitializationCheck(failure: ControlledFailure, failures: number, delayMs = 0) {
-  const directory = mkdtempSync(join(tmpdir(), "zinn-initialization-"));
-  const modulePath = (path: string) => JSON.stringify(fileURLToPath(new URL(path, import.meta.url)));
+function runInitializationCheck(inputFailure: ControlledFailure, failures: number, delayMs = 0) {
+  return withTestStore(() => {
 
-  try {
-    // Fails startup at the adapter boundary: the real bun:sqlite connection, with its journal_mode
-    // PRAGMA throwing an error shaped like bun:sqlite's (name and errno) for the code under test.
-    const result = Bun.spawnSync([process.execPath, "--eval", `
-      import { mock } from "bun:test";
-      import * as adapter from ${modulePath("./sqlite/bun.ts")};
-      import { openWith, SqliteError } from ${modulePath("./sqlite/database.ts")};
-      const failureSpec = ${JSON.stringify(failure)};
-      function controlledFailure() {
-        if (failureSpec.apiError) {
-          return Object.assign(new TypeError("controlled startup failure"), { code: "SQLITE_BUSY" });
-        }
-        return Object.assign(new Error("controlled startup failure"), {
-          name: "SQLiteError", errno: failureSpec.errno,
-        });
+    const failureSpec = inputFailure;
+    function controlledFailure() {
+      if ("apiError" in failureSpec) {
+        return Object.assign(new TypeError("controlled startup failure"), { code: "SQLITE_BUSY" });
       }
-      const failure = controlledFailure();
-      let remaining = ${failures};
-      let opened = 0;
-      let closed = 0;
-      const driver = {
-        connect(path, options) {
-          const connection = adapter.driver.connect(path, options);
-          opened++;
-          return {
-            prepare: (sql) => connection.prepare(sql),
-            exec(sql) {
-              if (sql.includes("journal_mode") && remaining > 0) {
-                remaining--;
-                Bun.sleepSync(${delayMs});
-                throw failure;
-              }
-              connection.exec(sql);
-            },
-            get inTransaction() {
-              return connection.inTransaction;
-            },
-            close() {
-              closed++;
-              connection.close();
-            },
-          };
-        },
-        resultCode: adapter.driver.resultCode,
+      return Object.assign(new Error("controlled startup failure"), {
+        name: "SQLiteError", errno: failureSpec.errno,
+      });
+    }
+    const failure = controlledFailure();
+    let remaining = failures;
+    let opened = 0;
+    let closed = 0;
+    const driver = {
+      connect(path: string, options: OpenOptions) {
+        const connection = adapter.driver.connect(path, options);
+        opened++;
+        return {
+          prepare: (sql: string) => connection.prepare(sql),
+          exec(sql: string) {
+            if (sql.includes("journal_mode") && remaining > 0) {
+              remaining--;
+              Bun.sleepSync(delayMs);
+              throw failure;
+            }
+            connection.exec(sql);
+          },
+          get inTransaction() {
+            return connection.inTransaction;
+          },
+          close() {
+            closed++;
+            connection.close();
+          },
+        };
+      },
+      resultCode: adapter.driver.resultCode,
+    };
+    const mockedOpen = spyOn(adapter, "openDatabase").mockImplementation((path, options) => openWith(driver, path, options));
+    const began = performance.now();
+    try {
+
+      const db = getDb();
+      const cached = getDb() === db;
+      const timeout = db.query<{ timeout: number }>("PRAGMA busy_timeout").get()!.timeout;
+      const foreignKeys = db.query<{ foreign_keys: number }>("PRAGMA foreign_keys").get()!.foreign_keys;
+      const synchronous = db.query<{ synchronous: number }>("PRAGMA synchronous").get()!.synchronous;
+      const fullfsync = db.query<{ fullfsync: number }>("PRAGMA fullfsync").get()!.fullfsync;
+      db.close();
+      return { ok: true, opened, closed, cached, timeout, foreignKeys, synchronous, fullfsync };
+    } catch (error) {
+      assert.ok(error instanceof Error);
+      const cause = error.cause;
+      const normalized = cause instanceof SqliteError;
+      return {
+        ok: false, opened, closed, message: error.message, code: cause instanceof SqliteError ? cause.code : undefined,
+        errcode: cause instanceof SqliteError ? cause.errcode : undefined, normalized,
+        retainedCause: (cause instanceof SqliteError ? cause.cause : cause) === failure,
+        elapsedMs: performance.now() - began,
       };
-      mock.module(${modulePath("./sqlite/bun.ts")}, () => ({
-        ...adapter,
-        openDatabase: (path, options) => openWith(driver, path, options),
-      }));
-      const began = performance.now();
-      try {
-        const { getDb } = await import(${modulePath("./db.ts")});
-        const db = getDb();
-        const cached = getDb() === db;
-        const timeout = db.query("PRAGMA busy_timeout").get().timeout;
-        const foreignKeys = db.query("PRAGMA foreign_keys").get().foreign_keys;
-        const synchronous = db.query("PRAGMA synchronous").get().synchronous;
-        const fullfsync = db.query("PRAGMA fullfsync").get().fullfsync;
-        db.close();
-        console.log(JSON.stringify({ ok: true, opened, closed, cached, timeout, foreignKeys, synchronous, fullfsync }));
-      } catch (error) {
-        const normalized = error.cause instanceof SqliteError;
-        console.log(JSON.stringify({
-          ok: false, opened, closed, message: error.message, code: error.cause?.code,
-          errcode: error.cause?.errcode, normalized,
-          retainedCause: (normalized ? error.cause.cause : error.cause) === failure,
-          elapsedMs: performance.now() - began,
-        }));
-      }
-    `], { env: { ...process.env, ZINN_DIR: directory } });
-
-    expect(result.stderr.toString()).toBe("");
-    expect(result.exitCode).toBe(0);
-    return JSON.parse(result.stdout.toString());
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
+    } finally { mockedOpen.mockRestore(); }
+  });
 }
 
 const SQLITE_BUSY = { code: "SQLITE_BUSY", errno: 5 };
@@ -151,4 +142,76 @@ test("initialization does not retry an error that is not a SQLite failure", () =
   expect(result.closed).toBe(1);
   expect(result.normalized).toBe(false);
   expect(result.retainedCause).toBe(true);
+});
+
+test("reset closes connections and prepared statements before selecting another store", () => {
+  withTestStore((directory) => {
+    const originalStorage = getStorage();
+    const original = getDb();
+    original.exec("CREATE TABLE reset_test (value TEXT); INSERT INTO reset_test VALUES ('kept')");
+    const statement = original.query<{ value: string }>("SELECT value FROM reset_test");
+    expect(statement.get()).toEqual({ value: "kept" });
+    const next = join(directory, "next");
+    mkdirSync(next);
+    process.env.ZINN_DIR = next;
+    expect(getStorage()).toBe(originalStorage);
+    expect(getDb()).toBe(original);
+
+    resetDatabaseForTests();
+    resetDatabaseForTests();
+    expect(() => original.exec("SELECT 1")).toThrow();
+    expect(() => statement.get()).toThrow();
+    expect(getStorage().directory).toBe(next);
+    expect(getDb()).not.toBe(original);
+    expect(getDb().query("SELECT name FROM sqlite_schema WHERE name = 'reset_test'").all()).toEqual([]);
+
+    resetDatabaseForTests();
+    process.env.ZINN_DIR = directory;
+    expect(getDb().query("SELECT value FROM reset_test").get()).toEqual({ value: "kept" });
+  });
+});
+
+test("reset clears the opening policy and read-only state", () => {
+  withTestStore((directory) => {
+    const path = getStorage().databasePath;
+    mkdirSync(getStorage().dataDirectory);
+    const fixture = adapter.openDatabase(path);
+    try {
+      createSchema(fixture);
+      fixture.exec("PRAGMA user_version = 0");
+    } finally {
+      fixture.close();
+    }
+    configureDatabase({ client: "test", version: "1", executable: "/test/zinn", release: "source", allowsLegacyRead: true });
+    getDb();
+    expect(() => assertWritable()).toThrow(ReadOnlyDatabaseError);
+    resetDatabaseForTests();
+    expect(() => getDb()).toThrow(UnmarkedDatabaseError);
+
+    const fresh = join(directory, "fresh");
+    mkdirSync(fresh);
+    resetDatabaseForTests();
+    process.env.ZINN_DIR = fresh;
+    expect(() => assertWritable()).not.toThrow();
+  });
+});
+
+test("a failed close leaves the connection and selected store available for cleanup", () => {
+  withTestStore(() => {
+    const storage = getStorage();
+    const connection = getDb();
+    const failure = new Error("controlled close failure");
+    const close = spyOn(connection, "close").mockImplementation(() => { throw failure; });
+    try {
+      expect(() => resetDatabaseForTests()).toThrow(failure);
+      expect(getDb()).toBe(connection);
+      expect(getStorage()).toBe(storage);
+      expect(() => configureDatabase({ client: "test", version: "1", executable: "/test/zinn", release: "source", allowsLegacyRead: false })).toThrow();
+      expect(connection.query("SELECT 1 AS value").get()).toEqual({ value: 1 });
+    } finally {
+      close.mockRestore();
+    }
+    resetDatabaseForTests();
+    expect(() => connection.exec("SELECT 1")).toThrow();
+  });
 });

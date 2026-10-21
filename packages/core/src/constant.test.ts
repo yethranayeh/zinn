@@ -1,56 +1,37 @@
 import { expect, test } from "bun:test";
+import { strict as assert } from "node:assert";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getStorage, resolveStorage } from "./constant";
+import { CoreError } from "./errors";
+import { withEnvironment } from "./testing";
 
-import { resolveStorage } from "./constant";
-
-// ? ZINN-172: a test run that misses ZINN_DIR must fail, not fall back to the user's own database.
-// ? Each child only imports and resolves, which reads and writes no files, so a broken guard cannot reach ~/.zinn.
-const constantModule = JSON.stringify(fileURLToPath(new URL("./constant.ts", import.meta.url)));
+// Resolution only reads settings; these cases never open a database.
+const importFixture = fileURLToPath(new URL("./import/testing.ts", import.meta.url));
 const USER_HOME = homedir();
 
-function resolveMainDir(environment: Record<string, string | undefined>) {
-  const childEnvironment: Record<string, string | undefined> = { ...process.env, ...environment };
-  delete childEnvironment.ZINN_DIR;
-  for (const [name, value] of Object.entries(childEnvironment)) {
-    if (value === undefined) {
-      delete childEnvironment[name];
-    }
-  }
-
-  // ? A temporary cwd, so a zinn.local.json in the checkout running the tests cannot choose the store.
+function withResolution<T>(environment: Record<string, string | undefined>, check: () => T): T {
   const cwd = mkdtempSync(join(tmpdir(), "zinn-constant-cwd-"));
-
   try {
-    const result = Bun.spawnSync([process.execPath, "--eval", `
-      const { getStorage } = await import(${constantModule});
-      console.log(getStorage().directory);
-    `], { env: childEnvironment, cwd });
-
-    return { code: result.exitCode, stdout: result.stdout.toString().trim(), stderr: result.stderr.toString() };
+    return withEnvironment({ ...environment, ZINN_DIR: undefined }, check, cwd);
   } finally {
     rmSync(cwd, { recursive: true, force: true });
   }
 }
 
 test("a test run without ZINN_DIR refuses the user's own default folder", () => {
-  const result = resolveMainDir({ NODE_ENV: "test", HOME: USER_HOME });
-
-  expect(result.code).not.toBe(0);
-  expect(result.stdout).toBe("");
-  expect(result.stderr).toContain(join(USER_HOME, ".zinn"));
+  withResolution({ NODE_ENV: "test", HOME: USER_HOME }, () => {
+    expect(() => getStorage()).toThrow(join(USER_HOME, ".zinn"));
+  });
 });
 
 test("a test run with a temporary HOME gets that HOME's default folder", () => {
   const home = mkdtempSync(join(tmpdir(), "zinn-constant-home-"));
-
   try {
-    expect(resolveMainDir({ NODE_ENV: "test", HOME: home })).toEqual({
-      code: 0,
-      stdout: join(home, ".zinn"),
-      stderr: "",
+    withResolution({ NODE_ENV: "test", HOME: home }, () => {
+      expect(getStorage().directory).toBe(join(home, ".zinn"));
     });
   } finally {
     rmSync(home, { recursive: true, force: true });
@@ -58,10 +39,8 @@ test("a test run with a temporary HOME gets that HOME's default folder", () => {
 });
 
 test("outside a test run the user's own default folder is used", () => {
-  expect(resolveMainDir({ NODE_ENV: undefined, HOME: USER_HOME })).toEqual({
-    code: 0,
-    stdout: join(USER_HOME, ".zinn"),
-    stderr: "",
+  withResolution({ NODE_ENV: undefined, HOME: USER_HOME }, () => {
+    expect(getStorage().directory).toBe(join(USER_HOME, ".zinn"));
   });
 });
 
@@ -113,12 +92,7 @@ test("importing core resolves nothing, so a ZINN_DIR set after the import is the
 
   try {
     // ? Without ZINN_DIR at import, an eager resolution would throw the test-run refusal for this HOME.
-    const result = Bun.spawnSync([process.execPath, "--eval", `
-      const core = await import(${coreModule});
-      process.env.ZINN_DIR = ${JSON.stringify(later)};
-      const { directory, source } = core.getStorage();
-      console.log(JSON.stringify({ directory, source, sameOnReuse: core.getStorage() === core.getStorage() }));
-    `], { env: { ...childEnvironment, NODE_ENV: "test", HOME: USER_HOME }, cwd: directory });
+    const result = Bun.spawnSync([process.execPath, importFixture, "environment", later], { env: { ...childEnvironment, NODE_ENV: "test", HOME: USER_HOME }, cwd: directory });
 
     expect(result.stderr.toString()).toBe("");
     expect(result.exitCode).toBe(0);
@@ -137,27 +111,23 @@ test("a refused store is not cached, and its mkdir hint handles spaces and shell
   const selected = join(directory, "store with ' quote");
 
   try {
-    const result = Bun.spawnSync([process.execPath, "--eval", `
-      import { strict as assert } from "node:assert";
-      import { existsSync } from "node:fs";
-      import { getStorage } from ${constantModule};
-      let refusal;
+    withEnvironment({ ZINN_DIR: selected }, () => {
+      let refusal: unknown;
       try {
         getStorage();
       } catch (error) {
         refusal = error;
       }
+      assert.ok(refusal instanceof CoreError);
       assert.equal(refusal.kind, "storage");
       assert.equal(refusal.facts.reason, "invalid_storage");
-      assert.equal(refusal.facts.path, process.env.ZINN_DIR);
-      assert.equal(existsSync(process.env.ZINN_DIR), false);
-      const command = refusal.message.match(/\x60(mkdir -p [^\x60]+)\x60/)[1];
+      assert.equal(refusal.facts.path, selected);
+      assert.equal(existsSync(selected), false);
+      const command = refusal.message.match(/`(mkdir -p [^`]+)`/)![1]!;
       assert.equal(Bun.spawnSync(["/bin/sh", "-c", command]).exitCode, 0);
-      assert.equal(getStorage().directory, process.env.ZINN_DIR);
+      assert.equal(getStorage().directory, selected);
       assert.equal(existsSync(getStorage().dataDirectory), false);
-    `], { cwd: directory, env: { ...process.env, ZINN_DIR: selected } });
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr.toString()).toBe("");
+    }, directory);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -358,14 +328,7 @@ test("importing core reads no settings file, so a zinn.local.json written after 
     mkdirSync(join(repository, "store"));
 
     // ? The child starts in an empty folder, then writes the file and moves into the repository.
-    const result = Bun.spawnSync([process.execPath, "--eval", `
-      const { writeFileSync } = await import("node:fs");
-      const core = await import(${coreModule});
-      writeFileSync(${JSON.stringify(localFile)}, JSON.stringify({ storage: { directory: "store" } }));
-      process.chdir(${JSON.stringify(repository)});
-      const { directory, source } = core.getStorage();
-      console.log(JSON.stringify({ directory, source }));
-    `], { env: { ...childEnvironment, NODE_ENV: "test", HOME: home }, cwd: home });
+    const result = Bun.spawnSync([process.execPath, importFixture, "settings", localFile, repository], { env: { ...childEnvironment, NODE_ENV: "test", HOME: home }, cwd: home });
 
     expect(result.stderr.toString()).toBe("");
     expect(result.exitCode).toBe(0);

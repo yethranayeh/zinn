@@ -178,6 +178,11 @@ export function resolveStorage(
 
 let processStorage: Storage | null = null;
 
+/** For internal tests, to be run after the database connection has closed. */
+export function resetStorageForTests() {
+  processStorage = null;
+}
+
 /** Selected store folder must exist before any contents can be initialized. */
 function assertStoreDirectory(directory: string, settingsPath: string | null) {
   const absoluteDirectory = resolve(directory);

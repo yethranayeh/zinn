@@ -1,25 +1,73 @@
-/**
- * How getDb() opens each kind of database (ZINN-118), run in child processes,
- *  since core resolves its folder from HOME, ZINN_DIR and the settings files once, when it is first used.
- * Default-database fixtures live in a temporary HOME with ZINN_DIR unset, and each child runs in that HOME. Each child checks
- *  where core resolved its folder and exits before opening anything if it is not the expected one.
- * Older databases come from a test-only migration appended to the shipped list, and a published
- *  core comes from replacing core's release reading.
- */
-import type { ReleaseMode } from "./release";
-
-import { expect, test } from "bun:test";
+import { openDatabase } from "#sqlite";
+import { expect, spyOn, test } from "bun:test";
+import { strict as assert } from "node:assert";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { openDatabase } from "#sqlite";
-
+import * as core from "../index";
+import { CoreError, ReadOnlyDatabaseError } from "../index";
+import { getStorage } from "./constant";
+import { getDb } from "./db";
 import { BASELINE_VERSION, createBaseline } from "./migrations/baseline";
+import type { DatabaseFacts } from "./migrations/open-policy";
+import type { Migration } from "./migrations/registry";
 import { latestVersion, MIGRATIONS } from "./migrations/registry";
 import { applyPendingMigrations, readSchemaVersion, upgradeSchema } from "./migrations/runner";
 import { schemaObjects, seedBaseline, snapshot } from "./migrations/testing";
+import type { ReleaseMode } from "./release";
+import * as release from "./release";
+import { withEnvironment } from "./testing";
+
+const actor = { name: "Test Human", email: null, kind: "human" as const };
+function describeError(error: unknown) {
+  if (!(error instanceof Error)) { throw error; }
+  return {
+    name: error.name, message: error.message,
+    ...(error instanceof CoreError ? { kind: error.kind, facts: error.facts } : {}),
+    ...(error instanceof ReadOnlyDatabaseError ? { reason: error.reason } : {}),
+  };
+}
+function withLocation<T>(location: Location, check: () => T): T {
+  return withEnvironment({ HOME: location.home, ZINN_DIR: location.zinnDir }, () => {
+    expect(getStorage().directory).toBe(mainDirOf(location));
+    expect(getStorage().databasePath.startsWith(TEST_PROCESS_DEFAULT_DIR)).toBe(false);
+    return check();
+  }, location.cwd ?? location.home);
+}
+function configureCore(openCase: OpenCase) {
+  core.configureDatabase({ ...TEST_CLIENT, release: openCase.clientRelease ?? "source", allowsLegacyRead: openCase.allowsLegacyRead ?? false });
+}
+function runOpen(location: Location, openCase: OpenCase) {
+  const mutableMigrations = MIGRATIONS as Migration[];
+  const originalMigrations = [...MIGRATIONS];
+  const releaseSpy = openCase.coreRelease === undefined ? null : spyOn(release, "readCoreReleaseMode").mockReturnValue(openCase.coreRelease);
+  if (openCase.migration !== undefined) {
+    mutableMigrations.push({
+      version: TEST_MIGRATION_VERSION, name: "test migration", rebuilds: [], apply: (db) => {
+        if (openCase.migration === "fails") { throw new Error("planned migration failure"); }
+        db.exec("CREATE TABLE test_addition (id TEXT PRIMARY KEY)");
+      }
+    });
+  }
+  try {
+    return withLocation(location, () => {
+      configureCore(openCase);
+      const outcome: { projects?: string[]; wrote?: boolean; readError?: ReturnType<typeof describeError>; writeError?: ReturnType<typeof describeError> } = {};
+      try { outcome.projects = core.project.getAll().map((match) => match.key); }
+      catch (error) { outcome.readError = describeError(error); }
+      const { createKey = "NEW" } = openCase;
+      if (createKey !== null) {
+        try { core.project.create({ key: createKey }, actor); outcome.wrote = true; }
+        catch (error) { outcome.writeError = describeError(error); }
+      }
+      return outcome;
+    });
+  } finally {
+    mutableMigrations.splice(0, MIGRATIONS.length, ...originalMigrations);
+    releaseSpy?.mockRestore();
+  }
+}
 
 const HOME_PREFIX = join(tmpdir(), "zinn-open-home-");
 /** The default folder of this test process's own HOME, which no child may open. */
@@ -100,18 +148,6 @@ function childCommand(location: Location, script: string) {
   ];
 }
 
-/** Runs script in a child and returns the JSON on the last line of its output. */
-function runChild(location: Location, script: string) {
-  const result = Bun.spawnSync(childCommand(location, script), {
-    env: childEnvironment(location),
-    cwd: location.cwd ?? location.home,
-  });
-
-  expect(result.stderr.toString()).toBe("");
-  expect(result.exitCode).toBe(0);
-  return JSON.parse(result.stdout.toString().trim().split("\n").at(-1)!);
-}
-
 type OpenCase = {
   /** Core's release mode. Without it, core reads its own, which is source in this folder. */
   coreRelease?: ReleaseMode;
@@ -145,7 +181,7 @@ function coreSetup({
     ${migration == null ? "" : `mock.module(${registryModule}, () => ({ ...registry, MIGRATIONS: [...registry.MIGRATIONS, ${migrations[migration]}] }));`}
     const core = await import(${modulePath("../index.ts")});
     core.configureDatabase({ ...${JSON.stringify(TEST_CLIENT)}, release: ${JSON.stringify(clientRelease)}, allowsLegacyRead: ${allowsLegacyRead} });
-    const actor = { name: "Test Human", email: null, kind: "human" };
+    const actor = { name: "Test Human", email: null, kind: "human" as const };
     const describeError = (error) => ({ name: error.name, reason: error.reason, facts: error.facts, message: error.message });
   `;
 }
@@ -229,7 +265,7 @@ function projectKeys(mainDir: string) {
 test("a default-database fixture resolves inside the test's HOME, and ZINN_DIR still overrides it", () => {
   withHome((home) => {
     const defaultDir = join(home, ".zinn");
-    expect(runChild({ home }, `console.log(JSON.stringify({ DB_PATH: databasePath, MAIN_DIR: directory }));`)).toEqual({
+    expect(withLocation({ home }, () => ({ DB_PATH: getStorage().databasePath, MAIN_DIR: getStorage().directory }))).toEqual({
       DB_PATH: databasePath(defaultDir),
       MAIN_DIR: defaultDir,
     });
@@ -237,7 +273,7 @@ test("a default-database fixture resolves inside the test's HOME, and ZINN_DIR s
     const isolated = join(home, "isolated");
     mkdirSync(isolated);
     expect(
-      runChild({ home, zinnDir: isolated }, `console.log(JSON.stringify({ MAIN_DIR: directory }));`),
+      withLocation({ home, zinnDir: isolated }, () => ({ MAIN_DIR: getStorage().directory })),
     ).toEqual({ MAIN_DIR: isolated });
   });
 });
@@ -246,7 +282,7 @@ test("a missing default database is created at the latest version, without a set
   withHome((home) => {
     const mainDir = join(home, ".zinn");
 
-    expect(runChild({ home }, openScript({}))).toEqual({ projects: [], wrote: true });
+    expect(runOpen({ home }, {})).toEqual({ projects: [], wrote: true });
     expect(readDatabase(mainDir).version).toBe(latestVersion(MIGRATIONS));
     expect(projectKeys(mainDir)).toEqual(["NEW"]);
     expect(existsSync(join(mainDir, "settings.json"))).toBe(false);
@@ -259,9 +295,9 @@ test("a current default database opens for writing, and opening it changes nothi
     createCurrentDatabase(mainDir);
     const before = readDatabase(mainDir);
 
-    expect(runChild({ home }, openScript({ createKey: null }))).toEqual({ projects: ["APP"] });
+    expect(runOpen({ home }, { createKey: null })).toEqual({ projects: ["APP"] });
     expect(readDatabase(mainDir)).toEqual(before);
-    expect(runChild({ home }, openScript({}))).toEqual({ projects: ["APP"], wrote: true });
+    expect(runOpen({ home }, {})).toEqual({ projects: ["APP"], wrote: true });
     expect(readDatabase(mainDir).version).toBe(latestVersion(MIGRATIONS));
     expect(backupsOf(mainDir)).toEqual([]);
     expect(existsSync(join(mainDir, "settings.json"))).toBe(false);
@@ -272,13 +308,13 @@ test("a current default database opens for writing, and opening it changes nothi
 function expectOlderReadOnly(location: Location, openCase: OpenCase) {
   const mainDir = mainDirOf(location);
   const before = readDatabase(mainDir);
-  const outcome = runChild(location, openScript({ migration: "adds a table", ...openCase }));
+  const outcome = runOpen(location, { migration: "adds a table", ...openCase });
 
   expect(outcome.projects).toEqual(["APP"]);
-  expect(outcome.writeError.name).toBe("ReadOnlyDatabaseError");
-  expect(outcome.writeError.reason).toBe("older");
-  expect(outcome.writeError.message).toContain(databasePath(mainDir));
-  expect(outcome.writeError.facts).toMatchObject({
+  expect(outcome.writeError!.name).toBe("ReadOnlyDatabaseError");
+  expect(outcome.writeError!.reason).toBe("older");
+  expect(outcome.writeError!.message).toContain(databasePath(mainDir));
+  expect(outcome.writeError!.facts).toMatchObject({
     databasePath: databasePath(mainDir), schemaVersion: 1, supportedSchemaVersion: TEST_MIGRATION_VERSION,
   });
   expect(readDatabase(mainDir)).toEqual(before);
@@ -288,7 +324,7 @@ function expectOlderReadOnly(location: Location, openCase: OpenCase) {
 /** Opens an older database that upgrades by itself, and checks the kept backup. */
 function expectOlderUpgraded(location: Location, openCase: OpenCase) {
   const mainDir = mainDirOf(location);
-  const outcome = runChild(location, openScript({ migration: "adds a table", ...openCase }));
+  const outcome = runOpen(location, { migration: "adds a table", ...openCase });
 
   expect(outcome).toEqual({ projects: ["APP"], wrote: true });
   withDatabase(mainDir, (db) => {
@@ -394,10 +430,8 @@ function listTree(directory: string) {
   return readdirSync(directory, { recursive: true }).map(String).sort();
 }
 
-/** A child that tries each way into the database and reports each error message. */
-const DATABASE_ENTRY_ATTEMPTS = `
-  const core = await import(${modulePath("../index.ts")});
-  const actor = { name: "Test Human", email: null, kind: "human" };
+function databaseEntryAttempts() {
+  const actor = { name: "Test Human", email: null, kind: "human" as const };
   const build = { client: "test", version: "1.0.0" };
   const attempts = {
     read: () => core.project.getAll(),
@@ -407,17 +441,18 @@ const DATABASE_ENTRY_ATTEMPTS = `
     migrate: () => core.migrate.run(build),
     reindex: () => core.reindex.run(),
   };
-  const errors = {};
+  const errors: Record<string, ReturnType<typeof describeError> | null> = {};
   for (const [name, attempt] of Object.entries(attempts)) {
     try {
       attempt();
       errors[name] = null;
     } catch (error) {
-      errors[name] = { message: error.message, kind: error.kind, facts: error.facts };
+      errors[name] = describeError(error);
     }
   }
-  console.log(JSON.stringify(errors));
-`;
+  return errors;
+
+}
 
 test.each([
   { problem: "invalid JSON", content: '{ "storage": ', facts: { reason: "invalid_json" } },
@@ -440,14 +475,7 @@ test.each([
         writeFileSync(selectedSettingsPath, content);
       }
       const selectedStoreBefore = zinnDir === undefined ? [] : listTree(zinnDir);
-      const result = Bun.spawnSync([process.execPath, "--eval", DATABASE_ENTRY_ATTEMPTS], {
-        env: childEnvironment({ home, zinnDir }),
-        cwd: repository,
-      });
-
-      expect(result.stderr.toString()).toBe("");
-      expect(result.exitCode).toBe(0);
-      const errors = JSON.parse(result.stdout.toString());
+      const errors = withEnvironment({ HOME: home, ZINN_DIR: zinnDir }, databaseEntryAttempts, repository);
       expect(Object.keys(errors)).toHaveLength(6);
       for (const [attempt, error] of Object.entries(errors)) {
         expect({ attempt, error }).toMatchObject({ attempt, error: { kind: "input", facts: { ...facts, settingsPath: selectedSettingsPath }, message: expect.stringContaining(selectedSettingsPath) } });
@@ -469,9 +497,9 @@ test("a failed automatic upgrade fails the command and leaves the database as it
     const location = { home, zinnDir: join(home, "isolated") };
     createDatabase(location.zinnDir, 1);
     const before = readDatabase(location.zinnDir);
-    const outcome = runChild(location, openScript({ migration: "fails", createKey: null }));
+    const outcome = runOpen(location, { migration: "fails", createKey: null });
 
-    expect(outcome.readError.message).toContain("planned migration failure");
+    expect(outcome.readError!.message).toContain("planned migration failure");
     expect(readDatabase(location.zinnDir)).toEqual(before);
     // The snapshot taken before the upgrade is kept.
     expect(backupsOf(location.zinnDir)).toHaveLength(1);
@@ -489,15 +517,15 @@ test.each([
       const mainDir = mainDirOf(location);
       createDatabase(mainDir, NEWER_VERSION);
       const before = readDatabase(mainDir);
-      const outcome = runChild(location, openScript({ coreRelease: core, clientRelease: client }));
+      const outcome = runOpen(location, { coreRelease: core, clientRelease: client });
 
       expect(outcome.projects).toEqual(["APP"]);
-      expect(outcome.writeError.name).toBe("ReadOnlyDatabaseError");
-      expect(outcome.writeError.reason).toBe("newer");
-      expect(outcome.writeError.message).toContain(databasePath(mainDir));
-      expect(outcome.writeError.facts).toMatchObject({ schemaVersion: NEWER_VERSION, supportedSchemaVersion: latestVersion(MIGRATIONS) });
+      expect(outcome.writeError!.name).toBe("ReadOnlyDatabaseError");
+      expect(outcome.writeError!.reason).toBe("newer");
+      expect(outcome.writeError!.message).toContain(databasePath(mainDir));
+      expect(outcome.writeError!.facts).toMatchObject({ schemaVersion: NEWER_VERSION, supportedSchemaVersion: latestVersion(MIGRATIONS) });
       for (const fact of ["test", "1.0.0", "/test/zinn"]) {
-        expect(outcome.writeError.message).toContain(fact);
+        expect(outcome.writeError!.message).toContain(fact);
       }
       expect(readDatabase(mainDir)).toEqual(before);
       expect(backupsOf(mainDir)).toEqual([]);
@@ -510,20 +538,17 @@ test("an unmarked database is refused, for reads and writes, unless the client a
     const mainDir = join(home, ".zinn");
     createDatabase(mainDir, UNMARKED_VERSION);
     const before = readDatabase(mainDir);
-    const refused = runChild(
-      { home },
-      openScript({ coreRelease: "published", clientRelease: "published" }),
-    );
+    const refused = runOpen({ home }, { coreRelease: "published", clientRelease: "published" });
 
-    expect(refused.readError.name).toBe("UnmarkedDatabaseError");
-    expect(refused.readError.message).toContain(databasePath(mainDir));
-    expect(refused.readError.facts).toMatchObject({ reason: "unmarked_database", schemaVersion: 0 });
-    expect(refused.writeError.name).toBe("UnmarkedDatabaseError");
+    expect(refused.readError!.name).toBe("UnmarkedDatabaseError");
+    expect(refused.readError!.message).toContain(databasePath(mainDir));
+    expect(refused.readError!.facts).toMatchObject({ reason: "unmarked_database", schemaVersion: 0 });
+    expect(refused.writeError!.name).toBe("UnmarkedDatabaseError");
 
-    const allowed = runChild({ home }, openScript({ allowsLegacyRead: true }));
+    const allowed = runOpen({ home }, { allowsLegacyRead: true });
     expect(allowed.projects).toEqual(["APP"]);
-    expect(allowed.writeError.name).toBe("ReadOnlyDatabaseError");
-    expect(allowed.writeError.reason).toBe("unmarked");
+    expect(allowed.writeError!.name).toBe("ReadOnlyDatabaseError");
+    expect(allowed.writeError!.reason).toBe("unmarked");
 
     expect(readDatabase(mainDir)).toEqual(before);
     expect(backupsOf(mainDir)).toEqual([]);
@@ -531,17 +556,14 @@ test("an unmarked database is refused, for reads and writes, unless the client a
   });
 });
 
-/** A child that reports every onLegacyRead call, after listing projects and trying a write. */
-function legacyReadReportScript() {
-  return `
-    ${coreSetup({ allowsLegacyRead: true })}
-    const legacyReads = [];
-    core.configureDatabase({ ...${JSON.stringify(TEST_CLIENT)}, release: "source", allowsLegacyRead: true, onLegacyRead: (facts) => legacyReads.push(facts) });
-    core.project.getAll();
-    core.project.getAll();
-    try { core.project.create({ key: "NEW" }, actor); } catch {}
-    console.log(JSON.stringify({ legacyReads }));
-  `;
+function legacyReadReport() {
+  configureCore({ allowsLegacyRead: true });
+  const legacyReads: DatabaseFacts[] = [];
+  core.configureDatabase({ ...TEST_CLIENT, release: "source", allowsLegacyRead: true, onLegacyRead: (facts) => legacyReads.push(facts) });
+  core.project.getAll();
+  core.project.getAll();
+  try { core.project.create({ key: "NEW" }, actor); } catch { }
+  return { legacyReads };
 }
 
 test("core reports an unmarked database opened for reading once, and no other state", () => {
@@ -549,7 +571,7 @@ test("core reports an unmarked database opened for reading once, and no other st
     const mainDir = join(home, ".zinn");
     createDatabase(mainDir, UNMARKED_VERSION);
 
-    expect(runChild({ home }, legacyReadReportScript()).legacyReads).toEqual([
+    expect(withLocation({ home }, legacyReadReport).legacyReads).toEqual([
       { databasePath: databasePath(mainDir), version: UNMARKED_VERSION, latestVersion: latestVersion(MIGRATIONS) },
     ]);
   });
@@ -558,7 +580,7 @@ test("core reports an unmarked database opened for reading once, and no other st
     withHome((home) => {
       createDatabase(join(home, ".zinn"), version);
 
-      expect(runChild({ home }, legacyReadReportScript()).legacyReads).toEqual([]);
+      expect(withLocation({ home }, legacyReadReport).legacyReads).toEqual([]);
     });
   }
 });
@@ -576,21 +598,19 @@ test("an unmarked database missing tables gets none created, even when a write i
     });
     const before = readDatabase(mainDir);
 
-    const outcome = runChild({ home }, openScript({ allowsLegacyRead: true }));
+    const outcome = runOpen({ home }, { allowsLegacyRead: true });
     expect(outcome.projects).toEqual([]);
-    expect(outcome.writeError.name).toBe("ReadOnlyDatabaseError");
+    expect(outcome.writeError!.name).toBe("ReadOnlyDatabaseError");
     expect(readDatabase(mainDir)).toEqual(before);
   });
 });
 
-/** The child of the mutation walk: lists every operation as a read or a mutation, and runs each. */
-const OPERATIONS_WALK = `
-  const { getDb } = await import(${modulePath("./db.ts")});
+function operationsWalk() {
   const { project, column, task, comment, label, relation } = core;
   const { label: taskLabel, ...taskOperations } = task;
   const objects = { project, column, task: taskOperations, "task.label": taskLabel, comment, label, relation };
 
-  const reads = {
+  const reads: Record<string, Record<string, () => unknown>> = {
     project: { getById: () => project.getById("p1"), getByKey: () => project.getByKey("APP"), getAll: () => project.getAll(), standardizeKey: () => project.standardizeKey("app") },
     column: { getById: () => column.getById("c1"), getAllByProjectKey: () => column.getAllByProjectKey("APP"), getTaskCountsByProjectKey: () => column.getTaskCountsByProjectKey("APP") },
     task: { getAll: () => task.getAll({}), getByKey: () => task.getByKey("APP-1"), search: () => task.search({ query: "First" }), activity: () => task.activity("APP-1") },
@@ -599,7 +619,7 @@ const OPERATIONS_WALK = `
     label: { getAll: () => label.getAll(), getByName: () => label.getByName("bug") },
     relation: { getAll: () => relation.getAll("APP-1") },
   };
-  const mutations = {
+  const mutations: Record<string, Record<string, () => unknown>> = {
     project: {
       create: () => project.create({ key: "NEW" }, actor),
       edit: () => project.edit({ projectKey: "APP", name: "Renamed" }, actor),
@@ -645,20 +665,21 @@ const OPERATIONS_WALK = `
   const unlisted = [];
   for (const [name, object] of Object.entries(objects)) {
     for (const [key, value] of Object.entries(object)) {
-      const isListed = key in reads[name] || key in mutations[name];
+      const isListed = key in reads[name]! || key in mutations[name]!;
       if (typeof value === "function" && !isListed) {
         unlisted.push(name + "." + key);
       }
     }
   }
 
-  const outcomes = {};
+  const outcomes: Record<string, string> = {};
   for (const [name, calls] of Object.entries(mutations)) {
     for (const [key, call] of Object.entries(calls)) {
       try {
         call();
         outcomes[name + "." + key] = "changed";
       } catch (error) {
+        assert.ok(error instanceof Error);
         outcomes[name + "." + key] = error.name;
       }
     }
@@ -670,6 +691,7 @@ const OPERATIONS_WALK = `
       try {
         call();
       } catch (error) {
+        assert.ok(error instanceof Error);
         readErrors.push(name + "." + key + ": " + error.message);
       }
     }
@@ -679,11 +701,13 @@ const OPERATIONS_WALK = `
   try {
     getDb().exec("INSERT INTO label (id, name, color) VALUES ('l9', 'raw', 'red')");
   } catch (error) {
+    assert.ok(error instanceof core.SqliteError);
     rawWrite = error.code;
   }
 
-  console.log(JSON.stringify({ unlisted, outcomes, readErrors, rawWrite }));
-`;
+  return { unlisted, outcomes, readErrors, rawWrite };
+
+}
 const MUTATION_COUNT = 26;
 
 test("every core mutation is refused before any SQL runs on a read-only database, while every read works", () => {
@@ -691,7 +715,7 @@ test("every core mutation is refused before any SQL runs on a read-only database
     const mainDir = join(home, ".zinn");
     createDatabase(mainDir, NEWER_VERSION);
     const before = readDatabase(mainDir);
-    const result = runChild({ home }, `${coreSetup({})}\n${OPERATIONS_WALK}`);
+    const result = withLocation({ home }, () => { configureCore({}); return operationsWalk(); });
 
     expect(result.unlisted).toEqual([]);
     expect(Object.keys(result.outcomes)).toHaveLength(MUTATION_COUNT);
@@ -750,7 +774,7 @@ const RACE_INSTRUMENTATION = `
     },
   }));
   const core = await import(${modulePath("../index.ts")});
-  const actor = { name: "Test Human", email: null, kind: "human" };
+  const actor = { name: "Test Human", email: null, kind: "human" as const };
   const created = core.project.create({ key: "LATE" }, actor);
   console.log(JSON.stringify({ lostRace, created: created.key }));
 `;

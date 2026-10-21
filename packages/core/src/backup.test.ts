@@ -1,21 +1,17 @@
-import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { Database } from "bun:sqlite";
+import { setSystemTime, test } from "bun:test";
+import { strict as assert } from "node:assert";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
+import { backup, comment, project, RestoreRefusedError, task } from "../index";
+import { getStorage } from "./constant";
+import { getDb } from "./db";
+import { latestVersion, MIGRATIONS } from "./migrations/registry";
+import { withTestStore } from "./testing";
 
 test("same-time backups preserve earlier snapshots and include uncheckpointed WAL writes", () => {
-  const directory = mkdtempSync(join(tmpdir(), "zinn-backup-"));
-
   try {
-    const result = Bun.spawnSync([process.execPath, "--eval", `
-      import { strict as assert } from "node:assert";
-      import { setSystemTime } from "bun:test";
-      import { Database } from "bun:sqlite";
-      import { existsSync, readdirSync, readFileSync } from "node:fs";
-      import { basename } from "node:path";
-      import { backup } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
-      import { getDb } from ${JSON.stringify(new URL("./db.ts", import.meta.url).pathname)};
-      import { getStorage } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
+    withTestStore(() => {
 
       const { backupDirectory, databasePath } = getStorage();
       setSystemTime(new Date("2026-10-03T12:30:05Z"));
@@ -33,7 +29,7 @@ test("same-time backups preserve earlier snapshots and include uncheckpointed WA
         assert.ok(existsSync(databasePath + "-wal"));
         const { path } = backup.create(input);
         assert.ok(basename(path).startsWith("2026-10-03T12-30-05Z-test-1.2.3-"));
-        assert.match(basename(path), /-[0-9a-f]{8}\\.sqlite$/);
+        assert.match(basename(path), /-[0-9a-f]{8}\.sqlite$/);
         assert.ok(!paths.has(path));
         paths.add(path);
         const snapshot = new Database(path, { readonly: true });
@@ -55,113 +51,72 @@ test("same-time backups preserve earlier snapshots and include uncheckpointed WA
         original.close();
         db.close();
       }
-    `], { env: { ...process.env, ZINN_DIR: directory } });
 
-    expect(result.stderr.toString()).toBe("");
-    expect(result.exitCode).toBe(0);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
+    });
+  } finally { setSystemTime(); }
 });
-
 test("restore puts a backup's database back through the public operations, and its own backup undoes it", () => {
-  const directory = mkdtempSync(join(tmpdir(), "zinn-restore-"));
+  withTestStore(() => {
 
-  try {
-    const result = Bun.spawnSync([process.execPath, "--eval", `
-      import { strict as assert } from "node:assert";
-      import { existsSync, readdirSync, writeFileSync } from "node:fs";
-      import { join } from "node:path";
-      import { backup, comment, project, RestoreRefusedError, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
-      import { latestVersion, MIGRATIONS } from ${JSON.stringify(new URL("./migrations/registry.ts", import.meta.url).pathname)};
-      import { getStorage } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
+    const { backupDirectory, directory } = getStorage();
+    const human = { name: "Test Human", email: "human@example.com", kind: "human" as const };
+    const build = { client: "test", version: "1.2.3" };
+    const keys = (archive: "all" | "archived" | "active" = "all") => task.getAll({ archive }).map((entry) => entry.key);
+    const found = (query: string) => task.search({ query, archive: "all" }).tasks.map((entry) => entry.key);
 
-      const { backupDirectory, directory } = getStorage();
-      const human = { name: "Test Human", email: "human@example.com", kind: "human" };
-      const build = { client: "test", version: "1.2.3" };
-      const keys = (archive = "all") => task.getAll({ archive }).map((entry) => entry.key);
-      const found = (query) => task.search({ query, archive: "all" }).tasks.map((entry) => entry.key);
+    const app = project.create({ key: "APP" }, human);
+    const first = task.create({ project_id: app.id, title: "Widget login", description: "Sign in flow" }, human);
+    task.create({ project_id: app.id, title: "Gadget export", description: null }, human);
+    task.archive("APP-2", human);
+    comment.create({ taskKey: "APP-1", text: "Needs a spinner" }, human);
+    const saved = backup.create(build).path;
+    const databaseAtBackup = { tasks: task.getAll({ archive: "all" }), comments: comment.getAll("APP-1") };
 
-      const app = project.create({ key: "APP" }, human);
-      const first = task.create({ project_id: app.id, title: "Widget login", description: "Sign in flow" }, human);
-      task.create({ project_id: app.id, title: "Gadget export", description: null }, human);
-      task.archive("APP-2", human);
-      comment.create({ taskKey: "APP-1", text: "Needs a spinner" }, human);
-      const saved = backup.create(build).path;
-      const databaseAtBackup = { tasks: task.getAll({ archive: "all" }), comments: comment.getAll("APP-1") };
+    task.create({ project_id: app.id, title: "Later work", description: null }, human);
+    task.delete("APP-1", human);
+    const databaseBeforeRestore = keys();
 
-      task.create({ project_id: app.id, title: "Later work", description: null }, human);
-      task.delete("APP-1", human);
-      const databaseBeforeRestore = keys();
+    // A file that is not a backup changes nothing.
+    const notABackup = join(directory, "notes.txt");
+    writeFileSync(notABackup, "not a backup");
+    assert.throws(() => backup.restore({ ...build, path: notABackup }), RestoreRefusedError);
+    assert.deepEqual(keys(), databaseBeforeRestore);
 
-      // A file that is not a backup changes nothing.
-      const notABackup = join(directory, "notes.txt");
-      writeFileSync(notABackup, "not a backup");
-      assert.throws(() => backup.restore({ ...build, path: notABackup }), RestoreRefusedError);
-      assert.deepEqual(keys(), databaseBeforeRestore);
+    const restored = backup.restore({ ...build, path: saved });
+    assert.equal(restored.previousVersion, latestVersion(MIGRATIONS));
+    assert.equal(restored.restoredVersion, latestVersion(MIGRATIONS));
+    assert.deepEqual(task.getAll({ archive: "all" }), databaseAtBackup.tasks);
+    assert.deepEqual(comment.getAll("APP-1"), databaseAtBackup.comments);
+    assert.deepEqual(keys("archived"), ["APP-2"]);
+    assert.deepEqual(found("spinner"), ["APP-1"]);
+    assert.deepEqual(found("gadget"), ["APP-2"]);
+    assert.deepEqual(found("later"), []);
+    assert.equal(first.id, task.getByKey("APP-1").id);
 
-      const restored = backup.restore({ ...build, path: saved });
-      assert.equal(restored.previousVersion, latestVersion(MIGRATIONS));
-      assert.equal(restored.restoredVersion, latestVersion(MIGRATIONS));
-      assert.deepEqual(task.getAll({ archive: "all" }), databaseAtBackup.tasks);
-      assert.deepEqual(comment.getAll("APP-1"), databaseAtBackup.comments);
-      assert.deepEqual(keys("archived"), ["APP-2"]);
-      assert.deepEqual(found("spinner"), ["APP-1"]);
-      assert.deepEqual(found("gadget"), ["APP-2"]);
-      assert.deepEqual(found("later"), []);
-      assert.equal(first.id, task.getByKey("APP-1").id);
+    // The task counter came back with the database, so the next task gets the next number after the backup's.
+    assert.equal(task.create({ project_id: app.id, title: "After restore", description: null }, human).key, "APP-3");
 
-      // The task counter came back with the database, so the next task gets the next number after the backup's.
-      assert.equal(task.create({ project_id: app.id, title: "After restore", description: null }, human).key, "APP-3");
+    backup.restore({ ...build, path: restored.backupPath! });
+    assert.deepEqual(keys(), databaseBeforeRestore);
+    assert.ok(readdirSync(backupDirectory).length === 3);
 
-      backup.restore({ ...build, path: restored.backupPath });
-      assert.deepEqual(keys(), databaseBeforeRestore);
-      assert.ok(readdirSync(backupDirectory).length === 3);
-    `], { env: { ...process.env, ZINN_DIR: directory } });
-
-    expect(result.stderr.toString()).toBe("");
-    expect(result.exitCode).toBe(0);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
+  });
 });
-
 test("restore onto a store with no database creates it, with no backup of a replaced database", () => {
-  const source = mkdtempSync(join(tmpdir(), "zinn-restore-source-"));
-  const target = mkdtempSync(join(tmpdir(), "zinn-restore-target-"));
-  const run = (directory: string, script: string) =>
-    Bun.spawnSync([process.execPath, "--eval", `
-      import { strict as assert } from "node:assert";
-      import { existsSync, readdirSync } from "node:fs";
-      import { backup, project, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
-      import { getStorage } from ${JSON.stringify(new URL("./constant.ts", import.meta.url).pathname)};
+  withTestStore((source) => {
+    const human = { name: "Test Human", email: "human@example.com", kind: "human" as const };
+    const build = { client: "test", version: "1.2.3" };
+    const app = project.create({ key: "APP" }, human);
+    task.create({ project_id: app.id, title: "Kept", description: null }, human);
+    const backupPath = backup.create(build).path;
+    withTestStore(() => {
       const { backupDirectory, databasePath } = getStorage();
-      const human = { name: "Test Human", email: "human@example.com", kind: "human" };
-      const build = { client: "test", version: "1.2.3" };
-      ${script}
-    `], { env: { ...process.env, ZINN_DIR: directory } });
-
-  try {
-    const made = run(source, `
-      const app = project.create({ key: "APP" }, human);
-      task.create({ project_id: app.id, title: "Kept", description: null }, human);
-      console.log(backup.create(build).path);
-    `);
-    expect(made.stderr.toString()).toBe("");
-    const backupPath = made.stdout.toString().trim();
-
-    const restored = run(target, `
       assert.equal(existsSync(databasePath), false);
-      const result = backup.restore({ ...build, path: ${JSON.stringify(backupPath)} });
+      const result = backup.restore({ ...build, path: backupPath });
       assert.equal(result.backupPath, null);
       assert.equal(result.previousVersion, 0);
       assert.deepEqual(readdirSync(backupDirectory), []);
       assert.deepEqual(task.getAll().map((entry) => entry.title), ["Kept"]);
-    `);
-    expect(restored.stderr.toString()).toBe("");
-    expect(restored.exitCode).toBe(0);
-  } finally {
-    rmSync(source, { recursive: true, force: true });
-    rmSync(target, { recursive: true, force: true });
-  }
+    });
+  });
 });

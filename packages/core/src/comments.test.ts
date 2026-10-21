@@ -1,37 +1,22 @@
-import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { test } from "bun:test";
+import { strict as assert } from "node:assert";
+import { comment, project, task } from "../index";
+import { getDb } from "./db";
+import { CoreError } from "./errors";
+import { withTestStore } from "./testing";
 
-function runCommentCheck(script: string) {
-  const directory = mkdtempSync(join(tmpdir(), "zinn-comments-"));
+function fixtures() {
+  const human = { name: "Test Human", email: "human@example.com", kind: "human" as const };
+  const app = project.create({ key: "APP" }, human);
+  return { human, app };
+}
 
-  try {
-    const result = Bun.spawnSync(
-      [
-        process.execPath,
-        "--eval",
-        `
-          import { strict as assert } from "node:assert";
-          import { comment, project, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
-          import { getDb } from ${JSON.stringify(new URL("./db.ts", import.meta.url).pathname)};
-          const human = { name: "Test Human", email: "human@example.com", kind: "human" };
-          const app = project.create({ key: "APP" }, human);
-          ${script}
-        `,
-      ],
-      { env: { ...process.env, ZINN_DIR: directory } },
-    );
-
-    expect(result.stderr.toString()).toBe("");
-    expect(result.exitCode).toBe(0);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
+function runCommentCheck(check: (context: ReturnType<typeof fixtures>) => void) {
+  withTestStore(() => check(fixtures()));
 }
 
 test("comments have stable per-task keys", () => {
-  runCommentCheck(`
+  runCommentCheck(({ human, app }) => {
     task.create({ project_id: app.id, title: "First", description: null }, human);
     task.create({ project_id: app.id, title: "Second", description: null }, human);
     task.archive("APP-2", human);
@@ -45,7 +30,7 @@ test("comments have stable per-task keys", () => {
     assert.equal(otherTask.key, "APP-2#1");
     assert.equal(first.created_at, first.updated_at);
     assert.equal(comment.getByKey("app-1#1").id, first.id);
-    assert.throws(() => comment.getByKey(second.id), (error) => error.kind === "input" && error.facts.field[0] === "commentKey");
+    assert.throws(() => comment.getByKey(second.id), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field![0] === "commentKey");
     assert.deepEqual(comment.getAll("APP-1").map((entry) => entry.key), ["APP-1#1", "APP-1#2"]);
 
     // Listing follows comment numbers even when storage IDs disagree.
@@ -55,18 +40,18 @@ test("comments have stable per-task keys", () => {
     comment.delete({ commentKey: "APP-1#2" }, human);
     const third = comment.create({ taskKey: "APP-1", text: "Third comment" }, human);
     assert.equal(third.key, "APP-1#3");
-    assert.throws(() => comment.getByKey("APP-1#2"), (error) => error.kind === "missing");
-  `);
+    assert.throws(() => comment.getByKey("APP-1#2"), (error) => error instanceof CoreError && error.kind === "missing");
+  });
 });
 
 test("comment mutations update task activity atomically and no-op edits stay unchanged", () => {
-  runCommentCheck(`
+  runCommentCheck(({ human, app }) => {
     task.create({ project_id: app.id, title: "First", description: null }, human);
     const db = getDb();
     db.exec("UPDATE task SET updated_at = 1 WHERE number = 1");
     const created = comment.create({ taskKey: "APP-1", text: "Original" }, human);
     assert.equal(task.getByKey("APP-1").updated_at, 1);
-    assert.deepEqual(task.activity("APP-1").at(-1).changes, {
+    assert.deepEqual(task.activity("APP-1").at(-1)!.changes, {
       comment: { id: created.id, key: "APP-1#1", text: "Original" },
     });
 
@@ -77,7 +62,7 @@ test("comment mutations update task activity atomically and no-op edits stay unc
 
     const edited = comment.edit({ commentKey: "APP-1#1", text: "Edited" }, human);
     assert.equal(task.getByKey("APP-1").updated_at, 1);
-    assert.deepEqual(task.activity("APP-1").at(-1).changes, {
+    assert.deepEqual(task.activity("APP-1").at(-1)!.changes, {
       comment: { id: created.id, key: "APP-1#1" },
       text: ["Original", "Edited"],
     });
@@ -90,7 +75,7 @@ test("comment mutations update task activity atomically and no-op edits stay unc
       "comment_edit",
       "comment_delete",
     ]);
-    assert.deepEqual(task.activity("APP-1").at(-1).changes, {
+    assert.deepEqual(task.activity("APP-1").at(-1)!.changes, {
       comment: { id: created.id, key: "APP-1#1", text: "Edited" },
     });
     assert.equal(task.getByKey("APP-1").updated_at, 1);
@@ -100,22 +85,22 @@ test("comment mutations update task activity atomically and no-op edits stay unc
     db.exec("DROP TRIGGER fail_comment");
     const afterFailure = comment.create({ taskKey: "APP-1", text: "After failure" }, human);
     assert.equal(afterFailure.key, "APP-1#2");
-  `);
+  });
 });
 
 test("comments preserve text, reject blank text, and cascade with their task", () => {
-  runCommentCheck(`
+  runCommentCheck(({ human, app }) => {
     task.create({ project_id: app.id, title: "First", description: null }, human);
-    const text = "  Keep indentation\\n    code  ";
+    const text = "  Keep indentation\n    code  ";
     const created = comment.create({ taskKey: "APP-1", text }, human);
     assert.equal(created.text, text);
-    assert.throws(() => comment.create({ taskKey: "APP-1", text: "   \\n" }, human), (error) => error.kind === "input" && error.facts.field[0] === "text");
-    assert.throws(() => comment.edit({ commentKey: created.key, text: "\\t" }, human), (error) => error.kind === "input" && error.facts.field[0] === "text");
-    assert.throws(() => comment.getByKey("APP-1#0"), (error) => error.kind === "input" && error.facts.field[0] === "commentKey");
-    assert.throws(() => comment.getByKey("NOPE-1#0"), (error) => error.kind === "input" && error.facts.field[0] === "commentKey" && error.message.includes("NOPE-1#0"));
-    assert.throws(() => comment.getByKey("APP-1#2#3"), (error) => error.kind === "input" && error.facts.field[0] === "commentKey" && error.message.includes("APP-1#2#3"));
+    assert.throws(() => comment.create({ taskKey: "APP-1", text: "   \n" }, human), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field![0] === "text");
+    assert.throws(() => comment.edit({ commentKey: created.key, text: "\t" }, human), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field![0] === "text");
+    assert.throws(() => comment.getByKey("APP-1#0"), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field![0] === "commentKey");
+    assert.throws(() => comment.getByKey("NOPE-1#0"), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field![0] === "commentKey" && error.message.includes("NOPE-1#0"));
+    assert.throws(() => comment.getByKey("APP-1#2#3"), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field![0] === "commentKey" && error.message.includes("APP-1#2#3"));
 
     task.delete("APP-1", human);
-    assert.equal(getDb().query("SELECT COUNT(*) AS count FROM comment").get().count, 0);
-  `);
+    assert.equal(getDb().query<{ count: number }>("SELECT COUNT(*) AS count FROM comment").get()!.count, 0);
+  });
 });

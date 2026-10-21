@@ -1,24 +1,14 @@
-import type { Database, SqliteDriver } from "../sqlite/database";
-import type { Migration } from "./registry";
-
 import { expect, test } from "bun:test";
-import { fileURLToPath } from "node:url";
-
-import { driver as bunDriver } from "../sqlite/bun.ts";
+import { getDb } from "../db";
+import { driver as bunDriver } from "../sqlite/bun";
+import type { Database, SqliteDriver } from "../sqlite/database";
 import { openWith, SqliteError } from "../sqlite/database";
-import { BASELINE_VERSION, createBaseline } from "./baseline";
+import { withStore } from "../testing";
+import { createBaseline } from "./baseline";
+import type { Migration } from "./registry";
 import { assertMigrationOrder, latestVersion, MIGRATIONS } from "./registry";
 import { createSchema, readSchemaVersion, upgradeSchema } from "./runner";
-import {
-  count,
-  foreignKeys,
-  rebuildTask,
-  schemaObjects,
-  seedBaseline,
-  snapshot,
-  withDatabase,
-  withDirectory,
-} from "./testing";
+import { count, foreignKeys, rebuildTask, schemaObjects, seedBaseline, snapshot, withDatabase, withDirectory } from "./testing";
 
 type Suppressing = { suppressed?: unknown };
 
@@ -430,7 +420,7 @@ test("an upgrade cannot start inside a transaction", () => {
 });
 
 test("migration versions must follow the baseline one by one", () => {
-  const noop = () => {};
+  const noop = () => { };
 
   expect(() => assertMigrationOrder(MIGRATIONS)).not.toThrow();
   expect(() => assertMigrationOrder([migration(2, noop), migration(3, noop)])).not.toThrow();
@@ -475,19 +465,10 @@ test("a fresh database gets the baseline and every migration, ending at the late
 
 test("getDb() creates a fresh database at the latest schema and version", () => {
   withDirectory((directory) => {
-    const modulePath = JSON.stringify(fileURLToPath(new URL("../db.ts", import.meta.url)));
-    const result = Bun.spawnSync([process.execPath, "--eval", `
-      import { getDb } from ${modulePath};
+    const initialized = withStore(directory, () => {
       const db = getDb();
-      const schema = db.query("SELECT type, name, tbl_name, sql FROM sqlite_schema ORDER BY name").all();
-      const version = db.query("PRAGMA user_version").get().user_version;
-      db.close();
-      console.log(JSON.stringify({ schema, version }));
-    `], { env: { ...process.env, ZINN_DIR: directory } });
-
-    expect(result.stderr.toString()).toBe("");
-    expect(result.exitCode).toBe(0);
-    const initialized = JSON.parse(result.stdout.toString());
+      return { schema: schemaObjects(db), version: readSchemaVersion(db) };
+    });
     expect(initialized.version).toBe(latestVersion(MIGRATIONS));
 
     withDatabase((db) => {

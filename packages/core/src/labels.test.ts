@@ -1,15 +1,19 @@
-import { expect, test } from "bun:test";
+import { test } from "bun:test";
+import { strict as assert } from "node:assert";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { label, project, task } from "../index";
+import { getDb } from "./db";
+import { CoreError } from "./errors";
+import { withStore } from "./testing";
 
 test("global and attached labels sort alphabetically without case differences, with accented letters beside their base letters", () => {
   const directory = mkdtempSync(join(tmpdir(), "zinn-label-order-"));
   try {
-    const result = Bun.spawnSync([process.execPath, "--eval", `
-      import { strict as assert } from "node:assert";
-      import { project, task, label } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
-      const actor = { name: "Test Human", email: null, kind: "human" };
+    withStore(directory, () => {
+
+      const actor = { name: "Test Human", email: null, kind: "human" as const };
       const app = project.create({ key: "APP" }, actor);
       const names = ["Äther", "Groom", "Azure", "äpfel", "CLI", "bug"];
       for (const name of names) {
@@ -19,17 +23,16 @@ test("global and attached labels sort alphabetically without case differences, w
       const expected = ["äpfel", "Äther", "Azure", "bug", "CLI", "Groom"];
       assert.deepEqual(label.getAll().map(entry => entry.name), expected);
       assert.deepEqual(task.label.getAll(created.key).map(entry => entry.name), expected);
-      assert.equal(label.getByName("ÄPFEL").name, "äpfel");
-      assert.throws(() => label.create({ name: "ÄPFEL" }, actor), (error) => error.kind === "conflict" && error.facts.reason === "already_exists");
+      assert.equal(label.getByName("ÄPFEL")!.name, "äpfel");
+      assert.throws(() => label.create({ name: "ÄPFEL" }, actor), (error) => error instanceof CoreError && error.kind === "conflict" && error.facts.reason === "already_exists");
 
       label.edit({ labelName: "äther", name: "äther" }, actor);
       label.edit({ labelName: "äpfel", name: "Äpfel" }, actor);
       const recased = ["Äpfel", "äther", "Azure", "bug", "CLI", "Groom"];
       assert.deepEqual(label.getAll().map(entry => entry.name), recased);
       assert.deepEqual(task.label.getAll(created.key).map(entry => entry.name), recased);
-    `], { env: { ...process.env, ZINN_DIR: directory } });
-    expect(result.stderr.toString()).toBe("");
-    expect(result.exitCode).toBe(0);
+    });
+
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -38,13 +41,11 @@ test("global and attached labels sort alphabetically without case differences, w
 test("labels preserve atomic edits, no-op timestamps, uniqueness, and cascade integrity", () => {
   const directory = mkdtempSync(join(tmpdir(), "zinn-labels-"));
   try {
-    const result = Bun.spawnSync([process.execPath, "--eval", `
-      import { strict as assert } from "node:assert";
-      import { project, task, label } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
-      import { getDb } from ${JSON.stringify(new URL("./db.ts", import.meta.url).pathname)};
-      const actor = { name: "Test Human", email: null, kind: "human" };
+    withStore(directory, () => {
+
+      const actor = { name: "Test Human", email: null, kind: "human" as const };
       const db = getDb();
-      assert.equal(db.query("PRAGMA foreign_keys").get().foreign_keys, 1);
+      assert.equal(db.query<{ foreign_keys: number }>("PRAGMA foreign_keys").get()!.foreign_keys, 1);
       const app = project.create({ key: "APP" }, actor);
       const other = project.create({ key: "OTHER" }, actor);
       const bug = label.create({ name: " bug ", color: "red" }, actor);
@@ -52,12 +53,13 @@ test("labels preserve atomic edits, no-op timestamps, uniqueness, and cascade in
       assert.equal(bug.description, null);
       const auth = label.create({ name: "auth" }, actor);
       assert.equal(auth.color, "white");
-      assert.throws(() => label.create({ name: "bug" }, actor), (error) => error.kind === "conflict" && error.facts.reason === "already_exists");
-      assert.throws(() => label.create({ name: "BUG" }, actor), (error) => error.kind === "conflict" && error.facts.reason === "already_exists");
+      assert.throws(() => label.create({ name: "bug" }, actor), (error) => error instanceof CoreError && error.kind === "conflict" && error.facts.reason === "already_exists");
+      assert.throws(() => label.create({ name: "BUG" }, actor), (error) => error instanceof CoreError && error.kind === "conflict" && error.facts.reason === "already_exists");
       assert.throws(() => label.create({ name: " ", color: "red" }, actor));
+      // @ts-expect-error Exercise runtime validation of invalid input.
       assert.throws(() => label.create({ name: "bad", color: "purple" }, actor));
       assert.throws(() => task.create({ project_id: app.id, title: "Bad", description: null, labelNames: ["missing"] }, actor));
-      assert.equal(project.getById(app.id).task_count, 0);
+      assert.equal(project.getById(app.id)!.task_count, 0);
       const first = task.create({ project_id: app.id, title: "First", description: null, labelNames: ["BUG", "bug", "AUTH"] }, actor);
       const second = task.create({ project_id: other.id, title: "Second", description: null, labelNames: ["BuG"] }, actor);
       assert.deepEqual(task.label.getAll(first.key).map(l => l.name), ["auth", "bug"]);
@@ -67,10 +69,10 @@ test("labels preserve atomic edits, no-op timestamps, uniqueness, and cascade in
       assert.equal(label.edit({ labelName: "defect", name: "defect", color: "blue" }, actor).id, bug.id);
       assert.deepEqual(task.label.getAll(first.key).map(l => l.name), ["auth", "defect"]);
       assert.deepEqual(task.label.getAll(second.key).map(l => l.name), ["defect"]);
-      assert.deepEqual(db.query("SELECT updated_at FROM task ORDER BY id").all(), [{ updated_at: 1 }, { updated_at: 1 }]);
-      assert.throws(() => label.edit({ labelName: "DEFECT", name: "AUTH" }, actor), (error) => error.kind === "conflict" && error.facts.reason === "already_exists");
-      assert.equal(label.getByName("DeFeCt").id, bug.id);
-      assert.throws(() => label.edit({ labelName: "missing", color: "red" }, actor), (error) => error.kind === "missing");
+      assert.deepEqual(db.query<{ updated_at: number }>("SELECT updated_at FROM task ORDER BY id").all(), [{ updated_at: 1 }, { updated_at: 1 }]);
+      assert.throws(() => label.edit({ labelName: "DEFECT", name: "AUTH" }, actor), (error) => error instanceof CoreError && error.kind === "conflict" && error.facts.reason === "already_exists");
+      assert.equal(label.getByName("DeFeCt")!.id, bug.id);
+      assert.throws(() => label.edit({ labelName: "missing", color: "red" }, actor), (error) => error instanceof CoreError && error.kind === "missing");
       assert.throws(() => db.query("INSERT INTO task_label VALUES (?, ?)").run(first.id, bug.id));
       assert.throws(() => db.query("INSERT INTO task_label VALUES (?, ?)").run(first.id, "missing"));
       const unchanged = task.getByKey(first.key);
@@ -83,7 +85,7 @@ test("labels preserve atomic edits, no-op timestamps, uniqueness, and cascade in
       // Force failure after the task counter and row have been written.
       db.exec("CREATE TRIGGER fail_attachment BEFORE INSERT ON task_label BEGIN SELECT RAISE(ABORT, 'attachment failed'); END");
       assert.throws(() => task.create({ project_id: app.id, title: "Rollback", description: null, labelNames: ["defect"] }, actor), /attachment failed/);
-      assert.equal(project.getById(app.id).task_count, 1);
+      assert.equal(project.getById(app.id)!.task_count, 1);
       assert.equal(task.getAll({ projectKey: "APP" }).length, 1);
       db.exec("DROP TRIGGER fail_attachment");
       // Force failure after attachment changes but before the task update finishes.
@@ -105,18 +107,17 @@ test("labels preserve atomic edits, no-op timestamps, uniqueness, and cascade in
       assert.deepEqual(task.label.getAll(first.key).map(l => l.name), ["auth"]);
       assert.equal(task.label.getAll(second.key).length, 0);
       assert.equal(task.getAll({ archive: "all" }).length, 2);
-      assert.throws(() => label.delete({ name: "defect" }, actor), (error) => error.kind === "missing");
+      assert.throws(() => label.delete({ name: "defect" }, actor), (error) => error instanceof CoreError && error.kind === "missing");
       task.label.add({ taskKey: second.key, labelNames: ["auth"] }, actor);
       task.delete(first.key, actor);
-      assert.equal(db.query("SELECT COUNT(*) AS n FROM task_label WHERE task_id = ?").get(first.id).n, 0);
+      assert.equal(db.query<{ n: number }>("SELECT COUNT(*) AS n FROM task_label WHERE task_id = ?").get(first.id)!.n, 0);
       assert.equal(task.label.getAll(second.key).length, 1);
       project.delete("OTHER", actor);
-      assert.equal(db.query("SELECT COUNT(*) AS n FROM task_label").get().n, 0);
+      assert.equal(db.query<{ n: number }>("SELECT COUNT(*) AS n FROM task_label").get()!.n, 0);
       assert.equal(label.getAll().length, 1);
       assert.deepEqual(db.query("PRAGMA foreign_key_check").all(), []);
-    `], { env: { ...process.env, ZINN_DIR: directory } });
-    expect(result.stderr.toString()).toBe("");
-    expect(result.exitCode).toBe(0);
+    });
+
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -125,10 +126,9 @@ test("labels preserve atomic edits, no-op timestamps, uniqueness, and cascade in
 test("task lists filter by every requested label without changing their order", () => {
   const directory = mkdtempSync(join(tmpdir(), "zinn-label-filters-"));
   try {
-    const result = Bun.spawnSync([process.execPath, "--eval", `
-      import { strict as assert } from "node:assert";
-      import { label, project, task } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
-      const actor = { name: "Test Human", email: null, kind: "human" };
+    withStore(directory, () => {
+
+      const actor = { name: "Test Human", email: null, kind: "human" as const };
       const app = project.create({ key: "APP" }, actor);
       const other = project.create({ key: "OTHER" }, actor);
       label.create({ name: "bug" }, actor);
@@ -137,19 +137,18 @@ test("task lists filter by every requested label without changing their order", 
       task.create({ project_id: app.id, title: "Bug only", description: null, labelNames: ["bug"] }, actor);
       task.create({ project_id: other.id, title: "Other both", description: null, labelNames: ["bug", "Groom"] }, actor);
 
-      const keys = (options) => task.getAll(options).map((entry) => entry.key);
+      const keys = (options: Parameters<typeof task.getAll>[0]) => task.getAll(options).map((entry) => entry.key);
       assert.deepEqual(keys({ labelNames: ["BUG"] }), ["APP-1", "APP-2", "OTHER-1"]);
       assert.deepEqual(keys({ projectKey: "app", labelNames: ["bug", "groom", "BUG"] }), ["APP-1"]);
-      assert.throws(() => task.getAll({ labelNames: ["missing"] }), (error) => error.kind === "missing");
-      assert.throws(() => task.getAll({ labelNames: [" "] }), (error) => error.kind === "input" && error.facts.field[0] === "labelNames");
+      assert.throws(() => task.getAll({ labelNames: ["missing"] }), (error) => error instanceof CoreError && error.kind === "missing");
+      assert.throws(() => task.getAll({ labelNames: [" "] }), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field![0] === "labelNames");
 
       task.archive("APP-1", actor);
       assert.deepEqual(keys({ labelNames: ["bug", "groom"] }), ["OTHER-1"]);
       assert.deepEqual(keys({ archive: "archived", labelNames: ["bug", "groom"] }), ["APP-1"]);
       assert.deepEqual(keys({ archive: "all", labelNames: ["bug", "groom"] }), ["APP-1", "OTHER-1"]);
-    `], { env: { ...process.env, ZINN_DIR: directory } });
-    expect(result.stderr.toString()).toBe("");
-    expect(result.exitCode).toBe(0);
+    });
+
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

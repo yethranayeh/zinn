@@ -1,18 +1,20 @@
+import { openDatabase } from "#sqlite";
 import { expect, test } from "bun:test";
+import { strict as assert } from "node:assert";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-
-import { openDatabase } from "#sqlite";
-import { CoreError, InputValidationError } from "./errors.js";
-import { resolveSettings } from "./settings.js";
-import { validateTaskInput, taskEditSchema } from "./schemas/task.js";
-import { checkBackup, RestoreRefusedError } from "./migrations/restore.js";
-import { migrateDatabase, MigrationRefusedError } from "./migrations/migrate.js";
-import { ReadOnlyDatabaseError, UnmarkedDatabaseError, DEFAULT_OPEN_POLICY } from "./migrations/open-policy.js";
-import { createSchema } from "./migrations/runner.js";
-import { assertFreeSpace } from "./migrations/space.js";
-import { withDirectory } from "./migrations/testing.js";
-import { SqliteError } from "./sqlite/database.js";
+import { activity, backup, column, comment, CoreError, label, project, reindex, relation, SqliteError, task, TextEditMatchError } from "../index";
+import { getDb } from "./db";
+import { InputValidationError } from "./errors";
+import { migrateDatabase, MigrationRefusedError } from "./migrations/migrate";
+import { DEFAULT_OPEN_POLICY, ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./migrations/open-policy";
+import { checkBackup, RestoreRefusedError } from "./migrations/restore";
+import { createSchema } from "./migrations/runner";
+import { assertFreeSpace } from "./migrations/space";
+import { snapshot, withDirectory } from "./migrations/testing";
+import { taskEditSchema, validateTaskInput } from "./schemas/task";
+import { resolveSettings } from "./settings";
+import { withStore } from "./testing";
 
 function caught(action: () => unknown): CoreError {
   try {
@@ -26,12 +28,9 @@ function caught(action: () => unknown): CoreError {
 
 test("ZINN-282: expected operation failures retain facts and leave all stored rows unchanged", () => {
   withDirectory((directory) => {
-    const result = Bun.spawnSync([process.execPath, "--eval", `
-      import { strict as assert } from "node:assert";
-      import { project, column, task, label, relation, comment, activity, backup, reindex, CoreError, TextEditMatchError, SqliteError } from ${JSON.stringify(new URL("../index.ts", import.meta.url).pathname)};
-      import { getDb } from ${JSON.stringify(new URL("./db.ts", import.meta.url).pathname)};
-      import { snapshot } from ${JSON.stringify(new URL("./migrations/testing.ts", import.meta.url).pathname)};
-      const actor = { kind: "human", name: "Test", email: null };
+    withStore(directory, () => {
+
+      const actor = { kind: "human" as const, name: "Test", email: null };
       for (const action of [() => backup.create({ client: "test", version: "1" }), () => reindex.run()]) {
         assert.throws(action, (error) => error instanceof CoreError && error.kind === "missing" && error.facts.entity === "database" && typeof error.facts.databasePath === "string");
       }
@@ -49,19 +48,19 @@ test("ZINN-282: expected operation failures retain facts and leave all stored ro
       label.create({ name: "other" }, actor);
       relation.create({ sourceTaskKey: "APP-1", targetTaskKey: "APP-2", relation_type: "subtask" }, actor);
 
-      function failure(action, kind, facts) {
+      function failure(action: () => unknown, kind: CoreError["kind"], facts: CoreError["facts"]) {
         const before = snapshot(getDb());
         let caught;
         try { action(); } catch (error) { caught = error; }
         assert.ok(caught instanceof CoreError);
         assert.equal(caught.kind, kind);
         for (const [key, value] of Object.entries(facts)) {
-          assert.deepEqual(caught.facts[key], value, key);
+          assert.deepEqual(caught.facts[key as keyof typeof facts], value, key);
         }
         assert.deepEqual(snapshot(getDb()), before);
         return caught;
       }
-      const missingProject = { entity: "project", key: "MISSING" };
+      const missingProject = { entity: "project" as const, key: "MISSING" };
       failure(() => project.create({ key: "APP" }, actor), "conflict", { entity: "project", key: "APP", reason: "already_exists" });
       failure(() => project.edit({ projectKey: "missing", name: "Name" }, actor), "missing", missingProject);
       failure(() => project.delete("MISSING", actor), "missing", missingProject);
@@ -84,9 +83,10 @@ test("ZINN-282: expected operation failures retain facts and leave all stored ro
       failure(() => task.move({ taskKey: "APP-1", targetColumn: "missing" }, actor), "missing", { entity: "column", key: "missing" });
       failure(() => task.moveMany({ taskKeys: ["APP-1", "APP-2"], targetColumn: "Done" }, actor), "conflict", { entity: "task", key: "APP-2", reason: "archived" });
       failure(() => task.order({ taskKey: "APP-2", direction: "top" }, actor), "conflict", { key: "APP-2", reason: "archived" });
-      for (const [targetTaskKey, reason] of [["OTHER-1", "different_project"], ["APP-3", "different_column"], ["APP-2", "archived"]]) {
+      for (const [targetTaskKey, reason] of [["OTHER-1", "different_project"], ["APP-3", "different_column"], ["APP-2", "archived"]] as const) {
         failure(() => task.order({ taskKey: "APP-1", direction: "before", targetTaskKey }, actor), "conflict", { reason });
       }
+      // @ts-expect-error Exercise runtime validation of invalid input.
       failure(() => relation.getAll(null), "input", { field: ["taskKey"] });
       failure(() => relation.create({ sourceTaskKey: "APP-1", targetTaskKey: "APP-1", relation_type: "related" }, actor), "input", { entity: "relation", field: ["targetTaskKey"] });
       failure(() => relation.create({ sourceTaskKey: "APP-1", targetTaskKey: "APP-2", relation_type: "subtask" }, actor), "conflict", { entity: "relation", reason: "already_exists" });
@@ -96,7 +96,7 @@ test("ZINN-282: expected operation failures retain facts and leave all stored ro
       failure(() => activity.getById("ffffffff"), "missing", { entity: "activity", key: "ffffffff" });
       getDb().exec("INSERT INTO activity (id, created_at, actor_kind, entity_type, entity_id, action) VALUES ('00000000-0000-7000-8000-000000000001', 0, 'human', 'task', 'one', 'create'), ('00000000-0000-7000-8000-000000000002', 0, 'human', 'task', 'two', 'create')");
       const ambiguous = failure(() => activity.getById("00000000"), "conflict", { reason: "ambiguous_reference", matchCount: 2 });
-      assert.equal(ambiguous.facts.candidateIds.length, 2);
+      assert.equal(ambiguous.facts.candidateIds!.length, 2);
       for (const find of ["absent", "alpha"]) {
         const matchCount = find === "absent" ? 0 : 2;
         const error = failure(() => task.edit({ taskKey: "APP-1", description: { find, replace: "replacement" } }, actor), "conflict", { reason: "text_match_count", matchCount, field: ["description"] });
@@ -111,9 +111,8 @@ test("ZINN-282: expected operation failures retain facts and leave all stored ro
       assert.ok(search.cause instanceof SqliteError);
       failure(() => task.create({ project_id: app.id, title: "Rolled back" }, actor), "storage", { reason: "missing_index" });
       assert.throws(() => getDb().exec("INSERT INTO project (key) VALUES ('APP')"), SqliteError);
-    `], { env: { ...process.env, ZINN_DIR: directory } });
-    expect(result.stderr.toString()).toBe("");
-    expect(result.exitCode).toBe(0);
+    });
+
   });
 });
 
