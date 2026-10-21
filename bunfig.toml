@@ -1,2 +1,3 @@
 [test]
 preload = ["./scripts/test-isolation.ts"]
+concurrentTestGlob = "**/packages/cli/index.test.ts"

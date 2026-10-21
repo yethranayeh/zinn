@@ -1,12 +1,12 @@
 import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
-import { test, expect, afterAll } from "bun:test";
+import { test, expect } from "bun:test";
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 import packageJson from "./package.json";
-import { runCli, runCliInTerminal } from "./testing";
+import { runCliInTerminal } from "./testing";
 import { parseRoutes } from "./src/routes/router";
 import { routes } from "./src/routes/routes";
 import { errorDocumentSchema } from "./src/errors";
@@ -19,8 +19,9 @@ import { MAX_TEXT_BYTES, relationTypeSchema } from "@zinn-dev/core";
 // ? per-spawn rather than set on `process.env`. The route table is imported only
 // ? to list the commands; nothing in this process opens a database.
 
-const PREFIX = join(tmpdir(), "zinntest-");
-const TEST_DIR = mkdtempSync(PREFIX);
+// Concurrent Bun startup stalls when working directories are under macOS's per-user temp directory.
+const temporaryRoot = process.platform === "darwin" ? "/private/tmp" : tmpdir();
+const PREFIX = join(temporaryRoot, "zinntest-");
 // ? Resolved from this file so the suite does not depend on the cwd it is run from.
 const CLI_PATH = join(import.meta.dir, "index.ts");
 const CURRENT_SCHEMA_VERSION = latestVersion(MIGRATIONS);
@@ -33,14 +34,6 @@ const dim = (text: string) => `\x1b[2m${text}\x1b[22m`;
 const SECTION_RULE = "-".repeat(60);
 const bold = (text: string) => `\x1b[1m${text}\x1b[22m`;
 
-afterAll(() => {
-  if (!TEST_DIR.startsWith(PREFIX)) {
-    throw new Error(`Refusing to delete "${TEST_DIR}": not a ${PREFIX}* directory`);
-  }
-
-  rmSync(TEST_DIR, { recursive: true, force: true });
-});
-
 function removeIsolatedZinnDir(testDir: string) {
   if (!testDir.startsWith(PREFIX)) {
     throw new Error(`Refusing to delete "${testDir}": not a ${PREFIX}* directory`);
@@ -49,18 +42,7 @@ function removeIsolatedZinnDir(testDir: string) {
   rmSync(testDir, { recursive: true, force: true });
 }
 
-function withIsolatedZinnDir(run: (testDir: string) => void) {
-  const testDir = mkdtempSync(PREFIX);
-
-  try {
-    run(testDir);
-  } finally {
-    removeIsolatedZinnDir(testDir);
-  }
-}
-
-// ? Same as withIsolatedZinnDir, but removes the directory only after an async run settles.
-async function withIsolatedZinnDirAsync(run: (testDir: string) => Promise<void>) {
+async function withIsolatedZinnDir(run: (testDir: string) => Promise<void>) {
   const testDir = mkdtempSync(PREFIX);
 
   try {
@@ -70,16 +52,38 @@ async function withIsolatedZinnDirAsync(run: (testDir: string) => Promise<void>)
   }
 }
 
-function runZinn(
-  args: Array<string>,
-  testDir = TEST_DIR,
-  additionalEnv: Record<string, string> = {},
+async function runProcessAsync(
+  command: Array<string>,
+  options: { env: Record<string, string | undefined>; cwd: string },
 ) {
-  return runCli(args, { env: { ...TEST_ENVIRONMENT, ...additionalEnv, ZINN_DIR: testDir } });
+  const proc = Bun.spawn(command, {
+    env: options.env,
+    cwd: options.cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [code, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+
+  return { stdout, stderr, code };
 }
 
-test("names and titles share trimming and reject leading or trailing control characters", () => {
-  withIsolatedZinnDir((directory) => {
+function runZinn(
+  args: Array<string>,
+  testDir: string,
+  additionalEnv: Record<string, string> = {},
+) {
+  return runProcessAsync([process.execPath, CLI_PATH, ...args], {
+    env: { ...TEST_ENVIRONMENT, ...additionalEnv, ZINN_DIR: testDir },
+    cwd: testDir,
+  });
+}
+
+test("names and titles share trimming and reject leading or trailing control characters", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const commands = [
       { args: ["project", "create", "TEXT", "--name"], field: "name" },
       { args: ["project", "column", "create", "TEXT"], field: "name" },
@@ -87,7 +91,7 @@ test("names and titles share trimming and reject leading or trailing control cha
       { args: ["task", "create", "TEXT", "--title"], field: "title" },
     ];
     for (const { args, field } of commands) {
-      const created = runZinn([...args, " Café 🌿  next ", "--json"], directory);
+      const created = await runZinn([...args, " Café 🌿  next ", "--json"], directory);
       expect(created.code).toBe(0);
       expect(JSON.parse(created.stdout)[field]).toBe("Café 🌿  next");
     }
@@ -98,7 +102,7 @@ test("names and titles share trimming and reject leading or trailing control cha
       { args: ["task", "edit", "TEXT-1", "--title"], field: "title" },
     ];
     for (const { args, field } of edits) {
-      const edited = runZinn([...args, " Renamed ", "--json"], directory);
+      const edited = await runZinn([...args, " Renamed ", "--json"], directory);
       expect(edited.code).toBe(0);
       expect(JSON.parse(edited.stdout)[field]).toBe("Renamed");
     }
@@ -113,7 +117,7 @@ test("names and titles share trimming and reject leading or trailing control cha
       ["task", "edit", "TEXT-1", "--title"],
     ]) {
       for (const value of ["\nName", "Name\n", "\tName", "Name\t"]) {
-        const invalid = runZinn([...args, value, "--json"], directory);
+        const invalid = await runZinn([...args, value, "--json"], directory);
         expect(invalid.code).toBe(1);
         expect(errorDocumentSchema.parse(JSON.parse(invalid.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: [args.includes("--title") ? "title" : "name"] } });
       }
@@ -122,41 +126,21 @@ test("names and titles share trimming and reject leading or trailing control cha
 });
 
 // ? Pipes "y" into the CLI, as a script would; it does not answer a confirmation.
-function runZinnWithPipedYes(args: Array<string>, testDir = TEST_DIR) {
-  const proc = Bun.spawnSync(
+function runZinnWithPipedYes(args: Array<string>, testDir: string) {
+  return runProcessAsync(
     ["/bin/sh", "-c", 'printf "y\\n" | exec bun "$@"', "zinn-confirm", CLI_PATH, ...args],
-    { env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir } },
+    { env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir }, cwd: testDir },
   );
-
-  return {
-    stdout: proc.stdout.toString(),
-    stderr: proc.stderr.toString(),
-    code: proc.exitCode,
-  };
-}
-
-// Unlike runZinn's synchronous subprocess, this lets independent CLI writers overlap.
-async function runZinnAsync(args: Array<string>, testDir: string) {
-  const proc = Bun.spawn([process.execPath, CLI_PATH, ...args], {
-    env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir, AI_AGENT: "concurrency-test" },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [code, stdout, stderr] = await Promise.all([
-    proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text(),
-  ]);
-
-  return { code, stdout, stderr };
 }
 
 // ? Runs the CLI in a pseudo-terminal, so stdout is a TTY and text output is colored.
 function runZinnInTerminal(
   args: Array<string>,
-  testDir = TEST_DIR,
+  testDir: string,
   additionalEnv: Record<string, string> = {},
   columns?: number,
 ) {
-  return runCliInTerminal(args, { env: { ...TEST_ENVIRONMENT, ...additionalEnv, ZINN_DIR: testDir }, columns });
+  return runCliInTerminal(args, { env: { ...TEST_ENVIRONMENT, ...additionalEnv, ZINN_DIR: testDir }, cwd: testDir, columns });
 }
 
 function withTestDb<T>(testDir: string, inspect: (db: Database) => T) {
@@ -172,18 +156,20 @@ function withTestDb<T>(testDir: string, inspect: (db: Database) => T) {
 
 // --- ENTRYPOINT
 
-test("bare invocation shows root help and exits zero", () => {
-  const result = runZinn([]);
+test("bare invocation shows root help and exits zero", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const result = await runZinn([], testDir);
 
-  expect(result.code).toBe(0);
-  expect(result.stderr).toBe("");
-  expect(result).toEqual(runZinn(["--help"]));
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result).toEqual(await runZinn(["--help"], testDir));
+  });
 });
 
-test("--version and -v print the CLI package version and exit zero", () => {
-  withIsolatedZinnDir((testDir) => {
-    const longVersion = runZinn(["--version"], testDir);
-    const shortVersion = runZinn(["-v"], testDir);
+test("--version and -v print the CLI package version and exit zero", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const longVersion = await runZinn(["--version"], testDir);
+    const shortVersion = await runZinn(["-v"], testDir);
 
     expect(longVersion.code).toBe(0);
     expect(longVersion.stdout).toBe(`${packageJson.version}\n`);
@@ -192,83 +178,91 @@ test("--version and -v print the CLI package version and exit zero", () => {
   });
 });
 
-test("root help supports -h and --help and lists commands", () => {
-  const longHelp = runZinn(["--help"]);
-  const shortHelp = runZinn(["-h"]);
+test("root help supports -h and --help and lists commands", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const longHelp = await runZinn(["--help"], testDir);
+    const shortHelp = await runZinn(["-h"], testDir);
 
-  expect(longHelp.code).toBe(0);
-  expect(longHelp.stdout).toContain("Usage: zinn <command>");
-  expect(longHelp.stdout).toContain("project column {create|list|edit|order}");
-  expect(longHelp.stdout).toContain("project {create|list|view|edit|delete}");
-  expect(longHelp.stdout).toContain("task {create|list|search|view|edit|move|order|archive|unarchive|delete}");
-  expect(longHelp.stdout).toContain("task comment {create|list|view|edit|delete}");
-  for (const command of Object.keys(routes)) {
-    expect(longHelp.stdout).toContain(command);
-  }
-  expect(longHelp.stdout).toContain("-v");
-  expect(longHelp.stdout).toContain("--version");
-  expect(shortHelp).toEqual(longHelp);
+    expect(longHelp.code).toBe(0);
+    expect(longHelp.stdout).toContain("Usage: zinn <command>");
+    expect(longHelp.stdout).toContain("project column {create|list|edit|order}");
+    expect(longHelp.stdout).toContain("project {create|list|view|edit|delete}");
+    expect(longHelp.stdout).toContain("task {create|list|search|view|edit|move|order|archive|unarchive|delete}");
+    expect(longHelp.stdout).toContain("task comment {create|list|view|edit|delete}");
+    for (const command of Object.keys(routes)) {
+      expect(longHelp.stdout).toContain(command);
+    }
+    expect(longHelp.stdout).toContain("-v");
+    expect(longHelp.stdout).toContain("--version");
+    expect(shortHelp).toEqual(longHelp);
+  });
 });
 
 // --- ROUTING
 
-test("an unrecognized command exits nonzero", () => {
-  const result = runZinn(["--json", "task", "destroy", "WIP"]);
+test("an unrecognized command exits nonzero", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const result = await runZinn(["--json", "task", "destroy", "WIP"], testDir);
 
-  expect(result.code).toBe(1);
-  expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "invalid_input", details: { argument: "command" } });
+    expect(result.code).toBe(1);
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "invalid_input", details: { argument: "command" } });
+  });
 });
 
-test("a nested route resolves past its namespace", () => {
-  runZinn(["project", "create", "NEST", "--name", "Nested"]);
+test("a nested route resolves past its namespace", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "NEST", "--name", "Nested"], testDir);
 
-  // ? `project column list` is three tokens deep; proves the router peels the
-  // ? namespace prefix and forwards only "NEST" as the command args.
-  const result = runZinn(["project", "column", "list", "NEST"]);
+    // ? `project column list` is three tokens deep; proves the router peels the
+    // ? namespace prefix and forwards only "NEST" as the command args.
+    const result = await runZinn(["project", "column", "list", "NEST"], testDir);
 
-  expect(result.code).toBe(0);
-  expect(result.stdout).toContain("Backlog");
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("Backlog");
+  });
 });
 
-test("ZINN-299: ZINN_DEBUG=1 prints routing detail on stderr and leaves stdout unchanged", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "DBG", "--name", "Debug"], dir);
-    const plain = runZinn(["project", "list", "--json"], dir);
+test("ZINN-299: ZINN_DEBUG=1 prints routing detail on stderr and leaves stdout unchanged", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "DBG", "--name", "Debug"], dir);
+    const plain = await runZinn(["project", "list", "--json"], dir);
 
-    const debugged = runZinn(["project", "list", "--json"], dir, { ZINN_DEBUG: "1" });
+    const debugged = await runZinn(["project", "list", "--json"], dir, { ZINN_DEBUG: "1" });
     expect(debugged.code).toBe(0);
     expect(debugged.stdout).toBe(plain.stdout);
     expect(debugged.stderr).toContain("project list");
 
     const ignoredEnvironments: Array<Record<string, string>> = [{ DEBUG: "1" }, { ZINN_DEBUG: "true" }];
     for (const env of ignoredEnvironments) {
-      const ignored = runZinn(["project", "list", "--json"], dir, env);
+      const ignored = await runZinn(["project", "list", "--json"], dir, env);
       expect(ignored.stdout).toBe(plain.stdout);
       expect(ignored.stderr).toBe("");
     }
   });
 });
 
-test("namespace help lists its commands without running one", () => {
-  const taskHelp = runZinn(["task", "--help"]);
-  const projectHelp = runZinn(["project", "-h"]);
-  const columnHelp = runZinn(["project", "column", "--help"]);
+test("namespace help lists its commands without running one", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const taskHelp = await runZinn(["task", "--help"], testDir);
+    const projectHelp = await runZinn(["project", "-h"], testDir);
+    const columnHelp = await runZinn(["project", "column", "--help"], testDir);
 
-  expect(taskHelp.code).toBe(0);
-  expect(taskHelp.stdout).toContain("Usage: zinn task <command>");
-  expect(taskHelp.stdout).toContain(
-    "  {create|list|search|view|edit|move|order|archive|unarchive|delete}",
-  );
-  expect(taskHelp.stdout).toContain("  relation {create|list|delete}");
-  expect(taskHelp.stdout).not.toContain("  task ");
-  expect(projectHelp.code).toBe(0);
-  expect(projectHelp.stdout).toContain("  {create|list|view|edit|delete}");
-  expect(projectHelp.stdout).toContain("  column {create|list|edit|order}");
-  expect(projectHelp.stdout).not.toContain("  project ");
-  expect(columnHelp.code).toBe(0);
-  expect(columnHelp.stdout).toContain("Usage: zinn project column <command>");
-  expect(columnHelp.stdout).toContain("  {create|list|edit|order}");
-  expect(columnHelp.stdout).not.toContain("  column ");
+    expect(taskHelp.code).toBe(0);
+    expect(taskHelp.stdout).toContain("Usage: zinn task <command>");
+    expect(taskHelp.stdout).toContain(
+      "  {create|list|search|view|edit|move|order|archive|unarchive|delete}",
+    );
+    expect(taskHelp.stdout).toContain("  relation {create|list|delete}");
+    expect(taskHelp.stdout).not.toContain("  task ");
+    expect(projectHelp.code).toBe(0);
+    expect(projectHelp.stdout).toContain("  {create|list|view|edit|delete}");
+    expect(projectHelp.stdout).toContain("  column {create|list|edit|order}");
+    expect(projectHelp.stdout).not.toContain("  project ");
+    expect(columnHelp.code).toBe(0);
+    expect(columnHelp.stdout).toContain("Usage: zinn project column <command>");
+    expect(columnHelp.stdout).toContain("  {create|list|edit|order}");
+    expect(columnHelp.stdout).not.toContain("  column ");
+  });
 });
 
 const HELP_FLAGS = ["--help", "-h"];
@@ -285,8 +279,8 @@ const routeNamespaces = [
 
 const ROOT_USAGE = "Usage: zinn <command>";
 
-test("every command help exits cleanly instead of running the command", () => {
-  withIsolatedZinnDir((dir) => {
+test("every command help exits cleanly instead of running the command", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     // ? ZINN-67: arguments before and after the flag do not change which help prints.
     const argumentsAroundFlag = [
       { before: [], after: [] },
@@ -296,7 +290,7 @@ test("every command help exits cleanly instead of running the command", () => {
     for (const command of routeCommands) {
       for (const flag of HELP_FLAGS) {
         for (const { before, after } of argumentsAroundFlag) {
-          const result = runZinn([...command.split(" "), ...before, flag, ...after], dir);
+          const result = await runZinn([...command.split(" "), ...before, flag, ...after], dir);
           expect(result.code).toBe(0);
           expect(result.stderr).toBe("");
           expect(result.stdout).toContain(`Usage: zinn ${command}`);
@@ -307,13 +301,13 @@ test("every command help exits cleanly instead of running the command", () => {
   });
 }, 30_000);
 
-test("every namespace help exits cleanly instead of running a command", () => {
-  withIsolatedZinnDir((dir) => {
+test("every namespace help exits cleanly instead of running a command", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     for (const namespace of routeNamespaces) {
       for (const flag of HELP_FLAGS) {
         // ? ZINN-67: words after the flag are not read, even a known command or a typo.
         for (const after of [[], ["view", "APP-1"], ["shwo"]]) {
-          const result = runZinn([...namespace.split(" "), flag, ...after], dir);
+          const result = await runZinn([...namespace.split(" "), flag, ...after], dir);
           expect(result.code).toBe(0);
           expect(result.stderr).toBe("");
           expect(result.stdout).toContain(`Usage: zinn ${namespace} <command>`);
@@ -324,15 +318,15 @@ test("every namespace help exits cleanly instead of running a command", () => {
   });
 });
 
-test("a bare namespace is an error that carries the namespace help", () => {
-  withIsolatedZinnDir((dir) => {
+test("a bare namespace is an error that carries the namespace help", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     for (const namespace of routeNamespaces) {
-      const text = runZinn(namespace.split(" "), dir);
+      const text = await runZinn(namespace.split(" "), dir);
       expect(text.code).toBe(1);
       expect(text.stdout).toBe("");
       expect(text.stderr).toContain(`Usage: zinn ${namespace} <command>`);
 
-      const json = runZinn([...namespace.split(" "), "--json"], dir);
+      const json = await runZinn([...namespace.split(" "), "--json"], dir);
       expect(json.code).toBe(1);
       expect(json.stdout).toBe("");
       const { error } = JSON.parse(json.stderr);
@@ -343,22 +337,22 @@ test("a bare namespace is an error that carries the namespace help", () => {
   });
 });
 
-test("a help flag before command words prints help for the words before it", () => {
-  withIsolatedZinnDir((dir) => {
+test("a help flag before command words prints help for the words before it", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const rootHelpRequests = [
       ["--help", "task", "view"],
       ["--json", "--help"],
       ["--allow-legacy-read", "--help"],
     ];
     for (const args of rootHelpRequests) {
-      const result = runZinn(args, dir);
+      const result = await runZinn(args, dir);
       expect(result.code).toBe(0);
       expect(result.stderr).toBe("");
       expect(result.stdout).toContain(ROOT_USAGE);
     }
 
     // ? Help stays text under --json.
-    const jsonCommandHelp = runZinn(["task", "view", "--json", "--help"], dir);
+    const jsonCommandHelp = await runZinn(["task", "view", "--json", "--help"], dir);
     expect(jsonCommandHelp.code).toBe(0);
     expect(jsonCommandHelp.stdout).toContain("Usage: zinn task view");
     expect(() => JSON.parse(jsonCommandHelp.stdout)).toThrow();
@@ -366,8 +360,8 @@ test("a help flag before command words prints help for the words before it", () 
   });
 });
 
-test("an unknown command with a help flag fails with the nearest namespace help on stderr", () => {
-  withIsolatedZinnDir((dir) => {
+test("an unknown command with a help flag fails with the nearest namespace help on stderr", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const cases = [
       { args: ["task", "shwo", "APP-1", "--help"], usage: "Usage: zinn task <command>" },
       { args: ["task", "relation", "shwo", "-h"], usage: "Usage: zinn task relation <command>" },
@@ -375,12 +369,12 @@ test("an unknown command with a help flag fails with the nearest namespace help 
     ];
 
     for (const { args, usage } of cases) {
-      const text = runZinn(args, dir);
+      const text = await runZinn(args, dir);
       expect(text.code).toBe(1);
       expect(text.stdout).toBe("");
       expect(text.stderr).toContain(usage);
 
-      const json = runZinn([...args, "--json"], dir);
+      const json = await runZinn([...args, "--json"], dir);
       expect(json.code).toBe(1);
       expect(json.stdout).toBe("");
       const { error } = JSON.parse(json.stderr);
@@ -391,21 +385,21 @@ test("an unknown command with a help flag fails with the nearest namespace help 
   });
 });
 
-test("an unknown command without a help flag points to the nearest namespace help", () => {
-  withIsolatedZinnDir((dir) => {
+test("an unknown command without a help flag points to the nearest namespace help", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const cases = [
       { args: ["task", "shwo", "APP-1"], helpCommand: "zinn task --help" },
       { args: ["bogus"], helpCommand: "zinn --help" },
     ];
 
     for (const { args, helpCommand } of cases) {
-      const text = runZinn(args, dir);
+      const text = await runZinn(args, dir);
       expect(text.code).toBe(1);
       expect(text.stdout).toBe("");
       expect(text.stderr).toContain(helpCommand);
       expect(text.stderr).not.toContain("Usage:");
 
-      const json = runZinn([...args, "--json"], dir);
+      const json = await runZinn([...args, "--json"], dir);
       expect(json.code).toBe(1);
       const { error } = JSON.parse(json.stderr);
       expect(error.message).toContain(helpCommand);
@@ -414,13 +408,13 @@ test("an unknown command without a help flag points to the nearest namespace hel
   });
 });
 
-test("a help flag after command arguments saves nothing", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "APP"], dir);
+test("a help flag after command arguments saves nothing", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "APP"], dir);
     const columns = () => withTestDb(dir, (db) => db.query("SELECT * FROM project_column ORDER BY id").all());
     const before = columns();
 
-    const result = runZinn(["project", "column", "create", "APP", "--help"], dir);
+    const result = await runZinn(["project", "column", "create", "APP", "--help"], dir);
 
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("Usage: zinn project column create");
@@ -428,19 +422,19 @@ test("a help flag after command arguments saves nothing", () => {
   });
 });
 
-test("root help and activity namespace help list the activity commands", () => {
-  withIsolatedZinnDir((directory) => {
-    expect(runZinn(["--help"], directory).stdout).toContain("activity {list|view}");
-    expect(runZinn(["activity", "--help"], directory).stdout).toContain("{list|view}");
+test("root help and activity namespace help list the activity commands", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    expect((await runZinn(["--help"], directory)).stdout).toContain("activity {list|view}");
+    expect((await runZinn(["activity", "--help"], directory)).stdout).toContain("{list|view}");
   });
 });
 
 // --- ARGUMENTS
 
-test("every command rejects an unknown option before it opens the database", () => {
-  withIsolatedZinnDir((dir) => {
+test("every command rejects an unknown option before it opens the database", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     for (const command of routeCommands) {
-      const result = runZinn([...command.split(" "), "--bogus"], dir);
+      const result = await runZinn([...command.split(" "), "--bogus"], dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       // ? ZINN-108: a guessed flag is named with the usage line, without advice to put it after --.
@@ -523,14 +517,14 @@ test("the table of command words has an entry for every route command and no oth
   expect(Object.keys(commandWords).sort()).toEqual([...routeCommands].sort());
 });
 
-test("every command rejects an extra word, naming it with the usage line, before it opens the database", () => {
-  withIsolatedZinnDir((dir) => {
+test("every command rejects an extra word, naming it with the usage line, before it opens the database", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     for (const [command, { words, repeats }] of Object.entries(commandWords)) {
       if (repeats) {
         continue;
       }
 
-      const result = runZinn([...command.split(" "), ...words, EXTRA_WORD], dir);
+      const result = await runZinn([...command.split(" "), ...words, EXTRA_WORD], dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(result.stderr).toContain(EXTRA_WORD);
@@ -540,14 +534,14 @@ test("every command rejects an extra word, naming it with the usage line, before
   });
 }, 60_000);
 
-test("every command with required words rejects one word too few, naming a word its usage line writes", () => {
-  withIsolatedZinnDir((dir) => {
+test("every command with required words rejects one word too few, naming a word its usage line writes", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     for (const [command, { words, required }] of Object.entries(commandWords)) {
       if (required === 0) {
         continue;
       }
 
-      const result = runZinn([...command.split(" "), ...words.slice(0, required - 1)], dir);
+      const result = await runZinn([...command.split(" "), ...words.slice(0, required - 1)], dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
 
@@ -567,8 +561,8 @@ test("every command with required words rejects one word too few, naming a word 
   });
 }, 60_000);
 
-test("every flag in a usage line is rejected when given twice, unless the command repeats it", () => {
-  withIsolatedZinnDir((dir) => {
+test("every flag in a usage line is rejected when given twice, unless the command repeats it", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     for (const [command, { words, repeatableFlags = [] }] of Object.entries(commandWords)) {
       // ? A flag followed by <...> or {...} takes a value. Any value works, since the repeat check runs first.
       const flags = [...commandUsages.get(command)!.matchAll(/--([a-z-]+)( [<{])?/g)].map(
@@ -584,7 +578,7 @@ test("every flag in a usage line is rejected when given twice, unless the comman
         }
 
         const flag = takesValue ? [`--${name}`, "x"] : [`--${name}`];
-        const result = runZinn([...command.split(" "), ...words, ...flag, ...flag], dir);
+        const result = await runZinn([...command.split(" "), ...words, ...flag, ...flag], dir);
         expect(result.code).toBe(1);
         expect(result.stdout).toBe("");
         expect(result.stderr).toContain(`--${name}`);
@@ -594,12 +588,12 @@ test("every flag in a usage line is rejected when given twice, unless the comman
   });
 }, 60_000);
 
-test("every flag followed by <value> in a usage line refuses a separate value that begins with a dash, showing it joined with =", () => {
-  withIsolatedZinnDir((dir) => {
+test("every flag followed by <value> in a usage line refuses a separate value that begins with a dash, showing it joined with =", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     for (const [command, { words }] of Object.entries(commandWords)) {
       const valueFlags = [...commandUsages.get(command)!.matchAll(/(--[a-z-]+) </g)].map(([, flag]) => flag!);
       for (const flag of valueFlags) {
-        const result = runZinn([...command.split(" "), ...words, flag, "- item"], dir);
+        const result = await runZinn([...command.split(" "), ...words, flag, "- item"], dir);
         expect(result.code).toBe(1);
         expect(result.stdout).toBe("");
         expect(result.stderr).toContain(`${flag}='- item'`);
@@ -610,10 +604,10 @@ test("every flag followed by <value> in a usage line refuses a separate value th
   });
 }, 60_000);
 
-test("every command refuses a word that begins with a single dash, showing the command with it after --", () => {
-  withIsolatedZinnDir((dir) => {
+test("every command refuses a word that begins with a single dash, showing the command with it after --", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     for (const [command, { words }] of Object.entries(commandWords)) {
-      const result = runZinn([...command.split(" "), ...words, "-later"], dir);
+      const result = await runZinn([...command.split(" "), ...words, "-later"], dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(result.stderr).toContain(`zinn ${command} `);
@@ -624,29 +618,29 @@ test("every command refuses a word that begins with a single dash, showing the c
   });
 }, 60_000);
 
-test("the command shown for a word that begins with a single dash runs as shown, keeping --json before --", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "SHOP"], dir);
-    const refused = runZinn(["project", "column", "create", "SHOP", "-later", "--json"], dir);
+test("the command shown for a word that begins with a single dash runs as shown, keeping --json before --", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "SHOP"], dir);
+    const refused = await runZinn(["project", "column", "create", "SHOP", "-later", "--json"], dir);
     expect(refused.code).toBe(1);
     expect(refused.stdout).toBe("");
 
     const { error } = JSON.parse(refused.stderr);
     expect(error.help).toContain("Usage: zinn project column create");
     const shownArgs = error.message.match(/zinn (.*)$/)[1];
-    const proc = Bun.spawnSync(["/bin/sh", "-c", `exec bun "$0" ${shownArgs}`, CLI_PATH], {
-      env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir },
+    const proc = await runProcessAsync(["/bin/sh", "-c", `exec bun "$0" ${shownArgs}`, CLI_PATH], {
+      env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir }, cwd: dir,
     });
-    expect(proc.exitCode).toBe(0);
-    expect(JSON.parse(proc.stdout.toString())).toMatchObject({ name: "-later" });
+    expect(proc.code).toBe(0);
+    expect(JSON.parse(proc.stdout)).toMatchObject({ name: "-later" });
   });
 });
 
-test("a guessed --status or --column on task edit or task move suggests the task move command that runs as shown", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "SHOP"], dir);
-    runZinn(["task", "create", "SHOP", "--title", "First"], dir);
-    runZinn(["task", "create", "SHOP", "--title", "Second"], dir);
+test("a guessed --status or --column on task edit or task move suggests the task move command that runs as shown", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "SHOP"], dir);
+    await runZinn(["task", "create", "SHOP", "--title", "First"], dir);
+    await runZinn(["task", "create", "SHOP", "--title", "Second"], dir);
     const readColumns = () => withTestDb(dir, (db) =>
       db.query<{ column: string }, []>(
         "SELECT project_column.name AS column FROM task JOIN project_column ON project_column.id = task.column_id ORDER BY task.id",
@@ -660,7 +654,7 @@ test("a guessed --status or --column on task edit or task move suggests the task
     ];
     for (const [args, columnsAfter] of cases) {
       const before = readColumns();
-      const refused = runZinn([...args, "--json"], dir);
+      const refused = await runZinn([...args, "--json"], dir);
       expect(refused.code).toBe(1);
       expect(refused.stdout).toBe("");
       expect(readColumns()).toEqual(before);
@@ -668,22 +662,22 @@ test("a guessed --status or --column on task edit or task move suggests the task
       const { error } = JSON.parse(refused.stderr);
       expect(error.help).toContain(`Usage: zinn ${args.slice(0, 2).join(" ")}`);
       const shownArgs = error.message.match(/zinn (task move .*)$/)[1];
-      const proc = Bun.spawnSync(["/bin/sh", "-c", `exec bun "$0" ${shownArgs}`, CLI_PATH], {
-        env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir },
+      const proc = await runProcessAsync(["/bin/sh", "-c", `exec bun "$0" ${shownArgs}`, CLI_PATH], {
+        env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir }, cwd: dir,
       });
-      expect(proc.exitCode).toBe(0);
-      expect(() => JSON.parse(proc.stdout.toString())).not.toThrow();
+      expect(proc.code).toBe(0);
+      expect(() => JSON.parse(proc.stdout)).not.toThrow();
       expect(readColumns()).toEqual(columnsAfter);
     }
   });
 });
 
-test("every flag followed by <value> in a usage line fails without its value, showing the usage line", () => {
-  withIsolatedZinnDir((dir) => {
+test("every flag followed by <value> in a usage line fails without its value, showing the usage line", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     for (const [command, { words }] of Object.entries(commandWords)) {
       const valueFlags = [...commandUsages.get(command)!.matchAll(/(--[a-z-]+) </g)].map(([, flag]) => flag!);
       for (const flag of valueFlags) {
-        const result = runZinn([...command.split(" "), ...words, flag], dir);
+        const result = await runZinn([...command.split(" "), ...words, flag], dir);
         expect(result.code).toBe(1);
         expect(result.stdout).toBe("");
         expect(result.stderr).toContain(flag);
@@ -694,30 +688,30 @@ test("every flag followed by <value> in a usage line fails without its value, sh
   });
 }, 60_000);
 
-test("the command shown for a value that begins with a dash runs as shown", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "SHOP"], dir);
-    const refused = runZinn(["task", "create", "SHOP", "--title", "Fix it's bug", "--description", "- item", "--json"], dir);
+test("the command shown for a value that begins with a dash runs as shown", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "SHOP"], dir);
+    const refused = await runZinn(["task", "create", "SHOP", "--title", "Fix it's bug", "--description", "- item", "--json"], dir);
     expect(refused.code).toBe(1);
     expect(refused.stdout).toBe("");
-    expect(JSON.parse(runZinn(["task", "list", "SHOP", "--json"], dir).stdout)).toEqual([]);
+    expect(JSON.parse((await runZinn(["task", "list", "SHOP", "--json"], dir)).stdout)).toEqual([]);
 
     const { error } = JSON.parse(refused.stderr);
     expect(error.help).toContain("Usage: zinn task create");
     const shownArgs = error.message.match(/zinn (.*)$/)[1];
-    const proc = Bun.spawnSync(["/bin/sh", "-c", `exec bun "$0" ${shownArgs}`, CLI_PATH], {
-      env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir },
+    const proc = await runProcessAsync(["/bin/sh", "-c", `exec bun "$0" ${shownArgs}`, CLI_PATH], {
+      env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir }, cwd: dir,
     });
-    expect(proc.exitCode).toBe(0);
-    expect(JSON.parse(proc.stdout.toString())).toMatchObject({ title: "Fix it's bug", description: "- item" });
+    expect(proc.code).toBe(0);
+    expect(JSON.parse(proc.stdout)).toMatchObject({ title: "Fix it's bug", description: "- item" });
   });
 });
 
-test("project list, project view, the project column commands, task view and task order reject invalid requests without writes", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "SHOP"], dir);
-    runZinn(["task", "create", "SHOP", "--title", "First"], dir);
-    runZinn(["task", "create", "SHOP", "--title", "Second"], dir);
+test("project list, project view, the project column commands, task view and task order reject invalid requests without writes", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "SHOP"], dir);
+    await runZinn(["task", "create", "SHOP", "--title", "First"], dir);
+    await runZinn(["task", "create", "SHOP", "--title", "Second"], dir);
     const read = () => withTestDb(dir, (db) => ({
       columns: db.query("SELECT * FROM project_column ORDER BY id").all(),
       tasks: db.query("SELECT * FROM task ORDER BY id").all(),
@@ -791,7 +785,7 @@ test("project list, project view, the project column commands, task view and tas
         ...missingWords.map((args) => ({ args, facts: [usage] })),
       ];
       for (const { args, facts } of rejections) {
-        const result = runZinn([...command.split(" "), ...args], dir);
+        const result = await runZinn([...command.split(" "), ...args], dir);
         expect(result.code).toBe(1);
         expect(result.stdout).toBe("");
         for (const fact of facts) {
@@ -803,7 +797,7 @@ test("project list, project view, the project column commands, task view and tas
 
     // ? An unknown direction shows both usage lines, so the valid directions are listed.
     for (const args of [["project", "column", "order", "SHOP", "TODO", "sideways"], ["task", "order", "SHOP-1", "sideways"]]) {
-      const result = runZinn(args, dir);
+      const result = await runZinn(args, dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(result.stderr).toContain(`"sideways"`);
@@ -813,9 +807,9 @@ test("project list, project view, the project column commands, task view and tas
   });
 }, 30_000);
 
-test("project column create takes a name that begins with a dash only after --", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "SHOP"], dir);
+test("project column create takes a name that begins with a dash only after --", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "SHOP"], dir);
     const readNames = () => withTestDb(dir, (db) =>
       db.query<{ name: string }, []>("SELECT name FROM project_column ORDER BY column_order").all().map(({ name }) => name),
     );
@@ -823,22 +817,22 @@ test("project column create takes a name that begins with a dash only after --",
 
     // ? A flag, a word that begins with a dash and the second half of an unquoted name are never saved as a name.
     for (const args of [["SHOP", "--name", "Waiting"], ["SHOP", "Needs", "Review"], ["SHOP", "-later"]]) {
-      const result = runZinn(["project", "column", "create", ...args], dir);
+      const result = await runZinn(["project", "column", "create", ...args], dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(readNames()).toEqual(before);
     }
 
-    expect(runZinn(["project", "column", "create", "SHOP", "--", "-later"], dir).code).toBe(0);
+    expect((await runZinn(["project", "column", "create", "SHOP", "--", "-later"], dir)).code).toBe(0);
     expect(readNames()).toEqual([...before, "-later"]);
   });
 });
 
-test("a -- in front of the words or at the end leaves a valid command working", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "SHOP"], dir);
-    runZinn(["task", "create", "SHOP", "--title", "First"], dir);
-    runZinn(["task", "create", "SHOP", "--title", "Second"], dir);
+test("a -- in front of the words or at the end leaves a valid command working", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "SHOP"], dir);
+    await runZinn(["task", "create", "SHOP", "--title", "First"], dir);
+    await runZinn(["task", "create", "SHOP", "--title", "Second"], dir);
 
     const sameAsWithout: Array<[string[], string[]]> = [
       [["task", "view", "--", "SHOP-1"], ["task", "view", "SHOP-1"]],
@@ -846,24 +840,24 @@ test("a -- in front of the words or at the end leaves a valid command working", 
       [["project", "column", "list", "--", "SHOP"], ["project", "column", "list", "SHOP"]],
     ];
     for (const [withSeparator, withoutSeparator] of sameAsWithout) {
-      const result = runZinn(withSeparator, dir);
+      const result = await runZinn(withSeparator, dir);
       expect(result.code).toBe(0);
-      expect(result).toEqual(runZinn(withoutSeparator, dir));
+      expect(result).toEqual(await runZinn(withoutSeparator, dir));
     }
 
-    expect(runZinn(["task", "order", "SHOP-2", "top", "--"], dir).code).toBe(0);
-    expect(runZinn(["task", "list", "SHOP"], dir).stdout).toMatch(/SHOP-2[^\n]*\nSHOP-1/);
+    expect((await runZinn(["task", "order", "SHOP-2", "top", "--"], dir)).code).toBe(0);
+    expect((await runZinn(["task", "list", "SHOP"], dir)).stdout).toMatch(/SHOP-2[^\n]*\nSHOP-1/);
   });
 });
 
-test("delete commands take one key and one --yes, and delete nothing otherwise", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "A"], dir);
-    runZinn(["project", "create", "B"], dir);
-    runZinn(["task", "create", "A", "--title", "First"], dir);
-    runZinn(["task", "create", "A", "--title", "Second"], dir);
-    runZinn(["task", "comment", "create", "A-1", "--text", "Note"], dir);
-    runZinn(["label", "create", "bug"], dir);
+test("delete commands take one key and one --yes, and delete nothing otherwise", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "A"], dir);
+    await runZinn(["project", "create", "B"], dir);
+    await runZinn(["task", "create", "A", "--title", "First"], dir);
+    await runZinn(["task", "create", "A", "--title", "Second"], dir);
+    await runZinn(["task", "comment", "create", "A-1", "--text", "Note"], dir);
+    await runZinn(["label", "create", "bug"], dir);
     const read = () => withTestDb(dir, (db) => ({
       projects: db.query("SELECT * FROM project ORDER BY id").all(),
       columns: db.query("SELECT * FROM project_column ORDER BY id").all(),
@@ -886,7 +880,7 @@ test("delete commands take one key and one --yes, and delete nothing otherwise",
       [["label", "delete", "bug", "--yes", "--yes"], "--yes"],
     ];
     for (const [args, ...facts] of cases) {
-      const result = runZinn(args, dir);
+      const result = await runZinn(args, dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       for (const fact of facts) {
@@ -897,26 +891,26 @@ test("delete commands take one key and one --yes, and delete nothing otherwise",
   });
 });
 
-test("--json or --allow-legacy-read given twice runs nothing, while a second help flag still shows help", () => {
-  withIsolatedZinnDir((dir) => {
+test("--json or --allow-legacy-read given twice runs nothing, while a second help flag still shows help", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     for (const flag of ["--json", "--allow-legacy-read"]) {
-      const result = runZinn(["project", "create", "APP", flag, flag], dir);
+      const result = await runZinn(["project", "create", "APP", flag, flag], dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(result.stderr).toContain(flag);
     }
     expect(existsSync(join(dir, "data"))).toBe(false);
 
-    const help = runZinn(["task", "view", "A-1", "-h", "--help"], dir);
+    const help = await runZinn(["task", "view", "A-1", "-h", "--help"], dir);
     expect(help.code).toBe(0);
     expect(help.stderr).toBe("");
     expect(help.stdout).toContain("Usage: zinn task view");
   });
 });
 
-test("with --json, an extra word is one JSON error on stderr whose help is the usage line", () => {
-  withIsolatedZinnDir((dir) => {
-    const result = runZinn(["task", "view", "A-1", "A-2", "--json"], dir);
+test("with --json, an extra word is one JSON error on stderr whose help is the usage line", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const result = await runZinn(["task", "view", "A-1", "A-2", "--json"], dir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
@@ -929,31 +923,35 @@ test("with --json, an extra word is one JSON error on stderr whose help is the u
 
 // --- PROJECT
 
-test("project create seeds the default columns", () => {
-  expect(runZinn(["project", "create", "WIP", "--name", "Work"]).code).toBe(0);
+test("project create seeds the default columns", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    expect((await runZinn(["project", "create", "WIP", "--name", "Work"], testDir)).code).toBe(0);
 
-  const listed = runZinn(["project", "column", "list", "WIP", "--json"]);
+    const listed = await runZinn(["project", "column", "list", "WIP", "--json"], testDir);
 
-  expect(listed.code).toBe(0);
-  expect(JSON.parse(listed.stdout)).toEqual([
-    { name: "Backlog", taskCount: 0 },
-    { name: "TODO", taskCount: 0 },
-    { name: "In Progress", taskCount: 0 },
-    { name: "Review", taskCount: 0 },
-    { name: "Done", taskCount: 0 },
-  ]);
+    expect(listed.code).toBe(0);
+    expect(JSON.parse(listed.stdout)).toEqual([
+      { name: "Backlog", taskCount: 0 },
+      { name: "TODO", taskCount: 0 },
+      { name: "In Progress", taskCount: 0 },
+      { name: "Review", taskCount: 0 },
+      { name: "Done", taskCount: 0 },
+    ]);
+  });
 });
 
-test("project create requires a key", () => {
-  const result = runZinn(["project", "create"]);
+test("project create requires a key", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const result = await runZinn(["project", "create"], testDir);
 
-  expect(result.code).toBe(1);
-  expect(result.stderr).toContain("Usage: zinn project create");
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("Usage: zinn project create");
+  });
 });
 
-test("project create defaults the stored name to the uppercase key and allows a later rename", () => {
-  withIsolatedZinnDir((testDir) => {
-    const created = runZinn(["project", "create", "site"], testDir);
+test("project create defaults the stored name to the uppercase key and allows a later rename", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const created = await runZinn(["project", "create", "site"], testDir);
 
     expect(created.code).toBe(0);
     expect(created.stdout).toBe("SITE | SITE\n");
@@ -964,41 +962,43 @@ test("project create defaults the stored name to the uppercase key and allows a 
       });
     });
 
-    const edited = runZinn(["project", "edit", "SITE", "--name", "Website refresh"], testDir);
+    const edited = await runZinn(["project", "edit", "SITE", "--name", "Website refresh"], testDir);
     expect(edited.code).toBe(0);
-    expect(runZinn(["project", "list"], testDir).stdout).toBe("SITE | Website refresh\n");
+    expect((await runZinn(["project", "list"], testDir)).stdout).toBe("SITE | Website refresh\n");
   });
 });
 
-test("project create rejects extra positionals and invalid name flags", () => {
-  withIsolatedZinnDir((testDir) => {
+test("project create rejects extra positionals and invalid name flags", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
     for (const args of [
       ["SITE", "Website"],
       ["SITE", "--name"],
       ["SITE", "--name", "First", "--name", "Second"],
       ["SITE", "--title", "Website"],
     ]) {
-      expect(runZinn(["project", "create", ...args], testDir).code).toBe(1);
+      expect((await runZinn(["project", "create", ...args], testDir)).code).toBe(1);
     }
-    expect(runZinn(["project", "list"], testDir).stdout).toBe("");
+    expect((await runZinn(["project", "list"], testDir)).stdout).toBe("");
   });
 });
 
-test("project create rejects a duplicate key regardless of casing", () => {
-  expect(runZinn(["project", "create", "DUP", "--name", "First"]).code).toBe(0);
+test("project create rejects a duplicate key regardless of casing", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    expect((await runZinn(["project", "create", "DUP", "--name", "First"], testDir)).code).toBe(0);
 
-  const second = runZinn(["--json", "project", "create", "dup", "--name", "Second"]);
+    const second = await runZinn(["--json", "project", "create", "dup", "--name", "Second"], testDir);
 
-  expect(second.code).toBe(1);
-  expect(errorDocumentSchema.parse(JSON.parse(second.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "already_exists", entity: "project", key: "DUP" } });
+    expect(second.code).toBe(1);
+    expect(errorDocumentSchema.parse(JSON.parse(second.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "already_exists", entity: "project", key: "DUP" } });
+  });
 });
 
-test("project column create rejects a duplicate name regardless of casing", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "COL", "--name", "Columns"], testDir);
-    expect(runZinn(["project", "column", "create", "COL", "Later"], testDir).code).toBe(0);
+test("project column create rejects a duplicate name regardless of casing", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "COL", "--name", "Columns"], testDir);
+    expect((await runZinn(["project", "column", "create", "COL", "Later"], testDir)).code).toBe(0);
 
-    const duplicate = runZinn(["--json", "project", "column", "create", "COL", "later"], testDir);
+    const duplicate = await runZinn(["--json", "project", "column", "create", "COL", "later"], testDir);
 
     expect(duplicate.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(duplicate.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "already_exists", entity: "column", key: "later" } });
@@ -1014,9 +1014,9 @@ test("project column create rejects a duplicate name regardless of casing", () =
   });
 });
 
-test("project column create trims names and rejects invalid ones without writes", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "COL", "--name", "Columns"], dir);
+test("project column create trims names and rejects invalid ones without writes", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "COL", "--name", "Columns"], dir);
     const read = () => withTestDb(dir, (db) => db.query("SELECT * FROM project_column").all());
     const before = read();
     for (const [name, expected] of [
@@ -1024,60 +1024,60 @@ test("project column create trims names and rejects invalid ones without writes"
       ["   ", { code: "invalid_input", details: { field: ["name"] } }],
       ["Next\nDone", { code: "invalid_input", details: { field: ["name"] } }],
     ] as const) {
-      const result = runZinn(["project", "column", "create", "COL", name, "--json"], dir);
+      const result = await runZinn(["project", "column", "create", "COL", name, "--json"], dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(expected);
       expect(read()).toEqual(before);
     }
 
-    expect(runZinn(["project", "column", "create", "COL", " Later "], dir).stdout).toBe("COL | Later\n");
+    expect((await runZinn(["project", "column", "create", "COL", " Later "], dir)).stdout).toBe("COL | Later\n");
   });
 });
 
-test("project column names are unique only within a project", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "ALPHA", "--name", "Alpha"], testDir);
-    runZinn(["project", "create", "BETA", "--name", "Beta"], testDir);
+test("project column names are unique only within a project", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "ALPHA", "--name", "Alpha"], testDir);
+    await runZinn(["project", "create", "BETA", "--name", "Beta"], testDir);
 
-    const alpha = runZinn(["project", "column", "create", "ALPHA", "QA"], testDir);
-    const beta = runZinn(["project", "column", "create", "BETA", "qa"], testDir);
+    const alpha = await runZinn(["project", "column", "create", "ALPHA", "QA"], testDir);
+    const beta = await runZinn(["project", "column", "create", "BETA", "qa"], testDir);
 
     expect(alpha.code).toBe(0);
     expect(beta.code).toBe(0);
   });
 });
 
-test("project column edit renames a column in place and keeps its tasks", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "COL", "--name", "Columns"], dir);
-    runZinn(["task", "create", "COL", "--title", "Stays put"], dir);
-    runZinn(["task", "move", "COL-1", "todo"], dir);
+test("project column edit renames a column in place and keeps its tasks", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "COL", "--name", "Columns"], dir);
+    await runZinn(["task", "create", "COL", "--title", "Stays put"], dir);
+    await runZinn(["task", "move", "COL-1", "todo"], dir);
     const readColumns = () =>
       withTestDb(dir, (db) => db.query("SELECT * FROM project_column ORDER BY column_order").all());
     const before = readColumns();
 
-    const renamed = runZinn(["project", "column", "edit", "col", "todo", "--name", " Next up "], dir);
+    const renamed = await runZinn(["project", "column", "edit", "col", "todo", "--name", " Next up "], dir);
     expect(renamed).toEqual({ stdout: "COL | Next up\n", stderr: "", code: 0 });
-    expect(runZinn(["project", "column", "list", "COL"], dir).stdout).toBe(
+    expect((await runZinn(["project", "column", "list", "COL"], dir)).stdout).toBe(
       "Backlog     | 0\nNext up     | 1\nIn Progress | 0\nReview      | 0\nDone        | 0\n",
     );
     expect(readColumns()).toEqual(
       before.map((row: any) => (row.name === "TODO" ? { ...row, name: "Next up" } : row)),
     );
-    expect(runZinn(["task", "view", "COL-1", "--json"], dir).stdout).toContain(`"column": "Next up"`);
+    expect((await runZinn(["task", "view", "COL-1", "--json"], dir)).stdout).toContain(`"column": "Next up"`);
 
-    const caseOnly = runZinn(["project", "column", "edit", "COL", "next up", "--name", "NEXT UP", "--json"], dir);
+    const caseOnly = await runZinn(["project", "column", "edit", "COL", "next up", "--name", "NEXT UP", "--json"], dir);
     expect(JSON.parse(caseOnly.stdout)).toEqual({ project: "COL", name: "NEXT UP" });
-    expect(runZinn(["project", "column", "edit", "COL", "--name=--example", "NEXT UP"], dir).stdout).toBe(
+    expect((await runZinn(["project", "column", "edit", "COL", "--name=--example", "NEXT UP"], dir)).stdout).toBe(
       "COL | --example\n",
     );
   });
 });
 
-test("project column edit rejects invalid requests without writes", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "COL", "--name", "Columns"], dir);
+test("project column edit rejects invalid requests without writes", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "COL", "--name", "Columns"], dir);
     const read = () => withTestDb(dir, (db) => db.query("SELECT * FROM project_column").all());
     const before = read();
     const usage = "Usage: zinn project column edit";
@@ -1096,32 +1096,32 @@ test("project column edit rejects invalid requests without writes", () => {
       [["NOPE", "TODO", "--name", "Next"], { code: "not_found", details: { entity: "project", key: "NOPE" } }],
     ] as const;
     for (const [args, expected] of cases) {
-      const result = runZinn(["project", "column", "edit", ...args, "--json"], dir);
+      const result = await runZinn(["project", "column", "edit", ...args, "--json"], dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(expected);
       expect(read()).toEqual(before);
     }
 
-    const unchanged = runZinn(["project", "column", "edit", "COL", "todo", "--name", "TODO"], dir);
+    const unchanged = await runZinn(["project", "column", "edit", "COL", "todo", "--name", "TODO"], dir);
     expect(unchanged).toEqual({ stdout: "COL | TODO\n", stderr: "", code: 0 });
     expect(read()).toEqual(before);
   });
 });
 
-test("project column order moves a column in every direction and prints it", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "COL", "--name", "Columns"], dir);
-    const listColumns = () => JSON.parse(
-      runZinn(["project", "column", "list", "COL", "--json"], dir).stdout,
+test("project column order moves a column in every direction and prints it", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "COL", "--name", "Columns"], dir);
+    const listColumns = async () => JSON.parse(
+      (await runZinn(["project", "column", "list", "COL", "--json"], dir)).stdout,
     ).map((column: { name: string }) => column.name);
 
-    expect(runZinn(["project", "column", "order", "col", "review", "first"], dir)).toEqual({
+    expect(await runZinn(["project", "column", "order", "col", "review", "first"], dir)).toEqual({
       stdout: "COL | Review\n",
       stderr: "",
       code: 0,
     });
-    expect(listColumns()).toEqual(["Review", "Backlog", "TODO", "In Progress", "Done"]);
+    expect(await listColumns()).toEqual(["Review", "Backlog", "TODO", "In Progress", "Done"]);
 
     const steps: Array<[string[], string[]]> = [
       [["Review", "next"], ["Backlog", "Review", "TODO", "In Progress", "Done"]],
@@ -1131,18 +1131,18 @@ test("project column order moves a column in every direction and prints it", () 
       [["todo", "before", "in progress"], ["Backlog", "TODO", "In Progress", "Review", "Done"]],
     ];
     for (const [args, expected] of steps) {
-      expect(runZinn(["project", "column", "order", "COL", ...args], dir).code).toBe(0);
-      expect(listColumns()).toEqual(expected);
+      expect((await runZinn(["project", "column", "order", "COL", ...args], dir)).code).toBe(0);
+      expect(await listColumns()).toEqual(expected);
     }
 
-    const json = runZinn(["project", "column", "order", "COL", "done", "first", "--json"], dir);
+    const json = await runZinn(["project", "column", "order", "COL", "done", "first", "--json"], dir);
     expect(JSON.parse(json.stdout)).toEqual({ project: "COL", name: "Done" });
   });
 });
 
-test("project column order rejects invalid requests and skips no-ops without writes", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "COL", "--name", "Columns"], dir);
+test("project column order rejects invalid requests and skips no-ops without writes", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "COL", "--name", "Columns"], dir);
     const read = () => withTestDb(dir, (db) => db.query("SELECT * FROM project_column").all());
     const before = read();
     const usage = "Usage: zinn project column order";
@@ -1161,7 +1161,7 @@ test("project column order rejects invalid requests and skips no-ops without wri
       [["NOPE", "TODO", "first"], { code: "not_found", details: { entity: "project", key: "NOPE" } }],
     ] as const;
     for (const [args, expected] of cases) {
-      const result = runZinn(["project", "column", "order", ...args, "--json"], dir);
+      const result = await runZinn(["project", "column", "order", ...args, "--json"], dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(expected);
@@ -1169,7 +1169,7 @@ test("project column order rejects invalid requests and skips no-ops without wri
     }
 
     for (const args of [["backlog", "first"], ["Done", "next"], ["TODO", "after", "backlog"], ["TODO", "before", "todo"]]) {
-      const unchanged = runZinn(["project", "column", "order", "COL", ...args], dir);
+      const unchanged = await runZinn(["project", "column", "order", "COL", ...args], dir);
       expect(unchanged.code).toBe(0);
       expect(unchanged.stderr).toBe("");
       expect(read()).toEqual(before);
@@ -1177,15 +1177,15 @@ test("project column order rejects invalid requests and skips no-ops without wri
   });
 });
 
-test("project delete accepts a non-standardized key and removes its columns and tasks", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "GONE", "--name", "Doomed"], testDir);
-    runZinn(["task", "create", "GONE", "--title", "Doomed task"], testDir);
-    runZinn(["project", "create", "KEEP", "--name", "Kept"], testDir);
-    runZinn(["task", "create", "KEEP", "--title", "Kept task"], testDir);
+test("project delete accepts a non-standardized key and removes its columns and tasks", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "GONE", "--name", "Doomed"], testDir);
+    await runZinn(["task", "create", "GONE", "--title", "Doomed task"], testDir);
+    await runZinn(["project", "create", "KEEP", "--name", "Kept"], testDir);
+    await runZinn(["task", "create", "KEEP", "--title", "Kept task"], testDir);
 
     expect(
-      runZinn(["project", "delete", "gone", "--yes"], testDir).code,
+      (await runZinn(["project", "delete", "gone", "--yes"], testDir)).code,
     ).toBe(0);
 
     withTestDb(testDir, (db) => {
@@ -1205,33 +1205,36 @@ test("project delete accepts a non-standardized key and removes its columns and 
   });
 });
 
-test("project delete keeps the project when confirmation is declined", async () => {
-  await withIsolatedZinnDirAsync(async (testDir) => {
-    runZinn(["project", "create", "KEEP", "--name", "Kept"], testDir);
-    runZinn(["task", "create", "KEEP", "--title", "Kept task"], testDir);
+test.serial("project delete keeps the project when confirmation is declined", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "KEEP", "--name", "Kept"], testDir);
+    await runZinn(["task", "create", "KEEP", "--title", "Kept task"], testDir);
 
     const result = await runCliInTerminal(["project", "delete", "keep"], {
       env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir, NO_COLOR: "1" },
+      cwd: testDir,
       input: "n\n",
     });
 
     expect(result.code).toBe(0);
     expect(result.output).toContain("KEEP | Kept");
-    expect(runZinn(["project", "list"], testDir).stdout).toContain("KEEP | Kept");
-    expect(runZinn(["task", "list", "KEEP"], testDir).stdout).toContain("Kept task");
+    expect((await runZinn(["project", "list"], testDir)).stdout).toContain("KEEP | Kept");
+    expect((await runZinn(["task", "list", "KEEP"], testDir)).stdout).toContain("Kept task");
   });
 });
 
-test("project delete rejects an unknown key", () => {
-  const result = runZinn(["--json", "project", "delete", "NOSUCH"]);
+test("project delete rejects an unknown key", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const result = await runZinn(["--json", "project", "delete", "NOSUCH"], testDir);
 
-  expect(result.code).toBe(1);
-  expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "project", key: "NOSUCH" } });
+    expect(result.code).toBe(1);
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "project", key: "NOSUCH" } });
+  });
 });
 
-test("project list on an empty database exits cleanly without inventing a row", () => {
-  withIsolatedZinnDir((testDir) => {
-    const result = runZinn(["project", "list"], testDir);
+test("project list on an empty database exits cleanly without inventing a row", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const result = await runZinn(["project", "list"], testDir);
 
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
@@ -1239,12 +1242,12 @@ test("project list on an empty database exits cleanly without inventing a row", 
   });
 });
 
-test("project list renders every project once and aligns unequal key widths", () => {
-  withIsolatedZinnDir((testDir) => {
-    expect(runZinn(["project", "create", "a", "--name", "Short"], testDir).code).toBe(0);
-    expect(runZinn(["project", "create", "LONGKEY", "--name", "Long"], testDir).code).toBe(0);
+test("project list renders every project once and aligns unequal key widths", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    expect((await runZinn(["project", "create", "a", "--name", "Short"], testDir)).code).toBe(0);
+    expect((await runZinn(["project", "create", "LONGKEY", "--name", "Long"], testDir)).code).toBe(0);
 
-    const result = runZinn(["project", "list"], testDir);
+    const result = await runZinn(["project", "list"], testDir);
     const lines = result.stdout.trimEnd().split("\n");
 
     expect(result.code).toBe(0);
@@ -1255,15 +1258,15 @@ test("project list renders every project once and aligns unequal key widths", ()
   });
 });
 
-test("project list does not retain a deleted project", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "KEEP", "--name", "Keep"], testDir);
-    runZinn(["project", "create", "REMOVE", "--name", "Remove"], testDir);
+test("project list does not retain a deleted project", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "KEEP", "--name", "Keep"], testDir);
+    await runZinn(["project", "create", "REMOVE", "--name", "Remove"], testDir);
     expect(
-      runZinn(["project", "delete", "REMOVE", "--yes"], testDir).code,
+      (await runZinn(["project", "delete", "REMOVE", "--yes"], testDir)).code,
     ).toBe(0);
 
-    const result = runZinn(["project", "list"], testDir);
+    const result = await runZinn(["project", "list"], testDir);
 
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("KEEP");
@@ -1272,20 +1275,20 @@ test("project list does not retain a deleted project", () => {
   });
 });
 
-test("project view prints the full description and unarchived task counts per column, with archived tasks as one total", () => {
-  withIsolatedZinnDir((testDir) => {
+test("project view prints the full description and unarchived task counts per column, with archived tasks as one total", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
     const run = (...args: Array<string>) => runZinn(args, testDir);
     const description = "Refine the numbers\n  Keep the quota";
-    run("project", "create", "VIEW", "--name", "Project view", "--description", description);
-    run("project", "create", "OTHER");
-    run("task", "create", "OTHER", "--title", "Elsewhere");
+    await run("project", "create", "VIEW", "--name", "Project view", "--description", description);
+    await run("project", "create", "OTHER");
+    await run("task", "create", "OTHER", "--title", "Elsewhere");
     for (const title of ["Backlog task", "First done", "Second done", "Archived task"]) {
-      run("task", "create", "VIEW", "--title", title, "--description", "Task description");
+      await run("task", "create", "VIEW", "--title", title, "--description", "Task description");
     }
-    run("task", "move", "VIEW-2", "VIEW-3", "Done");
-    run("task", "archive", "VIEW-4");
+    await run("task", "move", "VIEW-2", "VIEW-3", "Done");
+    await run("task", "archive", "VIEW-4");
 
-    const viewedProject = run("project", "view", "view");
+    const viewedProject = await run("project", "view", "view");
 
     expect(viewedProject.code).toBe(0);
     expect(viewedProject.stderr).toBe("");
@@ -1310,11 +1313,11 @@ test("project view prints the full description and unarchived task counts per co
   });
 });
 
-test("project view leaves out the Description section and Archived row when there is nothing to show", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "EMPTY", "--name", "Empty project"], testDir);
+test("project view leaves out the Description section and Archived row when there is nothing to show", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "EMPTY", "--name", "Empty project"], testDir);
 
-    expect(runZinn(["project", "view", "EMPTY"], testDir).stdout).toBe(
+    expect((await runZinn(["project", "view", "EMPTY"], testDir)).stdout).toBe(
       [
         "EMPTY | Empty project",
         "",
@@ -1330,14 +1333,14 @@ test("project view leaves out the Description section and Archived row when ther
   });
 });
 
-test("project view JSON contains the project, per-column task counts in board order and the archived total", () => {
-  withIsolatedZinnDir((testDir) => {
+test("project view JSON contains the project, per-column task counts in board order and the archived total", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
     const run = (...args: Array<string>) => runZinn(args, testDir);
-    run("project", "create", "VIEW", "--name", "Project view", "--description", "Full\ndescription");
-    run("task", "create", "VIEW", "--title", "Visible task");
-    run("task", "create", "VIEW", "--title", "Review task");
-    run("task", "move", "VIEW-2", "Review");
-    run("project", "column", "order", "VIEW", "Review", "first");
+    await run("project", "create", "VIEW", "--name", "Project view", "--description", "Full\ndescription");
+    await run("task", "create", "VIEW", "--title", "Visible task");
+    await run("task", "create", "VIEW", "--title", "Review task");
+    await run("task", "move", "VIEW-2", "Review");
+    await run("project", "column", "order", "VIEW", "Review", "first");
 
     const expectedColumns = [
       { name: "Review", taskCount: 1 },
@@ -1346,7 +1349,7 @@ test("project view JSON contains the project, per-column task counts in board or
       { name: "In Progress", taskCount: 0 },
       { name: "Done", taskCount: 0 },
     ];
-    const viewedProject = run("project", "view", "VIEW", "--json");
+    const viewedProject = await run("project", "view", "VIEW", "--json");
 
     expect(viewedProject.code).toBe(0);
     expect(JSON.parse(viewedProject.stdout)).toEqual({
@@ -1356,24 +1359,24 @@ test("project view JSON contains the project, per-column task counts in board or
       columns: expectedColumns,
       archivedTaskCount: 0,
     });
-    expect(JSON.parse(run("project", "column", "list", "view", "--json").stdout)).toEqual(expectedColumns);
+    expect(JSON.parse((await run("project", "column", "list", "view", "--json")).stdout)).toEqual(expectedColumns);
 
-    run("task", "archive", "VIEW-1");
-    expect(JSON.parse(run("project", "view", "VIEW", "--json").stdout)).toMatchObject({
+    await run("task", "archive", "VIEW-1");
+    expect(JSON.parse((await run("project", "view", "VIEW", "--json")).stdout)).toMatchObject({
       columns: [expectedColumns[0], { name: "Backlog", taskCount: 0 }, ...expectedColumns.slice(2)],
       archivedTaskCount: 1,
     });
-    expect(JSON.parse(run("project", "column", "list", "VIEW", "--json").stdout)).toEqual([
+    expect(JSON.parse((await run("project", "column", "list", "VIEW", "--json")).stdout)).toEqual([
       expectedColumns[0], { name: "Backlog", taskCount: 0 }, ...expectedColumns.slice(2),
     ]);
   });
 });
 
-test("project view validates its project key", () => {
-  withIsolatedZinnDir((testDir) => {
-    const missing = runZinn(["project", "view"], testDir);
-    const extra = runZinn(["project", "view", "ONE", "TWO"], testDir);
-    const unknown = runZinn(["--json", "project", "view", "unknown"], testDir);
+test("project view validates its project key", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const missing = await runZinn(["project", "view"], testDir);
+    const extra = await runZinn(["project", "view", "ONE", "TWO"], testDir);
+    const unknown = await runZinn(["--json", "project", "view", "unknown"], testDir);
 
     expect(missing.code).toBe(1);
     expect(missing.stderr).toContain("Usage: zinn project view");
@@ -1385,21 +1388,21 @@ test("project view validates its project key", () => {
   });
 });
 
-test("project create accepts an alphanumeric key in any casing and stores it uppercase", () => {
-  withIsolatedZinnDir((testDir) => {
-    expect(runZinn(["project", "create", "b2B", "--name", "Business"], testDir).code).toBe(0);
+test("project create accepts an alphanumeric key in any casing and stores it uppercase", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    expect((await runZinn(["project", "create", "b2B", "--name", "Business"], testDir)).code).toBe(0);
 
-    const result = runZinn(["project", "list"], testDir);
+    const result = await runZinn(["project", "list"], testDir);
 
     expect(result.code).toBe(0);
     expect(result.stdout).toBe("B2B | Business\n");
   });
 });
 
-test("project create rejects keys outside the alphanumeric contract", () => {
-  withIsolatedZinnDir((testDir) => {
+test("project create rejects keys outside the alphanumeric contract", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
     for (const invalidKey of ["2B", "APP-DEV", "APP_DEV", "ÅPP", ""]) {
-      const result = runZinn(["--json", "project", "create", invalidKey, "--name", "Invalid"], testDir);
+      const result = await runZinn(["--json", "project", "create", invalidKey, "--name", "Invalid"], testDir);
 
       expect(result.code).toBe(1);
       expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["key"] } });
@@ -1407,10 +1410,10 @@ test("project create rejects keys outside the alphanumeric contract", () => {
   });
 });
 
-test("project create rejects blank or non-single-line names", () => {
-  withIsolatedZinnDir((testDir) => {
+test("project create rejects blank or non-single-line names", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
     for (const invalidName of ["", "   ", "first line\nsecond line", "name\u001b[31m"]) {
-      const result = runZinn(["--json", "project", "create", "SAFE", "--name", invalidName], testDir);
+      const result = await runZinn(["--json", "project", "create", "SAFE", "--name", invalidName], testDir);
 
       expect(result.code).toBe(1);
       expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["name"] } });
@@ -1420,35 +1423,41 @@ test("project create rejects blank or non-single-line names", () => {
 
 // --- TASK
 
-test("task create rejects an unknown project", () => {
-  const result = runZinn(["--json", "task", "create", "NOPE", "--title", "orphan task"]);
+test("task create rejects an unknown project", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const result = await runZinn(["--json", "task", "create", "NOPE", "--title", "orphan task"], testDir);
 
-  expect(result.code).toBe(1);
-  expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "project", key: "NOPE" } });
+    expect(result.code).toBe(1);
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "project", key: "NOPE" } });
+  });
 });
 
-test("task create requires a project key and a title", () => {
-  runZinn(["project", "create", "ARGS", "--name", "Args"]);
+test("task create requires a project key and a title", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "ARGS", "--name", "Args"], testDir);
 
-  expect(runZinn(["task", "create"]).stderr).toContain("Usage: zinn task create");
-  expect(errorDocumentSchema.parse(JSON.parse(runZinn(["--json", "task", "create", "ARGS"]).stderr)).error).toMatchObject({ code: "invalid_input", details: { argument: "--title" } });
+    expect((await runZinn(["task", "create"], testDir)).stderr).toContain("Usage: zinn task create");
+    expect(errorDocumentSchema.parse(JSON.parse((await runZinn(["--json", "task", "create", "ARGS"], testDir)).stderr)).error).toMatchObject({ code: "invalid_input", details: { argument: "--title" } });
+  });
 });
 
-test("task create succeeds against an existing project", () => {
-  runZinn(["project", "create", "TSK", "--name", "Tasks"]);
+test("task create succeeds against an existing project", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "TSK", "--name", "Tasks"], testDir);
 
-  const result = runZinn(["task", "create", "TSK", "--title", "first task"]);
+    const result = await runZinn(["task", "create", "TSK", "--title", "first task"], testDir);
 
-  // The placement contract is asserted independently below.
-  expect(result.code).toBe(0);
+    // The placement contract is asserted independently below.
+    expect(result.code).toBe(0);
+  });
 });
 
-test("task create attaches the task to its project's first ordered column", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "PLACE", "--name", "Placed"], testDir);
-    runZinn(["project", "column", "create", "PLACE", "Later"], testDir);
+test("task create attaches the task to its project's first ordered column", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "PLACE", "--name", "Placed"], testDir);
+    await runZinn(["project", "column", "create", "PLACE", "Later"], testDir);
 
-    expect(runZinn(["task", "create", "PLACE", "--title", "placed task"], testDir).code).toBe(0);
+    expect((await runZinn(["task", "create", "PLACE", "--title", "placed task"], testDir)).code).toBe(0);
 
     withTestDb(testDir, (db) => {
       const taskRow = db
@@ -1473,12 +1482,12 @@ test("task create attaches the task to its project's first ordered column", () =
   });
 });
 
-test("task create --column places the task last in the named column, matched case-insensitively", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "COLS", "--name", "Columns"], testDir);
+test("task create --column places the task last in the named column, matched case-insensitively", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "COLS", "--name", "Columns"], testDir);
 
-    const first = runZinn(["task", "create", "COLS", "--title", "first", "--column", "in progress"], testDir);
-    const second = runZinn(["task", "create", "COLS", "--title", "second", "--column", "IN PROGRESS"], testDir);
+    const first = await runZinn(["task", "create", "COLS", "--title", "first", "--column", "in progress"], testDir);
+    const second = await runZinn(["task", "create", "COLS", "--title", "second", "--column", "IN PROGRESS"], testDir);
 
     expect(first.code).toBe(0);
     expect(first.stdout).toContain("COLS-1 | In Progress | - | first");
@@ -1496,35 +1505,35 @@ test("task create --column places the task last in the named column, matched cas
   });
 });
 
-test("task create --column rejects an unknown column and creates nothing", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "BADCOL", "--name", "Bad column"], testDir);
+test("task create --column rejects an unknown column and creates nothing", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "BADCOL", "--name", "Bad column"], testDir);
 
-    const rejected = runZinn(["--json", "task", "create", "BADCOL", "--title", "nowhere", "--column", "Nowhere"], testDir);
-    const repeated = runZinn(["--json", "task", "create", "BADCOL", "--title", "twice", "--column", "Done", "--column", "TODO"], testDir);
+    const rejected = await runZinn(["--json", "task", "create", "BADCOL", "--title", "nowhere", "--column", "Nowhere"], testDir);
+    const repeated = await runZinn(["--json", "task", "create", "BADCOL", "--title", "twice", "--column", "Done", "--column", "TODO"], testDir);
 
     expect(rejected.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(rejected.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "column", key: "Nowhere" } });
     expect(repeated.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(repeated.stderr)).error).toMatchObject({ code: "invalid_input", details: { argument: "--column" } });
-    expect(runZinn(["task", "list", "BADCOL"], testDir).stdout).toBe("");
-    expect(runZinn(["task", "create", "BADCOL", "--title", "real"], testDir).stdout).toContain(
+    expect((await runZinn(["task", "list", "BADCOL"], testDir)).stdout).toBe("");
+    expect((await runZinn(["task", "create", "BADCOL", "--title", "real"], testDir)).stdout).toContain(
       "BADCOL-1 | Backlog | - | real",
     );
   });
 });
 
-test("task create relation flags relate the new task to existing tasks, from the new task's side", () => {
-  withIsolatedZinnDir((testDir) => {
+test("task create relation flags relate the new task to existing tasks, from the new task's side", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
     const run = (...args: string[]) => runZinn(args, testDir);
-    run("project", "create", "APP", "--name", "App");
-    run("project", "create", "OTHER", "--name", "Other");
+    await run("project", "create", "APP", "--name", "App");
+    await run("project", "create", "OTHER", "--name", "Other");
     for (const title of ["Epic", "Prerequisite", "Sibling", "Original"]) {
-      run("task", "create", "APP", "--title", title);
+      await run("task", "create", "APP", "--title", title);
     }
-    run("task", "create", "OTHER", "--title", "Elsewhere");
+    await run("task", "create", "OTHER", "--title", "Elsewhere");
 
-    const created = run(
+    const created = await run(
       "task", "create", "APP", "--title", "Child",
       "--parent", "app-1", "--depends-on", "APP-2", "--depends-on", "OTHER-1",
       "--duplicate-of", "APP-4", "--related", "APP-3",
@@ -1533,16 +1542,16 @@ test("task create relation flags relate the new task to existing tasks, from the
     expect(created.code).toBe(0);
     expect(created.stdout).toBe("APP-5 | Backlog | - | Child\n");
 
-    const childRelations = run("task", "relation", "list", "APP-5").stdout;
+    const childRelations = (await run("task", "relation", "list", "APP-5")).stdout;
     expect(childRelations).toMatch(/Parent\s+\|\s+APP-1\s+\|\s+Backlog\s+\|\s+Epic/);
     expect(childRelations).toMatch(/Depends on\s+\|\s+APP-2\s+\|\s+Backlog\s+\|\s+Prerequisite/);
     expect(childRelations).toMatch(/Depends on\s+\|\s+OTHER-1\s+\|\s+Backlog\s+\|\s+Elsewhere/);
     expect(childRelations).toMatch(/Duplicate of\s+\|\s+APP-4\s+\|\s+Backlog\s+\|\s+Original/);
     expect(childRelations).toMatch(/Related to\s+\|\s+APP-3\s+\|\s+Backlog\s+\|\s+Sibling/);
-    expect(run("task", "relation", "list", "APP-1").stdout).toMatch(/Subtask\s+\|\s+APP-5\s+\|\s+Backlog\s+\|\s+Child/);
-    expect(run("task", "relation", "list", "APP-2").stdout).toMatch(/Depended on by\s+\|\s+APP-5\s+\|\s+Backlog\s+\|\s+Child/);
-    expect(run("task", "relation", "list", "APP-4").stdout).toMatch(/Duplicated by\s+\|\s+APP-5\s+\|\s+Backlog\s+\|\s+Child/);
-    expect(run("task", "view", "APP-5").stdout).toMatch(/Parent\s+\|\s+APP-1\s+\|\s+Backlog\s+\|\s+Epic/);
+    expect((await run("task", "relation", "list", "APP-1")).stdout).toMatch(/Subtask\s+\|\s+APP-5\s+\|\s+Backlog\s+\|\s+Child/);
+    expect((await run("task", "relation", "list", "APP-2")).stdout).toMatch(/Depended on by\s+\|\s+APP-5\s+\|\s+Backlog\s+\|\s+Child/);
+    expect((await run("task", "relation", "list", "APP-4")).stdout).toMatch(/Duplicated by\s+\|\s+APP-5\s+\|\s+Backlog\s+\|\s+Child/);
+    expect((await run("task", "view", "APP-5")).stdout).toMatch(/Parent\s+\|\s+APP-1\s+\|\s+Backlog\s+\|\s+Epic/);
 
     withTestDb(testDir, (db) => {
       const actionsOf = (key: string) =>
@@ -1566,17 +1575,17 @@ test("task create relation flags relate the new task to existing tasks, from the
   });
 });
 
-test("task create counts a repeated relation target once and keeps different relation types to it", () => {
-  withIsolatedZinnDir((testDir) => {
+test("task create counts a repeated relation target once and keeps different relation types to it", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
     const run = (...args: string[]) => runZinn(args, testDir);
-    run("project", "create", "APP", "--name", "App");
-    run("task", "create", "APP", "--title", "Target");
+    await run("project", "create", "APP", "--name", "App");
+    await run("task", "create", "APP", "--title", "Target");
 
-    const created = run(
+    const created = await run(
       "task", "create", "APP", "--title", "Source",
       "--depends-on", "APP-1", "--depends-on", "app-1", "--related", "APP-1", "--related", "APP-1",
     );
-    const relations = run("task", "relation", "list", "APP-2").stdout.trimEnd().split("\n");
+    const relations = (await run("task", "relation", "list", "APP-2")).stdout.trimEnd().split("\n");
 
     expect(created.code).toBe(0);
     expect(relations).toHaveLength(2);
@@ -1585,12 +1594,12 @@ test("task create counts a repeated relation target once and keeps different rel
   });
 });
 
-test("task create rejects a missing, malformed or repeated relation target and creates nothing", () => {
-  withIsolatedZinnDir((testDir) => {
+test("task create rejects a missing, malformed or repeated relation target and creates nothing", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
     const run = (...args: string[]) => runZinn(args, testDir);
-    run("project", "create", "APP", "--name", "App");
-    run("task", "create", "APP", "--title", "Epic");
-    run("task", "create", "APP", "--title", "Other epic");
+    await run("project", "create", "APP", "--name", "App");
+    await run("task", "create", "APP", "--title", "Epic");
+    await run("task", "create", "APP", "--title", "Other epic");
     const countRows = () =>
       withTestDb(testDir, (db) =>
         db
@@ -1601,11 +1610,11 @@ test("task create rejects a missing, malformed or repeated relation target and c
       );
     const before = countRows();
 
-    const missing = run("--json", "task", "create", "APP", "--title", "Lost", "--parent", "APP-1", "--depends-on", "APP-99");
-    const missingProject = run("--json", "task", "create", "APP", "--title", "Lost", "--related", "NOPE-1");
-    const malformed = run("--json", "task", "create", "APP", "--title", "Lost", "--depends-on", "APP-1", "--related", "nope");
-    const secondParent = run("--json", "task", "create", "APP", "--title", "Lost", "--parent", "APP-1", "--parent", "APP-2");
-    const secondDuplicate = run("--json", "task", "create", "APP", "--title", "Lost", "--duplicate-of", "APP-1", "--duplicate-of", "APP-2");
+    const missing = await run("--json", "task", "create", "APP", "--title", "Lost", "--parent", "APP-1", "--depends-on", "APP-99");
+    const missingProject = await run("--json", "task", "create", "APP", "--title", "Lost", "--related", "NOPE-1");
+    const malformed = await run("--json", "task", "create", "APP", "--title", "Lost", "--depends-on", "APP-1", "--related", "nope");
+    const secondParent = await run("--json", "task", "create", "APP", "--title", "Lost", "--parent", "APP-1", "--parent", "APP-2");
+    const secondDuplicate = await run("--json", "task", "create", "APP", "--title", "Lost", "--duplicate-of", "APP-1", "--duplicate-of", "APP-2");
 
     expect(missing.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(missing.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "task", key: "APP-99" } });
@@ -1618,23 +1627,25 @@ test("task create rejects a missing, malformed or repeated relation target and c
     expect(secondDuplicate.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(secondDuplicate.stderr)).error).toMatchObject({ code: "invalid_input", details: { argument: "--duplicate-of" } });
     expect(countRows()).toEqual(before);
-    expect(run("task", "create", "APP", "--title", "Real").stdout).toBe("APP-3 | Backlog | - | Real\n");
+    expect((await run("task", "create", "APP", "--title", "Real")).stdout).toBe("APP-3 | Backlog | - | Real\n");
   });
 });
 
-test("task create help lists the relation flags", () => {
-  const help = runZinn(["task", "create", "--help"]);
+test("task create help lists the relation flags", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const help = await runZinn(["task", "create", "--help"], testDir);
 
-  expect(help.code).toBe(0);
-  for (const flag of ["--parent <task-key>", "--depends-on <task-key>", "--duplicate-of <task-key>", "--related <task-key>"]) {
-    expect(help.stdout).toContain(flag);
-  }
+    expect(help.code).toBe(0);
+    for (const flag of ["--parent <task-key>", "--depends-on <task-key>", "--duplicate-of <task-key>", "--related <task-key>"]) {
+      expect(help.stdout).toContain(flag);
+    }
+  });
 });
 
-test("task ordering starts independently in each column", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "ALPHA", "--name", "Alpha"], testDir);
-    runZinn(["task", "create", "ALPHA", "--title", "todo first"], testDir);
+test("task ordering starts independently in each column", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "ALPHA", "--name", "Alpha"], testDir);
+    await runZinn(["task", "create", "ALPHA", "--title", "todo first"], testDir);
 
     withTestDb(testDir, (db) => {
       const todoColumn = db
@@ -1645,8 +1656,8 @@ test("task ordering starts independently in each column", () => {
       db.run("UPDATE task SET column_id = ? WHERE title = 'todo first'", [todoColumn!.id]);
     });
 
-    runZinn(["task", "create", "ALPHA", "--title", "backlog first"], testDir);
-    runZinn(["task", "create", "ALPHA", "--title", "backlog second"], testDir);
+    await runZinn(["task", "create", "ALPHA", "--title", "backlog first"], testDir);
+    await runZinn(["task", "create", "ALPHA", "--title", "backlog second"], testDir);
 
     withTestDb(testDir, (db) => {
       const rows = db
@@ -1662,27 +1673,27 @@ test("task ordering starts independently in each column", () => {
   });
 });
 
-test("a project without columns rejects task creation without consuming a task number", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "EMPTYCOL", "--name", "No columns"], testDir);
+test("a project without columns rejects task creation without consuming a task number", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "EMPTYCOL", "--name", "No columns"], testDir);
     withTestDb(testDir, (db) => db.run("DELETE FROM project_column"));
 
-    const rejected = runZinn(["--json", "task", "create", "EMPTYCOL", "--title", "cannot place me"], testDir);
+    const rejected = await runZinn(["--json", "task", "create", "EMPTYCOL", "--title", "cannot place me"], testDir);
 
     expect(rejected.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(rejected.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "no_columns", entity: "project", key: "EMPTYCOL" } });
 
-    runZinn(["project", "column", "create", "EMPTYCOL", "Inbox"], testDir);
-    expect(runZinn(["task", "create", "EMPTYCOL", "--title", "first real task"], testDir).code).toBe(0);
-    expect(runZinn(["task", "view", "EMPTYCOL-1"], testDir).stdout).toContain(
+    await runZinn(["project", "column", "create", "EMPTYCOL", "Inbox"], testDir);
+    expect((await runZinn(["task", "create", "EMPTYCOL", "--title", "first real task"], testDir)).code).toBe(0);
+    expect((await runZinn(["task", "view", "EMPTYCOL-1"], testDir)).stdout).toContain(
       "EMPTYCOL-1 | Inbox | - | first real task",
     );
   });
 });
 
-test("task list on an empty database exits cleanly without output", () => {
-  withIsolatedZinnDir((testDir) => {
-    const result = runZinn(["task", "list"], testDir);
+test("task list on an empty database exits cleanly without output", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const result = await runZinn(["task", "list"], testDir);
 
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
@@ -1690,33 +1701,33 @@ test("task list on an empty database exits cleanly without output", () => {
   });
 });
 
-test("task list --column filters project and global results with labels and archive flags", () => {
-  withIsolatedZinnDir((testDir) => {
+test("task list --column filters project and global results with labels and archive flags", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
     const run = (...args: Array<string>) => runZinn(args, testDir);
-    const keys = (...args: Array<string>) => {
-      const result = run("task", "list", ...args, "--json");
+    const keys = async (...args: Array<string>) => {
+      const result = await run("task", "list", ...args, "--json");
       expect(result.code).toBe(0);
       expect(result.stderr).toBe("");
       return JSON.parse(result.stdout).map((row: { key: string }) => row.key);
     };
-    expect(run("project", "create", "AAA").code).toBe(0);
-    expect(run("project", "create", "BBB").code).toBe(0);
-    expect(run("label", "create", "CLI").code).toBe(0);
-    expect(run("label", "create", "Groom").code).toBe(0);
-    expect(run("task", "create", "AAA", "--title", "Both", "--column", "In Progress", "--label", "CLI", "--label", "Groom").code).toBe(0);
-    expect(run("task", "create", "AAA", "--title", "CLI only", "--column", "In Progress", "--label", "CLI").code).toBe(0);
-    expect(run("task", "create", "AAA", "--title", "Elsewhere", "--label", "CLI", "--label", "Groom").code).toBe(0);
-    expect(run("task", "create", "BBB", "--title", "Archived", "--column", "In Progress", "--label", "CLI", "--label", "Groom").code).toBe(0);
-    expect(run("task", "archive", "BBB-1").code).toBe(0);
+    expect((await run("project", "create", "AAA")).code).toBe(0);
+    expect((await run("project", "create", "BBB")).code).toBe(0);
+    expect((await run("label", "create", "CLI")).code).toBe(0);
+    expect((await run("label", "create", "Groom")).code).toBe(0);
+    expect((await run("task", "create", "AAA", "--title", "Both", "--column", "In Progress", "--label", "CLI", "--label", "Groom")).code).toBe(0);
+    expect((await run("task", "create", "AAA", "--title", "CLI only", "--column", "In Progress", "--label", "CLI")).code).toBe(0);
+    expect((await run("task", "create", "AAA", "--title", "Elsewhere", "--label", "CLI", "--label", "Groom")).code).toBe(0);
+    expect((await run("task", "create", "BBB", "--title", "Archived", "--column", "In Progress", "--label", "CLI", "--label", "Groom")).code).toBe(0);
+    expect((await run("task", "archive", "BBB-1")).code).toBe(0);
 
-    expect(keys("--column", "IN PROGRESS")).toEqual(["AAA-1", "AAA-2"]);
-    expect(keys("AAA", "--column", "in progress", "--label", "cli", "--label", "GROOM")).toEqual(["AAA-1"]);
-    expect(keys("--column", "In Progress", "--archived", "--label", "CLI", "--label", "Groom")).toEqual(["BBB-1"]);
-    expect(keys("--column", "In Progress", "--all", "--label", "CLI", "--label", "Groom")).toEqual(["AAA-1", "BBB-1"]);
-    const unfiltered = JSON.parse(run("task", "list", "--all", "--json").stdout);
-    const filtered = JSON.parse(run("task", "list", "--column", "In Progress", "--all", "--json").stdout);
+    expect(await keys("--column", "IN PROGRESS")).toEqual(["AAA-1", "AAA-2"]);
+    expect(await keys("AAA", "--column", "in progress", "--label", "cli", "--label", "GROOM")).toEqual(["AAA-1"]);
+    expect(await keys("--column", "In Progress", "--archived", "--label", "CLI", "--label", "Groom")).toEqual(["BBB-1"]);
+    expect(await keys("--column", "In Progress", "--all", "--label", "CLI", "--label", "Groom")).toEqual(["AAA-1", "BBB-1"]);
+    const unfiltered = JSON.parse((await run("task", "list", "--all", "--json")).stdout);
+    const filtered = JSON.parse((await run("task", "list", "--column", "In Progress", "--all", "--json")).stdout);
     expect(filtered).toEqual(unfiltered.filter((row: { column: string }) => row.column === "In Progress"));
-    const text = run("task", "list", "AAA", "--column", "In Progress");
+    const text = await run("task", "list", "AAA", "--column", "In Progress");
     expect(text.code).toBe(0);
     expect(text.stdout).toContain("AAA-1");
     expect(text.stdout).toContain("AAA-2");
@@ -1724,25 +1735,25 @@ test("task list --column filters project and global results with labels and arch
 
     for (const scope of [[], ["AAA"]]) {
       for (const name of ["Nowhere", "Review", "Progress"]) {
-        expect(keys(...scope, "--column", name)).toEqual([]);
-        expect(run("task", "list", ...scope, "--column", name)).toEqual({ stdout: "", stderr: "", code: 0 });
+        expect(await keys(...scope, "--column", name)).toEqual([]);
+        expect(await run("task", "list", ...scope, "--column", name)).toEqual({ stdout: "", stderr: "", code: 0 });
       }
     }
-    const repeated = run("--json", "task", "list", "--column", "Review", "--column", "Done");
+    const repeated = await run("--json", "task", "list", "--column", "Review", "--column", "Done");
     expect(repeated.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(repeated.stderr)).error).toMatchObject({ code: "invalid_input", details: { argument: "--column" } });
-    expect(run("task", "list", "--help").stdout).toContain("[--column <name>]");
+    expect((await run("task", "list", "--help")).stdout).toContain("[--column <name>]");
   });
 });
 
-test("task list renders every project's tasks once and aligns unequal key widths", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "a", "--name", "Short"], testDir);
-    runZinn(["project", "create", "LONGKEY", "--name", "Long"], testDir);
-    runZinn(["task", "create", "A", "--title", "short task", "--description", "short description"], testDir);
-    runZinn(["task", "create", "LONGKEY", "--title", "long task", "--description", "long description"], testDir);
+test("task list renders every project's tasks once and aligns unequal key widths", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "a", "--name", "Short"], testDir);
+    await runZinn(["project", "create", "LONGKEY", "--name", "Long"], testDir);
+    await runZinn(["task", "create", "A", "--title", "short task", "--description", "short description"], testDir);
+    await runZinn(["task", "create", "LONGKEY", "--title", "long task", "--description", "long description"], testDir);
 
-    const result = runZinn(["task", "list"], testDir);
+    const result = await runZinn(["task", "list"], testDir);
     const lines = result.stdout.trimEnd().split("\n");
 
     expect(result.code).toBe(0);
@@ -1755,12 +1766,12 @@ test("task list renders every project's tasks once and aligns unequal key widths
   });
 });
 
-test("task list does not print a missing description as data", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "NONE", "--name", "No description"], testDir);
-    runZinn(["task", "create", "NONE", "--title", "title only"], testDir);
+test("task list does not print a missing description as data", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "NONE", "--name", "No description"], testDir);
+    await runZinn(["task", "create", "NONE", "--title", "title only"], testDir);
 
-    const result = runZinn(["task", "list"], testDir);
+    const result = await runZinn(["task", "list"], testDir);
 
     expect(result.code).toBe(0);
     expect(result.stdout).toContain(`NONE-1 | Backlog | - | title only`);
@@ -1768,18 +1779,18 @@ test("task list does not print a missing description as data", () => {
   });
 });
 
-test("task list leaves a long multi-line description to task view, which prints it in full", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "PREVIEW", "--name", "Description preview"], testDir);
+test("task list leaves a long multi-line description to task view, which prints it in full", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "PREVIEW", "--name", "Description preview"], testDir);
     const description = `${"A".repeat(40)}\n\t${"B".repeat(50)}`;
 
-    runZinn(
+    await runZinn(
       ["task", "create", "PREVIEW", "--title", "long description", "--description", description],
       testDir,
     );
 
-    const listResult = runZinn(["task", "list", "PREVIEW"], testDir);
-    const viewResult = runZinn(["task", "view", "PREVIEW-1"], testDir);
+    const listResult = await runZinn(["task", "list", "PREVIEW"], testDir);
+    const viewResult = await runZinn(["task", "view", "PREVIEW-1"], testDir);
 
     expect(listResult.code).toBe(0);
     expect(listResult.stdout).toBe(`PREVIEW-1 | Backlog | - | long description\n`);
@@ -1790,19 +1801,19 @@ test("task list leaves a long multi-line description to task view, which prints 
   });
 });
 
-test("task rows in lists and bulk archive output leave descriptions out, while JSON keeps them", () => {
-  withIsolatedZinnDir((testDir) => {
+test("task rows in lists and bulk archive output leave descriptions out, while JSON keeps them", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
     const run = (...args: Array<string>) => runZinn(args, testDir);
     const descriptions = ["First hidden description", "Second hidden description"];
-    run("project", "create", "ROWS");
-    run("task", "create", "ROWS", "--title", "First", "--description", descriptions[0]!);
-    run("task", "create", "ROWS", "--title", "Second", "--description", descriptions[1]!);
+    await run("project", "create", "ROWS");
+    await run("task", "create", "ROWS", "--title", "First", "--description", descriptions[0]!);
+    await run("task", "create", "ROWS", "--title", "Second", "--description", descriptions[1]!);
 
     const rowOutputs = [
-      run("task", "list", "ROWS"),
-      run("task", "archive", "ROWS-1", "ROWS-2"),
-      run("task", "list", "ROWS", "--all"),
-      run("task", "unarchive", "ROWS-1", "ROWS-2"),
+      await run("task", "list", "ROWS"),
+      await run("task", "archive", "ROWS-1", "ROWS-2"),
+      await run("task", "list", "ROWS", "--all"),
+      await run("task", "unarchive", "ROWS-1", "ROWS-2"),
     ];
 
     for (const rowOutput of rowOutputs) {
@@ -1811,21 +1822,21 @@ test("task rows in lists and bulk archive output leave descriptions out, while J
       expect(rowOutput.stdout).not.toContain("hidden description");
     }
 
-    const listedJson = JSON.parse(run("task", "list", "ROWS", "--json").stdout);
-    const archivedJson = JSON.parse(run("task", "archive", "ROWS-1", "ROWS-2", "--json").stdout);
+    const listedJson = JSON.parse((await run("task", "list", "ROWS", "--json")).stdout);
+    const archivedJson = JSON.parse((await run("task", "archive", "ROWS-1", "ROWS-2", "--json")).stdout);
     expect(listedJson.map((entry: { description: string }) => entry.description)).toEqual(descriptions);
     expect(archivedJson.map((entry: { description: string }) => entry.description)).toEqual(descriptions);
   });
 });
 
-test("task list filters to the requested project regardless of key casing", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "ALPHA", "--name", "Alpha"], testDir);
-    runZinn(["project", "create", "BETA", "--name", "Beta"], testDir);
-    runZinn(["task", "create", "ALPHA", "--title", "alpha task"], testDir);
-    runZinn(["task", "create", "BETA", "--title", "beta task"], testDir);
+test("task list filters to the requested project regardless of key casing", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "ALPHA", "--name", "Alpha"], testDir);
+    await runZinn(["project", "create", "BETA", "--name", "Beta"], testDir);
+    await runZinn(["task", "create", "ALPHA", "--title", "alpha task"], testDir);
+    await runZinn(["task", "create", "BETA", "--title", "beta task"], testDir);
 
-    const result = runZinn(["task", "list", "aLpHa"], testDir);
+    const result = await runZinn(["task", "list", "aLpHa"], testDir);
 
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
@@ -1835,20 +1846,20 @@ test("task list filters to the requested project regardless of key casing", () =
   });
 });
 
-test("project-scoped task list aligns column names and follows board order", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "ORDER", "--name", "Ordered"], testDir);
-    runZinn(["task", "create", "ORDER", "--title", "todo first"], testDir);
-    runZinn(["task", "create", "ORDER", "--title", "backlog first"], testDir);
-    runZinn(["task", "create", "ORDER", "--title", "in progress"], testDir);
-    runZinn(["task", "create", "ORDER", "--title", "todo second"], testDir);
-    runZinn(["task", "create", "ORDER", "--title", "backlog second"], testDir);
+test("project-scoped task list aligns column names and follows board order", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "ORDER", "--name", "Ordered"], testDir);
+    await runZinn(["task", "create", "ORDER", "--title", "todo first"], testDir);
+    await runZinn(["task", "create", "ORDER", "--title", "backlog first"], testDir);
+    await runZinn(["task", "create", "ORDER", "--title", "in progress"], testDir);
+    await runZinn(["task", "create", "ORDER", "--title", "todo second"], testDir);
+    await runZinn(["task", "create", "ORDER", "--title", "backlog second"], testDir);
 
-    runZinn(["task", "move", "ORDER-1", "TODO"], testDir);
-    runZinn(["task", "move", "ORDER-3", "In Progress"], testDir);
-    runZinn(["task", "move", "ORDER-4", "TODO"], testDir);
+    await runZinn(["task", "move", "ORDER-1", "TODO"], testDir);
+    await runZinn(["task", "move", "ORDER-3", "In Progress"], testDir);
+    await runZinn(["task", "move", "ORDER-4", "TODO"], testDir);
 
-    const result = runZinn(["task", "list", "ORDER"], testDir);
+    const result = await runZinn(["task", "list", "ORDER"], testDir);
 
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
@@ -1865,13 +1876,13 @@ test("project-scoped task list aligns column names and follows board order", () 
   });
 });
 
-test("task list for an empty project does not leak another project's tasks", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "EMPTY", "--name", "Empty"], testDir);
-    runZinn(["project", "create", "BUSY", "--name", "Busy"], testDir);
-    runZinn(["task", "create", "BUSY", "--title", "private task"], testDir);
+test("task list for an empty project does not leak another project's tasks", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "EMPTY", "--name", "Empty"], testDir);
+    await runZinn(["project", "create", "BUSY", "--name", "Busy"], testDir);
+    await runZinn(["task", "create", "BUSY", "--title", "private task"], testDir);
 
-    const result = runZinn(["task", "list", "EMPTY"], testDir);
+    const result = await runZinn(["task", "list", "EMPTY"], testDir);
 
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
@@ -1879,9 +1890,9 @@ test("task list for an empty project does not leak another project's tasks", () 
   });
 });
 
-test("task list rejects an unknown project", () => {
-  withIsolatedZinnDir((testDir) => {
-    const result = runZinn(["--json", "task", "list", "NOSUCH"], testDir);
+test("task list rejects an unknown project", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const result = await runZinn(["--json", "task", "list", "NOSUCH"], testDir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
@@ -1889,23 +1900,23 @@ test("task list rejects an unknown project", () => {
   });
 });
 
-test("task list and search filter by every repeated label", () => {
-  withIsolatedZinnDir((testDir) => {
+test("task list and search filter by every repeated label", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
     const run = (...args: Array<string>) => runZinn(args, testDir);
-    run("project", "create", "FILTER");
-    run("label", "create", "CLI");
-    run("label", "create", "Groom");
-    run("task", "create", "FILTER", "--title", "Both labels", "--label", "CLI", "--label", "Groom");
-    run("task", "create", "FILTER", "--title", "CLI only", "--label", "CLI");
-    run("task", "create", "FILTER", "--title", "Groom only", "--label", "Groom");
-    run("task", "archive", "FILTER-3");
+    await run("project", "create", "FILTER");
+    await run("label", "create", "CLI");
+    await run("label", "create", "Groom");
+    await run("task", "create", "FILTER", "--title", "Both labels", "--label", "CLI", "--label", "Groom");
+    await run("task", "create", "FILTER", "--title", "CLI only", "--label", "CLI");
+    await run("task", "create", "FILTER", "--title", "Groom only", "--label", "Groom");
+    await run("task", "archive", "FILTER-3");
 
     const listed = JSON.parse(
-      run("task", "list", "FILTER", "--label", "cli", "--label", "GROOM", "--json").stdout,
+      (await run("task", "list", "FILTER", "--label", "cli", "--label", "GROOM", "--json")).stdout,
     );
     expect(listed.map((entry: { key: string }) => entry.key)).toEqual(["FILTER-1"]);
 
-    const searched = run(
+    const searched = await run(
       "task",
       "search",
       "labels",
@@ -1919,21 +1930,21 @@ test("task list and search filter by every repeated label", () => {
     expect(searched.stdout).toContain("FILTER-1");
     expect(searched.stdout).not.toContain("FILTER-2");
 
-    const archived = run("task", "list", "FILTER", "--archived", "--label", "groom");
+    const archived = await run("task", "list", "FILTER", "--archived", "--label", "groom");
     expect(archived.stdout).toContain("FILTER-3");
-    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "task", "list", "--label", "missing").stderr)).error).toMatchObject({ code: "not_found", details: { entity: "label", key: "missing" } });
-    expect(run("task", "search", "labels", "--label", "missing").code).toBe(1);
+    expect(errorDocumentSchema.parse(JSON.parse((await run("--json", "task", "list", "--label", "missing")).stderr)).error).toMatchObject({ code: "not_found", details: { entity: "label", key: "missing" } });
+    expect((await run("task", "search", "labels", "--label", "missing")).code).toBe(1);
   });
 });
 
-test("project-scoped task list aligns one- and two-digit task numbers", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "TEN", "--name", "Ten tasks"], testDir);
+test("project-scoped task list aligns one- and two-digit task numbers", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "TEN", "--name", "Ten tasks"], testDir);
     for (let number = 1; number <= 10; number++) {
-      runZinn(["task", "create", "TEN", "--title", `task ${number}`], testDir);
+      await runZinn(["task", "create", "TEN", "--title", `task ${number}`], testDir);
     }
 
-    const result = runZinn(["task", "list", "TEN"], testDir);
+    const result = await runZinn(["task", "list", "TEN"], testDir);
     const lines = result.stdout.trimEnd().split("\n");
 
     expect(result.code).toBe(0);
@@ -1943,18 +1954,18 @@ test("project-scoped task list aligns one- and two-digit task numbers", () => {
   });
 });
 
-test("task list prints labels after the title, and a task without labels ends at its title", () => {
-  withIsolatedZinnDir((testDir) => {
+test("task list prints labels after the title, and a task without labels ends at its title", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
     const run = (...args: Array<string>) => runZinn(args, testDir);
-    run("project", "create", "TAGS");
-    run("label", "create", "bug");
-    run("label", "create", "cli");
-    run("label", "create", "docs");
-    run("task", "create", "TAGS", "--title", "No labels");
-    run("task", "create", "TAGS", "--title", "One label", "--label", "bug");
-    run("task", "create", "TAGS", "--title", "Several labels", "--label", "bug", "--label", "cli", "--label", "docs");
+    await run("project", "create", "TAGS");
+    await run("label", "create", "bug");
+    await run("label", "create", "cli");
+    await run("label", "create", "docs");
+    await run("task", "create", "TAGS", "--title", "No labels");
+    await run("task", "create", "TAGS", "--title", "One label", "--label", "bug");
+    await run("task", "create", "TAGS", "--title", "Several labels", "--label", "bug", "--label", "cli", "--label", "docs");
 
-    const result = run("task", "list", "TAGS");
+    const result = await run("task", "list", "TAGS");
 
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
@@ -1969,12 +1980,12 @@ test("task list prints labels after the title, and a task without labels ends at
   });
 });
 
-test("task view resolves a case-insensitive key and prints its canonical form", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "VIEW", "--name", "Viewed"], testDir);
-    runZinn(["task", "create", "VIEW", "--title", "visible task", "--description", "visible description"], testDir);
+test("task view resolves a case-insensitive key and prints its canonical form", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "VIEW", "--name", "Viewed"], testDir);
+    await runZinn(["task", "create", "VIEW", "--title", "visible task", "--description", "visible description"], testDir);
 
-    const result = runZinn(["task", "view", "vIeW-1"], testDir);
+    const result = await runZinn(["task", "view", "vIeW-1"], testDir);
 
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
@@ -1984,24 +1995,24 @@ test("task view resolves a case-insensitive key and prints its canonical form", 
   });
 });
 
-test("task view prints the task row followed by Description, Relations, and Comments sections", () => {
-  withIsolatedZinnDir((testDir) => {
+test("task view prints the task row followed by Description, Relations, and Comments sections", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
     const run = (...args: Array<string>) => runZinn(args, testDir, { TZ: "Europe/Berlin" });
     const description = "First line of the description.\nSecond line.";
-    run("project", "create", "MDR");
-    run("label", "create", "bug");
-    run("label", "create", "cli");
-    run("task", "create", "MDR", "--title", "Refine the numbers", "--description", description, "--priority", "high", "--label", "cli", "--label", "bug");
-    run("task", "create", "MDR", "--title", "Check the totals");
-    run("task", "relation", "create", "MDR-1", "MDR-2", "--type", "dependency");
-    run("task", "comment", "create", "MDR-1", "--text", "Ready for review");
-    run("task", "move", "MDR-1", "In Progress");
+    await run("project", "create", "MDR");
+    await run("label", "create", "bug");
+    await run("label", "create", "cli");
+    await run("task", "create", "MDR", "--title", "Refine the numbers", "--description", description, "--priority", "high", "--label", "cli", "--label", "bug");
+    await run("task", "create", "MDR", "--title", "Check the totals");
+    await run("task", "relation", "create", "MDR-1", "MDR-2", "--type", "dependency");
+    await run("task", "comment", "create", "MDR-1", "--text", "Ready for review");
+    await run("task", "move", "MDR-1", "In Progress");
     const commentedAt = Date.UTC(2026, 8, 25, 17, 42);
     withTestDb(testDir, (db) => {
       db.run("UPDATE comment SET created_at = ?, updated_at = ?", [commentedAt, commentedAt]);
     });
 
-    const viewed = run("task", "view", "MDR-1");
+    const viewed = await run("task", "view", "MDR-1");
 
     expect(viewed.code).toBe(0);
     expect(viewed.stderr).toBe("");
@@ -2025,7 +2036,7 @@ test("task view prints the task row followed by Description, Relations, and Comm
       ].join("\n"),
     );
 
-    expect(JSON.parse(run("task", "view", "MDR-1", "--json").stdout)).toEqual({
+    expect(JSON.parse((await run("task", "view", "MDR-1", "--json")).stdout)).toEqual({
       key: "MDR-1",
       status: "Active",
       column: "In Progress",
@@ -2047,32 +2058,32 @@ test("task view prints the task row followed by Description, Relations, and Comm
   });
 });
 
-test("task view leaves out the Description section for a task without a description", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "NONE", "--name", "No description"], testDir);
-    runZinn(["task", "create", "NONE", "--title", "title only"], testDir);
-    runZinn(["task", "create", "NONE", "--title", "other task"], testDir);
+test("task view leaves out the Description section for a task without a description", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "NONE", "--name", "No description"], testDir);
+    await runZinn(["task", "create", "NONE", "--title", "title only"], testDir);
+    await runZinn(["task", "create", "NONE", "--title", "other task"], testDir);
 
-    const result = runZinn(["task", "view", "NONE-1"], testDir);
+    const result = await runZinn(["task", "view", "NONE-1"], testDir);
 
     expect(result.code).toBe(0);
     expect(result.stdout).toBe(`NONE-1 | Backlog | - | title only\n`);
 
-    runZinn(["task", "relation", "create", "NONE-1", "NONE-2", "--type", "related"], testDir);
-    expect(runZinn(["task", "view", "NONE-1"], testDir).stdout).toBe(
+    await runZinn(["task", "relation", "create", "NONE-1", "NONE-2", "--type", "related"], testDir);
+    expect((await runZinn(["task", "view", "NONE-1"], testDir)).stdout).toBe(
       `NONE-1 | Backlog | - | title only\n\n${SECTION_RULE}\nRelations:\nRelated to | NONE-2 | Backlog | other task\n`,
     );
   });
 });
 
-test("task view sizes section rules to the terminal even when color is disabled", async () => {
-  await withIsolatedZinnDirAsync(async (dir) => {
-    runZinn(["project", "create", "W"], dir);
+test.serial("task view sizes section rules to the terminal even when color is disabled", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "W"], dir);
     const description = "中文 🧑‍🌾\n  Keep this indentation";
-    runZinn(["task", "create", "W", "--title", "Width", "--description", description], dir);
-    runZinn(["task", "create", "W", "--title", "Other"], dir);
-    runZinn(["task", "relation", "create", "W-1", "W-2", "--type", "related"], dir);
-    runZinn(["task", "comment", "create", "W-1", "--text", "A comment"], dir);
+    await runZinn(["task", "create", "W", "--title", "Width", "--description", description], dir);
+    await runZinn(["task", "create", "W", "--title", "Other"], dir);
+    await runZinn(["task", "relation", "create", "W-1", "W-2", "--type", "related"], dir);
+    await runZinn(["task", "comment", "create", "W-1", "--text", "A comment"], dir);
 
     const colorEnvironments: Array<Record<string, string>> = [
       { FORCE_COLOR: "1" },
@@ -2090,66 +2101,66 @@ test("task view sizes section rules to the terminal even when color is disabled"
       }
     }
 
-    const piped = runZinn(["task", "view", "W-1"], dir, { COLUMNS: "160", FORCE_COLOR: "0" });
+    const piped = await runZinn(["task", "view", "W-1"], dir, { COLUMNS: "160", FORCE_COLOR: "0" });
     expect(piped.stdout.split("\n").filter((line) => line === SECTION_RULE)).toHaveLength(3);
   });
 });
 
-test("task view of an archived task shows Archived after the key and full priority", () => {
-  withIsolatedZinnDir((testDir) => {
+test("task view of an archived task shows Archived after the key and full priority", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
     const run = (...args: Array<string>) => runZinn(args, testDir);
-    run("project", "create", "MDR");
-    run("label", "create", "bug");
-    run("task", "create", "MDR", "--title", "Refine the numbers", "--description", "Shelved", "--priority", "high", "--label", "bug");
-    run("task", "archive", "MDR-1");
+    await run("project", "create", "MDR");
+    await run("label", "create", "bug");
+    await run("task", "create", "MDR", "--title", "Refine the numbers", "--description", "Shelved", "--priority", "high", "--label", "bug");
+    await run("task", "archive", "MDR-1");
 
     const archivedRow = "MDR-1 | Archived | Backlog | H | Refine the numbers | bug";
-    expect(run("task", "list", "MDR", "--all").stdout).toBe(`${archivedRow}\n`);
-    expect(run("task", "view", "MDR-1").stdout).toBe(`MDR-1 | Archived | Backlog | High | Refine the numbers | bug\n\n${SECTION_RULE}\nDescription:\nShelved\n`);
+    expect((await run("task", "list", "MDR", "--all")).stdout).toBe(`${archivedRow}\n`);
+    expect((await run("task", "view", "MDR-1")).stdout).toBe(`MDR-1 | Archived | Backlog | High | Refine the numbers | bug\n\n${SECTION_RULE}\nDescription:\nShelved\n`);
 
-    run("task", "unarchive", "MDR-1");
-    expect(run("task", "view", "MDR-1").stdout).toBe(
+    await run("task", "unarchive", "MDR-1");
+    expect((await run("task", "view", "MDR-1")).stdout).toBe(
       `MDR-1 | Backlog | High | Refine the numbers | bug\n\n${SECTION_RULE}\nDescription:\nShelved\n`,
     );
   });
 });
 
-test("human task output omits empty descriptions while JSON returns null", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "EMPTY", "--name", "Empty description"], testDir);
+test("human task output omits empty descriptions while JSON returns null", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "EMPTY", "--name", "Empty description"], testDir);
 
-    const created = runZinn(
+    const created = await runZinn(
       ["task", "create", "EMPTY", "--title", "Empty description", "--description", ""],
       testDir,
     );
     expect(created.stdout).toBe(`EMPTY-1 | Backlog | - | Empty description\n`);
 
-    expect(runZinn(["task", "list", "EMPTY"], testDir).stdout).toBe(
+    expect((await runZinn(["task", "list", "EMPTY"], testDir)).stdout).toBe(
       `EMPTY-1 | Backlog | - | Empty description\n`,
     );
-    expect(runZinn(["task", "search", "Empty", "EMPTY"], testDir).stdout).toBe(
+    expect((await runZinn(["task", "search", "Empty", "EMPTY"], testDir)).stdout).toBe(
       `EMPTY-1 | Backlog | - | Empty description\n`,
     );
-    expect(runZinn(["task", "view", "EMPTY-1"], testDir).stdout).toBe(
-      `EMPTY-1 | Backlog | - | Empty description\n`,
-    );
-
-    runZinn(["task", "edit", "EMPTY-1", "--description", "Visible"], testDir);
-    expect(runZinn(["task", "edit", "EMPTY-1", "--description", ""], testDir).stdout).toBe(
+    expect((await runZinn(["task", "view", "EMPTY-1"], testDir)).stdout).toBe(
       `EMPTY-1 | Backlog | - | Empty description\n`,
     );
 
-    expect(JSON.parse(runZinn(["task", "list", "EMPTY", "--json"], testDir).stdout)).toEqual([
+    await runZinn(["task", "edit", "EMPTY-1", "--description", "Visible"], testDir);
+    expect((await runZinn(["task", "edit", "EMPTY-1", "--description", ""], testDir)).stdout).toBe(
+      `EMPTY-1 | Backlog | - | Empty description\n`,
+    );
+
+    expect(JSON.parse((await runZinn(["task", "list", "EMPTY", "--json"], testDir)).stdout)).toEqual([
       expect.objectContaining({ key: "EMPTY-1", description: null }),
     ]);
   });
 });
 
-test("task move, list and view color workflow column names only in a terminal, while JSON stays raw", async () => {
-  await withIsolatedZinnDirAsync(async (testDir) => {
-    runZinn(["project", "create", "COLOR", "--name", "Column colors"], testDir);
-    runZinn(["task", "create", "COLOR", "--title", "waiting"], testDir);
-    runZinn(["task", "create", "COLOR", "--title", "finished"], testDir);
+test.serial("task move, list and view color workflow column names only in a terminal, while JSON stays raw", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "COLOR", "--name", "Column colors"], testDir);
+    await runZinn(["task", "create", "COLOR", "--title", "waiting"], testDir);
+    await runZinn(["task", "create", "COLOR", "--title", "finished"], testDir);
 
     const moved = await runZinnInTerminal(["task", "move", "COLOR-2", "Done"], testDir);
     expect(moved.code).toBe(0);
@@ -2170,15 +2181,15 @@ test("task move, list and view color workflow column names only in a terminal, w
     );
 
     // Piped output keeps the same layout without color codes.
-    expect(runZinn(["task", "list", "COLOR"], testDir).stdout).toBe(
+    expect((await runZinn(["task", "list", "COLOR"], testDir)).stdout).toBe(
       ["COLOR-1 | Backlog | - | waiting", "COLOR-2 | Done    | - | finished", ""].join("\n"),
     );
-    expect(runZinn(["task", "view", "COLOR-2"], testDir).stdout).toBe("COLOR-2 | Done | - | finished\n");
-    expect(runZinn(["task", "move", "COLOR-2", "Done"], testDir).stdout).toBe(
+    expect((await runZinn(["task", "view", "COLOR-2"], testDir)).stdout).toBe("COLOR-2 | Done | - | finished\n");
+    expect((await runZinn(["task", "move", "COLOR-2", "Done"], testDir)).stdout).toBe(
       "COLOR-2 | Done | - | finished\n",
     );
 
-    const listedJson = runZinn(["task", "list", "COLOR", "--json"], testDir).stdout;
+    const listedJson = (await runZinn(["task", "list", "COLOR", "--json"], testDir)).stdout;
     expect(listedJson).not.toContain("\x1b");
     expect(JSON.parse(listedJson).map((task: { column: string }) => task.column)).toEqual([
       "Backlog",
@@ -2187,9 +2198,9 @@ test("task move, list and view color workflow column names only in a terminal, w
   });
 });
 
-test("task view requires a task key", () => {
-  withIsolatedZinnDir((testDir) => {
-    const result = runZinn(["task", "view"], testDir);
+test("task view requires a task key", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const result = await runZinn(["task", "view"], testDir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
@@ -2197,10 +2208,10 @@ test("task view requires a task key", () => {
   });
 });
 
-test("task view rejects malformed task keys with an actionable error", () => {
-  withIsolatedZinnDir((testDir) => {
+test("task view rejects malformed task keys with an actionable error", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
     for (const invalidKey of ["VIEW", "VIEW-", "VIEW-one", "VIEW-1-extra"]) {
-      const result = runZinn(["--json", "task", "view", invalidKey], testDir);
+      const result = await runZinn(["--json", "task", "view", invalidKey], testDir);
 
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
@@ -2209,7 +2220,7 @@ test("task view rejects malformed task keys with an actionable error", () => {
     }
 
     // ? ZINN-51: a word that begins with a dash is read as a word only after --.
-    const dashKey = runZinn(["--json", "task", "view", "--", "-1"], testDir);
+    const dashKey = await runZinn(["--json", "task", "view", "--", "-1"], testDir);
     expect(dashKey.code).toBe(1);
     expect(dashKey.stdout).toBe("");
     expect(errorDocumentSchema.parse(JSON.parse(dashKey.stderr)).error).toMatchObject({ code: "invalid_input", message: expect.stringContaining("-1"), details: { field: ["taskKey"] } });
@@ -2217,12 +2228,12 @@ test("task view rejects malformed task keys with an actionable error", () => {
   });
 });
 
-test("task view distinguishes an unknown project from an unknown task number", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "KNOWN", "--name", "Known"], testDir);
+test("task view distinguishes an unknown project from an unknown task number", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "KNOWN", "--name", "Known"], testDir);
 
-    const unknownProject = runZinn(["--json", "task", "view", "NOPE-1"], testDir);
-    const unknownTask = runZinn(["--json", "task", "view", "KNOWN-99"], testDir);
+    const unknownProject = await runZinn(["--json", "task", "view", "NOPE-1"], testDir);
+    const unknownTask = await runZinn(["--json", "task", "view", "KNOWN-99"], testDir);
 
     expect(unknownProject.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(unknownProject.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "project", key: "NOPE" } });
@@ -2231,36 +2242,36 @@ test("task view distinguishes an unknown project from an unknown task number", (
   });
 });
 
-test("task and comment key numbers are capped at 15 digits", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "CAP", "--name", "Cap"], testDir);
-    runZinn(["task", "create", "CAP", "--title", "Only task"], testDir);
+test("task and comment key numbers are capped at 15 digits", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "CAP", "--name", "Cap"], testDir);
+    await runZinn(["task", "create", "CAP", "--title", "Only task"], testDir);
 
     const tooManyDigits = "9".repeat(20);
     const fifteenDigits = "9".repeat(15);
 
     // 16+ digits: rejected as a malformed key, never rounded and looked up.
-    const invalidTask = runZinn(["--json", "task", "view", `CAP-${tooManyDigits}`], testDir);
+    const invalidTask = await runZinn(["--json", "task", "view", `CAP-${tooManyDigits}`], testDir);
     expect(errorDocumentSchema.parse(JSON.parse(invalidTask.stderr)).error).toMatchObject({ code: "invalid_input", message: expect.stringContaining(`CAP-${tooManyDigits}`), details: { field: ["taskKey"] } });
 
-    const invalidComment = runZinn(["--json", "task", "comment", "edit", `CAP-1#${tooManyDigits}`, "--text", "x"], testDir);
+    const invalidComment = await runZinn(["--json", "task", "comment", "edit", `CAP-1#${tooManyDigits}`, "--text", "x"], testDir);
     expect(errorDocumentSchema.parse(JSON.parse(invalidComment.stderr)).error).toMatchObject({ code: "invalid_input", message: expect.stringContaining(`CAP-1#${tooManyDigits}`), details: { field: ["commentKey"] } });
 
     // Exactly 15 digits: still a well-formed key (an exact JS integer), just not found.
-    const missingTask = runZinn(["--json", "task", "view", `CAP-${fifteenDigits}`], testDir);
+    const missingTask = await runZinn(["--json", "task", "view", `CAP-${fifteenDigits}`], testDir);
     expect(errorDocumentSchema.parse(JSON.parse(missingTask.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "task", key: `CAP-${fifteenDigits}` } });
 
-    const missingComment = runZinn(["--json", "task", "comment", "edit", `CAP-1#${fifteenDigits}`, "--text", "x"], testDir);
+    const missingComment = await runZinn(["--json", "task", "comment", "edit", `CAP-1#${fifteenDigits}`, "--text", "x"], testDir);
     expect(errorDocumentSchema.parse(JSON.parse(missingComment.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "comment", key: `CAP-1#${fifteenDigits}` } });
   });
 });
 
-test("task comments can be created, listed, edited, viewed, and deleted", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "NOTE"], testDir);
-    runZinn(["task", "create", "NOTE", "--title", "Commented task"], testDir);
+test("task comments can be created, listed, edited, viewed, and deleted", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "NOTE"], testDir);
+    await runZinn(["task", "create", "NOTE", "--title", "Commented task"], testDir);
 
-    const first = runZinn(
+    const first = await runZinn(
       ["task", "comment", "create", "NOTE-1", "--text", "First comment"],
       testDir,
     );
@@ -2268,10 +2279,10 @@ test("task comments can be created, listed, edited, viewed, and deleted", () => 
     expect(first.stdout).toBe("NOTE-1#1 | First comment\n");
 
     const second = JSON.parse(
-      runZinn(
+      (await runZinn(
         ["task", "comment", "create", "note-1", "--text", "Second comment", "--json"],
         testDir,
-      ).stdout,
+      )).stdout,
     );
     expect(second).toEqual({
       key: "NOTE-1#2",
@@ -2292,22 +2303,22 @@ test("task comments can be created, listed, edited, viewed, and deleted", () => 
     });
 
     expect(
-      runZinn(["task", "comment", "list", "NOTE-1"], testDir, {
+      (await runZinn(["task", "comment", "list", "NOTE-1"], testDir, {
         TZ: "Europe/Berlin",
-      }).stdout,
+      })).stdout,
     ).toBe(
       "NOTE-1#1 | 2026-09-24 11:05 +02:00 | First comment\n" +
         "NOTE-1#2 | 2026-09-25 19:42 +02:00 | Second comment\n",
     );
 
     expect(
-      runZinn(
+      (await runZinn(
         ["task", "comment", "edit", second.key, "--text", "Edited second"],
         testDir,
-      ).stdout,
+      )).stdout,
     ).toBe("NOTE-1#2 | Edited second\n");
 
-    const viewed = runZinn(["task", "view", "NOTE-1"], testDir, {
+    const viewed = await runZinn(["task", "view", "NOTE-1"], testDir, {
       TZ: "Europe/Berlin",
     });
     expect(viewed.stdout).toContain(
@@ -2317,24 +2328,24 @@ test("task comments can be created, listed, edited, viewed, and deleted", () => 
     );
 
     const viewedJson = JSON.parse(
-      runZinn(["task", "view", "NOTE-1", "--json"], testDir).stdout,
+      (await runZinn(["task", "view", "NOTE-1", "--json"], testDir)).stdout,
     );
     expect(viewedJson.comments.map((entry: { key: string }) => entry.key)).toEqual([
       "NOTE-1#1",
       "NOTE-1#2",
     ]);
 
-    const deleted = runZinn(["task", "comment", "delete", "NOTE-1#2", "--yes"], testDir);
+    const deleted = await runZinn(["task", "comment", "delete", "NOTE-1#2", "--yes"], testDir);
     expect(deleted.code).toBe(0);
     expect(deleted.stdout).toContain("NOTE-1#2");
 
     expect(
-      runZinn(["task", "comment", "create", "NOTE-1", "--text", "Third comment"], testDir)
+      (await runZinn(["task", "comment", "create", "NOTE-1", "--text", "Third comment"], testDir))
         .stdout,
     ).toBe("NOTE-1#3 | Third comment\n");
 
     expect(
-      runZinn(["task", "comment", "create", "NOTE-1", "--text", "Line one\nLine two"], testDir)
+      (await runZinn(["task", "comment", "create", "NOTE-1", "--text", "Line one\nLine two"], testDir))
         .stdout,
     ).toBe("NOTE-1#4 | Line one…\n");
 
@@ -2346,18 +2357,18 @@ test("task comments can be created, listed, edited, viewed, and deleted", () => 
 
     const multilinePrefix = "NOTE-1#4 | 2026-09-25 20:07 +02:00 | ";
     expect(
-      runZinn(["task", "comment", "list", "NOTE-1"], testDir, {
+      (await runZinn(["task", "comment", "list", "NOTE-1"], testDir, {
         TZ: "Europe/Berlin",
-      }).stdout,
+      })).stdout,
     ).toContain(`${multilinePrefix}Line one\n${" ".repeat(multilinePrefix.length)}Line two\n`);
   });
 });
 
-test("comment create and edit cap human echoes while reads and JSON retain the full text", () => {
-  withIsolatedZinnDir((directory) => {
+test("comment create and edit cap human echoes while reads and JSON retain the full text", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const run = (...args: Array<string>) => runZinn(args, directory);
-    expect(run("project", "create", "NOTE").code).toBe(0);
-    expect(run("task", "create", "NOTE", "--title", "Commented task").code).toBe(0);
+    expect((await run("project", "create", "NOTE")).code).toBe(0);
+    expect((await run("task", "create", "NOTE", "--title", "Commented task")).code).toBe(0);
 
     const cases = [
       { text: "Short comment", preview: "Short comment" },
@@ -2368,7 +2379,7 @@ test("comment create and edit cap human echoes while reads and JSON retain the f
       { text: "\nLater text", preview: "…" },
     ];
     for (const { text, preview } of cases) {
-      const created = run("task", "comment", "create", "NOTE-1", "--text", text);
+      const created = await run("task", "comment", "create", "NOTE-1", "--text", text);
       expect(created.code).toBe(0);
       expect(created.stderr).toBe("");
       expect(created.stdout.trimEnd().split("\n")).toHaveLength(1);
@@ -2376,7 +2387,7 @@ test("comment create and edit cap human echoes while reads and JSON retain the f
 
       const key = created.stdout.split(" | ")[0]!;
       const storedText = text.replaceAll("\r\n", "\n");
-      const json = run("task", "comment", "create", "NOTE-1", "--text", text, "--json");
+      const json = await run("task", "comment", "create", "NOTE-1", "--text", text, "--json");
       expect(json.code).toBe(0);
       expect(json.stderr).toBe("");
       const jsonComment = JSON.parse(json.stdout);
@@ -2388,7 +2399,7 @@ test("comment create and edit cap human echoes while reads and JSON retain the f
       });
 
       const editText = `Edited ${text}`;
-      const edited = run("task", "comment", "edit", key, "--text", editText);
+      const edited = await run("task", "comment", "edit", key, "--text", editText);
       expect(edited.code).toBe(0);
       expect(edited.stderr).toBe("");
       const echo = edited.stdout.slice(`${key} | `.length).trimEnd();
@@ -2401,27 +2412,27 @@ test("comment create and edit cap human echoes while reads and JSON retain the f
         expect(echo).toBe(editText);
       }
 
-      const editedJson = run("task", "comment", "edit", key, "--text", text, "--json");
+      const editedJson = await run("task", "comment", "edit", key, "--text", text, "--json");
       expect(editedJson.code).toBe(0);
       expect(editedJson.stderr).toBe("");
       const comment = JSON.parse(editedJson.stdout);
       expect(comment).toEqual({
         key, text: storedText, created_at: expect.any(Number), updated_at: expect.any(Number),
       });
-      const viewed = run("task", "comment", "view", key, "--json");
+      const viewed = await run("task", "comment", "view", key, "--json");
       expect(viewed.code).toBe(0);
       expect(JSON.parse(viewed.stdout)).toEqual(comment);
     }
 
     const fullText = "First line\n" + "Full comment text. ".repeat(20);
-    const created = run("task", "comment", "create", "NOTE-1", "--text", fullText, "--json");
+    const created = await run("task", "comment", "create", "NOTE-1", "--text", fullText, "--json");
     const { key } = JSON.parse(created.stdout);
     for (const args of [
       ["task", "comment", "view", key],
       ["task", "comment", "list", "NOTE-1"],
       ["task", "view", "NOTE-1"],
     ]) {
-      const result = run(...args);
+      const result = await run(...args);
       expect(result.code).toBe(0);
       expect(result.stderr).toBe("");
       expect(result.stdout).toContain(fullText.split("\n")[1]!);
@@ -2429,13 +2440,13 @@ test("comment create and edit cap human echoes while reads and JSON retain the f
   });
 });
 
-test("Unicode characters stay intact at comment, label and project preview cutoffs", () => {
-  withIsolatedZinnDir((directory) => {
+test("Unicode characters stay intact at comment, label and project preview cutoffs", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const run = (...args: Array<string>) => runZinn(args, directory);
-    expect(run("project", "create", "NOTE").code).toBe(0);
-    expect(run("task", "create", "NOTE", "--title", "Commented task").code).toBe(0);
-    expect(run("task", "comment", "create", "NOTE-1", "--text", "Initial text").code).toBe(0);
-    expect(run("label", "create", "bug").code).toBe(0);
+    expect((await run("project", "create", "NOTE")).code).toBe(0);
+    expect((await run("task", "create", "NOTE", "--title", "Commented task")).code).toBe(0);
+    expect((await run("task", "comment", "create", "NOTE-1", "--text", "Initial text")).code).toBe(0);
+    expect((await run("label", "create", "bug")).code).toBe(0);
 
     const cases = [
       { text: `${"x".repeat(78)}😀z`, preview: `${"x".repeat(78)}…` },
@@ -2453,40 +2464,40 @@ test("Unicode characters stay intact at comment, label and project preview cutof
         ["project", "edit", "NOTE", "--description"],
       ];
       for (const args of commands) {
-        const result = run(...args, text);
+        const result = await run(...args, text);
         expect(result.code).toBe(0);
         expect(result.stderr).toBe("");
         expect(result.stdout).toEndWith(` | ${preview}\n`);
       }
 
-      const listed = run("label", "list");
+      const listed = await run("label", "list");
       expect(listed.code).toBe(0);
       expect(listed.stderr).toBe("");
       expect(listed.stdout).toContain(` | ${preview}\n`);
       expect(listed.stdout).not.toContain("\uFFFD");
 
-      const comment = run("task", "comment", "view", "NOTE-1#1", "--json");
+      const comment = await run("task", "comment", "view", "NOTE-1#1", "--json");
       expect(comment.code).toBe(0);
       expect(JSON.parse(comment.stdout).text).toBe(text);
-      const labels = run("label", "list", "--json");
+      const labels = await run("label", "list", "--json");
       expect(labels.code).toBe(0);
       expect(JSON.parse(labels.stdout)).toContainEqual({ name: "bug", color: "white", description: text });
-      const project = run("project", "view", "NOTE", "--json");
+      const project = await run("project", "view", "NOTE", "--json");
       expect(project.code).toBe(0);
       expect(JSON.parse(project.stdout).description).toBe(text);
     }
   });
 });
 
-test("task comment view reads only the requested current comment, including on archived tasks, without writes", () => {
-  withIsolatedZinnDir((directory) => {
+test("task comment view reads only the requested current comment, including on archived tasks, without writes", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const run = (...args: Array<string>) => runZinn(args, directory);
-    expect(run("project", "create", "NOTE").code).toBe(0);
-    expect(run("task", "create", "NOTE", "--title", "Commented task").code).toBe(0);
-    expect(run("task", "comment", "create", "NOTE-1", "--text", "Sibling comment").code).toBe(0);
-    expect(run("task", "comment", "create", "NOTE-1", "--text", "Original text").code).toBe(0);
+    expect((await run("project", "create", "NOTE")).code).toBe(0);
+    expect((await run("task", "create", "NOTE", "--title", "Commented task")).code).toBe(0);
+    expect((await run("task", "comment", "create", "NOTE-1", "--text", "Sibling comment")).code).toBe(0);
+    expect((await run("task", "comment", "create", "NOTE-1", "--text", "Original text")).code).toBe(0);
     const text = "  Current first line\n\tSecond line\n" + "Full comment text. ".repeat(40) + "\n";
-    const edited = run("task", "comment", "edit", "NOTE-1#2", "--text", text, "--json");
+    const edited = await run("task", "comment", "edit", "NOTE-1#2", "--text", text, "--json");
     expect(edited.code).toBe(0);
     const expected = JSON.parse(edited.stdout);
     const snapshot = () => withTestDb(directory, (db) => ({
@@ -2497,10 +2508,10 @@ test("task comment view reads only the requested current comment, including on a
 
     for (const archived of [false, true]) {
       if (archived) {
-        expect(run("task", "archive", "NOTE-1").code).toBe(0);
+        expect((await run("task", "archive", "NOTE-1")).code).toBe(0);
       }
       const before = snapshot();
-      const viewed = run("task", "comment", "view", "note-1#2");
+      const viewed = await run("task", "comment", "view", "note-1#2");
       expect(viewed.code).toBe(0);
       expect(viewed.stderr).toBe("");
       expect(viewed.stdout).toContain("NOTE-1#2");
@@ -2510,7 +2521,7 @@ test("task comment view reads only the requested current comment, including on a
       expect(viewed.stdout).not.toContain("Sibling comment");
       expect(viewed.stdout).not.toContain("Original text");
 
-      const viewedJson = run("task", "comment", "view", "note-1#2", "--json");
+      const viewedJson = await run("task", "comment", "view", "note-1#2", "--json");
       expect(viewedJson.code).toBe(0);
       expect(viewedJson.stderr).toBe("");
       const data = JSON.parse(viewedJson.stdout);
@@ -2522,13 +2533,13 @@ test("task comment view reads only the requested current comment, including on a
   });
 });
 
-test("task comment view rejects malformed, missing and deleted comments with structured errors", () => {
-  withIsolatedZinnDir((directory) => {
+test("task comment view rejects malformed, missing and deleted comments with structured errors", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const run = (...args: Array<string>) => runZinn(args, directory);
-    expect(run("project", "create", "NOTE").code).toBe(0);
-    expect(run("task", "create", "NOTE", "--title", "Commented task").code).toBe(0);
-    expect(run("task", "comment", "create", "NOTE-1", "--text", "Deleted text").code).toBe(0);
-    expect(run("task", "comment", "delete", "NOTE-1#1", "--yes").code).toBe(0);
+    expect((await run("project", "create", "NOTE")).code).toBe(0);
+    expect((await run("task", "create", "NOTE", "--title", "Commented task")).code).toBe(0);
+    expect((await run("task", "comment", "create", "NOTE-1", "--text", "Deleted text")).code).toBe(0);
+    expect((await run("task", "comment", "delete", "NOTE-1#1", "--yes")).code).toBe(0);
 
     const cases = [
       { key: "NOTE-1", code: "invalid_input", details: { field: ["commentKey"] } },
@@ -2539,7 +2550,7 @@ test("task comment view rejects malformed, missing and deleted comments with str
     for (const { key, code, details } of cases) {
       for (const json of [false, true]) {
         const flags = json ? ["--json"] : [];
-        const result = run("task", "comment", "view", key, ...flags);
+        const result = await run("task", "comment", "view", key, ...flags);
         expect(result.code).toBe(1);
         expect(result.stdout).toBe("");
         expect(result.stderr).not.toBe("");
@@ -2551,10 +2562,10 @@ test("task comment view rejects malformed, missing and deleted comments with str
   });
 });
 
-test("comment lists pad the key so #1 lines up with #10 and keep continuation lines under the text", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "PAD"], testDir);
-    runZinn(["task", "create", "PAD", "--title", "Many comments"], testDir);
+test("comment lists pad the key so #1 lines up with #10 and keep continuation lines under the text", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "PAD"], testDir);
+    await runZinn(["task", "create", "PAD", "--title", "Many comments"], testDir);
 
     const createComment = (number: number) => {
       const isMultiline = number === 1 || number === 10;
@@ -2563,9 +2574,9 @@ test("comment lists pad the key so #1 lines up with #10 and keep continuation li
       return runZinn(["task", "comment", "create", "PAD-1", "--text", text], testDir);
     };
     for (let number = 1; number <= 9; number += 1) {
-      createComment(number);
+      await createComment(number);
     }
-    const tenth = createComment(10);
+    const tenth = await createComment(10);
     withTestDb(testDir, (db) => {
       db.run("UPDATE comment SET created_at = ?", [Date.UTC(2026, 8, 25, 18, 7)]);
     });
@@ -2576,7 +2587,7 @@ test("comment lists pad the key so #1 lines up with #10 and keep continuation li
     const timestamp = "2026-09-25 20:07 +02:00";
     // Later lines start under the text of the first line, after the padded key.
     const textIndent = " ".repeat(`PAD-1#10 | ${timestamp} | `.length);
-    const listed = runZinn(["task", "comment", "list", "PAD-1"], testDir, { TZ: "Europe/Berlin" }).stdout;
+    const listed = (await runZinn(["task", "comment", "list", "PAD-1"], testDir, { TZ: "Europe/Berlin" })).stdout;
     expect(listed).toBe(
       [
         `PAD-1#1  | ${timestamp} | Comment 1`,
@@ -2595,15 +2606,15 @@ test("comment lists pad the key so #1 lines up with #10 and keep continuation li
       ].join("\n"),
     );
 
-    const viewed = runZinn(["task", "view", "PAD-1"], testDir, { TZ: "Europe/Berlin" }).stdout;
+    const viewed = (await runZinn(["task", "view", "PAD-1"], testDir, { TZ: "Europe/Berlin" })).stdout;
     expect(viewed).toContain(`\n\n${SECTION_RULE}\nComments:\n${listed}`);
   });
 });
 
-test("task comment commands validate their inputs without partial writes", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "NOTE"], testDir);
-    runZinn(["task", "create", "NOTE", "--title", "Commented task"], testDir);
+test("task comment commands validate their inputs without partial writes", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "NOTE"], testDir);
+    await runZinn(["task", "create", "NOTE", "--title", "Commented task"], testDir);
 
     const cases = [
       [["task", "comment", "create", "NOTE-1"], { code: "invalid_input", details: { argument: "--text" } }],
@@ -2615,59 +2626,61 @@ test("task comment commands validate their inputs without partial writes", () =>
       [["task", "comment", "delete"], { code: "invalid_input", details: { argument: "comment-key" } }],
     ] as const;
     for (const [args, expected] of cases) {
-      const result = runZinn([...args, "--json"], testDir);
+      const result = await runZinn([...args, "--json"], testDir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(expected);
     }
 
-    expect(runZinn(["task", "comment", "list", "NOTE-1"], testDir).stdout).toBe("");
+    expect((await runZinn(["task", "comment", "list", "NOTE-1"], testDir)).stdout).toBe("");
   });
 });
 
-test("task move requires a task key and target column", () => {
-  withIsolatedZinnDir((testDir) => {
-    expect(runZinn(["task", "move"], testDir).stderr).toContain("Usage: zinn task move");
-    expect(runZinn(["task", "move", "MOVE-1"], testDir).stderr).toContain("Usage: zinn task move");
+test("task move requires a task key and target column", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    expect((await runZinn(["task", "move"], testDir)).stderr).toContain("Usage: zinn task move");
+    expect((await runZinn(["task", "move", "MOVE-1"], testDir)).stderr).toContain("Usage: zinn task move");
   });
 });
 
-test("task move help identifies its command with either help flag", () => {
-  const longHelp = runZinn(["task", "move", "--help"]);
-  const shortHelp = runZinn(["task", "move", "-h"]);
+test("task move help identifies its command with either help flag", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const longHelp = await runZinn(["task", "move", "--help"], testDir);
+    const shortHelp = await runZinn(["task", "move", "-h"], testDir);
 
-  expect(longHelp.code).toBe(0);
-  expect(longHelp.stderr).toBe("");
-  expect(longHelp.stdout).toContain("Usage: zinn task move <task-key>... <target-column>");
-  expect(shortHelp.code).toBe(0);
-  expect(shortHelp.stdout).toBe(longHelp.stdout);
+    expect(longHelp.code).toBe(0);
+    expect(longHelp.stderr).toBe("");
+    expect(longHelp.stdout).toContain("Usage: zinn task move <task-key>... <target-column>");
+    expect(shortHelp.code).toBe(0);
+    expect(shortHelp.stdout).toBe(longHelp.stdout);
+  });
 });
 
-test("task move rejects a column outside the task's project", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "ORIGIN", "--name", "Origin"], testDir);
-    runZinn(["project", "create", "OTHER", "--name", "Other"], testDir);
-    runZinn(["project", "column", "create", "OTHER", "External"], testDir);
-    runZinn(["task", "create", "ORIGIN", "--title", "stationary task"], testDir);
+test("task move rejects a column outside the task's project", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "ORIGIN", "--name", "Origin"], testDir);
+    await runZinn(["project", "create", "OTHER", "--name", "Other"], testDir);
+    await runZinn(["project", "column", "create", "OTHER", "External"], testDir);
+    await runZinn(["task", "create", "ORIGIN", "--title", "stationary task"], testDir);
 
-    const result = runZinn(["--json", "task", "move", "ORIGIN-1", "External"], testDir);
+    const result = await runZinn(["--json", "task", "move", "ORIGIN-1", "External"], testDir);
 
     expect(result.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "column", key: "External" } });
-    expect(runZinn(["task", "view", "ORIGIN-1"], testDir).stdout).toContain(
+    expect((await runZinn(["task", "view", "ORIGIN-1"], testDir)).stdout).toContain(
       `ORIGIN-1 | Backlog | - | stationary task`,
     );
   });
 });
 
-test("task move appends the task to the destination column", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "MOVE", "--name", "Movable"], testDir);
-    runZinn(["task", "create", "MOVE", "--title", "first task"], testDir);
-    runZinn(["task", "create", "MOVE", "--title", "second task"], testDir);
+test("task move appends the task to the destination column", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "MOVE", "--name", "Movable"], testDir);
+    await runZinn(["task", "create", "MOVE", "--title", "first task"], testDir);
+    await runZinn(["task", "create", "MOVE", "--title", "second task"], testDir);
 
-    expect(runZinn(["task", "move", "MOVE-1", "In Progress"], testDir).code).toBe(0);
-    expect(runZinn(["task", "move", "MOVE-2", "In Progress"], testDir).code).toBe(0);
+    expect((await runZinn(["task", "move", "MOVE-1", "In Progress"], testDir)).code).toBe(0);
+    expect((await runZinn(["task", "move", "MOVE-2", "In Progress"], testDir)).code).toBe(0);
 
     withTestDb(testDir, (db) => {
       const rows = db
@@ -2699,10 +2712,10 @@ test("task move appends the task to the destination column", () => {
   });
 });
 
-test("task move to the current column is a no-op", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "STILL", "--name", "Still"], testDir);
-    runZinn(["task", "create", "STILL", "--title", "still task"], testDir);
+test("task move to the current column is a no-op", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "STILL", "--name", "Still"], testDir);
+    await runZinn(["task", "create", "STILL", "--title", "still task"], testDir);
 
     const before = withTestDb(testDir, (db) =>
       db.query<{ column_id: string; task_order: string; updated_at: number }, []>(
@@ -2710,7 +2723,7 @@ test("task move to the current column is a no-op", () => {
       ).get(),
     );
 
-    const result = runZinn(["task", "move", "STILL-1", "Backlog"], testDir);
+    const result = await runZinn(["task", "move", "STILL-1", "Backlog"], testDir);
     expect(result.code).toBe(0);
     expect(result.stdout).toBe(`STILL-1 | Backlog | - | still task\n`);
 
@@ -2724,15 +2737,15 @@ test("task move to the current column is a no-op", () => {
   });
 });
 
-test("task move takes several tasks, appends them in argument order, and notes no-ops", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "MANY"], testDir);
+test("task move takes several tasks, appends them in argument order, and notes no-ops", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "MANY"], testDir);
     for (const title of ["one", "two", "three"]) {
-      runZinn(["task", "create", "MANY", "--title", title], testDir);
+      await runZinn(["task", "create", "MANY", "--title", title], testDir);
     }
-    runZinn(["task", "move", "MANY-1", "In Progress"], testDir);
+    await runZinn(["task", "move", "MANY-1", "In Progress"], testDir);
 
-    const result = runZinn(["task", "move", "MANY-3", "MANY-1", "MANY-2", "In Progress"], testDir);
+    const result = await runZinn(["task", "move", "MANY-3", "MANY-1", "MANY-2", "In Progress"], testDir);
 
     expect(result.code).toBe(0);
     expect(result.stdout).toBe(
@@ -2740,44 +2753,44 @@ test("task move takes several tasks, appends them in argument order, and notes n
     );
     expect(result.stderr).toContain("MANY-1");
     expect(result.stderr).toContain("In Progress");
-    expect(runZinn(["task", "list", "MANY"], testDir).stdout).toMatch(
+    expect((await runZinn(["task", "list", "MANY"], testDir)).stdout).toMatch(
       /^MANY-1[^\n]*\nMANY-3[^\n]*\nMANY-2[^\n]*\n$/,
     );
   });
 });
 
-test("task archive and unarchive take several tasks and note no-ops", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "SHELF"], testDir);
+test("task archive and unarchive take several tasks and note no-ops", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "SHELF"], testDir);
     for (const title of ["one", "two", "three"]) {
-      runZinn(["task", "create", "SHELF", "--title", title], testDir);
+      await runZinn(["task", "create", "SHELF", "--title", title], testDir);
     }
-    runZinn(["task", "archive", "SHELF-2"], testDir);
+    await runZinn(["task", "archive", "SHELF-2"], testDir);
 
-    const archived = runZinn(["task", "archive", "SHELF-1", "SHELF-2"], testDir);
+    const archived = await runZinn(["task", "archive", "SHELF-1", "SHELF-2"], testDir);
     expect(archived.code).toBe(0);
     expect(archived.stdout).toBe(
       "SHELF-1 | Archived | Backlog | - | one\nSHELF-2 | Archived | Backlog | - | two\n",
     );
     expect(archived.stderr).toContain("SHELF-2");
 
-    const unarchived = runZinn(["task", "unarchive", "SHELF-2", "SHELF-3", "SHELF-1"], testDir);
+    const unarchived = await runZinn(["task", "unarchive", "SHELF-2", "SHELF-3", "SHELF-1"], testDir);
     expect(unarchived.code).toBe(0);
     expect(unarchived.stderr).toContain("SHELF-3");
-    expect(runZinn(["task", "list", "SHELF"], testDir).stdout).toMatch(
+    expect((await runZinn(["task", "list", "SHELF"], testDir)).stdout).toMatch(
       /^SHELF-3[^\n]*\nSHELF-2[^\n]*\nSHELF-1[^\n]*\n$/,
     );
   });
 });
 
-test("task move, archive and unarchive align several tasks and note repeated keys", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "A"], testDir);
-    runZinn(["project", "create", "LONG"], testDir);
-    runZinn(["task", "create", "A", "--title", "short key"], testDir);
-    runZinn(["task", "create", "LONG", "--title", "long key"], testDir);
+test("task move, archive and unarchive align several tasks and note repeated keys", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "A"], testDir);
+    await runZinn(["project", "create", "LONG"], testDir);
+    await runZinn(["task", "create", "A", "--title", "short key"], testDir);
+    await runZinn(["task", "create", "LONG", "--title", "long key"], testDir);
 
-    const moved = runZinn(["task", "move", "A-1", "LONG-1", "A-1", "Done"], testDir);
+    const moved = await runZinn(["task", "move", "A-1", "LONG-1", "A-1", "Done"], testDir);
     expect(moved.code).toBe(0);
     expect(moved.stdout).toBe(
       "A-1    | Done | - | short key\nLONG-1 | Done | - | long key\nA-1    | Done | - | short key\n",
@@ -2785,14 +2798,14 @@ test("task move, archive and unarchive align several tasks and note repeated key
     expect(moved.stderr).toContain("A-1");
     expect(moved.stderr).toContain("Done");
 
-    const archived = runZinn(["task", "archive", "A-1", "LONG-1", "A-1"], testDir);
+    const archived = await runZinn(["task", "archive", "A-1", "LONG-1", "A-1"], testDir);
     expect(archived.code).toBe(0);
     expect(archived.stdout).toBe(
       "A-1    | Archived | Done | - | short key\nLONG-1 | Archived | Done | - | long key\nA-1    | Archived | Done | - | short key\n",
     );
     expect(archived.stderr).toContain("A-1");
 
-    const unarchived = runZinn(["task", "unarchive", "LONG-1", "A-1", "LONG-1"], testDir);
+    const unarchived = await runZinn(["task", "unarchive", "LONG-1", "A-1", "LONG-1"], testDir);
     expect(unarchived.code).toBe(0);
     expect(unarchived.stdout).toBe(
       "LONG-1 | Active | Done | - | long key\nA-1    | Active | Done | - | short key\nLONG-1 | Active | Done | - | long key\n",
@@ -2801,46 +2814,46 @@ test("task move, archive and unarchive align several tasks and note repeated key
   });
 });
 
-test("task move, archive and unarchive change nothing when any task fails", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "ATOM"], testDir);
-    runZinn(["task", "create", "ATOM", "--title", "active"], testDir);
-    runZinn(["task", "create", "ATOM", "--title", "archived"], testDir);
-    runZinn(["task", "archive", "ATOM-2"], testDir);
-    const before = runZinn(["task", "list", "ATOM", "--all", "--json"], testDir).stdout;
+test("task move, archive and unarchive change nothing when any task fails", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "ATOM"], testDir);
+    await runZinn(["task", "create", "ATOM", "--title", "active"], testDir);
+    await runZinn(["task", "create", "ATOM", "--title", "archived"], testDir);
+    await runZinn(["task", "archive", "ATOM-2"], testDir);
+    const before = (await runZinn(["task", "list", "ATOM", "--all", "--json"], testDir)).stdout;
 
-    const move = runZinn(["--json", "task", "move", "ATOM-1", "ATOM-2", "Done"], testDir);
+    const move = await runZinn(["--json", "task", "move", "ATOM-1", "ATOM-2", "Done"], testDir);
     expect(move.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(move.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "archived", entity: "task", key: "ATOM-2" } });
 
-    const archive = runZinn(["--json", "task", "archive", "ATOM-1", "ATOM-404"], testDir);
+    const archive = await runZinn(["--json", "task", "archive", "ATOM-1", "ATOM-404"], testDir);
     expect(archive.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(archive.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "task", key: "ATOM-404" } });
 
-    const unarchive = runZinn(["--json", "task", "unarchive", "ATOM-2", "nope"], testDir);
+    const unarchive = await runZinn(["--json", "task", "unarchive", "ATOM-2", "nope"], testDir);
     expect(unarchive.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(unarchive.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["taskKey"] } });
 
-    expect(runZinn(["task", "list", "ATOM", "--all", "--json"], testDir).stdout).toBe(before);
+    expect((await runZinn(["task", "list", "ATOM", "--all", "--json"], testDir)).stdout).toBe(before);
   });
 });
 
-test("task move, archive and unarchive print an object for one task and an array for several with --json", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "SHAPE"], testDir);
-    runZinn(["task", "create", "SHAPE", "--title", "one"], testDir);
-    runZinn(["task", "create", "SHAPE", "--title", "two"], testDir);
+test("task move, archive and unarchive print an object for one task and an array for several with --json", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "SHAPE"], testDir);
+    await runZinn(["task", "create", "SHAPE", "--title", "one"], testDir);
+    await runZinn(["task", "create", "SHAPE", "--title", "two"], testDir);
 
-    const moveOne = JSON.parse(runZinn(["task", "move", "SHAPE-1", "Done", "--json"], testDir).stdout);
+    const moveOne = JSON.parse((await runZinn(["task", "move", "SHAPE-1", "Done", "--json"], testDir)).stdout);
     expect(moveOne).toMatchObject({ key: "SHAPE-1", column: "Done", changed: true });
 
     const moveUnchanged = JSON.parse(
-      runZinn(["task", "move", "SHAPE-1", "Done", "--json"], testDir).stdout,
+      (await runZinn(["task", "move", "SHAPE-1", "Done", "--json"], testDir)).stdout,
     );
     expect(moveUnchanged).toMatchObject({ key: "SHAPE-1", column: "Done", changed: false });
 
     const archiveMany = JSON.parse(
-      runZinn(["task", "archive", "SHAPE-1", "SHAPE-2", "SHAPE-1", "--json"], testDir).stdout,
+      (await runZinn(["task", "archive", "SHAPE-1", "SHAPE-2", "SHAPE-1", "--json"], testDir)).stdout,
     );
     expect(archiveMany).toMatchObject([
       { key: "SHAPE-1", status: "Archived", changed: true },
@@ -2849,27 +2862,27 @@ test("task move, archive and unarchive print an object for one task and an array
     ]);
 
     const unarchiveOne = JSON.parse(
-      runZinn(["task", "unarchive", "SHAPE-2", "--json"], testDir).stdout,
+      (await runZinn(["task", "unarchive", "SHAPE-2", "--json"], testDir)).stdout,
     );
     expect(unarchiveOne).toMatchObject({ key: "SHAPE-2", status: "Active", changed: true });
   });
 });
 
-test("task move prints the task row, while --json returns the full task", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["label", "create", "urgent"], testDir);
-    runZinn(["project", "create", "BRIEF"], testDir);
-    runZinn(
+test("task move prints the task row, while --json returns the full task", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["label", "create", "urgent"], testDir);
+    await runZinn(["project", "create", "BRIEF"], testDir);
+    await runZinn(
       ["task", "create", "BRIEF", "--title", "Detailed task", "--description", "Hidden from move output", "--priority", "high", "--label", "urgent"],
       testDir,
     );
 
-    const moved = runZinn(["task", "move", "BRIEF-1", "In Progress"], testDir);
+    const moved = await runZinn(["task", "move", "BRIEF-1", "In Progress"], testDir);
     expect(moved.code).toBe(0);
     expect(moved.stdout).toBe("BRIEF-1 | In Progress | H | Detailed task | urgent\n");
-    expect(runZinn(["task", "list", "BRIEF"], testDir).stdout).toBe(moved.stdout);
+    expect((await runZinn(["task", "list", "BRIEF"], testDir)).stdout).toBe(moved.stdout);
 
-    const movedJson = runZinn(["task", "move", "BRIEF-1", "Review", "--json"], testDir);
+    const movedJson = await runZinn(["task", "move", "BRIEF-1", "Review", "--json"], testDir);
     expect(movedJson.code).toBe(0);
     expect(JSON.parse(movedJson.stdout)).toEqual({
       key: "BRIEF-1",
@@ -2884,56 +2897,56 @@ test("task move prints the task row, while --json returns the full task", () => 
   });
 });
 
-test("task archive and unarchive print the same row with status for one task and for several", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["label", "create", "urgent"], testDir);
-    runZinn(["project", "create", "ROW"], testDir);
-    runZinn(["task", "create", "ROW", "--title", "one"], testDir);
-    runZinn(
+test("task archive and unarchive print the same row with status for one task and for several", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["label", "create", "urgent"], testDir);
+    await runZinn(["project", "create", "ROW"], testDir);
+    await runZinn(["task", "create", "ROW", "--title", "one"], testDir);
+    await runZinn(
       ["task", "create", "ROW", "--title", "two", "--description", "Not in rows", "--priority", "high", "--label", "urgent"],
       testDir,
     );
 
-    const archivedOne = runZinn(["task", "archive", "ROW-2"], testDir);
+    const archivedOne = await runZinn(["task", "archive", "ROW-2"], testDir);
     expect(archivedOne.stdout).toBe("ROW-2 | Archived | Backlog | H | two | urgent\n");
 
-    const unarchivedOne = runZinn(["task", "unarchive", "ROW-2"], testDir);
+    const unarchivedOne = await runZinn(["task", "unarchive", "ROW-2"], testDir);
     expect(unarchivedOne.stdout).toBe("ROW-2 | Active | Backlog | H | two | urgent\n");
 
-    const archivedSeveral = runZinn(["task", "archive", "ROW-1", "ROW-2"], testDir);
+    const archivedSeveral = await runZinn(["task", "archive", "ROW-1", "ROW-2"], testDir);
     expect(archivedSeveral.stdout).toBe(
       "ROW-1 | Archived | Backlog | - | one\nROW-2 | Archived | Backlog | H | two | urgent\n",
     );
-    expect(archivedSeveral.stdout).toBe(runZinn(["task", "list", "ROW", "--all"], testDir).stdout);
+    expect(archivedSeveral.stdout).toBe((await runZinn(["task", "list", "ROW", "--all"], testDir)).stdout);
 
-    const unarchivedSeveral = runZinn(["task", "unarchive", "ROW-1", "ROW-2"], testDir);
+    const unarchivedSeveral = await runZinn(["task", "unarchive", "ROW-1", "ROW-2"], testDir);
     expect(unarchivedSeveral.stdout).toBe(
       "ROW-1 | Active | Backlog | - | one\nROW-2 | Active | Backlog | H | two | urgent\n",
     );
-    expect(unarchivedSeveral.stdout).toBe(runZinn(["task", "list", "ROW", "--all"], testDir).stdout);
+    expect(unarchivedSeveral.stdout).toBe((await runZinn(["task", "list", "ROW", "--all"], testDir)).stdout);
   });
 });
 
-test("task move prints the same row for one task and for several, as task list shows it", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "ROW"], testDir);
-    runZinn(["task", "create", "ROW", "--title", "one", "--priority", "low"], testDir);
-    runZinn(["task", "create", "ROW", "--title", "two"], testDir);
+test("task move prints the same row for one task and for several, as task list shows it", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "ROW"], testDir);
+    await runZinn(["task", "create", "ROW", "--title", "one", "--priority", "low"], testDir);
+    await runZinn(["task", "create", "ROW", "--title", "two"], testDir);
 
-    const movedOne = runZinn(["task", "move", "ROW-1", "Done"], testDir);
+    const movedOne = await runZinn(["task", "move", "ROW-1", "Done"], testDir);
     expect(movedOne.stdout).toBe("ROW-1 | Done | L | one\n");
 
-    const movedSeveral = runZinn(["task", "move", "ROW-2", "ROW-1", "In Progress"], testDir);
+    const movedSeveral = await runZinn(["task", "move", "ROW-2", "ROW-1", "In Progress"], testDir);
     expect(movedSeveral.stdout).toBe("ROW-2 | In Progress | - | two\nROW-1 | In Progress | L | one\n");
-    expect(movedSeveral.stdout).toBe(runZinn(["task", "list", "ROW"], testDir).stdout);
+    expect(movedSeveral.stdout).toBe((await runZinn(["task", "list", "ROW"], testDir)).stdout);
   });
 });
 
-test("task delete prints the task row after Deleted, or after Deletion cancelled for when declined", async () => {
-  await withIsolatedZinnDirAsync(async (testDir) => {
-    runZinn(["label", "create", "urgent"], testDir);
-    runZinn(["project", "create", "ROW"], testDir);
-    runZinn(
+test.serial("task delete prints the task row after Deleted, or after Deletion cancelled for when declined", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["label", "create", "urgent"], testDir);
+    await runZinn(["project", "create", "ROW"], testDir);
+    await runZinn(
       ["task", "create", "ROW", "--title", "one", "--description", "Not in rows", "--priority", "high", "--label", "urgent"],
       testDir,
     );
@@ -2941,25 +2954,26 @@ test("task delete prints the task row after Deleted, or after Deletion cancelled
 
     const cancelled = await runCliInTerminal(["task", "delete", "ROW-1"], {
       env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir, NO_COLOR: "1" },
+      cwd: testDir,
       input: "n\n",
     });
     expect(cancelled.code).toBe(0);
     expect(cancelled.output).toContain(row.trimEnd());
-    expect(runZinn(["task", "list", "ROW"], testDir).stdout).toBe(row);
+    expect((await runZinn(["task", "list", "ROW"], testDir)).stdout).toBe(row);
 
-    const deleted = runZinn(["task", "delete", "ROW-1", "--yes"], testDir);
+    const deleted = await runZinn(["task", "delete", "ROW-1", "--yes"], testDir);
     expect(deleted.code).toBe(0);
     expect(deleted.stdout).toContain(row.trimEnd());
-    expect(runZinn(["task", "list", "ROW"], testDir).stdout).toBe("");
+    expect((await runZinn(["task", "list", "ROW"], testDir)).stdout).toBe("");
   });
 });
 
-test("task write commands print JSON with the full task details, unchanged by the row output", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["label", "create", "urgent"], testDir);
-    runZinn(["project", "create", "ROW"], testDir);
+test("task write commands print JSON with the full task details, unchanged by the row output", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["label", "create", "urgent"], testDir);
+    await runZinn(["project", "create", "ROW"], testDir);
 
-    const created = runZinn(
+    const created = await runZinn(
       ["task", "create", "ROW", "--title", "one", "--description", "Full text", "--priority", "high", "--label", "urgent", "--json"],
       testDir,
     );
@@ -2973,7 +2987,7 @@ test("task write commands print JSON with the full task details, unchanged by th
       labels: ["urgent"],
     });
 
-    const edited = runZinn(["task", "edit", "ROW-1", "--title", "uno", "--json"], testDir);
+    const edited = await runZinn(["task", "edit", "ROW-1", "--title", "uno", "--json"], testDir);
     expect(JSON.parse(edited.stdout)).toEqual({
       key: "ROW-1",
       status: "Active",
@@ -2984,7 +2998,7 @@ test("task write commands print JSON with the full task details, unchanged by th
       labels: ["urgent"],
     });
 
-    const archived = runZinn(["task", "archive", "ROW-1", "--json"], testDir);
+    const archived = await runZinn(["task", "archive", "ROW-1", "--json"], testDir);
     expect(JSON.parse(archived.stdout)).toEqual({
       key: "ROW-1",
       status: "Archived",
@@ -2998,11 +3012,11 @@ test("task write commands print JSON with the full task details, unchanged by th
   });
 });
 
-test("task move rejects archived tasks", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "ARCHMOVE", "--name", "Archived move"], testDir);
-    runZinn(["task", "create", "ARCHMOVE", "--title", "archived task"], testDir);
-    runZinn(["task", "archive", "ARCHMOVE-1"], testDir);
+test("task move rejects archived tasks", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "ARCHMOVE", "--name", "Archived move"], testDir);
+    await runZinn(["task", "create", "ARCHMOVE", "--title", "archived task"], testDir);
+    await runZinn(["task", "archive", "ARCHMOVE-1"], testDir);
 
     const before = withTestDb(testDir, (db) =>
       db
@@ -3012,7 +3026,7 @@ test("task move rejects archived tasks", () => {
         .get(),
     );
 
-    const result = runZinn(["--json", "task", "move", "ARCHMOVE-1", "In Progress"], testDir);
+    const result = await runZinn(["--json", "task", "move", "ARCHMOVE-1", "In Progress"], testDir);
 
     expect(result.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "archived", key: "ARCHMOVE-1" } });
@@ -3029,121 +3043,127 @@ test("task move rejects archived tasks", () => {
   });
 });
 
-test("task order moves a task one position up or down within its column", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "ORDER", "--name", "Ordered"], testDir);
-    runZinn(["task", "create", "ORDER", "--title", "first task"], testDir);
-    runZinn(["task", "create", "ORDER", "--title", "second task"], testDir);
-    runZinn(["task", "create", "ORDER", "--title", "third task"], testDir);
+test("task order moves a task one position up or down within its column", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "ORDER", "--name", "Ordered"], testDir);
+    await runZinn(["task", "create", "ORDER", "--title", "first task"], testDir);
+    await runZinn(["task", "create", "ORDER", "--title", "second task"], testDir);
+    await runZinn(["task", "create", "ORDER", "--title", "third task"], testDir);
 
-    expect(runZinn(["task", "order", "ORDER-2", "up"], testDir).code).toBe(0);
-    expect(runZinn(["task", "list", "ORDER"], testDir).stdout).toMatch(
+    expect((await runZinn(["task", "order", "ORDER-2", "up"], testDir)).code).toBe(0);
+    expect((await runZinn(["task", "list", "ORDER"], testDir)).stdout).toMatch(
       /ORDER-2[^\n]*\nORDER-1[^\n]*\nORDER-3/,
     );
 
-    expect(runZinn(["task", "order", "ORDER-2", "down"], testDir).code).toBe(0);
-    expect(runZinn(["task", "list", "ORDER"], testDir).stdout).toMatch(
+    expect((await runZinn(["task", "order", "ORDER-2", "down"], testDir)).code).toBe(0);
+    expect((await runZinn(["task", "list", "ORDER"], testDir)).stdout).toMatch(
       /ORDER-1[^\n]*\nORDER-2[^\n]*\nORDER-3/,
     );
   });
 });
 
-test("task order moves a task to the top or bottom of its column", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "EDGES", "--name", "Edges"], testDir);
-    runZinn(["task", "create", "EDGES", "--title", "first task"], testDir);
-    runZinn(["task", "create", "EDGES", "--title", "second task"], testDir);
-    runZinn(["task", "create", "EDGES", "--title", "third task"], testDir);
+test("task order moves a task to the top or bottom of its column", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "EDGES", "--name", "Edges"], testDir);
+    await runZinn(["task", "create", "EDGES", "--title", "first task"], testDir);
+    await runZinn(["task", "create", "EDGES", "--title", "second task"], testDir);
+    await runZinn(["task", "create", "EDGES", "--title", "third task"], testDir);
 
-    expect(runZinn(["task", "order", "EDGES-3", "top"], testDir).code).toBe(0);
-    expect(runZinn(["task", "list", "EDGES"], testDir).stdout).toMatch(
+    expect((await runZinn(["task", "order", "EDGES-3", "top"], testDir)).code).toBe(0);
+    expect((await runZinn(["task", "list", "EDGES"], testDir)).stdout).toMatch(
       /EDGES-3[^\n]*\nEDGES-1[^\n]*\nEDGES-2/,
     );
 
-    expect(runZinn(["task", "order", "EDGES-3", "bottom"], testDir).code).toBe(0);
-    expect(runZinn(["task", "list", "EDGES"], testDir).stdout).toMatch(
+    expect((await runZinn(["task", "order", "EDGES-3", "bottom"], testDir)).code).toBe(0);
+    expect((await runZinn(["task", "list", "EDGES"], testDir)).stdout).toMatch(
       /EDGES-1[^\n]*\nEDGES-2[^\n]*\nEDGES-3/,
     );
   });
 });
 
-test("task order places a task immediately before or after its target", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "ANCHOR", "--name", "Anchored"], testDir);
-    runZinn(["task", "create", "ANCHOR", "--title", "first task"], testDir);
-    runZinn(["task", "create", "ANCHOR", "--title", "second task"], testDir);
-    runZinn(["task", "create", "ANCHOR", "--title", "third task"], testDir);
-    runZinn(["task", "create", "ANCHOR", "--title", "fourth task"], testDir);
-    runZinn(["task", "create", "ANCHOR", "--title", "fifth task"], testDir);
+test("task order places a task immediately before or after its target", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "ANCHOR", "--name", "Anchored"], testDir);
+    await runZinn(["task", "create", "ANCHOR", "--title", "first task"], testDir);
+    await runZinn(["task", "create", "ANCHOR", "--title", "second task"], testDir);
+    await runZinn(["task", "create", "ANCHOR", "--title", "third task"], testDir);
+    await runZinn(["task", "create", "ANCHOR", "--title", "fourth task"], testDir);
+    await runZinn(["task", "create", "ANCHOR", "--title", "fifth task"], testDir);
 
-    expect(runZinn(["task", "order", "ANCHOR-4", "before", "ANCHOR-2"], testDir).code).toBe(
+    expect((await runZinn(["task", "order", "ANCHOR-4", "before", "ANCHOR-2"], testDir)).code).toBe(
       0,
     );
-    expect(runZinn(["task", "list", "ANCHOR"], testDir).stdout).toMatch(
+    expect((await runZinn(["task", "list", "ANCHOR"], testDir)).stdout).toMatch(
       /ANCHOR-1[^\n]*\nANCHOR-4[^\n]*\nANCHOR-2[^\n]*\nANCHOR-3[^\n]*\nANCHOR-5/,
     );
 
-    expect(runZinn(["task", "order", "ANCHOR-4", "after", "ANCHOR-3"], testDir).code).toBe(
+    expect((await runZinn(["task", "order", "ANCHOR-4", "after", "ANCHOR-3"], testDir)).code).toBe(
       0,
     );
-    expect(runZinn(["task", "list", "ANCHOR"], testDir).stdout).toMatch(
+    expect((await runZinn(["task", "list", "ANCHOR"], testDir)).stdout).toMatch(
       /ANCHOR-1[^\n]*\nANCHOR-2[^\n]*\nANCHOR-3[^\n]*\nANCHOR-4[^\n]*\nANCHOR-5/,
     );
   });
 });
 
-test("task order requires a task key and an ordering instruction", () => {
-  const missingTask = runZinn(["task", "order"]);
-  expect(missingTask.code).toBe(1);
-  expect(missingTask.stderr).toContain("Usage: zinn task order");
+test("task order requires a task key and an ordering instruction", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const missingTask = await runZinn(["task", "order"], testDir);
+    expect(missingTask.code).toBe(1);
+    expect(missingTask.stderr).toContain("Usage: zinn task order");
 
-  const missingInstruction = runZinn(["task", "order", "ORDER-1"]);
-  expect(missingInstruction.code).toBe(1);
-  expect(missingInstruction.stderr).toContain("Usage: zinn task order");
+    const missingInstruction = await runZinn(["task", "order", "ORDER-1"], testDir);
+    expect(missingInstruction.code).toBe(1);
+    expect(missingInstruction.stderr).toContain("Usage: zinn task order");
+  });
 });
 
-test("task order validates direction and target arguments", () => {
-  const unknownDirection = runZinn(["--json", "task", "order", "ORDER-1", "sideways"]);
-  expect(unknownDirection.code).toBe(1);
-  expect(errorDocumentSchema.parse(JSON.parse(unknownDirection.stderr)).error).toMatchObject({ code: "invalid_input", details: { argument: "direction" } });
+test("task order validates direction and target arguments", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const unknownDirection = await runZinn(["--json", "task", "order", "ORDER-1", "sideways"], testDir);
+    expect(unknownDirection.code).toBe(1);
+    expect(errorDocumentSchema.parse(JSON.parse(unknownDirection.stderr)).error).toMatchObject({ code: "invalid_input", details: { argument: "direction" } });
 
-  const missingTarget = runZinn(["task", "order", "ORDER-1", "before"]);
-  expect(missingTarget.code).toBe(1);
-  expect(missingTarget.stderr).toContain("Usage: zinn task order");
+    const missingTarget = await runZinn(["task", "order", "ORDER-1", "before"], testDir);
+    expect(missingTarget.code).toBe(1);
+    expect(missingTarget.stderr).toContain("Usage: zinn task order");
 
-  const unexpectedTarget = runZinn(["task", "order", "ORDER-1", "top", "ORDER-2"]);
-  expect(unexpectedTarget.code).toBe(1);
-  expect(unexpectedTarget.stderr).toContain('"ORDER-2"');
-  expect(unexpectedTarget.stderr).toContain("Usage: zinn task order");
+    const unexpectedTarget = await runZinn(["task", "order", "ORDER-1", "top", "ORDER-2"], testDir);
+    expect(unexpectedTarget.code).toBe(1);
+    expect(unexpectedTarget.stderr).toContain('"ORDER-2"');
+    expect(unexpectedTarget.stderr).toContain("Usage: zinn task order");
+  });
 });
 
-test("task order help documents its own command", () => {
-  const result = runZinn(["task", "order", "--help"]);
+test("task order help documents its own command", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const result = await runZinn(["task", "order", "--help"], testDir);
 
-  expect(result.code).toBe(0);
-  expect(result.stdout).toContain("Usage: zinn task order");
-  expect(result.stdout).toContain("top");
-  expect(result.stdout).toContain("up");
-  expect(result.stdout).toContain("down");
-  expect(result.stdout).toContain("bottom");
-  expect(result.stdout).toContain("before");
-  expect(result.stdout).toContain("after");
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("Usage: zinn task order");
+    expect(result.stdout).toContain("top");
+    expect(result.stdout).toContain("up");
+    expect(result.stdout).toContain("down");
+    expect(result.stdout).toContain("bottom");
+    expect(result.stdout).toContain("before");
+    expect(result.stdout).toContain("after");
+  });
 });
 
-test("task order does not cross a column boundary", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "BOUND", "--name", "Bounded"], testDir);
-    runZinn(["task", "create", "BOUND", "--title", "backlog first"], testDir);
-    runZinn(["task", "create", "BOUND", "--title", "backlog last"], testDir);
-    runZinn(["task", "create", "BOUND", "--title", "progress first"], testDir);
-    runZinn(["task", "move", "BOUND-3", "In Progress"], testDir);
+test("task order does not cross a column boundary", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "BOUND", "--name", "Bounded"], testDir);
+    await runZinn(["task", "create", "BOUND", "--title", "backlog first"], testDir);
+    await runZinn(["task", "create", "BOUND", "--title", "backlog last"], testDir);
+    await runZinn(["task", "create", "BOUND", "--title", "progress first"], testDir);
+    await runZinn(["task", "move", "BOUND-3", "In Progress"], testDir);
 
     withTestDb(testDir, (db) => {
       db.run("UPDATE task SET updated_at = 1 WHERE number IN (2, 3)");
     });
 
-    expect(runZinn(["task", "order", "BOUND-2", "down"], testDir).code).toBe(0);
-    expect(runZinn(["task", "order", "BOUND-3", "up"], testDir).code).toBe(0);
+    expect((await runZinn(["task", "order", "BOUND-2", "down"], testDir)).code).toBe(0);
+    expect((await runZinn(["task", "order", "BOUND-3", "up"], testDir)).code).toBe(0);
 
     const rows = withTestDb(testDir, (db) =>
       db
@@ -3160,41 +3180,41 @@ test("task order does not cross a column boundary", () => {
   });
 });
 
-test("task order rejects an unknown target task", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "TARGET", "--name", "Targeted"], testDir);
-    runZinn(["task", "create", "TARGET", "--title", "existing task"], testDir);
+test("task order rejects an unknown target task", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "TARGET", "--name", "Targeted"], testDir);
+    await runZinn(["task", "create", "TARGET", "--title", "existing task"], testDir);
 
-    const result = runZinn(["--json", "task", "order", "TARGET-1", "before", "TARGET-99"], testDir);
+    const result = await runZinn(["--json", "task", "order", "TARGET-1", "before", "TARGET-99"], testDir);
 
     expect(result.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "task", key: "TARGET-99" } });
   });
 });
 
-test("task order rejects a target in another column", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "SCOPE", "--name", "Scoped"], testDir);
-    runZinn(["task", "create", "SCOPE", "--title", "backlog task"], testDir);
-    runZinn(["task", "create", "SCOPE", "--title", "progress task"], testDir);
-    runZinn(["task", "move", "SCOPE-2", "In Progress"], testDir);
+test("task order rejects a target in another column", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "SCOPE", "--name", "Scoped"], testDir);
+    await runZinn(["task", "create", "SCOPE", "--title", "backlog task"], testDir);
+    await runZinn(["task", "create", "SCOPE", "--title", "progress task"], testDir);
+    await runZinn(["task", "move", "SCOPE-2", "In Progress"], testDir);
 
-    const result = runZinn(["--json", "task", "order", "SCOPE-1", "before", "SCOPE-2"], testDir);
+    const result = await runZinn(["--json", "task", "order", "SCOPE-1", "before", "SCOPE-2"], testDir);
 
     expect(result.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "different_column" } });
   });
 });
 
-test("task order targeting itself is a no-op", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "UNCHANGED", "--name", "Unchanged"], testDir);
-    runZinn(["task", "create", "UNCHANGED", "--title", "stationary task"], testDir);
+test("task order targeting itself is a no-op", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "UNCHANGED", "--name", "Unchanged"], testDir);
+    await runZinn(["task", "create", "UNCHANGED", "--title", "stationary task"], testDir);
 
     withTestDb(testDir, (db) => db.run("UPDATE task SET updated_at = 1 WHERE number = 1"));
 
     expect(
-      runZinn(["task", "order", "UNCHANGED-1", "before", "UNCHANGED-1"], testDir).code,
+      (await runZinn(["task", "order", "UNCHANGED-1", "before", "UNCHANGED-1"], testDir)).code,
     ).toBe(0);
 
     const row = withTestDb(testDir, (db) =>
@@ -3207,22 +3227,22 @@ test("task order targeting itself is a no-op", () => {
   });
 });
 
-test("task order leaves already-satisfied placements unchanged", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "SATISFIED", "--name", "Satisfied"], testDir);
-    runZinn(["task", "create", "SATISFIED", "--title", "first task"], testDir);
-    runZinn(["task", "create", "SATISFIED", "--title", "second task"], testDir);
-    runZinn(["task", "create", "SATISFIED", "--title", "third task"], testDir);
+test("task order leaves already-satisfied placements unchanged", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "SATISFIED", "--name", "Satisfied"], testDir);
+    await runZinn(["task", "create", "SATISFIED", "--title", "first task"], testDir);
+    await runZinn(["task", "create", "SATISFIED", "--title", "second task"], testDir);
+    await runZinn(["task", "create", "SATISFIED", "--title", "third task"], testDir);
 
     withTestDb(testDir, (db) => db.run("UPDATE task SET updated_at = 1"));
 
-    expect(runZinn(["task", "order", "SATISFIED-1", "top"], testDir).code).toBe(0);
-    expect(runZinn(["task", "order", "SATISFIED-3", "bottom"], testDir).code).toBe(0);
+    expect((await runZinn(["task", "order", "SATISFIED-1", "top"], testDir)).code).toBe(0);
+    expect((await runZinn(["task", "order", "SATISFIED-3", "bottom"], testDir)).code).toBe(0);
     expect(
-      runZinn(["task", "order", "SATISFIED-2", "before", "SATISFIED-3"], testDir).code,
+      (await runZinn(["task", "order", "SATISFIED-2", "before", "SATISFIED-3"], testDir)).code,
     ).toBe(0);
     expect(
-      runZinn(["task", "order", "SATISFIED-2", "after", "SATISFIED-1"], testDir).code,
+      (await runZinn(["task", "order", "SATISFIED-2", "after", "SATISFIED-1"], testDir)).code,
     ).toBe(0);
 
     const timestamps = withTestDb(testDir, (db) =>
@@ -3232,57 +3252,57 @@ test("task order leaves already-satisfied placements unchanged", () => {
   });
 });
 
-test("task order rejects a target in another project", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "FIRST", "--name", "First"], testDir);
-    runZinn(["project", "create", "SECOND", "--name", "Second"], testDir);
-    runZinn(["task", "create", "FIRST", "--title", "first project task"], testDir);
-    runZinn(["task", "create", "SECOND", "--title", "second project task"], testDir);
+test("task order rejects a target in another project", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "FIRST", "--name", "First"], testDir);
+    await runZinn(["project", "create", "SECOND", "--name", "Second"], testDir);
+    await runZinn(["task", "create", "FIRST", "--title", "first project task"], testDir);
+    await runZinn(["task", "create", "SECOND", "--title", "second project task"], testDir);
 
-    const result = runZinn(["--json", "task", "order", "FIRST-1", "before", "SECOND-1"], testDir);
+    const result = await runZinn(["--json", "task", "order", "FIRST-1", "before", "SECOND-1"], testDir);
 
     expect(result.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "different_project" } });
   });
 });
 
-test("task order rejects archived source and target tasks", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "ARCHORDER", "--name", "Archived order"], testDir);
-    runZinn(["task", "create", "ARCHORDER", "--title", "active task"], testDir);
-    runZinn(["task", "create", "ARCHORDER", "--title", "archived task"], testDir);
-    runZinn(["task", "archive", "ARCHORDER-2"], testDir);
+test("task order rejects archived source and target tasks", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "ARCHORDER", "--name", "Archived order"], testDir);
+    await runZinn(["task", "create", "ARCHORDER", "--title", "active task"], testDir);
+    await runZinn(["task", "create", "ARCHORDER", "--title", "archived task"], testDir);
+    await runZinn(["task", "archive", "ARCHORDER-2"], testDir);
 
-    const archivedSource = runZinn(["--json", "task", "order", "ARCHORDER-2", "top"], testDir);
+    const archivedSource = await runZinn(["--json", "task", "order", "ARCHORDER-2", "top"], testDir);
     expect(archivedSource.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(archivedSource.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "archived", key: "ARCHORDER-2" } });
 
-    const archivedTarget = runZinn(["--json", "task", "order", "ARCHORDER-1", "before", "ARCHORDER-2"], testDir);
+    const archivedTarget = await runZinn(["--json", "task", "order", "ARCHORDER-1", "before", "ARCHORDER-2"], testDir);
     expect(archivedTarget.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(archivedTarget.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "archived", key: "ARCHORDER-2" } });
   });
 });
 
-test("task order uses visible active neighbours", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "VISIBLE", "--name", "Visible"], testDir);
-    runZinn(["task", "create", "VISIBLE", "--title", "first task"], testDir);
-    runZinn(["task", "create", "VISIBLE", "--title", "archived task"], testDir);
-    runZinn(["task", "create", "VISIBLE", "--title", "third task"], testDir);
-    runZinn(["task", "archive", "VISIBLE-2"], testDir);
+test("task order uses visible active neighbours", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "VISIBLE", "--name", "Visible"], testDir);
+    await runZinn(["task", "create", "VISIBLE", "--title", "first task"], testDir);
+    await runZinn(["task", "create", "VISIBLE", "--title", "archived task"], testDir);
+    await runZinn(["task", "create", "VISIBLE", "--title", "third task"], testDir);
+    await runZinn(["task", "archive", "VISIBLE-2"], testDir);
 
-    expect(runZinn(["task", "order", "VISIBLE-1", "down"], testDir).code).toBe(0);
-    expect(runZinn(["task", "list", "VISIBLE"], testDir).stdout).toMatch(
+    expect((await runZinn(["task", "order", "VISIBLE-1", "down"], testDir)).code).toBe(0);
+    expect((await runZinn(["task", "list", "VISIBLE"], testDir)).stdout).toMatch(
       /VISIBLE-3[^\n]*\nVISIBLE-1/,
     );
   });
 });
 
-test("task archive hides a task from active lists without deleting it", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "ARCH", "--name", "Archive"], testDir);
-    runZinn(["task", "create", "ARCH", "--title", "kept task", "--description", "kept description"], testDir);
-    runZinn(["task", "move", "ARCH-1", "In Progress"], testDir);
+test("task archive hides a task from active lists without deleting it", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "ARCH", "--name", "Archive"], testDir);
+    await runZinn(["task", "create", "ARCH", "--title", "kept task", "--description", "kept description"], testDir);
+    await runZinn(["task", "move", "ARCH-1", "In Progress"], testDir);
 
     const before = withTestDb(testDir, (db) =>
       db
@@ -3302,13 +3322,13 @@ test("task archive hides a task from active lists without deleting it", () => {
         .get(),
     )!;
 
-    expect(runZinn(["task", "archive", "aRcH-1"], testDir).code).toBe(0);
-    expect(runZinn(["task", "list", "ARCH"], testDir).stdout).toBe("");
-    expect(runZinn(["task", "list", "ARCH", "--archived"], testDir).stdout).toContain(
+    expect((await runZinn(["task", "archive", "aRcH-1"], testDir)).code).toBe(0);
+    expect((await runZinn(["task", "list", "ARCH"], testDir)).stdout).toBe("");
+    expect((await runZinn(["task", "list", "ARCH", "--archived"], testDir)).stdout).toContain(
       "ARCH-1 | In Progress | - | kept task",
     );
-    expect(runZinn(["task", "list", "--all", "ARCH"], testDir).stdout).toContain("kept task");
-    expect(runZinn(["task", "view", "ARCH-1"], testDir).stdout).toContain("kept task");
+    expect((await runZinn(["task", "list", "--all", "ARCH"], testDir)).stdout).toContain("kept task");
+    expect((await runZinn(["task", "view", "ARCH-1"], testDir)).stdout).toContain("kept task");
 
     withTestDb(testDir, (db) => {
       const after = db
@@ -3341,20 +3361,20 @@ test("task archive hides a task from active lists without deleting it", () => {
   });
 });
 
-test("task list --all identifies active and archived tasks in a status column", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "MIXED", "--name", "Mixed archive"], testDir);
-    runZinn(["task", "create", "MIXED", "--title", "archived task"], testDir);
-    runZinn(["task", "create", "MIXED", "--title", "active task"], testDir);
-    runZinn(["task", "archive", "MIXED-1"], testDir);
+test("task list --all identifies active and archived tasks in a status column", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "MIXED", "--name", "Mixed archive"], testDir);
+    await runZinn(["task", "create", "MIXED", "--title", "archived task"], testDir);
+    await runZinn(["task", "create", "MIXED", "--title", "active task"], testDir);
+    await runZinn(["task", "archive", "MIXED-1"], testDir);
 
-    expect(runZinn(["task", "list", "MIXED"], testDir).stdout).toBe(
+    expect((await runZinn(["task", "list", "MIXED"], testDir)).stdout).toBe(
       `MIXED-2 | Backlog | - | active task\n`,
     );
-    expect(runZinn(["task", "list", "MIXED", "--archived"], testDir).stdout).toBe(
+    expect((await runZinn(["task", "list", "MIXED", "--archived"], testDir)).stdout).toBe(
       `MIXED-1 | Backlog | - | archived task\n`,
     );
-    expect(runZinn(["task", "list", "MIXED", "--all"], testDir).stdout).toBe(
+    expect((await runZinn(["task", "list", "MIXED", "--all"], testDir)).stdout).toBe(
       [
         `MIXED-2 | Active   | Backlog | - | active task`,
         `MIXED-1 | Archived | Backlog | - | archived task`,
@@ -3364,13 +3384,13 @@ test("task list --all identifies active and archived tasks in a status column", 
   });
 });
 
-test("task unarchive appends the task after active tasks in its previous column", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "RESTOREORDER", "--name", "Restore order"], testDir);
-    runZinn(["task", "create", "RESTOREORDER", "--title", "first task"], testDir);
-    runZinn(["task", "create", "RESTOREORDER", "--title", "second task"], testDir);
-    runZinn(["task", "create", "RESTOREORDER", "--title", "third task"], testDir);
-    runZinn(["task", "archive", "RESTOREORDER-1"], testDir);
+test("task unarchive appends the task after active tasks in its previous column", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "RESTOREORDER", "--name", "Restore order"], testDir);
+    await runZinn(["task", "create", "RESTOREORDER", "--title", "first task"], testDir);
+    await runZinn(["task", "create", "RESTOREORDER", "--title", "second task"], testDir);
+    await runZinn(["task", "create", "RESTOREORDER", "--title", "third task"], testDir);
+    await runZinn(["task", "archive", "RESTOREORDER-1"], testDir);
 
     const archived = withTestDb(testDir, (db) =>
       db
@@ -3380,8 +3400,8 @@ test("task unarchive appends the task after active tasks in its previous column"
         .get(),
     )!;
 
-    expect(runZinn(["task", "unarchive", "RESTOREORDER-1"], testDir).code).toBe(0);
-    expect(runZinn(["task", "list", "RESTOREORDER"], testDir).stdout).toMatch(
+    expect((await runZinn(["task", "unarchive", "RESTOREORDER-1"], testDir)).code).toBe(0);
+    expect((await runZinn(["task", "list", "RESTOREORDER"], testDir)).stdout).toMatch(
       /RESTOREORDER-2[^\n]*\nRESTOREORDER-3[^\n]*\nRESTOREORDER-1/,
     );
 
@@ -3398,23 +3418,25 @@ test("task unarchive appends the task after active tasks in its previous column"
   });
 });
 
-test("task unarchive help identifies its command and arguments", () => {
-  const result = runZinn(["task", "unarchive", "--help"]);
+test("task unarchive help identifies its command and arguments", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const result = await runZinn(["task", "unarchive", "--help"], testDir);
 
-  expect(result.code).toBe(0);
-  expect(result.stdout).toContain("Usage: zinn task unarchive <task-key>...");
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("Usage: zinn task unarchive <task-key>...");
+  });
 });
 
-test("task archive is idempotent and unarchive restores active listing", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "RESTORE", "--name", "Restore"], testDir);
-    runZinn(["task", "create", "RESTORE", "--title", "restorable task"], testDir);
-    runZinn(["task", "archive", "RESTORE-1"], testDir);
+test("task archive is idempotent and unarchive restores active listing", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "RESTORE", "--name", "Restore"], testDir);
+    await runZinn(["task", "create", "RESTORE", "--title", "restorable task"], testDir);
+    await runZinn(["task", "archive", "RESTORE-1"], testDir);
 
     withTestDb(testDir, (db) =>
       db.run("UPDATE task SET archived_at = 123, updated_at = 123 WHERE number = 1"),
     );
-    expect(runZinn(["task", "archive", "RESTORE-1"], testDir).code).toBe(0);
+    expect((await runZinn(["task", "archive", "RESTORE-1"], testDir)).code).toBe(0);
 
     const stillArchived = withTestDb(testDir, (db) =>
       db
@@ -3425,9 +3447,9 @@ test("task archive is idempotent and unarchive restores active listing", () => {
     );
     expect(stillArchived).toEqual({ archived_at: 123, updated_at: 123 });
 
-    expect(runZinn(["task", "unarchive", "RESTORE-1"], testDir).code).toBe(0);
-    expect(runZinn(["task", "list", "RESTORE"], testDir).stdout).toContain("restorable task");
-    expect(runZinn(["task", "list", "RESTORE", "--archived"], testDir).stdout).toBe("");
+    expect((await runZinn(["task", "unarchive", "RESTORE-1"], testDir)).code).toBe(0);
+    expect((await runZinn(["task", "list", "RESTORE"], testDir)).stdout).toContain("restorable task");
+    expect((await runZinn(["task", "list", "RESTORE", "--archived"], testDir)).stdout).toBe("");
 
     const restored = withTestDb(testDir, (db) =>
       db
@@ -3450,7 +3472,7 @@ test("task archive is idempotent and unarchive restores active listing", () => {
         .get(),
     );
 
-    expect(runZinn(["task", "unarchive", "RESTORE-1"], testDir).code).toBe(0);
+    expect((await runZinn(["task", "unarchive", "RESTORE-1"], testDir)).code).toBe(0);
 
     const afterActiveUnarchive = withTestDb(testDir, (db) =>
       db
@@ -3463,76 +3485,82 @@ test("task archive is idempotent and unarchive restores active listing", () => {
   });
 });
 
-test("task archive and unarchive require a valid existing task key", () => {
-  expect(runZinn(["task", "archive"]).stderr).toContain("Usage: zinn task archive");
-  expect(runZinn(["task", "unarchive"]).stderr).toContain("Usage: zinn task unarchive");
-  expect(errorDocumentSchema.parse(JSON.parse(runZinn(["--json", "task", "archive", "INVALID"]).stderr)).error).toMatchObject({ code: "invalid_input", message: expect.stringContaining("INVALID"), details: { field: ["taskKey"] } });
-  expect(errorDocumentSchema.parse(JSON.parse(runZinn(["--json", "task", "unarchive", "NOPE-1"]).stderr)).error).toMatchObject({ code: "not_found", details: { entity: "project", key: "NOPE" } });
-});
-
-test("project list shows every established project", () => {
-  runZinn(["project", "create", "LIST", "--name", "Listed"]);
-
-  const result = runZinn(["project", "list"]);
-
-  expect(result.code).toBe(0);
-  expect(result.stdout).toContain("LIST");
-});
-
-test("task delete removes the task but not its project", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "KEEP", "--name", "Keep"], testDir);
-    runZinn(["task", "create", "KEEP", "--title", "doomed task"], testDir);
-
-    expect(runZinn(["task", "delete", "KEEP-1", "--yes"], testDir).code).toBe(0);
-    expect(runZinn(["task", "list", "KEEP"], testDir).stdout).not.toContain("doomed task");
-    expect(runZinn(["project", "list"], testDir).stdout).toContain("KEEP");
+test("task archive and unarchive require a valid existing task key", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    expect((await runZinn(["task", "archive"], testDir)).stderr).toContain("Usage: zinn task archive");
+    expect((await runZinn(["task", "unarchive"], testDir)).stderr).toContain("Usage: zinn task unarchive");
+    expect(errorDocumentSchema.parse(JSON.parse((await runZinn(["--json", "task", "archive", "INVALID"], testDir)).stderr)).error).toMatchObject({ code: "invalid_input", message: expect.stringContaining("INVALID"), details: { field: ["taskKey"] } });
+    expect(errorDocumentSchema.parse(JSON.parse((await runZinn(["--json", "task", "unarchive", "NOPE-1"], testDir)).stderr)).error).toMatchObject({ code: "not_found", details: { entity: "project", key: "NOPE" } });
   });
 });
 
-test("task delete keeps the task when confirmation is declined", async () => {
-  await withIsolatedZinnDirAsync(async (testDir) => {
-    runZinn(["project", "create", "KEEP", "--name", "Keep"], testDir);
-    runZinn(["task", "create", "KEEP", "--title", "surviving task"], testDir);
+test("project list shows every established project", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "LIST", "--name", "Listed"], testDir);
 
-    const declined = await runCliInTerminal(["task", "delete", "KEEP-1"], { env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir }, input: "n\n" });
+    const result = await runZinn(["project", "list"], testDir);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("LIST");
+  });
+});
+
+test("task delete removes the task but not its project", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "KEEP", "--name", "Keep"], testDir);
+    await runZinn(["task", "create", "KEEP", "--title", "doomed task"], testDir);
+
+    expect((await runZinn(["task", "delete", "KEEP-1", "--yes"], testDir)).code).toBe(0);
+    expect((await runZinn(["task", "list", "KEEP"], testDir)).stdout).not.toContain("doomed task");
+    expect((await runZinn(["project", "list"], testDir)).stdout).toContain("KEEP");
+  });
+});
+
+test.serial("task delete keeps the task when confirmation is declined", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "KEEP", "--name", "Keep"], testDir);
+    await runZinn(["task", "create", "KEEP", "--title", "surviving task"], testDir);
+
+    const declined = await runCliInTerminal(["task", "delete", "KEEP-1"], { env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir }, cwd: testDir, input: "n\n" });
     expect(declined.code).toBe(0);
-    expect(runZinn(["task", "list", "KEEP"], testDir).stdout).toContain("surviving task");
+    expect((await runZinn(["task", "list", "KEEP"], testDir)).stdout).toContain("surviving task");
   });
 });
 
-test("task delete requires a valid existing task key", () => {
-  expect(runZinn(["task", "delete"]).stderr).toContain("Usage: zinn task delete");
-  expect(errorDocumentSchema.parse(JSON.parse(runZinn(["--json", "task", "delete", "INVALID"]).stderr)).error).toMatchObject({ code: "invalid_input", message: expect.stringContaining("INVALID"), details: { field: ["taskKey"] } });
+test("task delete requires a valid existing task key", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    expect((await runZinn(["task", "delete"], testDir)).stderr).toContain("Usage: zinn task delete");
+    expect(errorDocumentSchema.parse(JSON.parse((await runZinn(["--json", "task", "delete", "INVALID"], testDir)).stderr)).error).toMatchObject({ code: "invalid_input", message: expect.stringContaining("INVALID"), details: { field: ["taskKey"] } });
+  });
 });
 
-test("task edit preserves omitted fields and identity, and accepts empty descriptions", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "EDIT", "--name", "Edits"], dir);
-    runZinn(["task", "create", "EDIT", "--title", "Original", "--description", "Description"], dir);
+test("task edit preserves omitted fields and identity, and accepts empty descriptions", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "EDIT", "--name", "Edits"], dir);
+    await runZinn(["task", "create", "EDIT", "--title", "Original", "--description", "Description"], dir);
     const read = () => withTestDb(dir, (db) =>
       db.query<import("../core/src/types").Task, []>("SELECT * FROM task").get()!);
     withTestDb(dir, (db) => db.run("UPDATE task SET updated_at = 1"));
     const before = read();
-    expect(runZinn(["task", "edit", "edit-1", "--title", "New title"], dir).code).toBe(0);
+    expect((await runZinn(["task", "edit", "edit-1", "--title", "New title"], dir)).code).toBe(0);
     const after = read();
     expect(after).toEqual({ ...before, title: "New title", updated_at: after.updated_at });
     expect(after.updated_at).toBeGreaterThan(1);
-    expect(runZinn(["task", "edit", "EDIT-1", "--description", ""], dir).code).toBe(0);
+    expect((await runZinn(["task", "edit", "EDIT-1", "--description", ""], dir)).code).toBe(0);
     expect(read().description).toBeNull();
     expect(read().title).toBe("New title");
     withTestDb(dir, (db) => db.run("UPDATE task SET updated_at = 1"));
-    expect(runZinn(["task", "edit", "EDIT-1", "--title", "New title", "--description", ""], dir).code).toBe(0);
+    expect((await runZinn(["task", "edit", "EDIT-1", "--title", "New title", "--description", ""], dir)).code).toBe(0);
     expect(read().updated_at).toBe(1);
-    expect(runZinn(["task", "edit", "--description=Changed", "EDIT-1", "--title=--example"], dir).code).toBe(0);
+    expect((await runZinn(["task", "edit", "--description=Changed", "EDIT-1", "--title=--example"], dir)).code).toBe(0);
     expect(read()).toMatchObject({ title: "--example", description: "Changed" });
   });
 });
 
-test("task edit rejects invalid requests without partial writes", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "EDIT", "--name", "Edits"], dir);
-    runZinn(["task", "create", "EDIT", "--title", "Original", "--description", "Description"], dir);
+test("task edit rejects invalid requests without partial writes", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "EDIT", "--name", "Edits"], dir);
+    await runZinn(["task", "create", "EDIT", "--title", "Original", "--description", "Description"], dir);
     const usage = "Usage: zinn task edit";
     const cases = [
       [[], { code: "invalid_input", details: { argument: "task-key" }, help: expect.stringContaining(usage) }],
@@ -3549,74 +3577,77 @@ test("task edit rejects invalid requests without partial writes", () => {
       [["EDIT-99", "--title", "text"], { code: "not_found", details: { entity: "task", key: "EDIT-99" } }],
     ] as const;
     for (const [args, expected] of cases) {
-      const result = runZinn(["task", "edit", ...args, "--json"], dir);
+      const result = await runZinn(["task", "edit", ...args, "--json"], dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(expected);
     }
-    expect(runZinn(["task", "view", "EDIT-1"], dir).stdout).toBe(
+    expect((await runZinn(["task", "view", "EDIT-1"], dir)).stdout).toBe(
       `EDIT-1 | Backlog | - | Original\n\n${SECTION_RULE}\nDescription:\nDescription\n`,
     );
   });
 });
 
-test("task edit preserves archive state and documents its flags", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "EDIT", "--name", "Edits"], dir);
-    runZinn(["task", "create", "EDIT", "--title", "Original"], dir);
-    runZinn(["task", "archive", "EDIT-1"], dir);
-    expect(runZinn(["task", "edit", "EDIT-1", "--title", "Archived edit"], dir).code).toBe(0);
-    expect(runZinn(["task", "list", "EDIT"], dir).stdout).toBe("");
-    expect(runZinn(["task", "list", "EDIT", "--archived"], dir).stdout).toContain("Archived edit");
+test("task edit preserves archive state and documents its flags", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await withIsolatedZinnDir(async (dir) => {
+      await runZinn(["project", "create", "EDIT", "--name", "Edits"], dir);
+      await runZinn(["task", "create", "EDIT", "--title", "Original"], dir);
+      await runZinn(["task", "archive", "EDIT-1"], dir);
+      expect((await runZinn(["task", "edit", "EDIT-1", "--title", "Archived edit"], dir)).code).toBe(0);
+      expect((await runZinn(["task", "list", "EDIT"], dir)).stdout).toBe("");
+      expect((await runZinn(["task", "list", "EDIT", "--archived"], dir)).stdout).toContain("Archived edit");
+    });
+    const help = await runZinn(["task", "edit", "--help"], testDir);
+    expect(help.code).toBe(0);
+    expect(help.stdout).toContain("--description ''");
   });
-  const help = runZinn(["task", "edit", "--help"]);
-  expect(help.code).toBe(0);
-  expect(help.stdout).toContain("--description ''");
 });
 
-test("project and column mutations print the affected entity", () => {
-  withIsolatedZinnDir((testDir) => {
-    expect(runZinn(["project", "create", "life", "--name", "Responsive"], testDir).stdout).toBe(
+test("project and column mutations print the affected entity", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    expect((await runZinn(["project", "create", "life", "--name", "Responsive"], testDir)).stdout).toBe(
       "LIFE | Responsive\n",
     );
     expect(
-      runZinn(["project", "column", "create", "life", "Waiting"], testDir).stdout,
+      (await runZinn(["project", "column", "create", "life", "Waiting"], testDir)).stdout,
     ).toBe("LIFE | Waiting\n");
-    expect(runZinn(["project", "delete", "life", "--yes"], testDir).stdout).toContain(
+    expect((await runZinn(["project", "delete", "life", "--yes"], testDir)).stdout).toContain(
       "Deleted LIFE | Responsive\n",
     );
   });
 });
 
-test("task mutations print the resulting entity", async () => {
-  await withIsolatedZinnDirAsync(async (testDir) => {
-    runZinn(["project", "create", "LIFE", "--name", "Responsive"], testDir);
+test.serial("task mutations print the resulting entity", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "LIFE", "--name", "Responsive"], testDir);
 
-    expect(runZinn(["task", "create", "LIFE", "--title", "First", "--description", "Description"], testDir).stdout).toBe(
+    expect((await runZinn(["task", "create", "LIFE", "--title", "First", "--description", "Description"], testDir)).stdout).toBe(
       `LIFE-1 | Backlog | - | First\n`,
     );
-    runZinn(["task", "create", "LIFE", "--title", "Second"], testDir);
+    await runZinn(["task", "create", "LIFE", "--title", "Second"], testDir);
     expect(
-      runZinn(["task", "edit", "life-1", "--title", "Updated"], testDir).stdout,
+      (await runZinn(["task", "edit", "life-1", "--title", "Updated"], testDir)).stdout,
     ).toBe(`LIFE-1 | Backlog | - | Updated\n`);
-    expect(runZinn(["task", "move", "LIFE-1", "TODO"], testDir).stdout).toBe(
+    expect((await runZinn(["task", "move", "LIFE-1", "TODO"], testDir)).stdout).toBe(
       "LIFE-1 | TODO | - | Updated\n",
     );
-    runZinn(["task", "move", "LIFE-2", "TODO"], testDir);
-    expect(runZinn(["task", "order", "LIFE-2", "top"], testDir).stdout).toBe(
+    await runZinn(["task", "move", "LIFE-2", "TODO"], testDir);
+    expect((await runZinn(["task", "order", "LIFE-2", "top"], testDir)).stdout).toBe(
       "LIFE-2 | TODO | - | Second\n",
     );
-    expect(runZinn(["task", "archive", "LIFE-1"], testDir).stdout).toBe(
+    expect((await runZinn(["task", "archive", "LIFE-1"], testDir)).stdout).toBe(
       "LIFE-1 | Archived | TODO | - | Updated\n",
     );
-    expect(runZinn(["task", "unarchive", "LIFE-1"], testDir).stdout).toBe(
+    expect((await runZinn(["task", "unarchive", "LIFE-1"], testDir)).stdout).toBe(
       "LIFE-1 | Active | TODO | - | Updated\n",
     );
-    expect(runZinn(["task", "delete", "LIFE-1", "--yes"], testDir).stdout).toContain(
+    expect((await runZinn(["task", "delete", "LIFE-1", "--yes"], testDir)).stdout).toContain(
       "Deleted LIFE-1 | TODO | - | Updated",
     );
     const declined = await runCliInTerminal(["task", "delete", "LIFE-2"], {
       env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir, NO_COLOR: "1" },
+      cwd: testDir,
       input: "n\n",
     });
     expect(declined.output).toContain("LIFE-2 | TODO | - | Second");
@@ -3624,29 +3655,31 @@ test("task mutations print the resulting entity", async () => {
 });
 
 // ? Empty strings pass the routers' `== null` guards; core's validation rejects them.
-test("empty-string arguments are rejected", () => {
-  runZinn(["project", "create", "EMPTY", "--name", "Empty"]);
+test("empty-string arguments are rejected", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "EMPTY", "--name", "Empty"], testDir);
 
-  const blankTitle = runZinn(["--json", "task", "create", "EMPTY", "--title", ""]);
-  expect(blankTitle.code).toBe(1);
-  expect(errorDocumentSchema.parse(JSON.parse(blankTitle.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["title"] } });
+    const blankTitle = await runZinn(["--json", "task", "create", "EMPTY", "--title", ""], testDir);
+    expect(blankTitle.code).toBe(1);
+    expect(errorDocumentSchema.parse(JSON.parse(blankTitle.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["title"] } });
 
-  const blankProject = runZinn(["--json", "project", "create", "", "--name", ""]);
-  expect(blankProject.code).toBe(1);
-  expect(errorDocumentSchema.parse(JSON.parse(blankProject.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["key"] } });
+    const blankProject = await runZinn(["--json", "project", "create", "", "--name", ""], testDir);
+    expect(blankProject.code).toBe(1);
+    expect(errorDocumentSchema.parse(JSON.parse(blankProject.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["key"] } });
+  });
 });
 
 // --- TASK SEARCH
 
-test("task search prints matches in task list rows and JSON shape", () => {
-  withIsolatedZinnDir((dir) => {
+test("task search prints matches in task list rows and JSON shape", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const run = (...args: Array<string>) => runZinn(args, dir);
-    run("project", "create", "FIND");
-    run("task", "create", "FIND", "--title", "Refine the numbers", "--description", "Quarterly quota", "--priority", "high");
-    run("task", "create", "FIND", "--title", "Unrelated");
-    run("task", "comment", "create", "FIND-2", "--text", "Blocked on refinement tools");
+    await run("project", "create", "FIND");
+    await run("task", "create", "FIND", "--title", "Refine the numbers", "--description", "Quarterly quota", "--priority", "high");
+    await run("task", "create", "FIND", "--title", "Unrelated");
+    await run("task", "comment", "create", "FIND-2", "--text", "Blocked on refinement tools");
 
-    const result = run("task", "search", "REFIN");
+    const result = await run("task", "search", "REFIN");
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.stdout).toBe(
@@ -3657,39 +3690,39 @@ test("task search prints matches in task list rows and JSON shape", () => {
       ].join("\n"),
     );
 
-    const listed = JSON.parse(run("task", "list", "FIND", "--json").stdout);
-    const searched = JSON.parse(run("task", "search", "refine quota", "--json").stdout);
+    const listed = JSON.parse((await run("task", "list", "FIND", "--json")).stdout);
+    const searched = JSON.parse((await run("task", "search", "refine quota", "--json")).stdout);
     expect(searched).toEqual([listed[0]]);
   });
 });
 
-test("task search finds a description-only match and prints its plain task row", () => {
-  withIsolatedZinnDir((dir) => {
+test("task search finds a description-only match and prints its plain task row", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const run = (...args: Array<string>) => runZinn(args, dir);
     const description = "Quarterly refinement checklist";
-    run("project", "create", "SEEK");
-    run("label", "create", "ops");
-    run("task", "create", "SEEK", "--title", "Calibrate sensors", "--description", description, "--label", "ops");
-    run("task", "create", "SEEK", "--title", "Unrelated");
+    await run("project", "create", "SEEK");
+    await run("label", "create", "ops");
+    await run("task", "create", "SEEK", "--title", "Calibrate sensors", "--description", description, "--label", "ops");
+    await run("task", "create", "SEEK", "--title", "Unrelated");
 
-    const result = run("task", "search", "checklist");
+    const result = await run("task", "search", "checklist");
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.stdout).toBe("SEEK-1 | Backlog | - | Calibrate sensors | ops\n");
 
-    expect(JSON.parse(run("task", "search", "checklist", "--json").stdout)).toEqual([
+    expect(JSON.parse((await run("task", "search", "checklist", "--json")).stdout)).toEqual([
       expect.objectContaining({ key: "SEEK-1", description, labels: ["ops"] }),
     ]);
   });
 });
 
-test("task search with no matches exits zero without output", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "EMPTY"], dir);
-    runZinn(["task", "create", "EMPTY", "--title", "Something"], dir);
+test("task search with no matches exits zero without output", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "EMPTY"], dir);
+    await runZinn(["task", "create", "EMPTY", "--title", "Something"], dir);
 
-    expect(runZinn(["task", "search", "nothing"], dir)).toEqual({ stdout: "", stderr: "", code: 0 });
-    expect(runZinn(["task", "search", "nothing", "--json"], dir)).toEqual({
+    expect(await runZinn(["task", "search", "nothing"], dir)).toEqual({ stdout: "", stderr: "", code: 0 });
+    expect(await runZinn(["task", "search", "nothing", "--json"], dir)).toEqual({
       stdout: "[]\n",
       stderr: "",
       code: 0,
@@ -3697,36 +3730,36 @@ test("task search with no matches exits zero without output", () => {
   });
 });
 
-test("task search treats FTS syntax as text and accepts a leading dash after --", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "SYN"], dir);
-    runZinn(["task", "create", "SYN", "--title", "Fix sign-in (again)", "--description", "AND NOT"], dir);
+test("task search treats FTS syntax as text and accepts a leading dash after --", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "SYN"], dir);
+    await runZinn(["task", "create", "SYN", "--title", "Fix sign-in (again)", "--description", "AND NOT"], dir);
 
     for (const query of ["-", '"', ":", "(", "AND", "NOT", "*", 'sign-in "', "NEAR(a b)"]) {
-      const result = runZinn(["task", "search", "--", query], dir);
+      const result = await runZinn(["task", "search", "--", query], dir);
       expect(result.code).toBe(0);
       expect(result.stderr).toBe("");
     }
 
-    expect(runZinn(["task", "search", "--", "-sign"], dir).stdout).toContain("SYN-1");
-    expect(runZinn(["task", "search", "(again) and not"], dir).stdout).toContain("SYN-1");
+    expect((await runZinn(["task", "search", "--", "-sign"], dir)).stdout).toContain("SYN-1");
+    expect((await runZinn(["task", "search", "(again) and not"], dir)).stdout).toContain("SYN-1");
   });
 });
 
-test("task search treats --json and --help after -- as literal query text, not router flags", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "ESC"], dir);
-    runZinn(["task", "create", "ESC", "--title", "Something"], dir);
+test("task search treats --json and --help after -- as literal query text, not router flags", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "ESC"], dir);
+    await runZinn(["task", "create", "ESC", "--title", "Something"], dir);
 
     // Neither literal query matches any task; JSON mode would print "[]\n"
     // and a help request would print usage text, so empty output on both
     // stdout and stderr confirms "--json"/"--help" were searched for, not acted on.
-    expect(runZinn(["task", "search", "--", "--json"], dir)).toEqual({
+    expect(await runZinn(["task", "search", "--", "--json"], dir)).toEqual({
       stdout: "",
       stderr: "",
       code: 0,
     });
-    expect(runZinn(["task", "search", "--", "--help"], dir)).toEqual({
+    expect(await runZinn(["task", "search", "--", "--help"], dir)).toEqual({
       stdout: "",
       stderr: "",
       code: 0,
@@ -3734,69 +3767,69 @@ test("task search treats --json and --help after -- as literal query text, not r
   });
 });
 
-test("task search pins an exact task key before text matches", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "PIN"], dir);
-    runZinn(["task", "create", "PIN", "--title", "Mentions pin-2 first"], dir);
-    runZinn(["task", "create", "PIN", "--title", "The pinned task"], dir);
+test("task search pins an exact task key before text matches", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "PIN"], dir);
+    await runZinn(["task", "create", "PIN", "--title", "Mentions pin-2 first"], dir);
+    await runZinn(["task", "create", "PIN", "--title", "The pinned task"], dir);
 
-    const keys = JSON.parse(runZinn(["task", "search", "pin-2", "--json"], dir).stdout).map(
+    const keys = JSON.parse((await runZinn(["task", "search", "pin-2", "--json"], dir)).stdout).map(
       (entry: { key: string }) => entry.key,
     );
     expect(keys).toEqual(["PIN-2", "PIN-1"]);
   });
 });
 
-test("task search hides archived matches with a stderr hint and filters by project and limit", () => {
-  withIsolatedZinnDir((dir) => {
+test("task search hides archived matches with a stderr hint and filters by project and limit", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const run = (...args: Array<string>) => runZinn(args, dir);
-    run("project", "create", "ONE");
-    run("project", "create", "TWO");
-    run("task", "create", "ONE", "--title", "Widget active");
-    run("task", "create", "ONE", "--title", "Widget archived");
-    run("task", "create", "ONE", "--title", "Widget also archived");
-    run("task", "create", "TWO", "--title", "Widget elsewhere");
-    run("task", "archive", "ONE-2");
-    run("task", "archive", "ONE-3");
+    await run("project", "create", "ONE");
+    await run("project", "create", "TWO");
+    await run("task", "create", "ONE", "--title", "Widget active");
+    await run("task", "create", "ONE", "--title", "Widget archived");
+    await run("task", "create", "ONE", "--title", "Widget also archived");
+    await run("task", "create", "TWO", "--title", "Widget elsewhere");
+    await run("task", "archive", "ONE-2");
+    await run("task", "archive", "ONE-3");
 
-    const active = run("task", "search", "widget", "one");
+    const active = await run("task", "search", "widget", "one");
     expect(active.code).toBe(0);
     expect(active.stdout).toBe(`ONE-1 | Backlog | - | Widget active\n`);
     expect(active.stderr).toContain("2");
     expect(active.stderr).toContain("--all");
 
-    const activeJson = run("task", "search", "widget", "ONE", "--json");
+    const activeJson = await run("task", "search", "widget", "ONE", "--json");
     expect(JSON.parse(activeJson.stdout)).toHaveLength(1);
     expect(activeJson.stdout).not.toContain("hidden");
     expect(activeJson.stderr).toContain("2");
     expect(activeJson.stderr).toContain("--all");
 
-    const single = run("task", "search", "ONE-2", "ONE");
+    const single = await run("task", "search", "ONE-2", "ONE");
     expect(single.stdout).toBe("");
     expect(single.stderr).toContain("1");
     expect(single.stderr).toContain("--all");
 
-    const archived = run("task", "search", "widget", "ONE", "--archived");
+    const archived = await run("task", "search", "widget", "ONE", "--archived");
     expect(archived.stderr).toBe("");
     expect(archived.stdout.trimEnd().split("\n").sort()).toEqual([
       `ONE-2 | Backlog | - | Widget archived`,
       `ONE-3 | Backlog | - | Widget also archived`,
     ]);
 
-    const all = run("task", "search", "widget", "--all");
+    const all = await run("task", "search", "widget", "--all");
     expect(all.stderr).toBe("");
     expect(all.stdout.trimEnd().split("\n")).toHaveLength(4);
     expect(all.stdout).toContain(`ONE-2 | Archived | Backlog | - | Widget archived`);
     expect(all.stdout).toContain(`TWO-1 | Active   | Backlog | - | Widget elsewhere`);
 
-    expect(run("task", "search", "widget", "--all", "--limit", "3").stdout.trimEnd().split("\n")).toHaveLength(3);
-    expect(run("task", "search", "widget", "TWO").stdout).toBe(`TWO-1 | Backlog | - | Widget elsewhere\n`);
+    expect((await run("task", "search", "widget", "--all", "--limit", "3")).stdout.trimEnd().split("\n")).toHaveLength(3);
+    expect((await run("task", "search", "widget", "TWO")).stdout).toBe(`TWO-1 | Backlog | - | Widget elsewhere\n`);
   });
 });
 
-test("task search validates its arguments", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "VAL"], dir);
+test("task search validates its arguments", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "VAL"], dir);
 
     const usage = "Usage: zinn task search";
     const cases = [
@@ -3814,7 +3847,7 @@ test("task search validates its arguments", () => {
       [["a", "MISSING"], { code: "not_found", details: { entity: "project", key: "MISSING" } }],
     ] as const;
     for (const [args, expected] of cases) {
-      const result = runZinn(["task", "search", ...args, "--json"], dir);
+      const result = await runZinn(["task", "search", ...args, "--json"], dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(expected);
@@ -3827,23 +3860,25 @@ test("task search validates its arguments", () => {
 // ? Do not assert merely that stdout is JSON-parseable: `console.info` renders
 // ? a flat string array as `[ "Backlog", ... ]`, which parses by coincidence.
 // ? Assert the entity shape instead.
-test("--json emits machine-readable output on read commands", () => {
-  runZinn(["project", "create", "JSON", "--name", "Json"]);
+test("--json emits machine-readable output on read commands", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "JSON", "--name", "Json"], testDir);
 
-  const result = runZinn(["project", "column", "list", "JSON", "--json"]);
+    const result = await runZinn(["project", "column", "list", "JSON", "--json"], testDir);
 
-  expect(result.code).toBe(0);
-  const parsed = JSON.parse(result.stdout);
-  expect(parsed).toBeArray();
-  expect(parsed[0]).toMatchObject({ name: "Backlog" });
+    expect(result.code).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed).toBeArray();
+    expect(parsed[0]).toMatchObject({ name: "Backlog" });
+  });
 });
 
-test("--json prints the created entity on write commands, wherever the flag is placed", () => {
-  withIsolatedZinnDir((testDir) => {
-    const project = runZinn(["project", "create", "--json", "WEB", "--name", "Web"], testDir);
+test("--json prints the created entity on write commands, wherever the flag is placed", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const project = await runZinn(["project", "create", "--json", "WEB", "--name", "Web"], testDir);
     expect(JSON.parse(project.stdout)).toEqual({ key: "WEB", name: "Web", description: null });
 
-    const created = runZinn(["task", "create", "WEB", "--title", "Ship it", "--json"], testDir);
+    const created = await runZinn(["task", "create", "WEB", "--title", "Ship it", "--json"], testDir);
 
     expect(created.code).toBe(0);
     expect(JSON.parse(created.stdout)).toEqual({
@@ -3858,14 +3893,14 @@ test("--json prints the created entity on write commands, wherever the flag is p
   });
 });
 
-test("--json combines a task and its relations into one document on task view", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "WEB"], testDir);
-    runZinn(["task", "create", "WEB", "--title", "API"], testDir);
-    runZinn(["task", "create", "WEB", "--title", "UI"], testDir);
-    runZinn(["task", "relation", "create", "WEB-2", "WEB-1", "--type", "dependency"], testDir);
+test("--json combines a task and its relations into one document on task view", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "WEB"], testDir);
+    await runZinn(["task", "create", "WEB", "--title", "API"], testDir);
+    await runZinn(["task", "create", "WEB", "--title", "UI"], testDir);
+    await runZinn(["task", "relation", "create", "WEB-2", "WEB-1", "--type", "dependency"], testDir);
 
-    const viewed = JSON.parse(runZinn(["task", "view", "WEB-2", "--json"], testDir).stdout);
+    const viewed = JSON.parse((await runZinn(["task", "view", "WEB-2", "--json"], testDir)).stdout);
 
     expect(viewed).toMatchObject({ key: "WEB-2", title: "UI" });
     expect(viewed.relations).toEqual([
@@ -3878,36 +3913,38 @@ test("--json combines a task and its relations into one document on task view", 
   });
 });
 
-test("--json prints an empty array for empty lists, while text output stays empty", () => {
-  withIsolatedZinnDir((testDir) => {
-    expect(runZinn(["project", "list"], testDir).stdout).toBe("");
-    expect(JSON.parse(runZinn(["project", "list", "--json"], testDir).stdout)).toEqual([]);
-    expect(JSON.parse(runZinn(["label", "list", "--json"], testDir).stdout)).toEqual([]);
+test("--json prints an empty array for empty lists, while text output stays empty", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    expect((await runZinn(["project", "list"], testDir)).stdout).toBe("");
+    expect(JSON.parse((await runZinn(["project", "list", "--json"], testDir)).stdout)).toEqual([]);
+    expect(JSON.parse((await runZinn(["label", "list", "--json"], testDir)).stdout)).toEqual([]);
   });
 });
 
-test("--json reports errors as JSON on stderr and leaves stdout empty", () => {
-  const result = runZinn(["project", "create", "--json"]);
+test("--json reports errors as JSON on stderr and leaves stdout empty", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const result = await runZinn(["project", "create", "--json"], testDir);
 
-  expect(result.code).toBe(1);
-  expect(result.stdout).toBe("");
-  const parsed = JSON.parse(result.stderr);
-  expect(Object.keys(parsed)).toEqual(["error"]);
-  expect(errorDocumentSchema.safeParse(parsed).success).toBe(true);
-  expect(parsed.error.code).toBe("invalid_input");
-  expect(parsed.error.details.argument).toBe("project-key");
-  expect(parsed.error.message).toContain("<project-key>");
-  expect(parsed.error.help).toContain("Usage: zinn project create");
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    const parsed = JSON.parse(result.stderr);
+    expect(Object.keys(parsed)).toEqual(["error"]);
+    expect(errorDocumentSchema.safeParse(parsed).success).toBe(true);
+    expect(parsed.error.code).toBe("invalid_input");
+    expect(parsed.error.details.argument).toBe("project-key");
+    expect(parsed.error.message).toContain("<project-key>");
+    expect(parsed.error.help).toContain("Usage: zinn project create");
+  });
 });
 
 // ? A database with something for each confirming command to change. Returns a backup taken before "Later" was added.
-function seedConfirmationDatabase(dir: string) {
-  runZinn(["project", "create", "CONF"], dir);
-  runZinn(["label", "create", "bug"], dir);
-  runZinn(["task", "create", "CONF", "--title", "Kept", "--label", "bug"], dir);
-  runZinn(["task", "comment", "create", "CONF-1", "--text", "Note"], dir);
-  const backupPath = (JSON.parse(runZinn(["backup", "--json"], dir).stdout) as { path: string }).path;
-  runZinn(["task", "create", "CONF", "--title", "Later"], dir);
+async function seedConfirmationDatabase(dir: string) {
+  await runZinn(["project", "create", "CONF"], dir);
+  await runZinn(["label", "create", "bug"], dir);
+  await runZinn(["task", "create", "CONF", "--title", "Kept", "--label", "bug"], dir);
+  await runZinn(["task", "comment", "create", "CONF-1", "--text", "Note"], dir);
+  const backupPath = (JSON.parse((await runZinn(["backup", "--json"], dir)).stdout) as { path: string }).path;
+  await runZinn(["task", "create", "CONF", "--title", "Later"], dir);
 
   return backupPath;
 }
@@ -3922,85 +3959,85 @@ function confirmationSnapshot(dir: string) {
   return { tables, backups: backupFiles(dir) };
 }
 
-const runJson = (dir: string, ...args: Array<string>) => JSON.parse(runZinn([...args, "--json"], dir).stdout);
+const runJson = async (dir: string, ...args: Array<string>) => JSON.parse((await runZinn([...args, "--json"], dir)).stdout);
 
 // ? ZINN-143: every command that asks for confirmation, run against seedConfirmationDatabase,
 // ? with a check that its change happened.
 const CONFIRMING_COMMANDS = [
   {
     argsFor: (_backupPath: string) => ["project", "delete", "CONF"],
-    isDone: (dir: string) => runJson(dir, "project", "list").length === 0,
+    isDone: async (dir: string) => (await runJson(dir, "project", "list")).length === 0,
   },
   {
     argsFor: (_backupPath: string) => ["task", "delete", "CONF-1"],
-    isDone: (dir: string) => runZinn(["task", "view", "CONF-1"], dir).code === 1,
+    isDone: async (dir: string) => (await runZinn(["task", "view", "CONF-1"], dir)).code === 1,
   },
   {
     argsFor: (_backupPath: string) => ["task", "comment", "delete", "CONF-1#1"],
-    isDone: (dir: string) => runJson(dir, "task", "view", "CONF-1").comments.length === 0,
+    isDone: async (dir: string) => (await runJson(dir, "task", "view", "CONF-1")).comments.length === 0,
   },
   {
     argsFor: (_backupPath: string) => ["label", "delete", "bug"],
-    isDone: (dir: string) => runJson(dir, "label", "list").length === 0,
+    isDone: async (dir: string) => (await runJson(dir, "label", "list")).length === 0,
   },
   {
     argsFor: (backupPath: string) => ["restore", backupPath],
-    isDone: (dir: string) => runJson(dir, "task", "list", "CONF").length === 1,
+    isDone: async (dir: string) => (await runJson(dir, "task", "list", "CONF")).length === 1,
   },
 ];
 
-test("confirming commands without --yes refuse when not in a terminal, and --yes still performs them", () => {
+test("confirming commands without --yes refuse when not in a terminal, and --yes still performs them", async () => {
   for (const { argsFor, isDone } of CONFIRMING_COMMANDS) {
-    withIsolatedZinnDir((dir) => {
-      const args = argsFor(seedConfirmationDatabase(dir));
+    await withIsolatedZinnDir(async (dir) => {
+      const args = argsFor(await seedConfirmationDatabase(dir));
       const before = confirmationSnapshot(dir);
 
-      for (const refused of [runZinn(args, dir), runZinnWithPipedYes(args, dir)]) {
+      for (const refused of [await runZinn(args, dir), await runZinnWithPipedYes(args, dir)]) {
         expect(refused.code).toBe(1);
         expect(refused.stdout).toBe("");
         expect(refused.stderr).toContain("--yes");
         expect(confirmationSnapshot(dir)).toEqual(before);
       }
 
-      const jsonRefused = runZinn([...args, "--json"], dir);
+      const jsonRefused = await runZinn([...args, "--json"], dir);
       expect(jsonRefused.code).toBe(1);
       expect(jsonRefused.stdout).toBe("");
       expect(JSON.parse(jsonRefused.stderr).error.message).toContain("--yes");
       expect(confirmationSnapshot(dir)).toEqual(before);
 
-      const confirmed = runZinn([...args, "--yes"], dir);
+      const confirmed = await runZinn([...args, "--yes"], dir);
       expect(confirmed.code).toBe(0);
-      expect(isDone(dir)).toBe(true);
+      expect(await isDone(dir)).toBe(true);
     });
   }
 });
 
-test("confirming commands in a terminal act on y and cancel on n with exit code 0", async () => {
+test.serial("confirming commands in a terminal act on y and cancel on n with exit code 0", async () => {
   for (const { argsFor, isDone } of CONFIRMING_COMMANDS) {
-    await withIsolatedZinnDirAsync(async (dir) => {
-      const args = argsFor(seedConfirmationDatabase(dir));
+    await withIsolatedZinnDir(async (dir) => {
+      const args = argsFor(await seedConfirmationDatabase(dir));
       const env = { ...TEST_ENVIRONMENT, ZINN_DIR: dir };
       const before = confirmationSnapshot(dir);
 
       for (const input of ["n\n", "\n"]) {
-        const declined = await runCliInTerminal(args, { env, input });
+        const declined = await runCliInTerminal(args, { env, cwd: dir, input });
         expect(declined.code).toBe(0);
         expect(confirmationSnapshot(dir)).toEqual(before);
       }
 
-      const accepted = await runCliInTerminal(args, { env, input: "y\n" });
+      const accepted = await runCliInTerminal(args, { env, cwd: dir, input: "y\n" });
       expect(accepted.code).toBe(0);
-      expect(isDone(dir)).toBe(true);
+      expect(await isDone(dir)).toBe(true);
     });
   }
 });
 
-test("confirmation prompts use stderr, preserve exact affirmative answers, and decline EOF", async () => {
-  await withIsolatedZinnDirAsync(async (dir) => {
-    seedConfirmationDatabase(dir);
+test.serial("confirmation prompts use stderr, preserve exact affirmative answers, and decline EOF", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await seedConfirmationDatabase(dir);
     const before = confirmationSnapshot(dir);
     const stderrPath = join(dir, "prompt.stderr");
-    const options = { env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir }, stderrPath };
+    const options = { env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir }, cwd: dir, stderrPath };
 
     for (const input of ["yes\n", " y \n", "\x04"]) {
       const result = await runCliInTerminal(["task", "delete", "CONF-1"], { ...options, input });
@@ -4016,67 +4053,67 @@ test("confirmation prompts use stderr, preserve exact affirmative answers, and d
     const accepted = await runCliInTerminal(["task", "delete", "CONF-1"], { ...options, input: "Y\n" });
     expect(accepted.code).toBe(0);
     expect(accepted.output).not.toContain("[y/N]");
-    expect(runZinn(["task", "view", "CONF-1"], dir).code).toBe(1);
+    expect((await runZinn(["task", "view", "CONF-1"], dir)).code).toBe(1);
   });
 });
 
-test("interrupting a confirmation exits 130 and changes nothing", async () => {
-  await withIsolatedZinnDirAsync(async (dir) => {
-    seedConfirmationDatabase(dir);
+test.serial("interrupting a confirmation exits 130 and changes nothing", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await seedConfirmationDatabase(dir);
     const before = confirmationSnapshot(dir);
     const result = await runCliInTerminal(["task", "delete", "CONF-1"], {
-      env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir }, input: "\x03", inputWhen: "[y/N]",
+      env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir }, cwd: dir, input: "\x03", inputWhen: "[y/N]",
     });
     expect(result.code).toBe(130);
     expect(confirmationSnapshot(dir)).toEqual(before);
   });
 });
 
-test("--json refuses commands that ask for confirmation without --yes, deleting nothing", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "WEB"], testDir);
+test("--json refuses commands that ask for confirmation without --yes, deleting nothing", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "WEB"], testDir);
 
-    const result = runZinnWithPipedYes(["project", "delete", "WEB", "--json"], testDir);
+    const result = await runZinnWithPipedYes(["project", "delete", "WEB", "--json"], testDir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
     expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({
       code: "invalid_input", details: { argument: "--yes", reason: "confirmation_required" },
     });
-    expect(runZinn(["project", "list"], testDir).stdout).toBe("WEB | WEB\n");
+    expect((await runZinn(["project", "list"], testDir)).stdout).toBe("WEB | WEB\n");
   });
 });
 
-test("--yes deletes without asking for confirmation", () => {
-  withIsolatedZinnDir((testDir) => {
-    runZinn(["project", "create", "WEB"], testDir);
-    runZinn(["task", "create", "WEB", "--title", "Ship it"], testDir);
+test("--yes deletes without asking for confirmation", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "WEB"], testDir);
+    await runZinn(["task", "create", "WEB", "--title", "Ship it"], testDir);
 
-    const result = runZinn(["task", "delete", "WEB-1", "--yes"], testDir);
+    const result = await runZinn(["task", "delete", "WEB-1", "--yes"], testDir);
 
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("WEB-1 | Backlog | - | Ship it");
-    expect(runZinn(["task", "list", "WEB"], testDir).stdout).toBe("");
+    expect((await runZinn(["task", "list", "WEB"], testDir)).stdout).toBe("");
   });
 });
 
-test("delete commands with --yes and --json print the deleted entity", () => {
-  withIsolatedZinnDir((testDir) => {
+test("delete commands with --yes and --json print the deleted entity", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
     const run = (...args: Array<string>) => runZinn(args, testDir);
-    const deleteJson = (...args: Array<string>) => {
-      const result = run(...args, "--yes", "--json");
+    const deleteJson = async (...args: Array<string>) => {
+      const result = await run(...args, "--yes", "--json");
       expect(result.code).toBe(0);
       return JSON.parse(result.stdout);
     };
 
-    run("project", "create", "WEB", "--name", "Web");
-    run("project", "create", "GONE", "--name", "Gone");
-    run("task", "create", "WEB", "--title", "Ship it");
-    run("task", "create", "WEB", "--title", "Keep it");
-    run("task", "comment", "create", "WEB-2", "--text", "Looks good");
-    run("label", "create", "urgent", "--color", "red", "--description", "Needs attention soon");
+    await run("project", "create", "WEB", "--name", "Web");
+    await run("project", "create", "GONE", "--name", "Gone");
+    await run("task", "create", "WEB", "--title", "Ship it");
+    await run("task", "create", "WEB", "--title", "Keep it");
+    await run("task", "comment", "create", "WEB-2", "--text", "Looks good");
+    await run("label", "create", "urgent", "--color", "red", "--description", "Needs attention soon");
 
-    expect(deleteJson("task", "delete", "WEB-1")).toEqual({
+    expect(await deleteJson("task", "delete", "WEB-1")).toEqual({
       key: "WEB-1",
       status: "Active",
       column: "Backlog",
@@ -4085,37 +4122,37 @@ test("delete commands with --yes and --json print the deleted entity", () => {
       priority: null,
       labels: [],
     });
-    expect(JSON.parse(run("task", "list", "WEB", "--json").stdout)).toMatchObject([
+    expect(JSON.parse((await run("task", "list", "WEB", "--json")).stdout)).toMatchObject([
       { key: "WEB-2" },
     ]);
 
-    const deletedComment = deleteJson("task", "comment", "delete", "WEB-2#1");
+    const deletedComment = await deleteJson("task", "comment", "delete", "WEB-2#1");
     expect(deletedComment).toEqual({
       key: "WEB-2#1",
       text: "Looks good",
       created_at: deletedComment.created_at,
       updated_at: deletedComment.updated_at,
     });
-    expect(JSON.parse(run("task", "comment", "list", "WEB-2", "--json").stdout)).toEqual([]);
+    expect(JSON.parse((await run("task", "comment", "list", "WEB-2", "--json")).stdout)).toEqual([]);
 
-    expect(deleteJson("label", "delete", "urgent")).toEqual({
+    expect(await deleteJson("label", "delete", "urgent")).toEqual({
       name: "urgent",
       color: "red",
       description: "Needs attention soon",
     });
-    expect(JSON.parse(run("label", "list", "--json").stdout)).toEqual([]);
+    expect(JSON.parse((await run("label", "list", "--json")).stdout)).toEqual([]);
 
-    expect(deleteJson("project", "delete", "GONE")).toEqual({ key: "GONE", name: "Gone", description: null });
-    expect(JSON.parse(run("project", "list", "--json").stdout)).toEqual([
+    expect(await deleteJson("project", "delete", "GONE")).toEqual({ key: "GONE", name: "Gone", description: null });
+    expect(JSON.parse((await run("project", "list", "--json")).stdout)).toEqual([
       { key: "WEB", name: "Web", description: null },
     ]);
   });
 });
 
-test("project edit renames without changing identity, tasks, columns, or archive state", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "EDIT", "--name", "Original"], dir);
-    runZinn(["task", "create", "EDIT", "--title", "Keep task"], dir);
+test("project edit renames without changing identity, tasks, columns, or archive state", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "EDIT", "--name", "Original"], dir);
+    await runZinn(["task", "create", "EDIT", "--title", "Keep task"], dir);
     const read = () => withTestDb(dir, (db) => ({
       project: db.query<import("../core/src/types").Project, []>("SELECT * FROM project").get()!,
       tasks: db.query("SELECT * FROM task").all(),
@@ -4123,7 +4160,7 @@ test("project edit renames without changing identity, tasks, columns, or archive
     }));
     withTestDb(dir, (db) => db.run("UPDATE project SET updated_at = 1, archived_at = 2"));
     const before = read();
-    const result = runZinn(["project", "edit", "edit", "--name", "New name"], dir);
+    const result = await runZinn(["project", "edit", "edit", "--name", "New name"], dir);
     expect(result.code).toBe(0);
     expect(result.stdout).toBe("EDIT | New name\n");
     expect(result.stderr).toBe("");
@@ -4133,16 +4170,16 @@ test("project edit renames without changing identity, tasks, columns, or archive
     } });
     expect(after.project.updated_at).toBeGreaterThan(1);
     withTestDb(dir, (db) => db.run("UPDATE project SET updated_at = 1"));
-    expect(runZinn(["project", "edit", "EDIT", "--name", "New name"], dir).code).toBe(0);
+    expect((await runZinn(["project", "edit", "EDIT", "--name", "New name"], dir)).code).toBe(0);
     expect(read().project.updated_at).toBe(1);
-    expect(runZinn(["project", "edit", "--name=--example", "EDIT"], dir).code).toBe(0);
-    expect(runZinn(["project", "list"], dir).stdout).toContain("EDIT | --example");
+    expect((await runZinn(["project", "edit", "--name=--example", "EDIT"], dir)).code).toBe(0);
+    expect((await runZinn(["project", "list"], dir)).stdout).toContain("EDIT | --example");
   });
 });
 
-test("project edit rejects invalid requests without writes", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "EDIT", "--name", "Original"], dir);
+test("project edit rejects invalid requests without writes", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "EDIT", "--name", "Original"], dir);
     const read = () => withTestDb(dir, (db) => db.query("SELECT * FROM project").get());
     const before = read();
     const usage = "Usage: zinn project edit";
@@ -4159,7 +4196,7 @@ test("project edit rejects invalid requests without writes", () => {
       [["MISSING", "--name", "Name"], { code: "not_found", details: { entity: "project", key: "MISSING" } }],
     ] as const;
     for (const [args, expected] of cases) {
-      const result = runZinn(["project", "edit", ...args, "--json"], dir);
+      const result = await runZinn(["project", "edit", ...args, "--json"], dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(expected);
@@ -4170,184 +4207,186 @@ test("project edit rejects invalid requests without writes", () => {
 
 // --- RELATIONS
 
-test("relation commands show directional and symmetric links, including archived cross-project tasks", () => {
-  withIsolatedZinnDir((dir) => {
+test("relation commands show directional and symmetric links, including archived cross-project tasks", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
-    expect(run("project", "create", "APP").code).toBe(0);
-    expect(run("project", "create", "OTHER").code).toBe(0);
-    run("task", "create", "APP", "--title", "Copy");
-    run("task", "create", "OTHER", "--title", "Original");
-    expect(run("task", "relation", "list", "APP-1").stdout).toBe("");
-    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "task", "relation", "create", "APP-1", "APP-1", "--type", "related").stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["targetTaskKey"] } });
-    expect(run("task", "relation", "create", "APP-1", "OTHER-99", "--type", "related").code).toBe(1);
-    expect(run("task", "relation", "list", "OTHER-99").code).toBe(1);
+    expect((await run("project", "create", "APP")).code).toBe(0);
+    expect((await run("project", "create", "OTHER")).code).toBe(0);
+    await run("task", "create", "APP", "--title", "Copy");
+    await run("task", "create", "OTHER", "--title", "Original");
+    expect((await run("task", "relation", "list", "APP-1")).stdout).toBe("");
+    expect(errorDocumentSchema.parse(JSON.parse((await run("--json", "task", "relation", "create", "APP-1", "APP-1", "--type", "related")).stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["targetTaskKey"] } });
+    expect((await run("task", "relation", "create", "APP-1", "OTHER-99", "--type", "related")).code).toBe(1);
+    expect((await run("task", "relation", "list", "OTHER-99")).code).toBe(1);
     for (const type of ["dependency", "duplicate", "related", "subtask"]) {
-      const created = run("task", "relation", "create", "app-1", "OTHER-1", "--type", type);
+      const created = await run("task", "relation", "create", "app-1", "OTHER-1", "--type", type);
       expect(created.code).toBe(0);
       expect(created.stdout).toContain("APP-1");
       expect(created.stdout).toContain("OTHER-1");
     }
-    const outgoing = run("task", "relation", "list", "APP-1");
+    const outgoing = await run("task", "relation", "list", "APP-1");
     expect(outgoing.stdout).toContain("Depends on   | OTHER-1 | Backlog | Original");
     expect(outgoing.stdout).toContain("Duplicate of | OTHER-1 | Backlog | Original");
     expect(outgoing.stdout).toContain("Parent       | OTHER-1 | Backlog | Original");
-    const incoming = run("task", "relation", "list", "OTHER-1");
+    const incoming = await run("task", "relation", "list", "OTHER-1");
     expect(incoming.stdout).toContain("Subtask        | APP-1 | Backlog | Copy");
     expect(incoming.stdout).toContain("Depended on by | APP-1 | Backlog | Copy");
     expect(incoming.stdout).toContain("Duplicated by  | APP-1 | Backlog | Copy");
     expect(incoming.stdout).toContain("Related to     | APP-1 | Backlog | Copy");
-    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "task", "relation", "create", "OTHER-1", "APP-1", "--type", "related").stderr)).error).toMatchObject({ code: "conflict", details: { reason: "already_exists", entity: "relation" } });
-    run("task", "archive", "OTHER-1");
-    expect(run("task", "view", "APP-1").stdout).toContain("Parent       | OTHER-1 | Backlog | Original | Archived");
-    const viewed = JSON.parse(run("task", "view", "APP-1", "--json").stdout);
+    expect(errorDocumentSchema.parse(JSON.parse((await run("--json", "task", "relation", "create", "OTHER-1", "APP-1", "--type", "related")).stderr)).error).toMatchObject({ code: "conflict", details: { reason: "already_exists", entity: "relation" } });
+    await run("task", "archive", "OTHER-1");
+    expect((await run("task", "view", "APP-1")).stdout).toContain("Parent       | OTHER-1 | Backlog | Original | Archived");
+    const viewed = JSON.parse((await run("task", "view", "APP-1", "--json")).stdout);
     expect(viewed.relations).toContainEqual({
       type: "subtask", direction: "outgoing",
       task: { key: "OTHER-1", column: "Backlog", title: "Original", status: "Archived" },
     });
-    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "task", "relation", "create", "OTHER-1", "APP-1", "--type", "subtask").stderr)).error).toMatchObject({ code: "conflict", details: { reason: "cycle" } });
-    expect(run("task", "relation", "delete", "APP-1", "OTHER-1", "--type", "subtask").code).toBe(0);
-    expect(run("task", "view", "APP-1").stdout).not.toContain("Parent");
-    expect(run("task", "relation", "create", "OTHER-1", "APP-1", "--type", "dependency").code).toBe(0);
+    expect(errorDocumentSchema.parse(JSON.parse((await run("--json", "task", "relation", "create", "OTHER-1", "APP-1", "--type", "subtask")).stderr)).error).toMatchObject({ code: "conflict", details: { reason: "cycle" } });
+    expect((await run("task", "relation", "delete", "APP-1", "OTHER-1", "--type", "subtask")).code).toBe(0);
+    expect((await run("task", "view", "APP-1")).stdout).not.toContain("Parent");
+    expect((await run("task", "relation", "create", "OTHER-1", "APP-1", "--type", "dependency")).code).toBe(0);
   });
 });
 
-test("relation list aligns and colors connected columns, and marks archived tasks", () => {
-  withIsolatedZinnDir((dir) => {
+test("relation list aligns and colors connected columns, and marks archived tasks", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
-    run("project", "create", "APP");
-    run("project", "create", "LONGER");
-    run("task", "create", "APP", "--title", "Copy");
-    run("task", "create", "APP", "--title", "Plan");
-    run("task", "create", "APP", "--title", "Review");
-    run("task", "create", "LONGER", "--title", "Original");
-    run("task", "move", "LONGER-1", "Done");
-    expect(run("project", "column", "create", "APP", "Verification").code).toBe(0);
-    expect(run("task", "move", "APP-3", "Verification").code).toBe(0);
-    run("task", "archive", "APP-2");
-    run("task", "relation", "create", "APP-1", "LONGER-1", "--type", "dependency");
-    run("task", "relation", "create", "APP-1", "APP-2", "--type", "related");
-    run("task", "relation", "create", "APP-3", "APP-1", "--type", "dependency");
+    await run("project", "create", "APP");
+    await run("project", "create", "LONGER");
+    await run("task", "create", "APP", "--title", "Copy");
+    await run("task", "create", "APP", "--title", "Plan");
+    await run("task", "create", "APP", "--title", "Review");
+    await run("task", "create", "LONGER", "--title", "Original");
+    await run("task", "move", "LONGER-1", "Done");
+    expect((await run("project", "column", "create", "APP", "Verification")).code).toBe(0);
+    expect((await run("task", "move", "APP-3", "Verification")).code).toBe(0);
+    await run("task", "archive", "APP-2");
+    await run("task", "relation", "create", "APP-1", "LONGER-1", "--type", "dependency");
+    await run("task", "relation", "create", "APP-1", "APP-2", "--type", "related");
+    await run("task", "relation", "create", "APP-3", "APP-1", "--type", "dependency");
 
     const expectedLines = [
       "Depends on     | LONGER-1 | Done         | Original",
       "Related to     | APP-2    | Backlog      | Plan | Archived",
       "Depended on by | APP-3    | Verification | Review",
     ];
-    const listed = run("task", "relation", "list", "APP-1").stdout;
+    const listed = (await run("task", "relation", "list", "APP-1")).stdout;
     expect(listed.trimEnd().split("\n")).toEqual(expectedLines);
-    const colored = runZinn(["task", "relation", "list", "APP-1"], dir, { FORCE_COLOR: "1" }).stdout;
+    const colored = (await runZinn(["task", "relation", "list", "APP-1"], dir, { FORCE_COLOR: "1" })).stdout;
     expect(colored).toContain("\x1b[32mDone        \x1b[39m");
     expect(colored).toContain("\x1b[90mBacklog     \x1b[39m");
     expect(colored).toContain(`${DIM_SEPARATOR}Verification${DIM_SEPARATOR}`);
-    expect(runZinn(["task", "relation", "list", "APP-1"], dir, { NO_COLOR: "1" }).stdout).toBe(listed);
-    const json = JSON.parse(run("task", "relation", "list", "APP-1", "--json").stdout);
+    expect((await runZinn(["task", "relation", "list", "APP-1"], dir, { NO_COLOR: "1" })).stdout).toBe(listed);
+    const json = JSON.parse((await run("task", "relation", "list", "APP-1", "--json")).stdout);
     expect(json.find((entry: { task: { key: string } }) => entry.task.key === "LONGER-1").task.column).toBe("Done");
     expect(json.map((entry: { task: { key: string } }) => entry.task.key)).toEqual(["LONGER-1", "APP-2", "APP-3"]);
-    const viewedJson = JSON.parse(run("task", "view", "APP-1", "--json").stdout);
+    const viewedJson = JSON.parse((await run("task", "view", "APP-1", "--json")).stdout);
     expect(viewedJson.relations).toEqual(json);
 
-    const viewed = run("task", "view", "APP-1").stdout;
+    const viewed = (await run("task", "view", "APP-1")).stdout;
     expect(viewed).toContain(`\n\n${SECTION_RULE}\nRelations:\n`);
     expect(viewed).toContain(`${expectedLines.join("\n")}\n`);
   });
 });
 
-test("relation help and argument errors make types discoverable without prompting", () => {
-  for (const args of [
-    ["APP-1", "APP-2"],
-    ["APP-1", "APP-2", "--type", "unknown"],
-  ]) {
-    const result = runZinn(["task", "relation", "create", ...args]);
-    expect(result.code).toBe(1);
-    for (const type of relationTypeSchema.options) {
-      expect(result.stderr).toContain(type);
+test("relation help and argument errors make types discoverable without prompting", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    for (const args of [
+      ["APP-1", "APP-2"],
+      ["APP-1", "APP-2", "--type", "unknown"],
+    ]) {
+      const result = await runZinn(["task", "relation", "create", ...args], testDir);
+      expect(result.code).toBe(1);
+      for (const type of relationTypeSchema.options) {
+        expect(result.stderr).toContain(type);
+      }
     }
-  }
-  for (const args of [
-    ["APP-1", "--type", "related"],
-    ["APP-1", "APP-2", "APP-3", "--type", "related"],
-    ["APP-1", "APP-2", "--type", "related", "--type", "duplicate"],
-    ["APP-1", "APP-2", "--typo", "related"],
-  ]) {
-    expect(runZinn(["task", "relation", "create", ...args]).code).toBe(1);
-  }
-  const help = runZinn(["task", "relation", "create", "--help"]);
-  expect(help.code).toBe(0);
-  expect(help.stdout).toContain("Usage: zinn task relation create");
-  expect(help.stdout).toContain("--type");
-  for (const type of relationTypeSchema.options) {
-    expect(help.stdout).toContain(type);
-  }
-  expect(runZinn(["task", "relation", "--help"]).stdout).toContain("  {create|list|delete}");
-  expect(runZinn(["task", "relation", "list"]).code).toBe(1);
-  expect(runZinn(["task", "relation", "list", "APP-1", "APP-2"]).code).toBe(1);
+    for (const args of [
+      ["APP-1", "--type", "related"],
+      ["APP-1", "APP-2", "APP-3", "--type", "related"],
+      ["APP-1", "APP-2", "--type", "related", "--type", "duplicate"],
+      ["APP-1", "APP-2", "--typo", "related"],
+    ]) {
+      expect((await runZinn(["task", "relation", "create", ...args], testDir)).code).toBe(1);
+    }
+    const help = await runZinn(["task", "relation", "create", "--help"], testDir);
+    expect(help.code).toBe(0);
+    expect(help.stdout).toContain("Usage: zinn task relation create");
+    expect(help.stdout).toContain("--type");
+    for (const type of relationTypeSchema.options) {
+      expect(help.stdout).toContain(type);
+    }
+    expect((await runZinn(["task", "relation", "--help"], testDir)).stdout).toContain("  {create|list|delete}");
+    expect((await runZinn(["task", "relation", "list"], testDir)).code).toBe(1);
+    expect((await runZinn(["task", "relation", "list", "APP-1", "APP-2"], testDir)).code).toBe(1);
+  });
 });
 
-test("relation deletion is usable without a prompt and updates list and view", () => {
-  withIsolatedZinnDir((dir) => {
+test("relation deletion is usable without a prompt and updates list and view", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
-    run("project", "create", "APP");
-    run("task", "create", "APP", "--title", "First");
-    run("task", "create", "APP", "--title", "Second");
-    run("task", "relation", "create", "APP-1", "APP-2", "--type", "related");
-    run("task", "relation", "create", "APP-1", "APP-2", "--type", "dependency");
-    const removed = run("task", "relation", "delete", "app-2", "APP-1", "--type", "related");
+    await run("project", "create", "APP");
+    await run("task", "create", "APP", "--title", "First");
+    await run("task", "create", "APP", "--title", "Second");
+    await run("task", "relation", "create", "APP-1", "APP-2", "--type", "related");
+    await run("task", "relation", "create", "APP-1", "APP-2", "--type", "dependency");
+    const removed = await run("task", "relation", "delete", "app-2", "APP-1", "--type", "related");
     expect(removed.code).toBe(0);
     for (const fact of ["related", "APP-2", "APP-1"]) {
       expect(removed.stdout).toContain(fact);
     }
-    expect(run("task", "relation", "list", "APP-1").stdout).toContain("Depends on");
-    expect(run("task", "view", "APP-2").stdout).not.toContain("Related to");
-    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "task", "relation", "delete", "APP-1", "APP-2", "--type", "related").stderr)).error).toMatchObject({ code: "not_found", details: { entity: "relation" } });
+    expect((await run("task", "relation", "list", "APP-1")).stdout).toContain("Depends on");
+    expect((await run("task", "view", "APP-2")).stdout).not.toContain("Related to");
+    expect(errorDocumentSchema.parse(JSON.parse((await run("--json", "task", "relation", "delete", "APP-1", "APP-2", "--type", "related")).stderr)).error).toMatchObject({ code: "not_found", details: { entity: "relation" } });
     for (const args of [[], ["APP-1"], ["APP-1", "APP-2"],
       ["APP-1", "APP-2", "--type", "invalid"],
       ["APP-1", "APP-2", "--type", "related", "--type", "dependency"],
     ]) {
-      expect(run("task", "relation", "delete", ...args).code).toBe(1);
+      expect((await run("task", "relation", "delete", ...args)).code).toBe(1);
     }
-    expect(run("task", "relation", "delete", "--help").stdout).toContain("Usage: zinn task relation delete");
-    expect(run("task", "relation", "--help").stdout).toContain("  {create|list|delete}");
+    expect((await run("task", "relation", "delete", "--help")).stdout).toContain("Usage: zinn task relation delete");
+    expect((await run("task", "relation", "--help")).stdout).toContain("  {create|list|delete}");
   });
 });
 
-test("global label workflows support repeated create/edit flags and preserve task content", () => {
-  withIsolatedZinnDir((dir) => {
+test("global label workflows support repeated create/edit flags and preserve task content", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
-    expect(run("project", "create", "APP").code).toBe(0);
+    expect((await run("project", "create", "APP")).code).toBe(0);
     for (const name of ["bug", "auth", "needs review, soon"]) {
-      expect(run("label", "create", name, "--color", "red", "--description", "Details").code).toBe(0);
+      expect((await run("label", "create", name, "--color", "red", "--description", "Details")).code).toBe(0);
     }
-    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "label", "create", "BUG").stderr)).error).toMatchObject({ code: "conflict", details: { reason: "already_exists", entity: "label", key: "BUG" } });
-    expect(run("label", "create", "invalid", "--color", "purple").code).toBe(1);
-    expect(run("label", "list").stdout).toContain(`${"bug".padEnd("needs review, soon".length)} | red | Details`);
-    const created = run("task", "create", "APP", "--title", "Login", "--description", "", "--label", "BUG", "--label", "AUTH");
+    expect(errorDocumentSchema.parse(JSON.parse((await run("--json", "label", "create", "BUG")).stderr)).error).toMatchObject({ code: "conflict", details: { reason: "already_exists", entity: "label", key: "BUG" } });
+    expect((await run("label", "create", "invalid", "--color", "purple")).code).toBe(1);
+    expect((await run("label", "list")).stdout).toContain(`${"bug".padEnd("needs review, soon".length)} | red | Details`);
+    const created = await run("task", "create", "APP", "--title", "Login", "--description", "", "--label", "BUG", "--label", "AUTH");
     expect(created.code).toBe(0);
     expect(created.stdout).toBe("APP-1 | Backlog | - | Login | auth, bug\n");
-    const editedLabel = run("label", "edit", " BUG ", "--name", " defect ", "--color", "blue", "--description", "");
+    const editedLabel = await run("label", "edit", " BUG ", "--name", " defect ", "--color", "blue", "--description", "");
     expect(editedLabel.code).toBe(0);
     expect(editedLabel.stdout).toBe("defect | blue\n");
-    expect(run("task", "view", "APP-1").stdout).toBe("APP-1 | Backlog | - | Login | auth, defect\n");
-    expect(JSON.parse(run("label", "edit", "defect", "--description", "Fixed", "--json").stdout)).toEqual({
+    expect((await run("task", "view", "APP-1")).stdout).toBe("APP-1 | Backlog | - | Login | auth, defect\n");
+    expect(JSON.parse((await run("label", "edit", "defect", "--description", "Fixed", "--json")).stdout)).toEqual({
       name: "defect",
       color: "blue",
       description: "Fixed",
     });
-    expect(run("task", "edit", "APP-1", "--title", "Changed", "--add-label", "NEEDS REVIEW, SOON", "--add-label", "AUTH", "--remove-label", "DEFECT").code).toBe(0);
-    expect(run("task", "view", "APP-1").stdout).toBe(
+    expect((await run("task", "edit", "APP-1", "--title", "Changed", "--add-label", "NEEDS REVIEW, SOON", "--add-label", "AUTH", "--remove-label", "DEFECT")).code).toBe(0);
+    expect((await run("task", "view", "APP-1")).stdout).toBe(
       "APP-1 | Backlog | - | Changed | auth, needs review, soon\n",
     );
-    expect(run("task", "edit", "APP-1", "--title", "Must not change", "--add-label", "unknown").code).toBe(1);
-    expect(run("task", "view", "APP-1").stdout).toContain("Changed");
-    expect(run("task", "edit", "APP-1", "--add-label", "BUG", "--remove-label", "bug").code).toBe(1);
-    expect(run("task", "label", "add", "APP-1", "DEFECT").stdout).toBe(
+    expect((await run("task", "edit", "APP-1", "--title", "Must not change", "--add-label", "unknown")).code).toBe(1);
+    expect((await run("task", "view", "APP-1")).stdout).toContain("Changed");
+    expect((await run("task", "edit", "APP-1", "--add-label", "BUG", "--remove-label", "bug")).code).toBe(1);
+    expect((await run("task", "label", "add", "APP-1", "DEFECT")).stdout).toBe(
       "APP-1 | Backlog | - | Changed | auth, defect, needs review, soon\n",
     );
-    expect(run("task", "label", "remove", "APP-1", "AUTH", "dEfEcT").stdout).toBe(
+    expect((await run("task", "label", "remove", "APP-1", "AUTH", "dEfEcT")).stdout).toBe(
       "APP-1 | Backlog | - | Changed | needs review, soon\n",
     );
-    expect(runZinn(["label", "delete", "NEEDS REVIEW, SOON", "--yes"], dir).code).toBe(0);
-    expect(run("task", "view", "APP-1").stdout).toBe("APP-1 | Backlog | - | Changed\n");
-    expect(run("label", "list").stdout).toContain("auth");
+    expect((await runZinn(["label", "delete", "NEEDS REVIEW, SOON", "--yes"], dir)).code).toBe(0);
+    expect((await run("task", "view", "APP-1")).stdout).toBe("APP-1 | Backlog | - | Changed\n");
+    expect((await run("label", "list")).stdout).toContain("auth");
     for (const args of [
       ["APP", "Old positional title"],
       ["APP", "--title", "One", "--title", "Two"],
@@ -4355,26 +4394,26 @@ test("global label workflows support repeated create/edit flags and preserve tas
       ["APP", "--title", "One", "--unknown", "x"],
       ["APP", "--title", "One", "--label", "missing"],
     ]) {
-      expect(run("task", "create", ...args).code).toBe(1);
+      expect((await run("task", "create", ...args)).code).toBe(1);
     }
-    expect(run("task", "create", "APP", "--title=--example").stdout).toContain("APP-2");
+    expect((await run("task", "create", "APP", "--title=--example")).stdout).toContain("APP-2");
   });
 });
 
-test("label text output colors the name in a terminal and names the color when piped, while JSON keeps the color value", async () => {
-  await withIsolatedZinnDirAsync(async (dir) => {
+test.serial("label text output colors the name in a terminal and names the color when piped, while JSON keeps the color value", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
 
-    expect(run("label", "create", "bug", "--color", "red", "--description", "Broken").stdout).toBe(
+    expect((await run("label", "create", "bug", "--color", "red", "--description", "Broken")).stdout).toBe(
       "bug | red | Broken\n",
     );
-    expect(run("label", "create", "later").stdout).toBe("later | white\n");
+    expect((await run("label", "create", "later")).stdout).toBe("later | white\n");
 
     const createdInTerminal = await runZinnInTerminal(["label", "create", "chore", "--color", "gray"], dir);
     expect(createdInTerminal.code).toBe(0);
     expect(createdInTerminal.output).toBe("\x1b[90mchore\x1b[39m\n");
 
-    const listed = run("label", "list").stdout;
+    const listed = (await run("label", "list")).stdout;
     expect(listed).not.toContain("\x1b[");
     for (const line of ["bug   | red   | Broken", "chore | gray", "later | white"]) {
       expect(listed).toContain(`${line}\n`);
@@ -4385,39 +4424,39 @@ test("label text output colors the name in a terminal and names the color when p
       expect(listedInTerminal).not.toContain(colorName);
     }
 
-    const created = run("label", "create", "docs", "--color", "cyan", "--json").stdout;
+    const created = (await run("label", "create", "docs", "--color", "cyan", "--json")).stdout;
     expect(created).not.toContain("\x1b[");
     expect(JSON.parse(created)).toEqual({ name: "docs", color: "cyan", description: null });
 
-    const listedJson = run("label", "list", "--json").stdout;
+    const listedJson = (await run("label", "list", "--json")).stdout;
     expect(listedJson).not.toContain("\x1b[");
     expect(JSON.parse(listedJson)).toContainEqual({ name: "bug", color: "red", description: "Broken" });
   });
 });
 
-test("label create, edit and list preview descriptions while view and JSON retain the full text", () => {
-  withIsolatedZinnDir((directory) => {
+test("label create, edit and list preview descriptions while view and JSON retain the full text", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const run = (...args: Array<string>) => runZinn(args, directory);
     const description = `${"x".repeat(100)}\nFull description`;
     const preview = `${"x".repeat(79)}…`;
-    const created = run("label", "create", "bug", "--description", description);
+    const created = await run("label", "create", "bug", "--description", description);
     expect(created.code).toBe(0);
     expect(created.stderr).toBe("");
     expect(created.stdout).toEndWith(` | ${preview}\n`);
 
-    const edited = run("label", "edit", "bug", "--description", `First line\n${description}`);
+    const edited = await run("label", "edit", "bug", "--description", `First line\n${description}`);
     expect(edited.code).toBe(0);
     expect(edited.stderr).toBe("");
     expect(edited.stdout).toEndWith(" | First line…\n");
-    const listed = run("label", "list");
+    const listed = await run("label", "list");
     expect(listed.code).toBe(0);
     expect(listed.stderr).toBe("");
     expect(listed.stdout).toEndWith(" | First line…\n");
     expect(listed.stdout).not.toContain(description);
-    expect(run("label", "view", "bug").stdout).toContain(`First line\n${description}`);
+    expect((await run("label", "view", "bug")).stdout).toContain(`First line\n${description}`);
 
     for (const args of [["label", "create", "docs"], ["label", "edit", "bug"]]) {
-      const result = run(...args, "--description", description, "--json");
+      const result = await run(...args, "--description", description, "--json");
       expect(result.code).toBe(0);
       expect(result.stderr).toBe("");
       expect(JSON.parse(result.stdout)).toEqual({
@@ -4425,14 +4464,14 @@ test("label create, edit and list preview descriptions while view and JSON retai
       });
     }
 
-    const labels = run("label", "list", "--json");
+    const labels = await run("label", "list", "--json");
     expect(labels.code).toBe(0);
     expect(labels.stderr).toBe("");
     expect(JSON.parse(labels.stdout)).toEqual([
       { name: "bug", color: "white", description },
       { name: "docs", color: "white", description },
     ]);
-    const listedLongDescriptions = run("label", "list");
+    const listedLongDescriptions = await run("label", "list");
     expect(listedLongDescriptions.code).toBe(0);
     expect(listedLongDescriptions.stdout.trimEnd().split("\n")).toHaveLength(2);
     for (const line of listedLongDescriptions.stdout.trimEnd().split("\n")) {
@@ -4441,14 +4480,14 @@ test("label create, edit and list preview descriptions while view and JSON retai
   });
 });
 
-test("label view preserves full descriptions and reads one case-insensitive name without writes", () => {
-  withIsolatedZinnDir((directory) => {
+test("label view preserves full descriptions and reads one case-insensitive name without writes", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const run = (...args: Array<string>) => runZinn(args, directory);
     const description = "  First line\n\tSecond line\n" + "Full description. ".repeat(20) + "\n";
-    expect(run("project", "create", "APP").code).toBe(0);
-    expect(run("label", "create", "Needs Review", "--color", "red", "--description", description).code).toBe(0);
-    expect(run("label", "create", "Empty").code).toBe(0);
-    expect(run("task", "create", "APP", "--title", "Attached", "--label", "Needs Review").code).toBe(0);
+    expect((await run("project", "create", "APP")).code).toBe(0);
+    expect((await run("label", "create", "Needs Review", "--color", "red", "--description", description)).code).toBe(0);
+    expect((await run("label", "create", "Empty")).code).toBe(0);
+    expect((await run("task", "create", "APP", "--title", "Attached", "--label", "Needs Review")).code).toBe(0);
     const snapshot = () => withTestDb(directory, (db) => ({
       labels: db.query("SELECT * FROM label ORDER BY id").all(),
       tasks: db.query("SELECT * FROM task ORDER BY id").all(),
@@ -4457,33 +4496,33 @@ test("label view preserves full descriptions and reads one case-insensitive name
     }));
     const before = snapshot();
     for (const env of [{ FORCE_COLOR: "0" }, { FORCE_COLOR: "1" }]) {
-      const viewed = runZinn(["label", "view", " needs REVIEW "], directory, env);
+      const viewed = await runZinn(["label", "view", " needs REVIEW "], directory, env);
       expect(viewed.code).toBe(0);
       expect(viewed.stderr).toBe("");
       expect(viewed.stdout).toContain("Needs Review");
       expect(viewed.stdout).toContain(description);
       expect(viewed.stdout).not.toContain("Empty");
-      const viewedJson = runZinn(["label", "view", "NEEDS review", "--json"], directory, env);
+      const viewedJson = await runZinn(["label", "view", "NEEDS review", "--json"], directory, env);
       expect(viewedJson.code).toBe(0);
       expect(viewedJson.stderr).toBe("");
       expect(JSON.parse(viewedJson.stdout)).toEqual({ name: "Needs Review", color: "red", description });
-      const empty = runZinn(["label", "view", "empty", "--json"], directory, env);
+      const empty = await runZinn(["label", "view", "empty", "--json"], directory, env);
       expect(empty.code).toBe(0);
       expect(JSON.parse(empty.stdout)).toEqual({ name: "Empty", color: "white", description: null });
-      const listed = runZinn(["label", "list"], directory, env);
+      const listed = await runZinn(["label", "list"], directory, env);
       expect(listed.code).toBe(0);
       expect(listed.stdout).toContain("First line…");
       expect(listed.stdout).not.toContain("Second line");
     }
-    expect(run("label", "view", "Empty").stdout).toBe("Empty | white\n");
+    expect((await run("label", "view", "Empty")).stdout).toBe("Empty | white\n");
     expect(snapshot()).toEqual(before);
   });
 });
 
-test("label view rejects invalid arguments and missing labels with structured errors", () => {
-  withIsolatedZinnDir((directory) => {
+test("label view rejects invalid arguments and missing labels with structured errors", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const run = (...args: Array<string>) => runZinn(args, directory);
-    expect(run("label", "create", "bug").code).toBe(0);
+    expect((await run("label", "create", "bug")).code).toBe(0);
     const cases = [
       { args: ["missing"], error: { code: "not_found", details: { entity: "label", key: "missing", source: "explicit" } } },
       { args: [" "], error: { code: "invalid_input", details: { field: ["name"] } } },
@@ -4493,27 +4532,27 @@ test("label view rejects invalid arguments and missing labels with structured er
       { args: ["bug", "--unknown"], error: { code: "invalid_input" } },
     ];
     for (const { args, error } of cases) {
-      const result = run("label", "view", ...args, "--json");
+      const result = await run("label", "view", ...args, "--json");
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(error);
     }
-    const missing = run("label", "view", "missing");
+    const missing = await run("label", "view", "missing");
     expect(missing.code).toBe(1);
     expect(missing.stdout).toBe("");
     expect(missing.stderr).toContain("missing");
   });
 });
 
-test("label list pads names and color words so descriptions line up, with no cell for a missing description", () => {
-  withIsolatedZinnDir((dir) => {
+test("label list pads names and color words so descriptions line up, with no cell for a missing description", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
-    run("label", "create", "bug", "--color", "red", "--description", "Broken");
-    run("label", "create", "chore", "--color", "magenta");
-    run("label", "create", "documentation", "--color", "gray", "--description", "Docs");
+    await run("label", "create", "bug", "--color", "red", "--description", "Broken");
+    await run("label", "create", "chore", "--color", "magenta");
+    await run("label", "create", "documentation", "--color", "gray", "--description", "Docs");
 
     // The color word of the label without a description ends its row, and still sets the column's width.
-    expect(run("label", "list").stdout).toBe(
+    expect((await run("label", "list")).stdout).toBe(
       [
         "bug           | red     | Broken",
         "chore         | magenta",
@@ -4523,17 +4562,17 @@ test("label list pads names and color words so descriptions line up, with no cel
     );
 
     // A single label has nothing to line up with.
-    expect(run("label", "edit", "documentation", "--description", "Guides").stdout).toBe(
+    expect((await run("label", "edit", "documentation", "--description", "Guides")).stdout).toBe(
       "documentation | gray | Guides\n",
     );
   });
 });
 
-test("label list pads a colored name by its plain text, so color codes do not shift the descriptions", async () => {
-  await withIsolatedZinnDirAsync(async (dir) => {
-    runZinn(["label", "create", "bug", "--color", "red", "--description", "Broken"], dir);
-    runZinn(["label", "create", "chore", "--color", "gray"], dir);
-    runZinn(["label", "create", "documentation", "--color", "blue", "--description", "Docs"], dir);
+test.serial("label list pads a colored name by its plain text, so color codes do not shift the descriptions", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["label", "create", "bug", "--color", "red", "--description", "Broken"], dir);
+    await runZinn(["label", "create", "chore", "--color", "gray"], dir);
+    await runZinn(["label", "create", "documentation", "--color", "blue", "--description", "Docs"], dir);
 
     // The name of a label without a description ends its row, so it is not padded.
     const expected =
@@ -4545,15 +4584,15 @@ test("label list pads a colored name by its plain text, so color codes do not sh
       ].join("\n");
 
     expect((await runZinnInTerminal(["label", "list"], dir)).output).toBe(expected);
-    expect(runZinn(["label", "list"], dir, { FORCE_COLOR: "1" }).stdout).toBe(expected);
+    expect((await runZinn(["label", "list"], dir, { FORCE_COLOR: "1" })).stdout).toBe(expected);
   });
 });
 
-test("NO_COLOR turns color off in a terminal, so text output reads as it does when piped", async () => {
-  await withIsolatedZinnDirAsync(async (dir) => {
-    runZinn(["project", "create", "PLAIN"], dir);
-    runZinn(["task", "create", "PLAIN", "--title", "waiting"], dir);
-    runZinn(["label", "create", "bug", "--color", "red", "--description", "Broken"], dir);
+test.serial("NO_COLOR turns color off in a terminal, so text output reads as it does when piped", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "PLAIN"], dir);
+    await runZinn(["task", "create", "PLAIN", "--title", "waiting"], dir);
+    await runZinn(["label", "create", "bug", "--color", "red", "--description", "Broken"], dir);
 
     const noColor = { NO_COLOR: "1" };
     expect((await runZinnInTerminal(["task", "list", "PLAIN"], dir, noColor)).output).toBe(
@@ -4570,30 +4609,30 @@ test("NO_COLOR turns color off in a terminal, so text output reads as it does wh
   });
 });
 
-test("FORCE_COLOR colors piped output and wins over NO_COLOR, while FORCE_COLOR=0 turns color off", async () => {
-  await withIsolatedZinnDirAsync(async (dir) => {
-    runZinn(["project", "create", "FORCE"], dir);
-    runZinn(["task", "create", "FORCE", "--title", "waiting"], dir);
-    runZinn(["label", "create", "bug", "--color", "red", "--description", "Broken"], dir);
+test.serial("FORCE_COLOR colors piped output and wins over NO_COLOR, while FORCE_COLOR=0 turns color off", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "FORCE"], dir);
+    await runZinn(["task", "create", "FORCE", "--title", "waiting"], dir);
+    await runZinn(["label", "create", "bug", "--color", "red", "--description", "Broken"], dir);
 
     const coloredLabel = `\x1b[31mbug\x1b[39m${DIM_SEPARATOR}Broken\n`;
-    expect(runZinn(["task", "list", "FORCE"], dir, { FORCE_COLOR: "1" }).stdout).toBe(
+    expect((await runZinn(["task", "list", "FORCE"], dir, { FORCE_COLOR: "1" })).stdout).toBe(
       `FORCE-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}waiting\n`,
     );
-    expect(runZinn(["label", "list"], dir, { FORCE_COLOR: "1", NO_COLOR: "1" }).stdout).toBe(coloredLabel);
+    expect((await runZinn(["label", "list"], dir, { FORCE_COLOR: "1", NO_COLOR: "1" })).stdout).toBe(coloredLabel);
 
     // Any non-empty value other than 0 forces color; an empty FORCE_COLOR counts as unset.
-    expect(runZinn(["label", "list"], dir, { FORCE_COLOR: "true" }).stdout).toBe(coloredLabel);
-    expect(runZinn(["label", "list"], dir, { FORCE_COLOR: "" }).stdout).toBe("bug | red | Broken\n");
+    expect((await runZinn(["label", "list"], dir, { FORCE_COLOR: "true" })).stdout).toBe(coloredLabel);
+    expect((await runZinn(["label", "list"], dir, { FORCE_COLOR: "" })).stdout).toBe("bug | red | Broken\n");
     expect((await runZinnInTerminal(["label", "list"], dir, { FORCE_COLOR: "0" })).output).toBe(
       "bug | red | Broken\n",
     );
   });
 });
 
-test("Zinn's color policy controls rendering even when Node's environment rules differ", async () => {
-  await withIsolatedZinnDirAsync(async (dir) => {
-    runZinn(["label", "create", "bug", "--color", "red"], dir);
+test.serial("Zinn's color policy controls rendering even when Node's environment rules differ", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["label", "create", "bug", "--color", "red"], dir);
     const environments = [
       { values: { FORCE_COLOR: "banana" }, pipeHasColor: true },
       { values: { FORCE_COLOR: "banana", NO_COLOR: "1" }, pipeHasColor: true },
@@ -4603,7 +4642,7 @@ test("Zinn's color policy controls rendering even when Node's environment rules 
 
     for (const { values, pipeHasColor } of environments) {
       const env = { FORCE_COLOR: "", NO_COLOR: "", NODE_DISABLE_COLORS: "", TERM: "xterm-256color", ...values };
-      const piped = runZinn(["label", "list"], dir, env);
+      const piped = await runZinn(["label", "list"], dir, env);
       expect(piped.code).toBe(0);
       expect(piped.stdout.includes("\x1b[31m")).toBe(pipeHasColor);
       expect(piped.stdout.includes("red")).toBe(!pipeHasColor);
@@ -4613,7 +4652,7 @@ test("Zinn's color policy controls rendering even when Node's environment rules 
       expect(terminal.output).toContain("\x1b[31mbug\x1b[39m");
       expect(terminal.output).not.toContain("red");
 
-      const json = runZinn(["label", "list", "--json"], dir, env);
+      const json = await runZinn(["label", "list", "--json"], dir, env);
       expect(json.code).toBe(0);
       expect(json.stdout).not.toContain("\x1b");
       expect(JSON.parse(json.stdout)).toEqual([{ name: "bug", color: "red", description: null }]);
@@ -4621,18 +4660,18 @@ test("Zinn's color policy controls rendering even when Node's environment rules 
   });
 });
 
-test("task rows color each attached label name by its label color, with dimmed separators and unchanged column widths", async () => {
-  await withIsolatedZinnDirAsync(async (dir) => {
-    runZinn(["label", "create", "bug", "--color", "red"], dir);
-    runZinn(["label", "create", "cli", "--color", "blue"], dir);
-    runZinn(["label", "create", "docs", "--color", "cyan"], dir);
-    runZinn(["project", "create", "TAGS", "--name", "Task labels"], dir);
-    runZinn(
+test.serial("task rows color each attached label name by its label color, with dimmed separators and unchanged column widths", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["label", "create", "bug", "--color", "red"], dir);
+    await runZinn(["label", "create", "cli", "--color", "blue"], dir);
+    await runZinn(["label", "create", "docs", "--color", "cyan"], dir);
+    await runZinn(["project", "create", "TAGS", "--name", "Task labels"], dir);
+    await runZinn(
       ["task", "create", "TAGS", "--title", "Several labels", "--priority", "urgent", "--label", "docs", "--label", "bug", "--label", "cli"],
       dir,
     );
-    runZinn(["task", "create", "TAGS", "--title", "No labels"], dir);
-    runZinn(["task", "move", "TAGS-2", "Done"], dir);
+    await runZinn(["task", "create", "TAGS", "--title", "No labels"], dir);
+    await runZinn(["task", "move", "TAGS-2", "Done"], dir);
 
     // Labels are listed by name, and only the names are colored: the ", " joins stay plain, and the " | " before them is dimmed like the others.
     const coloredLabels = "\x1b[31mbug\x1b[39m, \x1b[34mcli\x1b[39m, \x1b[36mdocs\x1b[39m";
@@ -4643,60 +4682,60 @@ test("task rows color each attached label name by its label color, with dimmed s
     ].join("\n");
 
     expect((await runZinnInTerminal(["task", "list", "TAGS"], dir)).output).toBe(coloredRows);
-    expect(runZinn(["task", "list", "TAGS"], dir, { FORCE_COLOR: "1" }).stdout).toBe(coloredRows);
-    expect(runZinn(["task", "search", "Several", "TAGS"], dir, { FORCE_COLOR: "1" }).stdout).toBe(
+    expect((await runZinn(["task", "list", "TAGS"], dir, { FORCE_COLOR: "1" })).stdout).toBe(coloredRows);
+    expect((await runZinn(["task", "search", "Several", "TAGS"], dir, { FORCE_COLOR: "1" })).stdout).toBe(
       `TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}U${DIM_SEPARATOR}Several labels${DIM_SEPARATOR}${coloredLabels}\n`,
     );
-    expect(runZinn(["task", "list", "TAGS", "--all"], dir, { FORCE_COLOR: "1" }).stdout).toContain(
+    expect((await runZinn(["task", "list", "TAGS", "--all"], dir, { FORCE_COLOR: "1" })).stdout).toContain(
       `TAGS-1${DIM_SEPARATOR}Active${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}U${DIM_SEPARATOR}Several labels${DIM_SEPARATOR}${coloredLabels}\n`,
     );
 
     // A label's color applies to every task that has the label.
-    runZinn(["label", "edit", "bug", "--color", "yellow"], dir);
-    expect(runZinn(["task", "list", "TAGS"], dir, { FORCE_COLOR: "1" }).stdout).toContain(
+    await runZinn(["label", "edit", "bug", "--color", "yellow"], dir);
+    expect((await runZinn(["task", "list", "TAGS"], dir, { FORCE_COLOR: "1" })).stdout).toContain(
       "\x1b[33mbug\x1b[39m, \x1b[34mcli\x1b[39m",
     );
   });
 });
 
-test("label names in task write rows and in task view are colored by their label color", async () => {
-  await withIsolatedZinnDirAsync(async (dir) => {
-    runZinn(["label", "create", "bug", "--color", "red"], dir);
-    runZinn(["label", "create", "docs", "--color", "cyan"], dir);
-    runZinn(["project", "create", "TAGS"], dir);
+test.serial("label names in task write rows and in task view are colored by their label color", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["label", "create", "bug", "--color", "red"], dir);
+    await runZinn(["label", "create", "docs", "--color", "cyan"], dir);
+    await runZinn(["project", "create", "TAGS"], dir);
 
     const forceColor = { FORCE_COLOR: "1" };
     const coloredLabels = "\x1b[31mbug\x1b[39m, \x1b[36mdocs\x1b[39m";
 
     expect(
-      runZinn(["task", "create", "TAGS", "--title", "Tagged", "--label", "docs", "--label", "bug"], dir, forceColor).stdout,
+      (await runZinn(["task", "create", "TAGS", "--title", "Tagged", "--label", "docs", "--label", "bug"], dir, forceColor)).stdout,
     ).toBe(`TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}Tagged${DIM_SEPARATOR}${coloredLabels}\n`);
-    expect(runZinn(["task", "view", "TAGS-1"], dir, forceColor).stdout).toBe(
+    expect((await runZinn(["task", "view", "TAGS-1"], dir, forceColor)).stdout).toBe(
       `TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}Tagged${DIM_SEPARATOR}${coloredLabels}\n`,
     );
     expect((await runZinnInTerminal(["task", "view", "TAGS-1"], dir)).output).toBe(
       `TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}Tagged${DIM_SEPARATOR}${coloredLabels}\n`,
     );
-    expect(runZinn(["task", "label", "remove", "TAGS-1", "bug"], dir, forceColor).stdout).toBe(
+    expect((await runZinn(["task", "label", "remove", "TAGS-1", "bug"], dir, forceColor)).stdout).toBe(
       `TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}Tagged${DIM_SEPARATOR}\x1b[36mdocs\x1b[39m\n`,
     );
-    expect(runZinn(["task", "label", "add", "TAGS-1", "bug"], dir, forceColor).stdout).toBe(
+    expect((await runZinn(["task", "label", "add", "TAGS-1", "bug"], dir, forceColor)).stdout).toBe(
       `TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}Tagged${DIM_SEPARATOR}${coloredLabels}\n`,
     );
     expect(
-      runZinn(["task", "edit", "TAGS-1", "--title", "Retitled"], dir, forceColor).stdout,
+      (await runZinn(["task", "edit", "TAGS-1", "--title", "Retitled"], dir, forceColor)).stdout,
     ).toBe(`TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}Retitled${DIM_SEPARATOR}${coloredLabels}\n`);
   });
 });
 
-test("task rows dim the separators and the empty priority marker, whether or not the task has a priority or labels", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["label", "create", "bug", "--color", "red"], dir);
-    runZinn(["project", "create", "DIM"], dir);
-    runZinn(["task", "create", "DIM", "--title", "Both", "--priority", "high", "--label", "bug"], dir);
-    runZinn(["task", "create", "DIM", "--title", "Priority only", "--priority", "low"], dir);
-    runZinn(["task", "create", "DIM", "--title", "Labels only", "--label", "bug"], dir);
-    runZinn(["task", "create", "DIM", "--title", "Neither"], dir);
+test("task rows dim the separators and the empty priority marker, whether or not the task has a priority or labels", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["label", "create", "bug", "--color", "red"], dir);
+    await runZinn(["project", "create", "DIM"], dir);
+    await runZinn(["task", "create", "DIM", "--title", "Both", "--priority", "high", "--label", "bug"], dir);
+    await runZinn(["task", "create", "DIM", "--title", "Priority only", "--priority", "low"], dir);
+    await runZinn(["task", "create", "DIM", "--title", "Labels only", "--label", "bug"], dir);
+    await runZinn(["task", "create", "DIM", "--title", "Neither"], dir);
 
     const forceColor = { FORCE_COLOR: "1" };
     const backlog = GRAY_BACKLOG;
@@ -4717,28 +4756,28 @@ test("task rows dim the separators and the empty priority marker, whether or not
       "",
     ].join("\n");
 
-    expect(runZinn(["task", "list", "DIM"], dir, forceColor).stdout).toBe(dimmedRows);
-    expect(runZinn(["task", "list", "DIM"], dir).stdout).toBe(plainRows);
-    expect(runZinn(["task", "list", "DIM"], dir, { NO_COLOR: "1" }).stdout).toBe(plainRows);
-    expect(runZinn(["task", "view", "DIM-3"], dir, forceColor).stdout).toBe(
+    expect((await runZinn(["task", "list", "DIM"], dir, forceColor)).stdout).toBe(dimmedRows);
+    expect((await runZinn(["task", "list", "DIM"], dir)).stdout).toBe(plainRows);
+    expect((await runZinn(["task", "list", "DIM"], dir, { NO_COLOR: "1" })).stdout).toBe(plainRows);
+    expect((await runZinn(["task", "view", "DIM-3"], dir, forceColor)).stdout).toBe(
       dimmedRows.split("\n")[2] + "\n",
     );
-    expect(runZinn(["task", "view", "DIM-3"], dir).stdout).toBe("DIM-3 | Backlog | - | Labels only | bug\n");
+    expect((await runZinn(["task", "view", "DIM-3"], dir)).stdout).toBe("DIM-3 | Backlog | - | Labels only | bug\n");
   });
 });
 
-test("task view bolds its section headings and dims the separators and comment timestamps, and reads plain when piped", () => {
-  withIsolatedZinnDir((dir) => {
+test("task view bolds its section headings and dims the separators and comment timestamps, and reads plain when piped", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const run = (env: Record<string, string>, ...args: Array<string>) =>
       runZinn(args, dir, { TZ: "Europe/Berlin", ...env });
-    run({}, "project", "create", "MDR");
-    run({}, "label", "create", "bug", "--color", "red");
-    run({}, "label", "create", "cli", "--color", "blue");
-    run({}, "task", "create", "MDR", "--title", "Refine the numbers", "--description", "First line.\nSecond line.", "--priority", "high", "--label", "cli", "--label", "bug");
-    run({}, "task", "create", "MDR", "--title", "Check the totals");
-    run({}, "task", "relation", "create", "MDR-1", "MDR-2", "--type", "dependency");
-    run({}, "task", "comment", "create", "MDR-1", "--text", "Ready for review");
-    run({}, "task", "comment", "create", "MDR-1", "--text", "Line one\nLine two");
+    await run({}, "project", "create", "MDR");
+    await run({}, "label", "create", "bug", "--color", "red");
+    await run({}, "label", "create", "cli", "--color", "blue");
+    await run({}, "task", "create", "MDR", "--title", "Refine the numbers", "--description", "First line.\nSecond line.", "--priority", "high", "--label", "cli", "--label", "bug");
+    await run({}, "task", "create", "MDR", "--title", "Check the totals");
+    await run({}, "task", "relation", "create", "MDR-1", "MDR-2", "--type", "dependency");
+    await run({}, "task", "comment", "create", "MDR-1", "--text", "Ready for review");
+    await run({}, "task", "comment", "create", "MDR-1", "--text", "Line one\nLine two");
     withTestDb(dir, (db) => {
       db.run("UPDATE comment SET created_at = ?, updated_at = ? WHERE number = 1", [Date.UTC(2026, 8, 25, 17, 42), Date.UTC(2026, 8, 25, 17, 42)]);
       db.run("UPDATE comment SET created_at = ?, updated_at = ? WHERE number = 2", [Date.UTC(2026, 8, 25, 18, 7), Date.UTC(2026, 8, 25, 18, 7)]);
@@ -4746,7 +4785,7 @@ test("task view bolds its section headings and dims the separators and comment t
 
     // Later lines of a comment start under its text, so the indent counts the plain widths of the cells before it.
     const textIndent = " ".repeat("MDR-1#1 | 2026-09-25 19:42 +02:00 | ".length);
-    const colored = run({ FORCE_COLOR: "1" }, "task", "view", "MDR-1");
+    const colored = await run({ FORCE_COLOR: "1" }, "task", "view", "MDR-1");
 
     expect(colored.stderr).toBe("");
     expect(colored.stdout).toBe(
@@ -4790,25 +4829,25 @@ test("task view bolds its section headings and dims the separators and comment t
       `${textIndent}Line two`,
       "",
     ].join("\n");
-    expect(run({}, "task", "view", "MDR-1").stdout).toBe(piped);
-    expect(run({ NO_COLOR: "1" }, "task", "view", "MDR-1").stdout).toBe(piped);
-    expect(run({ FORCE_COLOR: "1" }, "task", "view", "MDR-1", "--json").stdout).not.toContain("\x1b");
+    expect((await run({}, "task", "view", "MDR-1")).stdout).toBe(piped);
+    expect((await run({ NO_COLOR: "1" }, "task", "view", "MDR-1")).stdout).toBe(piped);
+    expect((await run({ FORCE_COLOR: "1" }, "task", "view", "MDR-1", "--json")).stdout).not.toContain("\x1b");
   });
 });
 
-test("project view bolds its section headings, dims the separators and colors column names as task rows do, and project list dims the separator before a preview", () => {
-  withIsolatedZinnDir((dir) => {
+test("project view bolds its section headings, dims the separators and colors column names as task rows do, and project list dims the separator before a preview", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const run = (env: Record<string, string>, ...args: Array<string>) => runZinn(args, dir, env);
-    run({}, "project", "create", "MDR", "--name", "Macrodata", "--description", "First line.\nSecond line.");
-    run({}, "task", "create", "MDR", "--title", "Waiting");
-    run({}, "task", "create", "MDR", "--title", "Finished");
-    run({}, "task", "create", "MDR", "--title", "Shelved");
-    run({}, "task", "move", "MDR-2", "Done");
-    run({}, "task", "archive", "MDR-3");
+    await run({}, "project", "create", "MDR", "--name", "Macrodata", "--description", "First line.\nSecond line.");
+    await run({}, "task", "create", "MDR", "--title", "Waiting");
+    await run({}, "task", "create", "MDR", "--title", "Finished");
+    await run({}, "task", "create", "MDR", "--title", "Shelved");
+    await run({}, "task", "move", "MDR-2", "Done");
+    await run({}, "task", "archive", "MDR-3");
 
     // Column names are padded inside their color codes, to the plain width of the widest name.
     const columnWidth = "In Progress".length;
-    expect(run({ FORCE_COLOR: "1" }, "project", "view", "MDR").stdout).toBe(
+    expect((await run({ FORCE_COLOR: "1" }, "project", "view", "MDR")).stdout).toBe(
       [
         `MDR${DIM_SEPARATOR}Macrodata`,
         "",
@@ -4826,11 +4865,11 @@ test("project view bolds its section headings, dims the separators and colors co
         "",
       ].join("\n"),
     );
-    expect(run({ FORCE_COLOR: "1" }, "project", "list").stdout).toBe(
+    expect((await run({ FORCE_COLOR: "1" }, "project", "list")).stdout).toBe(
       `MDR${DIM_SEPARATOR}Macrodata${DIM_SEPARATOR}First line. Second line.\n`,
     );
 
-    expect(run({}, "project", "view", "MDR").stdout).toBe(
+    expect((await run({}, "project", "view", "MDR")).stdout).toBe(
       [
         "MDR | Macrodata",
         "",
@@ -4848,39 +4887,39 @@ test("project view bolds its section headings, dims the separators and colors co
         "",
       ].join("\n"),
     );
-    expect(run({}, "project", "list").stdout).toBe("MDR | Macrodata | First line. Second line.\n");
-    expect(run({ FORCE_COLOR: "1" }, "project", "view", "MDR", "--json").stdout).not.toContain("\x1b");
+    expect((await run({}, "project", "list")).stdout).toBe("MDR | Macrodata | First line. Second line.\n");
+    expect((await run({ FORCE_COLOR: "1" }, "project", "view", "MDR", "--json")).stdout).not.toContain("\x1b");
     const columnEnvironments: Array<Record<string, string>> = [{}, { FORCE_COLOR: "1" }, { NO_COLOR: "1" }];
     for (const env of columnEnvironments) {
-      const projectView = run(env, "project", "view", "MDR").stdout;
-      const columnList = run(env, "project", "column", "list", "MDR").stdout;
+      const projectView = (await run(env, "project", "view", "MDR")).stdout;
+      const columnList = (await run(env, "project", "column", "list", "MDR")).stdout;
       const columnsSection = projectView.split(env.FORCE_COLOR ? bold("Columns:") : "Columns:")[1]!;
       expect(columnsSection.trimStart()).toStartWith(columnList);
       expect(columnList).not.toContain("Archived");
     }
-    expect(run({ FORCE_COLOR: "1" }, "project", "column", "edit", "MDR", "Backlog", "--name", "Backlog").stdout)
+    expect((await run({ FORCE_COLOR: "1" }, "project", "column", "edit", "MDR", "Backlog", "--name", "Backlog")).stdout)
       .toBe(`MDR${DIM_SEPARATOR}${GRAY_BACKLOG}\n`);
-    expect(run({ FORCE_COLOR: "1" }, "project", "column", "order", "MDR", "Done", "last").stdout)
+    expect((await run({ FORCE_COLOR: "1" }, "project", "column", "order", "MDR", "Done", "last")).stdout)
       .toBe(`MDR${DIM_SEPARATOR}${GREEN_DONE}\n`);
-    expect(run({ FORCE_COLOR: "1" }, "project", "column", "create", "MDR", "Waiting").stdout)
+    expect((await run({ FORCE_COLOR: "1" }, "project", "column", "create", "MDR", "Waiting")).stdout)
       .toBe(`MDR${DIM_SEPARATOR}Waiting\n`);
-    expect(run({ FORCE_COLOR: "1" }, "project", "column", "list", "MDR", "--json").stdout).not.toContain("\x1b");
+    expect((await run({ FORCE_COLOR: "1" }, "project", "column", "list", "MDR", "--json")).stdout).not.toContain("\x1b");
   });
 });
 
-test("comment lists dim the separators and timestamps, while a single comment has no timestamp to dim", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "NOTE"], dir);
-    runZinn(["task", "create", "NOTE", "--title", "Commented task"], dir);
-    runZinn(["task", "comment", "create", "NOTE-1", "--text", "First comment"], dir);
-    runZinn(["task", "comment", "create", "NOTE-1", "--text", "Second comment"], dir);
+test("comment lists dim the separators and timestamps, while a single comment has no timestamp to dim", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "NOTE"], dir);
+    await runZinn(["task", "create", "NOTE", "--title", "Commented task"], dir);
+    await runZinn(["task", "comment", "create", "NOTE-1", "--text", "First comment"], dir);
+    await runZinn(["task", "comment", "create", "NOTE-1", "--text", "Second comment"], dir);
     withTestDb(dir, (db) => {
       db.run("UPDATE comment SET created_at = ? WHERE number = 1", [Date.UTC(2026, 8, 24, 9, 5)]);
       db.run("UPDATE comment SET created_at = ? WHERE number = 2", [Date.UTC(2026, 8, 25, 17, 42)]);
     });
 
     const env = { TZ: "Europe/Berlin" };
-    const colored = runZinn(["task", "comment", "list", "NOTE-1"], dir, { ...env, FORCE_COLOR: "1" });
+    const colored = await runZinn(["task", "comment", "list", "NOTE-1"], dir, { ...env, FORCE_COLOR: "1" });
     expect(colored.stdout).toBe(
       [
         `NOTE-1#1${DIM_SEPARATOR}${dim("2026-09-24 11:05 +02:00")}${DIM_SEPARATOR}First comment`,
@@ -4888,7 +4927,7 @@ test("comment lists dim the separators and timestamps, while a single comment ha
         "",
       ].join("\n"),
     );
-    expect(runZinn(["task", "comment", "list", "NOTE-1"], dir, env).stdout).toBe(
+    expect((await runZinn(["task", "comment", "list", "NOTE-1"], dir, env)).stdout).toBe(
       [
         "NOTE-1#1 | 2026-09-24 11:05 +02:00 | First comment",
         "NOTE-1#2 | 2026-09-25 19:42 +02:00 | Second comment",
@@ -4897,20 +4936,20 @@ test("comment lists dim the separators and timestamps, while a single comment ha
     );
 
     expect(
-      runZinn(["task", "comment", "edit", "NOTE-1#2", "--text", "Edited"], dir, { FORCE_COLOR: "1" }).stdout,
+      (await runZinn(["task", "comment", "edit", "NOTE-1#2", "--text", "Edited"], dir, { FORCE_COLOR: "1" })).stdout,
     ).toBe(`NOTE-1#2${DIM_SEPARATOR}Edited\n`);
-    expect(runZinn(["task", "comment", "edit", "NOTE-1#2", "--text", "Edited again"], dir).stdout).toBe(
+    expect((await runZinn(["task", "comment", "edit", "NOTE-1#2", "--text", "Edited again"], dir)).stdout).toBe(
       "NOTE-1#2 | Edited again\n",
     );
   });
 });
 
-test("task text output names labels without color words when color is off, and JSON keeps plain label names", async () => {
-  await withIsolatedZinnDirAsync(async (dir) => {
-    runZinn(["label", "create", "bug", "--color", "red"], dir);
-    runZinn(["label", "create", "docs", "--color", "cyan"], dir);
-    runZinn(["project", "create", "TAGS"], dir);
-    runZinn(["task", "create", "TAGS", "--title", "Tagged", "--priority", "urgent", "--label", "docs", "--label", "bug"], dir);
+test.serial("task text output names labels without color words when color is off, and JSON keeps plain label names", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["label", "create", "bug", "--color", "red"], dir);
+    await runZinn(["label", "create", "docs", "--color", "cyan"], dir);
+    await runZinn(["project", "create", "TAGS"], dir);
+    await runZinn(["task", "create", "TAGS", "--title", "Tagged", "--priority", "urgent", "--label", "docs", "--label", "bug"], dir);
 
     const plainRow = "TAGS-1 | Backlog | U | Tagged | bug, docs\n";
     const detailRow = "TAGS-1 | Backlog | Urgent | Tagged | bug, docs\n";
@@ -4918,16 +4957,16 @@ test("task text output names labels without color words when color is off, and J
     const noColor = { NO_COLOR: "1" };
 
     // Piped, with color forced off, and with NO_COLOR in a terminal all read alike, with no color words.
-    expect(runZinn(["task", "list", "TAGS"], dir).stdout).toBe(plainRow);
-    expect(runZinn(["task", "list", "TAGS"], dir, colorOff).stdout).toBe(plainRow);
+    expect((await runZinn(["task", "list", "TAGS"], dir)).stdout).toBe(plainRow);
+    expect((await runZinn(["task", "list", "TAGS"], dir, colorOff)).stdout).toBe(plainRow);
     expect((await runZinnInTerminal(["task", "list", "TAGS"], dir, noColor)).output).toBe(plainRow);
-    expect(runZinn(["task", "view", "TAGS-1"], dir).stdout).toBe(detailRow);
-    expect(runZinn(["task", "view", "TAGS-1"], dir, colorOff).stdout).toBe(detailRow);
+    expect((await runZinn(["task", "view", "TAGS-1"], dir)).stdout).toBe(detailRow);
+    expect((await runZinn(["task", "view", "TAGS-1"], dir, colorOff)).stdout).toBe(detailRow);
     expect((await runZinnInTerminal(["task", "view", "TAGS-1"], dir, noColor)).output).toBe(detailRow);
 
     for (const args of [["task", "list", "TAGS", "--json"], ["task", "view", "TAGS-1", "--json"]]) {
       for (const env of [{}, { FORCE_COLOR: "1" }] as Array<Record<string, string>>) {
-        const json = runZinn(args, dir, env).stdout;
+        const json = (await runZinn(args, dir, env)).stdout;
         expect(json).not.toContain("\x1b");
         expect([JSON.parse(json)].flat()[0].labels).toEqual(["bug", "docs"]);
       }
@@ -4935,46 +4974,46 @@ test("task text output names labels without color words when color is off, and J
   });
 });
 
-test("label deletion confirms global removal and cancellation preserves attachments and timestamps", async () => {
-  await withIsolatedZinnDirAsync(async (dir) => {
+test.serial("label deletion confirms global removal and cancellation preserves attachments and timestamps", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
-    run("project", "create", "APP");
-    run("label", "create", "bug");
-    run("label", "create", "keep");
-    run("task", "create", "APP", "--title", "First", "--label", "bug", "--label", "keep");
-    run("task", "create", "APP", "--title", "Second", "--label", "bug");
+    await run("project", "create", "APP");
+    await run("label", "create", "bug");
+    await run("label", "create", "keep");
+    await run("task", "create", "APP", "--title", "First", "--label", "bug", "--label", "keep");
+    await run("task", "create", "APP", "--title", "Second", "--label", "bug");
     const snapshot = () => withTestDb(dir, (db) => ({
       labels: db.query("SELECT * FROM label ORDER BY id").all(),
       attachments: db.query("SELECT * FROM task_label ORDER BY task_id, label_id").all(),
       tasks: db.query("SELECT * FROM task ORDER BY id").all(),
     }));
     const before = snapshot();
-    const cancelled = await runCliInTerminal(["label", "delete", "bug"], { env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir }, input: "n\n" });
+    const cancelled = await runCliInTerminal(["label", "delete", "bug"], { env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir }, cwd: dir, input: "n\n" });
     expect(cancelled.code).toBe(0);
     expect(cancelled.output).toContain("bug");
     expect(cancelled.output).toContain("[y/N]");
     expect(snapshot()).toEqual(before);
-    const deleted = runZinn(["label", "delete", "bug", "--yes"], dir);
+    const deleted = await runZinn(["label", "delete", "bug", "--yes"], dir);
     expect(deleted.code).toBe(0);
     expect(deleted.stdout).toContain("bug");
-    expect(run("label", "list").stdout).toContain("keep");
-    expect(run("label", "list").stdout).not.toContain("bug");
-    expect(run("task", "view", "APP-1").stdout).toBe("APP-1 | Backlog | - | First | keep\n");
-    expect(run("task", "view", "APP-2").code).toBe(0);
+    expect((await run("label", "list")).stdout).toContain("keep");
+    expect((await run("label", "list")).stdout).not.toContain("bug");
+    expect((await run("task", "view", "APP-1")).stdout).toBe("APP-1 | Backlog | - | First | keep\n");
+    expect((await run("task", "view", "APP-2")).code).toBe(0);
     withTestDb(dir, (db) => {
       expect(db.query("SELECT * FROM task_label").all()).toHaveLength(1);
       expect(db.query("SELECT * FROM task").all()).toHaveLength(2);
       expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
     });
-    const missing = run("label", "delete", "missing");
+    const missing = await run("label", "delete", "missing");
     expect(missing.code).toBe(1);
     expect(missing.stdout).not.toContain("Are you sure");
-    expect(run("label", "delete", "--help").stdout).toContain("Usage: zinn label delete");
+    expect((await run("label", "delete", "--help")).stdout).toContain("Usage: zinn label delete");
   });
 });
 
-test("shared option checks reject repeated scalar flags and retain positional validation", () => {
-  withIsolatedZinnDir((dir) => {
+test("shared option checks reject repeated scalar flags and retain positional validation", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     for (const args of [
       ["label", "create", "bug", "--color", "red", "--color", "blue"],
       ["label", "create", "bug", "--description", "a", "--description", "b"],
@@ -4986,7 +5025,7 @@ test("shared option checks reject repeated scalar flags and retain positional va
       ["task", "edit", "APP-1", "--title", "a", "--title", "b"],
       ["task", "relation", "create", "APP-1", "APP-2", "--type", "related", "--type", "duplicate"],
     ]) {
-      const result = runZinn(args, dir);
+      const result = await runZinn(args, dir);
       expect(result.code).toBe(1);
       expect(result.stderr).toContain(args[args.length - 2]!);
     }
@@ -4998,37 +5037,37 @@ test("shared option checks reject repeated scalar flags and retain positional va
       [["label", "edit", "one", "two", "--color", "red"], `"two"`, "Usage: zinn label edit"],
     ];
     for (const [args, ...facts] of labelWordCases) {
-      const result = runZinn(args, dir);
+      const result = await runZinn(args, dir);
       for (const fact of facts) {
         expect(result.stderr).toContain(fact);
       }
     }
-    const extraLabel = runZinn(["label", "delete", "one", "two"], dir);
+    const extraLabel = await runZinn(["label", "delete", "one", "two"], dir);
     expect(extraLabel.stderr).toContain(`"two"`);
     expect(extraLabel.stderr).toContain("Usage: zinn label delete");
   });
 });
 
-test("label edit validates changes, uniqueness, and missing labels", () => {
-  withIsolatedZinnDir((dir) => {
+test("label edit validates changes, uniqueness, and missing labels", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
-    run("label", "create", "bug");
-    run("label", "create", "auth");
+    await run("label", "create", "bug");
+    await run("label", "create", "auth");
 
-    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "label", "edit", "bug").stderr)).error).toMatchObject({ code: "invalid_input", details: { field: [] } });
-    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "label", "edit", "missing", "--color", "red").stderr)).error).toMatchObject({ code: "not_found", details: { entity: "label", key: "missing" } });
-    expect(run("label", "edit", "BUG", "--name", "Bug").stdout).toContain("Bug");
-    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "label", "edit", "bug", "--name", "AUTH").stderr)).error).toMatchObject({ code: "conflict", details: { reason: "already_exists", entity: "label", key: "AUTH" } });
-    expect(errorDocumentSchema.parse(JSON.parse(run("--json", "label", "edit", "BUG", "--name", " ").stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["name"] } });
-    expect(run("label", "edit", "BUG", "--color", "purple").code).toBe(1);
-    expect(run("label", "list", "--json").stdout).toContain('"name": "Bug"');
-    expect(runZinn(["--help"], dir).stdout).toContain("label {create|list|view|edit|delete}");
+    expect(errorDocumentSchema.parse(JSON.parse((await run("--json", "label", "edit", "bug")).stderr)).error).toMatchObject({ code: "invalid_input", details: { field: [] } });
+    expect(errorDocumentSchema.parse(JSON.parse((await run("--json", "label", "edit", "missing", "--color", "red")).stderr)).error).toMatchObject({ code: "not_found", details: { entity: "label", key: "missing" } });
+    expect((await run("label", "edit", "BUG", "--name", "Bug")).stdout).toContain("Bug");
+    expect(errorDocumentSchema.parse(JSON.parse((await run("--json", "label", "edit", "bug", "--name", "AUTH")).stderr)).error).toMatchObject({ code: "conflict", details: { reason: "already_exists", entity: "label", key: "AUTH" } });
+    expect(errorDocumentSchema.parse(JSON.parse((await run("--json", "label", "edit", "BUG", "--name", " ")).stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["name"] } });
+    expect((await run("label", "edit", "BUG", "--color", "purple")).code).toBe(1);
+    expect((await run("label", "list", "--json")).stdout).toContain('"name": "Bug"');
+    expect((await runZinn(["--help"], dir)).stdout).toContain("label {create|list|view|edit|delete}");
   });
 });
 
-test("priority inputs accept any letter case on create and edit and persist canonical values", () => {
-  withIsolatedZinnDir((directory) => {
-    expect(runZinn(["project", "create", "PRI"], directory).code).toBe(0);
+test("priority inputs accept any letter case on create and edit and persist canonical values", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    expect((await runZinn(["project", "create", "PRI"], directory)).code).toBe(0);
     for (const priority of [...taskPrioritySchema.options, "none"]) {
       const expectedPriority = priority === "none" ? null : priority;
       const inputs = [
@@ -5037,55 +5076,55 @@ test("priority inputs accept any letter case on create and edit and persist cano
         [...priority].map((letter, index) => index % 2 === 0 ? letter : letter.toUpperCase()).join(""),
       ];
       for (const input of inputs) {
-        const created = runZinn(["task", "create", "PRI", "--title", "Case test", "--priority", input, "--json"], directory);
+        const created = await runZinn(["task", "create", "PRI", "--title", "Case test", "--priority", input, "--json"], directory);
         expect(created.code, created.stderr).toBe(0);
         const taskKey = JSON.parse(created.stdout).key;
         expect(JSON.parse(created.stdout).priority).toBe(expectedPriority);
         const initialPriority = expectedPriority === "high" ? "low" : "high";
-        expect(runZinn(["task", "edit", taskKey, "--priority", initialPriority], directory).code).toBe(0);
-        const edited = runZinn(["task", "edit", taskKey, "--priority", input, "--json"], directory);
+        expect((await runZinn(["task", "edit", taskKey, "--priority", initialPriority], directory)).code).toBe(0);
+        const edited = await runZinn(["task", "edit", taskKey, "--priority", input, "--json"], directory);
         expect(edited.code, edited.stderr).toBe(0);
         expect(JSON.parse(edited.stdout).priority).toBe(expectedPriority);
-        expect(JSON.parse(runZinn(["task", "view", taskKey, "--json"], directory).stdout).priority).toBe(expectedPriority);
+        expect(JSON.parse((await runZinn(["task", "view", taskKey, "--json"], directory)).stdout).priority).toBe(expectedPriority);
         withTestDb(directory, (db) => {
           const stored = db.query<{ priority: string | null }, [number]>("SELECT priority FROM task WHERE number = ?").get(Number(taskKey.slice("PRI-".length)))!;
           expect(stored.priority).toBe(expectedPriority);
         });
       }
     }
-    const before = runZinn(["task", "list", "PRI", "--json"], directory).stdout;
+    const before = (await runZinn(["task", "list", "PRI", "--json"], directory)).stdout;
     for (const args of [
       ["task", "create", "PRI", "--title", "Invalid"],
       ["task", "edit", "PRI-1", "--title", "Invalid"],
     ]) {
-      const invalid = runZinn([...args, "--priority", "CRITICAL", "--json"], directory);
+      const invalid = await runZinn([...args, "--priority", "CRITICAL", "--json"], directory);
       expect(invalid.code).toBe(1);
       expect(invalid.stdout).toBe("");
       expect(errorDocumentSchema.parse(JSON.parse(invalid.stderr)).error).toMatchObject({
         code: "invalid_input", details: { argument: "--priority" },
       });
     }
-    expect(runZinn(["task", "list", "PRI", "--json"], directory).stdout).toBe(before);
+    expect((await runZinn(["task", "list", "PRI", "--json"], directory)).stdout).toBe(before);
   });
 });
 
-test("priority persists across CLI creation, editing, listing, clearing, and no-op edits", () => {
-  withIsolatedZinnDir((directory) => {
-    expect(runZinn(["project", "create", "PRI"], directory).code).toBe(0);
-    expect(runZinn(["task", "create", "PRI", "--title", "Default"], directory).code).toBe(0);
+test("priority persists across CLI creation, editing, listing, clearing, and no-op edits", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    expect((await runZinn(["project", "create", "PRI"], directory)).code).toBe(0);
+    expect((await runZinn(["task", "create", "PRI", "--title", "Default"], directory)).code).toBe(0);
     withTestDb(directory, (db) => {
       expect(db.query<{ priority: string | null }, []>("SELECT priority FROM task").get()!.priority).toBeNull();
     });
     for (const [index, priority] of ["low", "medium", "high", "urgent"].entries()) {
-      const created = runZinn(["task", "create", "PRI", "--title", priority, "--priority", priority], directory);
+      const created = await runZinn(["task", "create", "PRI", "--title", priority, "--priority", priority], directory);
       expect(created.code).toBe(0);
       expect(created.stdout).toContain(`| Backlog | ${priority[0]!.toUpperCase()} | ${priority}`);
       const taskKey = `PRI-${index + 2}`;
-      const viewed = runZinn(["task", "view", taskKey], directory);
+      const viewed = await runZinn(["task", "view", taskKey], directory);
       expect(viewed.stdout).toBe(`${taskKey} | Backlog | ${priority[0]!.toUpperCase()}${priority.slice(1)} | ${priority}\n`);
-      expect(JSON.parse(runZinn(["task", "view", taskKey, "--json"], directory).stdout).priority).toBe(priority);
+      expect(JSON.parse((await runZinn(["task", "view", taskKey, "--json"], directory)).stdout).priority).toBe(priority);
     }
-    expect(runZinn(["task", "list", "PRI"], directory).stdout).toBe(
+    expect((await runZinn(["task", "list", "PRI"], directory)).stdout).toBe(
       [
         `PRI-1 | Backlog | - | Default`,
         `PRI-2 | Backlog | L | low`,
@@ -5095,30 +5134,30 @@ test("priority persists across CLI creation, editing, listing, clearing, and no-
       ].join("\n") + "\n",
     );
     withTestDb(directory, (db) => db.run("UPDATE task SET updated_at = 1 WHERE number = 1"));
-    expect(runZinn(["task", "edit", "PRI-1", "--priority", "high"], directory).code).toBe(0);
+    expect((await runZinn(["task", "edit", "PRI-1", "--priority", "high"], directory)).code).toBe(0);
     withTestDb(directory, (db) => {
       expect(db.query<{ updated_at: number }, []>("SELECT updated_at FROM task WHERE number = 1").get()!.updated_at).toBeGreaterThan(1);
     });
     withTestDb(directory, (db) => db.run("UPDATE task SET updated_at = 1 WHERE number = 1"));
-    expect(runZinn(["task", "edit", "PRI-1", "--priority", "high"], directory).code).toBe(0);
+    expect((await runZinn(["task", "edit", "PRI-1", "--priority", "high"], directory)).code).toBe(0);
     withTestDb(directory, (db) => {
       expect(db.query<{ updated_at: number }, []>("SELECT updated_at FROM task WHERE number = 1").get()!.updated_at).toBe(1);
     });
-    expect(runZinn(["task", "edit", "PRI-1", "--title", "Renamed"], directory).stdout).toBe(
+    expect((await runZinn(["task", "edit", "PRI-1", "--title", "Renamed"], directory)).stdout).toBe(
       "PRI-1 | Backlog | H | Renamed\n",
     );
-    expect(runZinn(["task", "list", "PRI"], directory).stdout).toContain(
+    expect((await runZinn(["task", "list", "PRI"], directory)).stdout).toContain(
       `PRI-1 | Backlog | H | Renamed`,
     );
-    expect(runZinn(["task", "view", "PRI-1"], directory).stdout).toBe("PRI-1 | Backlog | High | Renamed\n");
-    expect(JSON.parse(runZinn(["task", "list", "PRI", "--json"], directory).stdout)[0].priority).toBe(
+    expect((await runZinn(["task", "view", "PRI-1"], directory)).stdout).toBe("PRI-1 | Backlog | High | Renamed\n");
+    expect(JSON.parse((await runZinn(["task", "list", "PRI", "--json"], directory)).stdout)[0].priority).toBe(
       "high",
     );
-    const invalid = runZinn(["task", "edit", "PRI-1", "--title", "Wrong", "--priority", "critical"], directory);
+    const invalid = await runZinn(["task", "edit", "PRI-1", "--title", "Wrong", "--priority", "critical"], directory);
     expect(invalid.code).not.toBe(0);
-    expect(runZinn(["task", "view", "PRI-1"], directory).stdout).toContain("Renamed");
-    expect(runZinn(["task", "archive", "PRI-1"], directory).code).toBe(0);
-    expect(runZinn(["task", "edit", "PRI-1", "--priority", "none"], directory).code).toBe(0);
+    expect((await runZinn(["task", "view", "PRI-1"], directory)).stdout).toContain("Renamed");
+    expect((await runZinn(["task", "archive", "PRI-1"], directory)).code).toBe(0);
+    expect((await runZinn(["task", "edit", "PRI-1", "--priority", "none"], directory)).code).toBe(0);
     withTestDb(directory, (db) => {
       const row = db.query<{ priority: string | null; archived_at: number | null }, []>("SELECT priority, archived_at FROM task WHERE number = 1").get()!;
       expect(row.priority).toBeNull();
@@ -5129,10 +5168,9 @@ test("priority persists across CLI creation, editing, listing, clearing, and no-
 
 // --- ACTIVITY ACTOR
 
-function runZinnAs(args: Array<string>, testDir: string, env: Record<string, string>) {
+async function runZinnAs(args: Array<string>, testDir: string, env: Record<string, string>) {
   // ? cwd outside any repository, so only the identity file given per case applies.
-  const proc = Bun.spawnSync(["bun", CLI_PATH, ...args], { cwd: testDir, env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir, ...env } });
-  return { stdout: proc.stdout.toString(), stderr: proc.stderr.toString(), code: proc.exitCode };
+  return runProcessAsync([process.execPath, CLI_PATH, ...args], { cwd: testDir, env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir, ...env } });
 }
 
 function lastActor(testDir: string) {
@@ -5143,44 +5181,44 @@ function lastActor(testDir: string) {
   );
 }
 
-test("mutations record the invoking agent, then the git identity, then the OS user", () => {
-  withIsolatedZinnDir((dir) => {
+test("mutations record the invoking agent, then the git identity, then the OS user", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const identityFile = join(dir, "gitconfig");
     writeFileSync(identityFile, "[user]\n\tname = Git Person\n\temail = git@example.com\n");
 
-    expect(runZinnAs(["project", "create", "ACT"], dir, { AI_AGENT: "project-agent" }).code).toBe(0);
+    expect((await runZinnAs(["project", "create", "ACT"], dir, { AI_AGENT: "project-agent" })).code).toBe(0);
     expect(lastActor(dir)).toEqual({ action: "create", actor_name: "project-agent", actor_email: null, actor_kind: "agent", actor_source: "env:AI_AGENT" });
-    expect(runZinnAs(["task", "create", "ACT", "--title", "Tracked"], dir, { AI_AGENT: "test-agent_1-0" }).code).toBe(0);
+    expect((await runZinnAs(["task", "create", "ACT", "--title", "Tracked"], dir, { AI_AGENT: "test-agent_1-0" })).code).toBe(0);
     expect(lastActor(dir)).toEqual({ action: "create", actor_name: "test-agent_1-0", actor_email: null, actor_kind: "agent", actor_source: "env:AI_AGENT" });
 
-    expect(runZinnAs(["task", "move", "ACT-1", "TODO"], dir, { GIT_CONFIG_GLOBAL: identityFile }).code).toBe(0);
+    expect((await runZinnAs(["task", "move", "ACT-1", "TODO"], dir, { GIT_CONFIG_GLOBAL: identityFile })).code).toBe(0);
     expect(lastActor(dir)).toEqual({ action: "move", actor_name: "Git Person", actor_email: "git@example.com", actor_kind: "human", actor_source: "git-config" });
 
-    expect(runZinnAs(["task", "archive", "ACT-1"], dir, { GIT_CONFIG_GLOBAL: "/dev/null", USER: userInfo().username }).code).toBe(0);
+    expect((await runZinnAs(["task", "archive", "ACT-1"], dir, { GIT_CONFIG_GLOBAL: "/dev/null", USER: userInfo().username })).code).toBe(0);
     expect(lastActor(dir)).toEqual({ action: "archive", actor_name: userInfo().username, actor_email: null, actor_kind: "human", actor_source: "os-user" });
   });
 });
 
-test("CLI mutations preserve declared identity pairs and metadata without recording no-ops or failures", () => {
-  withIsolatedZinnDir((directory) => {
+test("CLI mutations preserve declared identity pairs and metadata without recording no-ops or failures", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const declared = {
       AI_AGENT: "integration-client", ZINN_SESSION_ID: " conversation ", ZINN_THREAD_ID: " child ",
       ZINN_AGENT: " Explore ", ZINN_MODEL: " provider/model ", ZINN_EFFORT: " 0.7 ",
       CLAUDE_CODE_SESSION_ID: "native-session", CODEX_SESSION_ID: "codex-session", CODEX_THREAD_ID: "codex-thread",
     };
-    const events = (): Array<Activity> => JSON.parse(runZinn(["activity", "list", "--json"], directory).stdout);
-    expect(runZinnAs(["project", "create", "IDENTITY"], directory, declared).code).toBe(0);
-    expect(runZinnAs(["task", "create", "IDENTITY", "--title", "Tracked"], directory, declared).code).toBe(0);
-    const item = events()[0]!;
+    const events = async (): Promise<Array<Activity>> => JSON.parse((await runZinn(["activity", "list", "--json"], directory)).stdout);
+    expect((await runZinnAs(["project", "create", "IDENTITY"], directory, declared)).code).toBe(0);
+    expect((await runZinnAs(["task", "create", "IDENTITY", "--title", "Tracked"], directory, declared)).code).toBe(0);
+    const item = (await events())[0]!;
     expect(item).toMatchObject({
       actor_name: "integration-client", actor_kind: "agent", actor_source: "env:AI_AGENT",
       actor_session_id: "conversation", actor_thread_id: "child", actor_agent: "Explore",
       actor_model: "provider/model", actor_effort: "0.7",
     });
-    const before = events();
-    expect(runZinnAs(["task", "edit", "IDENTITY-1", "--title", "Tracked"], directory, declared).code).toBe(0);
-    expect(runZinnAs(["task", "move", "IDENTITY-1", "Missing"], directory, declared).code).toBe(1);
-    expect(events()).toEqual(before);
+    const before = await events();
+    expect((await runZinnAs(["task", "edit", "IDENTITY-1", "--title", "Tracked"], directory, declared)).code).toBe(0);
+    expect((await runZinnAs(["task", "move", "IDENTITY-1", "Missing"], directory, declared)).code).toBe(1);
+    expect(await events()).toEqual(before);
 
     const cases: Array<{ env: Record<string, string>; name: string | null; session: string | null; thread: string | null }> = [
       { env: { CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: "claude-root", CODEX_SESSION_ID: "outer-root", CODEX_THREAD_ID: "outer-thread" }, name: "claude-code", session: "claude-root", thread: null },
@@ -5191,30 +5229,30 @@ test("CLI mutations preserve declared identity pairs and metadata without record
       { env: { AGENT: "1" }, name: null, session: null, thread: null },
     ];
     for (const [index, entry] of cases.entries()) {
-      expect(runZinnAs(["task", "edit", "IDENTITY-1", "--title", `Change ${index}`], directory, entry.env).code).toBe(0);
-      expect(events()[0]).toMatchObject({
+      expect((await runZinnAs(["task", "edit", "IDENTITY-1", "--title", `Change ${index}`], directory, entry.env)).code).toBe(0);
+      expect((await events())[0]).toMatchObject({
         actor_name: entry.name, actor_kind: "agent", actor_session_id: entry.session, actor_thread_id: entry.thread,
         actor_agent: null, actor_model: null, actor_effort: null,
       });
     }
-    const unnamed = events()[0]!;
+    const unnamed = (await events())[0]!;
     expect(unnamed.actor_source).toBe("env:AGENT");
-    expect(runZinn(["activity", "list", "--limit", "1"], directory).stdout).toContain("unknown (agent)");
-    const view = runZinn(["activity", "view", unnamed.id], directory);
+    expect((await runZinn(["activity", "list", "--limit", "1"], directory)).stdout).toContain("unknown (agent)");
+    const view = await runZinn(["activity", "view", unnamed.id], directory);
     expect(view.code).toBe(0);
     expect(view.stdout).toContain("unknown");
-    expect(JSON.parse(runZinn(["activity", "view", unnamed.id, "--json"], directory).stdout).actor_name).toBeNull();
+    expect(JSON.parse((await runZinn(["activity", "view", unnamed.id, "--json"], directory)).stdout).actor_name).toBeNull();
   });
 });
 
 // --- BACKUP
 
-test("backup saves a copy of the database named with the UTC time and CLI version", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "BAK"], dir);
-    runZinn(["task", "create", "BAK", "--title", "Saved"], dir);
+test("backup saves a copy of the database named with the UTC time and CLI version", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "BAK"], dir);
+    await runZinn(["task", "create", "BAK", "--title", "Saved"], dir);
 
-    const result = runZinn(["backup", "--json"], dir);
+    const result = await runZinn(["backup", "--json"], dir);
     expect(result.code).toBe(0);
 
     const { path } = JSON.parse(result.stdout) as { path: string };
@@ -5233,9 +5271,9 @@ test("backup saves a copy of the database named with the UTC time and CLI versio
   });
 });
 
-test("backup refuses when there is no database and does not create one", () => {
-  withIsolatedZinnDir((dir) => {
-    const result = runZinn(["--json", "backup"], dir);
+test("backup refuses when there is no database and does not create one", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const result = await runZinn(["--json", "backup"], dir);
 
     expect(result.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "database", databasePath: join(dir, "data", "zinn.sqlite") } });
@@ -5244,13 +5282,13 @@ test("backup refuses when there is no database and does not create one", () => {
   });
 });
 
-test("backup refuses a zero-byte database file without creating backups", () => {
-  withIsolatedZinnDir((dir) => {
+test("backup refuses a zero-byte database file without creating backups", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const databasePath = join(dir, "data", "zinn.sqlite");
     mkdirSync(dirname(databasePath));
     writeFileSync(databasePath, "");
 
-    const result = runZinn(["--json", "backup"], dir);
+    const result = await runZinn(["--json", "backup"], dir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
@@ -5261,8 +5299,8 @@ test("backup refuses a zero-byte database file without creating backups", () => 
   });
 });
 
-test("backup refuses a database header with no tables without creating backups", () => {
-  withIsolatedZinnDir((dir) => {
+test("backup refuses a database header with no tables without creating backups", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const databasePath = join(dir, "data", "zinn.sqlite");
     mkdirSync(dirname(databasePath));
     const db = new Database(databasePath);
@@ -5271,7 +5309,7 @@ test("backup refuses a database header with no tables without creating backups",
     const before = readFileSync(databasePath);
     expect(before.length).toBeGreaterThan(0);
 
-    const result = runZinn(["--json", "backup"], dir);
+    const result = await runZinn(["--json", "backup"], dir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
@@ -5285,10 +5323,10 @@ test("backup refuses a database header with no tables without creating backups",
 // --- RESTORE
 
 // ? A backup of a fresh store holding one task, made by the CLI, in its own directory.
-function backupWithTask(dir: string, title: string) {
-  runZinn(["project", "create", "RST"], dir);
-  runZinn(["task", "create", "RST", "--title", title], dir);
-  return (JSON.parse(runZinn(["backup", "--json"], dir).stdout) as { path: string }).path;
+async function backupWithTask(dir: string, title: string) {
+  await runZinn(["project", "create", "RST"], dir);
+  await runZinn(["task", "create", "RST", "--title", title], dir);
+  return (JSON.parse((await runZinn(["backup", "--json"], dir)).stdout) as { path: string }).path;
 }
 
 function taskTitles(dir: string) {
@@ -5299,10 +5337,10 @@ function backupFiles(dir: string) {
   return existsSync(join(dir, "backups")) ? readdirSync(join(dir, "backups")).sort() : [];
 }
 
-test("restore explains recovery from damaged task and comment pages without changing the database", () => {
+test("restore explains recovery from damaged task and comment pages without changing the database", async () => {
   for (const table of ["task", "comment"]) {
-    withIsolatedZinnDir((dir) => {
-      const path = backupWithTask(dir, "Kept");
+    await withIsolatedZinnDir(async (dir) => {
+      const path = await backupWithTask(dir, "Kept");
       const databasePath = join(dir, "data", "zinn.sqlite");
       const { pageSize, rootPage } = withTestDb(dir, (db) => {
         db.run("PRAGMA wal_checkpoint(TRUNCATE)");
@@ -5317,11 +5355,11 @@ test("restore explains recovery from damaged task and comment pages without chan
       writeFileSync(databasePath, damaged);
       const previousBackups = backupFiles(dir);
 
-      const result = runZinn(["restore", path, "--yes"], dir);
+      const result = await runZinn(["restore", path, "--yes"], dir);
 
       expect(result.code).toBe(1);
       expect(result.stderr).toContain(databasePath);
-      const json = runZinn(["restore", path, "--yes", "--json"], dir);
+      const json = await runZinn(["restore", path, "--yes", "--json"], dir);
       expect(json.code).toBe(1);
       expect(json.stdout).toBe("");
       expect(errorDocumentSchema.parse(JSON.parse(json.stderr)).error)
@@ -5342,7 +5380,7 @@ test("restore explains recovery from damaged task and comment pages without chan
         }
       }
 
-      const recovered = runZinn(["restore", path, "--yes"], dir);
+      const recovered = await runZinn(["restore", path, "--yes"], dir);
       expect(recovered.code).toBe(0);
       expect(recovered.stderr).toBe("");
       expect(taskTitles(dir)).toEqual([{ title: "Kept" }]);
@@ -5351,12 +5389,12 @@ test("restore explains recovery from damaged task and comment pages without chan
   }
 });
 
-test("restore replaces the database after confirmation and saves the replaced database as a backup", () => {
-  withIsolatedZinnDir((dir) => {
-    const path = backupWithTask(dir, "Kept");
-    runZinn(["task", "create", "RST", "--title", "Later"], dir);
+test("restore replaces the database after confirmation and saves the replaced database as a backup", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const path = await backupWithTask(dir, "Kept");
+    await runZinn(["task", "create", "RST", "--title", "Later"], dir);
 
-    const result = runZinn(["restore", path, "--yes"], dir);
+    const result = await runZinn(["restore", path, "--yes"], dir);
 
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
@@ -5376,13 +5414,13 @@ test("restore replaces the database after confirmation and saves the replaced da
   });
 });
 
-test("restore keeps the database when confirmation is declined", async () => {
-  await withIsolatedZinnDirAsync(async (dir) => {
-    const path = backupWithTask(dir, "Kept");
-    runZinn(["task", "create", "RST", "--title", "Later"], dir);
+test.serial("restore keeps the database when confirmation is declined", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const path = await backupWithTask(dir, "Kept");
+    await runZinn(["task", "create", "RST", "--title", "Later"], dir);
     const backupsBefore = backupFiles(dir);
 
-    const result = await runCliInTerminal(["restore", path], { env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir }, input: "n\n" });
+    const result = await runCliInTerminal(["restore", path], { env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir }, cwd: dir, input: "n\n" });
 
     expect(result.code).toBe(0);
     expect(result.output).toContain(join(dir, "data", "zinn.sqlite"));
@@ -5393,13 +5431,13 @@ test("restore keeps the database when confirmation is declined", async () => {
   });
 });
 
-test("restore with --json needs --yes, and with it prints the restore result", () => {
-  withIsolatedZinnDir((dir) => {
-    const path = backupWithTask(dir, "Kept");
-    runZinn(["task", "create", "RST", "--title", "Later"], dir);
+test("restore with --json needs --yes, and with it prints the restore result", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const path = await backupWithTask(dir, "Kept");
+    await runZinn(["task", "create", "RST", "--title", "Later"], dir);
     const backupsBefore = backupFiles(dir);
 
-    const refused = runZinn(["restore", path, "--json"], dir);
+    const refused = await runZinn(["restore", path, "--json"], dir);
     expect(refused.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(refused.stderr)).error).toMatchObject({
       code: "invalid_input", details: { argument: "--yes", reason: "confirmation_required" },
@@ -5407,7 +5445,7 @@ test("restore with --json needs --yes, and with it prints the restore result", (
     expect(taskTitles(dir)).toEqual([{ title: "Kept" }, { title: "Later" }]);
     expect(backupFiles(dir)).toEqual(backupsBefore);
 
-    const result = runZinn(["restore", path, "--yes", "--json"], dir);
+    const result = await runZinn(["restore", path, "--yes", "--json"], dir);
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
     const restored = JSON.parse(result.stdout);
@@ -5423,24 +5461,24 @@ test("restore with --json needs --yes, and with it prints the restore result", (
   });
 });
 
-test("restore refuses a file that is not a backup it can restore, printing why and changing nothing", () => {
-  withIsolatedZinnDir((dir) => {
-    withIsolatedZinnDir((newerDir) => {
-      createDatabase(dir, 1);
+test("restore refuses a file that is not a backup it can restore, printing why and changing nothing", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await withIsolatedZinnDir(async (newerDir) => {
+      await createDatabase(dir, 1);
       const before = databaseSnapshot(dir);
       const textFile = join(newerDir, "notes.sqlite");
       writeFileSync(textFile, "not a database");
-      const newer = backupWithTask(newerDir, "From the future");
+      const newer = await backupWithTask(newerDir, "From the future");
       withTestDb(newerDir, (db) => db.run("PRAGMA user_version = 9"));
-      const newerBackup = (JSON.parse(runZinn(["backup", "--json"], newerDir).stdout) as { path: string }).path;
+      const newerBackup = (JSON.parse((await runZinn(["backup", "--json"], newerDir)).stdout) as { path: string }).path;
 
-      const notDatabase = runZinn(["restore", textFile, "--yes"], dir);
+      const notDatabase = await runZinn(["restore", textFile, "--yes"], dir);
       expect(notDatabase.code).toBe(1);
       expect(notDatabase.stdout).toBe("");
       expect(notDatabase.stderr).toContain(textFile);
 
       // ? Without --yes, the refusal comes before the prompt.
-      const newerResult = runZinn(["restore", newerBackup], dir);
+      const newerResult = await runZinn(["restore", newerBackup], dir);
       expect(newerResult.code).toBe(1);
       expect(newerResult.stdout).toBe("");
       expect(newerResult.stderr).toContain(newerBackup);
@@ -5449,7 +5487,7 @@ test("restore refuses a file that is not a backup it can restore, printing why a
       expect(newerResult.stderr).toContain(packageJson.version);
       expect(newerResult.stderr).not.toContain("[y/N]");
 
-      const missing = runZinn(["restore", join(newerDir, "missing.sqlite"), "--yes", "--json"], dir);
+      const missing = await runZinn(["restore", join(newerDir, "missing.sqlite"), "--yes", "--json"], dir);
       expect(missing.code).toBe(1);
       expect(errorDocumentSchema.parse(JSON.parse(missing.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "backup", backupPath: join(newerDir, "missing.sqlite") } });
 
@@ -5460,59 +5498,59 @@ test("restore refuses a file that is not a backup it can restore, printing why a
   });
 });
 
-test("a refused restore onto a store with no database creates nothing", () => {
-  withIsolatedZinnDir((dir) => {
-    withIsolatedZinnDir((otherDir) => {
+test("a refused restore onto a store with no database creates nothing", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await withIsolatedZinnDir(async (otherDir) => {
       const textFile = join(otherDir, "notes.sqlite");
       writeFileSync(textFile, "not a database");
 
-      expect(runZinn(["restore", textFile, "--yes"], dir).code).toBe(1);
-      expect(runZinn(["restore", textFile], dir).code).toBe(1);
+      expect((await runZinn(["restore", textFile, "--yes"], dir)).code).toBe(1);
+      expect((await runZinn(["restore", textFile], dir)).code).toBe(1);
       expect(readdirSync(dir)).toEqual([]);
     });
   });
 });
 
-test("restore onto a store with no database creates it from the backup", () => {
-  withIsolatedZinnDir((dir) => {
-    withIsolatedZinnDir((sourceDir) => {
-      const path = backupWithTask(sourceDir, "Kept");
+test("restore onto a store with no database creates it from the backup", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await withIsolatedZinnDir(async (sourceDir) => {
+      const path = await backupWithTask(sourceDir, "Kept");
 
-      const result = runZinn(["restore", path, "--yes"], dir);
+      const result = await runZinn(["restore", path, "--yes"], dir);
 
       expect(result.code).toBe(0);
       expect(result.stderr).toBe("");
       expect(result.stdout).toContain(path);
       expect(result.stdout).toContain(`schema version ${CURRENT_SCHEMA_VERSION}`);
       expect(backupFiles(dir)).toEqual([]);
-      expect(runZinn(["task", "list", "RST"], dir).stdout).toContain("Kept");
+      expect((await runZinn(["task", "list", "RST"], dir)).stdout).toContain("Kept");
     });
   });
 });
 
-test("restore works on newer and unmarked databases, without --allow-legacy-read", () => {
-  withIsolatedZinnDir((sourceDir) => {
-    const path = backupWithTask(sourceDir, "Kept");
+test("restore works on newer and unmarked databases, without --allow-legacy-read", async () => {
+  await withIsolatedZinnDir(async (sourceDir) => {
+    const path = await backupWithTask(sourceDir, "Kept");
 
     for (const version of [9, 0]) {
-      withIsolatedZinnDir((dir) => {
-        createDatabase(dir, version);
+      await withIsolatedZinnDir(async (dir) => {
+        await createDatabase(dir, version);
 
-        const result = runZinn(["restore", path, "--yes", "--json"], dir);
+        const result = await runZinn(["restore", path, "--yes", "--json"], dir);
 
         expect(result.code).toBe(0);
         expect(result.stderr).toBe("");
         expect(JSON.parse(result.stdout)).toMatchObject({ previousVersion: version, restoredVersion: CURRENT_SCHEMA_VERSION });
-        expect(runZinn(["task", "list", "RST"], dir).stdout).toContain("Kept");
+        expect((await runZinn(["task", "list", "RST"], dir)).stdout).toContain("Kept");
         expect(backupFiles(dir)).toHaveLength(1);
       });
     }
   });
 });
 
-test("restore needs exactly one backup path", () => {
-  withIsolatedZinnDir((dir) => {
-    const result = runZinn(["restore", "--yes"], dir);
+test("restore needs exactly one backup path", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const result = await runZinn(["restore", "--yes"], dir);
 
     expect(result.code).toBe(1);
     expect(result.stderr).toContain("Usage: zinn restore");
@@ -5532,15 +5570,15 @@ function databaseSnapshot(dir: string) {
   }));
 }
 
-function createDatabase(dir: string, version: number) {
-  runZinn(["project", "create", "MIG"], dir);
-  runZinn(["task", "create", "MIG", "--title", "Kept"], dir);
+async function createDatabase(dir: string, version: number) {
+  await runZinn(["project", "create", "MIG"], dir);
+  await runZinn(["task", "create", "MIG", "--title", "Kept"], dir);
   withTestDb(dir, (db) => db.run(`PRAGMA user_version = ${version}`));
 }
 
-test("migrate refuses when there is no database and creates no files", () => {
-  withIsolatedZinnDir((dir) => {
-    const result = runZinn(["--json", "migrate"], dir);
+test("migrate refuses when there is no database and creates no files", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const result = await runZinn(["--json", "migrate"], dir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
@@ -5550,12 +5588,12 @@ test("migrate refuses when there is no database and creates no files", () => {
   });
 });
 
-test("migrate refuses an empty database", () => {
-  withIsolatedZinnDir((dir) => {
+test("migrate refuses an empty database", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     mkdirSync(join(dir, "data"));
     new Database(join(dir, "data", "zinn.sqlite")).close();
     const before = readFileSync(join(dir, "data", "zinn.sqlite"));
-    const result = runZinn(["--json", "migrate"], dir);
+    const result = await runZinn(["--json", "migrate"], dir);
 
     expect(result.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "database" } });
@@ -5564,26 +5602,26 @@ test("migrate refuses an empty database", () => {
   });
 });
 
-test("migrate refuses an unmarked database, with or without --allow-legacy-read, and changes nothing", () => {
-  withIsolatedZinnDir((dir) => {
-    createDatabase(dir, 0);
+test("migrate refuses an unmarked database, with or without --allow-legacy-read, and changes nothing", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await createDatabase(dir, 0);
     const before = databaseSnapshot(dir);
-    const result = runZinn(["migrate", "--json"], dir);
+    const result = await runZinn(["migrate", "--json"], dir);
 
     expect(result.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "unmarked_database", schemaVersion: 0 } });
 
-    expect(runZinn(["migrate", "--allow-legacy-read"], dir).code).toBe(1);
+    expect((await runZinn(["migrate", "--allow-legacy-read"], dir)).code).toBe(1);
     expect(databaseSnapshot(dir)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
   });
 });
 
-test("migrate refuses a newer database and reports both versions and the CLI version", () => {
-  withIsolatedZinnDir((dir) => {
-    createDatabase(dir, 9);
+test("migrate refuses a newer database and reports both versions and the CLI version", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await createDatabase(dir, 9);
     const before = databaseSnapshot(dir);
-    const result = runZinn(["--json", "migrate"], dir);
+    const result = await runZinn(["--json", "migrate"], dir);
 
     expect(result.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "newer_database", schemaVersion: 9, supportedSchemaVersion: CURRENT_SCHEMA_VERSION } });
@@ -5594,12 +5632,12 @@ test("migrate refuses a newer database and reports both versions and the CLI ver
   });
 });
 
-test("migrate on a current database is a no-op with no backup", () => {
-  withIsolatedZinnDir((dir) => {
-    createDatabase(dir, CURRENT_SCHEMA_VERSION);
+test("migrate on a current database is a no-op with no backup", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await createDatabase(dir, CURRENT_SCHEMA_VERSION);
     const before = databaseSnapshot(dir);
 
-    const result = runZinn(["migrate", "--json"], dir);
+    const result = await runZinn(["migrate", "--json"], dir);
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
     expect(JSON.parse(result.stdout)).toEqual({
@@ -5609,7 +5647,7 @@ test("migrate on a current database is a no-op with no backup", () => {
       changed: false,
       backupPath: null,
     });
-    expect(runZinn(["migrate"], dir).stdout).toContain(String(CURRENT_SCHEMA_VERSION));
+    expect((await runZinn(["migrate"], dir)).stdout).toContain(String(CURRENT_SCHEMA_VERSION));
     expect(databaseSnapshot(dir)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
   });
@@ -5617,38 +5655,38 @@ test("migrate on a current database is a no-op with no backup", () => {
 
 // --- REINDEX (ZINN-49)
 
-test("reindex rebuilds a missing search index from the tasks and comments, archived ones included", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "IDX"], dir);
-    runZinn(["task", "create", "IDX", "--title", "Widget login"], dir);
-    runZinn(["task", "create", "IDX", "--title", "Gadget export"], dir);
-    runZinn(["task", "comment", "create", "IDX-1", "--text", "Needs a spinner"], dir);
-    runZinn(["task", "archive", "IDX-2"], dir);
+test("reindex rebuilds a missing search index from the tasks and comments, archived ones included", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "IDX"], dir);
+    await runZinn(["task", "create", "IDX", "--title", "Widget login"], dir);
+    await runZinn(["task", "create", "IDX", "--title", "Gadget export"], dir);
+    await runZinn(["task", "comment", "create", "IDX-1", "--text", "Needs a spinner"], dir);
+    await runZinn(["task", "archive", "IDX-2"], dir);
     const before = databaseSnapshot(dir);
     withTestDb(dir, (db) => db.run("DROP TABLE task_search"));
 
-    expect(runZinn(["task", "search", "spinner"], dir).code).toBe(1);
+    expect((await runZinn(["task", "search", "spinner"], dir)).code).toBe(1);
 
-    const result = runZinn(["reindex", "--json"], dir);
+    const result = await runZinn(["reindex", "--json"], dir);
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
     expect(JSON.parse(result.stdout)).toEqual({
       databasePath: join(realpathSync(dir), "data", "zinn.sqlite"),
       taskCount: 2,
     });
-    expect(runZinn(["task", "search", "spinner"], dir).stdout).toContain("IDX-1");
-    expect(runZinn(["task", "search", "gadget", "--archived"], dir).stdout).toContain("IDX-2");
+    expect((await runZinn(["task", "search", "spinner"], dir)).stdout).toContain("IDX-1");
+    expect((await runZinn(["task", "search", "gadget", "--archived"], dir)).stdout).toContain("IDX-2");
     expect(databaseSnapshot(dir)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
 
-    expect(runZinn(["reindex"], dir).stdout).toContain("2");
+    expect((await runZinn(["reindex"], dir)).stdout).toContain("2");
   });
 });
 
-test("a missing search index points search and index-updating writes at reindex, changing nothing", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "IDX"], dir);
-    runZinn(["task", "create", "IDX", "--title", "Widget login"], dir);
+test("a missing search index points search and index-updating writes at reindex, changing nothing", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "IDX"], dir);
+    await runZinn(["task", "create", "IDX", "--title", "Widget login"], dir);
     withTestDb(dir, (db) => db.run("DROP TABLE task_search"));
     const countRows = () =>
       withTestDb(dir, (db) =>
@@ -5661,13 +5699,13 @@ test("a missing search index points search and index-updating writes at reindex,
       ["task", "create", "IDX", "--title", "Refused"],
       ["task", "comment", "create", "IDX-1", "--text", "Refused"],
     ]) {
-      const plain = runZinn(args, dir);
+      const plain = await runZinn(args, dir);
       expect(plain.code).toBe(1);
       expect(plain.stdout).toBe("");
       expect(plain.stderr).toContain("task_search");
       expect(plain.stderr).toContain("zinn reindex");
 
-      const json = runZinn([...args, "--json"], dir);
+      const json = await runZinn([...args, "--json"], dir);
       expect(json.code).toBe(1);
       expect(json.stdout).toBe("");
       expect(errorDocumentSchema.parse(JSON.parse(json.stderr)).error).toMatchObject({ code: "storage", details: { reason: "missing_index" } });
@@ -5678,11 +5716,11 @@ test("a missing search index points search and index-updating writes at reindex,
   });
 });
 
-test("a missing table other than the search index gets no reindex hint", () => {
-  withIsolatedZinnDir((dir) => {
-    runZinn(["project", "create", "IDX"], dir);
+test("a missing table other than the search index gets no reindex hint", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "IDX"], dir);
     withTestDb(dir, (db) => db.run("DROP TABLE task_label; DROP TABLE label"));
-    const result = runZinn(["label", "list"], dir);
+    const result = await runZinn(["label", "list"], dir);
 
     expect(result.code).toBe(1);
     expect(result.stderr).toContain("label");
@@ -5690,9 +5728,9 @@ test("a missing table other than the search index gets no reindex hint", () => {
   });
 });
 
-test("reindex refuses when there is no database and creates no files", () => {
-  withIsolatedZinnDir((dir) => {
-    const result = runZinn(["--json", "reindex"], dir);
+test("reindex refuses when there is no database and creates no files", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const result = await runZinn(["--json", "reindex"], dir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
@@ -5701,12 +5739,12 @@ test("reindex refuses when there is no database and creates no files", () => {
   });
 });
 
-test("reindex refuses an empty database file and leaves it empty", () => {
-  withIsolatedZinnDir((dir) => {
+test("reindex refuses an empty database file and leaves it empty", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const databasePath = join(dir, "data", "zinn.sqlite");
     mkdirSync(dirname(databasePath));
     writeFileSync(databasePath, "");
-    const result = runZinn(["--json", "reindex"], dir);
+    const result = await runZinn(["--json", "reindex"], dir);
 
     expect(result.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { databasePath } });
@@ -5715,11 +5753,11 @@ test("reindex refuses an empty database file and leaves it empty", () => {
   });
 });
 
-test("reindex refuses a newer database and leaves it unchanged", () => {
-  withIsolatedZinnDir((dir) => {
-    createDatabase(dir, 9);
+test("reindex refuses a newer database and leaves it unchanged", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await createDatabase(dir, 9);
     const before = databaseSnapshot(dir);
-    const result = runZinn(["--json", "reindex"], dir);
+    const result = await runZinn(["--json", "reindex"], dir);
 
     expect(result.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "newer_database", schemaVersion: 9 } });
@@ -5730,16 +5768,16 @@ test("reindex refuses a newer database and leaves it unchanged", () => {
 
 // --- READ-ONLY DATABASES (ZINN-118)
 
-test("a newer database refuses changes, naming both versions and this CLI, while reads still work", () => {
-  withIsolatedZinnDir((dir) => {
-    createDatabase(dir, 9);
+test("a newer database refuses changes, naming both versions and this CLI, while reads still work", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await createDatabase(dir, 9);
     const before = databaseSnapshot(dir);
 
-    const list = runZinn(["task", "list", "MIG"], dir);
+    const list = await runZinn(["task", "list", "MIG"], dir);
     expect(list.code).toBe(0);
     expect(list.stdout).toContain("Kept");
 
-    const created = runZinn(["--json", "task", "create", "MIG", "--title", "Refused"], dir);
+    const created = await runZinn(["--json", "task", "create", "MIG", "--title", "Refused"], dir);
     expect(created.code).toBe(1);
     expect(created.stdout).toBe("");
     expect(errorDocumentSchema.parse(JSON.parse(created.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "newer_database", databasePath: join(dir, "data", "zinn.sqlite"), schemaVersion: 9, supportedSchemaVersion: CURRENT_SCHEMA_VERSION } });
@@ -5752,11 +5790,11 @@ test("a newer database refuses changes, naming both versions and this CLI, while
   });
 });
 
-test("task delete on a read-only database refuses before asking for confirmation", () => {
-  withIsolatedZinnDir((dir) => {
-    createDatabase(dir, 9);
+test("task delete on a read-only database refuses before asking for confirmation", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await createDatabase(dir, 9);
     const before = databaseSnapshot(dir);
-    const result = runZinnWithPipedYes(["--json", "task", "delete", "MIG-1"], dir);
+    const result = await runZinnWithPipedYes(["--json", "task", "delete", "MIG-1"], dir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
@@ -5765,13 +5803,13 @@ test("task delete on a read-only database refuses before asking for confirmation
   });
 });
 
-test("an unmarked database is refused, for reads and writes, and left unchanged", () => {
-  withIsolatedZinnDir((dir) => {
-    createDatabase(dir, 0);
+test("an unmarked database is refused, for reads and writes, and left unchanged", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await createDatabase(dir, 0);
     const before = databaseSnapshot(dir);
 
     for (const args of [["task", "list", "MIG"], ["task", "create", "MIG", "--title", "Refused"]]) {
-      const result = runZinn(["--json", ...args], dir);
+      const result = await runZinn(["--json", ...args], dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "unmarked_database", schemaVersion: 0, databasePath: join(dir, "data", "zinn.sqlite") } });
@@ -5789,21 +5827,21 @@ function warningLines(stderr: string, databasePath: string) {
   return stderr.split("\n").filter((line) => line.includes(databasePath));
 }
 
-test("--allow-legacy-read reads an unmarked database with one warning on stderr, each invocation needing it again", () => {
-  withIsolatedZinnDir((dir) => {
-    createDatabase(dir, 0);
+test("--allow-legacy-read reads an unmarked database with one warning on stderr, each invocation needing it again", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await createDatabase(dir, 0);
     const before = databaseSnapshot(dir);
     const databasePath = join(dir, "data", "zinn.sqlite");
 
     for (const args of [["task", "list", "MIG", LEGACY_FLAG], [LEGACY_FLAG, "project", "list"], ["task", "view", "MIG-1", LEGACY_FLAG]]) {
-      const allowed = runZinn(args, dir);
+      const allowed = await runZinn(args, dir);
       expect(allowed.code).toBe(0);
       expect(allowed.stdout).toContain("MIG");
       expect(warningLines(allowed.stderr, join(dir, "data", "zinn.sqlite"))).toHaveLength(1);
       expect(allowed.stderr).toContain(databasePath);
     }
 
-    const refused = runZinn(["task", "list", "MIG"], dir);
+    const refused = await runZinn(["task", "list", "MIG"], dir);
     expect(refused.code).toBe(1);
     expect(refused.stdout).toBe("");
     expect(refused.stderr).toContain(LEGACY_FLAG);
@@ -5811,27 +5849,27 @@ test("--allow-legacy-read reads an unmarked database with one warning on stderr,
   });
 });
 
-test("--allow-legacy-read with --json keeps stdout parseable and refusals as a JSON error", () => {
-  withIsolatedZinnDir((dir) => {
-    createDatabase(dir, 0);
+test("--allow-legacy-read with --json keeps stdout parseable and refusals as a JSON error", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await createDatabase(dir, 0);
 
-    const allowed = runZinn(["task", "list", "MIG", "--json", LEGACY_FLAG], dir);
+    const allowed = await runZinn(["task", "list", "MIG", "--json", LEGACY_FLAG], dir);
     expect(allowed.code).toBe(0);
     expect(JSON.parse(allowed.stdout)).toHaveLength(1);
     expect(warningLines(allowed.stderr, join(dir, "data", "zinn.sqlite"))).toHaveLength(1);
 
-    const refused = runZinn(["task", "list", "MIG", "--json"], dir);
+    const refused = await runZinn(["task", "list", "MIG", "--json"], dir);
     expect(refused.code).toBe(1);
     expect(refused.stdout).toBe("");
     expect(JSON.parse(refused.stderr).error.message).toContain(LEGACY_FLAG);
   });
 });
 
-test("a --allow-legacy-read after -- is command input, so the database stays refused", () => {
-  withIsolatedZinnDir((dir) => {
-    createDatabase(dir, 0);
+test("a --allow-legacy-read after -- is command input, so the database stays refused", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await createDatabase(dir, 0);
     const before = databaseSnapshot(dir);
-    const result = runZinn(["--json", "task", "search", "--", LEGACY_FLAG], dir);
+    const result = await runZinn(["--json", "task", "search", "--", LEGACY_FLAG], dir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
@@ -5841,9 +5879,9 @@ test("a --allow-legacy-read after -- is command input, so the database stays ref
   });
 });
 
-test("--allow-legacy-read never lets a command change an unmarked database", () => {
-  withIsolatedZinnDir((dir) => {
-    createDatabase(dir, 0);
+test("--allow-legacy-read never lets a command change an unmarked database", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await createDatabase(dir, 0);
     const before = databaseSnapshot(dir);
     const attempts = [
       ["task", "create", "MIG", "--title", "Refused"],
@@ -5853,7 +5891,7 @@ test("--allow-legacy-read never lets a command change an unmarked database", () 
     ];
 
     for (const args of attempts) {
-      const result = runZinn(["--json", ...args, LEGACY_FLAG], dir);
+      const result = await runZinn(["--json", ...args, LEGACY_FLAG], dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "unmarked_database", schemaVersion: 0 } });
@@ -5864,29 +5902,29 @@ test("--allow-legacy-read never lets a command change an unmarked database", () 
   });
 });
 
-test("--allow-legacy-read does not warn about a database that has a schema version", () => {
-  withIsolatedZinnDir((dir) => {
-    createDatabase(dir, 1);
-    const current = runZinn(["task", "list", "MIG", LEGACY_FLAG], dir);
+test("--allow-legacy-read does not warn about a database that has a schema version", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await createDatabase(dir, 1);
+    const current = await runZinn(["task", "list", "MIG", LEGACY_FLAG], dir);
     expect(current.code).toBe(0);
     expect(current.stderr).toBe("");
 
     withTestDb(dir, (db) => db.run("PRAGMA user_version = 9"));
-    const newer = runZinn(["task", "list", "MIG", LEGACY_FLAG], dir);
+    const newer = await runZinn(["task", "list", "MIG", LEGACY_FLAG], dir);
     expect(newer.code).toBe(0);
     expect(newer.stderr).toBe("");
   });
 });
 
-test("help, --version and backup need no --allow-legacy-read for an unmarked database", () => {
-  withIsolatedZinnDir((dir) => {
-    createDatabase(dir, 0);
+test("help, --version and backup need no --allow-legacy-read for an unmarked database", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await createDatabase(dir, 0);
     const before = databaseSnapshot(dir);
 
-    expect(runZinn(["--help"], dir).stdout).toContain(LEGACY_FLAG);
-    expect(runZinn(["--version"], dir).code).toBe(0);
+    expect((await runZinn(["--help"], dir)).stdout).toContain(LEGACY_FLAG);
+    expect((await runZinn(["--version"], dir)).code).toBe(0);
 
-    const backup = runZinn(["backup", "--json"], dir);
+    const backup = await runZinn(["backup", "--json"], dir);
     expect(backup.code).toBe(0);
     expect(backup.stderr).toBe("");
     expect(existsSync(JSON.parse(backup.stdout).path)).toBe(true);
@@ -5894,19 +5932,19 @@ test("help, --version and backup need no --allow-legacy-read for an unmarked dat
   });
 });
 
-test("help and --version open no database, not even one that core refuses", () => {
-  withIsolatedZinnDir((dir) => {
+test("help and --version open no database, not even one that core refuses", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const commands = [["--version"], ["--help"], ["task", "--help"], ["task", "create", "--help"]];
 
     for (const args of commands) {
-      expect(runZinn(args, dir).code).toBe(0);
+      expect((await runZinn(args, dir)).code).toBe(0);
     }
     expect(readdirSync(dir)).toEqual([]);
 
-    createDatabase(dir, 0);
+    await createDatabase(dir, 0);
     const before = databaseSnapshot(dir);
     for (const args of commands) {
-      const result = runZinn(args, dir);
+      const result = await runZinn(args, dir);
       expect(result.code).toBe(0);
       expect(result.stderr).toBe("");
     }
@@ -5915,11 +5953,11 @@ test("help and --version open no database, not even one that core refuses", () =
 });
 
 test("simultaneous backup commands create distinct valid snapshots", async () => {
-  await withIsolatedZinnDirAsync(async (dir) => {
-    expect(runZinn(["project", "create", "BAK"], dir).code).toBe(0);
-    expect(runZinn(["task", "create", "BAK", "--title", "Saved"], dir).code).toBe(0);
+  await withIsolatedZinnDir(async (dir) => {
+    expect((await runZinn(["project", "create", "BAK"], dir)).code).toBe(0);
+    expect((await runZinn(["task", "create", "BAK", "--title", "Saved"], dir)).code).toBe(0);
 
-    const results = await Promise.all(Array.from({ length: 4 }, () => runZinnAsync(["backup", "--json"], dir)));
+    const results = await Promise.all(Array.from({ length: 4 }, () => runZinn(["backup", "--json"], dir, { AI_AGENT: "concurrency-test" })));
     const paths = new Set<string>();
     for (const result of results) {
       expect(result.code).toBe(0);
@@ -5938,10 +5976,10 @@ test("simultaneous backup commands create distinct valid snapshots", async () =>
   });
 });
 
-test("all CLI descriptions normalize blank input and preserve meaningful formatting", () => {
-  withIsolatedZinnDir((dir) => {
+test("all CLI descriptions normalize blank input and preserve meaningful formatting", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
-    expect(run("project", "create", "APP").code).toBe(0);
+    expect((await run("project", "create", "APP")).code).toBe(0);
     const entities = [
       { type: "project", create: ["EMPTY"], editKey: "EMPTY", read: ["project", "view", "EMPTY"] },
       { type: "task", create: ["APP", "--title", "Empty"], editKey: "APP-1", read: ["task", "view", "APP-1"] },
@@ -5949,76 +5987,76 @@ test("all CLI descriptions normalize blank input and preserve meaningful formatt
     ];
 
     for (const entity of entities) {
-      const created = run(entity.type, "create", ...entity.create, "--description", " \n\t ", "--json");
+      const created = await run(entity.type, "create", ...entity.create, "--description", " \n\t ", "--json");
       expect(created.code).toBe(0);
       expect(JSON.parse(created.stdout).description).toBeNull();
       for (const clearInput of ["", " \n\t "]) {
         const description = "  Details\n\tIndented  \n";
-        const edited = run(entity.type, "edit", entity.editKey, "--description", description, "--json");
+        const edited = await run(entity.type, "edit", entity.editKey, "--description", description, "--json");
         expect(edited.code).toBe(0);
         expect(JSON.parse(edited.stdout).description).toBe(description);
-        const cleared = run(entity.type, "edit", entity.editKey, "--description", clearInput, "--json");
+        const cleared = await run(entity.type, "edit", entity.editKey, "--description", clearInput, "--json");
         expect(cleared.code).toBe(0);
         expect(JSON.parse(cleared.stdout).description).toBeNull();
       }
-      const result = JSON.parse(run(...entity.read, "--json").stdout);
+      const result = JSON.parse((await run(...entity.read, "--json")).stdout);
       expect((Array.isArray(result) ? result[0] : result).description).toBeNull();
     }
 
-    expect(JSON.parse(run("project", "create", "OMITTED", "--json").stdout).description).toBeNull();
-    expect(JSON.parse(run("task", "create", "APP", "--title", "Omitted", "--json").stdout).description).toBeNull();
-    expect(JSON.parse(run("label", "create", "omitted", "--json").stdout).description).toBeNull();
+    expect(JSON.parse((await run("project", "create", "OMITTED", "--json")).stdout).description).toBeNull();
+    expect(JSON.parse((await run("task", "create", "APP", "--title", "Omitted", "--json")).stdout).description).toBeNull();
+    expect(JSON.parse((await run("label", "create", "omitted", "--json")).stdout).description).toBeNull();
   });
 });
 
-test("project descriptions flow through creation, partial edits, view, list and clearing", () => {
-  withIsolatedZinnDir((dir) => {
+test("project descriptions flow through creation, partial edits, view, list and clearing", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
     const description = "Purpose\nMore context";
-    const created = run("project", "create", "DESC", "--description", description, "--json");
+    const created = await run("project", "create", "DESC", "--description", description, "--json");
     expect(created.code).toBe(0);
     expect(JSON.parse(created.stdout)).toEqual({ key: "DESC", name: "DESC", description });
-    expect(run("project", "view", "DESC").stdout).toStartWith(`DESC | DESC\n\nDescription:\n${description}\n\nColumns:\n`);
-    expect(run("project", "list").stdout).toBe("DESC | DESC | Purpose More context\n");
-    expect(JSON.parse(run("project", "list", "--json").stdout)[0].description).toBe(description);
-    expect(JSON.parse(run("project", "edit", "DESC", "--name", "Renamed", "--json").stdout).description).toBe(description);
-    expect(JSON.parse(run("project", "edit", "DESC", "--description", "Updated", "--json").stdout)).toEqual({ key: "DESC", name: "Renamed", description: "Updated" });
-    expect(run("project", "edit", "DESC", "--description", "").stdout).toBe("DESC | Renamed\n");
-    expect(JSON.parse(run("project", "view", "DESC", "--json").stdout).description).toBeNull();
-    expect(run("project", "edit", "DESC", "--description", "a", "--description", "b").code).toBe(1);
+    expect((await run("project", "view", "DESC")).stdout).toStartWith(`DESC | DESC\n\nDescription:\n${description}\n\nColumns:\n`);
+    expect((await run("project", "list")).stdout).toBe("DESC | DESC | Purpose More context\n");
+    expect(JSON.parse((await run("project", "list", "--json")).stdout)[0].description).toBe(description);
+    expect(JSON.parse((await run("project", "edit", "DESC", "--name", "Renamed", "--json")).stdout).description).toBe(description);
+    expect(JSON.parse((await run("project", "edit", "DESC", "--description", "Updated", "--json")).stdout)).toEqual({ key: "DESC", name: "Renamed", description: "Updated" });
+    expect((await run("project", "edit", "DESC", "--description", "")).stdout).toBe("DESC | Renamed\n");
+    expect(JSON.parse((await run("project", "view", "DESC", "--json")).stdout).description).toBeNull();
+    expect((await run("project", "edit", "DESC", "--description", "a", "--description", "b")).code).toBe(1);
   });
 });
 
-test("project list and write rows show truncated description previews, project view and JSON keep full text, and task rows leave descriptions out", () => {
-  withIsolatedZinnDir((dir) => {
+test("project list and write rows show truncated description previews, project view and JSON keep full text, and task rows leave descriptions out", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
     const description = "  Context\n" + "x".repeat(200);
     const preview = `Context ${"x".repeat(71)}…`;
     expect(preview).toHaveLength(80);
-    const taskProject = JSON.parse(run("project", "create", "PRE", "--description", description, "--json").stdout);
-    run("task", "create", "PRE", "--title", "Task", "--description", description);
-    expect(run("task", "list", "PRE").stdout).toBe("PRE-1 | Backlog | - | Task\n");
-    expect(run("project", "list").stdout).toBe(`PRE | PRE | ${preview}\n`);
-    expect(run("project", "view", "PRE").stdout).toStartWith(`PRE | PRE\n\nDescription:\n${description}\n\nColumns:\n`);
-    expect(run("project", "edit", "PRE", "--description", description).stdout).toBe(`PRE | PRE | ${preview}\n`);
+    const taskProject = JSON.parse((await run("project", "create", "PRE", "--description", description, "--json")).stdout);
+    await run("task", "create", "PRE", "--title", "Task", "--description", description);
+    expect((await run("task", "list", "PRE")).stdout).toBe("PRE-1 | Backlog | - | Task\n");
+    expect((await run("project", "list")).stdout).toBe(`PRE | PRE | ${preview}\n`);
+    expect((await run("project", "view", "PRE")).stdout).toStartWith(`PRE | PRE\n\nDescription:\n${description}\n\nColumns:\n`);
+    expect((await run("project", "edit", "PRE", "--description", description)).stdout).toBe(`PRE | PRE | ${preview}\n`);
     expect(taskProject.description).toBe(description);
-    expect(JSON.parse(run("project", "view", "PRE", "--json").stdout).description).toBe(description);
-    expect(run("project", "edit", "PRE", "--description", " \n ").stdout).toBe("PRE | PRE\n");
+    expect(JSON.parse((await run("project", "view", "PRE", "--json")).stdout).description).toBe(description);
+    expect((await run("project", "edit", "PRE", "--description", " \n ")).stdout).toBe("PRE | PRE\n");
   });
 });
 
 // --- CONCURRENCY (ZINN-68)
 
 test("concurrent fresh initialization supports readers and project creators", async () => {
-  await withIsolatedZinnDirAsync(async (dir) => {
+  await withIsolatedZinnDir(async (dir) => {
     for (const operation of ["list", "create"]) {
       for (let round = 0; round < 3; round++) {
         const store = join(dir, `${operation}-${round}`);
         mkdirSync(store);
         const results = await Promise.all(Array.from({ length: 40 }, (_, index) =>
-          runZinnAsync(operation === "list"
+          runZinn(operation === "list"
             ? ["project", "list", "--json"]
-            : ["project", "create", `P${index}`, "--json"], store),
+            : ["project", "create", `P${index}`, "--json"], store, { AI_AGENT: "concurrency-test" }),
         ));
 
         for (const result of results) {
@@ -6039,9 +6077,9 @@ test("concurrent fresh initialization supports readers and project creators", as
 }, 60_000);
 
 test("concurrent task and comment writes preserve results, counters, order, activity and search", async () => {
-  await withIsolatedZinnDirAsync(async (dir) => {
-    expect(runZinn(["project", "create", "BEN"], dir).code).toBe(0);
-    expect(runZinn(["task", "create", "BEN", "--title", "comment-target"], dir).code).toBe(0);
+  await withIsolatedZinnDir(async (dir) => {
+    expect((await runZinn(["project", "create", "BEN"], dir)).code).toBe(0);
+    expect((await runZinn(["task", "create", "BEN", "--title", "comment-target"], dir)).code).toBe(0);
     const taskKeys = ["BEN-1"];
     const commentKeys: Array<string> = [];
     const titles = ["comment-target"];
@@ -6057,7 +6095,7 @@ test("concurrent task and comment writes preserve results, counters, order, acti
         const args = kind === "task" ? ["task", "create", "BEN", "--title", token, "--json"]
           : kind === "comment" ? ["task", "comment", "create", "BEN-1", "--text", token, "--json"]
           : ["task", "list", "BEN", "--json"];
-        return { kind, token, ...await runZinnAsync(args, dir) };
+        return { kind, token, ...await runZinn(args, dir, { AI_AGENT: "concurrency-test" }) };
       }));
 
       for (const result of results) {
@@ -6108,16 +6146,16 @@ test("concurrent task and comment writes preserve results, counters, order, acti
   });
 }, 60_000);
 
-test("a CLI writer waits for a held lock and succeeds after release", async () => {
-  await withIsolatedZinnDirAsync(async (dir) => {
-    expect(runZinn(["project", "create", "WAIT"], dir).code).toBe(0);
+test.serial("a CLI writer waits for a held lock and succeeds after release", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    expect((await runZinn(["project", "create", "WAIT"], dir)).code).toBe(0);
     const db = new Database(join(dir, "data", "zinn.sqlite"));
     db.run("BEGIN IMMEDIATE");
     const began = performance.now();
     const release = setTimeout(() => db.run("ROLLBACK"), 250);
 
     try {
-      const result = await runZinnAsync(["task", "create", "WAIT", "--title", "waited", "--json"], dir);
+      const result = await runZinn(["task", "create", "WAIT", "--title", "waited", "--json"], dir, { AI_AGENT: "concurrency-test" });
       expect(result.stderr).toBe("");
       expect(result.code).toBe(0);
       expect(JSON.parse(result.stdout).key).toBe("WAIT-1");
@@ -6133,15 +6171,15 @@ test("a CLI writer waits for a held lock and succeeds after release", async () =
   });
 }, 45_000);
 
-test("persistent contention times out without a partial CLI mutation", async () => {
-  await withIsolatedZinnDirAsync(async (dir) => {
-    expect(runZinn(["project", "create", "LOCK"], dir).code).toBe(0);
+test.serial("persistent contention times out without a partial CLI mutation", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    expect((await runZinn(["project", "create", "LOCK"], dir)).code).toBe(0);
     const db = new Database(join(dir, "data", "zinn.sqlite"));
     db.run("BEGIN IMMEDIATE");
     const began = performance.now();
 
     try {
-      const result = await runZinnAsync(["task", "create", "LOCK", "--title", "must not persist", "--json"], dir);
+      const result = await runZinn(["task", "create", "LOCK", "--title", "must not persist", "--json"], dir, { AI_AGENT: "concurrency-test" });
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "storage", details: { reason: "busy", cause: { code: "SQLITE_BUSY" } } });
@@ -6158,13 +6196,13 @@ test("persistent contention times out without a partial CLI mutation", async () 
   });
 }, 45_000);
 
-test("CLI initialization errors expose the underlying message and code", () => {
-  withIsolatedZinnDir((dir) => {
+test("CLI initialization errors expose the underlying message and code", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     mkdirSync(join(dir, "data"));
     const contents = "not a SQLite database";
     const path = join(dir, "data", "zinn.sqlite");
     writeFileSync(path, contents);
-    const result = runZinn(["project", "list", "--json"], dir);
+    const result = await runZinn(["project", "list", "--json"], dir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
@@ -6177,12 +6215,10 @@ test("CLI initialization errors expose the underlying message and code", () => {
 // --- SETTINGS (ZINN-56)
 
 // ? Runs the bin from cwd with ZINN_DIR unset and a temporary HOME inside testDir, so the settings files choose the store.
-function runZinnFrom(args: Array<string>, testDir: string, cwd: string) {
+async function runZinnFrom(args: Array<string>, testDir: string, cwd: string) {
   const env: Record<string, string | undefined> = { ...TEST_ENVIRONMENT, HOME: join(testDir, "home") };
   delete env.ZINN_DIR;
-  const proc = Bun.spawnSync(["bun", CLI_PATH, ...args], { cwd, env });
-
-  return { stdout: proc.stdout.toString(), stderr: proc.stderr.toString(), code: proc.exitCode };
+  return runProcessAsync([process.execPath, CLI_PATH, ...args], { cwd, env });
 }
 
 /** A repository inside testDir holding a zinn.local.json with the given content. */
@@ -6195,26 +6231,26 @@ function repositoryWithSettings(testDir: string, content: string) {
   return repository;
 }
 
-test("storage.directory in zinn.local.json chooses the store, from any folder of the repository", () => {
-  withIsolatedZinnDir((dir) => {
+test("storage.directory in zinn.local.json chooses the store, from any folder of the repository", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const repository = repositoryWithSettings(dir, JSON.stringify({ storage: { directory: "../store" } }));
     mkdirSync(join(dir, "store"));
     const nested = join(repository, "src");
     mkdirSync(nested);
 
-    expect(runZinnFrom(["project", "create", "SET"], dir, repository).code).toBe(0);
-    expect(runZinnFrom(["project", "list", "--json"], dir, nested).stdout).toContain('"key": "SET"');
+    expect((await runZinnFrom(["project", "create", "SET"], dir, repository)).code).toBe(0);
+    expect((await runZinnFrom(["project", "list", "--json"], dir, nested)).stdout).toContain('"key": "SET"');
     expect(withTestDb(join(dir, "store"), (db) => db.query("SELECT key FROM project").all())).toEqual([{ key: "SET" }]);
     expect(existsSync(join(dir, "home", ".zinn"))).toBe(false);
   });
 });
 
-test("an invalid zinn.local.json fails the command with the file's path, without a stack trace, before creating a store", () => {
-  withIsolatedZinnDir((dir) => {
+test("an invalid zinn.local.json fails the command with the file's path, without a stack trace, before creating a store", async () => {
+  await withIsolatedZinnDir(async (dir) => {
     const repository = repositoryWithSettings(dir, JSON.stringify({ storage: { directory: 42 } }));
     const settingsPath = join(realpathSync(repository), "zinn.local.json");
 
-    const result = runZinnFrom(["project", "create", "SET"], dir, repository);
+    const result = await runZinnFrom(["project", "create", "SET"], dir, repository);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
@@ -6229,12 +6265,12 @@ test("an invalid zinn.local.json fails the command with the file's path, without
 // --- PARTIAL TEXT EDITS (ZINN-177)
 
 // ? Creates project APP with task APP-1, label bug and comment APP-1#1, all with the given text.
-function seedEditableText(dir: string, text: string) {
+async function seedEditableText(dir: string, text: string) {
   const run = (...args: string[]) => runZinn(args, dir);
-  expect(run("project", "create", "APP", "--description", text).code).toBe(0);
-  expect(run("task", "create", "APP", "--title", "Task", "--description", text).code).toBe(0);
-  expect(run("label", "create", "bug", "--description", text).code).toBe(0);
-  expect(run("task", "comment", "create", "APP-1", "--text", text).code).toBe(0);
+  expect((await run("project", "create", "APP", "--description", text)).code).toBe(0);
+  expect((await run("task", "create", "APP", "--title", "Task", "--description", text)).code).toBe(0);
+  expect((await run("label", "create", "bug", "--description", text)).code).toBe(0);
+  expect((await run("task", "comment", "create", "APP-1", "--text", text)).code).toBe(0);
 
   return run;
 }
@@ -6247,9 +6283,9 @@ const storedTextOf = (dir: string) =>
     comment: db.query<{ text: string }, []>("SELECT text FROM comment").get()!.text,
   }));
 
-test("oversized partial text edits exit 1 with empty stdout and leave the database unchanged", () => {
-  withIsolatedZinnDir((dir) => {
-    const run = seedEditableText(dir, "Seed");
+test("oversized partial text edits exit 1 with empty stdout and leave the database unchanged", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "Seed");
     const atLimit = "a".repeat(MAX_TEXT_BYTES - 4) + "😀";
     withTestDb(dir, (db) => {
       for (const table of ["project", "task", "label"]) {
@@ -6258,7 +6294,7 @@ test("oversized partial text edits exit 1 with empty stdout and leave the databa
       db.query("UPDATE comment SET text = ?").run(atLimit);
     });
     const before = storedTextOf(dir);
-    const activities = run("activity", "list", "--json").stdout;
+    const activities = (await run("activity", "list", "--json")).stdout;
     const edits = [
       { args: ["project", "edit", "APP"], flag: "--description" },
       { args: ["task", "edit", "APP-1"], flag: "--description" },
@@ -6267,21 +6303,21 @@ test("oversized partial text edits exit 1 with empty stdout and leave the databa
     ];
     for (const { args, flag } of edits) {
       for (const options of [[flag, "x", "--append"], [flag, "😀x", "--replacing", "😀"]]) {
-        const result = run(...args, ...options);
+        const result = await run(...args, ...options);
         expect(result.code).toBe(1);
         expect(result.stdout).toBe("");
         expect(result.stderr).toContain(String(MAX_TEXT_BYTES));
         expect(result.stderr).toContain(String(MAX_TEXT_BYTES + (options.includes("--append") ? 3 : 1)));
         expect(storedTextOf(dir)).toEqual(before);
-        expect(run("activity", "list", "--json").stdout).toBe(activities);
+        expect((await run("activity", "list", "--json")).stdout).toBe(activities);
       }
     }
   });
 });
 
-test("CRLF text normalizes through CLI creation, replacement and append for every text field", () => {
-  withIsolatedZinnDir((dir) => {
-    const run = seedEditableText(dir, "  First\r\nSecond\nThird\rEnd  ");
+test("CRLF text normalizes through CLI creation, replacement and append for every text field", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "  First\r\nSecond\nThird\rEnd  ");
     const normalized = "  First\nSecond\nThird\rEnd  ";
     expect(storedTextOf(dir)).toEqual({ project: normalized, task: normalized, label: normalized, comment: normalized });
 
@@ -6292,64 +6328,64 @@ test("CRLF text normalizes through CLI creation, replacement and append for ever
       { args: ["task", "comment", "edit", "APP-1#1"], flag: "--text" },
     ];
     for (const { args, flag } of edits) {
-      const result = run(...args, flag, "Joined\r\nLine", "--replacing", "First\r\nSecond", "--json");
+      const result = await run(...args, flag, "Joined\r\nLine", "--replacing", "First\r\nSecond", "--json");
       expect(result.code).toBe(0);
       expect(result.stderr).toBe("");
       const entity = JSON.parse(result.stdout);
       expect(entity.description ?? entity.text).toBe("  Joined\nLine\nThird\rEnd  ");
-      expect(run(...args, flag, "Tail\r\n  Indent", "--append").code).toBe(0);
+      expect((await run(...args, flag, "Tail\r\n  Indent", "--append")).code).toBe(0);
     }
     const appended = "  Joined\nLine\nThird\rEnd  \n\nTail\n  Indent";
     expect(storedTextOf(dir)).toEqual({ project: appended, task: appended, label: appended, comment: appended });
   });
 });
 
-test("--append adds a paragraph to a task description and to a comment's text", () => {
-  withIsolatedZinnDir((dir) => {
-    const run = seedEditableText(dir, "First.\n");
+test("--append adds a paragraph to a task description and to a comment's text", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "First.\n");
 
-    expect(run("task", "edit", "APP-1", "--description", "Second.", "--append").code).toBe(0);
-    expect(run("task", "comment", "edit", "APP-1#1", "--text", "More.", "--append").code).toBe(0);
+    expect((await run("task", "edit", "APP-1", "--description", "Second.", "--append")).code).toBe(0);
+    expect((await run("task", "comment", "edit", "APP-1#1", "--text", "More.", "--append")).code).toBe(0);
 
     expect(storedTextOf(dir)).toMatchObject({ task: "First.\n\nSecond.", comment: "First.\n\nMore." });
   });
 });
 
-test("--replacing swaps one passage in a project description and in a label description", () => {
-  withIsolatedZinnDir((dir) => {
-    const run = seedEditableText(dir, "old sentence, kept");
+test("--replacing swaps one passage in a project description and in a label description", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "old sentence, kept");
 
-    expect(run("project", "edit", "APP", "--description", "new", "--replacing", "old sentence").code).toBe(0);
-    expect(run("label", "edit", "bug", "--description", "fresh", "--replacing", "old sentence").code).toBe(0);
+    expect((await run("project", "edit", "APP", "--description", "new", "--replacing", "old sentence")).code).toBe(0);
+    expect((await run("label", "edit", "bug", "--description", "fresh", "--replacing", "old sentence")).code).toBe(0);
 
     expect(storedTextOf(dir)).toMatchObject({ project: "new, kept", label: "fresh, kept" });
   });
 });
 
-test("--replacing --all replaces every match and prints the edited object as any edit does", () => {
-  withIsolatedZinnDir((dir) => {
-    const run = seedEditableText(dir, "board and board");
+test("--replacing --all replaces every match and prints the edited object as any edit does", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "board and board");
 
-    const edited = run("project", "edit", "APP", "--description", "database", "--replacing", "board", "--all");
+    const edited = await run("project", "edit", "APP", "--description", "database", "--replacing", "board", "--all");
     expect(edited.code).toBe(0);
     expect(edited.stdout).toContain("database and database");
     expect(storedTextOf(dir).project).toBe("database and database");
 
-    const comment = run("task", "comment", "edit", "APP-1#1", "--text", "x", "--replacing", "board", "--all");
+    const comment = await run("task", "comment", "edit", "APP-1#1", "--text", "x", "--replacing", "board", "--all");
     expect(comment.code).toBe(0);
     expect(comment.stdout).toContain("x and x");
   });
 });
 
-test("--replacing with several matches and no --all fails with the --all hint and changes nothing", () => {
-  withIsolatedZinnDir((dir) => {
-    const run = seedEditableText(dir, "dup dup");
+test("--replacing with several matches and no --all fails with the --all hint and changes nothing", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "dup dup");
     const before = storedTextOf(dir);
 
     const attempts = [
-      run("task", "edit", "APP-1", "--description", "x", "--replacing", "dup", "--json"),
-      run("project", "edit", "APP", "--description", "x", "--replacing", "dup", "--json"),
-      run("task", "comment", "edit", "APP-1#1", "--text", "x", "--replacing", "dup", "--json"),
+      await run("task", "edit", "APP-1", "--description", "x", "--replacing", "dup", "--json"),
+      await run("project", "edit", "APP", "--description", "x", "--replacing", "dup", "--json"),
+      await run("task", "comment", "edit", "APP-1#1", "--text", "x", "--replacing", "dup", "--json"),
     ];
 
     for (const attempt of attempts) {
@@ -6362,14 +6398,14 @@ test("--replacing with several matches and no --all fails with the --all hint an
   });
 });
 
-test("--replacing with no match fails without the --all hint and changes nothing", () => {
-  withIsolatedZinnDir((dir) => {
-    const run = seedEditableText(dir, "Some Text");
+test("--replacing with no match fails without the --all hint and changes nothing", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "Some Text");
     const before = storedTextOf(dir);
 
     const attempts = [
-      run("task", "edit", "APP-1", "--description", "x", "--replacing", "some text", "--json"),
-      run("label", "edit", "bug", "--description", "x", "--replacing", "absent", "--json"),
+      await run("task", "edit", "APP-1", "--description", "x", "--replacing", "some text", "--json"),
+      await run("label", "edit", "bug", "--description", "x", "--replacing", "absent", "--json"),
     ];
 
     for (const attempt of attempts) {
@@ -6381,35 +6417,35 @@ test("--replacing with no match fails without the --all hint and changes nothing
   });
 });
 
-test("an empty text with --replacing deletes the match", () => {
-  withIsolatedZinnDir((dir) => {
-    const run = seedEditableText(dir, "keep\nstale line\n");
+test("an empty text with --replacing deletes the match", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "keep\nstale line\n");
 
-    expect(run("task", "edit", "APP-1", "--description", "", "--replacing", "stale line\n").code).toBe(0);
-    expect(run("task", "comment", "edit", "APP-1#1", "--text", "", "--replacing", "\nstale line").code).toBe(0);
+    expect((await run("task", "edit", "APP-1", "--description", "", "--replacing", "stale line\n")).code).toBe(0);
+    expect((await run("task", "comment", "edit", "APP-1#1", "--text", "", "--replacing", "\nstale line")).code).toBe(0);
 
     expect(storedTextOf(dir)).toMatchObject({ task: "keep\n", comment: "keep\n" });
   });
 });
 
-test("a modifier edit with --json carries the full resulting text", () => {
-  withIsolatedZinnDir((dir) => {
-    const run = seedEditableText(dir, "One.");
+test("a modifier edit with --json carries the full resulting text", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "One.");
 
-    const task = JSON.parse(run("task", "edit", "APP-1", "--description", "Two.", "--append", "--json").stdout);
-    const comment = JSON.parse(run("task", "comment", "edit", "APP-1#1", "--text", "Two.", "--append", "--json").stdout);
+    const task = JSON.parse((await run("task", "edit", "APP-1", "--description", "Two.", "--append", "--json")).stdout);
+    const comment = JSON.parse((await run("task", "comment", "edit", "APP-1#1", "--text", "Two.", "--append", "--json")).stdout);
 
     expect(task.description).toBe("One.\n\nTwo.");
     expect(comment.text).toBe("One.\n\nTwo.");
   });
 });
 
-test("a match error with --json uses the usual error shape, with the hint for several matches", () => {
-  withIsolatedZinnDir((dir) => {
-    const run = seedEditableText(dir, "dup dup");
+test("a match error with --json uses the usual error shape, with the hint for several matches", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "dup dup");
 
-    const several = run("task", "edit", "APP-1", "--description", "x", "--replacing", "dup", "--json");
-    const none = run("task", "edit", "APP-1", "--description", "x", "--replacing", "absent", "--json");
+    const several = await run("task", "edit", "APP-1", "--description", "x", "--replacing", "dup", "--json");
+    const none = await run("task", "edit", "APP-1", "--description", "x", "--replacing", "absent", "--json");
 
     expect(several.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(several.stderr)).error).toMatchObject({
@@ -6422,9 +6458,9 @@ test("a match error with --json uses the usual error shape, with the hint for se
   });
 });
 
-test("the text-edit flags are usage errors without the text flag or in an invalid combination", () => {
-  withIsolatedZinnDir((dir) => {
-    const run = seedEditableText(dir, "text");
+test("the text-edit flags are usage errors without the text flag or in an invalid combination", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "text");
     const before = storedTextOf(dir);
 
     const cases: Array<[Array<string>, string]> = [
@@ -6439,7 +6475,7 @@ test("the text-edit flags are usage errors without the text flag or in an invali
     ];
 
     for (const [args, message] of cases) {
-      const result = run(...args);
+      const result = await run(...args);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       for (const flag of message.split(" ")) {
@@ -6447,19 +6483,19 @@ test("the text-edit flags are usage errors without the text flag or in an invali
       }
     }
     expect(storedTextOf(dir)).toEqual(before);
-    expect(errorDocumentSchema.parse(JSON.parse(run("task", "edit", "APP-1", "--append", "--json").stderr)).error).toMatchObject({
+    expect(errorDocumentSchema.parse(JSON.parse((await run("task", "edit", "APP-1", "--append", "--json")).stderr)).error).toMatchObject({
       code: "invalid_input", details: { argument: "--description" },
     });
   });
 });
 
-test("core's value rules for the text-edit flags identify the rejected field", () => {
-  withIsolatedZinnDir((dir) => {
-    const run = seedEditableText(dir, "text");
+test("core's value rules for the text-edit flags identify the rejected field", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "text");
 
-    const blankAppend = run("task", "edit", "APP-1", "--description", " ", "--append", "--json");
-    const emptyFind = run("task", "edit", "APP-1", "--description", "x", "--replacing", "", "--json");
-    const blankComment = run("task", "comment", "edit", "APP-1#1", "--text", "", "--replacing", "text", "--json");
+    const blankAppend = await run("task", "edit", "APP-1", "--description", " ", "--append", "--json");
+    const emptyFind = await run("task", "edit", "APP-1", "--description", "x", "--replacing", "", "--json");
+    const blankComment = await run("task", "comment", "edit", "APP-1#1", "--text", "", "--replacing", "text", "--json");
 
     expect(blankAppend.code).toBe(1);
     expect(blankAppend.stdout).toBe("");
@@ -6473,15 +6509,15 @@ test("core's value rules for the text-edit flags identify the rejected field", (
   });
 });
 
-test("the text-edit flags are limited to the edit commands and listed in their help", () => {
-  withIsolatedZinnDir((dir) => {
-    const run = seedEditableText(dir, "text");
+test("the text-edit flags are limited to the edit commands and listed in their help", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "text");
 
-    expect(run("task", "create", "APP", "--title", "T", "--append").code).toBe(1);
-    expect(run("task", "comment", "create", "APP-1", "--text", "x", "--append").code).toBe(1);
+    expect((await run("task", "create", "APP", "--title", "T", "--append")).code).toBe(1);
+    expect((await run("task", "comment", "create", "APP-1", "--text", "x", "--append")).code).toBe(1);
 
     for (const command of [["task", "edit"], ["project", "edit"], ["label", "edit"], ["task", "comment", "edit"]]) {
-      const help = run(...command, "--help").stdout;
+      const help = (await run(...command, "--help")).stdout;
       expect(help).toContain("[--append|--replacing <old> [--all]]");
       expect(help).toContain("--append");
     }
@@ -6490,31 +6526,31 @@ test("the text-edit flags are limited to the edit commands and listed in their h
 
 // --- ACTIVITY
 
-test("task view history opts into shared activity previews and full JSON without writes", () => {
-  withIsolatedZinnDir((directory) => {
-    const run = (...args: Array<string>) => {
-      const result = runZinn(args, directory);
+test("task view history opts into shared activity previews and full JSON without writes", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    const run = async (...args: Array<string>) => {
+      const result = await runZinn(args, directory);
       expect(result.code).toBe(0);
       expect(result.stderr).toBe("");
       return result.stdout;
     };
-    run("project", "create", "APP");
-    run("task", "create", "APP", "--title", "Inspected task");
-    run("task", "create", "APP", "--title", "Other task");
-    run("task", "edit", "APP-1", "--description", "Full\nrecorded description");
-    run("task", "order", "APP-1", "bottom");
-    run("task", "move", "APP-1", "In Progress");
+    await run("project", "create", "APP");
+    await run("task", "create", "APP", "--title", "Inspected task");
+    await run("task", "create", "APP", "--title", "Other task");
+    await run("task", "edit", "APP-1", "--description", "Full\nrecorded description");
+    await run("task", "order", "APP-1", "bottom");
+    await run("task", "move", "APP-1", "In Progress");
     const originalComment = "Original comment text\n" + "Previous content. ".repeat(20);
-    run("task", "comment", "create", "APP-1", "--text", originalComment);
-    run("task", "comment", "edit", "APP-1#1", "--text", "Current comment");
-    run("task", "comment", "create", "APP-1", "--text", "Deleted comment");
-    run("task", "comment", "delete", "APP-1#2", "--yes");
-    run("task", "relation", "create", "APP-1", "APP-2", "--type", "related");
-    run("task", "relation", "delete", "APP-1", "APP-2", "--type", "related");
-    run("task", "archive", "APP-1");
-    run("task", "unarchive", "APP-1");
+    await run("task", "comment", "create", "APP-1", "--text", originalComment);
+    await run("task", "comment", "edit", "APP-1#1", "--text", "Current comment");
+    await run("task", "comment", "create", "APP-1", "--text", "Deleted comment");
+    await run("task", "comment", "delete", "APP-1#2", "--yes");
+    await run("task", "relation", "create", "APP-1", "APP-2", "--type", "related");
+    await run("task", "relation", "delete", "APP-1", "APP-2", "--type", "related");
+    await run("task", "archive", "APP-1");
+    await run("task", "unarchive", "APP-1");
 
-    const events: Array<Activity> = JSON.parse(run("activity", "list", "--task", "APP-1", "--json"));
+    const events: Array<Activity> = JSON.parse(await run("activity", "list", "--task", "APP-1", "--json"));
     expect(events.find((event) => event.action === "order")).toBeDefined();
     expect(events.find((event) => event.action === "comment_delete")?.changes?.comment).toMatchObject({
       key: "APP-1#2", text: "Deleted comment",
@@ -6523,107 +6559,107 @@ test("task view history opts into shared activity previews and full JSON without
       originalComment, "Current comment",
     ]);
 
-    const ordinaryText = run("task", "view", "APP-1");
-    const ordinaryJson = JSON.parse(run("task", "view", "APP-1", "--json"));
+    const ordinaryText = await run("task", "view", "APP-1");
+    const ordinaryJson = JSON.parse(await run("task", "view", "APP-1", "--json"));
     expect(ordinaryJson).not.toHaveProperty("activity");
-    const historyJson = JSON.parse(run("task", "view", "app-1", "--history", "--json"));
+    const historyJson = JSON.parse(await run("task", "view", "app-1", "--history", "--json"));
     expect(historyJson).toEqual({ ...ordinaryJson, activity: events });
     expect(historyJson.comments).toHaveLength(1);
     expect(historyJson.comments[0].text).toBe("Current comment");
     expect(historyJson.comments[0]).not.toHaveProperty("activity");
 
-    const previews = run("activity", "list", "--task", "APP-1");
-    const historyText = run("task", "view", "APP-1", "--history");
+    const previews = await run("activity", "list", "--task", "APP-1");
+    const historyText = await run("task", "view", "APP-1", "--history");
     expect(historyText.startsWith(ordinaryText.trimEnd())).toBe(true);
     expect(historyText.endsWith(previews)).toBe(true);
     expect(historyText).not.toContain(originalComment);
     const commentEdit = events.find((event) => event.action === "comment_edit")!;
-    expect(run("activity", "view", commentEdit.id)).toContain(originalComment);
-    expect(JSON.parse(run("activity", "list", "--task", "APP-1", "--json"))).toEqual(events);
-    expect(JSON.parse(run("task", "view", "APP-1", "--json"))).toEqual(ordinaryJson);
+    expect(await run("activity", "view", commentEdit.id)).toContain(originalComment);
+    expect(JSON.parse(await run("activity", "list", "--task", "APP-1", "--json"))).toEqual(events);
+    expect(JSON.parse(await run("task", "view", "APP-1", "--json"))).toEqual(ordinaryJson);
   });
 });
 
-test("task view only reads history when requested and includes an empty activity array", () => {
-  withIsolatedZinnDir((directory) => {
-    expect(runZinn(["project", "create", "APP"], directory).code).toBe(0);
-    expect(runZinn(["task", "create", "APP", "--title", "Before recording"], directory).code).toBe(0);
+test("task view only reads history when requested and includes an empty activity array", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    expect((await runZinn(["project", "create", "APP"], directory)).code).toBe(0);
+    expect((await runZinn(["task", "create", "APP", "--title", "Before recording"], directory)).code).toBe(0);
     const taskId = withTestDb(directory, (db) => {
       db.run("DELETE FROM activity");
       return db.query<{ id: string }, []>("SELECT id FROM task").get()!.id;
     });
-    const ordinary = runZinn(["task", "view", "APP-1", "--json"], directory);
+    const ordinary = await runZinn(["task", "view", "APP-1", "--json"], directory);
     expect(ordinary.code).toBe(0);
-    const requested = runZinn(["task", "view", "APP-1", "--history", "--json"], directory);
+    const requested = await runZinn(["task", "view", "APP-1", "--history", "--json"], directory);
     expect(requested.code).toBe(0);
     expect(JSON.parse(requested.stdout)).toEqual({ ...JSON.parse(ordinary.stdout), activity: [] });
-    expect(runZinn(["task", "view", "APP-1", "--history"], directory)).toEqual(
-      runZinn(["task", "view", "APP-1"], directory),
+    expect(await runZinn(["task", "view", "APP-1", "--history"], directory)).toEqual(
+      await runZinn(["task", "view", "APP-1"], directory),
     );
 
-    seedRecordedActivity(directory, [{ id: "abcdef12-1234-7000-8000-000000000001", entity_id: taskId }]);
+    await seedRecordedActivity(directory, [{ id: "abcdef12-1234-7000-8000-000000000001", entity_id: taskId }]);
     withTestDb(directory, (db) => db.run("UPDATE activity SET changes = 'invalid JSON'"));
-    expect(runZinn(["task", "view", "APP-1", "--json"], directory)).toEqual(ordinary);
-    expect(runZinn(["task", "view", "APP-1"], directory).code).toBe(0);
-    expect(runZinn(["task", "view", "APP-1", "--history", "--json"], directory).code).toBe(1);
+    expect(await runZinn(["task", "view", "APP-1", "--json"], directory)).toEqual(ordinary);
+    expect((await runZinn(["task", "view", "APP-1"], directory)).code).toBe(0);
+    expect((await runZinn(["task", "view", "APP-1", "--history", "--json"], directory)).code).toBe(1);
   });
 });
 
-test("task view history orders timestamp ties and preserves full records for only its task", () => {
-  withIsolatedZinnDir((directory) => {
-    expect(runZinn(["project", "create", "APP"], directory).code).toBe(0);
-    expect(runZinn(["task", "create", "APP", "--title", "Current task"], directory).code).toBe(0);
+test("task view history orders timestamp ties and preserves full records for only its task", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    expect((await runZinn(["project", "create", "APP"], directory)).code).toBe(0);
+    expect((await runZinn(["task", "create", "APP", "--title", "Current task"], directory)).code).toBe(0);
     const taskId = withTestDb(directory, (db) => {
       db.run("DELETE FROM activity");
       return db.query<{ id: string }, []>("SELECT id FROM task").get()!.id;
     });
-    const events = seedRecordedActivity(directory, [
+    const events = await seedRecordedActivity(directory, [
       { id: "abcdef12-1234-7000-8000-000000000001", entity_id: taskId, created_at: 3, changes: { title: ["Old title", "Current task"], future: { text: "Full\nrecorded payload" } } },
       { id: "fedcba12-1234-7000-8000-000000000001", entity_id: taskId, created_at: 1, action: "order" },
       { id: "abcdef12-1234-7000-8000-000000000002", entity_id: taskId, created_at: 3, action: "archive", actor_email: null },
       { id: "abcdef12-1234-7000-8000-000000000003", entity_id: taskId, entity_type: "label", created_at: 4 },
     ]);
-    const viewed = runZinn(["task", "view", "APP-1", "--history", "--json"], directory);
+    const viewed = await runZinn(["task", "view", "APP-1", "--history", "--json"], directory);
     expect(viewed.code).toBe(0);
     expect(JSON.parse(viewed.stdout).activity).toEqual([events[2], events[0], events[1]]);
-    const previews = runZinn(["activity", "list", "--task", "APP-1"], directory);
-    const text = runZinn(["task", "view", "APP-1", "--history"], directory);
+    const previews = await runZinn(["activity", "list", "--task", "APP-1"], directory);
+    const text = await runZinn(["task", "view", "APP-1", "--history"], directory);
     expect(text.code).toBe(0);
     expect(text.stdout.endsWith(previews.stdout)).toBe(true);
     expect(text.stdout).toContain("Old title");
   });
 });
 
-test("task view history keeps archived tasks separate from deleted lifetimes with a reused key", () => {
-  withIsolatedZinnDir((directory) => {
-    const run = (...args: Array<string>) => {
-      const result = runZinn(args, directory);
+test("task view history keeps archived tasks separate from deleted lifetimes with a reused key", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    const run = async (...args: Array<string>) => {
+      const result = await runZinn(args, directory);
       expect(result.code).toBe(0);
       return result.stdout;
     };
-    run("project", "create", "APP");
-    run("task", "create", "APP", "--title", "Previous lifetime");
-    run("project", "delete", "APP", "--yes");
-    run("project", "create", "APP");
-    run("task", "create", "APP", "--title", "Current lifetime");
-    run("task", "archive", "APP-1");
+    await run("project", "create", "APP");
+    await run("task", "create", "APP", "--title", "Previous lifetime");
+    await run("project", "delete", "APP", "--yes");
+    await run("project", "create", "APP");
+    await run("task", "create", "APP", "--title", "Current lifetime");
+    await run("task", "archive", "APP-1");
     const currentTaskId = withTestDb(directory, (db) => db.query<{ id: string }, []>("SELECT id FROM task").get()!.id);
-    const allLifetimes: Array<Activity> = JSON.parse(run("activity", "list", "--task", "APP-1", "--show-deleted", "--json"));
+    const allLifetimes: Array<Activity> = JSON.parse(await run("activity", "list", "--task", "APP-1", "--show-deleted", "--json"));
     expect(allLifetimes.some((event) => event.entity_id !== currentTaskId)).toBe(true);
-    const viewed = JSON.parse(run("task", "view", "APP-1", "--history", "--json"));
+    const viewed = JSON.parse(await run("task", "view", "APP-1", "--history", "--json"));
     expect(viewed.status).toBe("Archived");
     expect(viewed.activity).toEqual(allLifetimes.filter((event) => event.entity_type === "task" && event.entity_id === currentTaskId));
-    const text = run("task", "view", "APP-1", "--history");
+    const text = await run("task", "view", "APP-1", "--history");
     expect(text).not.toContain(currentTaskId);
     expect(text).not.toContain("Previous lifetime");
   });
 });
 
-function seedRecordedActivity(
+async function seedRecordedActivity(
   directory: string,
   inputs: Array<Pick<Activity, "id"> & Partial<Activity>>,
 ) {
-  expect(runZinn(["activity", "list", "--json"], directory).code).toBe(0);
+  expect((await runZinn(["activity", "list", "--json"], directory)).code).toBe(0);
   const events: Array<Activity> = inputs.map((input) => ({
     id: input.id,
     created_at: input.created_at ?? Date.UTC(2026, 9, 8, 10, 30),
@@ -6653,27 +6689,27 @@ function seedRecordedActivity(
   return events;
 }
 
-test("activity empty lists and unrecoverable task histories return empty results", () => {
-  withIsolatedZinnDir((directory) => {
+test("activity empty lists and unrecoverable task histories return empty results", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     for (const args of [["activity", "list"], ["activity", "list", "--task", "gone-2", "--show-deleted"], ["activity", "list", "--task-id", "ffffffff-ffff-7fff-8fff-ffffffffffff"]]) {
-      const text = runZinn(args, directory);
+      const text = await runZinn(args, directory);
       expect(text).toEqual({ code: 0, stdout: "", stderr: "" });
-      const json = runZinn([...args, "--json"], directory);
+      const json = await runZinn([...args, "--json"], directory);
       expect(json.code).toBe(0);
       expect(JSON.parse(json.stdout)).toEqual([]);
     }
   });
 });
 
-test("activity task-key selection refuses missing current tasks with explicit deleted-history guidance", () => {
-  withIsolatedZinnDir((directory) => {
+test("activity task-key selection refuses missing current tasks with explicit deleted-history guidance", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const run = (...args: Array<string>) => runZinn(args, directory);
-    expect(run("project", "create", "APP").code).toBe(0);
-    expect(run("task", "create", "APP", "--title", "Deleted task").code).toBe(0);
-    expect(run("task", "delete", "APP-1", "--yes").code).toBe(0);
+    expect((await run("project", "create", "APP")).code).toBe(0);
+    expect((await run("task", "create", "APP", "--title", "Deleted task")).code).toBe(0);
+    expect((await run("task", "delete", "APP-1", "--yes")).code).toBe(0);
     const before = withTestDb(directory, (db) => db.query("SELECT * FROM activity ORDER BY id").all());
     for (const key of ["app-1", "APP-99", "GONE-1"]) {
-      const result = run("activity", "list", "--task", key, "--json");
+      const result = await run("activity", "list", "--task", key, "--json");
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       const failure = JSON.parse(result.stderr).error;
@@ -6681,77 +6717,77 @@ test("activity task-key selection refuses missing current tasks with explicit de
       expect(failure.details).toMatchObject({ entity: "task", key: key.toUpperCase(), argument: "--task" });
       expect(failure.help).toContain("--show-deleted");
       expect(failure.help).toContain(key);
-      const text = run("activity", "list", "--task", key);
+      const text = await run("activity", "list", "--task", key);
       expect(text.code).toBe(1);
       expect(text.stdout).toBe("");
       expect(text.stderr).toContain("--show-deleted");
     }
-    const history = run("activity", "list", "--task", "APP-1", "--show-deleted", "--json");
+    const history = await run("activity", "list", "--task", "APP-1", "--show-deleted", "--json");
     expect(history.code).toBe(0);
     expect(JSON.parse(history.stdout).map((event: Activity) => event.action)).toEqual(["delete", "create"]);
     expect(withTestDb(directory, (db) => db.query("SELECT * FROM activity ORDER BY id").all())).toEqual(before);
     withTestDb(directory, (db) => db.run("ALTER TABLE task RENAME TO unavailable_task"));
-    const broken = run("activity", "list", "--task", "APP-1", "--json");
+    const broken = await run("activity", "list", "--task", "APP-1", "--json");
     expect(broken.code).toBe(1);
     expect(JSON.parse(broken.stderr).error.code).not.toBe("not_found");
     expect(broken.stderr).not.toContain("--show-deleted");
   });
 });
 
-test("activity exact task IDs retain identity, status and original project deletion under limits", () => {
-  withIsolatedZinnDir((directory) => {
-    const run = (...args: Array<string>) => {
-      const result = runZinn(args, directory);
+test("activity exact task IDs retain identity, status and original project deletion under limits", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    const run = async (...args: Array<string>) => {
+      const result = await runZinn(args, directory);
       expect(result.code, result.stderr).toBe(0);
       expect(result.stderr).toBe("");
       return result.stdout;
     };
-    run("project", "create", "APP");
-    run("task", "create", "APP", "--title", "Original task");
-    run("task", "edit", "APP-1", "--title", "Changed task");
-    const firstHistory = JSON.parse(run("activity", "list", "--task", "APP-1", "--json"));
+    await run("project", "create", "APP");
+    await run("task", "create", "APP", "--title", "Original task");
+    await run("task", "edit", "APP-1", "--title", "Changed task");
+    const firstHistory = JSON.parse(await run("activity", "list", "--task", "APP-1", "--json"));
     const first = { id: firstHistory[0].entity_id as string };
-    run("project", "delete", "APP", "--yes");
-    const deletion = JSON.parse(run("activity", "list", "--json")).find((event: Activity) => event.entity_type === "project" && event.action === "delete");
-    run("project", "create", "APP");
-    run("task", "create", "APP", "--title", "New task");
-    const secondHistory = JSON.parse(run("activity", "list", "--task", "APP-1", "--json"));
+    await run("project", "delete", "APP", "--yes");
+    const deletion = JSON.parse(await run("activity", "list", "--json")).find((event: Activity) => event.entity_type === "project" && event.action === "delete");
+    await run("project", "create", "APP");
+    await run("task", "create", "APP", "--title", "New task");
+    const secondHistory = JSON.parse(await run("activity", "list", "--task", "APP-1", "--json"));
     const second = { id: secondHistory[0].entity_id as string };
     for (const [taskId, expected] of [[first.id, [deletion, ...firstHistory]], [second.id, secondHistory]] as const) {
       for (const spelling of [taskId, taskId.toUpperCase(), taskId.replaceAll("-", ""), taskId.replaceAll("-", "").toUpperCase()]) {
-        expect(JSON.parse(run("activity", "list", "--task-id", spelling, "--json"))).toEqual(expected);
+        expect(JSON.parse(await run("activity", "list", "--task-id", spelling, "--json"))).toEqual(expected);
       }
-      expect(JSON.parse(run("activity", "list", "--task-id", taskId, "--limit", "1", "--json"))).toEqual(expected.slice(0, 1));
+      expect(JSON.parse(await run("activity", "list", "--task-id", taskId, "--limit", "1", "--json"))).toEqual(expected.slice(0, 1));
     }
-    const boundary = run("activity", "list", "--task-id", first.id, "--limit", "1");
+    const boundary = await run("activity", "list", "--task-id", first.id, "--limit", "1");
     expect(boundary).toContain("project APP");
     expect(boundary).toContain("deleted");
     expect(boundary).toContain("APP-1");
     expect(boundary).toContain(first.id);
     expect(boundary).not.toContain(second.id);
-    const active = run("activity", "list", "--task-id", second.id, "--limit", "1");
+    const active = await run("activity", "list", "--task-id", second.id, "--limit", "1");
     expect(active).toContain(second.id);
     expect(active).toContain("current");
-    run("task", "archive", "APP-1");
-    const archived = run("activity", "list", "--task-id", second.id, "--limit", "1");
+    await run("task", "archive", "APP-1");
+    const archived = await run("activity", "list", "--task-id", second.id, "--limit", "1");
     expect(archived).toContain(second.id);
     expect(archived).toContain("[archived]");
-    expect(run("activity", "list", "--task", "APP-1")).not.toContain("[archived]");
-    const archivedEvents = JSON.parse(run("activity", "list", "--task", "APP-1", "--json"));
+    expect(await run("activity", "list", "--task", "APP-1")).not.toContain("[archived]");
+    const archivedEvents = JSON.parse(await run("activity", "list", "--task", "APP-1", "--json"));
     expect(archivedEvents.every((event: Activity) => event.entity_id === second.id)).toBe(true);
-    expect(JSON.parse(run("activity", "list", "--task-id", first.id, "--session", "missing", "--limit", "1", "--json"))).toEqual([]);
-    run("task", "delete", "APP-1", "--yes");
-    const deleted = run("activity", "list", "--task-id", second.id, "--limit", "1");
+    expect(JSON.parse(await run("activity", "list", "--task-id", first.id, "--session", "missing", "--limit", "1", "--json"))).toEqual([]);
+    await run("task", "delete", "APP-1", "--yes");
+    const deleted = await run("activity", "list", "--task-id", second.id, "--limit", "1");
     expect(deleted).toContain(second.id);
     expect(deleted).toContain("deleted");
     expect(deleted).not.toContain(first.id);
   });
 });
 
-test("activity exact task IDs preserve empty histories and conjunctive session/thread filtering", () => {
-  withIsolatedZinnDir((directory) => {
+test("activity exact task IDs preserve empty histories and conjunctive session/thread filtering", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const taskId = "abcdef12-1234-7000-8000-123456abcdef";
-    const events = seedRecordedActivity(directory, [
+    const events = await seedRecordedActivity(directory, [
       { id: "11111111-1111-7111-8111-111111111111", entity_id: taskId, created_at: 1, actor_session_id: "Session/one", actor_thread_id: "Thread/one", changes: { future: { text: "Full\ntext", values: [null, 2] } } },
       { id: "11111111-2111-7111-8111-111111111111", entity_id: taskId, created_at: 2, actor_session_id: "Session/one", actor_thread_id: "Thread/two" },
       { id: "11111111-3111-7111-8111-111111111111", entity_id: taskId, created_at: 1, actor_session_id: "Session/one", actor_thread_id: "Thread/one" },
@@ -6759,43 +6795,43 @@ test("activity exact task IDs preserve empty histories and conjunctive session/t
     ]);
     const before = withTestDb(directory, (db) => db.query("SELECT * FROM activity ORDER BY id").all());
     const query = (...flags: Array<string>) => runZinn(["activity", "list", "--task-id", taskId, ...flags, "--json"], directory);
-    expect(JSON.parse(query().stdout)).toEqual([events[1], events[2], events[0]]);
-    expect(JSON.parse(query("--session", "Session/one", "--thread", "Thread/one", "--limit", "1").stdout)).toEqual([events[2]]);
-    expect(JSON.parse(query("--session", "Session/one", "--thread", "Thread/one").stdout)).toEqual([events[2], events[0]]);
-    expect(JSON.parse(query("--session", "session/one").stdout)).toEqual([]);
+    expect(JSON.parse((await query()).stdout)).toEqual([events[1], events[2], events[0]]);
+    expect(JSON.parse((await query("--session", "Session/one", "--thread", "Thread/one", "--limit", "1")).stdout)).toEqual([events[2]]);
+    expect(JSON.parse((await query("--session", "Session/one", "--thread", "Thread/one")).stdout)).toEqual([events[2], events[0]]);
+    expect(JSON.parse((await query("--session", "session/one")).stdout)).toEqual([]);
     expect(withTestDb(directory, (db) => db.query("SELECT * FROM activity ORDER BY id").all())).toEqual(before);
-    expect(runZinn(["project", "create", "APP"], directory).code).toBe(0);
-    expect(runZinn(["task", "create", "APP", "--title", "No recorded history"], directory).code).toBe(0);
+    expect((await runZinn(["project", "create", "APP"], directory)).code).toBe(0);
+    expect((await runZinn(["task", "create", "APP", "--title", "No recorded history"], directory)).code).toBe(0);
     const emptyId = withTestDb(directory, (db) => {
       const id = db.query<{ id: string }, []>("SELECT id FROM task").get()!.id;
       db.query("DELETE FROM activity WHERE entity_type = 'task' AND entity_id = ?").run(id);
       return id;
     });
     for (const selector of [["--task", "APP-1"], ["--task-id", emptyId]]) {
-      expect(runZinn(["activity", "list", ...selector], directory)).toEqual({ code: 0, stdout: "", stderr: "" });
-      expect(JSON.parse(runZinn(["activity", "list", ...selector, "--json"], directory).stdout)).toEqual([]);
+      expect(await runZinn(["activity", "list", ...selector], directory)).toEqual({ code: 0, stdout: "", stderr: "" });
+      expect(JSON.parse((await runZinn(["activity", "list", ...selector, "--json"], directory)).stdout)).toEqual([]);
     }
   });
 });
 
-test("activity JSON preserves full matching records, parsed payloads and deterministic ordering", () => {
-  withIsolatedZinnDir((directory) => {
-    const events = seedRecordedActivity(directory, [
+test("activity JSON preserves full matching records, parsed payloads and deterministic ordering", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    const events = await seedRecordedActivity(directory, [
       { id: "11111111-1234-7000-8000-123456abcde1", created_at: 1, entity_type: "project", action: "create", changes: { key: "OLD", name: "Old project", columns: [] } },
       { id: "11111111-1234-7000-8000-123456abcde2", created_at: 2, entity_type: "column", action: "order", actor_name: null, actor_source: "adapter/test", actor_session_id: "session/1", actor_thread_id: "thread/2", actor_agent: "general", actor_model: "vendor/model", actor_effort: "medium" },
       { id: "11111111-1234-7000-8000-123456abcde3", created_at: 2, entity_type: "label", action: "delete", actor_email: null, changes: { name: "Old label", description: "Full\ntext", future: { values: [1, null] } } },
     ]);
-    const listed = runZinn(["activity", "list", "--json"], directory);
+    const listed = await runZinn(["activity", "list", "--json"], directory);
     expect(listed.code).toBe(0);
     expect(JSON.parse(listed.stdout)).toEqual([events[2], events[1], events[0]]);
-    expect(JSON.parse(runZinn(["activity", "list", "--limit", "1", "--json"], directory).stdout)).toEqual([events[2]]);
-    expect(JSON.parse(runZinn(["activity", "list", "--limit", String(Number.MAX_SAFE_INTEGER), "--json"], directory).stdout)).toHaveLength(3);
+    expect(JSON.parse((await runZinn(["activity", "list", "--limit", "1", "--json"], directory)).stdout)).toEqual([events[2]]);
+    expect(JSON.parse((await runZinn(["activity", "list", "--limit", String(Number.MAX_SAFE_INTEGER), "--json"], directory)).stdout)).toHaveLength(3);
     for (const event of events) {
-      const viewed = runZinn(["activity", "view", event.id, "--json"], directory);
+      const viewed = await runZinn(["activity", "view", event.id, "--json"], directory);
       expect(viewed.code).toBe(0);
       expect(JSON.parse(viewed.stdout)).toEqual(event);
     }
-    const text = runZinn(["activity", "list"], directory).stdout;
+    const text = (await runZinn(["activity", "list"], directory)).stdout;
     expect(text).toContain("order");
     expect(text).toContain("column");
     expect(text).toContain("Entity ID: 11111111-1234-7000-8000-123456abcdef");
@@ -6806,78 +6842,78 @@ test("activity JSON preserves full matching records, parsed payloads and determi
   });
 });
 
-test("project activity filters retain original member events and project lifetimes through the CLI", () => {
-  withIsolatedZinnDir((directory) => {
-    const run = (...args: Array<string>) => {
-      const result = runZinn(args, directory, { ZINN_SESSION_ID: "project/run", ZINN_THREAD_ID: "project/thread" });
+test("project activity filters retain original member events and project lifetimes through the CLI", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    const run = async (...args: Array<string>) => {
+      const result = await runZinn(args, directory, { ZINN_SESSION_ID: "project/run", ZINN_THREAD_ID: "project/thread" });
       expect(result.code, result.stderr).toBe(0);
       expect(result.stderr).toBe("");
       return result.stdout;
     };
-    const list = (...flags: Array<string>): Array<Activity> => JSON.parse(run("activity", "list", ...flags, "--json"));
-    run("project", "create", "APP");
-    const firstProject = { id: list()[0]!.entity_id };
-    run("project", "create", "OUT");
-    run("project", "column", "create", "APP", "Extra");
-    run("task", "create", "APP", "--title", "Deleted before project");
-    run("task", "create", "APP", "--title", "Archived member");
-    run("task", "create", "OUT", "--title", "Outside");
-    run("task", "comment", "create", "APP-1", "--text", "Preserved note");
-    run("label", "create", "Attached");
-    run("task", "edit", "APP-1", "--add-label", "Attached");
-    run("label", "delete", "Attached", "--yes");
-    run("task", "relation", "create", "APP-1", "APP-2", "--type", "related");
-    run("task", "relation", "create", "APP-1", "OUT-1", "--type", "related");
-    run("task", "archive", "APP-2");
+    const list = async (...flags: Array<string>): Promise<Array<Activity>> => JSON.parse(await run("activity", "list", ...flags, "--json"));
+    await run("project", "create", "APP");
+    const firstProject = { id: (await list())[0]!.entity_id };
+    await run("project", "create", "OUT");
+    await run("project", "column", "create", "APP", "Extra");
+    await run("task", "create", "APP", "--title", "Deleted before project");
+    await run("task", "create", "APP", "--title", "Archived member");
+    await run("task", "create", "OUT", "--title", "Outside");
+    await run("task", "comment", "create", "APP-1", "--text", "Preserved note");
+    await run("label", "create", "Attached");
+    await run("task", "edit", "APP-1", "--add-label", "Attached");
+    await run("label", "delete", "Attached", "--yes");
+    await run("task", "relation", "create", "APP-1", "APP-2", "--type", "related");
+    await run("task", "relation", "create", "APP-1", "OUT-1", "--type", "related");
+    await run("task", "archive", "APP-2");
     const memberIds = withTestDb(directory, (db) => new Set([
       firstProject.id,
       ...db.query<{ id: string }, [string]>("SELECT id FROM task WHERE project_id = ?").all(firstProject.id).map(row => row.id),
       ...db.query<{ id: string }, [string]>("SELECT id FROM project_column WHERE project_id = ?").all(firstProject.id).map(row => row.id),
     ]));
-    run("task", "delete", "APP-1", "--yes");
-    const beforeDeletion = list().filter(event => memberIds.has(event.entity_id));
-    expect(list("--project", "app")).toEqual(beforeDeletion);
+    await run("task", "delete", "APP-1", "--yes");
+    const beforeDeletion = (await list()).filter(event => memberIds.has(event.entity_id));
+    expect(await list("--project", "app")).toEqual(beforeDeletion);
     expect(beforeDeletion.filter(event => event.action === "relation_create")).toHaveLength(3);
     expect(beforeDeletion.some(event => event.entity_type === "label")).toBe(false);
     expect(beforeDeletion.some(event => event.action === "comment_create")).toBe(true);
-    const text = run("activity", "list", "--project", "APP");
+    const text = await run("activity", "list", "--project", "APP");
     const displayedIds = text.split("\n").map(line => line.match(/^([0-9a-f-]{8,})\s/)?.[1]).filter(Boolean);
     expect(displayedIds).toHaveLength(beforeDeletion.length);
     expect(displayedIds.map(prefix => beforeDeletion.find(event => event.id.startsWith(prefix!))?.id))
       .toEqual(beforeDeletion.map(event => event.id));
-    run("project", "delete", "APP", "--yes");
-    const firstLifetime = list().filter(event => memberIds.has(event.entity_id));
-    expect(list("--project", "APP", "--show-deleted")).toEqual(firstLifetime);
+    await run("project", "delete", "APP", "--yes");
+    const firstLifetime = (await list()).filter(event => memberIds.has(event.entity_id));
+    expect(await list("--project", "APP", "--show-deleted")).toEqual(firstLifetime);
     const aggregate = firstLifetime.find(event => event.entity_type === "project" && event.action === "delete")!;
     expect(aggregate.changes!.tasks).toHaveLength(1);
-    run("project", "create", "APP");
-    run("task", "create", "APP", "--title", "New lifetime");
-    const current = list("--task", "APP-1");
-    expect(list("--project", "APP").filter(event => event.entity_type === "task")).toEqual(current);
-    const all = list("--project", "APP", "--show-deleted");
-    expect(all).toEqual([...list("--project", "APP"), ...firstLifetime]);
+    await run("project", "create", "APP");
+    await run("task", "create", "APP", "--title", "New lifetime");
+    const current = await list("--task", "APP-1");
+    expect((await list("--project", "APP")).filter(event => event.entity_type === "task")).toEqual(current);
+    const all = await list("--project", "APP", "--show-deleted");
+    expect(all).toEqual([...await list("--project", "APP"), ...firstLifetime]);
     for (const id of [firstProject.id, firstProject.id.toUpperCase(), firstProject.id.replaceAll("-", ""), firstProject.id.replaceAll("-", "").toUpperCase()]) {
-      expect(list("--project-id", id)).toEqual(firstLifetime);
+      expect(await list("--project-id", id)).toEqual(firstLifetime);
     }
-    expect(list("--project", "APP", "--show-deleted", "--session", "project/run", "--thread", "project/thread", "--limit", "2")).toEqual(all.slice(0, 2));
-    expect(list("--project", "APP", "--session", "Project/run")).toEqual([]);
-    const limited = run("activity", "list", "--project", "APP", "--show-deleted", "--limit", "1");
+    expect(await list("--project", "APP", "--show-deleted", "--session", "project/run", "--thread", "project/thread", "--limit", "2")).toEqual(all.slice(0, 2));
+    expect(await list("--project", "APP", "--session", "Project/run")).toEqual([]);
+    const limited = await run("activity", "list", "--project", "APP", "--show-deleted", "--limit", "1");
     expect(limited).toContain(current[0]!.entity_id);
-    const deletionText = run("activity", "list", "--project-id", firstProject.id, "--limit", "1");
+    const deletionText = await run("activity", "list", "--project-id", firstProject.id, "--limit", "1");
     expect(deletionText).toContain("APP");
     expect(deletionText).toContain((aggregate.changes!.tasks as Array<{ id: string }>)[0]!.id);
     const beforeReads = withTestDb(directory, db => db.query("SELECT * FROM activity ORDER BY id").all());
     for (const flags of [["--project", "UNKNOWN", "--show-deleted"], ["--project-id", "ffffffff-ffff-7fff-8fff-ffffffffffff"]]) {
-      expect(list(...flags)).toEqual([]);
-      expect(run("activity", "list", ...flags)).toBe("");
+      expect(await list(...flags)).toEqual([]);
+      expect(await run("activity", "list", ...flags)).toBe("");
     }
     expect(withTestDb(directory, db => db.query("SELECT * FROM activity ORDER BY id").all())).toEqual(beforeReads);
   });
 });
 
-test("project activity refuses missing current projects and invalid selectors without changing data", () => {
-  withIsolatedZinnDir((directory) => {
-    expect(runZinn(["project", "create", "APP"], directory).code).toBe(0);
+test("project activity refuses missing current projects and invalid selectors without changing data", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    expect((await runZinn(["project", "create", "APP"], directory)).code).toBe(0);
     const id = "abcdef12-1234-7000-8000-123456abcdef";
     const selector = routes.activity.list.input.constraints.find(constraint => constraint.kind === "exclusive")!;
     const values: Record<string, string> = { project: "APP", "project-id": id, task: "APP-1", "task-id": id };
@@ -6897,12 +6933,12 @@ test("project activity refuses missing current projects and invalid selectors wi
     }
     const before = withTestDb(directory, db => db.query("SELECT * FROM activity ORDER BY id").all());
     for (const flags of invalid) {
-      const result = runZinn(["activity", "list", ...flags, "--json"], directory);
+      const result = await runZinn(["activity", "list", ...flags, "--json"], directory);
       expect(result.code, flags.join(" ")).toBe(1);
       expect(result.stdout).toBe("");
       expect(JSON.parse(result.stderr).error.code).toBe("invalid_input");
     }
-    const missing = runZinn(["activity", "list", "--project", "gone", "--json"], directory);
+    const missing = await runZinn(["activity", "list", "--project", "gone", "--json"], directory);
     expect(missing.code).toBe(1);
     expect(missing.stdout).toBe("");
     expect(JSON.parse(missing.stderr).error).toMatchObject({ code: "not_found", details: { entity: "project", key: "GONE", argument: "--project" } });
@@ -6910,53 +6946,53 @@ test("project activity refuses missing current projects and invalid selectors wi
     expect(JSON.parse(missing.stderr).error.help).toContain("gone");
     expect(withTestDb(directory, db => db.query("SELECT * FROM activity ORDER BY id").all())).toEqual(before);
     withTestDb(directory, db => db.run("ALTER TABLE project RENAME TO unavailable_project"));
-    const broken = runZinn(["activity", "list", "--project", "APP", "--json"], directory);
+    const broken = await runZinn(["activity", "list", "--project", "APP", "--json"], directory);
     expect(broken.code).toBe(1);
     expect(JSON.parse(broken.stderr).error.code).not.toBe("not_found");
     expect(broken.stderr).not.toContain("--show-deleted");
   });
 });
 
-test("limited project activity keeps deleted task and column names when identity snapshots are filtered out", () => {
-  withIsolatedZinnDir((directory) => {
-    const run = (args: Array<string>, session = "setup") => {
-      const result = runZinn(args, directory, { ZINN_SESSION_ID: session });
+test("limited project activity keeps deleted task and column names when identity snapshots are filtered out", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    const run = async (args: Array<string>, session = "setup") => {
+      const result = await runZinn(args, directory, { ZINN_SESSION_ID: session });
       expect(result.code, result.stderr).toBe(0);
       expect(result.stderr).toBe("");
       return result.stdout;
     };
-    run(["project", "create", "APP"]);
-    const projectId = JSON.parse(run(["activity", "list", "--json"]))[0].entity_id;
-    run(["project", "column", "create", "APP", "Extra"]);
-    run(["task", "create", "APP", "--title", "Original"]);
-    const taskId = JSON.parse(run(["activity", "list", "--task", "APP-1", "--json"]))[0].entity_id;
-    run(["task", "edit", "APP-1", "--title", "Edited"], "task/edit");
-    run(["project", "edit", "APP", "--name", "Renamed"], "project/edit");
-    run(["project", "column", "edit", "APP", "Extra", "--name", "Renamed column"], "column/edit");
-    run(["task", "delete", "APP-1", "--yes"]);
-    run(["project", "delete", "APP", "--yes"]);
-    run(["project", "create", "APP"]);
-    run(["task", "create", "APP", "--title", "Reused key"]);
+    await run(["project", "create", "APP"]);
+    const projectId = JSON.parse(await run(["activity", "list", "--json"]))[0].entity_id;
+    await run(["project", "column", "create", "APP", "Extra"]);
+    await run(["task", "create", "APP", "--title", "Original"]);
+    const taskId = JSON.parse(await run(["activity", "list", "--task", "APP-1", "--json"]))[0].entity_id;
+    await run(["task", "edit", "APP-1", "--title", "Edited"], "task/edit");
+    await run(["project", "edit", "APP", "--name", "Renamed"], "project/edit");
+    await run(["project", "column", "edit", "APP", "Extra", "--name", "Renamed column"], "column/edit");
+    await run(["task", "delete", "APP-1", "--yes"]);
+    await run(["project", "delete", "APP", "--yes"]);
+    await run(["project", "create", "APP"]);
+    await run(["task", "create", "APP", "--title", "Reused key"]);
     const flags = ["activity", "list", "--project-id", projectId, "--limit", "1", "--session"];
-    const taskText = run([...flags, "task/edit"]);
+    const taskText = await run([...flags, "task/edit"]);
     expect(taskText).toContain("APP-1");
     expect(taskText).toContain(taskId);
     expect(taskText).toContain("deleted");
-    const taskEvents = JSON.parse(run([...flags, "task/edit", "--json"]));
+    const taskEvents = JSON.parse(await run([...flags, "task/edit", "--json"]));
     expect(taskEvents).toHaveLength(1);
     expect(taskEvents[0]).toMatchObject({ entity_id: taskId, action: "edit", changes: { title: ["Original", "Edited"] } });
-    expect(run([...flags, "project/edit"])).toContain("project APP [deleted]");
-    expect(run([...flags, "column/edit"])).toContain("column Renamed column [deleted]");
-    const help = run(["activity", "list", "--help"]);
+    expect(await run([...flags, "project/edit"])).toContain("project APP [deleted]");
+    expect(await run([...flags, "column/edit"])).toContain("column Renamed column [deleted]");
+    const help = await run(["activity", "list", "--help"]);
     for (const flag of ["--project", "--project-id", "--task", "--task-id", "--show-deleted"]) {
       expect(help).toContain(flag);
     }
   });
 });
 
-test("project activity navigation scans history a bounded number of times for many deleted tasks", () => {
-  withIsolatedZinnDir((directory) => {
-    const result = Bun.spawnSync([process.execPath, "--eval", `
+test("project activity navigation scans history a bounded number of times for many deleted tasks", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    const result = await runProcessAsync([process.execPath, "--eval", `
       import { strict as assert } from "node:assert";
       import { spyOn } from "bun:test";
       import { activity, project, task } from ${JSON.stringify(join(import.meta.dir, "../core/index.ts"))};
@@ -7003,40 +7039,40 @@ test("project activity navigation scans history a bounded number of times for ma
       assert.equal(archived.navigation.name, current.key);
       assert.equal(archived.navigation.status, "archived");
       checkScans();
-    `], { env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory } });
-    expect(result.exitCode, result.stderr.toString()).toBe(0);
+    `], { cwd: directory, env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory } });
+    expect(result.code, result.stderr).toBe(0);
   });
 });
 
-test("activity returns all events by default and limits only after selecting matches", () => {
-  withIsolatedZinnDir((directory) => {
-    const events = seedRecordedActivity(directory, Array.from({ length: 55 }, (_, index) => ({
+test("activity returns all events by default and limits only after selecting matches", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    const events = await seedRecordedActivity(directory, Array.from({ length: 55 }, (_, index) => ({
       id: `11111111-1234-7000-8000-${String(index).padStart(12, "0")}`,
       created_at: index,
     })));
-    expect(JSON.parse(runZinn(["activity", "list", "--json"], directory).stdout)).toEqual(events.toReversed());
-    expect(JSON.parse(runZinn(["activity", "list", "--limit", "2", "--json"], directory).stdout)).toEqual(events.toReversed().slice(0, 2));
+    expect(JSON.parse((await runZinn(["activity", "list", "--json"], directory)).stdout)).toEqual(events.toReversed());
+    expect(JSON.parse((await runZinn(["activity", "list", "--limit", "2", "--json"], directory)).stdout)).toEqual(events.toReversed().slice(0, 2));
   });
 });
 
-test("activity task-filtered prefixes remain globally unique even outside the filter and limit", () => {
-  withIsolatedZinnDir((directory) => {
-    expect(runZinn(["project", "create", "APP"], directory).code).toBe(0);
-    expect(runZinn(["task", "create", "APP", "--title", "Current task"], directory).code).toBe(0);
+test("activity task-filtered prefixes remain globally unique even outside the filter and limit", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    expect((await runZinn(["project", "create", "APP"], directory)).code).toBe(0);
+    expect((await runZinn(["task", "create", "APP", "--title", "Current task"], directory)).code).toBe(0);
     const taskId = withTestDb(directory, (db) => db.query<{ id: string }, []>("SELECT id FROM task").get()!.id);
     const first = "abcdef12-1234-7000-8000-000000000001";
     const second = "abcdef12-1234-7000-8000-000000000002";
-    seedRecordedActivity(directory, [
+    await seedRecordedActivity(directory, [
       { id: first, created_at: Date.now() + 1000, entity_id: taskId },
       { id: second, created_at: Date.now() + 2000, entity_type: "label" },
     ]);
-    const filtered = runZinn(["activity", "list", "--task", "app-1", "--limit", "1"], directory);
+    const filtered = await runZinn(["activity", "list", "--task", "app-1", "--limit", "1"], directory);
     expect(filtered.code).toBe(0);
     expect(filtered.stdout.split(" | ")[0]).toBe(first);
     expect(filtered.stdout).toContain("APP-1 · edited");
     expect(filtered.stdout).not.toContain("[current]");
     expect(filtered.stdout).not.toContain(second);
-    const ambiguous = runZinn(["activity", "view", "abcdef12", "--json"], directory);
+    const ambiguous = await runZinn(["activity", "view", "abcdef12", "--json"], directory);
     expect(ambiguous.code).toBe(1);
     expect(ambiguous.stdout).toBe("");
     const failure = errorDocumentSchema.parse(JSON.parse(ambiguous.stderr)).error;
@@ -7046,12 +7082,12 @@ test("activity task-filtered prefixes remain globally unique even outside the fi
   });
 });
 
-test("activity view accepts normalized IDs and reports malformed, short and missing IDs distinctly", () => {
-  withIsolatedZinnDir((directory) => {
+test("activity view accepts normalized IDs and reports malformed, short and missing IDs distinctly", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const id = "abcdef12-1234-7000-8000-123456abcdef";
-    const [event] = seedRecordedActivity(directory, [{ id }]);
+    const [event] = await seedRecordedActivity(directory, [{ id }]);
     for (const input of [id, id.toUpperCase(), id.replaceAll("-", ""), "ABCDEF12", "ABCDEF12-1", "ABCDEF121"]) {
-      const result = runZinn(["activity", "view", input, "--json"], directory);
+      const result = await runZinn(["activity", "view", input, "--json"], directory);
       expect(result.code).toBe(0);
       expect(JSON.parse(result.stdout)).toEqual(event);
     }
@@ -7060,7 +7096,7 @@ test("activity view accepts normalized IDs and reports malformed, short and miss
       ["abcd-ef12", { code: "invalid_input", details: { field: [] } }],
       ["ffffffff", { code: "not_found", details: { entity: "activity", key: "ffffffff" } }],
     ] as const) {
-      const result = runZinn(["activity", "view", input, "--json"], directory);
+      const result = await runZinn(["activity", "view", input, "--json"], directory);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(expected);
@@ -7068,9 +7104,9 @@ test("activity view accepts normalized IDs and reports malformed, short and miss
   });
 });
 
-test("activity rejects unsupported, repeated and malformed command arguments without writes", () => {
-  withIsolatedZinnDir((directory) => {
-    const [event] = seedRecordedActivity(directory, [{ id: "abcdef12-1234-7000-8000-123456abcdef" }]);
+test("activity rejects unsupported, repeated and malformed command arguments without writes", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    const [event] = await seedRecordedActivity(directory, [{ id: "abcdef12-1234-7000-8000-123456abcdef" }]);
     const before = withTestDb(directory, (db) => db.query("SELECT * FROM activity").all());
     const invalid = [
       ["list", "APP-1"], ["list", "--project", "APP-1"],
@@ -7091,7 +7127,7 @@ test("activity rejects unsupported, repeated and malformed command arguments wit
       ["view", event!.id, "--session", "session"],
     ];
     for (const args of invalid) {
-      const result = runZinn(["activity", ...args, "--json"], directory);
+      const result = await runZinn(["activity", ...args, "--json"], directory);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(JSON.parse(result.stderr).error.message.length).toBeGreaterThan(0);
@@ -7101,7 +7137,7 @@ test("activity rejects unsupported, repeated and malformed command arguments wit
         .map((limit) => [limit, { argument: "--limit" }] as const),
       ["9007199254740992", { field: ["limit"] }],
     ] as const) {
-      const result = runZinn(["activity", "list", `--limit=${limit}`, "--json"], directory);
+      const result = await runZinn(["activity", "list", `--limit=${limit}`, "--json"], directory);
       expect(result.code).toBe(1);
       expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "invalid_input", details });
     }
@@ -7109,11 +7145,11 @@ test("activity rejects unsupported, repeated and malformed command arguments wit
   });
 });
 
-test("session activity filters return only committed changes and compose with thread, task and limit", () => {
-  withIsolatedZinnDir((directory) => {
+test("session activity filters return only committed changes and compose with thread, task and limit", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const run = (args: Array<string>, env: Record<string, string> = {}) => runZinnAs(args, directory, env);
-    const events = (...flags: Array<string>): Array<Activity> => {
-      const result = run(["activity", "list", ...flags, "--json"]);
+    const events = async (...flags: Array<string>): Promise<Array<Activity>> => {
+      const result = await run(["activity", "list", ...flags, "--json"]);
       expect(result.code).toBe(0);
       expect(result.stderr).toBe("");
       return JSON.parse(result.stdout);
@@ -7125,50 +7161,50 @@ test("session activity filters return only committed changes and compose with th
       ZINN_AGENT: "worker", ZINN_MODEL: "vendor/model", ZINN_EFFORT: "low",
     };
     const parent = { CODEX_SESSION_ID: "Conversation/C", CODEX_THREAD_ID: "Conversation/C" };
-    expect(run(["project", "create", "RUN"], first).code).toBe(0);
-    expect(run(["task", "create", "RUN", "--title", "First"], first).code).toBe(0);
-    expect(run(["task", "edit", "RUN-1", "--title", "Changed"], first).code).toBe(0);
-    expect(run(["task", "create", "RUN", "--title", "Second"], second).code).toBe(0);
-    expect(run(["task", "create", "RUN", "--title", "Child"], child).code).toBe(0);
-    expect(run(["task", "edit", "RUN-2", "--title", "Parent update"], parent).code).toBe(0);
+    expect((await run(["project", "create", "RUN"], first)).code).toBe(0);
+    expect((await run(["task", "create", "RUN", "--title", "First"], first)).code).toBe(0);
+    expect((await run(["task", "edit", "RUN-1", "--title", "Changed"], first)).code).toBe(0);
+    expect((await run(["task", "create", "RUN", "--title", "Second"], second)).code).toBe(0);
+    expect((await run(["task", "create", "RUN", "--title", "Child"], child)).code).toBe(0);
+    expect((await run(["task", "edit", "RUN-2", "--title", "Parent update"], parent)).code).toBe(0);
 
-    const session = events("--session", "Conversation/A");
+    const session = await events("--session", "Conversation/A");
     expect(session.map((event) => [event.entity_type, event.action])).toEqual([
       ["task", "edit"], ["task", "create"], ["project", "create"],
     ]);
     expect(session.every((event) => event.actor_session_id === "Conversation/A" && event.actor_thread_id === null)).toBe(true);
-    expect(events("--session", "Conversation/A", "--task", "run-1", "--limit", "1")).toEqual([session[0]!]);
-    const childEvents = events("--thread", "Child/1");
+    expect(await events("--session", "Conversation/A", "--task", "run-1", "--limit", "1")).toEqual([session[0]!]);
+    const childEvents = await events("--thread", "Child/1");
     expect(childEvents).toHaveLength(1);
     expect(childEvents[0]).toMatchObject({ actor_session_id: "Conversation/C", actor_thread_id: "Child/1", changes: { title: "Child" } });
-    expect(events("--session", "Conversation/C", "--thread", "Child/1")).toEqual(childEvents);
-    expect(events("--session", "Conversation/C")).toHaveLength(2);
-    expect(events("--thread", "Conversation/C")).toHaveLength(1);
+    expect(await events("--session", "Conversation/C", "--thread", "Child/1")).toEqual(childEvents);
+    expect(await events("--session", "Conversation/C")).toHaveLength(2);
+    expect(await events("--thread", "Conversation/C")).toHaveLength(1);
 
     const historicalId = "abcdef12-1234-7000-8000-123456abcde1";
-    seedRecordedActivity(directory, [{ id: historicalId, actor_name: "1", entity_id: session[0]!.entity_id }]);
-    expect(events().some((event) => event.id === historicalId)).toBe(true);
-    expect(events("--session", "Conversation/A")).toEqual(session);
-    const before = events();
-    expect(run(["task", "edit", "RUN-1", "--title", "Changed"], first).code).toBe(0);
-    expect(run(["task", "move", "RUN-1", "Missing"], first).code).toBe(1);
-    expect(events()).toEqual(before);
+    await seedRecordedActivity(directory, [{ id: historicalId, actor_name: "1", entity_id: session[0]!.entity_id }]);
+    expect((await events()).some((event) => event.id === historicalId)).toBe(true);
+    expect(await events("--session", "Conversation/A")).toEqual(session);
+    const before = await events();
+    expect((await run(["task", "edit", "RUN-1", "--title", "Changed"], first)).code).toBe(0);
+    expect((await run(["task", "move", "RUN-1", "Missing"], first)).code).toBe(1);
+    expect(await events()).toEqual(before);
 
     for (const flags of [
       ["--session", "conversation/A"], ["--session", "Conversation"],
       ["--session", " Conversation/A"], ["--thread", "Child"],
       ["--session", "Conversation/A", "--thread", "Child/1"],
     ]) {
-      expect(events(...flags)).toEqual([]);
-      expect(run(["activity", "list", ...flags])).toEqual({ code: 0, stdout: "", stderr: "" });
+      expect(await events(...flags)).toEqual([]);
+      expect(await run(["activity", "list", ...flags])).toEqual({ code: 0, stdout: "", stderr: "" });
     }
 
-    const view = run(["activity", "view", childEvents[0]!.id]);
+    const view = await run(["activity", "view", childEvents[0]!.id]);
     expect(view.code).toBe(0);
     for (const detail of ["Source: env:CODEX_THREAD_ID", "Session: Conversation/C", "Thread: Child/1", "Agent: worker", "Model: vendor/model", "Effort: low"]) {
       expect(view.stdout).toContain(detail);
     }
-    const historical = run(["activity", "view", historicalId]);
+    const historical = await run(["activity", "view", historicalId]);
     expect(historical.code).toBe(0);
     for (const field of ["Source", "Session", "Thread", "Agent", "Model", "Effort"]) {
       expect(historical.stdout).toContain(`${field}: null`);
@@ -7176,65 +7212,65 @@ test("session activity filters return only committed changes and compose with th
   });
 });
 
-test("activity recovers deleted and reused task lifetimes, retaining the original project deletion", () => {
-  withIsolatedZinnDir((directory) => {
+test("activity recovers deleted and reused task lifetimes, retaining the original project deletion", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const run = (...args: Array<string>) => runZinn(args, directory);
-    expect(run("project", "create", "APP").code).toBe(0);
-    expect(run("task", "create", "APP", "--title", "Old lifetime").code).toBe(0);
-    expect(run("task", "create", "APP", "--title", "Unrelated").code).toBe(0);
+    expect((await run("project", "create", "APP")).code).toBe(0);
+    expect((await run("task", "create", "APP", "--title", "Old lifetime")).code).toBe(0);
+    expect((await run("task", "create", "APP", "--title", "Unrelated")).code).toBe(0);
     const oldTaskId = withTestDb(directory, (db) => db.query<{ id: string }, []>("SELECT id FROM task WHERE number = 1").get()!.id);
-    expect(run("task", "archive", "APP-1").code).toBe(0);
-    const archivedEvents: Array<Activity> = JSON.parse(run("activity", "list", "--task", "APP-1", "--json").stdout);
+    expect((await run("task", "archive", "APP-1")).code).toBe(0);
+    const archivedEvents: Array<Activity> = JSON.parse((await run("activity", "list", "--task", "APP-1", "--json")).stdout);
     const archiveEvent = archivedEvents.find((event) => event.action === "archive")!;
-    expect(run("activity", "list", "--task", "APP-1").stdout).not.toContain("[archived]");
-    expect(run("activity", "view", archiveEvent.id).stdout).toContain("[archived]");
-    expect(run("project", "delete", "APP", "--yes").code).toBe(0);
-    const deletion = JSON.parse(run("activity", "list", "--json").stdout).find((event: Activity) => event.entity_type === "project" && event.action === "delete");
-    expect(run("project", "create", "APP").code).toBe(0);
-    expect(run("task", "create", "APP", "--title", "New lifetime").code).toBe(0);
+    expect((await run("activity", "list", "--task", "APP-1")).stdout).not.toContain("[archived]");
+    expect((await run("activity", "view", archiveEvent.id)).stdout).toContain("[archived]");
+    expect((await run("project", "delete", "APP", "--yes")).code).toBe(0);
+    const deletion = JSON.parse((await run("activity", "list", "--json")).stdout).find((event: Activity) => event.entity_type === "project" && event.action === "delete");
+    expect((await run("project", "create", "APP")).code).toBe(0);
+    expect((await run("task", "create", "APP", "--title", "New lifetime")).code).toBe(0);
     const newTaskId = withTestDb(directory, (db) => db.query<{ id: string }, []>("SELECT id FROM task WHERE number = 1").get()!.id);
-    const current = JSON.parse(run("activity", "list", "--task", "APP-1", "--json").stdout);
+    const current = JSON.parse((await run("activity", "list", "--task", "APP-1", "--json")).stdout);
     expect(current).toHaveLength(1);
     expect(current[0].entity_id).toBe(newTaskId);
-    const events: Array<Activity> = JSON.parse(run("activity", "list", "--task", "app-1", "--show-deleted", "--json").stdout);
+    const events: Array<Activity> = JSON.parse((await run("activity", "list", "--task", "app-1", "--show-deleted", "--json")).stdout);
     expect(events).toHaveLength(4);
     expect(events.find((event) => event.id === deletion.id)).toEqual(deletion);
     expect(new Set(events.filter((event) => event.entity_type === "task").map((event) => event.entity_id))).toEqual(new Set([oldTaskId, newTaskId]));
-    const text = run("activity", "list", "--task", "APP-1", "--show-deleted").stdout;
+    const text = (await run("activity", "list", "--task", "APP-1", "--show-deleted")).stdout;
     const projectDeletionRow = text.split("\n").find((line) => line.includes("project APP"))!;
     expect(projectDeletionRow.split(" · ")[0]).toContain("deleted");
     expect(text).toContain(newTaskId);
     expect(text).toContain(`removed APP-1 (${oldTaskId})`);
-    const limited = run("activity", "list", "--task", "APP-1", "--show-deleted", "--limit", "1").stdout;
+    const limited = (await run("activity", "list", "--task", "APP-1", "--show-deleted", "--limit", "1")).stdout;
     expect(limited.split("\n")[0]!.split(" · ")[0]).not.toContain("deleted");
     expect(limited).toContain(newTaskId);
     expect(limited).not.toContain(oldTaskId);
-    expect(JSON.parse(run("activity", "list", "--task", "APP-99", "--show-deleted", "--json").stdout)).toEqual([]);
-    const viewedDeletion = run("activity", "view", deletion.id).stdout;
+    expect(JSON.parse((await run("activity", "list", "--task", "APP-99", "--show-deleted", "--json")).stdout)).toEqual([]);
+    const viewedDeletion = (await run("activity", "view", deletion.id)).stdout;
     expect(viewedDeletion).toContain(oldTaskId);
     expect(viewedDeletion.split("\n")[0]).toContain("deleted");
   });
 });
 
-test("activity marks deleted lifetimes of a reused key and keeps every task ID", () => {
-  withIsolatedZinnDir((directory) => {
+test("activity marks deleted lifetimes of a reused key and keeps every task ID", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const run = (...args: Array<string>) => runZinn(args, directory);
     const taskIds: Array<string> = [];
     for (const title of ["First lifetime", "Second lifetime", "Third lifetime"]) {
       if (taskIds.length > 0) {
-        expect(run("project", "delete", "APP", "--yes").code).toBe(0);
+        expect((await run("project", "delete", "APP", "--yes")).code).toBe(0);
       }
-      expect(run("project", "create", "APP").code).toBe(0);
-      expect(run("task", "create", "APP", "--title", title).code).toBe(0);
+      expect((await run("project", "create", "APP")).code).toBe(0);
+      expect((await run("task", "create", "APP", "--title", title)).code).toBe(0);
       taskIds.push(withTestDb(directory, (db) => db.query<{ id: string }, []>("SELECT id FROM task WHERE number = 1").get()!.id));
     }
-    expect(run("task", "archive", "APP-1").code).toBe(0);
+    expect((await run("task", "archive", "APP-1")).code).toBe(0);
     const [firstId, secondId, archivedId] = taskIds as [string, string, string];
-    const events: Array<Activity> = JSON.parse(run("activity", "list", "--task", "APP-1", "--show-deleted", "--json").stdout);
+    const events: Array<Activity> = JSON.parse((await run("activity", "list", "--task", "APP-1", "--show-deleted", "--json")).stdout);
     expect(new Set(events.filter((event) => event.entity_type === "task").map((event) => event.entity_id))).toEqual(new Set(taskIds));
 
     // A task row's ID line follows the row; project rows list removed tasks instead.
-    const lines = run("activity", "list", "--task", "APP-1", "--show-deleted").stdout.split("\n");
+    const lines = (await run("activity", "list", "--task", "APP-1", "--show-deleted")).stdout.split("\n");
     const taskRowIds = (isDeleted: boolean) =>
       new Set(lines.flatMap((line, index) => {
         const identity = line.split(" · ")[0]!;
@@ -7248,58 +7284,58 @@ test("activity marks deleted lifetimes of a reused key and keeps every task ID",
   });
 });
 
-test("activity finds explicit task deletions and deletion-only historical snapshots", () => {
-  withIsolatedZinnDir((directory) => {
-    expect(runZinn(["project", "create", "APP"], directory).code).toBe(0);
-    expect(runZinn(["task", "create", "APP", "--title", "Delete me"], directory).code).toBe(0);
-    expect(runZinn(["task", "delete", "APP-1", "--yes"], directory).code).toBe(0);
-    const explicit = runZinn(["activity", "list", "--task", "APP-1", "--show-deleted"], directory);
+test("activity finds explicit task deletions and deletion-only historical snapshots", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    expect((await runZinn(["project", "create", "APP"], directory)).code).toBe(0);
+    expect((await runZinn(["task", "create", "APP", "--title", "Delete me"], directory)).code).toBe(0);
+    expect((await runZinn(["task", "delete", "APP-1", "--yes"], directory)).code).toBe(0);
+    const explicit = await runZinn(["activity", "list", "--task", "APP-1", "--show-deleted"], directory);
     expect(explicit.code).toBe(0);
     const explicitRows = explicit.stdout.trimEnd().split("\n");
     expect(explicitRows).toHaveLength(2);
     expect(explicitRows.every((row) => row.split(" · ")[0]!.includes("deleted"))).toBe(true);
     expect(explicit.stdout).toContain("Delete me");
-    const [snapshot] = seedRecordedActivity(directory, [{ id: "abcdef12-1234-7000-8000-123456abcdef", entity_type: "project", action: "delete",
+    const [snapshot] = await seedRecordedActivity(directory, [{ id: "abcdef12-1234-7000-8000-123456abcdef", entity_type: "project", action: "delete",
       changes: { key: "GONE", tasks: [{ id: "old-task", key: "GONE-2", title: "Snapshot only" }] } }]);
-    expect(JSON.parse(runZinn(["activity", "list", "--task", "gone-2", "--show-deleted", "--json"], directory).stdout)).toEqual([snapshot]);
-    expect(runZinn(["activity", "list", "--task", "GONE-2", "--show-deleted"], directory).stdout).toContain("removed GONE-2 (old-task)");
+    expect(JSON.parse((await runZinn(["activity", "list", "--task", "gone-2", "--show-deleted", "--json"], directory)).stdout)).toEqual([snapshot]);
+    expect((await runZinn(["activity", "list", "--task", "GONE-2", "--show-deleted"], directory)).stdout).toContain("removed GONE-2 (old-task)");
   });
 });
 
-test("activity retains each relation event and uses current names only for navigation", () => {
-  withIsolatedZinnDir((directory) => {
+test("activity retains each relation event and uses current names only for navigation", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const run = (...args: Array<string>) => runZinn(args, directory);
-    expect(run("project", "create", "APP").code).toBe(0);
-    expect(run("task", "create", "APP", "--title", "First").code).toBe(0);
-    expect(run("task", "create", "APP", "--title", "Second").code).toBe(0);
-    expect(run("task", "relation", "create", "APP-1", "APP-2", "--type", "related").code).toBe(0);
-    expect(run("label", "create", "Before").code).toBe(0);
-    expect(run("label", "edit", "Before", "--name", "Now").code).toBe(0);
-    const events: Array<Activity> = JSON.parse(run("activity", "list", "--json").stdout);
+    expect((await run("project", "create", "APP")).code).toBe(0);
+    expect((await run("task", "create", "APP", "--title", "First")).code).toBe(0);
+    expect((await run("task", "create", "APP", "--title", "Second")).code).toBe(0);
+    expect((await run("task", "relation", "create", "APP-1", "APP-2", "--type", "related")).code).toBe(0);
+    expect((await run("label", "create", "Before")).code).toBe(0);
+    expect((await run("label", "edit", "Before", "--name", "Now")).code).toBe(0);
+    const events: Array<Activity> = JSON.parse((await run("activity", "list", "--json")).stdout);
     const relations = events.filter((event) => event.action === "relation_create");
     expect(relations).toHaveLength(2);
     expect(relations[0]!.id).not.toBe(relations[1]!.id);
     expect(relations[0]!.changes).toEqual(relations[1]!.changes);
-    const text = run("activity", "list").stdout;
+    const text = (await run("activity", "list")).stdout;
     expect(text.match(/added relation/g)).toHaveLength(2);
     expect(text).toContain("source: APP-1");
     expect(text).toContain("target: APP-2");
     const labelCreate = events.find((event) => event.entity_type === "label" && event.action === "create")!;
-    const view = run("activity", "view", labelCreate.id).stdout;
+    const view = (await run("activity", "view", labelCreate.id)).stdout;
     expect(view).toContain("label Now [current]");
     expect(view).toContain("name:\nBefore");
-    expect(JSON.parse(run("activity", "view", labelCreate.id, "--json").stdout)).toEqual(labelCreate);
+    expect(JSON.parse((await run("activity", "view", labelCreate.id, "--json")).stdout)).toEqual(labelCreate);
   });
 });
 
-test("activity views preserve recorded text, actor/entity identity, unknown fields and local offsets", () => {
-  withIsolatedZinnDir((directory) => {
+test("activity views preserve recorded text, actor/entity identity, unknown fields and local offsets", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const oldText = "  Before\n\tSecond line\n";
     const newText = "  After\r\n\tFinal line  ";
     const id = "abcdef12-1234-7000-8000-123456abcdef";
-    const [event] = seedRecordedActivity(directory, [{ id,
+    const [event] = await seedRecordedActivity(directory, [{ id,
       changes: { title: ["Old title", "New title"], description: [oldText, newText], future: { text: "Unknown\ntext", values: [null, 2] } } }]);
-    const view = runZinn(["activity", "view", "abcdef12"], directory, { TZ: "Europe/Berlin" });
+    const view = await runZinn(["activity", "view", "abcdef12"], directory, { TZ: "Europe/Berlin" });
     expect(view.code).toBe(0);
     expect(view.stdout).toContain(id);
     expect(view.stdout).toContain(event!.entity_id);
@@ -7312,19 +7348,19 @@ test("activity views preserve recorded text, actor/entity identity, unknown fiel
     expect(view.stdout).toContain("Raw JSON:");
     expect(view.stdout).toContain('"future"');
     expect(view.stdout).toContain('"Unknown\\ntext"');
-    const listed = runZinn(["activity", "list"], directory).stdout;
+    const listed = (await runZinn(["activity", "list"], directory)).stdout;
     expect(listed).toContain("description changed");
     expect(listed).not.toContain(oldText);
-    expect(JSON.parse(runZinn(["activity", "view", id, "--json"], directory).stdout)).toEqual(event);
-    const [commentEvent] = seedRecordedActivity(directory, [{ id: "fedcba98-1234-7000-8000-123456abcdef", action: "comment_create",
+    expect(JSON.parse((await runZinn(["activity", "view", id, "--json"], directory)).stdout)).toEqual(event);
+    const [commentEvent] = await seedRecordedActivity(directory, [{ id: "fedcba98-1234-7000-8000-123456abcdef", action: "comment_create",
       changes: { comment: { id: "old-comment", key: "APP-1#1", text: oldText } } }]);
-    expect(runZinn(["activity", "view", commentEvent!.id], directory).stdout).toContain(oldText);
+    expect((await runZinn(["activity", "view", commentEvent!.id], directory)).stdout).toContain(oldText);
   });
 });
 
-test.each([0, 9])("activity commands read schema version %i under the existing policy without writes", (version) => {
-  withIsolatedZinnDir((directory) => {
-    const [event] = seedRecordedActivity(directory, [{ id: "abcdef12-1234-7000-8000-123456abcdef", action: "delete",
+test.each([0, 9])("activity commands read schema version %i under the existing policy without writes", async (version) => {
+  await withIsolatedZinnDir(async (directory) => {
+    const [event] = await seedRecordedActivity(directory, [{ id: "abcdef12-1234-7000-8000-123456abcdef", action: "delete",
       changes: { key: "GONE-1", title: "Deleted" } }]);
     withTestDb(directory, (db) => db.run(`PRAGMA user_version = ${version}`));
     const snapshot = () => withTestDb(directory, (db) => ({
@@ -7334,7 +7370,7 @@ test.each([0, 9])("activity commands read schema version %i under the existing p
     }));
     const before = snapshot();
     if (version === 0) {
-      const refused = runZinn(["activity", "list", "--json"], directory);
+      const refused = await runZinn(["activity", "list", "--json"], directory);
       expect(refused.code).toBe(1);
       expect(refused.stdout).toBe("");
       expect(JSON.parse(refused.stderr).error.message).toContain("--allow-legacy-read");
@@ -7342,7 +7378,7 @@ test.each([0, 9])("activity commands read schema version %i under the existing p
     const flags = version === 0 ? ["--allow-legacy-read"] : [];
     for (const args of [["list"], ["list", "--project", "GONE", "--show-deleted"], ["list", "--project-id", event!.entity_id], ["list", "--task", "GONE-1", "--show-deleted"], ["list", "--task-id", event!.entity_id], ["view", event!.id]]) {
       for (const mode of [[], ["--json"]]) {
-        const result = runZinn(["activity", ...args, ...flags, ...mode], directory);
+        const result = await runZinn(["activity", ...args, ...flags, ...mode], directory);
         expect(result.code).toBe(0);
         if (version === 0) {
           expect(result.stderr.match(/Warning:/g)).toHaveLength(1);
