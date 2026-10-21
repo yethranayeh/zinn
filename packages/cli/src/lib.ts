@@ -2,8 +2,10 @@ import type { parseArgs } from "node:util";
 import type { InputForm, InputOptions, InputOption } from "./input.js";
 
 import { createInterface } from "node:readline/promises";
+import { z } from "zod";
 import {
   assertWritable,
+  InputValidationError,
   ReadOnlyDatabaseError,
   TextEditMatchError,
   UnmarkedDatabaseError,
@@ -151,6 +153,10 @@ export function canPrompt() {
 
 /** The message to report for a failed command, or fallback when the error has none. */
 export function failureMessage(error: any, fallback: string) {
+  if (error instanceof z.ZodError) {
+    return new InputValidationError(error.issues).message;
+  }
+
   const isOlderReadOnly = error instanceof ReadOnlyDatabaseError && error.reason === "older";
   if (isOlderReadOnly) {
     return `${error.message}. Run \`zinn migrate\` to upgrade it.`;

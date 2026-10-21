@@ -17,7 +17,7 @@ Read commands return the data they list or show. Write commands return the entit
 
 ## Handle errors and notices
 
-Handled errors are written to stderr as one JSON document. Stdout stays empty and the command exits with code 1. An error contains a code and message, and may include known details, help, and diagnostics:
+Without `--json`, handled errors are plain messages on stderr. With `--json`, they are one JSON document. In both modes, stdout stays empty and the command exits with code `1`. A JSON error contains a code and message, and may include known details, help, and diagnostics:
 
 ```json
 {

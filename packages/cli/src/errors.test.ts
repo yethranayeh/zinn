@@ -121,6 +121,42 @@ test("ZINN-283: invocation failures expose their argument or field and preserve 
   }
 });
 
+test("label validation prints plain messages and preserves JSON error facts without writes", () => {
+  const f = fixture();
+  try {
+    f.succeed("label", "create", "bug", "--description", "Kept", "--color", "red");
+    const labels = f.succeed("label", "list");
+    const activities = f.succeed("activity", "list");
+    const cases = [
+      { args: ["label", "create", "other", "--color", "purple"], field: ["color"], facts: [/red/, /blue/] },
+      { args: ["label", "create", " "], field: ["name"], facts: [/label/i, /name/i] },
+      { args: ["label", "create", " ", "--color", "purple"], field: ["name"], facts: [/name/i, /red/, /blue/] },
+      { args: ["label", "edit", "bug", "--color", "purple"], field: ["color"], facts: [/red/, /blue/] },
+      { args: ["label", "edit", "bug", "--name", " "], field: ["name"], facts: [/label/i, /name/i] },
+      { args: ["label", "edit", " ", "--color", "red"], field: ["labelName"], facts: [/label/i, /name/i] },
+      { args: ["label", "edit", "bug", "--description", "", "--append"], field: ["description", "append"], facts: [/append/i] },
+      { args: ["label", "delete", " ", "--yes"], field: ["name"], facts: [/label/i, /name/i] },
+    ];
+    for (const { args, field, facts } of cases) {
+      const text = f.invoke(...args);
+      expect(text.code, args.join(" ")).toBe(1);
+      expect(text.stdout).toBe("");
+      expect(text.stderr.trim()).not.toStartWith("[");
+      for (const fact of facts) {
+        expect(text.stderr).toMatch(fact);
+      }
+
+      const error = f.fail(...args);
+      expect(error).toMatchObject({ code: "invalid_input", details: { field } });
+      expect(error.message).toBe(text.stderr.trim());
+    }
+    expect(f.succeed("label", "list")).toEqual(labels);
+    expect(f.succeed("activity", "list")).toEqual(activities);
+  } finally {
+    f.close();
+  }
+});
+
 test("ZINN-283: missing references, conflicts and text matching keep useful facts and change nothing", () => {
   const f = fixture();
   try {
