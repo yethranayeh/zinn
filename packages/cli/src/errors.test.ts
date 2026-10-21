@@ -178,6 +178,10 @@ test("ZINN-283: missing references, conflicts and text matching keep useful fact
     expect(unchanged.code).toBe(0);
     expect(JSON.parse(unchanged.stdout).changed).toBe(false);
     expect(unchanged.stderr).toContain("APP-1");
+    const db = new Database(f.databasePath);
+    // Give every event a shared prefix independently of UUID timestamps.
+    db.exec("UPDATE activity SET id = printf('11111111-1111-7111-8111-%012x', rowid)");
+    db.close();
     const events = f.succeed("activity", "list");
     const prefix = events[0].id.replaceAll("-", "").slice(0, 8);
     expect(f.fail("activity", "view", prefix)).toMatchObject({ code: "conflict", details: { reason: "ambiguous_reference", matchCount: events.length, candidateIds: expect.any(Array) } });
