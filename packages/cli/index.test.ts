@@ -2433,6 +2433,49 @@ test("comment create and edit cap human echoes while reads and JSON retain the f
   });
 });
 
+test("Unicode characters stay intact at comment, label and project preview cutoffs", () => {
+  withIsolatedZinnDir((directory) => {
+    const run = (...args: Array<string>) => runZinn(args, directory);
+    expect(run("project", "create", "NOTE").code).toBe(0);
+    expect(run("task", "create", "NOTE", "--title", "Commented task").code).toBe(0);
+    expect(run("task", "comment", "create", "NOTE-1", "--text", "Initial text").code).toBe(0);
+    expect(run("label", "create", "bug").code).toBe(0);
+
+    const cases = [
+      { text: `${"x".repeat(78)}😀z`, preview: `${"x".repeat(78)}…` },
+      { text: `${"x".repeat(77)}😀zz`, preview: `${"x".repeat(77)}😀…` },
+      { text: `${"x".repeat(78)}😀`, preview: `${"x".repeat(78)}😀` },
+      { text: `${"x".repeat(78)}😀\nLater text`, preview: `${"x".repeat(78)}…` },
+    ];
+    for (const [index, { text, preview }] of cases.entries()) {
+      const commands = [
+        ["task", "comment", "create", "NOTE-1", "--text"],
+        ["task", "comment", "edit", "NOTE-1#1", "--text"],
+        ["label", "create", `label-${index}`, "--description"],
+        ["label", "edit", "bug", "--description"],
+        ["project", "create", `P${index}`, "--description"],
+        ["project", "edit", "NOTE", "--description"],
+      ];
+      for (const args of commands) {
+        const result = run(...args, text);
+        expect(result.code).toBe(0);
+        expect(result.stderr).toBe("");
+        expect(result.stdout).toEndWith(` | ${preview}\n`);
+      }
+
+      const comment = run("task", "comment", "view", "NOTE-1#1", "--json");
+      expect(comment.code).toBe(0);
+      expect(JSON.parse(comment.stdout).text).toBe(text);
+      const labels = run("label", "list", "--json");
+      expect(labels.code).toBe(0);
+      expect(JSON.parse(labels.stdout)).toContainEqual({ name: "bug", color: "white", description: text });
+      const project = run("project", "view", "NOTE", "--json");
+      expect(project.code).toBe(0);
+      expect(JSON.parse(project.stdout).description).toBe(text);
+    }
+  });
+});
+
 test("task comment view reads only the requested current comment, including on archived tasks, without writes", () => {
   withIsolatedZinnDir((directory) => {
     const run = (...args: Array<string>) => runZinn(args, directory);
