@@ -246,7 +246,8 @@ test("ZINN-299: ZINN_DEBUG=1 prints routing detail on stderr and leaves stdout u
     expect(debugged.stdout).toBe(plain.stdout);
     expect(debugged.stderr).toContain("project list");
 
-    for (const env of [{ DEBUG: "1" }, { ZINN_DEBUG: "true" }]) {
+    const ignoredEnvironments: Array<Record<string, string>> = [{ DEBUG: "1" }, { ZINN_DEBUG: "true" }];
+    for (const env of ignoredEnvironments) {
       const ignored = runZinn(["project", "list", "--json"], dir, env);
       expect(ignored.stdout).toBe(plain.stdout);
       expect(ignored.stderr).toBe("");

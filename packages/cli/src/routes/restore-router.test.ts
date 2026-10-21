@@ -26,7 +26,7 @@ test("restore keeps the general hint for damaged search index internals and reth
 });
 
 test("a refused damaged backup does not get the damaged live database hint", async () => {
-  const failure = new RestoreRefusedError("The backup is damaged, so nothing was restored", {
+  const failure = new RestoreRefusedError("The backup is damaged, so nothing was restored", "storage", {}, {
     cause: Object.assign(new Error("database disk image is malformed"), { code: "SQLITE_CORRUPT" }),
   });
   const restore = spyOn(backup, "restore").mockImplementation(() => {
