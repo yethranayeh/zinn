@@ -1,7 +1,4 @@
-import type { PresentedComment } from "../result-schemas.js";
-import type { CommentWithKey } from "@zinn-dev/core";
 import type { CommandInput } from "../input.js";
-import type { RowCell } from "../presentation/row-layout.js";
 import type { RouteDef } from "../types.js";
 
 import { jsonResult } from "../results.js";
@@ -25,53 +22,11 @@ import {
   textEditConstraints,
 } from "../text-edit.js";
 import { currentActor } from "../actor.js";
-import { formatRows } from "../presentation/row-layout.js";
-import { formatLocalTime } from "../presentation/time.js";
-import { formatDescriptionPreview } from "../presentation/description-presentation.js";
-
-function presentComment(commentMatch: CommentWithKey): PresentedComment {
-  return {
-    key: commentMatch.key,
-    text: commentMatch.text,
-    created_at: commentMatch.created_at,
-    updated_at: commentMatch.updated_at,
-  };
-}
-
-export function presentComments(taskKey: string) {
-  return comment.getAll(taskKey).map(presentComment);
-}
-
-function commentRow(
-  commentMatch: PresentedComment,
-  options: { showsCreatedAt: boolean; showsTextPreview?: boolean },
-) {
-  const createdAtCells: Array<RowCell> = options.showsCreatedAt
-    ? [{ text: formatLocalTime(commentMatch.created_at), style: "dim" }]
-    : [];
-
-  const text = options.showsTextPreview
-    ? formatDescriptionPreview(commentMatch.text, { firstLineOnly: true })
-    : commentMatch.text;
-
-  return [{ text: commentMatch.key }, ...createdAtCells, { text }];
-}
-
-export function formatComment(
-  commentMatch: PresentedComment,
-  options: { showsTextPreview?: boolean } = {},
-) {
-  return formatRows([commentRow(commentMatch, { ...options, showsCreatedAt: false })], {
-    indentsContinuationLines: true,
-  });
-}
-
-export function formatComments(comments: Array<PresentedComment>) {
-  return formatRows(
-    comments.map((commentMatch) => commentRow(commentMatch, { showsCreatedAt: true })),
-    { indentsContinuationLines: true },
-  );
-}
+import {
+  formatCommentList,
+  presentComment,
+  presentComments,
+} from "../presentation/comment-presentation.js";
 
 function parseTextArgs(args: Array<string>) {
   const { values, positionals, tokens } = parseArgs({
@@ -185,7 +140,9 @@ export const commentRouter = {
     run: (args) => {
       const props = parseTextArgs(args);
       const created = comment.create({ taskKey: props.key, text: props.text }, currentActor());
-      output(presentComment(created), (entry) => formatComment(entry, { showsTextPreview: true }));
+      output(presentComment(created), (entry) =>
+        formatCommentList([entry], { showsCreatedAt: false, showsTextPreview: true }),
+      );
     },
     help: `${generateCommandUsage("task comment create", commentInputs.create)}
 
@@ -211,7 +168,7 @@ Example: zinn task comment create MDR-1 --text 'Ready for review'`,
         strict: true,
       });
       validatePositionals(positionals, commentInputs.list.forms[0]);
-      output(presentComments(positionals[0]!), formatComments);
+      output(presentComments(positionals[0]!), formatCommentList);
     },
     help: `${generateCommandUsage("task comment list", commentInputs.list)}
 
@@ -233,7 +190,9 @@ Example: zinn task comment list MDR-1`,
         strict: true,
       });
       validatePositionals(positionals, commentInputs.view.forms[0]);
-      output(presentComment(comment.getByKey(positionals[0]!)), formatComment);
+      output(presentComment(comment.getByKey(positionals[0]!)), (entry) =>
+        formatCommentList([entry], { showsCreatedAt: false }),
+      );
     },
     help: `${generateCommandUsage("task comment view", commentInputs.view)}
 
@@ -252,7 +211,9 @@ Example: zinn task comment view 'MDR-1#1'`,
     run: (args) => {
       const props = parseCommentEditArgs(args);
       const edited = comment.edit({ commentKey: props.key, text: props.text }, currentActor());
-      output(presentComment(edited), (entry) => formatComment(entry, { showsTextPreview: true }));
+      output(presentComment(edited), (entry) =>
+        formatCommentList([entry], { showsCreatedAt: false, showsTextPreview: true }),
+      );
     },
     help: `${generateCommandUsage("task comment edit", commentInputs.edit)}
 

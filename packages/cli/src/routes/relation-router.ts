@@ -1,11 +1,10 @@
-import type { PresentedRelation, PresentedRelationChange } from "../result-schemas.js";
+import type { PresentedRelationChange } from "../result-schemas.js";
 import type { CommandInput } from "../input.js";
-import type { TaskWithKey } from "@zinn-dev/core";
 import type { RouteDef } from "../types.js";
 
 import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
-import { column, relation, relationTypeSchema, task } from "@zinn-dev/core";
+import { relation, relationTypeSchema, task } from "@zinn-dev/core";
 
 import { generateCommandUsage, taskKeyPositional } from "../input.js";
 import {
@@ -16,70 +15,11 @@ import {
   validateUniqueOptions,
 } from "../lib.js";
 import { currentActor } from "../actor.js";
-import { formatCellSeparator, formatRows } from "../presentation/row-layout.js";
-import { columnNameCell } from "../presentation/column-presentation.js";
-
-export function presentRelations(taskMatch: TaskWithKey): Array<PresentedRelation> {
-  return relation.getAll(taskMatch.key, { include: { tasks: true } }).map((entry) => {
-    const isSource = entry.source_task_id === taskMatch.id;
-    const other = isSource ? entry.target : entry.source;
-    if (other == null) {
-      throw new Error("Connected task details were not included in the relation");
-    }
-
-    let direction: PresentedRelation["direction"] = null;
-    if (entry.relation_type !== "related") {
-      direction = isSource ? "outgoing" : "incoming";
-    }
-
-    return {
-      type: entry.relation_type,
-      direction,
-      task: {
-        key: other.key,
-        column: column.getById(other.column_id)!.name,
-        title: other.title,
-        status: other.archived_at == null ? "Active" : "Archived",
-      },
-    };
-  });
-}
-
-export function formatRelations(relations: Array<PresentedRelation>) {
-  return formatRows(
-    relations.map((entry) => {
-      const isOutgoing = entry.direction === "outgoing";
-
-      let label = entry.type;
-      switch (entry.type) {
-        case "related": {
-          label = "Related to";
-          break;
-        }
-        case "dependency": {
-          label = isOutgoing ? "Depends on" : "Depended on by";
-          break;
-        }
-        case "subtask": {
-          label = isOutgoing ? "Parent" : "Subtask";
-          break;
-        }
-        case "duplicate": {
-          label = isOutgoing ? "Duplicate of" : "Duplicated by";
-          break;
-        }
-      }
-
-      const archived = entry.task.status === "Archived" ? `${formatCellSeparator()}Archived` : "";
-      return [
-        { text: label },
-        { text: entry.task.key },
-        columnNameCell(entry.task.column),
-        { text: `${entry.task.title}${archived}` },
-      ];
-    }),
-  );
-}
+import {
+  formatRelationChange,
+  formatRelationList,
+  presentRelations,
+} from "../presentation/relation-presentation.js";
 
 function parseRelationArgs(args: string[]) {
   const { values, positionals, tokens } = parseArgs({
@@ -169,16 +109,7 @@ export const relationRouter = {
         target: target.key,
       };
 
-      output(created, (r) => {
-        const label = {
-          related: "related to",
-          dependency: "depends on",
-          duplicate: "is a duplicate of",
-          subtask: "is a subtask of",
-        }[r.type];
-
-        return `${r.source} ${label} ${r.target}`;
-      });
+      output(created, (entry) => formatRelationChange(entry, { action: "create" }));
     },
     help: `${generateCommandUsage("task relation create", relationInputs.create)}
 
@@ -213,7 +144,7 @@ Example: zinn task relation create APP-1 APP-2 --type dependency`,
         strict: true,
       });
       validatePositionals(positionals, relationInputs.list.forms[0]);
-      output(presentRelations(task.getByKey(positionals[0]!)), formatRelations);
+      output(presentRelations(task.getByKey(positionals[0]!)), formatRelationList);
     },
     help: `${generateCommandUsage("task relation list", relationInputs.list)}
 
@@ -241,7 +172,7 @@ Example: zinn task relation list APP-1`,
         target: target.key,
       };
 
-      output(deleted, (r) => `Deleted ${r.type} relation from ${r.source} to ${r.target}`);
+      output(deleted, (entry) => formatRelationChange(entry, { action: "delete" }));
     },
     help: `${generateCommandUsage("task relation delete", relationInputs.create)}
 

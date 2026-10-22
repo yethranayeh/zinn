@@ -1,7 +1,4 @@
-import type { PresentedLabel } from "../result-schemas.js";
 import type { CommandInput, InputOption } from "../input.js";
-import type { Label } from "@zinn-dev/core";
-import type { RowCell } from "../presentation/row-layout.js";
 import type { RouteDef } from "../types.js";
 
 import { jsonResult } from "../results.js";
@@ -31,46 +28,7 @@ import {
   textEditConstraints,
 } from "../text-edit.js";
 import { currentActor } from "../actor.js";
-import { isColorEnabled } from "../presentation/color.js";
-import { formatRows } from "../presentation/row-layout.js";
-import { formatDescriptionPreview } from "../presentation/description-presentation.js";
-
-function presentLabel(labelMatch: Label): PresentedLabel {
-  return { name: labelMatch.name, color: labelMatch.color, description: labelMatch.description };
-}
-
-function formatLabel(
-  presented: PresentedLabel,
-  options: { showsDescriptionPreview?: boolean } = {},
-) {
-  return formatLabelList([presented], options);
-}
-
-function formatLabelList(
-  presentedLabels: Array<PresentedLabel>,
-  options: { showsDescriptionPreview?: boolean } = {},
-) {
-  return formatRows(
-    presentedLabels.map((presented) => {
-      const description =
-        options.showsDescriptionPreview && presented.description != null
-          ? formatDescriptionPreview(presented.description, { firstLineOnly: true })
-          : presented.description;
-      const descriptionCells: Array<RowCell> = description == null ? [] : [{ text: description }];
-
-      /**
-       * The colored name shows the color, and if the environment
-       *  does not support color, it is explicitly printed instead
-       */
-      if (isColorEnabled()) {
-        const style = labelColorSchema.options.find((color) => color === presented.color);
-        return [{ text: presented.name, style }, ...descriptionCells];
-      }
-
-      return [{ text: presented.name }, { text: presented.color }, ...descriptionCells];
-    }),
-  );
-}
+import { formatLabelList, presentLabel } from "../presentation/label-presentation.js";
 
 const colorOption = {
   type: "string",
@@ -156,7 +114,7 @@ export const labelRouter = {
       const created = label.create(input, currentActor());
 
       output(presentLabel(created), (entry) =>
-        formatLabel(entry, { showsDescriptionPreview: true }),
+        formatLabelList([entry], { showsDescriptionPreview: true }),
       );
     },
     help: `${generateCommandUsage("label create", labelInputs.create)}
@@ -223,7 +181,7 @@ Use label view <name> for the full description. --json keeps the full text.`,
         });
       }
 
-      output(presentLabel(labelMatch), formatLabel);
+      output(presentLabel(labelMatch), (entry) => formatLabelList([entry]));
     },
     help: `${generateCommandUsage("label view", labelInputs.view)}
 
@@ -259,7 +217,7 @@ Example: zinn label view bug`,
       const edited = label.edit(input, currentActor());
 
       output(presentLabel(edited), (entry) =>
-        formatLabel(entry, { showsDescriptionPreview: true }),
+        formatLabelList([entry], { showsDescriptionPreview: true }),
       );
     },
     help: `${generateCommandUsage("label edit", labelInputs.edit)}

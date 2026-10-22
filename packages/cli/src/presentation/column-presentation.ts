@@ -1,4 +1,7 @@
 import type { RowCell } from "./row-layout.js";
+import type { PresentedColumn } from "../result-schemas.js";
+
+import { project } from "@zinn-dev/core";
 
 import { formatRows } from "./row-layout.js";
 
@@ -6,6 +9,12 @@ type ColumnRow = { name: string; project?: string; taskCount?: number };
 
 /** Archived tasks are off the board, so they share one row below the columns instead of a column of their own. */
 const ARCHIVED_ROW_LABEL = "Archived";
+
+export function presentColumn(columnMatch: { project_id: string; name: string }): PresentedColumn {
+  const columnProject = project.getById(columnMatch.project_id)!;
+
+  return { project: columnProject.key, name: columnMatch.name };
+}
 
 export function columnNameCell(columnName: string): RowCell {
   // TODO: Derive column colors from column roles once roles exist instead of relying on names.

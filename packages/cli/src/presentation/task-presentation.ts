@@ -1,12 +1,12 @@
-import type { LabelColor, TaskWithKey } from "@zinn-dev/core";
+import type { TaskWithKey } from "@zinn-dev/core";
 import type { RowCell } from "./row-layout.js";
 import type { PresentedTask } from "../result-schemas.js";
 
 import { column, label, task } from "@zinn-dev/core";
 
-import { styleOutputText } from "./color.js";
 import { columnNameCell } from "./column-presentation.js";
-import { formatCellSeparator, formatRows } from "./row-layout.js";
+import { labelNameCell } from "./label-presentation.js";
+import { formatCell, formatCellSeparator, formatRows } from "./row-layout.js";
 
 const EMPTY_CELL_MARKER = "-";
 const LABEL_NAME_SEPARATOR = ", ";
@@ -31,12 +31,6 @@ function getLabelColorsByName() {
   return new Map(label.getAll().map((labelMatch) => [labelMatch.name, labelMatch.color]));
 }
 
-function formatLabelNames(labelNames: Array<string>, labelColorsByName: Map<string, LabelColor>) {
-  return labelNames
-    .map((labelName) => styleOutputText(labelColorsByName.get(labelName)!, labelName))
-    .join(LABEL_NAME_SEPARATOR);
-}
-
 export function presentTask(taskMatch: TaskWithKey): PresentedTask {
   return {
     key: taskMatch.key,
@@ -47,10 +41,6 @@ export function presentTask(taskMatch: TaskWithKey): PresentedTask {
     priority: taskMatch.priority,
     labels: task.label.getAll(taskMatch.key).map((label) => label.name),
   };
-}
-
-export function formatTaskRow(presented: PresentedTask) {
-  return formatTaskList([presented]);
 }
 
 export function formatTaskList(
@@ -66,9 +56,10 @@ export function formatTaskList(
         : [];
       const hasLabels = presentedTask.labels.length > 0;
       // The last cell is never padded, so the color codes in its separator and label names do not affect column widths.
-      const labels = hasLabels
-        ? `${formatCellSeparator()}${formatLabelNames(presentedTask.labels, labelColorsByName)}`
-        : "";
+      const labelNames = presentedTask.labels
+        .map((labelName) => formatCell(labelNameCell(labelName, labelColorsByName.get(labelName)!)))
+        .join(LABEL_NAME_SEPARATOR);
+      const labels = hasLabels ? `${formatCellSeparator()}${labelNames}` : "";
 
       return [
         { text: presentedTask.key },
@@ -79,8 +70,4 @@ export function formatTaskList(
       ];
     }),
   );
-}
-
-export function formatTaskListWithStatus(presentedTasks: Array<PresentedTask>) {
-  return formatTaskList(presentedTasks, { showsStatus: true });
 }

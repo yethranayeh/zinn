@@ -45,8 +45,6 @@ import {
   textEditOptions,
   textEditConstraints,
 } from "../text-edit.js";
-import { formatRelations, presentRelations, relationRouter } from "./relation-router.js";
-import { commentRouter, formatComments, presentComments } from "./comment-router.js";
 import { currentActor } from "../actor.js";
 import {
   resolveProjectKey,
@@ -54,14 +52,13 @@ import {
   requiredProjectDescription,
   projectScopeDescription,
 } from "../project.js";
+import { relationRouter } from "./relation-router.js";
+import { commentRouter } from "./comment-router.js";
+import { formatRelationList, presentRelations } from "../presentation/relation-presentation.js";
+import { formatCommentList, presentComments } from "../presentation/comment-presentation.js";
 import { formatSection } from "../presentation/section.js";
 import { formatActivityList, presentActivities } from "../presentation/activity-presentation.js";
-import {
-  formatTaskList,
-  formatTaskListWithStatus,
-  formatTaskRow,
-  presentTask,
-} from "../presentation/task-presentation.js";
+import { formatTaskList, presentTask } from "../presentation/task-presentation.js";
 
 // A column is changed with task move, so a guessed --status or --column suggests it with the same task keys.
 function suggestTaskMove(args: Array<string>, options: ParseArgsOptionsConfig = {}) {
@@ -327,7 +324,7 @@ export const taskRouter = {
         },
         currentActor(),
       );
-      output(presentTask(createdTask), formatTaskRow);
+      output(presentTask(createdTask), (entry) => formatTaskList([entry]));
     },
     help: `${generateCommandUsage("task create", taskInputs.create)}
 
@@ -516,8 +513,8 @@ Example: zinn task search 'refinement quota' MDR --limit 5`,
         const sectionOptions = {
           separatorWidth: hasTerminalWidth ? terminalWidth : MIN_SECTION_SEPARATOR_WIDTH,
         };
-        const relations = formatRelations(t.relations);
-        const comments = formatComments(t.comments);
+        const relations = formatRelationList(t.relations);
+        const comments = formatCommentList(t.comments);
         const isArchived = t.status === "Archived";
         const sections = [
           formatTaskList([t], { showsStatus: isArchived, showsFullPriority: true }),
@@ -599,7 +596,7 @@ Examples:
         currentActor(),
       );
 
-      output(presentTask(editedTask), formatTaskRow);
+      output(presentTask(editedTask), (entry) => formatTaskList([entry]));
     },
     help: `${generateCommandUsage("task edit", taskInputs.edit)}
 
@@ -683,12 +680,12 @@ Example: zinn task move MDR-1 MDR-2 'In Progress'`,
           { taskKey, direction, targetTaskKey: positionals[2]! },
           currentActor(),
         );
-        output(presentTask(orderedTask), formatTaskRow);
+        output(presentTask(orderedTask), (entry) => formatTaskList([entry]));
       } else {
         const direction =
           positionals[1] as (typeof form)["positionals"][1]["value"]["choices"][number];
         const orderedTask = task.order({ taskKey, direction }, currentActor());
-        output(presentTask(orderedTask), formatTaskRow);
+        output(presentTask(orderedTask), (entry) => formatTaskList([entry]));
       }
     },
     help: `${generateCommandUsage("task order", taskInputs.order)}
@@ -710,7 +707,7 @@ Example: zinn task order MDR-2 before MDR-1`,
       const archives = task.archiveMany(taskKeys, currentActor());
       outputTaskChanges(
         archives,
-        formatTaskListWithStatus,
+        (entries) => formatTaskList(entries, { showsStatus: true }),
         (archivedTask) => `${archivedTask.key} was already archived`,
       );
     },
@@ -736,7 +733,7 @@ Example: zinn task archive MDR-1 MDR-2`,
       const unarchives = task.unarchiveMany(taskKeys, currentActor());
       outputTaskChanges(
         unarchives,
-        formatTaskListWithStatus,
+        (entries) => formatTaskList(entries, { showsStatus: true }),
         (unarchivedTask) => `${unarchivedTask.key} was already active`,
       );
     },
@@ -780,9 +777,9 @@ Example: zinn task unarchive MDR-1 MDR-2`,
 
         if (canDelete) {
           task.delete(taskKey, currentActor());
-          output(presented, (t) => `Deleted ${formatTaskRow(t)}`);
+          output(presented, (t) => `Deleted ${formatTaskList([t])}`);
         } else {
-          output(presented, (t) => `Deletion cancelled for ${formatTaskRow(t)}`);
+          output(presented, (t) => `Deletion cancelled for ${formatTaskList([t])}`);
         }
       } catch (err) {
         throw err;
@@ -806,7 +803,9 @@ Example: zinn task delete MDR-1`,
       results: [jsonResult("Task")],
       run: (args) => {
         const props = parseTaskLabelArgs(args);
-        output(presentTask(task.label.add(props, currentActor())), formatTaskRow);
+        output(presentTask(task.label.add(props, currentActor())), (entry) =>
+          formatTaskList([entry]),
+        );
       },
       help: `${generateCommandUsage("task label add", taskInputs.label_add)}
 
@@ -821,7 +820,9 @@ Already attached labels are unchanged.`,
       results: [jsonResult("Task")],
       run: (args) => {
         const props = parseTaskLabelArgs(args);
-        output(presentTask(task.label.remove(props, currentActor())), formatTaskRow);
+        output(presentTask(task.label.remove(props, currentActor())), (entry) =>
+          formatTaskList([entry]),
+        );
       },
       help: `${generateCommandUsage("task label remove", taskInputs.label_add)}
 

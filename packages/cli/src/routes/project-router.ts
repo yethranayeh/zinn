@@ -1,11 +1,6 @@
 import type { RouteDef } from "../types.js";
 import type { CommandInput, InputConstraint } from "../input.js";
-import type {
-  PresentedColumn,
-  PresentedProject,
-  PresentedProjectView,
-  PresentedColumnTaskCount,
-} from "../result-schemas.js";
+import type { PresentedProjectView, PresentedColumnTaskCount } from "../result-schemas.js";
 
 import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
@@ -32,49 +27,11 @@ import {
   textEditOptions,
   textEditConstraints,
 } from "../text-edit.js";
-import { formatColumnList } from "../presentation/column-presentation.js";
-import { formatDescriptionPreview } from "../presentation/description-presentation.js";
-import { formatCellSeparator, formatRows } from "../presentation/row-layout.js";
+import { formatColumnList, presentColumn } from "../presentation/column-presentation.js";
+import { formatProjectList, presentProject } from "../presentation/project-presentation.js";
 import { formatSection } from "../presentation/section.js";
 import { currentActor } from "../actor.js";
 import { resolveProjectKey, requiredProjectDescription } from "../project.js";
-
-type ProjectRowOptions = { showsDescriptionPreview?: boolean };
-
-function presentProject(projectMatch: PresentedProject): PresentedProject {
-  return { key: projectMatch.key, name: projectMatch.name, description: projectMatch.description };
-}
-
-function formatProject(presented: PresentedProject, options: ProjectRowOptions = {}) {
-  return formatProjectList([presented], options);
-}
-
-function formatProjectList(
-  presentedProjects: Array<PresentedProject>,
-  { showsDescriptionPreview = true }: ProjectRowOptions = {},
-) {
-  return formatRows(
-    presentedProjects.map((presented) => {
-      const descriptionPreview = showsDescriptionPreview
-        ? formatDescriptionPreview(presented.description)
-        : "";
-      const description =
-        descriptionPreview.length > 0 ? `${formatCellSeparator()}${descriptionPreview}` : "";
-
-      return [{ text: presented.key }, { text: `${presented.name}${description}` }];
-    }),
-  );
-}
-
-function presentColumn(columnMatch: { project_id: string; name: string }): PresentedColumn {
-  const columnProject = project.getById(columnMatch.project_id)!;
-
-  return { project: columnProject.key, name: columnMatch.name };
-}
-
-function formatColumn(presented: PresentedColumn) {
-  return formatColumnList([presented], { showsProject: true });
-}
 
 const projectEditConstraint = {
   kind: "atLeastOne",
@@ -231,7 +188,7 @@ export const projectRouter = {
           { key: projectKey, name: values.name, description: values.description },
           currentActor(),
         );
-        output(presentProject(createdProject), formatProject);
+        output(presentProject(createdProject), (entry) => formatProjectList([entry]));
       } catch (err) {
         throw err;
       }
@@ -312,7 +269,7 @@ Example: zinn project list`,
 
       output(presentedProject, (viewedProject) => {
         // The full description follows as its own section, so the row leaves out the preview.
-        const sections = [formatProject(viewedProject, { showsDescriptionPreview: false })];
+        const sections = [formatProjectList([viewedProject], { showsDescriptionPreview: false })];
 
         if (viewedProject.description != null) {
           sections.push(formatSection("Description", viewedProject.description));
@@ -364,7 +321,7 @@ Example: zinn project view MDR`,
         { projectKey, name: values.name, description },
         currentActor(),
       );
-      output(presentProject(editedProject), formatProject);
+      output(presentProject(editedProject), (entry) => formatProjectList([entry]));
     },
     help: `${generateCommandUsage("project edit", projectInputs.edit)}
 
@@ -438,9 +395,12 @@ Examples:
 
         if (canDelete) {
           const deletedProject = project.delete(projectKey, currentActor());
-          output(presentProject(deletedProject), (p) => `Deleted ${formatProject(p)}`);
+          output(presentProject(deletedProject), (p) => `Deleted ${formatProjectList([p])}`);
         } else {
-          output(presentProject(projectMatch), (p) => `Deletion cancelled for ${formatProject(p)}`);
+          output(
+            presentProject(projectMatch),
+            (p) => `Deletion cancelled for ${formatProjectList([p])}`,
+          );
         }
       } catch (err) {
         throw err;
@@ -476,7 +436,9 @@ Example: zinn project delete MDR`,
 
         try {
           const createdColumn = column.create({ projectKey, name: columnName }, currentActor());
-          output(presentColumn(createdColumn), formatColumn);
+          output(presentColumn(createdColumn), (entry) =>
+            formatColumnList([entry], { showsProject: true }),
+          );
         } catch (err) {
           throw err;
         }
@@ -555,7 +517,9 @@ Example: zinn project column list MDR`,
           },
           currentActor(),
         );
-        output(presentColumn(editedColumn), formatColumn);
+        output(presentColumn(editedColumn), (entry) =>
+          formatColumnList([entry], { showsProject: true }),
+        );
       },
       help: `${generateCommandUsage("project column edit", projectInputs.column_edit)}
 
@@ -601,7 +565,9 @@ Example: zinn project column edit MDR 'In Progress' --name Refining`,
         }
 
         // TODO: maybe also print the new full column state?
-        output(presentColumn(orderedColumn), formatColumn);
+        output(presentColumn(orderedColumn), (entry) =>
+          formatColumnList([entry], { showsProject: true }),
+        );
       },
       help: `${generateCommandUsage("project column order", projectInputs.column_order)}
 
