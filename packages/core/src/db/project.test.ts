@@ -8,7 +8,7 @@ import { TEST_RUN_DIR } from "../../../../scripts/test-isolation";
 const project = await import("./project");
 const column = await import("./column");
 const task = await import("./task");
-const { getStorage: storage } = await import("../constant");
+const { getStorage: storage } = await import("../storage");
 
 // Core reads ZINN_DIR once, on first use, so an earlier use without the preload would redirect these writes.
 if (storage().directory !== TEST_RUN_DIR) {

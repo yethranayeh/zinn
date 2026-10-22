@@ -3,7 +3,7 @@ import { expect, spyOn, test } from "bun:test";
 import { strict as assert } from "node:assert";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { getStorage } from "./constant";
+import { getStorage } from "./storage";
 import { assertWritable, configureDatabase, getDb, resetDatabaseForTests } from "./db";
 import { ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./migrations/open-policy";
 import { createSchema } from "./migrations/runner";

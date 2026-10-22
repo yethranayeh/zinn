@@ -6,7 +6,7 @@ import { expect, test } from "bun:test";
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { resolveStorage } from "../constant";
+import { resolveStorage } from "../storage";
 import { decideOpen, isDefaultDatabase, isProtectedStorage } from "./open-policy";
 import { withDirectory } from "./testing";
 

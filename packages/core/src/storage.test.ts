@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { getStorage, resolveStorage } from "./constant";
+import { getStorage, resolveStorage } from "./storage";
 import { CoreError } from "./errors";
 import { withEnvironment } from "./testing";
 

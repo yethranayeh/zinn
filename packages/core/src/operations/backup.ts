@@ -1,4 +1,3 @@
-import { CoreError } from "../errors.js";
 import type { BackupCreateInput } from "../db/backup.js";
 import type { LockWait } from "../migrations/upgrade.js";
 
@@ -6,11 +5,12 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 import * as dbBackup from "../db/backup.js";
+import { CoreError } from "../errors.js";
 import { ensureDataDirectory } from "../config.js";
-import { getStorage } from "../constant.js";
+import { getStorage } from "../storage.js";
 import { classifyDatabase } from "../migrations/classify.js";
-import { MIGRATIONS } from "../migrations/registry.js";
 import { checkBackup, restoreDatabase } from "../migrations/restore.js";
+import { MIGRATIONS } from "../migrations/registry.js";
 
 export type BackupRestoreInput = BackupCreateInput & {
   /** The backup file to restore. */

@@ -1,7 +1,7 @@
 import type { BackupCreateInput } from "../db/backup.js";
 import type { LockWait } from "../migrations/upgrade.js";
 
-import { getStorage } from "../constant.js";
+import { getStorage } from "../storage.js";
 import { migrateDatabase } from "../migrations/migrate.js";
 
 export type MigrateRunInput = BackupCreateInput & {

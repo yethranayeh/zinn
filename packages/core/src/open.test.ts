@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as core from "../index";
 import { CoreError, ReadOnlyDatabaseError } from "../index";
-import { getStorage } from "./constant";
+import { getStorage } from "./storage";
 import { getDb } from "./db";
 import { BASELINE_VERSION, createBaseline } from "./migrations/baseline";
 import type { DatabaseFacts } from "./migrations/open-policy";
@@ -136,7 +136,7 @@ function childCommand(location: Location, script: string) {
     process.execPath,
     "--eval",
     `
-      const { getStorage } = await import(${modulePath("./constant.ts")});
+      const { getStorage } = await import(${modulePath("./storage.ts")});
       const { directory, databasePath } = getStorage();
       const isTestProcessDefaultDir = databasePath.startsWith(${JSON.stringify(TEST_PROCESS_DEFAULT_DIR)});
       if (directory !== ${JSON.stringify(mainDirOf(location))} || isTestProcessDefaultDir) {

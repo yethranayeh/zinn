@@ -2,7 +2,7 @@
  * Decides how core opens a database, from its state, the build and the client's policy.
  * A database core cannot change safely opens read-only, or not at all, before anything writes to it.
  */
-import type { Storage } from "../constant.js";
+import type { Storage } from "../storage.js";
 import type { ReleaseMode } from "../release.js";
 import type { DatabaseState } from "./classify.js";
 import type { LockWait } from "./upgrade.js";

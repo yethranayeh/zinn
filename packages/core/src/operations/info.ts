@@ -1,5 +1,5 @@
 import type { SettingsFileInspection, SettingsInputs } from "../settings.js";
-import type { StorageSource } from "../constant.js";
+import type { StorageSource } from "../storage.js";
 
 import { statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import packageJson from "../../package.json" with { type: "json" };
 import { chooseDefaultProject, inspectSettings } from "../settings.js";
-import { resolveStorage } from "../constant.js";
+import { resolveStorage } from "../storage.js";
 import { errorMessage, isMissingFileError } from "../errors.js";
 import { classifyDatabase, databaseStateSchema } from "../migrations/classify.js";
 import { latestVersion, MIGRATIONS } from "../migrations/registry.js";

@@ -2,7 +2,7 @@ import type { LockWait } from "../migrations/upgrade.js";
 
 import { CoreError } from "../errors.js";
 import { assertWritable, getDb } from "../db.js";
-import { getStorage } from "../constant.js";
+import { getStorage } from "../storage.js";
 import { classifyDatabase } from "../migrations/classify.js";
 import { reindexSearch } from "../migrations/reindex.js";
 

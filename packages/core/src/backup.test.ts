@@ -4,7 +4,7 @@ import { strict as assert } from "node:assert";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { backup, comment, project, RestoreRefusedError, task } from "../index";
-import { getStorage } from "./constant";
+import { getStorage } from "./storage";
 import { getDb } from "./db";
 import { latestVersion, MIGRATIONS } from "./migrations/registry";
 import { withTestStore } from "./testing";

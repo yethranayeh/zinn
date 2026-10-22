@@ -10,7 +10,7 @@ import type {
 import { existsSync } from "node:fs";
 import { openDatabase } from "#sqlite";
 
-import { getStorage, resetStorageForTests } from "./constant.js";
+import { getStorage, resetStorageForTests } from "./storage.js";
 import { ensureDataDirectory } from "./config.js";
 import { applyConnectionSettings } from "./connection.js";
 import { classifyConnection } from "./migrations/classify.js";
