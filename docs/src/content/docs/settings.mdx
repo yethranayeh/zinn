@@ -25,6 +25,8 @@ Without `ZINN_DIR`, Zinn looks for `zinn.local.json` from the current directory 
 
 `storage.directory` is relative to the folder containing the file that sets it. A leading `~` or `~/` expands to your home directory. It names the Zinn directory, which contains `data/zinn.sqlite` and `backups/`.
 
+The selected directory holds one database shared by all its projects. Choose a local directory outside network shares and synchronized folders. See [safe storage and backups](/docs/data).
+
 A folder selected through `ZINN_DIR` or `storage.directory` must already exist. Create it with `mkdir -p <path>` before using it. An existing empty folder is initialized on first database use. With no explicit location, Zinn creates the default `~/.zinn` folder on first use. An empty `ZINN_DIR` is refused. Help, version requests, and `zinn info` work with a missing folder.
 
 For example, this `zinn.local.json` selects a shared data directory and its default project:

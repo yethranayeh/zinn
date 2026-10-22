@@ -8,6 +8,8 @@ breadcrumb: Data and backups
 
 Zinn stores every project in one local SQLite database. The default database is `~/.zinn/data/zinn.sqlite`. The backups of the database are stored in `~/.zinn/backups/`. `ZINN_DIR` or a settings file can select another Zinn directory. See [Settings](/docs/settings) for directory selection and precedence.
 
+Keep the active Zinn directory on a local filesystem, outside network shares such as SMB and synchronized folders such as OneDrive or Dropbox. SQLite's [WAL mode](https://sqlite.org/wal.html) coordinates processes on the same machine through shared memory; file synchronization does not coordinate database transactions.
+
 The CLI and core library can share the selected database. On a local filesystem, commands can share it too: Zinn waits up to 30 seconds for each lock acquisition, then fails if the lock is still held. Of course, the command's total running time can exceed 30 seconds.
 
 ## Back up the database
@@ -19,6 +21,8 @@ zinn backup
 ```
 
 The snapshot includes committed changes and can be taken while Zinn is in use. It is saved to `backups/` in the selected Zinn directory, and an existing backup is never overwritten. With `--json`, the command returns `{ "path": "..." }`. It fails when there is no database yet.
+
+Use `zinn backup` for a complete copy: committed changes may still be in `data/zinn.sqlite-wal`, so copying `data/zinn.sqlite` alone can omit them. To move the database to another machine, copy the generated snapshot and run `zinn restore <path>` there.
 
 ## Restore a database
 
