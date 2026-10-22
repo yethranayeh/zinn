@@ -45,6 +45,12 @@ import {
   textEditOptions,
   textEditConstraints,
 } from "../text-edit.js";
+import {
+  resolveTextInput,
+  textFileHelp,
+  textFileOption,
+  textSourceConstraint,
+} from "../text-input.js";
 import { currentActor } from "../actor.js";
 import {
   resolveProjectKey,
@@ -91,6 +97,7 @@ const taskEditConstraint = {
   members: [
     "option:title",
     "option:description",
+    "option:description-file",
     "option:priority",
     "option:add-label",
     "option:remove-label",
@@ -102,6 +109,7 @@ const taskInputs = {
     options: {
       title: { type: "string", required: true, value: { kind: "text", name: "text" } },
       description: { type: "string", value: { kind: "text", name: "text" } },
+      "description-file": textFileOption,
       priority: priorityOption,
       label: { type: "string", multiple: true, value: { kind: "label-name", name: "name" } },
       column: { type: "string", value: { kind: "column-name", name: "name" } },
@@ -120,7 +128,7 @@ const taskInputs = {
         positionals: [{ name: "project-key", min: 0, max: 1, value: { kind: "project-key" } }],
       },
     ],
-    constraints: [],
+    constraints: [textSourceConstraint("--description")],
     notes: [requiredProjectDescription],
   },
   list: {
@@ -180,6 +188,7 @@ const taskInputs = {
     options: {
       title: { type: "string", value: { kind: "text", name: "text" } },
       description: { type: "string", value: { kind: "text", name: "text" } },
+      "description-file": textFileOption,
       ...textEditOptions,
       priority: priorityOption,
       "add-label": { type: "string", multiple: true, value: { kind: "label-name", name: "name" } },
@@ -195,7 +204,11 @@ const taskInputs = {
         positionals: [taskKeyPositional],
       },
     ],
-    constraints: [...textEditConstraints("--description"), taskEditConstraint],
+    constraints: [
+      textSourceConstraint("--description"),
+      ...textEditConstraints("--description"),
+      taskEditConstraint,
+    ],
     notes: [textEditHelp("--description")],
   },
   move: {
@@ -285,7 +298,7 @@ export const taskRouter = {
     confirmation: { kind: "none" },
     input: taskInputs.create,
     results: [jsonResult("Task")],
-    run: (args) => {
+    run: async (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
         options: taskInputs.create.options,
@@ -303,6 +316,12 @@ export const taskRouter = {
         "title",
         "A task needs at least a title: use --title",
       );
+      const priority = parsePriority(values.priority);
+      const description = await resolveTextInput(
+        values.description,
+        values["description-file"],
+        "--description",
+      );
 
       const projectMatch = project.getByKey(projectKey);
       if (projectMatch == null) {
@@ -316,8 +335,8 @@ export const taskRouter = {
         {
           project_id: projectMatch.id,
           title,
-          description: values.description ?? null,
-          priority: parsePriority(values.priority),
+          description: description ?? null,
+          priority,
           labelNames: values.label,
           columnName: values.column,
           relations: parseNewTaskRelations(values),
@@ -334,6 +353,7 @@ ${requiredProjectDescription}
 
 Priority values: ${priorityOption.value.choices.join(", ")}; defaults to none.
 Repeat --label to attach multiple existing labels.
+${textFileHelp("--description")}
 
 ${dashValueHelp("--description")}
 
@@ -561,7 +581,7 @@ Examples:
     confirmation: { kind: "none" },
     input: taskInputs.edit,
     results: [jsonResult("Task")],
-    run: (args) => {
+    run: async (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
         options: taskInputs.edit.options,
@@ -574,11 +594,18 @@ Examples:
       validatePositionals(positionals, taskInputs.edit.forms[0]);
 
       const taskKey = positionals[0]!;
-      const description = resolveTextEdit(values.description, values, "--description");
+      const priority = parsePriority(values.priority);
+      const description = await resolveTextEdit(
+        values.description,
+        values["description-file"],
+        values,
+        "--description",
+      );
 
-      if (violatesConstraint(taskEditConstraint, getOptionInputs({ ...values, description }))) {
+      // Without a text source nothing was read, so this usage error still comes before any input.
+      if (violatesConstraint(taskEditConstraint, getOptionInputs(values))) {
         quit(
-          "Provide at least one edit flag: --title, --description, --priority, --add-label, or --remove-label",
+          "Provide at least one edit flag: --title, --description, --description-file, --priority, --add-label, or --remove-label",
           undefined,
           { field: [] },
         );
@@ -589,7 +616,7 @@ Examples:
           taskKey,
           title: values.title,
           description,
-          priority: parsePriority(values.priority),
+          priority,
           addLabelNames: values["add-label"],
           removeLabelNames: values["remove-label"],
         },
@@ -604,6 +631,7 @@ Edit a task's title, description, priority, or label attachments.
 Use --priority none to clear priority.
 Priority values: ${priorityOption.value.choices.join(", ")}.
 Provide at least one edit flag. Use --description '' to clear the description.
+${textFileHelp("--description")}
 
 ${textEditHelp("--description")}
 

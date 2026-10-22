@@ -27,6 +27,12 @@ import {
   textEditOptions,
   textEditConstraints,
 } from "../text-edit.js";
+import {
+  resolveTextInput,
+  textFileHelp,
+  textFileOption,
+  textSourceConstraint,
+} from "../text-input.js";
 import { formatColumnList, presentColumn } from "../presentation/column-presentation.js";
 import { formatProjectList, presentProject } from "../presentation/project-presentation.js";
 import { formatSection } from "../presentation/section.js";
@@ -35,7 +41,7 @@ import { resolveProjectKey, requiredProjectDescription } from "../project.js";
 
 const projectEditConstraint = {
   kind: "atLeastOne",
-  members: ["option:name", "option:description"],
+  members: ["option:name", "option:description", "option:description-file"],
 } as const satisfies InputConstraint;
 
 const projectInputs = {
@@ -43,6 +49,7 @@ const projectInputs = {
     options: {
       name: { type: "string", value: { kind: "text", name: "text" } },
       description: { type: "string", value: { kind: "text", name: "text" } },
+      "description-file": textFileOption,
     },
     forms: [
       {
@@ -50,7 +57,7 @@ const projectInputs = {
         positionals: [{ name: "project-key", min: 1, max: 1, value: { kind: "project-key" } }],
       },
     ],
-    constraints: [],
+    constraints: [textSourceConstraint("--description")],
   },
   list: noInput,
   view: {
@@ -68,6 +75,7 @@ const projectInputs = {
     options: {
       name: { type: "string", value: { kind: "text", name: "text" } },
       description: { type: "string", value: { kind: "text", name: "text" } },
+      "description-file": textFileOption,
       ...textEditOptions,
     },
     forms: [
@@ -76,7 +84,11 @@ const projectInputs = {
         positionals: [{ name: "project-key", min: 0, max: 1, value: { kind: "project-key" } }],
       },
     ],
-    constraints: [...textEditConstraints("--description"), projectEditConstraint],
+    constraints: [
+      textSourceConstraint("--description"),
+      ...textEditConstraints("--description"),
+      projectEditConstraint,
+    ],
     notes: [requiredProjectDescription, textEditHelp("--description")],
   },
   delete: {
@@ -169,7 +181,7 @@ export const projectRouter = {
     confirmation: { kind: "none" },
     input: projectInputs.create,
     results: [jsonResult("Project")],
-    run: (args: Array<string>) => {
+    run: async (args: Array<string>) => {
       const { values, positionals, tokens } = parseArgs({
         args,
         options: projectInputs.create.options,
@@ -182,10 +194,15 @@ export const projectRouter = {
       validatePositionals(positionals, projectInputs.create.forms[0]);
 
       const projectKey = positionals[0]!;
+      const description = await resolveTextInput(
+        values.description,
+        values["description-file"],
+        "--description",
+      );
 
       try {
         const createdProject = project.create(
-          { key: projectKey, name: values.name, description: values.description },
+          { key: projectKey, name: values.name, description },
           currentActor(),
         );
         output(presentProject(createdProject), (entry) => formatProjectList([entry]));
@@ -201,6 +218,7 @@ Project keys are stored in uppercase.
 An omitted name defaults to the uppercase project key.
 Names are trimmed and cannot be blank or contain line breaks or control characters.
 Descriptions may contain multiple lines. If omitted, they are saved as null.
+${textFileHelp("--description")}
 
 ${dashValueHelp("--description")}
 
@@ -298,7 +316,7 @@ Example: zinn project view MDR`,
     confirmation: { kind: "none" },
     input: projectInputs.edit,
     results: [jsonResult("Project")],
-    run: (args) => {
+    run: async (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
         options: projectInputs.edit.options,
@@ -311,10 +329,18 @@ Example: zinn project view MDR`,
       validatePositionals(positionals, projectInputs.edit.forms[0]);
 
       const projectKey = resolveProjectKey(positionals[0], { required: true })!;
-      const description = resolveTextEdit(values.description, values, "--description");
+      const description = await resolveTextEdit(
+        values.description,
+        values["description-file"],
+        values,
+        "--description",
+      );
 
-      if (violatesConstraint(projectEditConstraint, getOptionInputs({ ...values, description }))) {
-        quit("Provide an edit flag: --name or --description", undefined, { field: [] });
+      // Without a text source nothing was read, so this usage error still comes before any input
+      if (violatesConstraint(projectEditConstraint, getOptionInputs(values))) {
+        quit("Provide an edit flag: --name, --description or --description-file", undefined, {
+          field: [],
+        });
       }
 
       const editedProject = project.edit(
@@ -328,6 +354,7 @@ Example: zinn project view MDR`,
 Change the supplied project fields. At least one edit flag is required.
 ${requiredProjectDescription}
 Use --description '' to clear the description.
+${textFileHelp("--description")}
 
 ${textEditHelp("--description")}
 

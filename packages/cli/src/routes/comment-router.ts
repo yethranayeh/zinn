@@ -1,18 +1,23 @@
-import type { CommandInput } from "../input.js";
+import type { CommandInput, InputConstraint } from "../input.js";
 import type { RouteDef } from "../types.js";
 
 import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
 import { comment } from "@zinn-dev/core";
 
-import { generateCommandUsage, taskKeyPositional } from "../input.js";
+import {
+  generateCommandUsage,
+  getOptionInputs,
+  taskKeyPositional,
+  violatesConstraint,
+} from "../input.js";
 import {
   confirmationDescription,
   confirmAction,
   dashValueHelp,
   output,
+  quit,
   validatePositionals,
-  requireStringOption,
   validateUniqueOptions,
 } from "../lib.js";
 import {
@@ -21,6 +26,12 @@ import {
   textEditOptions,
   textEditConstraints,
 } from "../text-edit.js";
+import {
+  resolveTextInput,
+  textFileHelp,
+  textFileOption,
+  textSourceConstraint,
+} from "../text-input.js";
 import { currentActor } from "../actor.js";
 import {
   formatCommentList,
@@ -28,7 +39,20 @@ import {
   presentComments,
 } from "../presentation/comment-presentation.js";
 
-function parseTextArgs(args: Array<string>) {
+const commentTextConstraint = {
+  kind: "atLeastOne",
+  members: ["option:text", "option:text-file"],
+} as const satisfies InputConstraint;
+
+function requireCommentText(values: { text?: string; "text-file"?: string }) {
+  if (violatesConstraint(commentTextConstraint, getOptionInputs(values))) {
+    quit("Comment text must be specified with --text or --text-file", undefined, {
+      argument: "--text",
+    });
+  }
+}
+
+async function parseTextArgs(args: Array<string>) {
   const { values, positionals, tokens } = parseArgs({
     args,
     options: commentInputs.create.options,
@@ -39,18 +63,14 @@ function parseTextArgs(args: Array<string>) {
 
   validateUniqueOptions(tokens, commentInputs.create.options);
   validatePositionals(positionals, commentInputs.create.forms[0]);
+  requireCommentText(values);
 
-  const text = requireStringOption(
-    commentInputs.create.options.text,
-    values.text,
-    "text",
-    "Comment text must be specified with --text",
-  );
+  const text = await resolveTextInput(values.text, values["text-file"], "--text");
 
-  return { key: positionals[0]!, text };
+  return { key: positionals[0]!, text: text! };
 }
 
-function parseCommentEditArgs(args: Array<string>) {
+async function parseCommentEditArgs(args: Array<string>) {
   const { values, positionals, tokens } = parseArgs({
     args,
     options: commentInputs.edit.options,
@@ -62,27 +82,26 @@ function parseCommentEditArgs(args: Array<string>) {
   validateUniqueOptions(tokens, commentInputs.edit.options);
   validatePositionals(positionals, commentInputs.edit.forms[0]);
 
-  const text = resolveTextEdit(values.text, values, "--text");
-  requireStringOption(
-    commentInputs.edit.options.text,
-    values.text,
-    "text",
-    "Comment text must be specified with --text",
-  );
+  const text = await resolveTextEdit(values.text, values["text-file"], values, "--text");
+  // Without a text source nothing was read, so this usage error still comes before any input
+  requireCommentText(values);
 
   return { key: positionals[0]!, text: text! };
 }
 
 const commentInputs = {
   create: {
-    options: { text: { type: "string", required: true, value: { kind: "text", name: "text" } } },
+    options: {
+      text: { type: "string", value: { kind: "text", name: "text" } },
+      "text-file": textFileOption,
+    },
     forms: [
       {
         id: "default",
         positionals: [taskKeyPositional],
       },
     ],
-    constraints: [],
+    constraints: [textSourceConstraint("--text"), commentTextConstraint],
   },
   list: {
     options: {},
@@ -106,7 +125,8 @@ const commentInputs = {
   },
   edit: {
     options: {
-      text: { type: "string", required: true, value: { kind: "text", name: "text" } },
+      text: { type: "string", value: { kind: "text", name: "text" } },
+      "text-file": textFileOption,
       ...textEditOptions,
     },
     forms: [
@@ -115,7 +135,11 @@ const commentInputs = {
         positionals: [{ name: "comment-key", min: 1, max: 1, value: { kind: "comment-key" } }],
       },
     ],
-    constraints: [...textEditConstraints("--text")],
+    constraints: [
+      textSourceConstraint("--text"),
+      ...textEditConstraints("--text"),
+      commentTextConstraint,
+    ],
     notes: [textEditHelp("--text")],
   },
   delete: {
@@ -137,8 +161,8 @@ export const commentRouter = {
     confirmation: { kind: "none" },
     input: commentInputs.create,
     results: [jsonResult("Comment")],
-    run: (args) => {
-      const props = parseTextArgs(args);
+    run: async (args) => {
+      const props = await parseTextArgs(args);
       const created = comment.create({ taskKey: props.key, text: props.text }, currentActor());
       output(presentComment(created), (entry) =>
         formatCommentList([entry], { showsCreatedAt: false, showsTextPreview: true }),
@@ -147,6 +171,7 @@ export const commentRouter = {
     help: `${generateCommandUsage("task comment create", commentInputs.create)}
 
 Add a comment to a task. Comment text cannot be blank.
+${textFileHelp("--text")}
 Archived tasks can be commented on.
 The printed result is a preview. 'task comment view' shows the full text. --json keeps the full text.
 
@@ -208,8 +233,8 @@ Example: zinn task comment view 'MDR-1#1'`,
     confirmation: { kind: "none" },
     input: commentInputs.edit,
     results: [jsonResult("Comment")],
-    run: (args) => {
-      const props = parseCommentEditArgs(args);
+    run: async (args) => {
+      const props = await parseCommentEditArgs(args);
       const edited = comment.edit({ commentKey: props.key, text: props.text }, currentActor());
       output(presentComment(edited), (entry) =>
         formatCommentList([entry], { showsCreatedAt: false, showsTextPreview: true }),
@@ -218,6 +243,7 @@ Example: zinn task comment view 'MDR-1#1'`,
     help: `${generateCommandUsage("task comment edit", commentInputs.edit)}
 
 Replace a comment's text. Comment text cannot be blank.
+${textFileHelp("--text")}
 The printed result is a preview. 'task comment view' shows the full text. --json keeps the full text.
 
 ${textEditHelp("--text")}

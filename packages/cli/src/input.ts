@@ -158,6 +158,17 @@ export function generateInputUsage(input: CommandInput): string[] {
     };
   });
 
+  // Exclusive inputs that also need one of them are a required choice: {a|b} instead of [a|b]
+  const isRequiredChoice = (members: readonly InputReference[]) =>
+    input.constraints.some(
+      (constraint) =>
+        constraint.kind === "atLeastOne" &&
+        constraint.members.length === members.length &&
+        constraint.members.every((member) => members.includes(member)),
+    );
+  const choice = (alternatives: readonly string[], isRequired: boolean) =>
+    isRequired ? `{${alternatives.join("|")}}` : `[${alternatives.join("|")}]`;
+
   return input.forms.map((form) => {
     const words = new Map([
       ...form.positionals.map(
@@ -167,26 +178,34 @@ export function generateInputUsage(input: CommandInput): string[] {
       ...options.map(({ reference, word }) => [reference, word] as const),
     ]);
 
-    // Text modifiers share one syntax group with the text they change
+    // Text modifiers share one syntax group with the text sources they change
     const textRequirement = input.constraints.find(
-      (constraint) => constraint.kind === "requires" && constraint.input === "option:append",
+      (constraint) => constraint.kind === "requiresAny" && constraint.input === "option:append",
     );
 
-    if (textRequirement?.kind === "requires") {
-      const textReference = textRequirement.requires;
-      const textName = textReference.slice("option:".length);
-      const textOption = input.options[textName]!;
-      const text = `--${textName} <${textOption.value?.name ?? "text"}>`;
+    if (textRequirement?.kind === "requiresAny") {
+      const sources = textRequirement.members;
+      const sourceSyntax = sources.map((reference) => {
+        const name = reference.slice("option:".length);
+        return `--${name} <${input.options[name]!.value?.name ?? "text"}>`;
+      });
+      const isRequired = isRequiredChoice(sources);
+      const source = sourceSyntax.length === 1 ? sourceSyntax[0]! : choice(sourceSyntax, true);
       const replacing = words.get("option:replacing")!.slice(1, -1);
-      const modifiers = `[--append|${replacing} ${words.get("option:all")}]`;
+      const group = `${source} [--append|${replacing} ${words.get("option:all")}]`;
 
-      words.set(
-        textReference,
-        textOption.required ? `${text} ${modifiers}` : `[${text} ${modifiers}]`,
-      );
+      words.set(sources[0]!, isRequired ? group : `[${group}]`);
 
-      for (const name of ["append", "replacing", "all"]) {
-        words.delete(`option:${name}`);
+      // The words written inside the first source's group
+      const foldedReferences = [
+        ...sources.slice(1),
+        "option:append",
+        "option:replacing",
+        "option:all",
+      ];
+
+      for (const reference of foldedReferences) {
+        words.delete(reference);
       }
     }
 
@@ -199,7 +218,7 @@ export function generateInputUsage(input: CommandInput): string[] {
       }
 
       const alternatives = constraint.members.map((member) => words.get(member)!.slice(1, -1));
-      words.set(constraint.members[0]!, `[${alternatives.join("|")}]`);
+      words.set(constraint.members[0]!, choice(alternatives, isRequiredChoice(constraint.members)));
 
       for (const member of constraint.members.slice(1)) {
         words.delete(member);

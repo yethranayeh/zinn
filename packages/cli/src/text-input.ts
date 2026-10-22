@@ -1,8 +1,37 @@
+import type { InputConstraint, InputOption } from "./input.js";
+
 import { Buffer } from "node:buffer";
 import { constants, promises as fs, type Stats } from "node:fs";
 import { MAX_TEXT_BYTES } from "@zinn-dev/core";
 
 import { CliError, classifyFailure } from "./errors.js";
+
+export type TextFlag = "--description" | "--text";
+
+/** The flag that reads a text flag's value from a file, or from stdin as "-" */
+export const textFileOption = {
+  type: "string",
+  value: {
+    kind: "path",
+    name: "path",
+    description:
+      'A UTF-8 file, or "-" for stdin. Trailing line breaks are dropped; empty or blank input is an error.',
+  },
+} as const satisfies InputOption;
+
+/** Inline text and its file flag are alternatives for the same field */
+export function textSourceConstraint(textFlag: TextFlag) {
+  const name = textFlag.slice(2);
+
+  return {
+    kind: "exclusive",
+    members: [`option:${name}`, `option:${name}-file`],
+  } as const satisfies InputConstraint;
+}
+
+export function textFileHelp(textFlag: TextFlag) {
+  return `${textFlag}-file <path> takes the text from a UTF-8 file, or from stdin when <path> is "-".`;
+}
 
 // One extra byte detects oversized input without waiting for EOF.
 const READ_LIMIT = MAX_TEXT_BYTES + 1;
@@ -112,7 +141,7 @@ async function readStdin(fileFlag: string, refuse: (message: string) => never): 
 export async function resolveTextInput(
   text: string | undefined,
   path: string | undefined,
-  textFlag: "--description" | "--text",
+  textFlag: TextFlag,
 ): Promise<string | undefined> {
   const fileFlag = `${textFlag}-file`;
   const refuse = (message: string): never => {

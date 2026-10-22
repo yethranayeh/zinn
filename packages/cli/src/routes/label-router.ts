@@ -27,6 +27,12 @@ import {
   textEditOptions,
   textEditConstraints,
 } from "../text-edit.js";
+import {
+  resolveTextInput,
+  textFileHelp,
+  textFileOption,
+  textSourceConstraint,
+} from "../text-input.js";
 import { currentActor } from "../actor.js";
 import { formatLabelList, presentLabel } from "../presentation/label-presentation.js";
 
@@ -43,12 +49,13 @@ const labelInputs = {
   create: {
     options: {
       description: { type: "string", value: { kind: "text", name: "text" } },
+      "description-file": textFileOption,
       color: colorOption,
     },
     forms: [
       { id: "default", positionals: [{ name: "name", min: 1, max: 1, value: { kind: "name" } }] },
     ],
-    constraints: [],
+    constraints: [textSourceConstraint("--description")],
   },
   list: noInput,
   view: {
@@ -65,6 +72,7 @@ const labelInputs = {
     options: {
       name: { type: "string", value: { kind: "text", name: "text" } },
       description: { type: "string", value: { kind: "text", name: "text" } },
+      "description-file": textFileOption,
       ...textEditOptions,
       color: colorOption,
     },
@@ -72,12 +80,18 @@ const labelInputs = {
       { id: "default", positionals: [{ name: "name", min: 1, max: 1, value: { kind: "name" } }] },
     ],
     constraints: [
+      textSourceConstraint("--description"),
       ...textEditConstraints("--description"),
       {
         kind: "atLeastOne",
+        // A description can also come from --description-file
         members: Object.keys(labelEditSchema.shape)
           .filter((name) => name !== "labelName")
-          .map((name) => `option:${name}` as const),
+          .flatMap((name) =>
+            name === "description"
+              ? (["option:description", "option:description-file"] as const)
+              : [`option:${name}` as const],
+          ),
       },
     ],
     notes: [textEditHelp("--description")],
@@ -98,7 +112,7 @@ export const labelRouter = {
     confirmation: { kind: "none" },
     input: labelInputs.create,
     results: [jsonResult("Label")],
-    run: (args) => {
+    run: async (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
         options: labelInputs.create.options,
@@ -110,7 +124,16 @@ export const labelRouter = {
       validateUniqueOptions(tokens, labelInputs.create.options);
       validatePositionals(positionals, labelInputs.create.forms[0]);
 
-      const input = labelCreateSchema.parse({ name: positionals[0], ...values });
+      const description = await resolveTextInput(
+        values.description,
+        values["description-file"],
+        "--description",
+      );
+      const input = labelCreateSchema.parse({
+        name: positionals[0],
+        description,
+        color: values.color,
+      });
       const created = label.create(input, currentActor());
 
       output(presentLabel(created), (entry) =>
@@ -122,6 +145,7 @@ export const labelRouter = {
 Create a global label. Names preserve casing, but uniqueness is case-insensitive.
 Names are trimmed and cannot be blank or contain line breaks or control characters.
 Description is optional.
+${textFileHelp("--description")}
 The printed result is a preview. 'label view' and --json show the full text.
 
 Color defaults to white.
@@ -196,7 +220,7 @@ Example: zinn label view bug`,
     confirmation: { kind: "none" },
     input: labelInputs.edit,
     results: [jsonResult("Label")],
-    run: (args) => {
+    run: async (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
         options: labelInputs.edit.options,
@@ -211,7 +235,12 @@ Example: zinn label view bug`,
       const input = labelEditSchema.parse({
         labelName: positionals[0],
         name: values.name,
-        description: resolveTextEdit(values.description, values, "--description"),
+        description: await resolveTextEdit(
+          values.description,
+          values["description-file"],
+          values,
+          "--description",
+        ),
         color: values.color,
       });
       const edited = label.edit(input, currentActor());
@@ -224,6 +253,7 @@ Example: zinn label view bug`,
 
 Change specified fields.
 Provide at least one edit flag. Use --description '' to clear the description.
+${textFileHelp("--description")}
 Description echoes use a preview; label view and --json keep the full text.
 Valid colors: ${labelInputs.edit.options.color.value.choices.join(", ")}.
 

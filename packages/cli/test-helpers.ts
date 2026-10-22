@@ -29,11 +29,12 @@ export async function withIsolatedZinnDir(run: (testDir: string) => Promise<void
 
 export async function runProcessAsync(
   command: Array<string>,
-  options: { env: Record<string, string | undefined>; cwd: string },
+  options: { env: Record<string, string | undefined>; cwd: string; stdin?: Uint8Array },
 ) {
   const proc = Bun.spawn(command, {
     env: options.env,
     cwd: options.cwd,
+    stdin: options.stdin,
     stdout: "pipe",
     stderr: "pipe",
   });

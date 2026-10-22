@@ -67,17 +67,26 @@ A value that begins with a dash, such as a Markdown bullet, must be joined to it
 zinn task edit MDR-1 --description='- Bring waffles.' --append
 ```
 
-For multi-line text, such as Markdown, pass a heredoc with a quoted delimiter (`'EOF'`) in bash or zsh. The shell then passes `$`, backticks, quotes and leading dashes as written:
+For multi-line text, such as Markdown, read it from a file or from stdin instead. `--description-file <path>` on `project`, `task` and `label` `create` and `edit`, and `--text-file <path>` on `task comment create` and `edit`, take the text from a file. A path of `-` reads stdin. With a heredoc and a quoted delimiter (`'EOF'`) in bash or zsh, the shell passes `$`, backticks, quotes and leading dashes as written:
 
 ```sh title="Edit multi-line text"
-zinn task edit MDR-1 --description="$(cat <<'EOF'
+zinn task edit MDR-1 --description-file - <<'EOF'
 - Bring waffles.
 - Count the `numbers` for $5 and "Kier".
 EOF
-)"
+zinn task comment create MDR-1 --text-file notes.md
 ```
 
-`$(...)` drops trailing line breaks, so the stored text ends with the last character of the last line.
+- A command takes one `-`, and refuses it when stdin is a terminal.
+- The path must be a regular file or `-`. A directory or another special file, such as a named pipe, is refused before anything is read.
+- The text must be UTF-8. A leading byte order mark is dropped; other encodings, such as UTF-16, and text containing a NUL character fail.
+- Trailing line breaks are dropped, as `$(cat file)` does, so the stored text ends with the last character of the last line.
+- Empty or blank input fails. To clear a description, use `--description ''`.
+- The 1 MiB limit applies to the bytes read, so larger input fails before it is stored.
+- The inline flag and its file flag cannot be combined. `--append` and `--replacing` work with either; the `--replacing <old>` text stays inline.
+- A failed read changes nothing.
+
+On Windows PowerShell 5.1, pass a file rather than a pipe: piping to a program converts non-ASCII text to `?` before Zinn receives it.
 
 ## Words and repeated flags
 
@@ -117,7 +126,7 @@ zinn project create MDR --name 'Macrodata Refinement' --description 'Refine macr
 
 Project keys are stored in uppercase. An omitted name defaults to the key.
 
-Descriptions print in full with `project view`. See [Editing conventions](#editing-conventions) for name validation and description storage and clearing.
+Descriptions print in full with `project view`. See [Editing conventions](#editing-conventions) for name validation and description storage and clearing, and [Text values](#text-values) for `--description-file`.
 
 Each project starts with _Backlog_, _TODO_, _In Progress_, _Review_, and _Done_ columns.
 
@@ -143,7 +152,7 @@ zinn project edit MDR --description 'Meet the quarterly quota'
 zinn project edit MDR --description ''
 ```
 
-Provide `--name`, `--description`, or both.
+Provide `--name`, a description (`--description` or `--description-file`), or both.
 The project key can be omitted when [defaultProject](/docs/settings) is configured.
 See [Text values](#text-values) for values that begin with a dash and multi-line text.
 
@@ -186,7 +195,7 @@ zinn task create MDR --title 'Refine 75% of the numbers'
 zinn task create MDR --title 'Review the employee handbook' --description 'Prepare for a 75% Dance Experience'
 ```
 
-The project key can be omitted when [defaultProject](/docs/settings) is configured.
+The project key can be omitted when [defaultProject](/docs/settings) is configured. `--description-file` reads the description from a file or stdin (see [Text values](#text-values)).
 
 `--column <name>` starts the task at the bottom of a specific column. The column name matching is case insensitive:
 
@@ -287,7 +296,7 @@ Label colors default to white. Available colors are _red_, _green_, _yellow_, _b
 
 `--json` includes each label's color as a value.
 
-`label edit` accepts name, color, and description. Renaming preserves every task attachment because attachments refer to the label's internal ID. Updating a label definition does not affect attached tasks' timestamps.
+`label edit` accepts name, color, and description. `label create` and `label edit` take `--description-file` for a description from a file or stdin (see [Text values](#text-values)). Renaming preserves every task attachment because attachments refer to the label's internal ID. Updating a label definition does not affect attached tasks' timestamps.
 
 `label create`, `label edit`, and `label list` show a preview of the descriptions. `label view <name>` shows the full description, which preserves line breaks and whitespace. `label view --json` returns one object with `name`, `color`, and the `description` in full.
 
@@ -348,6 +357,8 @@ zinn task comment view 'MDR-1#1'
 zinn task comment edit 'MDR-1#1' --text Approved
 zinn task comment delete 'MDR-1#1'
 ```
+
+`task comment create` and `task comment edit` take `--text-file` instead of `--text` to read the text from a file or stdin (see [Text values](#text-values)).
 
 `task comment view` shows the current text in full, keeping its line breaks, including on archived tasks. With `--json`, it returns one object with `key`, `text`, `created_at` and `updated_at`.
 
