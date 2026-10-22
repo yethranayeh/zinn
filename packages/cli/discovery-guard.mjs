@@ -127,8 +127,9 @@ for (const name of ["spawn", "spawnSync", "exec", "execSync", "execFile", "execF
 if (process.versions.bun) {
 	// Bun does not synchronize patched builtin defaults with named ESM imports.
 	const { mock } = await import("bun:test");
-	// Load this builtin before replacing its cached exports.
+	// Load these builtins before replacing their cached exports
 	await import("bun:sqlite");
+	await import("node:sqlite");
 	for (const [name, module] of [
 		["fs", fs],
 		["fs/promises", fsp],
