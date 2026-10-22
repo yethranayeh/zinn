@@ -6,20 +6,14 @@ import { pathToFileURL } from "node:url";
 import { isNamedBindings, openWith, opensExistingOnly } from "./database.ts";
 
 /**
- * bun:sqlite binds an integral number as INTEGER while it fits in a signed 52-bit integer and is not -0,
- *  and as REAL otherwise. node:sqlite binds every number as REAL, which stores 5 as '5.0' in text and JSON.
+ * bun:sqlite binds a number as INTEGER when Number.isSafeInteger is true and it is not -0, and as REAL otherwise.
+ *  node:sqlite binds every number as REAL, which stores 5 as '5.0' in text and JSON.
  * Passing the numbers Bun binds as INTEGER as bigint makes node:sqlite bind them as INTEGER too.
  * @link https://bun.com/docs/runtime/sqlite#integers
  */
-const BUN_INTEGER_LIMIT = 2 ** 51;
-
 function nodeValue(value: SqliteValue) {
   const isBunInteger =
-    typeof value === "number" &&
-    Number.isInteger(value) &&
-    !Object.is(value, -0) &&
-    value >= -BUN_INTEGER_LIMIT &&
-    value < BUN_INTEGER_LIMIT;
+    typeof value === "number" && Number.isSafeInteger(value) && !Object.is(value, -0);
 
   return isBunInteger ? BigInt(value) : value;
 }

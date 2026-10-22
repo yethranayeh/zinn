@@ -113,7 +113,7 @@ export function defineContractChecks(test: DefineTest, adapter: Adapter) {
     });
   });
 
-  test("integral numbers within 52 bits bind as INTEGER, other numbers as REAL", () => {
+  test("safe integers bind as INTEGER, other numbers as REAL", () => {
     withDatabase(adapter, (db) => {
       const positional = db.query<{ type: string }>("SELECT typeof(?) AS type");
       const named = db.query<{ type: string }, { $value: number }>("SELECT typeof($value) AS type");
@@ -122,10 +122,17 @@ export function defineContractChecks(test: DefineTest, adapter: Adapter) {
         named.get({ $value: value })!.type,
       ];
 
-      for (const value of [5, 0, -7, 1_700_000_000_000, 2 ** 51 - 1, -(2 ** 51)]) {
+      for (const value of [
+        5,
+        0,
+        -7,
+        1_700_000_000_000,
+        Number.MAX_SAFE_INTEGER,
+        Number.MIN_SAFE_INTEGER,
+      ]) {
         assert.deepEqual(boundTypes(value), ["integer", "integer"], `${value}`);
       }
-      for (const value of [1.5, -0, 2 ** 51]) {
+      for (const value of [1.5, -0, 2 ** 53, -(2 ** 53)]) {
         assert.deepEqual(boundTypes(value), ["real", "real"], `${value}`);
       }
 
