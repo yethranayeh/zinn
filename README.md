@@ -1,10 +1,10 @@
-# zinn
+# Zinn
 
 A kanban workflow in the terminal.
 
 > [!IMPORTANT]
-> **Experimental.** Commands, output, and the database schema will likely change often between releases until stable.
-> Run `zinn backup` before upgrading. See [upgrading the database](#upgrading-the-database).
+> **Experimental.** Commands, output, and the database schema may change between releases.
+> Save a backup before upgrading: `zinn backup`.
 
 ## Install
 
@@ -12,7 +12,7 @@ A kanban workflow in the terminal.
 npm i -g @zinn-dev/cli
 ```
 
-Requires [Node.js](https://nodejs.org/) 24.15.0 or newer. See [installation](https://zinn.sh/docs/installation) for upgrading, uninstalling and running on Bun.
+Requires [Node.js](https://nodejs.org/) 24.15.0 or newer. See [Install](https://zinn.sh/docs/installation) for setup options, upgrading, and uninstalling.
 
 ## Quick start
 
@@ -23,60 +23,17 @@ zinn project create MDR --name 'Macrodata Refinement'
 zinn task create MDR --title 'Refine 75% of the numbers'
 zinn task list MDR
 zinn task move MDR-1 'In Progress'
-zinn task view MDR-1
 ```
 
-New projects start with Backlog, TODO, In Progress, Review, and Done columns. You can rename, reorder, and add columns.
+See the [Quick start](https://zinn.sh/docs/quick-start) for a complete first workflow, the [CLI reference](https://zinn.sh/docs/cli) for commands and input rules, and [Install with coding agents](https://zinn.sh/docs/installation#use-with-coding-agents) for agent setup.
 
-Search tasks and comments, record a note, inspect recent activity, or archive completed work:
+## Data and upgrades
 
-```sh
-zinn task search numbers MDR
-zinn task comment create MDR-1 --text 'Ready for review'
-zinn activity list --task MDR-1
-zinn task archive MDR-1
-zinn task list MDR --archived
-```
-
-Use `zinn --help` to discover commands and `zinn <command> --help` for usage. Add `--json` for scripting. The [CLI README](packages/cli/README.md) covers filtering, labels, priorities, relations, text edits, and other command behavior.
-
-## Coding agents
-
-Choose either setup for your coding agent:
-
-- **Skill:** install the [Zinn workflow skill](packages/cli/skills/zinn/SKILL.md) with `npx skills add yethranayeh/zinn --skill zinn -g -y`. It covers picking up work, keeping task context, recording follow-ups, and handing off for review.
-- **Repository rule:** add a line to your `AGENTS.md` or `CLAUDE.md`, that should say something along the lines of “This repository uses Zinn for work tracking. Before substantial work, on resume, and before finishing, check the relevant task and keep it current. Use `zinn --help` to discover commands.”
-
-See [agent setup and updates](https://zinn.sh/docs/installation#use-with-coding-agents) for details.
-
-## Data location
-
-Projects share the local database at `~/.zinn/data/zinn.sqlite`. Set `ZINN_DIR` to use another Zinn directory. The folder must exist beforehand:
-
-```sh
-mkdir -p ./.zinn-local
-ZINN_DIR=./.zinn-local zinn project list
-```
-
-Use the same value on later commands to access that database. Relative paths are relative to the current folder. `ZINN_DIR` selects the database, backups, and settings together. The `settings.json` inside that directory supplies settings for the invocation.
-
-Optional `zinn.local.json` and global `settings.json` files can choose the directory too. Precedence is `ZINN_DIR`, local settings, global settings, then `~/.zinn`. See [settings files](packages/cli/README.md#settings-files) for their format and path rules.
-
-## Backups
-
-`zinn backup` saves a complete database snapshot in the Zinn directory's `backups/` folder. `zinn restore <path>` restores the whole database, saving the current data first and asking for confirmation. See [restore the database](packages/cli/README.md#restore-the-database).
-
-## Upgrading the database
-
-Published releases _automatically_ upgrade older databases, saving a backup first. Source code builds _do not_ upgrade the default DB, only a separate database targeted with `ZINN_DIR`. You can also run `zinn migrate` explicitly. Upgrades apply completely or not at all. An already-current database is unchanged.
-
-Newer databases open read-only. Databases without a schema version require `--allow-legacy-read` for read-only access and it is _not guaranteed_ that a legacy DB read will work as expected. See [upgrade the database](packages/cli/README.md#upgrade-the-database).
+By default, Zinn stores projects and tasks in `~/.zinn/data/zinn.sqlite`. See [Data and backups](https://zinn.sh/docs/data) and [Settings](https://zinn.sh/docs/settings) for storage and upgrade behavior.
 
 ## Development
 
-Zinn is developed with [Bun](https://bun.sh) 1.3, [pnpm](https://pnpm.io/) 10, [Node.js](https://nodejs.org/) 24 and Git. Other platforms, tools and versions are untested.
-
-From the repository root, install dependencies and run the tests:
+Zinn uses [Bun](https://bun.sh), pnpm, Node.js, and Git. From the repository root:
 
 ```sh
 bun install
@@ -85,9 +42,7 @@ bun run test
 bun run test:node
 ```
 
-The tests also pack and run the built packages, so they need `pnpm`, **Node.js 24.15.0** or newer and **Git** on `PATH`. `bun run test` runs the package and script tests, while `bun test` invokes Bun's runner directly. `bun run typecheck` checks tracked TypeScript outside the website. `bun run test:node` runs core's SQLite checks under Node.js. The website has its own tests; see [docs](docs/README.md).
-
-### Development data
+Package and installed-consumer tests need pnpm, Git, and Node.js 24.15.0 or newer on `PATH`. The [website](docs/README.md) has its own checks.
 
 Seed and use the isolated `.zinn-dev` database:
 
@@ -96,21 +51,15 @@ bun run dev:seed
 bun run dev -- task list
 ```
 
-The seed includes projects, labels, relations, and archived tasks. `dev:seed` **deletes and recreates** only that development database and its SQLite sidecar files. `dev` always uses `.zinn-dev`. Please note that ordinary `zinn` commands use your configured database.
-
-To run the development CLI from another folder:
-
-```sh
-bun /path/to/zinn/scripts/dev-cli.ts task list
-```
+`dev:seed` deletes and recreates only `.zinn-dev` and its SQLite sidecar files. `dev` always uses that isolated database; ordinary `zinn` commands use your configured database.
 
 ## Packages
 
-| Package                           | Purpose                                  |
-| --------------------------------- | ---------------------------------------- |
-| [`@zinn-dev/cli`](packages/cli)   | The `zinn` command-line interface        |
-| [`@zinn-dev/tui`](packages/tui)   | Terminal interface stub, not prioritized |
-| [`@zinn-dev/core`](packages/core) | Shared logic and storage                 |
+| Package                                     | Purpose                           |
+| ------------------------------------------- | --------------------------------- |
+| [`@zinn-dev/cli`](packages/cli/README.md)   | The `zinn` command-line interface |
+| [`@zinn-dev/core`](packages/core/README.md) | Shared operations and storage     |
+| [`@zinn-dev/tui`](packages/tui/README.md)   | Terminal interface stub           |
 
 ## License
 
