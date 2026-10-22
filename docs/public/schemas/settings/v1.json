@@ -22,6 +22,32 @@
 			},
 			"required": ["directory"],
 			"additionalProperties": false
+		},
+		"hooks": {
+			"description": "Commands Zinn runs after each saved change, one after another in the order listed. Read only from the global settings file and zinn.local.json cannot set them.",
+			"type": "object",
+			"propertyNames": {
+				"type": "string",
+				"minLength": 1
+			},
+			"additionalProperties": {
+				"type": "object",
+				"properties": {
+					"command": {
+						"type": "string",
+						"minLength": 1,
+						"description": "The command to run through the platform shell after each saved change. It gets the change's activity records on stdin, one JSON object per line."
+					},
+					"timeout": {
+						"description": "Seconds the hook may run before it is stopped with a warning. Defaults to 30.",
+						"type": "number",
+						"exclusiveMinimum": 0
+					}
+				},
+				"required": ["command"],
+				"additionalProperties": false,
+				"description": "One hook, named by its key."
+			}
 		}
 	},
 	"additionalProperties": false,

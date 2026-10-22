@@ -22,6 +22,7 @@ When to use Zinn: track development work locally, carry task scope and progress 
 - [CLI reference](https://zinn.sh/docs/cli.md): Project, task, label, relation, comment, and activity commands.
 - [Settings](https://zinn.sh/docs/settings.md): Data-directory selection, default projects, and store inspection.
 - [Scripting and JSON output](https://zinn.sh/docs/scripting.md): JSON contracts, command discovery, and confirmations.
+- [Hooks](https://zinn.sh/docs/hooks.md): Commands that run after a saved change, with activity records on stdin.
 - [Data and backups](https://zinn.sh/docs/data.md): Local storage, backups, restores, and database compatibility.
 - [Core library](https://zinn.sh/docs/core.md): TypeScript setup, shared guarantees, and database compatibility.
 - [Changelog](https://zinn.sh/changelog.md): Release changes, bundled core versions and breaking changes.

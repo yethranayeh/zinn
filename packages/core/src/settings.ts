@@ -32,7 +32,7 @@ export type ResolvedSettings = {
   /** The nearest codebase file, or `null` when absent or `ZINN_DIR` selects the settings. */
   local: SettingsFile | null;
   /** The local file merged over the global file. */
-  merged: Omit<Settings, "$schema">;
+  merged: Omit<Settings, "$schema" | "hooks">;
 };
 
 export const settingsFileSourceSchema = z.enum(["env", "global", "local"]);
@@ -219,6 +219,15 @@ function loadSettings(
     let inspected: SettingsFileInspection;
     try {
       const file = readSettingsFile(path);
+      if (source === "local" && file?.settings.hooks !== undefined) {
+        throw settingsFileError(
+          path,
+          `it sets hooks, which Zinn reads only from the global ${GLOBAL_SETTINGS_FILE_NAME}`,
+          "input",
+          { reason: "invalid_settings", field: ["hooks"] },
+          undefined,
+        );
+      }
       inspected =
         file === null
           ? { path, source, state: "missing" }

@@ -17,6 +17,9 @@ const outputDirectory = join(packageDirectory, "dist");
 const coreOutputDirectory = fileURLToPath(new URL("../core/dist", import.meta.url));
 const CLI_PATH = join(outputDirectory, "index.js");
 const BUILD_CHECK_TIMEOUT_MS = 30_000;
+const LARGER_THAN_PIPE_BUFFER = 200_000;
+// Well under the 10-second sleeps the hooks below start, so waiting on either fails the check.
+const HOOK_COMMAND_LIMIT_MS = 5_000;
 
 function runBuilt(runtime: string, args: string[], directory: string, env: Record<string, string> = {}) {
   return runCli(args, { runtime, cliPath: CLI_PATH, env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory, ...env } });
@@ -68,6 +71,38 @@ for (const runtime of ["node", "bun"]) {
       expect(run(["activity", "list", "--project", "APP", "--json"])).toHaveLength(1);
       expect(run(["activity", "list", "--project", "APP", "--show-deleted", "--json"])).toEqual(run(["activity", "list", "--json"]));
       expect(run(["activity", "list", "--project-id", projectId, "--limit", "1", "--json"])).toEqual([deleted[0]]);
+    });
+  });
+
+  test(`${runtime}: ZINN-161: built hooks get the change, warn on failure and never hold up the command`, () => {
+    withDirectory((directory) => {
+      const recorded = join(directory, "recorded.ndjson");
+      writeFileSync(join(directory, "settings.json"), JSON.stringify({
+        hooks: {
+          recording: { command: `cat > '${recorded}'` },
+          ignoring: { command: "exit 0" },
+          detaching: { command: "sleep 10 >/dev/null 2>&1 &" },
+          failing: { command: "echo hook-output; exit 3" },
+          slow: { command: "sleep 10", timeout: 0.5 },
+        },
+      }));
+      expect(runBuilt(runtime, ["project", "create", "APP"], directory).code).toBe(0);
+
+      const started = Date.now();
+      const result = runBuilt(runtime, ["task", "create", "APP", "--title", "Large", "--description", "x".repeat(LARGER_THAN_PIPE_BUFFER), "--json"], directory, { NODE_NO_WARNINGS: "1" });
+      expect(Date.now() - started).toBeLessThan(HOOK_COMMAND_LIMIT_MS);
+      expect(result.code, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout).key).toBe("APP-1");
+      for (const name of ["failing", "slow"]) {
+        expect(result.stderr).toContain(`"${name}"`);
+      }
+      for (const name of ["recording", "ignoring", "detaching"]) {
+        expect(result.stderr).not.toContain(`"${name}"`);
+      }
+      expect(result.stderr).toContain("hook-output");
+      expect(result.stdout).not.toContain("hook-output");
+      const lines = readFileSync(recorded, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+      expect(lines).toEqual([expect.objectContaining({ entity_type: "task", action: "create", task_key: "APP-1" })]);
     });
   });
 

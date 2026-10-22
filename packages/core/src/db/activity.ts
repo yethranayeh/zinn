@@ -27,8 +27,9 @@ function parseActivity(row: StoredActivity): Activity {
   };
 }
 
-export function create(props: Omit<Activity, "id">) {
+export function create(props: Omit<Activity, "id">): Activity {
   const db = getDb();
+  const id = uuidv7();
 
   db.query<never, Bind<StoredActivity>>(
     `INSERT INTO
@@ -42,7 +43,7 @@ export function create(props: Omit<Activity, "id">) {
       $entity_type, $entity_id, $action, $changes
     );`,
   ).run({
-    $id: uuidv7(),
+    $id: id,
     $created_at: props.created_at,
     $actor_name: props.actor_name,
     $actor_email: props.actor_email,
@@ -58,6 +59,8 @@ export function create(props: Omit<Activity, "id">) {
     $action: props.action,
     $changes: props.changes == null ? null : JSON.stringify(props.changes),
   });
+
+  return { id, ...props };
 }
 
 export function getAllByEntity(entityType: ActivityEntityType, entityId: string): Array<Activity> {

@@ -1,12 +1,12 @@
 ---
 title: Settings | Zinn
-description: Choose Zinn's data directory and default project, and inspect the selected store.
+description: Choose Zinn's data directory and default project, run hooks after changes, and inspect the selected store.
 breadcrumb: Settings
 ---
 
 # Settings
 
-Without `ZINN_DIR`, Zinn reads the global `~/.zinn/settings.json` and the nearest optional `zinn.local.json` in a codebase. They can choose the data directory and a default project. With `ZINN_DIR`, Zinn reads only `settings.json` inside that selected directory. Note that `storage.directory` does not cause settings from its target directory to be read.
+Without `ZINN_DIR`, Zinn reads the global `~/.zinn/settings.json` and the nearest optional `zinn.local.json` in a codebase. They can choose the data directory and a default project; the global file can also configure hooks. With `ZINN_DIR`, Zinn reads only `settings.json` inside that selected directory. Note that `storage.directory` does not cause settings from its target directory to be read.
 
 For the files and paths that make up a store, see [Data and backups](/docs/data).
 
@@ -48,6 +48,20 @@ The `$schema` field is optional and gives editors a schema for autocomplete and 
 The default applies to `task create`, `task list`, `task search`, `project view`, `project column list`, `project edit`, and `project delete` when their project key is omitted. A `null` value is not accepted. Without a default, `task list` and `task search` cover every project; the other commands require a key. A configured default that names a missing project causes a command that uses it to fail and identify the key and settings file. `--all-projects` makes `task list` and `task search` cover every project even when a default is configured; it works with `--all` or `--archived` and cannot be combined with a typed project key.
 
 The `defaultProject` setting applies only to commands that support an omitted key. For example, task-key commands use the project in the task key, and column creation, editing, and ordering require an explicit project key. See the [CLI reference](/docs/cli#start-a-project) for command details.
+
+## Run hooks after changes
+
+`hooks` in the global settings file (`~/.zinn/settings.json`, or `settings.json` inside `ZINN_DIR`) lists commands that Zinn runs after each saved change:
+
+```json
+{
+	"hooks": {
+		"notify": { "command": "sh ~/.zinn/hooks/notify.sh", "timeout": 10 }
+	}
+}
+```
+
+A `hooks` key in `zinn.local.json` is a settings error like any other invalid setting. Therefore, hooks never run from the local settings file. See [Hooks](/docs/hooks) for what a hook receives and how failures are handled.
 
 ## Inspect the selected store
 

@@ -27,6 +27,7 @@ import { upgradeDatabase } from "./migrations/upgrade.js";
 import { readCoreReleaseMode } from "./release.js";
 import { attachSuppressed, SqliteError } from "./sqlite/database.js";
 import { rethrowSearchError } from "./search-error.js";
+import { withChangeHooks } from "./hooks.js";
 
 let db: Database | null = null;
 let policy: OpenPolicy = DEFAULT_OPEN_POLICY;
@@ -246,12 +247,20 @@ export function assertWritable() {
   }
 }
 
-/** Runs fn in one write transaction once the database accepts changes. Every core mutation uses it. */
+/**
+ * Runs fn in one write transaction once the database accepts changes. Every core mutation uses it.
+ * The outermost call runs the configured hooks after the commit, and a nested call runs inside it.
+ */
 export function writeTransaction<T>(fn: () => T): T {
   assertWritable();
-  try {
-    return getDb().transaction(fn).immediate();
-  } catch (error) {
-    rethrowSearchError(error);
-  }
+  const connection = getDb();
+  const write = () => {
+    try {
+      return connection.transaction(fn).immediate();
+    } catch (error) {
+      rethrowSearchError(error);
+    }
+  };
+
+  return connection.inTransaction ? write() : withChangeHooks(write);
 }

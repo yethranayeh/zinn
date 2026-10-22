@@ -1,0 +1,102 @@
+---
+title: Hooks | Zinn
+description: Run your own commands after Zinn saves a change, with the change's activity records on stdin.
+breadcrumb: Hooks
+---
+
+# Hooks
+
+A hook is a command that Zinn runs after it saves a change. It receives the change's [activity records](/docs/cli#activity) as JSON on stdin, so it can notify, sync or log what happened. Core runs hooks, so every program that uses the `@zinn-dev/core` package triggers them.
+
+## Configure hooks
+
+Add a `hooks` object to the global settings file, `~/.zinn/settings.json`, or to `settings.json` inside `ZINN_DIR` when it is set. Each key names a hook:
+
+```json title="~/.zinn/settings.json"
+{
+	"$schema": "https://zinn.sh/schemas/settings/v1.json",
+	"hooks": {
+		"notify-move": {
+			"command": "sh ~/.zinn/hooks/notify-move.sh",
+			"timeout": 10
+		}
+	}
+}
+```
+
+`command` is required. `timeout` is optional: any positive number of seconds, 30 by default. Other keys in a hook are rejected like any settings error.
+
+Zinn reads `hooks` only from the global settings file. A `hooks` key in `zinn.local.json` is a settings error: normal commands stop with an error naming the file, `zinn info` reports the file as an error, and the hook never runs. See [Settings](/docs/settings) for how settings files are read.
+
+## When hooks run
+
+After each saved change, once the database commit is done, every hook runs once, one after another in the order they are listed in settings. Every hook runs for every change. So a hook is expected to read the records to decide what to do. A change that saves nothing, such as an edit that leaves every value unchanged, runs no hooks. `backup`, `restore`, `migrate` and `reindex` record no activity and currently run no hooks.
+
+A change can record several activity records, and a hook receives **all of them** in one run. Creating a relation records one for each of the two tasks. Deleting a label records the label and one for each task that lost it.
+
+The command runs through the platform shell (`/bin/sh` on macOS and Linux, `cmd.exe` on Windows) in the caller's working directory and environment. The hook's stdout and stderr both go to Zinn's stderr, so Zinn's stdout, including `--json` output, stays clean.
+
+Zinn waits for the hook process to exit, so a hook can background slow work with `&`. Redirect that child's output, as in `slow-sync >/dev/null 2>&1 &`: a program that reads Zinn's stderr through a pipe otherwise waits until the child closes it.
+
+## Read the records
+
+Stdin has one JSON object per line, one for each activity record of the change, in the order recorded. Each object has the fields that `zinn activity list --json` prints for a record: `id`, `created_at`, `actor_name`, `actor_email`, `actor_kind`, `actor_source`, `actor_session_id`, `actor_thread_id`, `actor_agent`, `actor_model`, `actor_effort`, `entity_type`, `entity_id`, `action` and `changes`. It adds `task_key`: the task's key, such as `APP-1`, on task records, and `null` on project, column and label records.
+
+For example, moving a task records a line like this (formatted as wrapped for presentation here, but normally writtenas one line):
+
+```json
+{
+	"id": "019abcdf-1234-7000-8000-123456abcdef",
+	"created_at": 1792670000000,
+	"actor_name": "Jim",
+	"actor_email": "jm@topekastar.com",
+	"actor_kind": "human",
+	"actor_source": "git-config",
+	"actor_session_id": null,
+	"actor_thread_id": null,
+	"actor_agent": null,
+	"actor_model": null,
+	"actor_effort": null,
+	"entity_type": "task",
+	"entity_id": "019abcdf-5678-7000-8000-123456abcdef",
+	"action": "move",
+	"changes": {
+		"column": [
+			{ "id": "019abcdf-0001-7000-8000-123456abcdef", "name": "Backlog" },
+			{ "id": "019abcdf-0002-7000-8000-123456abcdef", "name": "Done" }
+		]
+	},
+	"task_key": "MDR-3"
+}
+```
+
+This script reacts only to moves:
+
+```sh title="~/.zinn/hooks/notify-move.sh"
+#!/bin/sh
+node -e '
+for (const line of require("node:fs").readFileSync(0, "utf8").split("\n")) {
+	if (line === "") {
+		continue;
+	}
+
+	const record = JSON.parse(line);
+	if (record.action === "move") {
+		console.log(`${record.task_key} moved to ${record.changes.column[1].name}`);
+	}
+}'
+```
+
+A hook that exits without reading all of its stdin is fine.
+
+## Failures
+
+A hook that exits non-zero, is ended by a signal, cannot start, or runs past its timeout prints a warning that names the hook on stderr. A hook past its timeout is stopped. The change stays saved and Zinn's exit status does not change.
+
+## Hooks that run Zinn
+
+Zinn sets `ZINN_HOOKS=0` in every hook's environment. A `zinn` command that a hook runs saves its change but runs no hooks, which prevents loops. Set `ZINN_HOOKS=0` yourself to switch hooks off for a command or a shell session.
+
+A hook that wants its own writes to trigger hooks can remove the variable for that call, and must then guard against loops itself.
+
+Changes written from a hook are recorded with the actor inherited from the environment, unless the hook sets the `ZINN_*` actor variables. See [Activity](/docs/cli#activity) for them.

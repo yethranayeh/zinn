@@ -176,10 +176,25 @@ export function resolveStorage(
 }
 
 let processStorage: Storage | null = null;
+let processSettings: ResolvedSettings | null = null;
 
 /** For internal tests, to be run after the database connection has closed. */
 export function resetStorageForTests() {
   processStorage = null;
+  processSettings = null;
+}
+
+function processInputs(): StorageInputs {
+  return { cwd: process.cwd(), env: process.env, home: homedir() };
+}
+
+/** This process's settings, read from its working folder, environment and home directory on first use, then kept. */
+export function getProcessSettings() {
+  if (processSettings === null) {
+    processSettings = resolveSettings(processInputs());
+  }
+
+  return processSettings;
 }
 
 /** Selected store folder must exist before any contents can be initialized. */
@@ -223,12 +238,12 @@ function assertStoreDirectory(directory: string, settingsPath: string | null) {
 /** This process's store, resolved from its working folder, environment and home directory on first use, then kept. */
 export function getStorage() {
   if (processStorage === null) {
-    const inputs = { cwd: process.cwd(), env: process.env, home: homedir() };
+    const inputs = processInputs();
     if (inputs.env.ZINN_DIR !== undefined) {
       assertStoreDirectory(inputs.env.ZINN_DIR, null);
     }
 
-    const storage = resolveStorage(inputs);
+    const storage = resolveStorage(inputs, getProcessSettings());
     if (storage.source === "local" || storage.source === "global") {
       assertStoreDirectory(storage.directory, storage.settingsPath);
     }

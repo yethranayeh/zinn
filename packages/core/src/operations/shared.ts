@@ -30,6 +30,7 @@ import * as dbActivity from "../db/activity.js";
 import * as dbComment from "../db/comment.js";
 
 import { standardizeProjectKey } from "../lib.js";
+import { isRecordingChange, recordChange } from "../hooks.js";
 
 const commentKeyRegex = new RegExp(`^([^#]+)#(${positiveIntegerPattern})$`);
 
@@ -229,7 +230,7 @@ export function recordActivity(
     createdAt: number;
   },
 ) {
-  dbActivity.create({
+  const created = dbActivity.create({
     created_at: props.createdAt,
     actor_name: actor.name,
     actor_email: actor.email,
@@ -245,6 +246,23 @@ export function recordActivity(
     action: props.action,
     changes: props.changes,
   });
+
+  if (isRecordingChange()) {
+    recordChange({ ...created, task_key: findActivityTaskKey(created) });
+  }
+}
+
+/**
+ * The key of the task a record is about
+ * Looked up while the task still exists, or `null` for other entities.
+ */
+function findActivityTaskKey(record: Activity) {
+  if (record.entity_type !== "task") {
+    return null;
+  }
+
+  const taskMatch = dbTask.getById(record.entity_id);
+  return taskMatch == null ? null : attachTaskKey(taskMatch).key;
 }
 
 export function recordTaskActivity(

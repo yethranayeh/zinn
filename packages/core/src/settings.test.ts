@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { chooseDefaultProject, resolveSettings } from "./settings";
+import { chooseDefaultProject, inspectSettings, resolveSettings } from "./settings";
 
 // ? ZINN-56: settings discovery, parsing and merging, with temporary folders only.
 let root: string;
@@ -282,6 +282,22 @@ test("a wrong type or a storage without a directory throws an error naming the f
 
   writeJson(path, { storage: {} });
   expect(() => resolveSettings({ cwd, env: {}, home })).toThrow(expect.objectContaining({ kind: "input", facts: expect.objectContaining({ settingsPath: path, reason: "invalid_settings", field: ["storage", "directory"] }) }));
+});
+
+test("ZINN-161: hooks are read from the global file and refused in zinn.local.json", () => {
+  const hooks = { notify: { command: "cat > /dev/null", timeout: 0.5 } };
+  const cwd = join(root, "project");
+  mkdirSync(join(cwd, ".git"), { recursive: true });
+  globalFile({ hooks });
+
+  const resolved = resolveSettings({ cwd, env: {}, home });
+  expect(resolved.global?.settings.hooks).toEqual(hooks);
+  expect(resolved.merged).toEqual({});
+
+  const path = join(cwd, "zinn.local.json");
+  writeJson(path, { hooks });
+  expect(() => resolveSettings({ cwd, env: {}, home })).toThrow(expect.objectContaining({ kind: "input", facts: expect.objectContaining({ settingsPath: path, reason: "invalid_settings", field: ["hooks"] }) }));
+  expect(inspectSettings({ cwd, env: {}, home }).files).toContainEqual(expect.objectContaining({ path, source: "local", state: "error" }));
 });
 
 test("an invalid global file throws an error naming the global file", () => {
