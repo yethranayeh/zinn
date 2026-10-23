@@ -7,6 +7,12 @@ import { withEnvironment, withTestStore } from "./testing";
 
 const human = { name: "Test Human", email: "human@example.com", kind: "human" as const };
 const LARGER_THAN_PIPE_BUFFER = 200_000;
+const SLOW_HOOK_SECONDS = 5;
+const SLOW_HOOK_TIMEOUT_SECONDS = 0.3;
+// Well under the slow hooks' sleep, so waiting on one fails the check.
+const HOOK_CHANGE_LIMIT_MS = 4_000;
+// Not a whole number of milliseconds once converted.
+const FRACTIONAL_TIMEOUT_SECONDS = 2.01;
 
 /** A hook that appends its name, stdin, working folder and ZINN_HOOKS to files in `logs`. */
 function recordingHook(logs: string, name: string) {
@@ -59,7 +65,7 @@ test("ZINN-161: each hook runs once per change in settings order, in the caller'
     for (const line of relationLines) {
       const { task_key, ...record } = line;
       assert.deepEqual(record, stored.get(line.id));
-      assert.equal(task_key, record.entity_id === source.id ? source.key : target.key);
+      assert.equal(task_key, line.entity_id === source.id ? source.key : target.key);
     }
 
     assert.deepEqual(runs(), ["second", "first", "second", "first", "second", "first", "second", "first"]);
@@ -96,12 +102,12 @@ test("ZINN-161: ZINN_HOOKS=0 saves changes without running hooks", () => {
 });
 
 test("ZINN-161: a failing or slow hook warns with its name and the change stays saved", () => {
-  withHookStore(() => ({ failing: { command: "exit 3" }, slow: { command: "sleep 5", timeout: 0.3 }, quiet: { command: "true" } }), () => {
+  withHookStore(() => ({ failing: { command: "exit 3" }, slow: { command: `trap '' TERM; sleep ${SLOW_HOOK_SECONDS}`, timeout: SLOW_HOOK_TIMEOUT_SECONDS }, quiet: { command: "true" } }), () => {
     const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
     try {
       const started = Date.now();
       project.create({ key: "APP" }, human);
-      assert.ok(Date.now() - started < 4_000);
+      assert.ok(Date.now() - started < HOOK_CHANGE_LIMIT_MS);
       const warnings = stderr.mock.calls.map(([text]) => String(text));
       assert.equal(warnings.length, 2);
       assert.match(warnings[0]!, /"failing"/);
@@ -113,14 +119,27 @@ test("ZINN-161: a failing or slow hook warns with its name and the change stays 
   });
 });
 
+test("ZINN-161: a timeout that is not a whole number of milliseconds still runs the hook", () => {
+  withHookStore((logs) => ({ only: { ...recordingHook(logs, "only"), timeout: FRACTIONAL_TIMEOUT_SECONDS } }), ({ runs }) => {
+    const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      project.create({ key: "APP" }, human);
+      assert.deepEqual(stderr.mock.calls, []);
+    } finally {
+      stderr.mockRestore();
+    }
+    assert.deepEqual(runs(), ["only"]);
+  });
+});
+
 test("ZINN-161: a hook that ignores a large stdin, or leaves a child running, returns quietly", () => {
-  withHookStore((logs) => ({ ignoring: { command: "exit 0" }, detaching: { command: `(sleep 5; touch '${join(logs, "late")}') >/dev/null 2>&1 &` } }), ({ logs }) => {
+  withHookStore((logs) => ({ ignoring: { command: "exit 0" }, detaching: { command: `(sleep ${SLOW_HOOK_SECONDS}; touch '${join(logs, "late")}') >/dev/null 2>&1 &` } }), ({ logs }) => {
     const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
     try {
       const app = project.create({ key: "APP" }, human);
       const started = Date.now();
       task.create({ project_id: app.id, title: "Large", description: "x".repeat(LARGER_THAN_PIPE_BUFFER) }, human);
-      assert.ok(Date.now() - started < 4_000);
+      assert.ok(Date.now() - started < HOOK_CHANGE_LIMIT_MS);
       assert.deepEqual(stderr.mock.calls, []);
       assert.equal(existsSync(join(logs, "late")), false);
     } finally {

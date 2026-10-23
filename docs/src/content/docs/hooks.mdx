@@ -30,7 +30,7 @@ Zinn reads `hooks` only from the global settings file. A `hooks` key in `zinn.lo
 
 ## When hooks run
 
-After each saved change, once the database commit is done, every hook runs once, one after another in the order they are listed in settings. Every hook runs for every change. So a hook is expected to read the records to decide what to do. A change that saves nothing, such as an edit that leaves every value unchanged, runs no hooks. `backup`, `restore`, `migrate` and `reindex` record no activity and currently run no hooks.
+After each saved change, once the database commit is done, every hook runs once, one after another in the order they are listed in settings. Hooks named with a whole number, such as `"10"`, run first, in numeric order. Every hook runs for every change. So a hook is expected to read the records to decide what to do. A change that saves nothing, such as an edit that leaves every value unchanged, runs no hooks. `backup`, `restore`, `migrate` and `reindex` record no activity and currently run no hooks.
 
 A change can record several activity records, and a hook receives **all of them** in one run. Creating a relation records one for each of the two tasks. Deleting a label records the label and one for each task that lost it.
 
@@ -91,7 +91,7 @@ A hook that exits without reading all of its stdin is fine.
 
 ## Failures
 
-A hook that exits non-zero, is ended by a signal, cannot start, or runs past its timeout prints a warning that names the hook on stderr. A hook past its timeout is stopped. The change stays saved and Zinn's exit status does not change.
+A hook that exits non-zero, is ended by a signal, cannot start, or runs past its timeout prints a warning that names the hook on stderr. A hook past its timeout is stopped at once, together with the programs it started on macOS and Linux. The change stays saved and Zinn's exit status does not change.
 
 ## Hooks that run Zinn
 

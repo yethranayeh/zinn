@@ -6,6 +6,8 @@ import { errorDocumentSchema } from "../src/errors";
 import { CLI_PATH, runProcessAsync, runZinn, withIsolatedZinnDir } from "../test-helpers";
 
 type Hooks = Record<string, { command: string; timeout?: number }>;
+// Well under the 10-second sleep the slow hook starts, so waiting on it fails the check.
+const HOOK_COMMAND_LIMIT_MS = 5_000;
 
 function writeHooks(dir: string, hooks: Hooks) {
   writeFileSync(join(dir, "settings.json"), JSON.stringify({ hooks }));
@@ -55,9 +57,13 @@ test("ZINN-161: a CLI change runs each hook once in settings order, in the calle
 test("ZINN-161: a failing or slow hook warns with its name, the change stays saved and zinn exits 0", async () => {
   await withIsolatedZinnDir(async (dir) => {
     await runZinn(["project", "create", "APP"], dir);
-    writeHooks(dir, { failing: { command: "exit 3" }, slow: { command: "sleep 10", timeout: 0.5 } });
+    // A compound command keeps the shell as the parent of sleep, so a timeout must end both
+    writeHooks(dir, { failing: { command: "exit 3" }, slow: { command: "echo slow-started; sleep 10", timeout: 0.5 } });
 
+    const started = Date.now();
     const result = await runZinn(["task", "create", "APP", "--title", "Saved", "--json"], dir);
+
+    expect(Date.now() - started).toBeLessThan(HOOK_COMMAND_LIMIT_MS);
 
     expect(result.code).toBe(0);
     expect(JSON.parse(result.stdout).key).toBe("APP-1");

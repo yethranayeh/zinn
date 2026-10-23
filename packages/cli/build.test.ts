@@ -83,7 +83,8 @@ for (const runtime of ["node", "bun"]) {
           ignoring: { command: "exit 0" },
           detaching: { command: "sleep 10 >/dev/null 2>&1 &" },
           failing: { command: "echo hook-output; exit 3" },
-          slow: { command: "sleep 10", timeout: 0.5 },
+          // A compound command keeps the shell as the parent of sleep, so a timeout must end both
+          slow: { command: "echo slow-started; sleep 10", timeout: 0.5 },
         },
       }));
       expect(runBuilt(runtime, ["project", "create", "APP"], directory).code).toBe(0);

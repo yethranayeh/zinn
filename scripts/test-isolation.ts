@@ -7,6 +7,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // Conflicting inherited color flags make node:assert emit warnings in test subprocesses.
 delete process.env.NO_COLOR;
 delete process.env.FORCE_COLOR;
+// Tests that run core in this process expect hooks to be eneabled
+delete process.env.ZINN_HOOKS;
 
 const packagesDirectory = fileURLToPath(new URL("../packages", import.meta.url));
 export const SOURCE_IDENTITY_MODULES = readdirSync(packagesDirectory, { withFileTypes: true })
