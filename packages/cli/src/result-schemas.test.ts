@@ -63,7 +63,7 @@ test("unsupported schema conversions fail instead of emitting an unconstrained r
 });
 
 test("wire schemas distinguish null, omission, history and mutation cardinality", () => {
-  const task = { key: "APP-1", status: "Active", column: "Backlog", title: "One", description: null, priority: null, labels: [] };
+  const task = { id: "task-id", key: "APP-1", project_id: "project-id", status: "Active", column: "Backlog", column_id: "column-id", title: "One", description: null, priority: null, labels: [], label_ids: [] };
   function accepts(name: string, value: unknown) {
     return ajv.getSchema(`results#/definitions/${name}`)!(value);
   }
@@ -76,7 +76,7 @@ test("wire schemas distinguish null, omission, history and mutation cardinality"
   expect(accepts("Task", { ...task, status: "active" })).toBe(false);
   expect(accepts("Task", { ...task, priority: 1 })).toBe(false);
   expect(accepts("Task", { ...task, labels: null })).toBe(false);
-  expect(accepts("Task", { ...task, id: "extra" })).toBe(false);
+  expect(accepts("Task", { ...task, extra: true })).toBe(false);
   const detail = { ...task, relations: [], comments: [] };
   expect(accepts("TaskDetail", detail)).toBe(true);
   expect(accepts("TaskDetail", { ...detail, activity: [] })).toBe(false);

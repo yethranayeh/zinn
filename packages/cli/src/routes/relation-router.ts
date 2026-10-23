@@ -99,14 +99,17 @@ export const relationRouter = {
       const props = parseRelationArgs(args);
       const { sourceTaskKey, targetTaskKey } = props;
 
-      relation.create(props, currentActor());
+      const createdRelation = relation.create(props, currentActor());
 
       const source = task.getByKey(sourceTaskKey);
       const target = task.getByKey(targetTaskKey);
       const created: PresentedRelationChange = {
+        id: createdRelation.id,
         type: props.relation_type,
         source: source.key,
+        source_task_id: source.id,
         target: target.key,
+        target_task_id: target.id,
       };
 
       output(created, (entry) => formatRelationChange(entry, { action: "create" }));
@@ -162,14 +165,17 @@ Example: zinn task relation list APP-1`,
     results: [jsonResult("RelationChange")],
     run: (args) => {
       const props = parseRelationArgs(args);
-      relation.delete(props, currentActor());
+      const deletedRelation = relation.delete(props, currentActor());
 
       const source = task.getByKey(props.sourceTaskKey);
       const target = task.getByKey(props.targetTaskKey);
       const deleted: PresentedRelationChange = {
+        id: deletedRelation.id,
         type: props.relation_type,
         source: source.key,
+        source_task_id: source.id,
         target: target.key,
+        target_task_id: target.id,
       };
 
       output(deleted, (entry) => formatRelationChange(entry, { action: "delete" }));

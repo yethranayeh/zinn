@@ -60,7 +60,7 @@ test("project column create trims names and rejects invalid ones without writes"
 
     const created = await runZinn(["project", "column", "create", "COL", " Later ", "--json"], dir);
     expect(created.code).toBe(0);
-    expect(JSON.parse(created.stdout)).toEqual({ project: "COL", name: "Later" });
+    expect(JSON.parse(created.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "COL", name: "Later" });
   });
 });
 
@@ -77,7 +77,7 @@ test("project column names are unique only within a project", async () => {
     expect(alpha.stdout).toContain("ALPHA");
     expect(alpha.stdout).toContain("QA");
     expect(beta.code).toBe(0);
-    expect(JSON.parse(beta.stdout)).toEqual({ project: "BETA", name: "qa" });
+    expect(JSON.parse(beta.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "BETA", name: "qa" });
   });
 });
 
@@ -93,19 +93,19 @@ test("project column list returns columns in board order with active task counts
     expect(json.code).toBe(0);
     expect(json.stderr).toBe("");
     expect(JSON.parse(json.stdout)).toEqual([
-      { name: "Review", taskCount: 1 },
-      { name: "Backlog", taskCount: 1 },
-      { name: "TODO", taskCount: 0 },
-      { name: "In Progress", taskCount: 0 },
-      { name: "Done", taskCount: 0 },
+      { id: expect.any(String), name: "Review", taskCount: 1 },
+      { id: expect.any(String), name: "Backlog", taskCount: 1 },
+      { id: expect.any(String), name: "TODO", taskCount: 0 },
+      { id: expect.any(String), name: "In Progress", taskCount: 0 },
+      { id: expect.any(String), name: "Done", taskCount: 0 },
     ]);
     await runZinn(["task", "archive", "VIEW-1"], dir);
     expect(JSON.parse((await runZinn(["project", "column", "list", "VIEW", "--json"], dir)).stdout)).toEqual([
-      { name: "Review", taskCount: 1 },
-      { name: "Backlog", taskCount: 0 },
-      { name: "TODO", taskCount: 0 },
-      { name: "In Progress", taskCount: 0 },
-      { name: "Done", taskCount: 0 },
+      { id: expect.any(String), name: "Review", taskCount: 1 },
+      { id: expect.any(String), name: "Backlog", taskCount: 0 },
+      { id: expect.any(String), name: "TODO", taskCount: 0 },
+      { id: expect.any(String), name: "In Progress", taskCount: 0 },
+      { id: expect.any(String), name: "Done", taskCount: 0 },
     ]);
 
     const text = await runZinn(["project", "column", "list", "VIEW"], dir);
@@ -133,17 +133,17 @@ test("project column edit renames a column in place and keeps its tasks", async 
     expect(renamed.stdout).toContain("COL");
     expect(renamed.stdout).toContain("Next up");
     expect(JSON.parse((await runZinn(["project", "column", "list", "COL", "--json"], dir)).stdout))
-      .toContainEqual({ name: "Next up", taskCount: 1 });
+      .toContainEqual({ id: expect.any(String), name: "Next up", taskCount: 1 });
     expect(readColumns()).toEqual(
       before.map((row: any) => (row.name === "TODO" ? { ...row, name: "Next up" } : row)),
     );
     expect((await runZinn(["task", "view", "COL-1", "--json"], dir)).stdout).toContain(`"column": "Next up"`);
 
     const caseOnly = await runZinn(["project", "column", "edit", "COL", "next up", "--name", "NEXT UP", "--json"], dir);
-    expect(JSON.parse(caseOnly.stdout)).toEqual({ project: "COL", name: "NEXT UP" });
+    expect(JSON.parse(caseOnly.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "COL", name: "NEXT UP" });
     const dashName = await runZinn(["project", "column", "edit", "COL", "--name=--example", "NEXT UP", "--json"], dir);
     expect(dashName.code).toBe(0);
-    expect(JSON.parse(dashName.stdout)).toEqual({ project: "COL", name: "--example" });
+    expect(JSON.parse(dashName.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "COL", name: "--example" });
   });
 });
 
@@ -213,7 +213,7 @@ test("project column order moves a column in every direction and prints it", asy
     }
 
     const json = await runZinn(["project", "column", "order", "COL", "done", "first", "--json"], dir);
-    expect(JSON.parse(json.stdout)).toEqual({ project: "COL", name: "Done" });
+    expect(JSON.parse(json.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "COL", name: "Done" });
   });
 });
 

@@ -292,6 +292,7 @@ Example: zinn project list`,
       const presentedProject: PresentedProjectView = {
         ...presentProject(projectMatch),
         columns: taskCounts.columns.map((columnCount) => ({
+          id: columnCount.column.id,
           name: columnCount.column.name,
           taskCount: columnCount.taskCount,
         })),
@@ -508,6 +509,7 @@ Example: zinn project column create MDR Boardlog`,
         const projectKey = resolveProjectKey(positionals[0], { required: true })!;
         const taskCounts = column.getTaskCountsByProjectKey(projectKey);
         const columns: Array<PresentedColumnTaskCount> = taskCounts.columns.map((columnCount) => ({
+          id: columnCount.column.id,
           name: columnCount.column.name,
           taskCount: columnCount.taskCount,
         }));

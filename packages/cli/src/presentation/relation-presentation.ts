@@ -20,11 +20,15 @@ export function presentRelations(taskMatch: TaskWithKey): Array<PresentedRelatio
     }
 
     return {
+      id: entry.id,
       type: entry.relation_type,
       direction,
       task: {
+        id: other.id,
         key: other.key,
+        project_id: other.project_id,
         column: column.getById(other.column_id)!.name,
+        column_id: other.column_id,
         title: other.title,
         status: other.archived_at == null ? "Active" : "Archived",
       },

@@ -13,6 +13,8 @@ import { generateResultSchemas, type ResultSchemaName } from "./src/result-schem
 import type { ParsedRoute } from "./src/types";
 import { createBaseline } from "../core/src/migrations/baseline";
 import { openDatabase } from "../core/src/sqlite/bun";
+import type { Column, CommentWithKey, Label, Project, TaskRelation, TaskWithKey } from "../core/src/types";
+import { relationTypeSchema } from "@zinn-dev/core";
 
 const root = mkdtempSync(join(tmpdir(), "zinn-result-contract-"));
 const seed = join(root, "seed");
@@ -49,6 +51,119 @@ function editFixture(directory: string, sql: string) {
     db.exec(sql);
   } finally {
     db.close();
+  }
+}
+
+function readEntityRows(directory: string) {
+  const db = new Database(join(directory, "data", "zinn.sqlite"), { readonly: true });
+  try {
+    return {
+      projects: db.query<Project, []>("SELECT * FROM project").all(),
+      columns: db.query<Column, []>("SELECT * FROM project_column").all(),
+      tasks: db.query<TaskWithKey, []>(`
+        SELECT task.*, project.key || '-' || task.number AS key
+        FROM task JOIN project ON project.id = task.project_id
+      `).all(),
+      comments: db.query<CommentWithKey, []>(`
+        SELECT comment.*, project.key || '-' || task.number || '#' || comment.number AS key
+        FROM comment JOIN task ON task.id = comment.task_id
+        JOIN project ON project.id = task.project_id
+      `).all(),
+      labels: db.query<Label, []>("SELECT * FROM label").all(),
+      relations: db.query<TaskRelation, []>("SELECT * FROM task_relations").all(),
+      attachments: db.query<{ task_id: string; label_id: string }, []>("SELECT * FROM task_label").all(),
+    };
+  } finally {
+    db.close();
+  }
+}
+
+function expectEntityIds(schema: ResultSchemaName, value: any, rows: ReturnType<typeof readEntityRows>) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      expectEntityIds(schema, item, rows);
+    }
+    return;
+  }
+
+  expect(Object.keys(value)[0]).toBe("id");
+  switch (schema) {
+    case "Task":
+    case "TaskList":
+    case "TaskDetail":
+    case "TaskDetailHistory":
+    case "TaskChange":
+    case "TaskChanges": {
+      const stored = rows.tasks.find((task) => task.key === value.key)!;
+      expect(stored).toBeDefined();
+      expect(value).toMatchObject({ id: stored.id, project_id: stored.project_id, column_id: stored.column_id });
+      expect(rows.columns.find((column) => column.id === value.column_id)?.name).toBe(value.column);
+      expect(value.label_ids).toEqual(value.labels.map((name: string) => rows.labels.find((label) => label.name === name)!.id));
+      expect([...value.label_ids].sort()).toEqual(rows.attachments.filter((entry) => entry.task_id === stored.id).map((entry) => entry.label_id).sort());
+      for (const relation of value.relations ?? []) {
+        expectEntityIds("Relation", relation, rows);
+      }
+      for (const comment of value.comments ?? []) {
+        expectEntityIds("Comment", comment, rows);
+      }
+      break;
+    }
+    case "Project":
+    case "ProjectList":
+    case "ProjectView": {
+      expect(value.id).toBe(rows.projects.find((project) => project.key === value.key)!.id);
+      for (const column of value.columns ?? []) {
+        expectEntityIds("ColumnTaskCount", column, rows);
+        expect(rows.columns.find((entry) => entry.id === column.id)!.project_id).toBe(value.id);
+      }
+      break;
+    }
+    case "Column":
+    case "ColumnList":
+    case "ColumnTaskCount": {
+      const stored = rows.columns.find((column) => column.id === value.id)!;
+      expect(stored).toBeDefined();
+      expect(value.name).toBe(stored.name);
+      if (schema === "Column") {
+        expect(value.project_id).toBe(stored.project_id);
+        expect(value.project).toBe(rows.projects.find((project) => project.id === stored.project_id)!.key);
+      }
+      break;
+    }
+    case "Label":
+    case "LabelList": {
+      expect(value.id).toBe(rows.labels.find((label) => label.name === value.name)!.id);
+      break;
+    }
+    case "Comment":
+    case "CommentList": {
+      const stored = rows.comments.find((comment) => comment.key === value.key)!;
+      expect(value).toMatchObject({ id: stored.id, task_id: stored.task_id });
+      break;
+    }
+    case "Relation":
+    case "RelationList": {
+      const stored = rows.relations.find((relation) => relation.id === value.id)!;
+      expect(stored).toBeDefined();
+      expect(value.type).toBe(stored.relation_type);
+      expect([stored.source_task_id, stored.target_task_id]).toContain(value.task.id);
+      expect(Object.keys(value.task)[0]).toBe("id");
+      const task = rows.tasks.find((task) => task.key === value.task.key)!;
+      expect(value.task).toMatchObject({ id: task.id, project_id: task.project_id, column_id: task.column_id });
+      break;
+    }
+    case "RelationChange": {
+      const stored = rows.relations.find((relation) => relation.id === value.id)!;
+      expect(stored).toBeDefined();
+      expect(value.type).toBe(stored.relation_type);
+      expect(value.source_task_id).toBe(rows.tasks.find((task) => task.key === value.source)!.id);
+      expect(value.target_task_id).toBe(rows.tasks.find((task) => task.key === value.target)!.id);
+      expect([value.source_task_id, value.target_task_id].sort()).toEqual([stored.source_task_id, stored.target_task_id].sort());
+      break;
+    }
+    default: {
+      throw new Error(`No entity identity check for ${schema}`);
+    }
   }
 }
 
@@ -195,6 +310,8 @@ for (const route of commands) {
       const replacements: Record<string, string> = { $comment: commentKey, $event: eventId, $backup: backupPath };
       const args = fixture.args.map((arg) => replacements[arg] ?? arg);
       const descriptor = selectResult(route, args);
+      const hasEntities = ["project", "task", "label"].includes(route.command.split(" ")[0]!);
+      const deletedRows = hasEntities && route.effects.domain === "delete" ? readEntityRows(directory) : undefined;
       const result = invoke(directory, [...route.command.split(" "), ...args]);
       expect(result.code, result.stderr).toBe(0);
       const value = JSON.parse(result.stdout);
@@ -202,6 +319,9 @@ for (const route of commands) {
       const validate = ajv.getSchema(ref)!;
       expect(validate(value), JSON.stringify(validate.errors)).toBe(true);
       fixture.check?.(value);
+      if (hasEntities) {
+        expectEntityIds(fixture.schema, value, deletedRows ?? readEntityRows(directory));
+      }
       const item = Array.isArray(value) ? value[0] : value;
       if (item !== undefined && item !== null) {
         const replaceItem = (replacement: unknown) => Array.isArray(value) ? [replacement, ...value.slice(1)] : replacement;
@@ -215,6 +335,79 @@ for (const route of commands) {
     });
   }
 }
+
+test("entity identities survive renames and distinguish recreated handles", () => {
+  const directory = fixtureDirectory(true);
+  const project = success(directory, ["project", "create", "APP"]);
+  const alpha = success(directory, ["label", "create", "alpha"]);
+  const zeta = success(directory, ["label", "create", "zeta"]);
+  const task = success(directory, ["task", "create", "APP", "--title", "Identity", "--label", "zeta", "--label", "alpha"]);
+  const column = success(directory, ["project", "column", "list", "APP"])[0];
+  expect(task).toMatchObject({ project_id: project.id, column_id: column.id });
+  expect(task.label_ids).toEqual(task.labels.map((name: string) => ({ alpha, zeta })[name as "alpha" | "zeta"].id));
+
+  expect(success(directory, ["project", "edit", "APP", "--name", "Renamed project"]).id).toBe(project.id);
+  expect(success(directory, ["project", "column", "edit", "APP", column.name, "--name", "Ideas"]).id).toBe(column.id);
+  expect(success(directory, ["label", "edit", "zeta", "--name", "renamed"]).id).toBe(zeta.id);
+  const viewed = success(directory, ["task", "view", task.key]);
+  expect(viewed).toMatchObject({ id: task.id, project_id: project.id, column_id: column.id, column: "Ideas" });
+  expect(viewed.labels).toContain("renamed");
+  const labelsByName = new Map([["alpha", alpha.id], ["renamed", zeta.id]]);
+  expect(viewed.label_ids).toEqual(viewed.labels.map((name: string) => labelsByName.get(name)));
+  expectEntityIds("TaskDetail", viewed, readEntityRows(directory));
+
+  const comment = success(directory, ["task", "comment", "create", task.key, "--text", "Identity comment"]);
+  for (const args of [
+    ["task", "comment", "view", comment.key],
+    ["task", "comment", "edit", comment.key, "--text", "Edited comment"],
+    ["task", "comment", "delete", comment.key, "--yes"],
+  ]) {
+    expect(success(directory, args)).toMatchObject({ id: comment.id, task_id: task.id });
+  }
+  const activity = success(directory, ["activity", "list", "--task-id", task.id]);
+  expect(activity.length).toBeGreaterThan(0);
+  expect(activity.every((event: any) => event.entity_id === task.id)).toBe(true);
+
+  expect(success(directory, ["label", "delete", "renamed", "--yes"]).id).toBe(zeta.id);
+  expect(success(directory, ["label", "create", "renamed"]).id).not.toBe(zeta.id);
+  expect(success(directory, ["project", "delete", "APP", "--yes"]).id).toBe(project.id);
+  const recreatedProject = success(directory, ["project", "create", "APP"]);
+  expect(recreatedProject.id).not.toBe(project.id);
+  const recreatedTask = success(directory, ["task", "create", "APP", "--title", "New identity"]);
+  expect(recreatedTask.key).toBe(task.key);
+  expect(recreatedTask.id).not.toBe(task.id);
+  expect(recreatedTask.column_id).not.toBe(column.id);
+  expect(recreatedTask.project_id).toBe(recreatedProject.id);
+});
+
+test.each(relationTypeSchema.options)("%s relation identity is consistent from both ends and through deletion", (type) => {
+  const directory = fixtureDirectory();
+  success(directory, ["project", "create", "OTHER"]);
+  const other = success(directory, ["task", "create", "OTHER", "--title", "Other project"]);
+  const app = success(directory, ["task", "view", "APP-2"]);
+  success(directory, ["task", "archive", other.key]);
+  const [source, target] = type === "related" ? [other, app] : [app, other];
+  const created = success(directory, ["task", "relation", "create", source.key, target.key, "--type", type]);
+  expect(created).toMatchObject({ source: source.key, source_task_id: source.id, target: target.key, target_task_id: target.id });
+  expectEntityIds("RelationChange", created, readEntityRows(directory));
+  if (type === "related") {
+    const stored = readEntityRows(directory).relations.find((relation) => relation.id === created.id)!;
+    expect(stored.source_task_id).toBe(target.id);
+    expect(stored.target_task_id).toBe(source.id);
+  }
+
+  for (const [viewed, connected] of [[app, other], [other, app]]) {
+    const listed = success(directory, ["task", "relation", "list", viewed.key]).find((relation: any) => relation.id === created.id);
+    expect(listed).toMatchObject({ id: created.id, type, task: { id: connected.id, key: connected.key, project_id: connected.project_id, column_id: connected.column_id } });
+    expect(success(directory, ["task", "view", viewed.key]).relations).toContainEqual(listed);
+    expectEntityIds("Relation", listed, readEntityRows(directory));
+  }
+
+  const [deleteSource, deleteTarget] = type === "related" ? [target, source] : [source, target];
+  const deleted = success(directory, ["task", "relation", "delete", deleteSource.key, deleteTarget.key, "--type", type]);
+  expect(deleted).toMatchObject({ id: created.id, source: deleteSource.key, source_task_id: deleteSource.id, target: deleteTarget.key, target_task_id: deleteTarget.id });
+  expect(readEntityRows(directory).relations.some((relation) => relation.id === created.id)).toBe(false);
+});
 
 for (const route of commands) {
   for (const alias of route.aliases) {

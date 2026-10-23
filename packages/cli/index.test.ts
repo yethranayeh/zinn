@@ -847,11 +847,11 @@ test("project create seeds the default columns", async () => {
 
     expect(listed.code).toBe(0);
     expect(JSON.parse(listed.stdout)).toEqual([
-      { name: "Backlog", taskCount: 0 },
-      { name: "TODO", taskCount: 0 },
-      { name: "In Progress", taskCount: 0 },
-      { name: "Review", taskCount: 0 },
-      { name: "Done", taskCount: 0 },
+      { id: expect.any(String), name: "Backlog", taskCount: 0 },
+      { id: expect.any(String), name: "TODO", taskCount: 0 },
+      { id: expect.any(String), name: "In Progress", taskCount: 0 },
+      { id: expect.any(String), name: "Review", taskCount: 0 },
+      { id: expect.any(String), name: "Done", taskCount: 0 },
     ]);
   });
 });
@@ -1075,16 +1075,17 @@ test("project view JSON contains the project, per-column task counts in board or
     await run("project", "column", "order", "VIEW", "Review", "first");
 
     const expectedColumns = [
-      { name: "Review", taskCount: 1 },
-      { name: "Backlog", taskCount: 1 },
-      { name: "TODO", taskCount: 0 },
-      { name: "In Progress", taskCount: 0 },
-      { name: "Done", taskCount: 0 },
+      { id: expect.any(String), name: "Review", taskCount: 1 },
+      { id: expect.any(String), name: "Backlog", taskCount: 1 },
+      { id: expect.any(String), name: "TODO", taskCount: 0 },
+      { id: expect.any(String), name: "In Progress", taskCount: 0 },
+      { id: expect.any(String), name: "Done", taskCount: 0 },
     ];
     const viewedProject = await run("project", "view", "VIEW", "--json");
 
     expect(viewedProject.code).toBe(0);
     expect(JSON.parse(viewedProject.stdout)).toEqual({
+      id: expect.any(String),
       key: "VIEW",
       name: "Project view",
       description: "Full\ndescription",
@@ -1765,6 +1766,9 @@ test("task view prints the task row followed by Description, Relations, and Comm
     );
 
     expect(JSON.parse((await run("task", "view", "MDR-1", "--json")).stdout)).toEqual({
+      id: expect.any(String),
+      project_id: expect.any(String),
+      column_id: expect.any(String),
       key: "MDR-1",
       status: "Active",
       column: "In Progress",
@@ -1772,15 +1776,17 @@ test("task view prints the task row followed by Description, Relations, and Comm
       description,
       priority: "high",
       labels: ["bug", "cli"],
+      label_ids: [expect.any(String), expect.any(String)],
       relations: [
         {
+          id: expect.any(String),
           type: "dependency",
           direction: "outgoing",
-          task: { key: "MDR-2", column: "Backlog", title: "Check the totals", status: "Active" },
+          task: { id: expect.any(String), project_id: expect.any(String), column_id: expect.any(String), key: "MDR-2", column: "Backlog", title: "Check the totals", status: "Active" },
         },
       ],
       comments: [
-        { key: "MDR-1#1", text: "Ready for review", created_at: commentedAt, updated_at: commentedAt },
+        { id: expect.any(String), task_id: expect.any(String), key: "MDR-1#1", text: "Ready for review", created_at: commentedAt, updated_at: commentedAt },
       ],
     });
   });
@@ -2013,6 +2019,8 @@ test("task comments can be created, listed, edited, viewed, and deleted", async 
       )).stdout,
     );
     expect(second).toEqual({
+      id: expect.any(String),
+      task_id: expect.any(String),
       key: "NOTE-1#2",
       text: "Second comment",
       created_at: second.created_at,
@@ -2120,6 +2128,8 @@ test("comment create and edit cap human echoes while reads and JSON retain the f
       expect(json.stderr).toBe("");
       const jsonComment = JSON.parse(json.stdout);
       expect(jsonComment).toEqual({
+        id: expect.any(String),
+        task_id: expect.any(String),
         key: expect.stringMatching(/^NOTE-1#\d+$/),
         text: storedText,
         created_at: expect.any(Number),
@@ -2145,7 +2155,7 @@ test("comment create and edit cap human echoes while reads and JSON retain the f
       expect(editedJson.stderr).toBe("");
       const comment = JSON.parse(editedJson.stdout);
       expect(comment).toEqual({
-        key, text: storedText, created_at: expect.any(Number), updated_at: expect.any(Number),
+        id: expect.any(String), task_id: expect.any(String), key, text: storedText, created_at: expect.any(Number), updated_at: expect.any(Number),
       });
       const viewed = await run("task", "comment", "view", key, "--json");
       expect(viewed.code).toBe(0);
@@ -2209,7 +2219,7 @@ test("Unicode characters stay intact at comment, label and project preview cutof
       expect(JSON.parse(comment.stdout).text).toBe(text);
       const labels = await run("label", "list", "--json");
       expect(labels.code).toBe(0);
-      expect(JSON.parse(labels.stdout)).toContainEqual({ name: "bug", color: "white", description: text });
+      expect(JSON.parse(labels.stdout)).toContainEqual({ id: expect.any(String), name: "bug", color: "white", description: text });
       const project = await run("project", "view", "NOTE", "--json");
       expect(project.code).toBe(0);
       expect(JSON.parse(project.stdout).description).toBe(text);
@@ -2254,7 +2264,7 @@ test("task comment view reads only the requested current comment, including on a
       expect(viewedJson.stderr).toBe("");
       const data = JSON.parse(viewedJson.stdout);
       expect(data).toEqual({
-        key: "NOTE-1#2", text, created_at: expected.created_at, updated_at: expected.updated_at,
+        id: expected.id, task_id: expected.task_id, key: "NOTE-1#2", text, created_at: expected.created_at, updated_at: expected.updated_at,
       });
       expect(snapshot()).toEqual(before);
     }
@@ -2613,6 +2623,9 @@ test("task move prints the task row, while --json returns the full task", async 
     const movedJson = await runZinn(["task", "move", "BRIEF-1", "Review", "--json"], testDir);
     expect(movedJson.code).toBe(0);
     expect(JSON.parse(movedJson.stdout)).toEqual({
+      id: expect.any(String),
+      project_id: expect.any(String),
+      column_id: expect.any(String),
       key: "BRIEF-1",
       status: "Active",
       column: "Review",
@@ -2620,6 +2633,7 @@ test("task move prints the task row, while --json returns the full task", async 
       description: "Hidden from move output",
       priority: "high",
       labels: ["urgent"],
+      label_ids: [expect.any(String)],
       changed: true,
     });
   });
@@ -2706,6 +2720,9 @@ test("task write commands print JSON with the full task details, unchanged by th
       testDir,
     );
     expect(JSON.parse(created.stdout)).toEqual({
+      id: expect.any(String),
+      project_id: expect.any(String),
+      column_id: expect.any(String),
       key: "ROW-1",
       status: "Active",
       column: "Backlog",
@@ -2713,10 +2730,14 @@ test("task write commands print JSON with the full task details, unchanged by th
       description: "Full text",
       priority: "high",
       labels: ["urgent"],
+      label_ids: [expect.any(String)],
     });
 
     const edited = await runZinn(["task", "edit", "ROW-1", "--title", "uno", "--json"], testDir);
     expect(JSON.parse(edited.stdout)).toEqual({
+      id: expect.any(String),
+      project_id: expect.any(String),
+      column_id: expect.any(String),
       key: "ROW-1",
       status: "Active",
       column: "Backlog",
@@ -2724,10 +2745,14 @@ test("task write commands print JSON with the full task details, unchanged by th
       description: "Full text",
       priority: "high",
       labels: ["urgent"],
+      label_ids: [expect.any(String)],
     });
 
     const archived = await runZinn(["task", "archive", "ROW-1", "--json"], testDir);
     expect(JSON.parse(archived.stdout)).toEqual({
+      id: expect.any(String),
+      project_id: expect.any(String),
+      column_id: expect.any(String),
       key: "ROW-1",
       status: "Archived",
       column: "Backlog",
@@ -2735,6 +2760,7 @@ test("task write commands print JSON with the full task details, unchanged by th
       description: "Full text",
       priority: "high",
       labels: ["urgent"],
+      label_ids: [expect.any(String)],
       changed: true,
     });
   });
@@ -3601,12 +3627,15 @@ test("--json emits machine-readable output on read commands", async () => {
 test("--json prints the created entity on write commands, wherever the flag is placed", async () => {
   await withIsolatedZinnDir(async (testDir) => {
     const project = await runZinn(["project", "create", "--json", "WEB", "--name", "Web"], testDir);
-    expect(JSON.parse(project.stdout)).toEqual({ key: "WEB", name: "Web", description: null });
+    expect(JSON.parse(project.stdout)).toEqual({ id: expect.any(String), key: "WEB", name: "Web", description: null });
 
     const created = await runZinn(["task", "create", "WEB", "--title", "Ship it", "--json"], testDir);
 
     expect(created.code).toBe(0);
     expect(JSON.parse(created.stdout)).toEqual({
+      id: expect.any(String),
+      project_id: expect.any(String),
+      column_id: expect.any(String),
       key: "WEB-1",
       status: "Active",
       column: "Backlog",
@@ -3614,6 +3643,7 @@ test("--json prints the created entity on write commands, wherever the flag is p
       description: null,
       priority: null,
       labels: [],
+      label_ids: [],
     });
   });
 });
@@ -3630,9 +3660,10 @@ test("--json combines a task and its relations into one document on task view", 
     expect(viewed).toMatchObject({ key: "WEB-2", title: "UI" });
     expect(viewed.relations).toEqual([
       {
+        id: expect.any(String),
         type: "dependency",
         direction: "outgoing",
-        task: { key: "WEB-1", column: "Backlog", title: "API", status: "Active" },
+        task: { id: expect.any(String), project_id: expect.any(String), column_id: expect.any(String), key: "WEB-1", column: "Backlog", title: "API", status: "Active" },
       },
     ]);
   });
@@ -3839,6 +3870,9 @@ test("delete commands with --yes and --json print the deleted entity", async () 
     await run("label", "create", "urgent", "--color", "red", "--description", "Needs attention soon");
 
     expect(await deleteJson("task", "delete", "WEB-1")).toEqual({
+      id: expect.any(String),
+      project_id: expect.any(String),
+      column_id: expect.any(String),
       key: "WEB-1",
       status: "Active",
       column: "Backlog",
@@ -3846,6 +3880,7 @@ test("delete commands with --yes and --json print the deleted entity", async () 
       description: null,
       priority: null,
       labels: [],
+      label_ids: [],
     });
     expect(JSON.parse((await run("task", "list", "WEB", "--json")).stdout)).toMatchObject([
       { key: "WEB-2" },
@@ -3853,6 +3888,8 @@ test("delete commands with --yes and --json print the deleted entity", async () 
 
     const deletedComment = await deleteJson("task", "comment", "delete", "WEB-2#1");
     expect(deletedComment).toEqual({
+      id: expect.any(String),
+      task_id: expect.any(String),
       key: "WEB-2#1",
       text: "Looks good",
       created_at: deletedComment.created_at,
@@ -3861,15 +3898,16 @@ test("delete commands with --yes and --json print the deleted entity", async () 
     expect(JSON.parse((await run("task", "comment", "list", "WEB-2", "--json")).stdout)).toEqual([]);
 
     expect(await deleteJson("label", "delete", "urgent")).toEqual({
+      id: expect.any(String),
       name: "urgent",
       color: "red",
       description: "Needs attention soon",
     });
     expect(JSON.parse((await run("label", "list", "--json")).stdout)).toEqual([]);
 
-    expect(await deleteJson("project", "delete", "GONE")).toEqual({ key: "GONE", name: "Gone", description: null });
+    expect(await deleteJson("project", "delete", "GONE")).toEqual({ id: expect.any(String), key: "GONE", name: "Gone", description: null });
     expect(JSON.parse((await run("project", "list", "--json")).stdout)).toEqual([
-      { key: "WEB", name: "Web", description: null },
+      { id: expect.any(String), key: "WEB", name: "Web", description: null },
     ]);
   });
 });
@@ -3963,8 +4001,9 @@ test("relation commands show directional and symmetric links, including archived
     expect((await run("task", "view", "APP-1")).stdout).toContain("Parent       | OTHER-1 | Backlog | Original | Archived");
     const viewed = JSON.parse((await run("task", "view", "APP-1", "--json")).stdout);
     expect(viewed.relations).toContainEqual({
+      id: expect.any(String),
       type: "subtask", direction: "outgoing",
-      task: { key: "OTHER-1", column: "Backlog", title: "Original", status: "Archived" },
+      task: { id: expect.any(String), project_id: expect.any(String), column_id: expect.any(String), key: "OTHER-1", column: "Backlog", title: "Original", status: "Archived" },
     });
     expect(errorDocumentSchema.parse(JSON.parse((await run("--json", "task", "relation", "create", "OTHER-1", "APP-1", "--type", "subtask")).stderr)).error).toMatchObject({ code: "conflict", details: { reason: "cycle" } });
     expect((await run("task", "relation", "delete", "APP-1", "OTHER-1", "--type", "subtask")).code).toBe(0);
@@ -4092,6 +4131,7 @@ test("global label workflows support repeated create/edit flags and preserve tas
     expect(editedLabel.stdout).toBe("defect | blue\n");
     expect((await run("task", "view", "APP-1")).stdout).toBe("APP-1 | Backlog | - | Login | auth, defect\n");
     expect(JSON.parse((await run("label", "edit", "defect", "--description", "Fixed", "--json")).stdout)).toEqual({
+      id: expect.any(String),
       name: "defect",
       color: "blue",
       description: "Fixed",
@@ -4151,11 +4191,11 @@ test.serial("label text output colors the name in a terminal and names the color
 
     const created = (await run("label", "create", "docs", "--color", "cyan", "--json")).stdout;
     expect(created).not.toContain("\x1b[");
-    expect(JSON.parse(created)).toEqual({ name: "docs", color: "cyan", description: null });
+    expect(JSON.parse(created)).toEqual({ id: expect.any(String), name: "docs", color: "cyan", description: null });
 
     const listedJson = (await run("label", "list", "--json")).stdout;
     expect(listedJson).not.toContain("\x1b[");
-    expect(JSON.parse(listedJson)).toContainEqual({ name: "bug", color: "red", description: "Broken" });
+    expect(JSON.parse(listedJson)).toContainEqual({ id: expect.any(String), name: "bug", color: "red", description: "Broken" });
   });
 });
 
@@ -4185,6 +4225,7 @@ test("label create, edit and list preview descriptions while view and JSON retai
       expect(result.code).toBe(0);
       expect(result.stderr).toBe("");
       expect(JSON.parse(result.stdout)).toEqual({
+        id: expect.any(String),
         name: args[2], color: "white", description,
       });
     }
@@ -4193,8 +4234,8 @@ test("label create, edit and list preview descriptions while view and JSON retai
     expect(labels.code).toBe(0);
     expect(labels.stderr).toBe("");
     expect(JSON.parse(labels.stdout)).toEqual([
-      { name: "bug", color: "white", description },
-      { name: "docs", color: "white", description },
+      { id: expect.any(String), name: "bug", color: "white", description },
+      { id: expect.any(String), name: "docs", color: "white", description },
     ]);
     const listedLongDescriptions = await run("label", "list");
     expect(listedLongDescriptions.code).toBe(0);
@@ -4230,10 +4271,10 @@ test("label view preserves full descriptions and reads one case-insensitive name
       const viewedJson = await runZinn(["label", "view", "NEEDS review", "--json"], directory, env);
       expect(viewedJson.code).toBe(0);
       expect(viewedJson.stderr).toBe("");
-      expect(JSON.parse(viewedJson.stdout)).toEqual({ name: "Needs Review", color: "red", description });
+      expect(JSON.parse(viewedJson.stdout)).toEqual({ id: expect.any(String), name: "Needs Review", color: "red", description });
       const empty = await runZinn(["label", "view", "empty", "--json"], directory, env);
       expect(empty.code).toBe(0);
-      expect(JSON.parse(empty.stdout)).toEqual({ name: "Empty", color: "white", description: null });
+      expect(JSON.parse(empty.stdout)).toEqual({ id: expect.any(String), name: "Empty", color: "white", description: null });
       const listed = await runZinn(["label", "list"], directory, env);
       expect(listed.code).toBe(0);
       expect(listed.stdout).toContain("First line…");
@@ -4380,7 +4421,7 @@ test.serial("Zinn's color policy controls rendering even when Node's environment
       const json = await runZinn(["label", "list", "--json"], dir, env);
       expect(json.code).toBe(0);
       expect(json.stdout).not.toContain("\x1b");
-      expect(JSON.parse(json.stdout)).toEqual([{ name: "bug", color: "red", description: null }]);
+      expect(JSON.parse(json.stdout)).toEqual([{ id: expect.any(String), name: "bug", color: "red", description: null }]);
     }
   });
 });
@@ -5733,12 +5774,12 @@ test("project descriptions flow through creation, partial edits, view, list and 
     const description = "Purpose\nMore context";
     const created = await run("project", "create", "DESC", "--description", description, "--json");
     expect(created.code).toBe(0);
-    expect(JSON.parse(created.stdout)).toEqual({ key: "DESC", name: "DESC", description });
+    expect(JSON.parse(created.stdout)).toEqual({ id: expect.any(String), key: "DESC", name: "DESC", description });
     expect((await run("project", "view", "DESC")).stdout).toStartWith(`DESC | DESC\n\nDescription:\n${description}\n\nColumns:\n`);
     expect((await run("project", "list")).stdout).toBe("DESC | DESC | Purpose More context\n");
     expect(JSON.parse((await run("project", "list", "--json")).stdout)[0].description).toBe(description);
     expect(JSON.parse((await run("project", "edit", "DESC", "--name", "Renamed", "--json")).stdout).description).toBe(description);
-    expect(JSON.parse((await run("project", "edit", "DESC", "--description", "Updated", "--json")).stdout)).toEqual({ key: "DESC", name: "Renamed", description: "Updated" });
+    expect(JSON.parse((await run("project", "edit", "DESC", "--description", "Updated", "--json")).stdout)).toEqual({ id: expect.any(String), key: "DESC", name: "Renamed", description: "Updated" });
     expect((await run("project", "edit", "DESC", "--description", "")).stdout).toBe("DESC | Renamed\n");
     expect(JSON.parse((await run("project", "view", "DESC", "--json")).stdout).description).toBeNull();
     expect((await run("project", "edit", "DESC", "--description", "a", "--description", "b")).code).toBe(1);

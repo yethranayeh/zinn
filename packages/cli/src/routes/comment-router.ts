@@ -223,7 +223,7 @@ Example: zinn task comment list MDR-1`,
 
 Show a comment's current text in full, keeping its line breaks.
 Comments on archived tasks can be viewed.
-With --json, return one object with key, text, created_at and updated_at.
+With --json, return one object with id, key, task_id, text, created_at and updated_at.
 
 Example: zinn task comment view 'MDR-1#1'`,
   },

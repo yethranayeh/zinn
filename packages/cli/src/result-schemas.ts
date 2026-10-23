@@ -22,9 +22,12 @@ const timestamp = z.number().int().describe("Milliseconds since the Unix epoch."
 const taskStatus = z.enum(["Active", "Archived"]);
 
 export const taskSchema = z.strictObject({
+  id: z.string().describe("Stored task ID."),
   key: z.string().describe("Readable project key and task number."),
+  project_id: z.string().describe("Owning project ID."),
   status: taskStatus,
   column: z.string().describe("Current column name."),
+  column_id: z.string().describe("Current column ID."),
   title: z.string(),
   description: nullableText,
   priority: z
@@ -34,9 +37,11 @@ export const taskSchema = z.strictObject({
       `Known priorities: ${taskPrioritySchema.options.join(", ")}. Other stored values may occur.`,
     ),
   labels: z.array(z.string()).describe("Attached label names."),
+  label_ids: z.array(z.string()).describe("Attached label IDs, in the same order as labels."),
 });
 
 export const relationSchema = z.strictObject({
+  id: z.string().describe("Stored relation ID."),
   type: z
     .string()
     .describe(
@@ -46,16 +51,29 @@ export const relationSchema = z.strictObject({
     .enum(["outgoing", "incoming"])
     .nullable()
     .describe("Direction relative to the viewed task; null for a symmetric relation."),
-  task: taskSchema.pick({ key: true, column: true, title: true, status: true }),
+  task: taskSchema.pick({
+    id: true,
+    key: true,
+    project_id: true,
+    column: true,
+    column_id: true,
+    title: true,
+    status: true,
+  }),
 });
 export const relationChangeSchema = z.strictObject({
+  id: z.string().describe("Stored ID of the created or deleted relation."),
   type: relationSchema.shape.type,
   source: z.string().describe("Source task key, in the supplied direction."),
+  source_task_id: z.string().describe("Task ID matching source, in the supplied direction."),
   target: z.string().describe("Target task key, in the supplied direction."),
+  target_task_id: z.string().describe("Task ID matching target, in the supplied direction."),
 });
 
 export const commentSchema = z.strictObject({
+  id: z.string().describe("Stored comment ID."),
   key: z.string().describe("Readable task key and comment number."),
+  task_id: z.string().describe("Owning task ID."),
   text: z.string(),
   created_at: timestamp,
   updated_at: timestamp,
@@ -110,17 +128,28 @@ export const taskChangeSchema = taskSchema.extend({
 });
 
 export const projectSchema = z.strictObject({
+  id: z.string().describe("Stored project ID."),
   key: z.string(),
   name: z.string(),
   description: nullableText,
 });
-export const columnSchema = z.strictObject({ project: z.string(), name: z.string() });
-export const columnTaskCountSchema = z.strictObject({ name: z.string(), taskCount: count });
+export const columnSchema = z.strictObject({
+  id: z.string().describe("Stored column ID."),
+  project: z.string(),
+  project_id: z.string().describe("Owning project ID."),
+  name: z.string(),
+});
+export const columnTaskCountSchema = z.strictObject({
+  id: columnSchema.shape.id,
+  name: z.string(),
+  taskCount: count,
+});
 export const projectViewSchema = projectSchema.extend({
   columns: z.array(columnTaskCountSchema),
   archivedTaskCount: count,
 });
 export const labelSchema = z.strictObject({
+  id: z.string().describe("Stored label ID."),
   name: z.string(),
   color: z
     .string()

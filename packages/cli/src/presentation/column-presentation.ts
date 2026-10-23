@@ -10,10 +10,19 @@ type ColumnRow = { name: string; project?: string; taskCount?: number };
 /** Archived tasks are off the board, so they share one row below the columns instead of a column of their own. */
 const ARCHIVED_ROW_LABEL = "Archived";
 
-export function presentColumn(columnMatch: { project_id: string; name: string }): PresentedColumn {
+export function presentColumn(columnMatch: {
+  id: string;
+  project_id: string;
+  name: string;
+}): PresentedColumn {
   const columnProject = project.getById(columnMatch.project_id)!;
 
-  return { project: columnProject.key, name: columnMatch.name };
+  return {
+    id: columnMatch.id,
+    project: columnProject.key,
+    project_id: columnMatch.project_id,
+    name: columnMatch.name,
+  };
 }
 
 export function columnNameCell(columnName: string): RowCell {

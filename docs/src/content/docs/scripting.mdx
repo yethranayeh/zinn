@@ -15,6 +15,29 @@ zinn task create MDR --title 'Refine the numbers' --json
 
 Read commands return the data they list or show. Write commands return the entity they create, change, or delete. Output is one JSON document on stdout; an empty list is `[]`.
 
+## Entity identity
+
+Task, project, column, label, comment, and relation objects include their stored UUID as `id`, including nested objects and deletion results. The ID stays the same through edits and renames. Recreating an entity with the same key or name produces a new ID. Keys and names are the readable handles. IDs are returned verbatim, with `id` first in each entity object.
+
+References include the following ID fields:
+
+| Result                                  | Identity fields                                                          |
+| --------------------------------------- | ------------------------------------------------------------------------ |
+| Task, including single and bulk changes | `id`, `project_id`, `column_id`, `label_ids`                             |
+| Relation in a list or task view         | Relation `id`; connected `task` includes `id`, `project_id`, `column_id` |
+| Relation create/delete                  | Relation `id`, `source_task_id`, `target_task_id`                        |
+| Comment, including task view comments   | `id`, `task_id`                                                          |
+| Project, including project view         | `id`                                                                     |
+| Column in project view or column list   | `id`                                                                     |
+| Column create/edit/order                | `id`, `project_id`                                                       |
+| Label                                   | `id`                                                                     |
+
+A task's `column` is its column name. `labels` contains label names, and `label_ids` contains their IDs in matching order. Both arrays are empty when the task has no labels.
+
+In relation create/delete results, `source_task_id` identifies the task named by `source`, and `target_task_id` identifies the task named by `target`. This also applies to symmetric `related` relations.
+
+Use a task's `id` with `activity list --task-id`, or a project's `id` with `activity list --project-id`, to select its history. Activity records have their own event `id` and the affected entity's `entity_id`; recorded `changes` payloads are preserved as written.
+
 ## Handle errors and notices
 
 Without `--json`, handled errors are plain messages on stderr. With `--json`, they are one JSON document. In both modes, stdout stays empty and the command exits with code `1`. A JSON error contains a code and message, and may include known details, help, and diagnostics:
@@ -60,6 +83,8 @@ The JSON object contains `manifestVersion` (currently `1`), `cli` (package name 
 A `requiresAny` constraint means that supplying its `input` requires at least one of its `members`. For example, `--show-deleted` requires either `--project` or `--task` on `activity list`.
 
 Help stays text even with `--json`. The CLI package release version identifies the command contract; `manifestVersion` describes how to interpret the manifest and changes only when that interpretation becomes incompatible. Development builds can change the contract without changing their version, so use the manifest content rather than its version alone as a cache key.
+
+Result schemas reject additional properties. When updating the CLI, retrieve its manifest again: a schema from an older release can reject fields added by the installed release.
 
 For example, with `@zinn-dev/cli` installed in the consumer project and an `APP` project in the selected store, a Node.js script can read the manifest, find the task-list command, and build argv from its positional-form descriptor:
 

@@ -142,7 +142,7 @@ zinn project column list MDR
 
 `project view` and `project column list` accept an omitted project key when [defaultProject](/docs/settings) is configured.
 
-`project column list` counts unarchived tasks. With `--json`, it returns `[{ "name": "Backlog", "taskCount": 3 }, ...]`.
+`project column list` counts unarchived tasks. With `--json`, it returns `[{ "id": "<column-id>", "name": "Backlog", "taskCount": 3 }, ...]`.
 
 Edit a project:
 
@@ -298,12 +298,12 @@ Label colors default to white. Available colors are _red_, _green_, _yellow_, _b
 
 `label edit` accepts name, color, and description. `label create` and `label edit` take `--description-file` for a description from a file or stdin (see [Text values](#text-values)). Renaming preserves every task attachment because attachments refer to the label's internal ID. Updating a label definition does not affect attached tasks' timestamps.
 
-`label create`, `label edit`, and `label list` show a preview of the descriptions. `label view <name>` shows the full description, which preserves line breaks and whitespace. `label view --json` returns one object with `name`, `color`, and the `description` in full.
+`label create`, `label edit`, and `label list` show a preview of the descriptions. `label view <name>` shows the full description, which preserves line breaks and whitespace. `label view --json` returns one object with `id`, `name`, `color`, and the `description` in full.
 
 Task creation and edits apply content and label changes together, or roll back together on failure.
 Changing a task's label attachments updates that task's modification timestamp. Archived tasks can also have their labels edited.
 
-`--json` lists a task's labels as names.
+`--json` lists a task's labels as names in `labels`, with their IDs in `label_ids` in the same order. See [Entity identity](/docs/scripting#entity-identity) for the ID fields on task and nested results.
 
 `zinn label delete urgent` asks for confirmation, then deletes the definition and removes it from every task. Declining confirmation leaves the label and its attachments unchanged. `--yes` skips the confirmation (see [Confirmations](/docs/scripting#confirmations-in-scripts)).
 Use `task label remove` to remove a label attachment from one task instead. Task/project deletion cleans up label attachments, but does not affect labels themselves.
@@ -360,7 +360,7 @@ zinn task comment delete 'MDR-1#1'
 
 `task comment create` and `task comment edit` take `--text-file` instead of `--text` to read the text from a file or stdin (see [Text values](#text-values)).
 
-`task comment view` shows the current text in full, keeping its line breaks, including on archived tasks. With `--json`, it returns one object with `key`, `text`, `created_at` and `updated_at`.
+`task comment view` shows the current text in full, keeping its line breaks, including on archived tasks. With `--json`, it returns one object with `id`, `key`, `task_id`, `text`, `created_at` and `updated_at`.
 
 Deletion asks for confirmation, unless `--yes` is used (see [Confirmations](/docs/scripting#confirmations-in-scripts)). Comments can be added to archived tasks. Comment mutations are recorded in the activity log without changing the task's modification timestamp.
 

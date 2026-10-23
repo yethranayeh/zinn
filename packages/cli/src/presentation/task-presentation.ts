@@ -24,7 +24,7 @@ function taskPriorityCell(
 }
 
 /**
- * `PresentedTask` carries label names only, so JSON stays a list of names.
+ * `PresentedTask` carries label names and IDs, without colors.
  * Text output looks the colors up from the label definitions instead.
  */
 function getLabelColorsByName() {
@@ -32,14 +32,19 @@ function getLabelColorsByName() {
 }
 
 export function presentTask(taskMatch: TaskWithKey): PresentedTask {
+  const labels = task.label.getAll(taskMatch.key);
   return {
+    id: taskMatch.id,
     key: taskMatch.key,
+    project_id: taskMatch.project_id,
     status: taskMatch.archived_at == null ? "Active" : "Archived",
     column: column.getById(taskMatch.column_id)!.name,
+    column_id: taskMatch.column_id,
     title: taskMatch.title,
     description: taskMatch.description,
     priority: taskMatch.priority,
-    labels: task.label.getAll(taskMatch.key).map((label) => label.name),
+    labels: labels.map((label) => label.name),
+    label_ids: labels.map((label) => label.id),
   };
 }
 

@@ -6,7 +6,12 @@ import { formatCellSeparator, formatRows } from "./row-layout.js";
 type ProjectRowOptions = { showsDescriptionPreview?: boolean };
 
 export function presentProject(projectMatch: PresentedProject): PresentedProject {
-  return { key: projectMatch.key, name: projectMatch.name, description: projectMatch.description };
+  return {
+    id: projectMatch.id,
+    key: projectMatch.key,
+    name: projectMatch.name,
+    description: projectMatch.description,
+  };
 }
 
 export function formatProjectList(

@@ -9,7 +9,12 @@ import { formatDescriptionPreview } from "./description-presentation.js";
 import { formatRows } from "./row-layout.js";
 
 export function presentLabel(labelMatch: Label): PresentedLabel {
-  return { name: labelMatch.name, color: labelMatch.color, description: labelMatch.description };
+  return {
+    id: labelMatch.id,
+    name: labelMatch.name,
+    color: labelMatch.color,
+    description: labelMatch.description,
+  };
 }
 
 export function labelNameCell(name: string, color: string): RowCell {

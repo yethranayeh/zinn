@@ -884,13 +884,7 @@ function outputTaskChanges(
   const presentedChanges = changes.map((change) => {
     const presentedTask = presentTask(change.task);
     return {
-      key: presentedTask.key,
-      status: presentedTask.status,
-      column: presentedTask.column,
-      title: presentedTask.title,
-      description: presentedTask.description,
-      priority: presentedTask.priority,
-      labels: presentedTask.labels,
+      ...presentedTask,
       changed: change.changed,
     } satisfies PresentedTaskChange;
   });

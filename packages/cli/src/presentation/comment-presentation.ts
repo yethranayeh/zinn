@@ -10,7 +10,9 @@ import { formatLocalTime } from "./time.js";
 
 export function presentComment(commentMatch: CommentWithKey): PresentedComment {
   return {
+    id: commentMatch.id,
     key: commentMatch.key,
+    task_id: commentMatch.task_id,
     text: commentMatch.text,
     created_at: commentMatch.created_at,
     updated_at: commentMatch.updated_at,
