@@ -311,6 +311,11 @@ export const taskRouter = {
         "create",
         ...renameFlag(args, taskInputs.create.options, "status", "column"),
       ],
+      "--body": (args) => [
+        "task",
+        "create",
+        ...renameFlag(args, taskInputs.create.options, "body", "description"),
+      ],
     },
     run: async (args) => {
       const { values, positionals, tokens } = parseArgs({
@@ -655,6 +660,11 @@ Examples:
     guessedFlags: {
       "--status": (args) => suggestTaskMove(args, taskInputs.edit.options),
       "--column": (args) => suggestTaskMove(args, taskInputs.edit.options),
+      "--body": (args) => [
+        "task",
+        "edit",
+        ...renameFlag(args, taskInputs.edit.options, "body", "description"),
+      ],
     },
   },
   move: {

@@ -573,6 +573,83 @@ test("the command shown for a word that begins with a single dash runs as shown,
   });
 });
 
+for (const command of [
+  ["task", "create"],
+  ["task", "edit"],
+  ["task", "comment", "create"],
+  ["task", "comment", "edit"],
+]) {
+  test(`${command.join(" ")} corrects --body with a runnable command that preserves text and modifiers`, async () => {
+    await withIsolatedZinnDir(async (dir) => {
+      expect((await runZinn(["project", "create", "SHOP"], dir)).code).toBe(0);
+      const isComment = command.includes("comment");
+      const isEdit = command.at(-1) === "edit";
+      const initialText = "Keep --body twice: --body";
+      const body = "It's literal: $(false) `false`\n--body=keep";
+      const title = "Keep the other task fields";
+      const modes = [
+        { args: [], expected: body },
+        ...(isEdit ? [
+          { args: ["--append"], expected: `${initialText}\n\n${body}` },
+          { args: ["--replacing=--body", "--all"], expected: initialText.replaceAll("--body", body) },
+        ] : []),
+      ];
+      const snapshot = () => withTestDb(dir, (db) => ({
+        tasks: db.query("SELECT * FROM task ORDER BY id").all(),
+        comments: db.query("SELECT * FROM comment ORDER BY id").all(),
+        activity: db.query("SELECT * FROM activity ORDER BY id").all(),
+      }));
+
+      for (const mode of modes) {
+        for (const bodyArgs of [["--body", body], [`--body=${body}`]]) {
+          const seed = await runZinn([
+            "task", "create", "SHOP", "--title", "Seed task", "--description", initialText, "--json",
+          ], dir);
+          expect(seed.code).toBe(0);
+          const taskKey = JSON.parse(seed.stdout).key;
+          let target = isEdit || isComment ? taskKey : "SHOP";
+          if (isEdit && isComment) {
+            const comment = await runZinn([
+              "task", "comment", "create", taskKey, "--text", initialText, "--json",
+            ], dir);
+            expect(comment.code).toBe(0);
+            target = JSON.parse(comment.stdout).key;
+          }
+
+          const before = snapshot();
+          const otherFlags = isComment ? [] : ["--title", title, "--priority", "high"];
+          const refused = await runZinn([
+            ...command, target, ...otherFlags, ...bodyArgs, ...mode.args, "--json",
+          ], dir);
+          expect(refused.code).toBe(1);
+          expect(refused.stdout).toBe("");
+          expect(snapshot()).toEqual(before);
+
+          const { error } = errorDocumentSchema.parse(JSON.parse(refused.stderr));
+          expect(error.details).toMatchObject({ argument: "--body" });
+          const shownArgs = error.message.match(/zinn ([\s\S]*)$/)![1]!;
+          const corrected = await runProcessAsync([
+            "/bin/sh", "-c", `exec bun "$0" ${shownArgs}`, CLI_PATH,
+          ], { env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir }, cwd: dir });
+          expect(corrected.code).toBe(0);
+          expect(corrected.stderr).toBe("");
+          const result = JSON.parse(corrected.stdout);
+          const textField = isComment ? "text" : "description";
+          expect(result[textField]).toBe(mode.expected);
+          if (!isComment) {
+            expect(result).toMatchObject({ title, priority: "high" });
+          }
+          const viewed = await runZinn([
+            "task", ...(isComment ? ["comment"] : []), "view", result.key, "--json",
+          ], dir);
+          expect(viewed.code).toBe(0);
+          expect(JSON.parse(viewed.stdout)[textField]).toBe(mode.expected);
+        }
+      }
+    });
+  });
+}
+
 test("a guessed --status on task create suggests --column and preserves the other creation arguments", async () => {
   await withIsolatedZinnDir(async (dir) => {
     await runZinn(["project", "create", "SHOP"], dir);

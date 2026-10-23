@@ -17,6 +17,7 @@ import {
   dashValueHelp,
   output,
   quit,
+  renameFlag,
   validatePositionals,
   validateUniqueOptions,
 } from "../lib.js";
@@ -161,6 +162,14 @@ export const commentRouter = {
     confirmation: { kind: "none" },
     input: commentInputs.create,
     results: [jsonResult("Comment")],
+    guessedFlags: {
+      "--body": (args) => [
+        "task",
+        "comment",
+        "create",
+        ...renameFlag(args, commentInputs.create.options, "body", "text"),
+      ],
+    },
     run: async (args) => {
       const props = await parseTextArgs(args);
       const created = comment.create({ taskKey: props.key, text: props.text }, currentActor());
@@ -233,6 +242,14 @@ Example: zinn task comment view 'MDR-1#1'`,
     confirmation: { kind: "none" },
     input: commentInputs.edit,
     results: [jsonResult("Comment")],
+    guessedFlags: {
+      "--body": (args) => [
+        "task",
+        "comment",
+        "edit",
+        ...renameFlag(args, commentInputs.edit.options, "body", "text"),
+      ],
+    },
     run: async (args) => {
       const props = await parseCommentEditArgs(args);
       const edited = comment.edit({ commentKey: props.key, text: props.text }, currentActor());
