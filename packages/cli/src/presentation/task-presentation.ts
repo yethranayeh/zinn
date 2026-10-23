@@ -1,12 +1,13 @@
 import type { TaskWithKey } from "@zinn-dev/core";
 import type { RowCell } from "./row-layout.js";
-import type { PresentedTask } from "../result-schemas.js";
+import type { PresentedTask, PresentedTaskDetail } from "../result-schemas.js";
 
 import { column, label, task } from "@zinn-dev/core";
 
 import { columnNameCell } from "./column-presentation.js";
 import { labelNameCell } from "./label-presentation.js";
 import { formatCell, formatCellSeparator, formatRows } from "./row-layout.js";
+import { formatLocalTime } from "./time.js";
 
 const EMPTY_CELL_MARKER = "-";
 const LABEL_NAME_SEPARATOR = ", ";
@@ -75,4 +76,13 @@ export function formatTaskList(
       ];
     }),
   );
+}
+
+export function formatTaskTimestamps(task: Pick<PresentedTaskDetail, "created_at" | "updated_at">) {
+  return formatRows([
+    [
+      { text: `Task created at: ${formatLocalTime(task.created_at)}`, style: "dim" },
+      { text: `Task updated at: ${formatLocalTime(task.updated_at)}`, style: "dim" },
+    ],
+  ]);
 }

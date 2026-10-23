@@ -77,12 +77,20 @@ test("wire schemas distinguish null, omission, history and mutation cardinality"
   expect(accepts("Task", { ...task, priority: 1 })).toBe(false);
   expect(accepts("Task", { ...task, labels: null })).toBe(false);
   expect(accepts("Task", { ...task, extra: true })).toBe(false);
-  const detail = { ...task, relations: [], comments: [] };
+  const detail = { ...task, created_at: 1, updated_at: 2, relations: [], comments: [] };
   expect(accepts("TaskDetail", detail)).toBe(true);
   expect(accepts("TaskDetail", { ...detail, activity: [] })).toBe(false);
   expect(accepts("TaskDetailHistory", detail)).toBe(false);
   expect(accepts("TaskDetailHistory", { ...detail, activity: [] })).toBe(true);
   expect(accepts("TaskDetailHistory", { ...detail, activity: null })).toBe(false);
+  for (const field of ["created_at", "updated_at"]) {
+    const missing: Record<string, unknown> = { ...detail };
+    delete missing[field];
+    expect(accepts("TaskDetail", missing)).toBe(false);
+    expect(accepts("TaskDetailHistory", { ...missing, activity: [] })).toBe(false);
+    expect(accepts("TaskDetail", { ...detail, [field]: "2026-10-24" })).toBe(false);
+    expect(accepts("Task", { ...task, [field]: 1 })).toBe(false);
+  }
   const change = { ...task, changed: false };
   expect(accepts("TaskChange", change)).toBe(true);
   expect(accepts("TaskChange", [change])).toBe(false);

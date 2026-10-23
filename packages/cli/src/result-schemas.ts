@@ -115,6 +115,8 @@ export const activitySchema = z.strictObject({
 });
 
 export const taskDetailSchema = taskSchema.extend({
+  created_at: timestamp,
+  updated_at: timestamp,
   relations: z.array(relationSchema),
   comments: z.array(commentSchema),
 });

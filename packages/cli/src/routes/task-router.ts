@@ -71,7 +71,11 @@ import { formatRelationList, presentRelations } from "../presentation/relation-p
 import { formatCommentList, presentComments } from "../presentation/comment-presentation.js";
 import { formatSection } from "../presentation/section.js";
 import { formatActivityList, presentActivities } from "../presentation/activity-presentation.js";
-import { formatTaskList, presentTask } from "../presentation/task-presentation.js";
+import {
+  formatTaskList,
+  formatTaskTimestamps,
+  presentTask,
+} from "../presentation/task-presentation.js";
 
 // A column is changed with task move, so a guessed --status or --column suggests it with the same task keys.
 function suggestTaskMove(args: Array<string>, options: ParseArgsOptionsConfig = {}) {
@@ -510,7 +514,8 @@ Repeat --label to require every specified label, ignoring case.
 Example: zinn task search 'refinement quota' MDR --limit 5`,
   },
   view: {
-    summary: "Show a task with its description, relations, and comments.",
+    summary:
+      "Show a task with its description, relations, comments, and creation and update times.",
     effects: { domain: "read", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: taskInputs.view,
@@ -529,6 +534,8 @@ Example: zinn task search 'refinement quota' MDR --limit 5`,
       const taskMatch = task.getByKey(positionals[0]!);
       const detail = {
         ...presentTask(taskMatch),
+        created_at: taskMatch.created_at,
+        updated_at: taskMatch.updated_at,
         relations: presentRelations(taskMatch),
         comments: presentComments(taskMatch.key),
       };
@@ -580,13 +587,16 @@ Example: zinn task search 'refinement quota' MDR --limit 5`,
           }
         }
 
+        sections.push(formatTaskTimestamps(t));
         return sections.join("\n\n");
       });
     },
     help: `${generateCommandUsage("task view", taskInputs.view)}
 
-Show a task with its description, relations, and comments.
+Show a task with its description, relations, comments, and creation and update times.
 A section is shown when the task has that content. The description prints in full, keeping its line breaks.
+Task update time advances for edits, label attachment changes, moves, reorders, archiving and unarchiving.
+With --json, created_at and updated_at are stored epoch milliseconds.
 Use --history to include this task's recorded activity, newest first, including reorders and comment changes.
 Use activity view <activity-id> for full recorded changes. Text times are local with a UTC offset.
 With --history --json, the activity field contains full activity records, or [] when none are recorded.

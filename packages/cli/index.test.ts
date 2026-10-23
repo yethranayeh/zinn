@@ -30,6 +30,13 @@ const dim = (text: string) => `\x1b[2m${text}\x1b[22m`;
 const SECTION_RULE = "-".repeat(60);
 const bold = (text: string) => `\x1b[1m${text}\x1b[22m`;
 
+function taskViewContent(output: string) {
+  const footerStart = output.lastIndexOf("\n\n");
+  const footer = Bun.stripANSI(output.slice(footerStart)).trim();
+  expect(footer.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2} [+-]\d{2}:\d{2}/g)).toHaveLength(2);
+  return `${output.slice(0, footerStart)}\n`;
+}
+
 test("names and titles share trimming and reject leading or trailing control characters", async () => {
   await withIsolatedZinnDir(async (directory) => {
     const commands = [
@@ -1645,7 +1652,7 @@ test("task list leaves a long multi-line description to task view, which prints 
     expect(listResult.code).toBe(0);
     expect(listResult.stdout).toBe(`PREVIEW-1 | Backlog | - | long description\n`);
     expect(viewResult.code).toBe(0);
-    expect(viewResult.stdout).toBe(
+    expect(taskViewContent(viewResult.stdout)).toBe(
       `PREVIEW-1 | Backlog | - | long description\n\n${SECTION_RULE}\nDescription:\n${description}\n`,
     );
   });
@@ -1830,6 +1837,59 @@ test("task list prints labels after the title, and a task without labels ends at
   });
 });
 
+test("task view exposes stored timestamps after its content and history, using local UTC offsets", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = (...args: Array<string>) => runZinn(args, dir, { TZ: "Europe/Berlin" });
+    expect((await run("project", "create", "TIME")).code).toBe(0);
+    const created = await run("task", "create", "TIME", "--title", "Timestamped", "--description", "Details", "--json");
+    expect(created.code).toBe(0);
+    expect((await run("task", "create", "TIME", "--title", "Other")).code).toBe(0);
+    expect((await run("task", "comment", "create", "TIME-1", "--text", "A comment")).code).toBe(0);
+    expect((await run("task", "relation", "create", "TIME-1", "TIME-2", "--type", "related")).code).toBe(0);
+    const createdAt = Date.UTC(2026, 0, 15, 10, 7);
+    const updatedAt = Date.UTC(2026, 6, 15, 9, 42);
+    withTestDb(dir, (db) => {
+      db.run("UPDATE task SET created_at = ?, updated_at = ? WHERE number = 1", [createdAt, updatedAt]);
+    });
+    const activityBefore = (await run("activity", "list", "--project", "TIME", "--json")).stdout;
+
+    for (const history of [[], ["--history"]]) {
+      const viewed = await run("task", "view", "TIME-1", ...history);
+      expect(viewed.code).toBe(0);
+      expect(viewed.stderr).toBe("");
+      const lastLine = viewed.stdout.trimEnd().split("\n").at(-1)!;
+      expect(lastLine).toContain("Task");
+      expect(lastLine).toContain("2026-01-15 11:07 +01:00");
+      expect(lastLine).toContain("2026-07-15 11:42 +02:00");
+      const json = await run("task", "view", "TIME-1", ...history, "--json");
+      expect(json.code).toBe(0);
+      expect(JSON.parse(json.stdout)).toMatchObject({ created_at: createdAt, updated_at: updatedAt });
+    }
+    expect((await run("activity", "list", "--project", "TIME", "--json")).stdout).toBe(activityBefore);
+
+    for (const result of [
+      JSON.parse(created.stdout),
+      JSON.parse((await run("task", "list", "TIME", "--json")).stdout)[0],
+      JSON.parse((await run("task", "search", "Timestamped", "TIME", "--json")).stdout)[0],
+      JSON.parse((await run("task", "edit", "TIME-1", "--title", "Timestamped", "--json")).stdout),
+    ]) {
+      expect(Object.hasOwn(result, "created_at")).toBe(false);
+      expect(Object.hasOwn(result, "updated_at")).toBe(false);
+    }
+
+    expect((await run("task", "comment", "create", "TIME-1", "--text", "Another comment")).code).toBe(0);
+    expect((await run("task", "relation", "delete", "TIME-1", "TIME-2", "--type", "related")).code).toBe(0);
+    const unchanged = JSON.parse((await run("task", "view", "TIME-1", "--json")).stdout);
+    expect(unchanged).toMatchObject({ created_at: createdAt, updated_at: updatedAt });
+    expect((await run("task", "edit", "TIME-1", "--title", "Changed")).code).toBe(0);
+    const changed = JSON.parse((await run("task", "view", "TIME-1", "--json")).stdout);
+    expect(changed.created_at).toBe(createdAt);
+    expect(changed.updated_at).toBeGreaterThan(updatedAt);
+    expect(withTestDb(dir, (db) => db.query("SELECT updated_at FROM task WHERE number = 1").get()))
+      .toEqual({ updated_at: changed.updated_at });
+  });
+});
+
 test("task view resolves a case-insensitive key and prints its canonical form", async () => {
   await withIsolatedZinnDir(async (testDir) => {
     await runZinn(["project", "create", "VIEW", "--name", "Viewed"], testDir);
@@ -1839,7 +1899,7 @@ test("task view resolves a case-insensitive key and prints its canonical form", 
 
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toBe(
+    expect(taskViewContent(result.stdout)).toBe(
       `VIEW-1 | Backlog | - | visible task\n\n${SECTION_RULE}\nDescription:\nvisible description\n`,
     );
   });
@@ -1866,7 +1926,7 @@ test("task view prints the task row followed by Description, Relations, and Comm
 
     expect(viewed.code).toBe(0);
     expect(viewed.stderr).toBe("");
-    expect(viewed.stdout).toBe(
+    expect(taskViewContent(viewed.stdout)).toBe(
       [
         "MDR-1 | In Progress | High | Refine the numbers | bug, cli",
         "",
@@ -1898,6 +1958,8 @@ test("task view prints the task row followed by Description, Relations, and Comm
       priority: "high",
       labels: ["bug", "cli"],
       label_ids: [expect.any(String), expect.any(String)],
+      created_at: expect.any(Number),
+      updated_at: expect.any(Number),
       relations: [
         {
           id: expect.any(String),
@@ -1922,10 +1984,10 @@ test("task view leaves out the Description section for a task without a descript
     const result = await runZinn(["task", "view", "NONE-1"], testDir);
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toBe(`NONE-1 | Backlog | - | title only\n`);
+    expect(taskViewContent(result.stdout)).toBe(`NONE-1 | Backlog | - | title only\n`);
 
     await runZinn(["task", "relation", "create", "NONE-1", "NONE-2", "--type", "related"], testDir);
-    expect((await runZinn(["task", "view", "NONE-1"], testDir)).stdout).toBe(
+    expect(taskViewContent((await runZinn(["task", "view", "NONE-1"], testDir)).stdout)).toBe(
       `NONE-1 | Backlog | - | title only\n\n${SECTION_RULE}\nRelations:\nRelated to | NONE-2 | Backlog | other task\n`,
     );
   });
@@ -1971,10 +2033,10 @@ test("task view of an archived task shows Archived after the key and full priori
 
     const archivedRow = "MDR-1 | Archived | Backlog | H | Refine the numbers | bug";
     expect((await run("task", "list", "MDR", "--all")).stdout).toBe(`${archivedRow}\n`);
-    expect((await run("task", "view", "MDR-1")).stdout).toBe(`MDR-1 | Archived | Backlog | High | Refine the numbers | bug\n\n${SECTION_RULE}\nDescription:\nShelved\n`);
+    expect(taskViewContent((await run("task", "view", "MDR-1")).stdout)).toBe(`MDR-1 | Archived | Backlog | High | Refine the numbers | bug\n\n${SECTION_RULE}\nDescription:\nShelved\n`);
 
     await run("task", "unarchive", "MDR-1");
-    expect((await run("task", "view", "MDR-1")).stdout).toBe(
+    expect(taskViewContent((await run("task", "view", "MDR-1")).stdout)).toBe(
       `MDR-1 | Backlog | High | Refine the numbers | bug\n\n${SECTION_RULE}\nDescription:\nShelved\n`,
     );
   });
@@ -1996,7 +2058,7 @@ test("human task output omits empty descriptions while JSON returns null", async
     expect((await runZinn(["task", "search", "Empty", "EMPTY"], testDir)).stdout).toBe(
       `EMPTY-1 | Backlog | - | Empty description\n`,
     );
-    expect((await runZinn(["task", "view", "EMPTY-1"], testDir)).stdout).toBe(
+    expect(taskViewContent((await runZinn(["task", "view", "EMPTY-1"], testDir)).stdout)).toBe(
       `EMPTY-1 | Backlog | - | Empty description\n`,
     );
 
@@ -2039,7 +2101,7 @@ test.serial("task move, list and view color workflow column names only in a term
     expect((await runZinn(["task", "list", "COLOR"], testDir)).stdout).toBe(
       ["COLOR-1 | Backlog | - | waiting", "COLOR-2 | Done    | - | finished", ""].join("\n"),
     );
-    expect((await runZinn(["task", "view", "COLOR-2"], testDir)).stdout).toBe("COLOR-2 | Done | - | finished\n");
+    expect(taskViewContent((await runZinn(["task", "view", "COLOR-2"], testDir)).stdout)).toBe("COLOR-2 | Done | - | finished\n");
     expect((await runZinn(["task", "move", "COLOR-2", "Done"], testDir)).stdout).toBe(
       "COLOR-2 | Done | - | finished\n",
     );
@@ -3457,7 +3519,7 @@ test("task edit rejects invalid requests without partial writes", async () => {
       expect(result.stdout).toBe("");
       expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(expected);
     }
-    expect((await runZinn(["task", "view", "EDIT-1"], dir)).stdout).toBe(
+    expect(taskViewContent((await runZinn(["task", "view", "EDIT-1"], dir)).stdout)).toBe(
       `EDIT-1 | Backlog | - | Original\n\n${SECTION_RULE}\nDescription:\nDescription\n`,
     );
   });
@@ -4250,7 +4312,7 @@ test("global label workflows support repeated create/edit flags and preserve tas
     const editedLabel = await run("label", "edit", " BUG ", "--name", " defect ", "--color", "blue", "--description", "");
     expect(editedLabel.code).toBe(0);
     expect(editedLabel.stdout).toBe("defect | blue\n");
-    expect((await run("task", "view", "APP-1")).stdout).toBe("APP-1 | Backlog | - | Login | auth, defect\n");
+    expect(taskViewContent((await run("task", "view", "APP-1")).stdout)).toBe("APP-1 | Backlog | - | Login | auth, defect\n");
     expect(JSON.parse((await run("label", "edit", "defect", "--description", "Fixed", "--json")).stdout)).toEqual({
       id: expect.any(String),
       name: "defect",
@@ -4258,7 +4320,7 @@ test("global label workflows support repeated create/edit flags and preserve tas
       description: "Fixed",
     });
     expect((await run("task", "edit", "APP-1", "--title", "Changed", "--add-label", "NEEDS REVIEW, SOON", "--add-label", "AUTH", "--remove-label", "DEFECT")).code).toBe(0);
-    expect((await run("task", "view", "APP-1")).stdout).toBe(
+    expect(taskViewContent((await run("task", "view", "APP-1")).stdout)).toBe(
       "APP-1 | Backlog | - | Changed | auth, needs review, soon\n",
     );
     expect((await run("task", "edit", "APP-1", "--title", "Must not change", "--add-label", "unknown")).code).toBe(1);
@@ -4271,7 +4333,7 @@ test("global label workflows support repeated create/edit flags and preserve tas
       "APP-1 | Backlog | - | Changed | needs review, soon\n",
     );
     expect((await runZinn(["label", "delete", "NEEDS REVIEW, SOON", "--yes"], dir)).code).toBe(0);
-    expect((await run("task", "view", "APP-1")).stdout).toBe("APP-1 | Backlog | - | Changed\n");
+    expect(taskViewContent((await run("task", "view", "APP-1")).stdout)).toBe("APP-1 | Backlog | - | Changed\n");
     expect((await run("label", "list")).stdout).toContain("auth");
     for (const args of [
       ["APP", "Old positional title"],
@@ -4597,10 +4659,10 @@ test.serial("label names in task write rows and in task view are colored by thei
     expect(
       (await runZinn(["task", "create", "TAGS", "--title", "Tagged", "--label", "docs", "--label", "bug"], dir, forceColor)).stdout,
     ).toBe(`TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}Tagged${DIM_SEPARATOR}${coloredLabels}\n`);
-    expect((await runZinn(["task", "view", "TAGS-1"], dir, forceColor)).stdout).toBe(
+    expect(taskViewContent((await runZinn(["task", "view", "TAGS-1"], dir, forceColor)).stdout)).toBe(
       `TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}Tagged${DIM_SEPARATOR}${coloredLabels}\n`,
     );
-    expect((await runZinnInTerminal(["task", "view", "TAGS-1"], dir)).output).toBe(
+    expect(taskViewContent((await runZinnInTerminal(["task", "view", "TAGS-1"], dir)).output)).toBe(
       `TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}Tagged${DIM_SEPARATOR}${coloredLabels}\n`,
     );
     expect((await runZinn(["task", "label", "remove", "TAGS-1", "bug"], dir, forceColor)).stdout).toBe(
@@ -4646,10 +4708,10 @@ test("task rows dim the separators and the empty priority marker, whether or not
     expect((await runZinn(["task", "list", "DIM"], dir, forceColor)).stdout).toBe(dimmedRows);
     expect((await runZinn(["task", "list", "DIM"], dir)).stdout).toBe(plainRows);
     expect((await runZinn(["task", "list", "DIM"], dir, { NO_COLOR: "1" })).stdout).toBe(plainRows);
-    expect((await runZinn(["task", "view", "DIM-3"], dir, forceColor)).stdout).toBe(
+    expect(taskViewContent((await runZinn(["task", "view", "DIM-3"], dir, forceColor)).stdout)).toBe(
       dimmedRows.split("\n")[2] + "\n",
     );
-    expect((await runZinn(["task", "view", "DIM-3"], dir)).stdout).toBe("DIM-3 | Backlog | - | Labels only | bug\n");
+    expect(taskViewContent((await runZinn(["task", "view", "DIM-3"], dir)).stdout)).toBe("DIM-3 | Backlog | - | Labels only | bug\n");
   });
 });
 
@@ -4675,7 +4737,7 @@ test("task view bolds its section headings and dims the separators and comment t
     const colored = await run({ FORCE_COLOR: "1" }, "task", "view", "MDR-1");
 
     expect(colored.stderr).toBe("");
-    expect(colored.stdout).toBe(
+    expect(taskViewContent(colored.stdout)).toBe(
       [
         `MDR-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}High${DIM_SEPARATOR}Refine the numbers${DIM_SEPARATOR}\x1b[31mbug\x1b[39m, \x1b[34mcli\x1b[39m`,
         "",
@@ -4716,8 +4778,8 @@ test("task view bolds its section headings and dims the separators and comment t
       `${textIndent}Line two`,
       "",
     ].join("\n");
-    expect((await run({}, "task", "view", "MDR-1")).stdout).toBe(piped);
-    expect((await run({ NO_COLOR: "1" }, "task", "view", "MDR-1")).stdout).toBe(piped);
+    expect(taskViewContent((await run({}, "task", "view", "MDR-1")).stdout)).toBe(piped);
+    expect(taskViewContent((await run({ NO_COLOR: "1" }, "task", "view", "MDR-1")).stdout)).toBe(piped);
     expect((await run({ FORCE_COLOR: "1" }, "task", "view", "MDR-1", "--json")).stdout).not.toContain("\x1b");
   });
 });
@@ -4840,9 +4902,9 @@ test.serial("task text output names labels without color words when color is off
     expect((await runZinn(["task", "list", "TAGS"], dir)).stdout).toBe(plainRow);
     expect((await runZinn(["task", "list", "TAGS"], dir, colorOff)).stdout).toBe(plainRow);
     expect((await runZinnInTerminal(["task", "list", "TAGS"], dir, noColor)).output).toBe(plainRow);
-    expect((await runZinn(["task", "view", "TAGS-1"], dir)).stdout).toBe(detailRow);
-    expect((await runZinn(["task", "view", "TAGS-1"], dir, colorOff)).stdout).toBe(detailRow);
-    expect((await runZinnInTerminal(["task", "view", "TAGS-1"], dir, noColor)).output).toBe(detailRow);
+    expect(taskViewContent((await runZinn(["task", "view", "TAGS-1"], dir)).stdout)).toBe(detailRow);
+    expect(taskViewContent((await runZinn(["task", "view", "TAGS-1"], dir, colorOff)).stdout)).toBe(detailRow);
+    expect(taskViewContent((await runZinnInTerminal(["task", "view", "TAGS-1"], dir, noColor)).output)).toBe(detailRow);
 
     for (const args of [["task", "list", "TAGS", "--json"], ["task", "view", "TAGS-1", "--json"]]) {
       for (const env of [{}, { FORCE_COLOR: "1" }] as Array<Record<string, string>>) {
@@ -4878,7 +4940,7 @@ test.serial("label deletion confirms global removal and cancellation preserves a
     expect(deleted.stdout).toContain("bug");
     expect((await run("label", "list")).stdout).toContain("keep");
     expect((await run("label", "list")).stdout).not.toContain("bug");
-    expect((await run("task", "view", "APP-1")).stdout).toBe("APP-1 | Backlog | - | First | keep\n");
+    expect(taskViewContent((await run("task", "view", "APP-1")).stdout)).toBe("APP-1 | Backlog | - | First | keep\n");
     expect((await run("task", "view", "APP-2")).code).toBe(0);
     withTestDb(dir, (db) => {
       expect(db.query("SELECT * FROM task_label").all()).toHaveLength(1);
@@ -5001,7 +5063,7 @@ test("priority persists across CLI creation, editing, listing, clearing, and no-
       expect(created.stdout).toContain(`| Backlog | ${priority[0]!.toUpperCase()} | ${priority}`);
       const taskKey = `PRI-${index + 2}`;
       const viewed = await runZinn(["task", "view", taskKey], directory);
-      expect(viewed.stdout).toBe(`${taskKey} | Backlog | ${priority[0]!.toUpperCase()}${priority.slice(1)} | ${priority}\n`);
+      expect(taskViewContent(viewed.stdout)).toBe(`${taskKey} | Backlog | ${priority[0]!.toUpperCase()}${priority.slice(1)} | ${priority}\n`);
       expect(JSON.parse((await runZinn(["task", "view", taskKey, "--json"], directory)).stdout).priority).toBe(priority);
     }
     expect((await runZinn(["task", "list", "PRI"], directory)).stdout).toBe(
@@ -5029,7 +5091,7 @@ test("priority persists across CLI creation, editing, listing, clearing, and no-
     expect((await runZinn(["task", "list", "PRI"], directory)).stdout).toContain(
       `PRI-1 | Backlog | H | Renamed`,
     );
-    expect((await runZinn(["task", "view", "PRI-1"], directory)).stdout).toBe("PRI-1 | Backlog | High | Renamed\n");
+    expect(taskViewContent((await runZinn(["task", "view", "PRI-1"], directory)).stdout)).toBe("PRI-1 | Backlog | High | Renamed\n");
     expect(JSON.parse((await runZinn(["task", "list", "PRI", "--json"], directory)).stdout)[0].priority).toBe(
       "high",
     );
@@ -6450,8 +6512,8 @@ test("task view history opts into shared activity previews and full JSON without
 
     const previews = await run("activity", "list", "--task", "APP-1");
     const historyText = await run("task", "view", "APP-1", "--history");
-    expect(historyText.startsWith(ordinaryText.trimEnd())).toBe(true);
-    expect(historyText.endsWith(previews)).toBe(true);
+    expect(taskViewContent(historyText).startsWith(taskViewContent(ordinaryText).trimEnd())).toBe(true);
+    expect(taskViewContent(historyText).endsWith(previews)).toBe(true);
     expect(historyText).not.toContain(originalComment);
     const commentEdit = events.find((event) => event.action === "comment_edit")!;
     expect(await run("activity", "view", commentEdit.id)).toContain(originalComment);
@@ -6505,7 +6567,7 @@ test("task view history orders timestamp ties and preserves full records for onl
     const previews = await runZinn(["activity", "list", "--task", "APP-1"], directory);
     const text = await runZinn(["task", "view", "APP-1", "--history"], directory);
     expect(text.code).toBe(0);
-    expect(text.stdout.endsWith(previews.stdout)).toBe(true);
+    expect(taskViewContent(text.stdout).endsWith(previews.stdout)).toBe(true);
     expect(text.stdout).toContain("Old title");
   });
 });

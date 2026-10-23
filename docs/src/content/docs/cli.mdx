@@ -218,6 +218,8 @@ zinn task view MDR-1 --history
 
 Task lists are previews, so they _omit_ descriptions, but `task view` prints the full description.
 
+`task view` includes the task's creation and update times in local time with a UTC offset. In JSON, `created_at` and `updated_at` are stored epoch milliseconds. Edits, label attachment changes, moves, reorders, archiving and unarchiving advance the update time when they change the task. Comments, relations, and operations that lead to no changes leave it untouched.
+
 An omitted project key uses [defaultProject](/docs/settings), or every project when none is configured. `--all-projects` overrides the default.
 
 `task view --history` includes the inspected task's recorded activity, newest first by time, then event ID. Reorders and comment changes are included. Use `activity view <activity-id>` for full recorded changes. See [Activity](#activity) for timestamps, event IDs, and record fields.
