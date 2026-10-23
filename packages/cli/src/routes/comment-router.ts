@@ -82,7 +82,7 @@ async function parseCommentEditArgs(args: Array<string>) {
   validateUniqueOptions(tokens, commentInputs.edit.options);
   validatePositionals(positionals, commentInputs.edit.forms[0]);
 
-  const text = await resolveTextEdit(values.text, values["text-file"], values, "--text");
+  const text = await resolveTextEdit(values, "--text");
   // Without a text source nothing was read, so this usage error still comes before any input
   requireCommentText(values);
 

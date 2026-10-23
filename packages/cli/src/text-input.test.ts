@@ -278,7 +278,7 @@ test("missing files and directories fail with source facts", async () => {
   await withDirectory(async (directory) => {
     const missing = join(directory, "missing.md");
     await expect(resolveTextInput(undefined, missing, "--text")).rejects.toMatchObject({
-      code: "storage",
+      code: "not_found",
       details: { path: missing, argument: "--text-file", cause: { code: "ENOENT" } },
     });
     const result = runReader(directory, missing);

@@ -18,19 +18,30 @@ export const requiredProjectDescription =
 export const projectScopeDescription =
   "An omitted project key uses defaultProject, or all projects if unset. --all-projects overrides the default and cannot be combined with a project key.";
 
+type ProjectKeyOptions = {
+  required?: boolean;
+  allProjects?: boolean;
+  useDefault?: boolean;
+};
+type ProjectKeyChoice = { key: string; settingsPath?: string };
+
 /** Chooses the explicit project or the configured default, retaining unscoped list/search behavior. */
 export function resolveProjectKey(
   typedKey: string | undefined,
-  {
-    required = false,
-    allProjects = false,
-    useDefault = true,
-  }: {
-    required?: boolean;
-    allProjects?: boolean;
-    useDefault?: boolean;
-  } = {},
+  options: ProjectKeyOptions = {},
 ): string | undefined {
+  const choice = chooseProjectKey(typedKey, options);
+  if (choice !== undefined) {
+    checkDefaultProject(choice);
+  }
+
+  return choice?.key;
+}
+
+export function chooseProjectKey(
+  typedKey: string | undefined,
+  { required = false, allProjects = false, useDefault = true }: ProjectKeyOptions = {},
+): ProjectKeyChoice | undefined {
   if (allProjects) {
     if (
       violatesConstraint(projectScopeConstraint, {
@@ -46,7 +57,7 @@ export function resolveProjectKey(
   }
 
   if (typedKey !== undefined) {
-    return typedKey;
+    return { key: typedKey };
   }
 
   if (!useDefault) {
@@ -65,7 +76,15 @@ export function resolveProjectKey(
     return undefined;
   }
 
-  const { key, settingsPath } = defaultProject;
+  return defaultProject;
+}
+
+/** Fails when the key came from defaultProject and that project does not exist. */
+export function checkDefaultProject({ key, settingsPath }: ProjectKeyChoice) {
+  if (settingsPath === undefined) {
+    return;
+  }
+
   if (project.getByKey(key) == null) {
     throw new CliError(
       `Default project "${key}" from settings file ${settingsPath} does not exist`,
@@ -73,6 +92,4 @@ export function resolveProjectKey(
       { entity: "project", key, source: "defaultProject", settingsPath },
     );
   }
-
-  return key;
 }

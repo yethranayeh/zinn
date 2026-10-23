@@ -1,21 +1,24 @@
+import type { ParseArgsOptionsConfig } from "node:util";
+import type { TaskChange, TaskRelationType } from "@zinn-dev/core";
 import type {
   PresentedTask,
   PresentedTaskDetail,
   PresentedTaskDetailHistory,
   PresentedTaskChange,
 } from "../result-schemas.js";
-import type { TaskChange, TaskRelationType } from "@zinn-dev/core";
 import type { RouteDef } from "../types.js";
 import type { CommandInput, InputConstraint } from "../input.js";
 
 import { jsonResult, taskDetailResults, taskChangeResults } from "../results.js";
-import { parseArgs, type ParseArgsOptionsConfig } from "node:util";
+import { parseArgs } from "node:util";
 import {
   task,
   project,
   positiveIntegerPattern,
   searchLimitMessage,
   parseTaskKey,
+  taskCreateSchema,
+  taskEditSchema,
   taskPrioritySchema,
 } from "@zinn-dev/core";
 
@@ -46,6 +49,7 @@ import {
   textEditConstraints,
 } from "../text-edit.js";
 import {
+  checkFieldsBeforeText,
   resolveTextInput,
   textFileHelp,
   textFileOption,
@@ -53,6 +57,8 @@ import {
 } from "../text-input.js";
 import { currentActor } from "../actor.js";
 import {
+  checkDefaultProject,
+  chooseProjectKey,
   resolveProjectKey,
   projectScopeConstraint,
   requiredProjectDescription,
@@ -309,7 +315,7 @@ export const taskRouter = {
       validateUniqueOptions(tokens, taskInputs.create.options);
       validatePositionals(positionals, taskInputs.create.forms[0]);
 
-      const projectKey = resolveProjectKey(positionals[0], { required: true })!;
+      const projectChoice = chooseProjectKey(positionals[0], { required: true })!;
       const title = requireStringOption(
         taskInputs.create.options.title,
         values.title,
@@ -317,12 +323,22 @@ export const taskRouter = {
         "A task needs at least a title: use --title",
       );
       const priority = parsePriority(values.priority);
+      const fields = {
+        title,
+        priority,
+        labelNames: values.label,
+        columnName: values.column,
+        relations: parseNewTaskRelations(values),
+      };
+      checkFieldsBeforeText(taskCreateSchema, fields);
       const description = await resolveTextInput(
         values.description,
         values["description-file"],
         "--description",
       );
+      checkDefaultProject(projectChoice);
 
+      const projectKey = projectChoice.key;
       const projectMatch = project.getByKey(projectKey);
       if (projectMatch == null) {
         throw new CliError(
@@ -332,15 +348,7 @@ export const taskRouter = {
         );
       }
       const createdTask = task.create(
-        {
-          project_id: projectMatch.id,
-          title,
-          description: description ?? null,
-          priority,
-          labelNames: values.label,
-          columnName: values.column,
-          relations: parseNewTaskRelations(values),
-        },
+        { ...fields, project_id: projectMatch.id, description: description ?? null },
         currentActor(),
       );
       output(presentTask(createdTask), (entry) => formatTaskList([entry]));
@@ -594,13 +602,15 @@ Examples:
       validatePositionals(positionals, taskInputs.edit.forms[0]);
 
       const taskKey = positionals[0]!;
-      const priority = parsePriority(values.priority);
-      const description = await resolveTextEdit(
-        values.description,
-        values["description-file"],
-        values,
-        "--description",
-      );
+      const fields = {
+        taskKey,
+        title: values.title,
+        priority: parsePriority(values.priority),
+        addLabelNames: values["add-label"],
+        removeLabelNames: values["remove-label"],
+      };
+      checkFieldsBeforeText(taskEditSchema, fields);
+      const description = await resolveTextEdit(values, "--description");
 
       // Without a text source nothing was read, so this usage error still comes before any input.
       if (violatesConstraint(taskEditConstraint, getOptionInputs(values))) {
@@ -611,17 +621,7 @@ Examples:
         );
       }
 
-      const editedTask = task.edit(
-        {
-          taskKey,
-          title: values.title,
-          description,
-          priority,
-          addLabelNames: values["add-label"],
-          removeLabelNames: values["remove-label"],
-        },
-        currentActor(),
-      );
+      const editedTask = task.edit({ ...fields, description }, currentActor());
 
       output(presentTask(editedTask), (entry) => formatTaskList([entry]));
     },

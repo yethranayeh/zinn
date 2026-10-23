@@ -118,5 +118,5 @@ export { ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./src/migrations/o
 export { getStorage, storageSourceSchema } from "./src/storage.js";
 export { databaseStateSchema } from "./src/migrations/classify.js";
 export { info, infoDatabaseStateSchema } from "./src/operations/info.js";
-export { CoreError, InputValidationError } from "./src/errors.js";
+export { CoreError, InputValidationError, isMissingFileError } from "./src/errors.js";
 export { SqliteError } from "./src/sqlite/database.js";

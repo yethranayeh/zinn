@@ -28,6 +28,7 @@ import {
   textEditConstraints,
 } from "../text-edit.js";
 import {
+  checkFieldsBeforeText,
   resolveTextInput,
   textFileHelp,
   textFileOption,
@@ -89,7 +90,7 @@ const labelInputs = {
           .filter((name) => name !== "labelName")
           .flatMap((name) =>
             name === "description"
-              ? (["option:description", "option:description-file"] as const)
+              ? textSourceConstraint("--description").members
               : [`option:${name}` as const],
           ),
       },
@@ -124,6 +125,7 @@ export const labelRouter = {
       validateUniqueOptions(tokens, labelInputs.create.options);
       validatePositionals(positionals, labelInputs.create.forms[0]);
 
+      checkFieldsBeforeText(labelCreateSchema, { name: positionals[0], color: values.color });
       const description = await resolveTextInput(
         values.description,
         values["description-file"],
@@ -232,15 +234,16 @@ Example: zinn label view bug`,
       validateUniqueOptions(tokens, labelInputs.edit.options);
       validatePositionals(positionals, labelInputs.edit.forms[0]);
 
+      checkFieldsBeforeText(labelEditSchema, {
+        labelName: positionals[0],
+        name: values.name,
+        color: values.color,
+      });
+      const description = await resolveTextEdit(values, "--description");
       const input = labelEditSchema.parse({
         labelName: positionals[0],
         name: values.name,
-        description: await resolveTextEdit(
-          values.description,
-          values["description-file"],
-          values,
-          "--description",
-        ),
+        description,
         color: values.color,
       });
       const edited = label.edit(input, currentActor());

@@ -1,10 +1,10 @@
 import type { TextEdit } from "@zinn-dev/core";
-import type { TextFlag } from "./text-input.js";
+import type { TextFlag, TextValues } from "./text-input.js";
 import type { InputConstraint } from "./input.js";
 
 import { quit } from "./lib.js";
 import { getOptionInputs, violatesConstraint } from "./input.js";
-import { resolveTextInput } from "./text-input.js";
+import { resolveTextInput, textOptionNames, textSourceConstraint } from "./text-input.js";
 
 /** The flags that change how a text flag (--description, --text) is applied to the stored text. */
 export const textEditOptions = {
@@ -14,8 +14,7 @@ export const textEditOptions = {
 } as const;
 
 export function textEditConstraints(textFlag: TextFlag) {
-  const name = textFlag.slice(2);
-  const textSources = [`option:${name}`, `option:${name}-file`] as const;
+  const textSources = textSourceConstraint(textFlag).members;
 
   return [
     { kind: "exclusive", members: ["option:append", "option:replacing"] },
@@ -25,7 +24,7 @@ export function textEditConstraints(textFlag: TextFlag) {
   ] as const satisfies readonly InputConstraint[];
 }
 
-type TextEditFlags = {
+type TextEditFlags = TextValues & {
   append?: boolean | undefined;
   replacing?: string | undefined;
   all?: boolean | undefined;
@@ -35,24 +34,22 @@ type TextEditFlags = {
 export function textEditHelp(textFlag: TextFlag) {
   return `--append adds ${textFlag} as a new paragraph.
 --replacing <old> replaces one exact, case-sensitive match; --all replaces every match.
-No match, or several without --all, fails without changes. Empty replacement text deletes the match.`;
+No match, or several without --all, fails without changes. ${textFlag} '' with --replacing deletes the match.`;
 }
 
 /**
  * The value to send to core for a text flag: the full text, or one edit object.
- * The text comes inline or from `path`, which is read only after the flag checks pass.
+ * The text comes inline or from its file flag, which is read only after the flag checks pass.
  */
 export async function resolveTextEdit(
-  text: string | undefined,
-  path: string | undefined,
   flags: TextEditFlags,
   textFlag: TextFlag,
 ): Promise<string | TextEdit | undefined> {
   const isAppending = flags.append === true;
   const [exclusiveModifiers, appendRequiresText, replacingRequiresText, allRequiresReplacing] =
     textEditConstraints(textFlag);
-  const name = textFlag.slice(2);
-  const inputs = getOptionInputs({ ...flags, [name]: text, [`${name}-file`]: path });
+  const { text, file } = textOptionNames(textFlag);
+  const inputs = getOptionInputs(flags);
 
   if (violatesConstraint(exclusiveModifiers, inputs)) {
     quit(`Option "--append" cannot be used with "--replacing"`, undefined, {
@@ -65,7 +62,7 @@ export async function resolveTextEdit(
     violatesConstraint(replacingRequiresText, inputs)
   ) {
     const modifier = isAppending ? "--append" : "--replacing";
-    quit(`Option "${modifier}" needs "${textFlag}" or "${textFlag}-file"`, undefined, {
+    quit(`Option "${modifier}" needs "${textFlag}" or "--${file}"`, undefined, {
       argument: textFlag,
     });
   }
@@ -74,7 +71,7 @@ export async function resolveTextEdit(
     quit(`Option "--all" needs "--replacing"`, undefined, { argument: "--all" });
   }
 
-  const resolvedText = await resolveTextInput(text, path, textFlag);
+  const resolvedText = await resolveTextInput(flags[text], flags[file], textFlag);
   if (resolvedText === undefined) {
     return undefined;
   }

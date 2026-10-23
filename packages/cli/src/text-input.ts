@@ -2,11 +2,27 @@ import type { InputConstraint, InputOption } from "./input.js";
 
 import { Buffer } from "node:buffer";
 import { constants, promises as fs, type Stats } from "node:fs";
-import { MAX_TEXT_BYTES } from "@zinn-dev/core";
+import { z } from "zod";
+import { isMissingFileError, MAX_TEXT_BYTES } from "@zinn-dev/core";
 
 import { CliError, classifyFailure } from "./errors.js";
 
-export type TextFlag = "--description" | "--text";
+/** The option names of each text flag and of the file flag that can supply its text instead */
+const textOptions = {
+  "--description": { text: "description", file: "description-file" },
+  "--text": { text: "text", file: "text-file" },
+} as const;
+
+export type TextFlag = keyof typeof textOptions;
+export type TextValues = {
+  [Name in (typeof textOptions)[TextFlag][keyof (typeof textOptions)[TextFlag]]]?:
+    | string
+    | undefined;
+};
+
+export function textOptionNames(textFlag: TextFlag) {
+  return textOptions[textFlag];
+}
 
 /** The flag that reads a text flag's value from a file, or from stdin as "-" */
 export const textFileOption = {
@@ -21,16 +37,27 @@ export const textFileOption = {
 
 /** Inline text and its file flag are alternatives for the same field */
 export function textSourceConstraint(textFlag: TextFlag) {
-  const name = textFlag.slice(2);
+  const { text, file } = textOptionNames(textFlag);
 
   return {
     kind: "exclusive",
-    members: [`option:${name}`, `option:${name}-file`],
+    members: [`option:${text}`, `option:${file}`],
   } as const satisfies InputConstraint;
 }
 
+/**
+ * Validates `fields` against their rules in a core input schema, so a command can reject
+ *  a bad key, name or title before it reads text from stdin, which cannot be read twice.
+ * Rules that span the whole input, such as "at least one field", stay with core.
+ */
+export function checkFieldsBeforeText(schema: z.ZodObject, fields: Record<string, unknown>) {
+  const names = Object.keys(schema.shape).filter((name) => name in fields);
+  const shape = Object.fromEntries(names.map((name) => [name, schema.shape[name]!]));
+  z.strictObject(shape).parse(fields);
+}
+
 export function textFileHelp(textFlag: TextFlag) {
-  return `${textFlag}-file <path> takes the text from a UTF-8 file, or from stdin when <path> is "-".`;
+  return `--${textOptionNames(textFlag).file} <path> takes the text from a UTF-8 file, or from stdin when <path> is "-".`;
 }
 
 // One extra byte detects oversized input without waiting for EOF.
@@ -143,7 +170,7 @@ export async function resolveTextInput(
   path: string | undefined,
   textFlag: TextFlag,
 ): Promise<string | undefined> {
-  const fileFlag = `${textFlag}-file`;
+  const fileFlag = `--${textOptionNames(textFlag).file}`;
   const refuse = (message: string): never => {
     throw new CliError(message, "invalid_input", { argument: fileFlag, path });
   };
@@ -165,7 +192,8 @@ export async function resolveTextInput(
     }
 
     const failure = classifyFailure(error);
-    throw new CliError(`Cannot read ${fileFlag} ${JSON.stringify(path)}.`, failure.code, {
+    const code = isMissingFileError(error) ? "not_found" : failure.code;
+    throw new CliError(`Cannot read ${fileFlag} ${JSON.stringify(path)}.`, code, {
       ...failure.details,
       argument: fileFlag,
       path,

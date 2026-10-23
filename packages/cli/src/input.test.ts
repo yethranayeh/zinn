@@ -60,6 +60,18 @@ test("every runnable route declares its inputs, effects, confirmation and genera
   ).not.toThrow();
 });
 
+test("generated syntax keeps braces for literal words; a required choice of flags uses parentheses", () => {
+  for (const command of commands) {
+    const usage = generateCommandUsage(command.command, command.input);
+    expect(usage, command.command).not.toMatch(/\{-/);
+  }
+
+  const commentCreate = commands.find(({ command }) => command === "task comment create")!;
+  expect(generateCommandUsage(commentCreate.command, commentCreate.input)).toContain(
+    "(--text <text>|--text-file <path>)",
+  );
+});
+
 test("every declared singular option rejects repetition before storage access", () => {
   withDirectory((directory) => {
     const env = { ...TEST_ENVIRONMENT, ZINN_DIR: directory };

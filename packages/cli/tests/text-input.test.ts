@@ -217,12 +217,26 @@ test("a failed read changes no entity and no activity history through every text
   });
 }, 30_000);
 
-test("a failed read happens before any text command opens the database", async () => {
+test("a missing file fails as not_found before any text command opens the database", async () => {
   await withIsolatedZinnDir(async (dir) => {
     for (const [command, { flag, args }] of Object.entries(textCommands)) {
       const result = await runZinn([...args(nextId++), `${flag}-file`, join(dir, "missing.md"), "--json"], dir);
       expect(result.code, command).toBe(1);
-      expect(parseError(result.stderr)).toMatchObject({ code: "storage", details: { argument: `${flag}-file` } });
+      expect(parseError(result.stderr)).toMatchObject({ code: "not_found", details: { argument: `${flag}-file` } });
+    }
+    expect(existsSync(join(dir, "data"))).toBe(false);
+  });
+}, 30_000);
+
+test("with the project key omitted, the text is read before defaultProject is looked up", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    writeFileSync(join(dir, "settings.json"), JSON.stringify({ defaultProject: "APP" }));
+    const missing = join(dir, "missing.md");
+
+    for (const args of [["task", "create", "--title", "T"], ["project", "edit"]]) {
+      const result = await runZinn([...args, "--description-file", missing, "--json"], dir);
+      expect(result.code, args.join(" ")).toBe(1);
+      expect(parseError(result.stderr)).toMatchObject({ code: "not_found", details: { argument: "--description-file" } });
     }
     expect(existsSync(join(dir, "data"))).toBe(false);
   });
@@ -240,6 +254,15 @@ test("usage errors come before the text is read", async () => {
       [["task", "create", "APP", "--description-file", missing], "--title"],
       [["task", "create", "APP", "--title", "T", "--priority", "soon", "--description-file", missing], "--priority"],
       [["task", "edit", "APP-1", "--priority", "soon", "--description-file", missing], "--priority"],
+      [["label", "create", "new", "--color", "purple", "--description-file", missing], "color"],
+      [["label", "edit", "bug", "--color", "purple", "--description-file", missing], "color"],
+      [["label", "create", " ", "--description-file", missing], "name"],
+      [["label", "edit", "bug", "--name", " ", "--description-file", missing], "name"],
+      [["project", "create", "1BAD", "--description-file", missing], "key"],
+      [["project", "edit", "APP", "--name", " ", "--description-file", missing], "name"],
+      [["task", "create", "APP", "--title", " ", "--description-file", missing], "title"],
+      [["task", "create", "APP", "--title", "T", "--label", " ", "--description-file", missing], "labelNames"],
+      [["task", "edit", "APP-1", "--title", " ", "--description-file", missing], "title"],
       [["task", "comment", "create", "APP-1", "extra", "--text-file", missing], "extra"],
     ];
 

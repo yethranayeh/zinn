@@ -158,7 +158,11 @@ export function generateInputUsage(input: CommandInput): string[] {
     };
   });
 
-  // Exclusive inputs that also need one of them are a required choice: {a|b} instead of [a|b]
+  /**
+   * Exclusive inputs that also need one of them are a required choice: (a|b) instead of [a|b],
+   *  like how it is in git's synopsis notation.
+   * {a|b} stays reserved for a choice of literal words.
+   */
   const isRequiredChoice = (members: readonly InputReference[]) =>
     input.constraints.some(
       (constraint) =>
@@ -167,7 +171,7 @@ export function generateInputUsage(input: CommandInput): string[] {
         constraint.members.every((member) => members.includes(member)),
     );
   const choice = (alternatives: readonly string[], isRequired: boolean) =>
-    isRequired ? `{${alternatives.join("|")}}` : `[${alternatives.join("|")}]`;
+    isRequired ? `(${alternatives.join("|")})` : `[${alternatives.join("|")}]`;
 
   return input.forms.map((form) => {
     const words = new Map([

@@ -4,7 +4,13 @@ import type { PresentedProjectView, PresentedColumnTaskCount } from "../result-s
 
 import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
-import { column, project, columnOrderSchema } from "@zinn-dev/core";
+import {
+  column,
+  project,
+  columnOrderSchema,
+  projectCreateSchema,
+  projectEditSchema,
+} from "@zinn-dev/core";
 
 import { CliError } from "../errors.js";
 import { generateCommandUsage, getOptionInputs, noInput, violatesConstraint } from "../input.js";
@@ -28,6 +34,7 @@ import {
   textEditConstraints,
 } from "../text-edit.js";
 import {
+  checkFieldsBeforeText,
   resolveTextInput,
   textFileHelp,
   textFileOption,
@@ -37,7 +44,12 @@ import { formatColumnList, presentColumn } from "../presentation/column-presenta
 import { formatProjectList, presentProject } from "../presentation/project-presentation.js";
 import { formatSection } from "../presentation/section.js";
 import { currentActor } from "../actor.js";
-import { resolveProjectKey, requiredProjectDescription } from "../project.js";
+import {
+  checkDefaultProject,
+  chooseProjectKey,
+  resolveProjectKey,
+  requiredProjectDescription,
+} from "../project.js";
 
 const projectEditConstraint = {
   kind: "atLeastOne",
@@ -194,6 +206,7 @@ export const projectRouter = {
       validatePositionals(positionals, projectInputs.create.forms[0]);
 
       const projectKey = positionals[0]!;
+      checkFieldsBeforeText(projectCreateSchema, { key: projectKey, name: values.name });
       const description = await resolveTextInput(
         values.description,
         values["description-file"],
@@ -328,13 +341,12 @@ Example: zinn project view MDR`,
       validateUniqueOptions(tokens, projectInputs.edit.options);
       validatePositionals(positionals, projectInputs.edit.forms[0]);
 
-      const projectKey = resolveProjectKey(positionals[0], { required: true })!;
-      const description = await resolveTextEdit(
-        values.description,
-        values["description-file"],
-        values,
-        "--description",
-      );
+      const projectChoice = chooseProjectKey(positionals[0], { required: true })!;
+      checkFieldsBeforeText(projectEditSchema, {
+        projectKey: projectChoice.key,
+        name: values.name,
+      });
+      const description = await resolveTextEdit(values, "--description");
 
       // Without a text source nothing was read, so this usage error still comes before any input
       if (violatesConstraint(projectEditConstraint, getOptionInputs(values))) {
@@ -342,9 +354,10 @@ Example: zinn project view MDR`,
           field: [],
         });
       }
+      checkDefaultProject(projectChoice);
 
       const editedProject = project.edit(
-        { projectKey, name: values.name, description },
+        { projectKey: projectChoice.key, name: values.name, description },
         currentActor(),
       );
       output(presentProject(editedProject), (entry) => formatProjectList([entry]));
