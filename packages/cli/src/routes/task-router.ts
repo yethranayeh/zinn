@@ -40,6 +40,7 @@ import {
   validatePositionals,
   validateOrderForms,
   requireStringOption,
+  renameFlag,
   validateUniqueOptions,
 } from "../lib.js";
 import {
@@ -304,6 +305,13 @@ export const taskRouter = {
     confirmation: { kind: "none" },
     input: taskInputs.create,
     results: [jsonResult("Task")],
+    guessedFlags: {
+      "--status": (args) => [
+        "task",
+        "create",
+        ...renameFlag(args, taskInputs.create.options, "status", "column"),
+      ],
+    },
     run: async (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,

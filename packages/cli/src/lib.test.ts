@@ -4,7 +4,18 @@ import type { InputForm, PositionalInput } from "./input";
 import { expect, test, spyOn } from "bun:test";
 import { ReadOnlyDatabaseError, TextEditMatchError, UnmarkedDatabaseError } from "@zinn-dev/core";
 
-import { diagnostic, flushDiagnostics, prepareOutput, setOutputMode, failureMessage, UsageError, validatePositionals } from "./lib";
+import { diagnostic, flushDiagnostics, prepareOutput, setOutputMode, failureMessage, UsageError, validatePositionals, renameFlag } from "./lib";
+
+test("flag corrections preserve option values and words after the option terminator", () => {
+  const args = [
+    "--title=--status", "--description", "--status=Done", "--status", "In Progress",
+    "--status=Done", "--", "--status", "--status=Done",
+  ];
+  expect(renameFlag(args, { title: { type: "string" }, description: { type: "string" } }, "status", "column")).toEqual([
+    "--title=--status", "--description", "--status=Done", "--column", "In Progress",
+    "--column=Done", "--", "--status", "--status=Done",
+  ]);
+});
 
 test("JSON notices wait for completion and text notices remain immediate", () => {
   const stderr = spyOn(console, "error").mockImplementation(() => {});

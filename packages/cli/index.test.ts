@@ -573,6 +573,50 @@ test("the command shown for a word that begins with a single dash runs as shown,
   });
 });
 
+test("a guessed --status on task create suggests --column and preserves the other creation arguments", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "SHOP"], dir);
+    await runZinn(["label", "create", "bug"], dir);
+    await runZinn(["label", "create", "urgent"], dir);
+    const title = "Fix it's bug; $(false)";
+    const description = "Keep --status=Done as text\nwith a second line";
+
+    const cases = [
+      { statusArgs: ["--status", "In Progress"], projectAfterOptions: false },
+      { statusArgs: ["--status=In Progress"], projectAfterOptions: false },
+      { statusArgs: ["--status", "In Progress"], projectAfterOptions: true },
+    ];
+    for (const { statusArgs, projectAfterOptions } of cases) {
+      const before = (await runZinn(["task", "list", "SHOP", "--json"], dir)).stdout;
+      const activityBefore = await runZinn(["activity", "list", "--project", "SHOP", "--json"], dir);
+      expect(activityBefore.code).toBe(0);
+      const refused = await runZinn([
+        "task", "create", ...(projectAfterOptions ? [] : ["SHOP"]), "--title", title, "--description", description,
+        ...statusArgs, "--label", "bug", "--label", "urgent", "--priority", "high", "--json",
+        ...(projectAfterOptions ? ["--", "SHOP"] : []),
+      ], dir);
+      expect(refused.code).toBe(1);
+      expect(refused.stdout).toBe("");
+      expect((await runZinn(["task", "list", "SHOP", "--json"], dir)).stdout).toBe(before);
+      const activityAfter = await runZinn(["activity", "list", "--project", "SHOP", "--json"], dir);
+      expect(activityAfter.code).toBe(0);
+      expect(activityAfter.stdout).toBe(activityBefore.stdout);
+
+      const { error } = errorDocumentSchema.parse(JSON.parse(refused.stderr));
+      expect(error.details).toMatchObject({ argument: "--status" });
+      const shownArgs = error.message.match(/zinn (task create [\s\S]*)$/)![1]!;
+      const created = await runProcessAsync(["/bin/sh", "-c", `exec bun "$0" ${shownArgs}`, CLI_PATH], {
+        env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir }, cwd: dir,
+      });
+      expect(created.code).toBe(0);
+      expect(created.stderr).toBe("");
+      expect(JSON.parse(created.stdout)).toMatchObject({
+        title, description, column: "In Progress", priority: "high", labels: ["bug", "urgent"],
+      });
+    }
+  });
+});
+
 test("a guessed --status or --column on task edit or task move suggests the task move command that runs as shown", async () => {
   await withIsolatedZinnDir(async (dir) => {
     await runZinn(["project", "create", "SHOP"], dir);

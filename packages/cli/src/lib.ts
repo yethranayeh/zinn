@@ -1,6 +1,7 @@
-import type { parseArgs } from "node:util";
+import type { ParseArgsOptionsConfig } from "node:util";
 import type { InputForm, InputOptions, InputOption } from "./input.js";
 
+import { parseArgs } from "node:util";
 import { createInterface } from "node:readline/promises";
 import { z } from "zod";
 import {
@@ -386,6 +387,31 @@ function formatCommand(args: Array<string>) {
 /** The words of the command a user likely meant by a flag the command does not take, if known. */
 type SuggestFor = (flag: string) => Array<string> | undefined;
 
+/** Renames an option without changing values or words after `--` */
+export function renameFlag(
+  args: Array<string>,
+  options: ParseArgsOptionsConfig,
+  source: string,
+  target: string,
+) {
+  const { tokens } = parseArgs({
+    args,
+    options,
+    allowPositionals: true,
+    strict: false,
+    tokens: true,
+  });
+  const renamed = [...args];
+
+  for (const token of tokens) {
+    if (token.kind === "option" && token.name === source) {
+      renamed[token.index] = `--${target}${token.inlineValue ? `=${token.value}` : ""}`;
+    }
+  }
+
+  return renamed;
+}
+
 /**
  * The message for `parseArgs` refusal of an unknown option.
  * A long flag is named, with the command the user likely meant when one is known,
@@ -397,9 +423,18 @@ function unknownOptionMessage(message: string, args: Array<string>, suggestFor: 
   if (flag !== undefined) {
     const suggestion = suggestFor(flag);
     const reason = `Unknown option "${flag}"`;
-    return suggestion === undefined
-      ? reason
-      : `${reason}. Did you mean: ${formatCommand([...suggestion, ...args.filter(isRouterFlag)])}`;
+    if (suggestion === undefined) {
+      return reason;
+    }
+
+    const separatorIndex = suggestion.indexOf(DOUBLE_DASH);
+    const optionEnd = separatorIndex === -1 ? suggestion.length : separatorIndex;
+    const correctedArgs = [
+      ...suggestion.slice(0, optionEnd),
+      ...args.filter(isRouterFlag),
+      ...suggestion.slice(optionEnd),
+    ];
+    return `${reason}. Did you mean: ${formatCommand(correctedArgs)}`;
   }
 
   // Commands define no short options, so `parseArgs` refused the first single-dash word before `--`.
