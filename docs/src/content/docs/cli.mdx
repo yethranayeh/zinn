@@ -34,6 +34,8 @@ Edit commands change only the fields you supply, whereas omitted fields keep the
 
 Move, order, archive, unarchive, and task-label attachment commands also succeed without changes when the requested state is already satisfied. This does not apply to creation: creating an existing relation, for example, is an error.
 
+`task edit`, `task label add` and `task label remove` report a note on stderr for operations that lead to no change. Their `--json` results include `changed`, which is `false` when nothing changed. When only some requested labels need adding or removing, `changed` is `true` and no note is printed.
+
 Names and titles are trimmed and cannot be blank or contain line breaks or control characters, such as tabs.
 
 Project, task, and label descriptions may contain multiple lines. Omitted descriptions on creation, empty strings, and whitespace-only strings are stored as `null`. Note that non-blank descriptions and comment text normalize CRLF line endings to LF, preserving all other whitespace, including lone carriage returns. Use `--description ''` on an edit to clear a description. JSON returns the full text or `null`.

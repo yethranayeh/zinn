@@ -611,7 +611,7 @@ Examples:
     effects: { domain: "update", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: taskInputs.edit,
-    results: [jsonResult("Task")],
+    results: [jsonResult("TaskChange")],
     run: async (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
@@ -646,7 +646,7 @@ Examples:
 
       const editedTask = task.edit({ ...fields, description }, currentActor());
 
-      output(presentTask(editedTask), (entry) => formatTaskList([entry]));
+      outputTaskChanges([editedTask], formatTaskList, (entry) => `${entry.key} was unchanged`);
     },
     help: `${generateCommandUsage("task edit", taskInputs.edit)}
 
@@ -661,6 +661,7 @@ ${textEditHelp("--description")}
 Repeat --add-label or --remove-label for multiple existing labels, ignoring case.
 The same label cannot be both added and removed.
 Archived tasks can be edited.
+With --json, changed is false when all supplied values already match.
 
 ${dashValueHelp("--description")}
 
@@ -856,33 +857,40 @@ Example: zinn task delete MDR-1`,
       effects: { domain: "update", storage: "normal-open" },
       confirmation: { kind: "none" },
       input: taskInputs.label_add,
-      results: [jsonResult("Task")],
+      results: [jsonResult("TaskChange")],
       run: (args) => {
         const props = parseTaskLabelArgs(args);
-        output(presentTask(task.label.add(props, currentActor())), (entry) =>
-          formatTaskList([entry]),
+        outputTaskChanges(
+          [task.label.add(props, currentActor())],
+          formatTaskList,
+          (entry) => `${entry.key} already had those labels`,
         );
       },
       help: `${generateCommandUsage("task label add", taskInputs.label_add)}
 
 Add existing labels to a task. Label names are matched case-insensitively.
-Already attached labels are unchanged.`,
+Already attached labels are unchanged.
+With --json, changed is false when all the labels were already attached.`,
     },
     remove: {
       summary: "Remove existing labels from a task. Label names are matched case-insensitively.",
       effects: { domain: "update", storage: "normal-open" },
       confirmation: { kind: "none" },
       input: taskInputs.label_add,
-      results: [jsonResult("Task")],
+      results: [jsonResult("TaskChange")],
       run: (args) => {
         const props = parseTaskLabelArgs(args);
-        output(presentTask(task.label.remove(props, currentActor())), (entry) =>
-          formatTaskList([entry]),
+        outputTaskChanges(
+          [task.label.remove(props, currentActor())],
+          formatTaskList,
+          (entry) => `${entry.key} had none of those labels`,
         );
       },
       help: `${generateCommandUsage("task label remove", taskInputs.label_add)}
 
-Remove existing labels from a task. Label names are matched case-insensitively.`,
+Remove existing labels from a task. Label names are matched case-insensitively.
+Labels that are not attached are unchanged.
+With --json, changed is false when none of the labels were attached.`,
     },
   },
 } satisfies RouteDef;

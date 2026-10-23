@@ -2996,6 +2996,73 @@ test.serial("task delete prints the task row after Deleted, or after Deletion ca
   });
 });
 
+test("task edits and label commands report no-ops and mixed changes in text and JSON", async () => {
+  for (const json of [false, true]) {
+    await withIsolatedZinnDir(async (directory) => {
+      const run = (...args: string[]) => runZinn(args, directory);
+      expect((await run("project", "create", "CHANGE")).code).toBe(0);
+      for (const name of ["bug", "docs", "later"]) {
+        expect((await run("label", "create", name)).code).toBe(0);
+      }
+      expect((await run("task", "create", "CHANGE", "--title", "First", "--description", "Details", "--label", "bug")).code).toBe(0);
+      const snapshot = () => withTestDb(directory, (db) => ({
+        tasks: db.query("SELECT * FROM task ORDER BY id").all(),
+        labels: db.query("SELECT * FROM task_label ORDER BY task_id, label_id").all(),
+        activity: db.query("SELECT * FROM activity ORDER BY id").all(),
+      }));
+      const noOps = [
+        ["task", "edit", "change-1", "--title", " First "],
+        ["task", "edit", "CHANGE-1", "--description", "Details"],
+        ["task", "edit", "CHANGE-1", "--priority", "none"],
+        ["task", "edit", "CHANGE-1", "--add-label", "BUG", "--remove-label", "docs"],
+        ["task", "label", "add", "CHANGE-1", "BUG"],
+        ["task", "label", "remove", "CHANGE-1", "docs"],
+      ];
+      for (const archived of [false, true]) {
+        if (archived) {
+          expect((await run("task", "archive", "CHANGE-1")).code).toBe(0);
+        }
+        const before = snapshot();
+        for (const args of noOps) {
+          const result = await run(...args, ...(json ? ["--json"] : []));
+          expect(result.code).toBe(0);
+          expect(result.stderr.trim().split("\n")).toHaveLength(1);
+          expect(result.stderr).toContain("CHANGE-1");
+          if (json) {
+            expect(JSON.parse(result.stdout)).toMatchObject({ key: "CHANGE-1", title: "First", labels: ["bug"], changed: false });
+          } else {
+            expect(result.stdout).toContain("CHANGE-1");
+            expect(result.stdout).toContain("First");
+            expect(result.stdout).toContain("bug");
+          }
+          expect(snapshot()).toEqual(before);
+        }
+      }
+      const changes = [
+        { args: ["task", "edit", "CHANGE-1", "--title", "Renamed"], labels: ["bug"] },
+        { args: ["task", "edit", "CHANGE-1", "--add-label", "bug", "--add-label", "docs"], labels: ["bug", "docs"] },
+        { args: ["task", "label", "add", "CHANGE-1", "docs", "later"], labels: ["bug", "docs", "later"] },
+        { args: ["task", "label", "remove", "CHANGE-1", "bug", "docs"], labels: ["later"] },
+        { args: ["task", "label", "remove", "CHANGE-1", "bug", "later"], labels: [] },
+      ];
+      for (const { args, labels } of changes) {
+        const result = await run(...args, ...(json ? ["--json"] : []));
+        expect(result.code).toBe(0);
+        expect(result.stderr).toBe("");
+        if (json) {
+          expect(JSON.parse(result.stdout)).toMatchObject({ key: "CHANGE-1", title: "Renamed", labels, changed: true });
+        } else {
+          expect(result.stdout).toContain("CHANGE-1");
+          expect(result.stdout).toContain("Renamed");
+          for (const name of labels) {
+            expect(result.stdout).toContain(name);
+          }
+        }
+      }
+    });
+  }
+});
+
 test("task write commands print JSON with the full task details, unchanged by the row output", async () => {
   await withIsolatedZinnDir(async (testDir) => {
     await runZinn(["label", "create", "urgent"], testDir);
@@ -3032,6 +3099,7 @@ test("task write commands print JSON with the full task details, unchanged by th
       priority: "high",
       labels: ["urgent"],
       label_ids: [expect.any(String)],
+      changed: true,
     });
 
     const archived = await runZinn(["task", "archive", "ROW-1", "--json"], testDir);

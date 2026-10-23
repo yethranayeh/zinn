@@ -39,7 +39,7 @@ test("normalized titles persist before no-op detection, activity and search; bod
       assert.deepEqual(project.edit({ projectKey: "APP", name: " App " }, actor), currentProject);
       assert.deepEqual(column.edit({ projectKey: "APP", columnName: " Next ", name: " Next " }, actor), next);
       assert.deepEqual(label.edit({ labelName: " bug ", name: " bug " }, actor), bug);
-      assert.deepEqual(task.edit({ taskKey: first.key, title: " First " }, actor), currentTask);
+      assert.deepEqual(task.edit({ taskKey: first.key, title: " First " }, actor).task, currentTask);
       assert.deepEqual(task.move({ taskKey: first.key, targetColumn: " Next " }, actor), currentTask);
       assert.deepEqual(task.moveMany({ taskKeys: [first.key], targetColumn: " Next " }, actor), [{ task: currentTask, changed: false }]);
       assert.deepEqual(db.query<StoredActivity>("SELECT * FROM activity ORDER BY id").all(), before);
@@ -48,7 +48,7 @@ test("normalized titles persist before no-op detection, activity and search; bod
         assert.throws(() => task.move({ taskKey: first.key, targetColumn }, actor), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field!.length === 0);
         assert.throws(() => task.moveMany({ taskKeys: [first.key], targetColumn }, actor), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field!.length === 0);
       }
-      assert.equal(task.edit({ taskKey: first.key, title: " Renamed " }, actor).title, "Renamed");
+      assert.equal(task.edit({ taskKey: first.key, title: " Renamed " }, actor).task.title, "Renamed");
       assert.deepEqual(task.search({ query: "Renamed" }).tasks.map(t => t.key), [first.key]);
       const changes = JSON.parse(db.query<{ changes: string }>("SELECT changes FROM activity WHERE entity_id = ? AND action = 'edit' ORDER BY id DESC LIMIT 1").get(first.id)!.changes);
       assert.deepEqual(changes.title, ["First", "Renamed"]);

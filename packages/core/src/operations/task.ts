@@ -379,17 +379,17 @@ export const task = {
   },
   label: {
     getAll: (taskKey: string) => dbTaskLabel.getAllByTaskId(getTaskByKey(taskKey).id),
-    add: (input: TaskLabelInput, actor: Actor): TaskWithKey => {
+    add: (input: TaskLabelInput, actor: Actor): TaskChange => {
       const props = validateTaskInput(taskLabelSchema, input);
       return task.edit({ taskKey: props.taskKey, addLabelNames: props.labelNames }, actor);
     },
-    remove: (input: TaskLabelInput, actor: Actor): TaskWithKey => {
+    remove: (input: TaskLabelInput, actor: Actor): TaskChange => {
       const props = validateTaskInput(taskLabelSchema, input);
       return task.edit({ taskKey: props.taskKey, removeLabelNames: props.labelNames }, actor);
     },
   },
   /** Edit task content and label attachments, including on archived tasks. */
-  edit: (input: TaskEditInput, actor: Actor) => {
+  edit: (input: TaskEditInput, actor: Actor): TaskChange => {
     const props = validateTaskInput(taskEditSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
@@ -419,7 +419,7 @@ export const task = {
         props.priority === undefined || props.priority === existing.priority;
 
       if (isTitleUnchanged && isDescriptionUnchanged && isPriorityUnchanged && areLabelsUnchanged) {
-        return existing;
+        return { task: existing, changed: false };
       }
 
       for (const label of labelsToAdd) {
@@ -468,7 +468,7 @@ export const task = {
 
       updateTaskSearchRecord(existing.id);
 
-      return { ...editedTask, key: existing.key };
+      return { task: { ...editedTask, key: existing.key }, changed: true };
     });
   },
   /**

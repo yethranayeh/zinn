@@ -77,8 +77,8 @@ test("labels preserve atomic edits, no-op timestamps, uniqueness, and cascade in
       assert.throws(() => db.query("INSERT INTO task_label VALUES (?, ?)").run(first.id, "missing"));
       const unchanged = task.getByKey(first.key);
       const unchangedSecond = task.getByKey(second.key);
-      assert.deepEqual(task.label.add({ taskKey: first.key, labelNames: ["defect"] }, actor), unchanged);
-      assert.deepEqual(task.label.remove({ taskKey: second.key, labelNames: ["auth"] }, actor), unchangedSecond);
+      assert.deepEqual(task.label.add({ taskKey: first.key, labelNames: ["defect"] }, actor).task, unchanged);
+      assert.deepEqual(task.label.remove({ taskKey: second.key, labelNames: ["auth"] }, actor).task, unchangedSecond);
       assert.throws(() => task.edit({ taskKey: first.key, title: "No", addLabelNames: ["missing"] }, actor));
       assert.throws(() => task.edit({ taskKey: first.key, addLabelNames: ["DEFECT"], removeLabelNames: [" defect "] }, actor));
       assert.deepEqual(task.getByKey(first.key), unchanged);
@@ -96,7 +96,7 @@ test("labels preserve atomic edits, no-op timestamps, uniqueness, and cascade in
       db.exec("DROP TRIGGER fail_update");
       db.query("UPDATE task SET updated_at = 1 WHERE id = ?").run(first.id);
       const edited = task.edit({ taskKey: first.key, title: "Edited", removeLabelNames: ["auth"] }, actor);
-      assert.ok(edited.updated_at > 1);
+      assert.ok(edited.task.updated_at > 1);
       assert.deepEqual(task.label.getAll(first.key).map(l => l.name), ["defect"]);
       task.archive(first.key, actor);
       task.label.add({ taskKey: first.key, labelNames: ["AUTH"] }, actor);

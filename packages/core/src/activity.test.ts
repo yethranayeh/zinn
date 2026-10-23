@@ -627,7 +627,7 @@ test("descriptions normalize before persistence and activity across projects, ta
         {
           type: "task",
           create: (description, index) => task.create({ project_id: app.id, title: "Task " + index, description }, human),
-          edit: (entity, changes) => task.edit({ taskKey: entity.key!, ...changes }, human),
+          edit: (entity, changes) => task.edit({ taskKey: entity.key!, ...changes }, human).task,
           rename: { title: "Renamed" },
         },
         {
@@ -717,7 +717,7 @@ test("each task mutation records one row with its actor and changes", () => {
     assert.equal(editRow!.action, "edit");
     assert.equal(editRow!.actor_kind, "agent");
     assert.equal(editRow!.actor_email, null);
-    assert.equal(editRow!.created_at, edited.updated_at);
+    assert.equal(editRow!.created_at, edited.task.updated_at);
     assert.deepEqual(editRow!.changes, {
       title: ["First", "Renamed"],
       description: ["old", "new"],

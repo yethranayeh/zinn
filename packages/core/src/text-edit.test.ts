@@ -25,7 +25,7 @@ function fixtures() {
       make: (description: string | null) => {
         task.create({ project_id: app.id, title: "Task", description }, human);
         return {
-          edit: (description: Parameters<typeof task.edit>[0]["description"]) => task.edit({ taskKey: "APP-1", description }, human),
+          edit: (description: Parameters<typeof task.edit>[0]["description"]) => task.edit({ taskKey: "APP-1", description }, human).task,
           read: () => getDb().query<{ text: string | null; updated_at: number }>("SELECT description AS text, updated_at FROM task WHERE title = 'Task'").get(),
           history: () => task.activity("APP-1"),
         };
@@ -125,7 +125,7 @@ test("unrelated edits allow existing oversized descriptions", () => {
       getDb().query("UPDATE " + table + " SET description = ?").run(oversized);
     }
     assert.equal(project.edit({ projectKey: "APP", name: "Renamed" }, human).description, oversized);
-    assert.equal(task.edit({ taskKey: "APP-1", title: "Renamed" }, human).description, oversized);
+    assert.equal(task.edit({ taskKey: "APP-1", title: "Renamed" }, human).task.description, oversized);
     assert.equal(label.edit({ labelName: "bug", color: "red" }, human).description, oversized);
   });
 });
@@ -446,11 +446,11 @@ test("a no-op description edit does not advance updated_at", () => {
   runTextEditCheck(({ human, app }) => {
     const created = task.create({ project_id: app.id, title: "Task", description: "Alpha beta" }, human);
     const unchanged = task.edit({ taskKey: "APP-1", description: { find: "beta", replace: "beta" } }, human);
-    assert.equal(unchanged.updated_at, created.updated_at);
+    assert.equal(unchanged.task.updated_at, created.updated_at);
     assert.equal(task.activity("APP-1").length, 1);
 
     const changed = task.edit({ taskKey: "APP-1", description: { find: "beta", replace: "gamma" } }, human);
-    assert.ok(changed.updated_at >= created.updated_at);
+    assert.ok(changed.task.updated_at >= created.updated_at);
     assert.equal(task.activity("APP-1").length, 2);
     assert.deepEqual(task.search({ query: "gamma" }).tasks.map((row) => row.key), ["APP-1"]);
     assert.deepEqual(task.search({ query: "beta" }).tasks, []);

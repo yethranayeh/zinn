@@ -7,7 +7,68 @@ import { column, label, project, relation, task } from "../index";
 import { getDb } from "./db";
 import * as dbTask from "./db/task";
 import { CoreError } from "./errors";
-import { withStore } from "./testing";
+import { withStore, withTestStore } from "./testing";
+
+test("task edits and label attachments report changes without writing for no-ops", () => {
+  withTestStore(() => {
+    const actor = { name: "Test", email: null, kind: "human" as const };
+    const app = project.create({ key: "APP" }, actor);
+    for (const name of ["bug", "docs", "later"]) {
+      label.create({ name }, actor);
+    }
+    const created = task.create({
+      project_id: app.id,
+      title: "First",
+      description: "Alpha\nbeta",
+      priority: "high",
+      labelNames: ["bug"],
+    }, actor);
+    const db = getDb();
+    const previousTimestamp = 1;
+    db.query("UPDATE task SET updated_at = ? WHERE id = ?").run(previousTimestamp, created.id);
+    const existing = task.getByKey(created.key);
+    const activity = task.activity(created.key);
+    const beforeChanges = db.query<{ count: number }>("SELECT total_changes() AS count").get()!.count;
+    const edits: Array<Omit<Parameters<typeof task.edit>[0], "taskKey">> = [
+      { title: " First " },
+      { description: "Alpha\r\nbeta" },
+      { priority: "high" },
+      { addLabelNames: ["BUG"] },
+      { removeLabelNames: ["docs"] },
+      { title: "First", description: "Alpha\nbeta", priority: "high", addLabelNames: ["bug"], removeLabelNames: ["docs"] },
+    ];
+    for (const edit of edits) {
+      assert.deepEqual(task.edit({ taskKey: created.key, ...edit }, actor), { task: existing, changed: false });
+    }
+    assert.deepEqual(task.label.add({ taskKey: created.key, labelNames: ["bug"] }, actor), { task: existing, changed: false });
+    assert.deepEqual(task.label.remove({ taskKey: created.key, labelNames: ["docs"] }, actor), { task: existing, changed: false });
+    assert.deepEqual(task.getByKey(created.key), existing);
+    assert.deepEqual(task.activity(created.key), activity);
+    assert.equal(db.query<{ count: number }>("SELECT total_changes() AS count").get()!.count, beforeChanges);
+
+    const changes = [
+      () => task.edit({ taskKey: created.key, title: "Renamed" }, actor),
+      () => task.edit({ taskKey: created.key, description: null }, actor),
+      () => task.edit({ taskKey: created.key, priority: null }, actor),
+      () => task.edit({ taskKey: created.key, addLabelNames: ["bug", "docs"] }, actor),
+      () => task.label.add({ taskKey: created.key, labelNames: ["docs", "later"] }, actor),
+      () => task.label.remove({ taskKey: created.key, labelNames: ["bug", "docs"] }, actor),
+      () => task.label.remove({ taskKey: created.key, labelNames: ["bug", "later"] }, actor),
+    ];
+    for (const change of changes) {
+      db.query("UPDATE task SET updated_at = ? WHERE id = ?").run(previousTimestamp, created.id);
+      const previousActivityCount = task.activity(created.key).length;
+      const result = change();
+      assert.equal(result.changed, true);
+      assert.deepEqual(result.task, task.getByKey(created.key));
+      assert.ok(result.task.updated_at > previousTimestamp);
+      assert.equal(task.activity(created.key).length, previousActivityCount + 1);
+    }
+    assert.deepEqual(task.label.getAll(created.key), []);
+    const cleared = task.getByKey(created.key);
+    assert.deepEqual(task.edit({ taskKey: created.key, description: " \n\t ", priority: null }, actor), { task: cleared, changed: false });
+  });
+});
 
 test("public task results include keys across reads, mutations, and no-ops; DB rows stay raw", () => {
   const directory = mkdtempSync(join(tmpdir(), "zinn-task-results-"));
@@ -26,9 +87,9 @@ test("public task results include keys across reads, mutations, and no-ops; DB r
       assert.deepEqual(task.getAll().map(t => t.key).sort(), ["APP-1", "APP-2", "OTHER-1"]);
       assert.deepEqual(task.getAll({ projectKey: "app" }).map(t => t.key).sort(), ["APP-1", "APP-2"]);
       const check = (result: ReturnType<typeof task.getByKey>) => { assert.equal(result.key, "APP-1"); return result; };
-      check(task.edit({ taskKey: "APP-1", title: "Edited" }, actor));
+      check(task.edit({ taskKey: "APP-1", title: "Edited" }, actor).task);
       const edited = task.getByKey("APP-1");
-      assert.deepEqual(check(task.edit({ taskKey: "APP-1", title: "Edited" }, actor)), edited);
+      assert.deepEqual(check(task.edit({ taskKey: "APP-1", title: "Edited" }, actor).task), edited);
       check(task.order({ taskKey: "APP-1", direction: "bottom" }, actor));
       const ordered = task.getByKey("APP-1");
       assert.deepEqual(check(task.order({ taskKey: "APP-1", direction: "bottom" }, actor)), ordered);

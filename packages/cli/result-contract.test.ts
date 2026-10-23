@@ -208,7 +208,10 @@ const fixtures: Record<string, Fixture[]> = {
     { schema: "TaskDetailHistory", args: ["APP-1", "--history"], check: (value) => expect(value.activity.length).toBeGreaterThan(0) },
     { schema: "TaskDetailHistory", args: ["APP-1", "--history"], prepare: (dir) => editFixture(dir, "DELETE FROM activity"), check: (value) => expect(value.activity).toEqual([]) },
   ],
-  "task edit": [{ schema: "Task", args: ["APP-1", "--title", "Edited"] }, { schema: "Task", args: ["APP-1", "--title", "Alpha"] }],
+  "task edit": [
+    { schema: "TaskChange", args: ["APP-1", "--title", "Edited"], check: (v) => expect(v.changed).toBe(true) },
+    { schema: "TaskChange", args: ["APP-1", "--title", "Alpha"], check: (v) => expect(v.changed).toBe(false) },
+  ],
   "task move": [
     { schema: "TaskChange", args: ["APP-1", "Done"], check: (v) => expect(v.changed).toBe(true) },
     { schema: "TaskChange", args: ["APP-1", "Backlog"], check: (v) => expect(v.changed).toBe(false) },
@@ -229,8 +232,14 @@ const fixtures: Record<string, Fixture[]> = {
     { schema: "TaskChanges", args: ["APP-1", "APP-1"] },
   ],
   "task delete": [{ schema: "Task", args: ["APP-1", "--yes"] }],
-  "task label add": [{ schema: "Task", args: ["APP-2", "bug"] }],
-  "task label remove": [{ schema: "Task", args: ["APP-1", "bug"] }],
+  "task label add": [
+    { schema: "TaskChange", args: ["APP-2", "bug"], check: (v) => expect(v.changed).toBe(true) },
+    { schema: "TaskChange", args: ["APP-1", "bug"], check: (v) => expect(v.changed).toBe(false) },
+  ],
+  "task label remove": [
+    { schema: "TaskChange", args: ["APP-1", "bug"], check: (v) => expect(v.changed).toBe(true) },
+    { schema: "TaskChange", args: ["APP-2", "bug"], check: (v) => expect(v.changed).toBe(false) },
+  ],
   "task relation create": [{ schema: "RelationChange", args: ["APP-1", "APP-2", "--type", "related"] }],
   "task relation list": [{ schema: "RelationList", args: ["APP-1"] }],
   "task relation delete": [{ schema: "RelationChange", args: ["APP-1", "APP-2", "--type", "dependency"] }],

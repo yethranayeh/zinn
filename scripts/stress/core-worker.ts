@@ -585,10 +585,8 @@ function runContendMode() {
       } else if (operationName === "comment") {
         key = comment.create({ taskKey: sharedTaskKey, text }, actor).key;
       } else {
-        key = task.edit(
-          { taskKey: `${CONTEND_PROJECT_KEY}-${target!.number}`, title: text },
-          actor,
-        ).key;
+        key = task.edit({ taskKey: `${CONTEND_PROJECT_KEY}-${target!.number}`, title: text }, actor)
+          .task.key;
       }
 
       appendLog({ t: "ack", seq, op: operationName, marker, key, taskId: target?.id ?? null });
