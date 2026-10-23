@@ -1,11 +1,12 @@
+import type { TaskRelationType } from "@zinn-dev/core";
 import type { PresentedRelationChange } from "../result-schemas.js";
 import type { CommandInput } from "../input.js";
 import type { RouteDef } from "../types.js";
 
-import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
 import { relation, relationTypeSchema, task } from "@zinn-dev/core";
 
+import { jsonResult } from "../results.js";
 import { generateCommandUsage, taskKeyPositional } from "../input.js";
 import {
   output,
@@ -20,6 +21,64 @@ import {
   formatRelationList,
   presentRelations,
 } from "../presentation/relation-presentation.js";
+
+const guessedRelationTypes = new Map<string, TaskRelationType>([
+  ["depends-on", "dependency"],
+  ["parent", "subtask"],
+  ["duplicate-of", "duplicate"],
+  ["related", "related"],
+]);
+
+function relationFlagSuggestions(action: "create" | "delete") {
+  const options = {
+    ...relationInputs.create.options,
+    ...Object.fromEntries(
+      [...guessedRelationTypes.keys()].map((name) => [name, { type: "string" as const }]),
+    ),
+  };
+
+  const suggest = (args: Array<string>) => {
+    const { positionals, tokens } = parseArgs({
+      args,
+      options,
+      allowPositionals: true,
+      strict: false,
+      tokens: true,
+    });
+    const relationFlags = tokens.filter(
+      (token) => token.kind === "option" && guessedRelationTypes.has(token.name),
+    );
+    const guessed = relationFlags[0];
+
+    if (positionals.length !== 1 || relationFlags.length !== 1 || guessed?.kind !== "option") {
+      return undefined;
+    }
+
+    const type = guessedRelationTypes.get(guessed.name)!;
+    const typeFlags = tokens.filter((token) => token.kind === "option" && token.name === "type");
+    const hasConflictingType = typeFlags.some(
+      (token) => token.kind === "option" && token.value !== type,
+    );
+    const hasOtherOption = tokens.some(
+      (token) =>
+        token.kind === "option" && token.name !== "type" && !guessedRelationTypes.has(token.name),
+    );
+
+    const cannotSuggestRelation =
+      typeof guessed.value !== "string" ||
+      typeFlags.length > 1 ||
+      hasConflictingType ||
+      hasOtherOption;
+
+    if (cannotSuggestRelation) {
+      return undefined;
+    }
+
+    return ["task", "relation", action, positionals[0]!, guessed.value, "--type", type];
+  };
+
+  return Object.fromEntries([...guessedRelationTypes.keys()].map((name) => [`--${name}`, suggest]));
+}
 
 function parseRelationArgs(args: string[]) {
   const { values, positionals, tokens } = parseArgs({
@@ -60,7 +119,6 @@ const relationInputs = {
         required: true,
         value: {
           kind: "enum",
-          name: "type",
           choices: relationTypeSchema.options,
         },
       },
@@ -95,6 +153,7 @@ export const relationRouter = {
     confirmation: { kind: "none" },
     input: relationInputs.create,
     results: [jsonResult("RelationChange")],
+    guessedFlags: relationFlagSuggestions("create"),
     run: (args) => {
       const props = parseRelationArgs(args);
       const { sourceTaskKey, targetTaskKey } = props;
@@ -163,6 +222,7 @@ Example: zinn task relation list APP-1`,
     confirmation: { kind: "none" },
     input: relationInputs.create,
     results: [jsonResult("RelationChange")],
+    guessedFlags: relationFlagSuggestions("delete"),
     run: (args) => {
       const props = parseRelationArgs(args);
       const deletedRelation = relation.delete(props, currentActor());

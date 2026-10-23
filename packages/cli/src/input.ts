@@ -149,7 +149,10 @@ export function getOptionInputs(values: Record<string, unknown>) {
 export function generateInputUsage(input: CommandInput): string[] {
   const options = Object.entries(input.options).map(([name, option]) => {
     const value = option.value;
-    const valueWord = `<${value?.name ?? "text"}>`;
+    const valueWord =
+      value?.name === undefined && value?.choices !== undefined
+        ? `{${value.choices.join("|")}}`
+        : `<${value?.name ?? "text"}>`;
     const flag = `--${name}${option.type === "string" ? ` ${valueWord}` : ""}`;
 
     return {

@@ -580,6 +580,109 @@ test("the command shown for a word that begins with a single dash runs as shown,
   });
 });
 
+const relationSuggestionCommands = parseRoutes(routes).filter(
+  ({ command, effects }) => command.startsWith("task relation ") &&
+    (effects.domain === "create" || effects.domain === "delete"),
+);
+const expectedRelationTypes: Record<string, string> = {
+  "--depends-on": "dependency",
+  "--parent": "subtask",
+  "--duplicate-of": "duplicate",
+  "--related": "related",
+};
+
+for (const command of relationSuggestionCommands) {
+  test(`${command.command} corrects borrowed relation flags with runnable commands and preserves direction`, async () => {
+    await withIsolatedZinnDir(async (dir) => {
+      expect((await runZinn(["project", "create", "LINK"], dir)).code).toBe(0);
+      const source = await runZinn(["task", "create", "LINK", "--title", "Source", "--json"], dir);
+      const target = await runZinn(["task", "create", "LINK", "--title", "Target", "--json"], dir);
+      expect(source.code).toBe(0);
+      expect(target.code).toBe(0);
+      const sourceId = JSON.parse(source.stdout).id;
+      const targetId = JSON.parse(target.stdout).id;
+      const words = command.command.split(" ");
+      const isCreating = command.effects.domain === "create";
+      const flags = Object.keys(command.guessedFlags ?? {});
+      expect(new Set(flags.map((flag) => expectedRelationTypes[flag]))).toEqual(new Set(relationTypeSchema.options));
+      const snapshot = () => withTestDb(dir, (db) => ({
+        tasks: db.query("SELECT * FROM task ORDER BY id").all(),
+        relations: db.query("SELECT * FROM task_relations ORDER BY id").all(),
+        activity: db.query("SELECT * FROM activity ORDER BY id").all(),
+      }));
+
+      for (const flag of flags) {
+        const type = expectedRelationTypes[flag]!;
+        for (const flagArgs of [[flag, "LINK-2"], [`${flag}=LINK-2`]]) {
+          for (const matchingType of [false, true]) {
+            if (!isCreating) {
+              expect((await runZinn(["task", "relation", "create", "LINK-1", "LINK-2", "--type", type], dir)).code).toBe(0);
+            }
+            const args = matchingType
+              ? [...flagArgs, `--type=${type}`, "--", "LINK-1"]
+              : ["LINK-1", ...flagArgs];
+            const before = snapshot();
+            const refused = await runZinn([...words, "--json", ...args], dir);
+            expect(refused.code).toBe(1);
+            expect(refused.stdout).toBe("");
+            expect(snapshot()).toEqual(before);
+            const { error } = errorDocumentSchema.parse(JSON.parse(refused.stderr));
+            expect(error.details).toMatchObject({ argument: flag });
+            const shownArgs = error.message.match(/zinn ([\s\S]*)$/)![1]!;
+            const corrected = await runProcessAsync([
+              "/bin/sh", "-c", `exec bun "$0" ${shownArgs}`, CLI_PATH,
+            ], { env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir }, cwd: dir });
+            expect(corrected.code).toBe(0);
+            expect(corrected.stderr).toBe("");
+            expect(JSON.parse(corrected.stdout)).toMatchObject({
+              type, source: "LINK-1", target: "LINK-2", source_task_id: sourceId, target_task_id: targetId,
+            });
+            const after = snapshot();
+            if (isCreating) {
+              expect(after.relations).toEqual([expect.objectContaining({
+                source_task_id: sourceId, target_task_id: targetId, relation_type: type,
+              })]);
+              expect((await runZinn(["task", "relation", "delete", "LINK-1", "LINK-2", "--type", type], dir)).code).toBe(0);
+            } else {
+              expect(after.relations).toEqual([]);
+            }
+          }
+        }
+      }
+    });
+  });
+
+  test(`${command.command} leaves ambiguous or incomplete relation flags without a suggestion`, async () => {
+    await withIsolatedZinnDir(async (dir) => {
+      const words = command.command.split(" ");
+      const cases = [
+        ["LINK-1", "--parent", "LINK-2", "--related", "LINK-3"],
+        ["LINK-1", "--parent", "LINK-2", "--parent=LINK-3"],
+        ["LINK-1", "LINK-3", "--parent=LINK-2"],
+        ["LINK-1", "--parent=LINK-2", "--type", "dependency"],
+        ["--parent", "LINK-2"],
+        ["LINK-1", "--parent"],
+        ["LINK-1", "--parent=LINK-2", "--type"],
+        ["LINK-1", "--parent=LINK-2", "--type=subtask", "--type=subtask"],
+        ["LINK-1", "--parent=LINK-2", "--unknown"],
+        ["LINK-1", "--type=dependency", "--parent=LINK-2", "--type=subtask"],
+      ];
+      for (const args of cases) {
+        const refused = await runZinn([...words, ...args, "--json"], dir);
+        expect(refused.code).toBe(1);
+        expect(refused.stdout).toBe("");
+        const { error } = errorDocumentSchema.parse(JSON.parse(refused.stderr));
+        expect(error.code).toBe("invalid_input");
+        expect(error.message).not.toContain("zinn task relation");
+        expect(readdirSync(dir)).toEqual([]);
+      }
+      const help = await runZinn([...words, "--help"], dir);
+      expect(help.code).toBe(0);
+      expect(help.stdout.split("\n")[0]).toContain(`--type {${relationTypeSchema.options.join("|")}}`);
+    });
+  });
+}
+
 for (const command of [
   ["task", "create"],
   ["task", "edit"],
