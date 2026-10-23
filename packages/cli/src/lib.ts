@@ -87,6 +87,31 @@ export function output<T>(data: T, transformToString: (data: T) => string) {
   }
 }
 
+/** Includes change data in JSON and adds a stderr note for each unchanged object */
+export function outputChanges<Change extends { changed: boolean }, Presented extends object>(
+  changes: Array<Change>,
+  present: (change: Change) => Presented,
+  formatEntries: (entries: Array<Presented>) => string,
+  describeUnchanged: (entry: Presented) => string,
+) {
+  const presentedChanges = changes.map((change) => ({
+    ...present(change),
+    changed: change.changed,
+  }));
+
+  if (presentedChanges.length === 1) {
+    output(presentedChanges[0]!, (entry) => formatEntries([entry]));
+  } else {
+    output(presentedChanges, formatEntries);
+  }
+
+  for (const entry of presentedChanges) {
+    if (!entry.changed) {
+      diagnostic(describeUnchanged(entry));
+    }
+  }
+}
+
 /** Asks before a change that cannot be undone, unless --yes already confirmed it. */
 export async function confirmAction(
   message: string,

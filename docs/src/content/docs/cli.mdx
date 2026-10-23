@@ -34,7 +34,7 @@ Edit commands change only the fields you supply, whereas omitted fields keep the
 
 Move, order, archive, unarchive, and task-label attachment commands also succeed without changes when the requested state is already satisfied. This does not apply to creation: creating an existing relation, for example, is an error.
 
-`task edit`, `task label add` and `task label remove` report a note on stderr for operations that lead to no change. Their `--json` results include `changed`, which is `false` when nothing changed. When only some requested labels need adding or removing, `changed` is `true` and no note is printed.
+`task edit`, `task label add`, `task label remove`, `task order` and `project column order` report a note on stderr for operations that lead to no change. Their `--json` results include `changed`, which is `false` when nothing changed. When only some requested labels need adding or removing, `changed` is `true` and no note is printed.
 
 Names and titles are trimmed and cannot be blank or contain line breaks or control characters, such as tabs.
 

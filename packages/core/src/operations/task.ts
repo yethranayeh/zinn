@@ -496,7 +496,7 @@ export const task = {
       ),
     );
   },
-  order: (props: TaskOrderProps, actor: Actor) => {
+  order: (props: TaskOrderProps, actor: Actor): TaskChange => {
     const validActor = validateTaskInput(actorSchema, actor);
     const { taskKey, direction } = props;
 
@@ -528,7 +528,7 @@ export const task = {
           const targetTask = getTaskByKey(props.targetTaskKey);
 
           if (targetTask.id === taskMatch.id) {
-            return taskMatch;
+            return { task: taskMatch, changed: false };
           }
 
           if (targetTask.project_id !== taskMatch.project_id) {
@@ -564,7 +564,7 @@ export const task = {
       const insertionIndex = getInsertionIndex(allTasks.length, taskIndex, placement);
 
       if (insertionIndex === taskIndex) {
-        return taskMatch;
+        return { task: taskMatch, changed: false };
       }
 
       const futurePrevTask = otherTasks[insertionIndex - 1] ?? null;
@@ -579,15 +579,18 @@ export const task = {
       });
 
       return {
-        ...dbTask.update({
-          id: taskMatch.id,
-          task_order: generateKeyBetween(
-            futurePrevTask?.task_order ?? null,
-            futureNextTask?.task_order ?? null,
-          ),
-          updated_at: now,
-        })!,
-        key: taskMatch.key,
+        task: {
+          ...dbTask.update({
+            id: taskMatch.id,
+            task_order: generateKeyBetween(
+              futurePrevTask?.task_order ?? null,
+              futureNextTask?.task_order ?? null,
+            ),
+            updated_at: now,
+          })!,
+          key: taskMatch.key,
+        },
+        changed: true,
       };
     });
   },

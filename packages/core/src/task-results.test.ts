@@ -70,6 +70,58 @@ test("task edits and label attachments report changes without writing for no-ops
   });
 });
 
+test("task ordering reports changes and preserves rows and activity for every no-op placement", () => {
+  withTestStore(() => {
+    const actor = { name: "Test", email: null, kind: "human" as const };
+    const app = project.create({ key: "APP" }, actor);
+    for (const title of ["First", "Second", "Third"]) {
+      task.create({ project_id: app.id, title }, actor);
+    }
+    const db = getDb();
+    const previousTimestamp = 1;
+    db.query("UPDATE task SET updated_at = ?").run(previousTimestamp);
+    const before = task.getAll();
+    const activityBefore = db.query("SELECT * FROM activity ORDER BY id").all();
+    const writesBefore = db.query<{ count: number }>("SELECT total_changes() AS count").get()!.count;
+    const noOps: Array<Parameters<typeof task.order>[0]> = [
+      { taskKey: "APP-1", direction: "top" },
+      { taskKey: "APP-1", direction: "up" },
+      { taskKey: "APP-3", direction: "bottom" },
+      { taskKey: "APP-3", direction: "down" },
+      { taskKey: "APP-2", direction: "before", targetTaskKey: "APP-3" },
+      { taskKey: "APP-2", direction: "after", targetTaskKey: "APP-1" },
+      { taskKey: "APP-2", direction: "before", targetTaskKey: "APP-2" },
+      { taskKey: "APP-2", direction: "after", targetTaskKey: "APP-2" },
+    ];
+    for (const placement of noOps) {
+      const result = task.order(placement, actor);
+      assert.deepEqual(result, { task: before.find(entry => entry.key === placement.taskKey), changed: false });
+    }
+    assert.deepEqual(task.getAll(), before);
+    assert.deepEqual(db.query("SELECT * FROM activity ORDER BY id").all(), activityBefore);
+    assert.equal(db.query<{ count: number }>("SELECT total_changes() AS count").get()!.count, writesBefore);
+
+    const moves: Array<Parameters<typeof task.order>[0]> = [
+      { taskKey: "APP-3", direction: "top" },
+      { taskKey: "APP-3", direction: "down" },
+      { taskKey: "APP-3", direction: "up" },
+      { taskKey: "APP-3", direction: "bottom" },
+      { taskKey: "APP-3", direction: "before", targetTaskKey: "APP-2" },
+      { taskKey: "APP-3", direction: "after", targetTaskKey: "APP-2" },
+    ];
+    for (const placement of moves) {
+      const activityCount = task.activity(placement.taskKey).length;
+      const result = task.order(placement, actor);
+      assert.equal(result.changed, true);
+      assert.deepEqual(result.task, task.getByKey(placement.taskKey));
+      assert.ok(result.task.updated_at > previousTimestamp);
+      assert.equal(task.activity(placement.taskKey).length, activityCount + 1);
+      assert.equal(task.activity(placement.taskKey).at(-1)!.action, "order");
+    }
+    assert.deepEqual(task.getAll().filter(entry => entry.key !== "APP-3"), before.filter(entry => entry.key !== "APP-3"));
+  });
+});
+
 test("public task results include keys across reads, mutations, and no-ops; DB rows stay raw", () => {
   const directory = mkdtempSync(join(tmpdir(), "zinn-task-results-"));
   try {
@@ -90,10 +142,10 @@ test("public task results include keys across reads, mutations, and no-ops; DB r
       check(task.edit({ taskKey: "APP-1", title: "Edited" }, actor).task);
       const edited = task.getByKey("APP-1");
       assert.deepEqual(check(task.edit({ taskKey: "APP-1", title: "Edited" }, actor).task), edited);
-      check(task.order({ taskKey: "APP-1", direction: "bottom" }, actor));
+      check(task.order({ taskKey: "APP-1", direction: "bottom" }, actor).task);
       const ordered = task.getByKey("APP-1");
-      assert.deepEqual(check(task.order({ taskKey: "APP-1", direction: "bottom" }, actor)), ordered);
-      check(task.order({ taskKey: "APP-1", direction: "before", targetTaskKey: "APP-1" }, actor));
+      assert.deepEqual(check(task.order({ taskKey: "APP-1", direction: "bottom" }, actor).task), ordered);
+      check(task.order({ taskKey: "APP-1", direction: "before", targetTaskKey: "APP-1" }, actor).task);
       check(task.move({ taskKey: "APP-1", targetColumn: "TODO" }, actor));
       const moved = task.getByKey("APP-1");
       assert.deepEqual(check(task.move({ taskKey: "APP-1", targetColumn: "TODO" }, actor)), moved);

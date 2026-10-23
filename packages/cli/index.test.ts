@@ -3158,12 +3158,16 @@ test("task order moves a task one position up or down within its column", async 
     await runZinn(["task", "create", "ORDER", "--title", "second task"], testDir);
     await runZinn(["task", "create", "ORDER", "--title", "third task"], testDir);
 
-    expect((await runZinn(["task", "order", "ORDER-2", "up"], testDir)).code).toBe(0);
+    const movedUp = await runZinn(["task", "order", "ORDER-2", "up"], testDir);
+    expect(movedUp.code).toBe(0);
+    expect(movedUp.stderr).toBe("");
     expect((await runZinn(["task", "list", "ORDER"], testDir)).stdout).toMatch(
       /ORDER-2[^\n]*\nORDER-1[^\n]*\nORDER-3/,
     );
 
-    expect((await runZinn(["task", "order", "ORDER-2", "down"], testDir)).code).toBe(0);
+    const movedDown = await runZinn(["task", "order", "ORDER-2", "down"], testDir);
+    expect(movedDown.code).toBe(0);
+    expect(movedDown.stderr).toBe("");
     expect((await runZinn(["task", "list", "ORDER"], testDir)).stdout).toMatch(
       /ORDER-1[^\n]*\nORDER-2[^\n]*\nORDER-3/,
     );
@@ -3344,14 +3348,30 @@ test("task order leaves already-satisfied placements unchanged", async () => {
 
     withTestDb(testDir, (db) => db.run("UPDATE task SET updated_at = 1"));
 
-    expect((await runZinn(["task", "order", "SATISFIED-1", "top"], testDir)).code).toBe(0);
-    expect((await runZinn(["task", "order", "SATISFIED-3", "bottom"], testDir)).code).toBe(0);
-    expect(
-      (await runZinn(["task", "order", "SATISFIED-2", "before", "SATISFIED-3"], testDir)).code,
-    ).toBe(0);
-    expect(
-      (await runZinn(["task", "order", "SATISFIED-2", "after", "SATISFIED-1"], testDir)).code,
-    ).toBe(0);
+    const read = () => withTestDb(testDir, (db) => ({
+      tasks: db.query("SELECT * FROM task ORDER BY id").all(),
+      activity: db.query("SELECT * FROM activity ORDER BY id").all(),
+    }));
+    const before = read();
+    for (const json of [false, true]) {
+      for (const [key, ...placement] of [
+        ["SATISFIED-1", "top"], ["SATISFIED-1", "up"],
+        ["SATISFIED-3", "bottom"], ["SATISFIED-3", "down"],
+        ["SATISFIED-2", "before", "SATISFIED-3"], ["SATISFIED-2", "after", "SATISFIED-1"],
+        ["SATISFIED-2", "before", "SATISFIED-2"], ["SATISFIED-2", "after", "SATISFIED-2"],
+      ]) {
+        const result = await runZinn(["task", "order", key!.toLowerCase(), ...placement, ...(json ? ["--json"] : [])], testDir);
+        expect(result.code).toBe(0);
+        expect(result.stderr).toContain(key!);
+        expect(result.stderr.trim().split("\n")).toHaveLength(1);
+        if (json) {
+          expect(JSON.parse(result.stdout)).toMatchObject({ key, changed: false });
+        } else {
+          expect(result.stdout).toContain(key!);
+        }
+        expect(read()).toEqual(before);
+      }
+    }
 
     const timestamps = withTestDb(testDir, (db) =>
       db.query<{ updated_at: number }, []>("SELECT updated_at FROM task ORDER BY number").all(),

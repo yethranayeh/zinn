@@ -48,6 +48,8 @@ export type TaskWithKey = Task & { key: string };
 
 export type TaskChange = { task: TaskWithKey; changed: boolean };
 
+export type ColumnChange = { column: Column; changed: boolean };
+
 export type TaskRelationType = RelationCreateInput["relation_type"];
 export type TaskRelation = {
   id: string;

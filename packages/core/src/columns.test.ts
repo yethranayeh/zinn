@@ -64,7 +64,8 @@ test("column orders move only the moved column and skip no-op writes", () => {
 
       const review = column.getAllByProjectKey("APP")[3];
       const moved = order("review", "first");
-      assert.deepEqual({ ...moved, column_order: review!.column_order }, review);
+      assert.equal(moved.changed, true);
+      assert.deepEqual({ ...moved.column, column_order: review!.column_order }, review);
       assert.deepEqual(names(), ["Review", "Backlog", "TODO", "In Progress", "Done"]);
       order("REVIEW", "next");
       assert.deepEqual(names(), ["Backlog", "Review", "TODO", "In Progress", "Done"]);
@@ -86,15 +87,20 @@ test("column orders move only the moved column and skip no-op writes", () => {
       assert.deepEqual(names(), ["Done", "Review", "In Progress", "TODO", "Backlog"]);
 
       const rowsBeforeNoOps = column.getAllByProjectKey("APP");
+      const activityBeforeNoOps = db.query("SELECT * FROM activity ORDER BY id").all();
       db.exec("CREATE TRIGGER fail_column_update BEFORE UPDATE ON project_column BEGIN SELECT RAISE(ABORT, 'column written'); END");
+      const writesBeforeNoOps = db.query<{ count: number }>("SELECT total_changes() AS count").get()!.count;
       for (const [columnName, direction, targetColumnName] of [
         ["Done", "first"], ["Done", "previous"], ["Backlog", "last"], ["Backlog", "next"],
         ["Review", "before", "In Progress"], ["In Progress", "after", "review"],
         ["Review", "before", "review"], ["Review", "after", "REVIEW"],
       ] as const) {
         const unchanged = order(columnName, direction, targetColumnName);
-        assert.deepEqual(unchanged, rowsBeforeNoOps.find(row => row.id === unchanged.id));
+        assert.deepEqual(unchanged.column, rowsBeforeNoOps.find(row => row.id === unchanged.column.id));
+        assert.equal(unchanged.changed, false);
       }
+      assert.deepEqual(db.query("SELECT * FROM activity ORDER BY id").all(), activityBeforeNoOps);
+      assert.equal(db.query<{ count: number }>("SELECT total_changes() AS count").get()!.count, writesBeforeNoOps);
       db.exec("DROP TRIGGER fail_column_update");
       assert.deepEqual(column.getAllByProjectKey("APP"), rowsBeforeNoOps);
 

@@ -21,6 +21,7 @@ import {
   dashValueHelp,
   diagnostic,
   output,
+  outputChanges,
   quit,
   validatePositionals,
   validateOrderForms,
@@ -581,7 +582,7 @@ Example: zinn project column edit MDR 'In Progress' --name Refining`,
       effects: { domain: "update", storage: "normal-open" },
       confirmation: { kind: "none" },
       input: projectInputs.column_order,
-      results: [jsonResult("Column")],
+      results: [jsonResult("ColumnChange")],
       run: (args: Array<string>) => {
         const { positionals } = parseArgs({
           options: projectInputs.column_order.options,
@@ -606,9 +607,11 @@ Example: zinn project column edit MDR 'In Progress' --name Refining`,
           orderedColumn = column.order({ projectKey, columnName, direction }, currentActor());
         }
 
-        // TODO: maybe also print the new full column state?
-        output(presentColumn(orderedColumn), (entry) =>
-          formatColumnList([entry], { showsProject: true }),
+        outputChanges(
+          [orderedColumn],
+          (change) => presentColumn(change.column),
+          (entries) => formatColumnList(entries, { showsProject: true }),
+          (entry) => `Column "${entry.name}" was already in that position`,
         );
       },
       help: `${generateCommandUsage("project column order", projectInputs.column_order)}
@@ -618,6 +621,8 @@ Use first or last for either end, previous or next for one position,
   or before or after to place it relative to another column.
 
 Columns are matched by name, and matching is case-insensitive.
+Ordering to the current position, or before or after itself, leaves the column unchanged.
+With --json, changed is false when the column was already in that position.
 
 Example: zinn project column order MDR Review before 'In Progress'`,
     },

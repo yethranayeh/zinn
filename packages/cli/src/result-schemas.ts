@@ -141,6 +141,9 @@ export const columnSchema = z.strictObject({
   project_id: z.string().describe("Owning project ID."),
   name: z.string(),
 });
+export const columnChangeSchema = columnSchema.extend({
+  changed: z.boolean().describe("Whether the column's position changed."),
+});
 export const columnTaskCountSchema = z.strictObject({
   id: columnSchema.shape.id,
   name: z.string(),
@@ -241,6 +244,7 @@ export const resultSchemas = {
   ProjectList: z.array(projectSchema),
   ProjectView: projectViewSchema,
   Column: columnSchema,
+  ColumnChange: columnChangeSchema,
   ColumnTaskCount: columnTaskCountSchema,
   ColumnList: z.array(columnTaskCountSchema),
   Label: labelSchema,

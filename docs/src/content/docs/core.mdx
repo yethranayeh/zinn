@@ -55,7 +55,8 @@ The client supplies its own `release` identity: `source` for development and `pu
 Names and titles are trimmed and cannot be blank or contain line breaks or control characters.
 
 - Edits change only supplied fields. Valid edits that leave values unchanged preserve modification timestamps and record no activity.
-- `task.edit`, `task.label.add` and `task.label.remove` return a `TaskChange`: `{ task, changed }`. The `task` field contains the resulting task, and `changed` is `false` when all supplied values already matched. For several label changes, it is `true` when any attachment changed.
+- `task.edit`, `task.label.add`, `task.label.remove` and `task.order` return a `TaskChange`: `{ task, changed }`. The `task` field contains the resulting task, and `changed` is `false` when the requested state was already satisfied. For several label changes, it is `true` when any attachment changed.
+- `column.order` returns a `ColumnChange`: `{ column, changed }`. Ordering a task or column to its current position, including before or after itself, returns `changed: false` and records no activity.
 - Descriptions default to `null`. Passing `null` or blank text clears them. Non-blank text input keeps its whitespace.
 - Descriptions and comment text normalize CRLF line endings to LF, including append, find and replacement inputs. All other whitespace, including lone carriage returns, is preserved.
 - Descriptions and comment text are limited to `MAX_TEXT_BYTES`, exported by core: 1 MiB (1,048,576 UTF-8 bytes). Full text is checked before normalization and partial edits check the resulting text. Oversized input fails without writing changes. Editing other fields does not revalidate a stored description.

@@ -1,11 +1,6 @@
 import type { ParseArgsOptionsConfig } from "node:util";
-import type { TaskChange, TaskRelationType } from "@zinn-dev/core";
-import type {
-  PresentedTask,
-  PresentedTaskDetail,
-  PresentedTaskDetailHistory,
-  PresentedTaskChange,
-} from "../result-schemas.js";
+import type { TaskRelationType } from "@zinn-dev/core";
+import type { PresentedTaskDetail, PresentedTaskDetailHistory } from "../result-schemas.js";
 import type { RouteDef } from "../types.js";
 import type { CommandInput, InputConstraint } from "../input.js";
 
@@ -36,6 +31,7 @@ import {
   dashValueHelp,
   diagnostic,
   output,
+  outputChanges,
   quit,
   validatePositionals,
   validateOrderForms,
@@ -646,7 +642,12 @@ Examples:
 
       const editedTask = task.edit({ ...fields, description }, currentActor());
 
-      outputTaskChanges([editedTask], formatTaskList, (entry) => `${entry.key} was unchanged`);
+      outputChanges(
+        [editedTask],
+        (change) => presentTask(change.task),
+        formatTaskList,
+        (entry) => `${entry.key} was unchanged`,
+      );
     },
     help: `${generateCommandUsage("task edit", taskInputs.edit)}
 
@@ -696,8 +697,9 @@ Examples:
       const taskKeys = positionals.slice(0, -1);
       const targetColumn = positionals.at(-1)!;
       const moves = task.moveMany({ taskKeys, targetColumn }, currentActor());
-      outputTaskChanges(
+      outputChanges(
         moves,
+        (change) => presentTask(change.task),
         formatTaskList,
         (movedTask) => `${movedTask.key} was already in the ${movedTask.column} column`,
       );
@@ -720,7 +722,7 @@ Example: zinn task move MDR-1 MDR-2 'In Progress'`,
     effects: { domain: "update", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: taskInputs.order,
-    results: [jsonResult("Task")],
+    results: [jsonResult("TaskChange")],
     run: (args) => {
       const { positionals } = parseArgs({
         options: taskInputs.order.options,
@@ -730,26 +732,33 @@ Example: zinn task move MDR-1 MDR-2 'In Progress'`,
       });
       const form = validateOrderForms(positionals, taskInputs.order.forms);
       const taskKey = positionals[0]!;
+      let orderedTask: ReturnType<typeof task.order>;
       if (form.id === "relative") {
         const direction =
           positionals[1] as (typeof form)["positionals"][1]["value"]["choices"][number];
-        const orderedTask = task.order(
+        orderedTask = task.order(
           { taskKey, direction, targetTaskKey: positionals[2]! },
           currentActor(),
         );
-        output(presentTask(orderedTask), (entry) => formatTaskList([entry]));
       } else {
         const direction =
           positionals[1] as (typeof form)["positionals"][1]["value"]["choices"][number];
-        const orderedTask = task.order({ taskKey, direction }, currentActor());
-        output(presentTask(orderedTask), (entry) => formatTaskList([entry]));
+        orderedTask = task.order({ taskKey, direction }, currentActor());
       }
+      outputChanges(
+        [orderedTask],
+        (change) => presentTask(change.task),
+        formatTaskList,
+        (entry) => `${entry.key} was already in that position`,
+      );
     },
     help: `${generateCommandUsage("task order", taskInputs.order)}
 
 Change a task's position within its current column.
 Use top or bottom for either end, up or down for one position,
 or before or after to place it relative to another task.
+Ordering to the current position, or before or after itself, leaves the task unchanged.
+With --json, changed is false when the task was already in that position.
 
 Example: zinn task order MDR-2 before MDR-1`,
   },
@@ -762,8 +771,9 @@ Example: zinn task order MDR-2 before MDR-1`,
     run: (args: Array<string>) => {
       const taskKeys = parseTaskKeys(args);
       const archives = task.archiveMany(taskKeys, currentActor());
-      outputTaskChanges(
+      outputChanges(
         archives,
+        (change) => presentTask(change.task),
         (entries) => formatTaskList(entries, { showsStatus: true }),
         (archivedTask) => `${archivedTask.key} was already archived`,
       );
@@ -788,8 +798,9 @@ Example: zinn task archive MDR-1 MDR-2`,
     run: (args: Array<string>) => {
       const taskKeys = parseTaskKeys(args);
       const unarchives = task.unarchiveMany(taskKeys, currentActor());
-      outputTaskChanges(
+      outputChanges(
         unarchives,
+        (change) => presentTask(change.task),
         (entries) => formatTaskList(entries, { showsStatus: true }),
         (unarchivedTask) => `${unarchivedTask.key} was already active`,
       );
@@ -860,8 +871,9 @@ Example: zinn task delete MDR-1`,
       results: [jsonResult("TaskChange")],
       run: (args) => {
         const props = parseTaskLabelArgs(args);
-        outputTaskChanges(
+        outputChanges(
           [task.label.add(props, currentActor())],
+          (change) => presentTask(change.task),
           formatTaskList,
           (entry) => `${entry.key} already had those labels`,
         );
@@ -880,8 +892,9 @@ With --json, changed is false when all the labels were already attached.`,
       results: [jsonResult("TaskChange")],
       run: (args) => {
         const props = parseTaskLabelArgs(args);
-        outputTaskChanges(
+        outputChanges(
           [task.label.remove(props, currentActor())],
+          (change) => presentTask(change.task),
           formatTaskList,
           (entry) => `${entry.key} had none of those labels`,
         );
@@ -906,36 +919,6 @@ function parseTaskKeys(args: Array<string>) {
   validatePositionals(positionals, taskInputs.archive.forms[0]);
 
   return positionals;
-}
-
-/**
- * Prints the changed tasks as rows, or as JSON: an object for one task and an array for several.
- * JSON includes each task's `changed` flag, and each unchanged task also gets a note on stderr.
- */
-function outputTaskChanges(
-  changes: Array<TaskChange>,
-  formatTasks: (presentedTasks: Array<PresentedTask>) => string,
-  describeUnchanged: (presentedTask: PresentedTask) => string,
-) {
-  const presentedChanges = changes.map((change) => {
-    const presentedTask = presentTask(change.task);
-    return {
-      ...presentedTask,
-      changed: change.changed,
-    } satisfies PresentedTaskChange;
-  });
-
-  if (presentedChanges.length === 1) {
-    output(presentedChanges[0]!, (presentedChange) => formatTasks([presentedChange]));
-  } else {
-    output(presentedChanges, formatTasks);
-  }
-
-  for (const presentedChange of presentedChanges) {
-    if (!presentedChange.changed) {
-      diagnostic(describeUnchanged(presentedChange));
-    }
-  }
 }
 
 function parseTaskLabelArgs(args: string[]) {

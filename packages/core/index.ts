@@ -9,6 +9,7 @@ export type {
 export type {
   TaskWithKey,
   TaskChange,
+  ColumnChange,
   TaskPriority,
   TaskRelationType,
   Label,

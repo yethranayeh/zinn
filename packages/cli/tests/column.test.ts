@@ -208,12 +208,16 @@ test("project column order moves a column in every direction and prints it", asy
       [["todo", "before", "in progress"], ["Backlog", "TODO", "In Progress", "Review", "Done"]],
     ];
     for (const [args, expected] of steps) {
-      expect((await runZinn(["project", "column", "order", "COL", ...args], dir)).code).toBe(0);
+      const result = await runZinn(["project", "column", "order", "COL", ...args], dir);
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe("");
       expect(await listColumns()).toEqual(expected);
     }
 
     const json = await runZinn(["project", "column", "order", "COL", "done", "first", "--json"], dir);
-    expect(JSON.parse(json.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "COL", name: "Done" });
+    expect(json.code).toBe(0);
+    expect(json.stderr).toBe("");
+    expect(JSON.parse(json.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "COL", name: "Done", changed: true });
   });
 });
 
@@ -248,10 +252,24 @@ test("project column order rejects invalid requests and skips no-ops without wri
       expect(read()).toEqual(before);
     }
 
-    const unchanged = await runZinn(["project", "column", "order", "COL", "backlog", "first"], dir);
-    expect(unchanged.code).toBe(0);
-    expect(unchanged.stderr).toBe("");
-    expect(unchanged.stdout).toContain("Backlog");
-    expect(read()).toEqual(before);
+    for (const json of [false, true]) {
+      for (const [name, ...placement] of [
+        ["Backlog", "first"], ["Backlog", "previous"], ["Done", "last"], ["Done", "next"],
+        ["TODO", "before", "In Progress"], ["TODO", "after", "Backlog"],
+        ["TODO", "before", "todo"], ["TODO", "after", "TODO"],
+      ]) {
+        const unchanged = await runZinn(["project", "column", "order", "col", name!, ...placement, ...(json ? ["--json"] : [])], dir);
+        expect(unchanged.code).toBe(0);
+        expect(unchanged.stderr).toContain(name!);
+        expect(unchanged.stderr.trim().split("\n")).toHaveLength(1);
+        if (json) {
+          expect(JSON.parse(unchanged.stdout)).toMatchObject({ project: "COL", name, changed: false });
+        } else {
+          expect(unchanged.stdout).toContain("COL");
+          expect(unchanged.stdout).toContain(name!);
+        }
+        expect(read()).toEqual(before);
+      }
+    }
   });
 });

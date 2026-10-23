@@ -119,12 +119,13 @@ function expectEntityIds(schema: ResultSchemaName, value: any, rows: ReturnType<
       break;
     }
     case "Column":
+    case "ColumnChange":
     case "ColumnList":
     case "ColumnTaskCount": {
       const stored = rows.columns.find((column) => column.id === value.id)!;
       expect(stored).toBeDefined();
       expect(value.name).toBe(stored.name);
-      if (schema === "Column") {
+      if (schema === "Column" || schema === "ColumnChange") {
         expect(value.project_id).toBe(stored.project_id);
         expect(value.project).toBe(rows.projects.find((project) => project.id === stored.project_id)!.key);
       }
@@ -199,7 +200,10 @@ const fixtures: Record<string, Fixture[]> = {
   "project column create": [{ schema: "Column", args: ["APP", "New column"] }],
   "project column list": [{ schema: "ColumnList", args: ["APP"] }],
   "project column edit": [{ schema: "Column", args: ["APP", "Backlog", "--name", "Ideas"] }],
-  "project column order": [{ schema: "Column", args: ["APP", "Backlog", "last"] }],
+  "project column order": [
+    { schema: "ColumnChange", args: ["APP", "Backlog", "last"], check: (v) => expect(v.changed).toBe(true) },
+    { schema: "ColumnChange", args: ["APP", "Backlog", "first"], check: (v) => expect(v.changed).toBe(false) },
+  ],
   "task create": [{ schema: "Task", args: ["APP", "--title", "New task"] }],
   "task list": [{ schema: "TaskList", args: ["APP"] }, { schema: "TaskList", args: ["APP", "--column", "Absent"] }],
   "task search": [{ schema: "TaskList", args: ["Alpha", "APP"] }, { schema: "TaskList", args: ["Unmatched"] }],
@@ -218,7 +222,10 @@ const fixtures: Record<string, Fixture[]> = {
     { schema: "TaskChanges", args: ["APP-1", "APP-2", "Done"] },
     { schema: "TaskChanges", args: ["APP-1", "APP-1", "Done"], check: (v) => { expect(v).toHaveLength(2); expect(v.map((x: any) => x.key)).toEqual(["APP-1", "APP-1"]); } },
   ],
-  "task order": [{ schema: "Task", args: ["APP-1", "top"] }],
+  "task order": [
+    { schema: "TaskChange", args: ["APP-1", "top"], check: (v) => expect(v.changed).toBe(true) },
+    { schema: "TaskChange", args: ["APP-1", "bottom"], check: (v) => expect(v.changed).toBe(false) },
+  ],
   "task archive": [
     { schema: "TaskChange", args: ["APP-1"] },
     { schema: "TaskChanges", args: ["APP-1", "APP-2"] },

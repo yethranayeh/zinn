@@ -1,6 +1,6 @@
-import { CoreError } from "../errors.js";
 import type { ColumnCreateInput, ColumnEditInput, ColumnOrderInput } from "../schemas/column.js";
 import type { Actor } from "../schemas/actor.js";
+import type { ColumnChange } from "../types.js";
 import type { OrderPlacement } from "./shared.js";
 
 import { v7 as uuidv7 } from "uuid";
@@ -11,11 +11,11 @@ import * as dbProject from "../db/project.js";
 import * as dbColumn from "../db/column.js";
 import * as dbTask from "../db/task.js";
 
+import { CoreError } from "../errors.js";
 import { standardizeProjectKey } from "../lib.js";
 import { columnCreateSchema, columnEditSchema, columnOrderSchema } from "../schemas/column.js";
 import { actorSchema } from "../schemas/actor.js";
 import { validateTaskInput } from "../schemas/task.js";
-
 import { findByName, getInsertionIndex, recordActivity, requireColumnByName } from "./shared.js";
 
 function requireProjectColumns(projectKey: string) {
@@ -65,11 +65,11 @@ export const column = {
       const existingColumn = findByName(allProjectColumns, props.name);
 
       if (existingColumn != null) {
-        throw new CoreError(
-          `There is already a "${props.name}" column`,
-          "conflict",
-          { entity: "column", key: props.name, reason: "already_exists" },
-        );
+        throw new CoreError(`There is already a "${props.name}" column`, "conflict", {
+          entity: "column",
+          key: props.name,
+          reason: "already_exists",
+        });
       }
 
       const lastColOrder = allProjectColumns[allProjectColumns.length - 1]?.column_order ?? null;
@@ -107,11 +107,11 @@ export const column = {
       const isTakenByAnotherColumn = existingColumn != null && existingColumn.id !== columnMatch.id;
 
       if (isTakenByAnotherColumn) {
-        throw new CoreError(
-          `There is already a "${props.name}" column`,
-          "conflict",
-          { entity: "column", key: props.name, reason: "already_exists" },
-        );
+        throw new CoreError(`There is already a "${props.name}" column`, "conflict", {
+          entity: "column",
+          key: props.name,
+          reason: "already_exists",
+        });
       }
 
       const now = Date.now();
@@ -126,7 +126,7 @@ export const column = {
       return dbColumn.update({ id: columnMatch.id, name: props.name })!;
     });
   },
-  order: (input: ColumnOrderInput, actor: Actor) => {
+  order: (input: ColumnOrderInput, actor: Actor): ColumnChange => {
     const props = validateTaskInput(columnOrderSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
@@ -155,7 +155,7 @@ export const column = {
           );
 
           if (targetIndex === columnIndex) {
-            return columnMatch;
+            return { column: columnMatch, changed: false };
           }
 
           placement = { direction: props.direction, targetIndex };
@@ -166,7 +166,7 @@ export const column = {
       const insertionIndex = getInsertionIndex(projectColumns.length, columnIndex, placement);
 
       if (insertionIndex === columnIndex) {
-        return columnMatch;
+        return { column: columnMatch, changed: false };
       }
 
       const otherColumns = projectColumns.filter((candidate) => candidate.id !== columnMatch.id);
@@ -181,13 +181,15 @@ export const column = {
         createdAt: Date.now(),
       });
 
-      return dbColumn.updateOrder({
+      const orderedColumn = dbColumn.updateOrder({
         id: columnMatch.id,
         column_order: generateKeyBetween(
           futurePrevColumn?.column_order ?? null,
           futureNextColumn?.column_order ?? null,
         ),
       })!;
+
+      return { column: orderedColumn, changed: true };
     });
   },
 };
