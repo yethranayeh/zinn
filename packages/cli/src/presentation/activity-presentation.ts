@@ -1,4 +1,5 @@
-import type { Activity, ActivityAction, ActivityTaskIdentity } from "@zinn-dev/core";
+import type { Activity, ActivityAction, ActivityTaskIdentity, Actor } from "@zinn-dev/core";
+import type { PresentedActor } from "../result-schemas.js";
 
 import {
   activity,
@@ -541,6 +542,27 @@ function formatRecordedChanges(event: Activity) {
   return sections.join("\n\n") || "{}";
 }
 
+export function presentActor(actor: Actor): PresentedActor {
+  return {
+    actor_name: actor.name,
+    actor_email: actor.email,
+    actor_kind: actor.kind,
+    actor_source: actor.source ?? null,
+    actor_session_id: actor.sessionId ?? null,
+    actor_thread_id: actor.threadId ?? null,
+    actor_agent: actor.agent ?? null,
+    actor_model: actor.model ?? null,
+    actor_effort: actor.effort ?? null,
+  };
+}
+
+export function formatActor(actor: PresentedActor) {
+  return [
+    actor.actor_name ?? UNKNOWN_ACTOR_NAME,
+    ...ACTOR_DETAIL_FIELDS.map(({ key, label }) => `${label}: ${actor[key] ?? "null"}`),
+  ].join("\n");
+}
+
 export function formatActivityList(
   entries: Array<PresentedActivity>,
   options: { showsDetails?: boolean } = {},
@@ -572,15 +594,7 @@ export function formatActivityList(
         ...(entry.navigation.name === undefined
           ? []
           : [formatSection("Navigation", formatNavigation(entry, { showsFullNames: true }))]),
-        formatSection(
-          "Actor",
-          [
-            entry.event.actor_name ?? UNKNOWN_ACTOR_NAME,
-            ...ACTOR_DETAIL_FIELDS.map(
-              ({ key, label }) => `${label}: ${entry.event[key] ?? "null"}`,
-            ),
-          ].join("\n"),
-        ),
+        formatSection("Actor", formatActor(entry.event)),
         formatSection("Changes", formatRecordedChanges(entry.event)),
       ].join("\n\n"),
     )

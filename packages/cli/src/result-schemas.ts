@@ -114,6 +114,18 @@ export const activitySchema = z.strictObject({
     ),
 });
 
+export const actorSchema = activitySchema.pick({
+  actor_name: true,
+  actor_email: true,
+  actor_kind: true,
+  actor_source: true,
+  actor_session_id: true,
+  actor_thread_id: true,
+  actor_agent: true,
+  actor_model: true,
+  actor_effort: true,
+});
+
 export const taskDetailSchema = taskSchema.extend({
   created_at: timestamp,
   updated_at: timestamp,
@@ -263,6 +275,7 @@ export const resultSchemas = {
   LabelList: z.array(labelSchema),
   Activity: activitySchema,
   ActivityList: z.array(activitySchema),
+  Actor: actorSchema,
   Info: infoSchema,
   Backup: backupSchema,
   Restore: restoreSchema,
@@ -286,6 +299,7 @@ export type PresentedColumn = z.infer<typeof columnSchema>;
 export type PresentedColumnTaskCount = z.infer<typeof columnTaskCountSchema>;
 export type PresentedLabel = z.infer<typeof labelSchema>;
 export type PresentedActivity = z.infer<typeof activitySchema>;
+export type PresentedActor = z.infer<typeof actorSchema>;
 export type PresentedInfo = z.infer<typeof infoSchema>;
 export type PresentedBackup = z.infer<typeof backupSchema>;
 export type PresentedRestore = z.infer<typeof restoreSchema>;

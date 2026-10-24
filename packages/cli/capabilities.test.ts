@@ -89,8 +89,8 @@ test("discovery is deterministic across settings, stores, cwd, locale and debug 
   }
 });
 
-test("discovery bypasses settings, storage policy, SQLite and Bun process APIs", () => {
-  const directory = join(root, "intercepted");
+test.each(parseRoutes(routes).filter((route) => route.effects.storage === "none").map((route) => route.command))("%s bypasses settings, storage policy, SQLite and Bun process APIs", (command) => {
+  const directory = join(root, `intercepted-${command}`);
   mkdirSync(directory);
   const preload = join(directory, "guard.ts");
   const coreSource = fileURLToPath(new URL("../core/src/", import.meta.url));
@@ -104,11 +104,15 @@ test("discovery bypasses settings, storage policy, SQLite and Bun process APIs",
     Bun.spawn = Bun.spawnSync = Bun.connect = forbidden;
   `);
   const before = inventory(directory);
-  const result = Bun.spawnSync([process.execPath, "--preload", preload, entryPoint, "capabilities", "--json"], {
-    cwd: directory, env: { ...env, HOME: directory, ZINN_DIR: join(directory, "forbidden-store") },
+  const result = Bun.spawnSync([process.execPath, "--preload", preload, entryPoint, ...command.split(" "), "--json"], {
+    cwd: directory, env: { ...env, HOME: directory, ZINN_DIR: join(directory, "forbidden-store"), OPENCODE: "1" },
   });
   expect(result.exitCode, result.stderr.toString()).toBe(0);
-  expect(JSON.parse(result.stdout.toString())).toEqual(manifest);
+  if (command === "capabilities") {
+    expect(JSON.parse(result.stdout.toString())).toEqual(manifest);
+  } else {
+    expect(JSON.parse(result.stdout.toString())).toMatchObject({ actor_name: "opencode", actor_source: "env:OPENCODE" });
+  }
   expect(inventory(directory)).toEqual(before);
   const normalCommand = Bun.spawnSync([process.execPath, "--preload", preload, entryPoint, "task", "list", "--json"], {
     cwd: directory, env: { ...env, HOME: directory, ZINN_DIR: join(directory, "forbidden-store") },

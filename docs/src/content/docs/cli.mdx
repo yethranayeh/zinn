@@ -25,6 +25,7 @@ Use this page for command behavior, shared input rules, and practical examples. 
 - [Task relations](#task-relations)
 - [Task comments](#task-comments)
 - [Activity](#activity)
+  - [Who am I?](#who-am-i)
 - [Command aliases](#command-aliases)
 - [Help](#help)
 
@@ -502,6 +503,19 @@ With `--json`, list returns an array and view returns one event object. Both inc
 With `--show-deleted`, readable keys can include different identities after a project is deleted and recreated. Group JSON records by (`entity_type`, `entity_id`) to keep their histories distinct, or use `--task-id` or `--project-id` for one identity. The `id` identifies the activity event itself. Project deletion events keep the project's `entity_id`, with removed task IDs in `changes.tasks`.
 
 Hooks receive these same records on stdin, with the task's key added as `task_key`. See [Hooks](/docs/hooks).
+
+### Who am I?
+
+Run `zinn whoami` to see the actor a change would record in the current environment and folder, including the source of its name and kind:
+
+```sh
+zinn whoami
+zinn whoami --json
+```
+
+For the human fallback, Git identity comes from the current folder. The command works without reading settings or opening storage, including when the store is missing or unusable. It shows the resolved name, email, kind, source, session, thread, agent, model and effort. An unnamed agent is shown as `unknown`.
+
+`--json` returns one object with `actor_name`, `actor_email`, `actor_kind`, `actor_source`, `actor_session_id`, `actor_thread_id`, `actor_agent`, `actor_model` and `actor_effort`, matching the actor fields of an activity record. Missing values are `null`.
 
 Each mutation records the actor identity supplied by the CLI. Zinn checks `AI_AGENT` and `AGENT` declarations before known tool markers for Claude Code, Codex, OpenCode, Gemini CLI, Cline, Cursor, Copilot's coding agent, and Crush. Set `AI_AGENT` to name another tool. Numeric-only and boolean-word values for `AI_AGENT` or `AGENT` are treated as flags, not names, and do not prevent a later marker from identifying the agent. If only a generic flag is set, the actor kind is `agent` and its name is `null`.
 

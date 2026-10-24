@@ -7,6 +7,7 @@ import { restoreCommand } from "./restore-router.js";
 import { migrateCommand } from "./migrate-router.js";
 import { reindexCommand } from "./reindex-router.js";
 import { infoCommand } from "./info-router.js";
+import { whoamiCommand } from "./whoami-router.js";
 import { capabilitiesCommand } from "./capabilities-router.js";
 import { parseRoutes } from "./router.js";
 
@@ -21,6 +22,7 @@ export const routes = {
   migrate: migrateCommand,
   reindex: reindexCommand,
   info: infoCommand,
+  whoami: whoamiCommand,
   capabilities: capabilitiesCommand,
 };
 
