@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { InputValidationError } from "../errors.js";
+import { standardizeName } from "../lib.js";
 import { titleTextSchema } from "./title-text.js";
 import { columnNameSchema } from "./column.js";
 
@@ -74,11 +75,11 @@ export const taskEditSchema = z
   }, "Provide at least one field to edit: title, description, priority, or labels")
   .refine((value) => {
     const normalizedRemovedLabelNames = new Set(
-      (value.removeLabelNames ?? []).map((name) => name.toLowerCase()),
+      (value.removeLabelNames ?? []).map(standardizeName),
     );
 
     const hasConflictingLabel = (value.addLabelNames ?? []).some((name) =>
-      normalizedRemovedLabelNames.has(name.toLowerCase()),
+      normalizedRemovedLabelNames.has(standardizeName(name)),
     );
 
     return !hasConflictingLabel;

@@ -29,7 +29,7 @@ import * as dbLabel from "../db/label.js";
 import * as dbActivity from "../db/activity.js";
 import * as dbComment from "../db/comment.js";
 
-import { standardizeProjectKey } from "../lib.js";
+import { standardizeName, standardizeProjectKey } from "../lib.js";
 import { isRecordingChange, recordChange } from "../hooks.js";
 
 const commentKeyRegex = new RegExp(`^([^#]+)#(${positiveIntegerPattern})$`);
@@ -163,7 +163,7 @@ export function resolveLabels(names: Array<string>) {
 }
 
 export function findByName<T extends { name: string }>(matches: Array<T>, name: string) {
-  return matches.find((match) => match.name.toLowerCase() === name.toLowerCase());
+  return matches.find((match) => standardizeName(match.name) === standardizeName(name));
 }
 
 export function requireColumnByName(project: Project, projectColumns: Array<Column>, name: string) {
