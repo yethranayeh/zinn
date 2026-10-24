@@ -7,6 +7,35 @@ description: Release notes for Zinn, an Experimental kanban CLI and core library
 
 Notable changes to Zinn. Each CLI release names the core version it includes. **Breaking** changes include the action needed when upgrading.
 
+## 0.42.0 - 2026-10-24
+
+[CLI 0.42.0](https://www.npmjs.com/package/@zinn-dev/cli/v/0.42.0) | [Core 0.31.0](https://www.npmjs.com/package/@zinn-dev/core/v/0.31.0)
+
+### Added
+
+- Hooks are now available. Configure post-change hooks in global settings. They receive activity records on stdin after the change commits. See [Hooks](/docs/hooks).
+- `zinn whoami` reports the actor identity a change would record in the current environment and directory.
+- `task order` and `task delete` accept multiple task keys and apply each batch atomically. Core exposes `task.orderMany` and `task.deleteMany`.
+- `activity list` selects history with `--project`, `--project-id`, `--task` or `--task-id`. Use `--show-deleted` with a project or task key to include history for deleted identities.
+- Read descriptions with `--description-file` and comments with `--text-file`. Use `-` to read stdin.
+- Use `show`, `ls`, `rm` and `new` as aliases for `view`, `list`, `delete` and `create`.
+- `label view` shows a label's full description.
+
+### Changed
+
+- **Breaking core API:** `task.edit`, `task.label.add`, `task.label.remove` and `task.order` return `{ task, changed }`.
+  - `project.edit`, `column.edit`, `column.order`, `label.edit` and `comment.edit` return the corresponding entity field and `changed`. Read the record from that field and use `changed` to distinguish saved changes from no-op requests.
+- JSON results include stored entity IDs, and additional mutation results report `changed`. Consumers validating results against a previous release's schemas must refresh `zinn capabilities --json`. See [Scripting](/docs/scripting).
+- **Breaking text input:** descriptions and comment text are limited to 1 MiB of UTF-8 input. Keep each input and the resulting text of a partial edit within that limit.
+  - Oversized input fails without writing changes.
+- Descriptions and comment text normalize CRLF pairs to LF, including append, find and replacement inputs. Other whitespace, including lone carriage returns is preserved.
+- `task view` includes creation and update times.
+
+### Fixed
+
+- Invalid text-source flag combinations fail before reading files or stdin.
+- Upgrades from schema version 1 preserve SQLite execution errors on older Bun versions and roll back the failed migration.
+
 ## 0.41.0 - 2026-10-18
 
 [CLI 0.41.0](https://www.npmjs.com/package/@zinn-dev/cli/v/0.41.0) | [Core 0.30.0](https://www.npmjs.com/package/@zinn-dev/core/v/0.30.0)
