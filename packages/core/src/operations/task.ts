@@ -33,6 +33,7 @@ import {
   taskListSchema,
   taskSearchSchema,
   taskOrderManySchema,
+  taskDeleteManySchema,
 } from "../schemas/task.js";
 import { actorSchema } from "../schemas/actor.js";
 
@@ -701,6 +702,12 @@ export const task = {
       dbTask.deleteById(taskMatch.id);
       return taskMatch;
     });
+  },
+  deleteMany: (taskKeys: Array<string>, actor: Actor): Array<TaskWithKey> => {
+    const validTaskKeys = validateTaskInput(taskDeleteManySchema, taskKeys);
+    const validActor = validateTaskInput(actorSchema, actor);
+
+    return writeTransaction(() => validTaskKeys.map((taskKey) => task.delete(taskKey, validActor)));
   },
   archive: (taskKey: string, actor: Actor) => {
     const validActor = validateTaskInput(actorSchema, actor);

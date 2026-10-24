@@ -638,6 +638,7 @@ function operationsWalk() {
       order: () => task.order({ taskKey: "APP-1", direction: "bottom" }, actor),
       orderMany: () => task.orderMany({ taskKeys: ["APP-1", "APP-2"], direction: "top" }, actor),
       delete: () => task.delete("APP-1", actor),
+      deleteMany: () => task.deleteMany(["APP-1", "APP-2"], actor),
       archive: () => task.archive("APP-1", actor),
       archiveMany: () => task.archiveMany(["APP-1"], actor),
       unarchive: () => task.unarchive("APP-3", actor),
@@ -706,10 +707,14 @@ function operationsWalk() {
     rawWrite = error.code;
   }
 
-  return { unlisted, outcomes, readErrors, rawWrite };
+  const mutationCount = Object.entries(objects).reduce((count, [name, object]) =>
+    count + Object.entries(object).filter(([key, value]) =>
+      typeof value === "function" && !(key in reads[name]!),
+    ).length, 0);
+
+  return { unlisted, outcomes, readErrors, rawWrite, mutationCount };
 
 }
-const MUTATION_COUNT = 27;
 
 test("every core mutation is refused before any SQL runs on a read-only database, while every read works", () => {
   withHome((home) => {
@@ -719,7 +724,7 @@ test("every core mutation is refused before any SQL runs on a read-only database
     const result = withLocation({ home }, () => { configureCore({}); return operationsWalk(); });
 
     expect(result.unlisted).toEqual([]);
-    expect(Object.keys(result.outcomes)).toHaveLength(MUTATION_COUNT);
+    expect(Object.keys(result.outcomes)).toHaveLength(result.mutationCount);
     for (const [mutation, outcome] of Object.entries(result.outcomes)) {
       expect({ mutation, outcome }).toEqual({ mutation, outcome: "ReadOnlyDatabaseError" });
     }

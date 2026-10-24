@@ -14,6 +14,7 @@ import {
   parseTaskKey,
   taskCreateSchema,
   taskEditSchema,
+  taskDeleteManySchema,
   taskPrioritySchema,
 } from "@zinn-dev/core";
 
@@ -284,7 +285,7 @@ const taskInputs = {
     forms: [
       {
         id: "default",
-        positionals: [taskKeyPositional],
+        positionals: [{ ...taskKeyPositional, max: null }],
       },
     ],
     constraints: [],
@@ -827,11 +828,14 @@ Each task's changed field is 'false' when it was already in the requested state.
 Example: zinn task unarchive MDR-1 MDR-2`,
   },
   delete: {
-    summary: "Permanently delete a task after confirmation.",
+    summary: "Permanently delete tasks after confirmation.",
     effects: { domain: "delete", storage: "normal-open" },
     confirmation: { kind: "prompt", description: confirmationDescription },
     input: taskInputs.delete,
-    results: [jsonResult("Task")],
+    results: [
+      jsonResult("Task", { kind: "positionalCount", name: "task-key", min: 1, max: 1 }),
+      jsonResult("TaskList", { kind: "positionalCount", name: "task-key", min: 2, max: null }),
+    ],
     run: async (args: Array<string>) => {
       const { values, positionals, tokens } = parseArgs({
         args,
@@ -843,32 +847,33 @@ Example: zinn task unarchive MDR-1 MDR-2`,
       validateUniqueOptions(tokens, taskInputs.delete.options);
       validatePositionals(positionals, taskInputs.delete.forms[0]);
 
-      const taskKey = positionals[0]!;
+      const taskKeys = taskDeleteManySchema.parse(positionals);
+      const taskMatches = taskKeys.map((taskKey) => task.getByKey(taskKey));
+      const presented = taskMatches.map(presentTask);
+      const canDelete = await confirmAction(
+        `Are you sure you want to delete ${taskMatches.map((match) => match.key).join(", ")}?`,
+        values.yes === true,
+      );
 
-      try {
-        const taskMatch = task.getByKey(taskKey);
-        const canDelete = await confirmAction(
-          `Are you sure you want to delete ${taskKey}?`,
-          values.yes === true,
-        );
-        const presented = presentTask(taskMatch);
-
-        if (canDelete) {
-          task.delete(taskKey, currentActor());
-          output(presented, (t) => `Deleted ${formatTaskList([t])}`);
-        } else {
-          output(presented, (t) => `Deletion cancelled for ${formatTaskList([t])}`);
-        }
-      } catch (err) {
-        throw err;
+      if (canDelete) {
+        task.deleteMany(taskKeys, currentActor());
       }
+
+      output(presented.length === 1 ? presented[0]! : presented, (entries) =>
+        formatTaskList(Array.isArray(entries) ? entries : [entries], {
+          prefix: canDelete ? "Deleted " : "Deletion cancelled for ",
+        }),
+      );
     },
     help: `${generateCommandUsage("task delete", taskInputs.delete)}
 
-Permanently delete a task after confirmation.
+Permanently delete one or more tasks, including archived tasks, after one confirmation.
+Give task keys from any project, separated by space. If any of the tasks cannot be deleted, none are deleted.
+Every key must exist and be distinct, ignoring case, before confirmation.
 Use --yes to skip the confirmation prompt, for example in scripts or with --json.
+With --json, one task prints an object and several an array.
 
-Example: zinn task delete MDR-1`,
+Example: zinn task delete MDR-1 MDR-2`,
   },
   relation: relationRouter,
   comment: commentRouter,

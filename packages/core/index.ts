@@ -80,6 +80,7 @@ export {
   taskListSchema,
   taskSearchSchema,
   taskOrderManySchema,
+  taskDeleteManySchema,
   positiveIntegerPattern,
   searchLimitMessage,
   parseTaskKey,

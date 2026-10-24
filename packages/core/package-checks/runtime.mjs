@@ -33,6 +33,15 @@ assert.deepEqual(
 	core.task.getAll().map(({ key }) => key),
 	[second.key, task.key]
 );
+core.task.archive(second.key, actor);
+assert.throws(() => core.task.deleteMany([task.key, "CORE-99"], actor), core.CoreError);
+assert.throws(() => core.task.deleteMany([task.key, task.key.toLowerCase()], actor), core.CoreError);
+assert.equal(core.task.getAll({ archive: "all" }).length, 2);
+assert.deepEqual(
+	core.task.deleteMany([task.key.toLowerCase(), second.key], actor).map(({ key }) => key),
+	[task.key, second.key]
+);
+assert.deepEqual(core.task.getAll({ archive: "all" }), []);
 assert.equal(getDb().driver, driver, "Core selected the wrong SQLite adapter");
 getDb().close();
 

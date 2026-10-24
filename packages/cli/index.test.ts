@@ -421,7 +421,7 @@ const commandWords: Record<string, CommandWords> = {
   "task order": { words: ["SHOP-1", "top"], required: 2 },
   "task archive": { words: ["SHOP-1"], required: 1, repeats: true },
   "task unarchive": { words: ["SHOP-1"], required: 1, repeats: true },
-  "task delete": { words: ["SHOP-1"], required: 1 },
+  "task delete": { words: ["SHOP-1"], required: 1, repeats: true },
   "task relation create": { words: ["SHOP-1", "SHOP-2"], required: 2 },
   "task relation list": { words: ["SHOP-1"], required: 1 },
   "task relation delete": { words: ["SHOP-1", "SHOP-2"], required: 2 },
@@ -998,7 +998,7 @@ test("a -- in front of the words or at the end leaves a valid command working", 
   });
 });
 
-test("delete commands take one key and one --yes, and delete nothing otherwise", async () => {
+test("delete commands reject invalid keys and repeated --yes without deleting anything", async () => {
   await withIsolatedZinnDir(async (dir) => {
     await runZinn(["project", "create", "A"], dir);
     await runZinn(["project", "create", "B"], dir);
@@ -1017,11 +1017,10 @@ test("delete commands take one key and one --yes, and delete nothing otherwise",
     const before = read();
     // ? Each case lists the facts its error carries.
     const cases: Array<[string[], ...string[]]> = [
-      [["task", "delete", "A-1", "A-2", "--yes"], `"A-2"`, "Usage: zinn task delete"],
       [["project", "delete", "A", "B", "--yes"], `"B"`, "Usage: zinn project delete"],
-      // ? After --, --yes is a word, so it is rejected as an extra word.
-      [["task", "delete", "--", "A-1", "--yes"], `"--yes"`, "Usage: zinn task delete"],
-      [["task", "delete", "A-1", "--yes", "--", "--"], `"--"`, "Usage: zinn task delete"],
+      // After --, a flag is a task-key operand and fails key validation.
+      [["task", "delete", "--", "A-1", "--yes"], `"--yes"`],
+      [["task", "delete", "A-1", "--yes", "--", "--"], `"--"`],
       [["project", "delete", "A", "--yes", "--yes"], "--yes"],
       [["task", "delete", "A-1", "--yes", "--yes"], "--yes"],
       [["task", "comment", "delete", "A-1#1", "--yes", "--yes"], "--yes"],

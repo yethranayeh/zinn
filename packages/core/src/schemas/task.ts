@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { InputValidationError } from "../errors.js";
-import { standardizeName } from "../lib.js";
+import { standardizeName, standardizeProjectKey } from "../lib.js";
 import { titleTextSchema } from "./title-text.js";
 import { columnNameSchema } from "./column.js";
 
@@ -29,6 +29,25 @@ export const taskTitleSchema = titleTextSchema(
 );
 
 export const taskPrioritySchema = z.enum(["low", "medium", "high", "urgent"]);
+
+export const taskDeleteManySchema = z
+  .array(z.string())
+  .min(1, "At least one task key is required")
+  .superRefine((taskKeys, context) => {
+    const seen = new Set<string>();
+
+    for (const [index, taskKey] of taskKeys.entries()) {
+      const normalizedKey = standardizeProjectKey(taskKey);
+      if (seen.has(normalizedKey)) {
+        context.addIssue({
+          code: "custom",
+          message: `Task "${normalizedKey}" is listed more than once`,
+          path: [index],
+        });
+      }
+      seen.add(normalizedKey);
+    }
+  });
 
 export const taskOrderManySchema = z.discriminatedUnion("direction", [
   z.strictObject({

@@ -51,7 +51,7 @@ export function presentTask(taskMatch: TaskWithKey): PresentedTask {
 
 export function formatTaskList(
   presentedTasks: Array<PresentedTask>,
-  options: { showsStatus?: boolean; showsFullPriority?: boolean } = {},
+  options: { showsStatus?: boolean; showsFullPriority?: boolean; prefix?: string } = {},
 ) {
   const labelColorsByName = getLabelColorsByName();
 
@@ -68,7 +68,7 @@ export function formatTaskList(
       const labels = hasLabels ? `${formatCellSeparator()}${labelNames}` : "";
 
       return [
-        { text: presentedTask.key },
+        { text: `${options.prefix ?? ""}${presentedTask.key}` },
         ...statusCells,
         columnNameCell(presentedTask.column),
         taskPriorityCell(presentedTask.priority, options.showsFullPriority ?? false),
