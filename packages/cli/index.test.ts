@@ -437,7 +437,7 @@ const commandWords: Record<string, CommandWords> = {
   "label view": { words: ["bug"], required: 1 },
   "label edit": { words: ["bug"], required: 1 },
   "label delete": { words: ["bug"], required: 1 },
-  "activity list": { words: [], required: 0 },
+  "activity list": { words: [], required: 0, repeatableFlags: ["changed"] },
   "activity view": { words: ["019abcdf"], required: 1 },
   info: { words: [], required: 0 },
   whoami: { words: [], required: 0 },

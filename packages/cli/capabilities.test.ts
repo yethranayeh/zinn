@@ -32,6 +32,7 @@ test("the emitted contract covers every route and finite result, including itsel
   expect(activityInput.options["show-deleted"]).toMatchObject({ type: "boolean" });
   expect(activityInput.options["project-id"]).toMatchObject({ type: "string", value: { kind: "project-id" } });
   expect(activityInput.options.project).toMatchObject({ type: "string", value: { kind: "project-key" } });
+  expect(activityInput.options.changed).toMatchObject({ type: "string", multiple: true, value: { kind: "activity-change", name: "field=value" } });
   expect(activityInput.constraints).toContainEqual({ kind: "exclusive", members: ["option:project", "option:project-id", "option:task", "option:task-id"] });
   expect(activityInput.constraints).toContainEqual({ kind: "requiresAny", input: "option:show-deleted", members: ["option:project", "option:task"] });
   const validator = capabilityValidator(actual);

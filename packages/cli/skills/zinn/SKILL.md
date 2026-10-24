@@ -7,7 +7,7 @@ description: >-
   it, repository instructions mention it, zinn.local.json exists, or a Zinn task
   key is referenced.
 metadata:
-  zinn-cli-reviewed-version: "0.42.0"
+  zinn-cli-reviewed-version: "0.43.0"
 ---
 
 # Work with a Zinn board

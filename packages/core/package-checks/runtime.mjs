@@ -18,9 +18,20 @@ core.configureDatabase({
 
 const actor = { name: "installed check", email: "check@example.test", kind: "agent" };
 const project = core.project.create({ key: "CORE" }, actor);
-const task = core.task.create({ project_id: project.id, title: "Installed core" }, actor);
+core.label.create({ name: "runtime" }, actor);
+const task = core.task.create({ project_id: project.id, title: "Installed core", priority: "high", labelNames: ["runtime"] }, actor);
 
 assert.equal(core.task.getByKey(task.key).title, "Installed core");
+const created = core.activity.getAll({ taskKey: task.key })[0];
+assert.deepEqual(core.activity.getAll({
+	taskKey: task.key,
+	changed: [{ field: "priority", value: "HIGH" }, { field: "labels", value: "RUNTIME" }],
+	limit: 1,
+}), [created]);
+core.task.edit({ taskKey: task.key, priority: null }, actor);
+const cleared = core.activity.getAll({ taskKey: task.key })[0];
+assert.deepEqual(core.activity.getAll({ taskKey: task.key, changed: [{ field: "priority", value: null }] }), [cleared]);
+assert.deepEqual(core.activity.getAll({ taskKey: task.key, changed: [{ field: "labels", value: "runtime" }] }), [created]);
 
 const second = core.task.create({ project_id: project.id, title: "Second" }, actor);
 const ordered = core.task.orderMany({ taskKeys: [second.key, task.key], direction: "top" }, actor);

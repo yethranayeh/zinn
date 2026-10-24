@@ -4,7 +4,13 @@ import type { CommandInput } from "../input.js";
 
 import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
-import { activity, activityLimitMessage, CoreError, positiveIntegerPattern } from "@zinn-dev/core";
+import {
+  activity,
+  activityChangedFieldSchema,
+  activityLimitMessage,
+  CoreError,
+  positiveIntegerPattern,
+} from "@zinn-dev/core";
 
 import { generateCommandUsage, getOptionInputs, violatesConstraint } from "../input.js";
 import { CliError } from "../errors.js";
@@ -35,6 +41,17 @@ const activityInputs = {
       "show-deleted": { type: "boolean" },
       session: { type: "string", value: { kind: "text", name: "id" } },
       thread: { type: "string", value: { kind: "text", name: "id" } },
+      changed: {
+        type: "string",
+        multiple: true,
+        value: {
+          kind: "activity-change",
+          name: "field=value",
+          pattern: `^(${activityChangedFieldSchema.options.join("|")})=.+$`,
+          description:
+            "Fields: column, priority, labels. Match the recorded new value or added label, ignoring case. priority=none matches an unassigned priority.",
+        },
+      },
       limit: {
         type: "string",
         value: { kind: "positive-integer", name: "n", pattern: `^${positiveIntegerPattern}\\d?$` },
@@ -51,6 +68,9 @@ const activityInputs = {
         input: "option:show-deleted",
         members: ["option:project", "option:task"],
       },
+    ],
+    notes: [
+      "Repeated --changed values for one field match any value. Different fields must match the same event. All other filters must also match, before --limit applies.",
     ],
   },
   view: {
@@ -118,6 +138,7 @@ export const activityRouter = {
           showDeleted: values["show-deleted"],
           sessionId: values.session,
           threadId: values.thread,
+          changed: values.changed?.map(parseChangedFilter),
           limit: values.limit === undefined ? undefined : Number(values.limit),
         });
       } catch (error) {
@@ -172,11 +193,16 @@ Returns all matching events unless --limit is supplied.
                    Requires a full UUID.
 --session <id>     Match an exact session ID, including case.
 --thread <id>      Match an exact thread ID, including case.
+--changed <field=value> Match a recorded new value or added label, ignoring case.
+                   Fields: column, priority, labels. Repeat for multiple matches.
+                   Use priority=none for an unassigned priority.
 --limit <n>        Return at most n matching events.
 
 Use one of --project, --project-id, --task or --task-id.
 --show-deleted requires --project or --task.
-All supplied filters must match.
+Repeated --changed values for one field match any value.
+Different fields must match the same event. All other filters must also match.
+Initial task values also match. Column and label names match as recorded.
 
 Use activity view <activity-id> for complete recorded changes.
 With --json, return an array of full activity records.
@@ -184,6 +210,8 @@ With --json, return an array of full activity records.
 Examples:
   zinn activity list --limit 10
   zinn activity list --project APP
+  zinn activity list --changed column=Review
+  zinn activity list --changed priority=high --changed labels=bug
   zinn activity list --task APP-2
   zinn activity list --task APP-2 --show-deleted`,
   },
@@ -221,3 +249,24 @@ With --json, return one full activity record.
 Example: zinn activity view 019abcdf-1234-7`,
   },
 } satisfies RouteDef;
+
+function parseChangedFilter(input: string) {
+  const separator = input.indexOf("=");
+  if (separator <= 0 || separator === input.length - 1) {
+    quit("Use --changed <field>=<value> with a nonempty field and value", undefined, {
+      argument: "--changed",
+    });
+  }
+
+  const field = activityChangedFieldSchema.safeParse(input.slice(0, separator));
+  if (!field.success) {
+    quit(field.error.issues[0]!.message, undefined, { argument: "--changed" });
+  }
+
+  const value = input.slice(separator + 1);
+  if (field.data === "priority") {
+    return { field: field.data, value: value.toLowerCase() === "none" ? null : value };
+  }
+
+  return { field: field.data, value };
+}

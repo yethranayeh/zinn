@@ -84,6 +84,10 @@ Project selection includes task comments, label attachments, reorders, and origi
 
 Task selection includes original project-deletion events whose snapshots contain the selected task IDs. These events retain their project identity and full payloads. `sessionId` and `threadId` match complete, case-sensitive stored values; all supplied filters must match. `limit` applies after filtering.
 
+`changed` accepts an array of `{ field, value }` filters. The accepted fields are `column`, `priority`, and `labels`. Column and priority match their recorded new values, and labels match a recorded addition. Initial task creation values also match. String values compare case-insensitively, using the names recorded at the time of the event. Use `{ field: "priority", value: null }` to match an unassigned priority on creation or a change that clears it. Column and label values are nonempty strings.
+
+Several values for the same field match any of them. Different fields must all match in the same event. For example, `activity.getAll({ changed: [{ field: "priority", value: "high" }, { field: "labels", value: "bug" }] })` selects events that both set high priority and add bug. Selection and identity filters must also match, and `limit` applies afterwards. The returned records retain their full payloads.
+
 `activity.getTaskIdentities` accepts a task key string or an object containing `taskKey`, `taskId`, and `showDeleted` with the same selection rules. It returns each recoverable task's ID, key, title, and active, archived, or deleted status.
 
 ## Database compatibility

@@ -27,9 +27,28 @@ export const activityActionSchema = z.enum([
   "comment_delete",
 ]);
 export const activityEntityTypeSchema = z.enum(["task", "project", "column", "label"]);
+const changedFieldMessage = "Changed field must be column, priority or labels";
+export const activityChangedFieldSchema = z.enum(["column", "priority", "labels"], {
+  error: changedFieldMessage,
+});
+export const activityChangedSchema = z.discriminatedUnion(
+  "field",
+  [
+    z.strictObject({
+      field: activityChangedFieldSchema.exclude(["priority"]),
+      value: z.string().min(1, "Changed value cannot be empty"),
+    }),
+    z.strictObject({
+      field: z.literal("priority"),
+      value: z.string().min(1, "Changed value cannot be empty").nullable(),
+    }),
+  ],
+  { error: changedFieldMessage },
+);
 
 export type ActivityAction = z.infer<typeof activityActionSchema>;
 export type ActivityEntityType = z.infer<typeof activityEntityTypeSchema>;
+export type ActivityChangedField = z.infer<typeof activityChangedFieldSchema>;
 
 export const activityTaskKeySchema = z
   .string()
@@ -90,6 +109,7 @@ export const activityListSchema = z
     showDeleted: z.boolean().optional(),
     sessionId: z.string().min(1, "Session ID cannot be empty").optional(),
     threadId: z.string().min(1, "Thread ID cannot be empty").optional(),
+    changed: z.array(activityChangedSchema).optional(),
     limit: z
       .number({ error: activityLimitMessage })
       .int(activityLimitMessage)

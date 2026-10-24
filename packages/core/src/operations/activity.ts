@@ -1,9 +1,10 @@
 import { CoreError } from "../errors.js";
-import type { ActivityListInput } from "../schemas/activity.js";
+import type { ActivityChangedField, ActivityListInput } from "../schemas/activity.js";
+import type { Activity } from "../types.js";
 
 import { activityIdSchema, activityListSchema } from "../schemas/activity.js";
 import { validateTaskInput } from "../schemas/task.js";
-import { standardizeProjectKey } from "../lib.js";
+import { standardizeName, standardizeProjectKey } from "../lib.js";
 import { attachTaskKey, findTaskByExactKey } from "./shared.js";
 import * as dbActivity from "../db/activity.js";
 import * as dbTask from "../db/task.js";
@@ -195,6 +196,79 @@ function resolveTaskHistory({ taskKey, taskId, showDeleted }: ActivityTaskSelect
   return { identities: [...identities.values()], projectDeletionIds };
 }
 
+type RecordedValues = Partial<Record<ActivityChangedField, Array<string | null>>>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** The new value in a `[before, after]` change. */
+function getRecordedNewValue(value: unknown): unknown {
+  if (!Array.isArray(value) || value.length !== 2) {
+    return undefined;
+  }
+
+  return value[1];
+}
+
+function getRecordedColumnNames(value: unknown): Array<string> {
+  if (!isRecord(value) || typeof value.name !== "string") {
+    return [];
+  }
+
+  return [value.name];
+}
+
+function getRecordedPriorities(value: unknown): Array<string | null> {
+  if (value !== null && typeof value !== "string") {
+    return [];
+  }
+
+  return [value];
+}
+
+function getRecordedLabelNames(value: unknown): Array<string> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((name): name is string => typeof name === "string");
+}
+
+function getAddedLabelNames(value: unknown): Array<string> {
+  if (!isRecord(value)) {
+    return [];
+  }
+
+  return getRecordedLabelNames(value.added);
+}
+
+/** The values a task event records as the new value of each filterable field. */
+function getRecordedValues(event: Activity): RecordedValues {
+  if (event.entity_type !== "task") {
+    return {};
+  }
+
+  const changes = event.changes;
+  switch (event.action) {
+    case "create":
+      return {
+        column: getRecordedColumnNames(changes?.column),
+        priority: getRecordedPriorities(changes?.priority),
+        labels: getRecordedLabelNames(changes?.labels),
+      };
+    case "move":
+      return { column: getRecordedColumnNames(getRecordedNewValue(changes?.column)) };
+    case "edit":
+      return {
+        priority: getRecordedPriorities(getRecordedNewValue(changes?.priority)),
+        labels: getAddedLabelNames(changes?.labels),
+      };
+    default:
+      return {};
+  }
+}
+
 export const activity = {
   getAll: (input: ActivityListInput = {}) => {
     const props = validateTaskInput(activityListSchema, input);
@@ -212,6 +286,14 @@ export const activity = {
       );
     }
 
+    const changedValues = new Map<ActivityChangedField, Set<string | null>>();
+    for (const { field, value } of props.changed ?? []) {
+      const values = changedValues.get(field) ?? new Set<string | null>();
+      values.add(value === null ? null : standardizeName(value));
+      changedValues.set(field, values);
+    }
+    const changedFields = [...changedValues];
+
     const matchingEvents = events.filter((event) => {
       const matchesSession =
         props.sessionId === undefined || event.actor_session_id === props.sessionId;
@@ -219,7 +301,14 @@ export const activity = {
       const matchesThread =
         props.threadId === undefined || event.actor_thread_id === props.threadId;
 
-      return matchesSession && matchesThread;
+      const recordedValues = getRecordedValues(event);
+      const matchesChanges = changedFields.every(([field, values]) =>
+        (recordedValues[field] ?? []).some((value) =>
+          values.has(value === null ? null : standardizeName(value)),
+        ),
+      );
+
+      return matchesSession && matchesThread && matchesChanges;
     });
 
     return props.limit === undefined ? matchingEvents : matchingEvents.slice(0, props.limit);

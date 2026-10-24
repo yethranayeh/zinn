@@ -44,7 +44,7 @@ export type {
   CommentEditInput,
 } from "./src/schemas/comment.js";
 export type { TextEdit } from "./src/schemas/text-edit.js";
-export type { ActivityListInput } from "./src/schemas/activity.js";
+export type { ActivityChangedField, ActivityListInput } from "./src/schemas/activity.js";
 export type { ActivityTaskIdentity } from "./src/operations/activity.js";
 export type { BackupCreateInput, BackupRestoreInput } from "./src/operations/backup.js";
 export type { MigrateResult } from "./src/migrations/migrate.js";
@@ -96,6 +96,8 @@ export { actorSchema, actorKindSchema } from "./src/schemas/actor.js";
 export {
   activityActionSchema,
   activityEntityTypeSchema,
+  activityChangedFieldSchema,
+  activityChangedSchema,
   activityIdSchema,
   activityListSchema,
   activityTaskKeySchema,
