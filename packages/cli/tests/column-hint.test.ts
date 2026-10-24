@@ -1,3 +1,5 @@
+import type { ErrorCode } from "../src/errors";
+
 import { expect, test } from "bun:test";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -43,7 +45,7 @@ async function runSuggestion(command: string, directory: string) {
 }
 
 test("split-column hints cover six commands, retain error facts and execute only when entered", async () => {
-  const cases = [
+  const cases: Array<{ args: string[]; code: ErrorCode; correctedExit: number }> = [
     { args: ["project", "column", "new", "SHOP", "In", "Progress"], code: "invalid_input", correctedExit: 1 },
     { args: ["project", "column", "edit", "SHOP", "In", "Progress", "--name", "Working"], code: "invalid_input", correctedExit: 0 },
     { args: ["project", "column", "order", "SHOP", "In", "Progress", "first"], code: "invalid_input", correctedExit: 0 },
@@ -183,14 +185,56 @@ test("unmatched or unrelated column failures keep their original error and chang
   });
 });
 
-test("column order suppresses ambiguous groupings and bulk move can diagnose a mistaken task-key fragment", async () => {
+test("column order hints preserve a recognized direction rather than absorb it into a name", async () => {
+  for (const json of [false, true]) {
+    await withIsolatedZinnDir(async directory => {
+      await seed(directory);
+      for (const name of ["A after B", "C"]) {
+        expect((await runZinn(["project", "column", "create", "SHOP", name], directory)).code).toBe(0);
+      }
+      const args = ["project", "column", "order", "SHOP", "A", "after", "B", "before", "C"];
+      const input = json ? [...args, "--json"] : args;
+      const before = snapshot(directory);
+      const rejected = await runZinn(input, directory);
+      expect(rejected.code).toBe(1);
+      expect(rejected.stdout).toBe("");
+      if (json) {
+        const failure = errorDocumentSchema.parse(JSON.parse(rejected.stderr)).error;
+        expect(failure).toMatchObject({ code: "invalid_input", details: { field: [] } });
+        expect(failure.help).toContain("Usage: zinn project column order");
+        expect(failure.message).not.toContain("zinn ");
+      } else {
+        expect(rejected.stderr.split("\n\n")[0]).not.toContain("zinn ");
+        expect(rejected.stderr).toContain("Usage: zinn project column order");
+      }
+      expect(snapshot(directory)).toEqual(before);
+
+      for (const name of ["A", "B before C"]) {
+        expect((await runZinn(["project", "column", "create", "SHOP", name], directory)).code).toBe(0);
+      }
+      const beforeHint = snapshot(directory);
+      const result = await runZinn(input, directory);
+      expect(result.code).toBe(1);
+      const command = suggestion(result.stderr, json);
+      expect(command).toContain("SHOP A after 'B before C'");
+      expect(snapshot(directory)).toEqual(beforeHint);
+      expect((await runSuggestion(command, directory)).code).toBe(0);
+      const orderedNames = withTestDb(directory, db => db.query<{ name: string }, []>(
+        "SELECT name FROM project_column WHERE project_id = (SELECT id FROM project WHERE key = 'SHOP') ORDER BY column_order",
+      ).all().map(entry => entry.name));
+      expect(orderedNames.indexOf("A")).toBe(orderedNames.indexOf("B before C") + 1);
+    });
+  }
+});
+
+test("column order suppresses ambiguous split-source groupings and bulk move can diagnose a mistaken task-key fragment", async () => {
   await withIsolatedZinnDir(async directory => {
     await seed(directory);
-    for (const name of ["A", "B before C", "A after B", "C", "Progress"]) {
+    for (const name of ["A B", "C before D", "A B after C", "D", "Progress"]) {
       expect((await runZinn(["project", "column", "create", "SHOP", name], directory)).code).toBe(0);
     }
     const before = snapshot(directory);
-    const ambiguous = await runZinn(["project", "column", "order", "SHOP", "A", "after", "B", "before", "C", "--json"], directory);
+    const ambiguous = await runZinn(["project", "column", "order", "SHOP", "A", "B", "after", "C", "before", "D", "--json"], directory);
     expect(ambiguous.code).toBe(1);
     expect(JSON.parse(ambiguous.stderr).error.message).not.toContain("zinn ");
     expect(snapshot(directory)).toEqual(before);

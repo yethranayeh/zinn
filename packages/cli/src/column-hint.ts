@@ -237,8 +237,25 @@ export function quotedColumnHint(
       }
     } else if (route.command === "project column order") {
       const projectKey = words[0]!.value;
+      const directionPosition = route.input.forms[0]!.positionals.findIndex(
+        (input) => input.name === "direction",
+      );
+      const originalDirection = words[directionPosition]?.value;
+      const hasRecognizedDirection = route.input.forms.some((form) =>
+        form.positionals[directionPosition]!.value.choices!.includes(originalDirection ?? ""),
+      );
 
-      for (let directionIndex = 2; directionIndex < words.length; directionIndex++) {
+      for (
+        let directionIndex = directionPosition;
+        directionIndex < words.length;
+        directionIndex++
+      ) {
+        const replacesRecognizedDirection =
+          hasRecognizedDirection && directionIndex !== directionPosition;
+        if (replacesRecognizedDirection) {
+          continue;
+        }
+
         const direction = words[directionIndex]!.value;
         const form = route.input.forms.find((candidate) =>
           candidate.positionals
