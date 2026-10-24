@@ -605,16 +605,20 @@ Example: zinn project column edit MDR 'In Progress' --name Refining`,
         const columnName = positionals[1]!;
         let orderedColumn: ReturnType<typeof column.order>;
         if (form.id === "relative") {
-          const direction =
-            positionals[2] as (typeof form)["positionals"][2]["value"]["choices"][number];
           orderedColumn = column.order(
-            { projectKey, columnName, direction, targetColumnName: positionals[3]! },
+            {
+              projectKey,
+              columnName,
+              direction: form.direction,
+              targetColumnName: positionals[form.directionIndex + 1]!,
+            },
             currentActor(),
           );
         } else {
-          const direction =
-            positionals[2] as (typeof form)["positionals"][2]["value"]["choices"][number];
-          orderedColumn = column.order({ projectKey, columnName, direction }, currentActor());
+          orderedColumn = column.order(
+            { projectKey, columnName, direction: form.direction },
+            currentActor(),
+          );
         }
 
         outputChanges(

@@ -738,23 +738,20 @@ Example: zinn task move MDR-1 MDR-2 'In Progress'`,
         strict: true,
       });
       const form = validateOrderForms(positionals, taskInputs.order.forms);
-      const directionIndex = positionals.length - (form.id === "relative" ? 2 : 1);
-      const taskKeys = positionals.slice(0, directionIndex);
+      const taskKeys = positionals.slice(0, form.directionIndex);
       let orders: ReturnType<typeof task.orderMany>;
 
       if (form.id === "relative") {
-        const direction = positionals[
-          directionIndex
-        ] as (typeof form)["positionals"][1]["value"]["choices"][number];
         orders = task.orderMany(
-          { taskKeys, direction, targetTaskKey: positionals[directionIndex + 1]! },
+          {
+            taskKeys,
+            direction: form.direction,
+            targetTaskKey: positionals[form.directionIndex + 1]!,
+          },
           currentActor(),
         );
       } else {
-        const direction = positionals[
-          directionIndex
-        ] as (typeof form)["positionals"][1]["value"]["choices"][number];
-        orders = task.orderMany({ taskKeys, direction }, currentActor());
+        orders = task.orderMany({ taskKeys, direction: form.direction }, currentActor());
       }
       outputChanges(
         orders,

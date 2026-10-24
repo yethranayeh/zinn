@@ -298,11 +298,31 @@ export function validateUniqueOptions(tokens: ParsedTokens, options: InputOption
   }
 }
 
+/** The choices a positional accepts; positionals without choices contribute never. */
+type PositionalChoices<Positional> = Positional extends {
+  value: { choices: readonly (infer Choice)[] };
+}
+  ? Choice
+  : never;
+
+/** The direction words a form's direction positional accepts. */
+type OrderDirection<Form extends InputForm> = PositionalChoices<
+  Extract<Form["positionals"][number], { name: "direction" }>
+>;
+
+/**
+ * A selected form with the direction word and the positional index it was read from.
+ * Distributes over the form union, so each form keeps its own direction choices.
+ */
+type SelectedOrderForm<Form extends InputForm> = Form extends unknown
+  ? Form & { direction: OrderDirection<Form>; directionIndex: number }
+  : never;
+
 /** Selects an order form after checking its required leading words. */
 export function validateOrderForms<Form extends InputForm>(
   positionals: string[],
   forms: readonly Form[],
-): Form {
+): SelectedOrderForm<Form> {
   const firstForm = forms[0]!;
   const directionPosition = firstForm.positionals.findIndex(({ name }) => name === "direction");
   const leadingPositionals = firstForm.positionals.slice(0, directionPosition + 1);
@@ -343,7 +363,8 @@ export function validateOrderForms<Form extends InputForm>(
   );
   validatePositionals(positionals, { ...form, positionals: expandedPositionals });
 
-  return form;
+  // The direction is one of the matched form's choices, checked above.
+  return { ...form, direction, directionIndex } as SelectedOrderForm<Form>;
 }
 
 export function requireStringOption(
