@@ -310,12 +310,19 @@ Examples:
       );
 
       if (!canDelete) {
-        output(presentLabel(labelMatch), (l) => `Deletion cancelled for label "${l.name}"`);
+        output(
+          presentLabel(labelMatch),
+          (entry) =>
+            `Deletion cancelled for ${formatLabelList([entry], { showsDescriptionPreview: true })}`,
+        );
         return;
       }
 
       const deleted = label.delete(props, currentActor());
-      output(presentLabel(deleted), (l) => `Deleted label "${l.name}"`);
+      output(
+        presentLabel(deleted),
+        (entry) => `Deleted ${formatLabelList([entry], { showsDescriptionPreview: true })}`,
+      );
     },
     help: `${generateCommandUsage("label delete", labelInputs.delete)}
 

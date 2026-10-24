@@ -5178,6 +5178,49 @@ test.serial("task text output names labels without color words when color is off
   });
 });
 
+test.serial("label deletion and cancellation print the label preview on stdout with color on and off", async () => {
+  for (const forceColor of ["0", "1"]) {
+    await withIsolatedZinnDir(async (dir) => {
+      const colorEnv = { FORCE_COLOR: forceColor };
+      const created = await runZinn(
+        ["label", "create", "bug", "--color", "red", "--description", "First line\nFull description"],
+        dir,
+        colorEnv,
+      );
+      expect(created.code).toBe(0);
+      const row = created.stdout.trimEnd();
+      expect(row).toContain("bug");
+      expect(row).toContain("First line…");
+      expect(row).not.toContain("Full description");
+      if (forceColor === "0") {
+        expect(row).toContain("red");
+        expect(row).not.toContain("\x1b");
+      } else {
+        expect(row).toContain("\x1b[31mbug\x1b[39m");
+        expect(row).not.toContain("red");
+      }
+
+      const stderrPath = join(dir, "prompt.stderr");
+      const cancelled = await runCliInTerminal(["label", "delete", "bug"], {
+        env: { ...TEST_ENVIRONMENT, ...colorEnv, ZINN_DIR: dir },
+        cwd: dir,
+        input: "n\n",
+        stderrPath,
+      });
+      expect(cancelled.code).toBe(0);
+      expect(cancelled.output).toContain(row);
+      expect(readFileSync(stderrPath, "utf8")).not.toContain("First line");
+      expect((await runZinn(["label", "list"], dir, colorEnv)).stdout.trimEnd()).toBe(row);
+
+      const deleted = await runZinn(["label", "delete", "bug", "--yes"], dir, colorEnv);
+      expect(deleted.code).toBe(0);
+      expect(deleted.stdout).toContain(row);
+      expect(deleted.stderr).toBe("");
+      expect((await runZinn(["label", "list", "--json"], dir)).stdout.trim()).toBe("[]");
+    });
+  }
+});
+
 test.serial("label deletion confirms global removal and cancellation preserves attachments and timestamps", async () => {
   await withIsolatedZinnDir(async (dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
