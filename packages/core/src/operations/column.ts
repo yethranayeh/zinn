@@ -1,4 +1,9 @@
-import type { ColumnCreateInput, ColumnEditInput, ColumnOrderInput } from "../schemas/column.js";
+import type {
+  ColumnCreateInput,
+  ColumnEditInput,
+  ColumnOrderInput,
+  ColumnInspectionInput,
+} from "../schemas/column.js";
 import type { Actor } from "../schemas/actor.js";
 import type { ColumnChange } from "../types.js";
 import type { OrderPlacement } from "./shared.js";
@@ -13,10 +18,17 @@ import * as dbTask from "../db/task.js";
 
 import { CoreError } from "../errors.js";
 import { standardizeProjectKey } from "../lib.js";
-import { columnCreateSchema, columnEditSchema, columnOrderSchema } from "../schemas/column.js";
-import { actorSchema } from "../schemas/actor.js";
-import { validateTaskInput } from "../schemas/task.js";
+import { getStorage } from "../storage.js";
+import { classifyConnection, withDatabaseInspection } from "../migrations/classify.js";
 import { findByName, getInsertionIndex, recordActivity, requireColumnByName } from "./shared.js";
+import {
+  columnCreateSchema,
+  columnEditSchema,
+  columnOrderSchema,
+  columnInspectionSchema,
+} from "../schemas/column.js";
+import { actorSchema } from "../schemas/actor.js";
+import { parseTaskKey, validateTaskInput } from "../schemas/task.js";
 
 function requireProjectColumns(projectKey: string) {
   const project = dbProject.getByKey(projectKey);
@@ -33,6 +45,33 @@ function requireProjectColumns(projectKey: string) {
 }
 
 export const column = {
+  /** Inspects existing column names and task identities without initializing or upgrading storage. */
+  inspect: (input: ColumnInspectionInput = {}) => {
+    const props = validateTaskInput(columnInspectionSchema, input);
+    return withDatabaseInspection(getStorage().databasePath, (db) => {
+      const classification = classifyConnection(db);
+      const refusesLegacy = classification.state === "unmarked" && !props.allowsLegacyRead;
+      if (classification.state === "empty" || refusesLegacy) {
+        return null;
+      }
+      const requestedTasks = props.taskKeys.flatMap((key) => {
+        const parsed = parseTaskKey(key);
+        return parsed === null
+          ? []
+          : [{ ...parsed, projectKey: standardizeProjectKey(parsed.projectKey) }];
+      });
+      const facts = dbColumn.inspectContext(db, requestedTasks);
+      return {
+        projects: facts.projects.map(({ id, key }) => ({
+          key,
+          columns: facts.columns
+            .filter((entry) => entry.project_id === id)
+            .map((entry) => entry.name),
+        })),
+        taskKeys: facts.tasks.map((entry) => `${entry.project_key}-${entry.number}`),
+      };
+    });
+  },
   getById: dbColumn.getById,
   getAllByProjectKey: (key: string) => requireProjectColumns(key).projectColumns,
   getTaskCountsByProjectKey: (key: string) => {

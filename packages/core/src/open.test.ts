@@ -612,7 +612,7 @@ function operationsWalk() {
 
   const reads: Record<string, Record<string, () => unknown>> = {
     project: { getById: () => project.getById("p1"), getByKey: () => project.getByKey("APP"), getAll: () => project.getAll(), standardizeKey: () => project.standardizeKey("app") },
-    column: { getById: () => column.getById("c1"), getAllByProjectKey: () => column.getAllByProjectKey("APP"), getTaskCountsByProjectKey: () => column.getTaskCountsByProjectKey("APP") },
+    column: { inspect: () => column.inspect({ taskKeys: ["APP-1"] }), getById: () => column.getById("c1"), getAllByProjectKey: () => column.getAllByProjectKey("APP"), getTaskCountsByProjectKey: () => column.getTaskCountsByProjectKey("APP") },
     task: { getAll: () => task.getAll({}), getByKey: () => task.getByKey("APP-1"), search: () => task.search({ query: "First" }), activity: () => task.activity("APP-1") },
     "task.label": { getAll: () => task.label.getAll("APP-1") },
     comment: { getByKey: () => comment.getByKey("APP-1#1"), getAll: () => comment.getAll("APP-1") },

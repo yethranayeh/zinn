@@ -31,3 +31,9 @@ export const columnOrderSchema = z.discriminatedUnion("direction", [
 export type ColumnCreateInput = z.infer<typeof columnCreateSchema>;
 export type ColumnEditInput = z.infer<typeof columnEditSchema>;
 export type ColumnOrderInput = z.infer<typeof columnOrderSchema>;
+
+export const columnInspectionSchema = z.strictObject({
+  taskKeys: z.array(z.string()).default([]),
+  allowsLegacyRead: z.boolean().default(false),
+});
+export type ColumnInspectionInput = z.input<typeof columnInspectionSchema>;

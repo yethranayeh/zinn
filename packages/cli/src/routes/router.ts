@@ -5,6 +5,7 @@ import { parseArgs } from "node:util";
 import { routerOptions, helpSpellings, versionSpellings, usageLabel } from "../input.js";
 import { getCommandAliases } from "./aliases.js";
 import { classifyFailure, CliError } from "../errors.js";
+import { quotedColumnHint } from "../column-hint.js";
 
 import {
   dashValueHelp,
@@ -258,6 +259,20 @@ async function route(
   } catch (err: any) {
     if (err instanceof UsageError) {
       err.help = getUsage(match.help);
+    }
+
+    const columnHint = quotedColumnHint(err, match, rawArgs, nestingLevel);
+    if (columnHint !== undefined) {
+      const failure = classifyFailure(err);
+      throw new CliError(
+        `${failureMessage(err, "Command failed")}. Did you mean: ${columnHint}`,
+        failure.code,
+        failure.details,
+        failure.help ?? getUsage(match.help),
+      );
+    }
+
+    if (err instanceof UsageError) {
       throw err;
     }
 

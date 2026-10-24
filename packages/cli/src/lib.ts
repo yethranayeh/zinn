@@ -405,7 +405,7 @@ const UNKNOWN_LONG_OPTION_PATTERN = /^Unknown option '(--[^']+)'/;
 const SHORT_OPTION_WORD_PATTERN = /^-[^-]/;
 
 /** A command line to show, with each word quoted for the shell as needed. */
-function formatCommand(args: Array<string>) {
+export function formatCommand(args: Array<string>) {
   return ["zinn", ...args].map(shellQuote).join(" ");
 }
 

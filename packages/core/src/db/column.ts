@@ -1,7 +1,41 @@
 import type { Bind, Column } from "../types.js";
+import type { Database } from "../sqlite/database.js";
 
 import { DB_TABLE } from "../constant.js";
 import { getDb } from "../db.js";
+
+type ExistingTask = { project_key: string; number: number };
+
+/** Reads column context through an inspection connection rather than the normal database opener. */
+export function inspectContext(
+  db: Database,
+  tasks: Array<{ projectKey: string; taskNumber: number }>,
+) {
+  const projects = db
+    .query<{ id: string; key: string }>("SELECT id, key FROM project ORDER BY key")
+    .all();
+  const columns = db
+    .query<Pick<Column, "project_id" | "name">>(
+      "SELECT project_id, name FROM project_column ORDER BY column_order",
+    )
+    .all();
+  const existingTasks: Array<ExistingTask> = [];
+
+  if (tasks.length > 0) {
+    const taskQuery = db.query<ExistingTask>(
+      `SELECT project.key AS project_key, task.number FROM task
+       JOIN project ON project.id = task.project_id
+       WHERE project.key = ? AND task.number = ?`,
+    );
+    for (const { projectKey, taskNumber } of tasks) {
+      const found = taskQuery.get(projectKey, taskNumber);
+      if (found !== null) {
+        existingTasks.push(found);
+      }
+    }
+  }
+  return { projects, columns, tasks: existingTasks };
+}
 
 export function getById(id: string) {
   const db = getDb();

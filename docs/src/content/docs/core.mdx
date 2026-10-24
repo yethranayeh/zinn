@@ -86,6 +86,8 @@ Task selection includes original project-deletion events whose snapshots contain
 
 ## Database compatibility
 
+`column.inspect({ taskKeys, allowsLegacyRead })` reads existing project column names and requested task identities without creating or upgrading storage. Both are optional. It returns `{ projects: [{ key, columns }], taskKeys }`. Note that task keys that do not identify an existing task are omitted. Empty databases and unacknowledged databases without a schema version return `null` and unavailable storage raises an error.
+
 Opening a database can upgrade it, even for a read operation. Upgrades save a backup first and apply completely or not at all. Upgrades and restores check that foreign keys reference existing tables and rows before committing.
 
 - Older databases upgrade automatically when both the core package and client are published releases, or when `ZINN_DIR` explicitly selects a separate database. Source clients otherwise open older databases read-only until an explicit `migrate.run`.

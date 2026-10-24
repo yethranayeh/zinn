@@ -1,5 +1,10 @@
 export type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project.js";
-export type { ColumnCreateInput, ColumnEditInput, ColumnOrderInput } from "./src/schemas/column.js";
+export type {
+  ColumnCreateInput,
+  ColumnEditInput,
+  ColumnOrderInput,
+  ColumnInspectionInput,
+} from "./src/schemas/column.js";
 export type {
   TaskCreateInput,
   TaskEditInput,
@@ -61,7 +66,12 @@ export {
   taskLabelSchema,
 } from "./src/schemas/label.js";
 export { projectCreateSchema, projectEditSchema } from "./src/schemas/project.js";
-export { columnCreateSchema, columnEditSchema, columnOrderSchema } from "./src/schemas/column.js";
+export {
+  columnCreateSchema,
+  columnEditSchema,
+  columnOrderSchema,
+  columnInspectionSchema,
+} from "./src/schemas/column.js";
 export {
   taskCreateSchema,
   taskPrioritySchema,
