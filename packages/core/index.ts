@@ -10,6 +10,7 @@ export type {
   TaskEditInput,
   TaskListInput,
   TaskSearchInput,
+  TaskOrderManyInput,
 } from "./src/schemas/task.js";
 export type {
   TaskWithKey,
@@ -78,6 +79,7 @@ export {
   taskEditSchema,
   taskListSchema,
   taskSearchSchema,
+  taskOrderManySchema,
   positiveIntegerPattern,
   searchLimitMessage,
   parseTaskKey,

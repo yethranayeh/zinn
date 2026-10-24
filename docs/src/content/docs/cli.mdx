@@ -111,11 +111,11 @@ A help flag is the _exception_: the first one shows help and the rest of the lin
 
 ## Changing tasks in bulk
 
-`task move`, `task archive` and `task unarchive` accept multiple task keys, so several tasks can be changed in one command:
+`task move`, `task order`, `task archive` and `task unarchive` accept multiple task keys, so several tasks can be changed in one command:
 
 - Tasks are changed in the order given.
 - If any task fails, for example because of an unknown key, none change.
-- A task already in the requested state is unchanged, with a note on stderr. This includes a key given twice: by its second occurrence, the task is already in the requested state.
+- A task already in the requested state is unchanged, with a note on stderr. Move, archive and unarchive also accept a repeated key. However, ordering requires distinct keys.
 - With `--json`, one task prints an object and several print an array. Each task has a `changed` field, which is `false` when the task was already in the requested state.
 
 ## Start a project
@@ -410,9 +410,12 @@ zinn task order MDR-2 down
 zinn task order MDR-2 bottom
 zinn task order MDR-2 before MDR-1
 zinn task order MDR-2 after MDR-1
+zinn task order MDR-2 MDR-3 top
 ```
 
 The task being reordered and the target of `before` or `after` must be active tasks in the same column.
+
+For several tasks, ordering is the same as ordering the first task as requested, then each next task after the one before it. Tasks form a block in the given order. Each step that already satisfies its placement leaves that task unchanged and records no activity and other tasks retain their relative order. All source tasks must be distinct active tasks in the same project and column, and the target cannot be among them. `up` and `down` take one task.
 
 ## Archive and delete tasks
 

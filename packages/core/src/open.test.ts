@@ -636,6 +636,7 @@ function operationsWalk() {
       move: () => task.move({ taskKey: "APP-1", targetColumn: "Done" }, actor),
       moveMany: () => task.moveMany({ taskKeys: ["APP-1"], targetColumn: "Done" }, actor),
       order: () => task.order({ taskKey: "APP-1", direction: "bottom" }, actor),
+      orderMany: () => task.orderMany({ taskKeys: ["APP-1", "APP-2"], direction: "top" }, actor),
       delete: () => task.delete("APP-1", actor),
       archive: () => task.archive("APP-1", actor),
       archiveMany: () => task.archiveMany(["APP-1"], actor),
@@ -708,7 +709,7 @@ function operationsWalk() {
   return { unlisted, outcomes, readErrors, rawWrite };
 
 }
-const MUTATION_COUNT = 26;
+const MUTATION_COUNT = 27;
 
 test("every core mutation is refused before any SQL runs on a read-only database, while every read works", () => {
   withHome((home) => {

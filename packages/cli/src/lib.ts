@@ -304,11 +304,20 @@ export function validateOrderForms<Form extends InputForm>(
   forms: readonly Form[],
 ): Form {
   const firstForm = forms[0]!;
-  const directionIndex = firstForm.positionals.findIndex(({ name }) => name === "direction");
-  const leadingPositionals = firstForm.positionals.slice(0, directionIndex + 1);
-  const directions = forms.flatMap((form) => form.positionals[directionIndex]!.value.choices!);
-  leadingPositionals[directionIndex] = {
-    ...leadingPositionals[directionIndex]!,
+  const directionPosition = firstForm.positionals.findIndex(({ name }) => name === "direction");
+  const leadingPositionals = firstForm.positionals.slice(0, directionPosition + 1);
+  const directions = forms.flatMap((form) => form.positionals[directionPosition]!.value.choices!);
+  const hasRepeatingSources = leadingPositionals.some((input) => input.max === null);
+  const recognizedDirectionIndex = positionals.findIndex(
+    (word, index) => index >= directionPosition && directions.includes(word),
+  );
+  const directionIndex =
+    hasRepeatingSources && recognizedDirectionIndex !== -1
+      ? recognizedDirectionIndex
+      : directionPosition;
+
+  leadingPositionals[directionPosition] = {
+    ...leadingPositionals[directionPosition]!,
     value: { kind: "enum", choices: directions },
   };
 
@@ -319,14 +328,20 @@ export function validateOrderForms<Form extends InputForm>(
 
   const direction = positionals[directionIndex]!;
   const form = forms.find((candidate) =>
-    candidate.positionals[directionIndex]!.value.choices!.includes(direction),
+    candidate.positionals[directionPosition]!.value.choices!.includes(direction),
   );
 
   if (form === undefined) {
     throw new UsageError(`Unknown order direction "${direction}"`, { argument: "direction" });
   }
 
-  validatePositionals(positionals, form);
+  const sourceCount = directionIndex - directionPosition + 1;
+  const expandedPositionals = form.positionals.flatMap((input) =>
+    input.max === null
+      ? Array.from({ length: sourceCount }, () => ({ ...input, max: 1 as const }))
+      : [input],
+  );
+  validatePositionals(positionals, { ...form, positionals: expandedPositionals });
 
   return form;
 }

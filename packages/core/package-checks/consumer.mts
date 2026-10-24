@@ -1,5 +1,12 @@
 // Typechecked as an outside consumer of the published declarations. It is never run.
-import type { FailureFacts, Activity, Actor, TaskWithKey } from "@zinn-dev/core";
+import type {
+  FailureFacts,
+  Activity,
+  Actor,
+  TaskWithKey,
+  TaskChange,
+  TaskOrderManyInput,
+} from "@zinn-dev/core";
 import {
   activity,
   project,
@@ -24,6 +31,10 @@ const createdTask: TaskWithKey = task.create(
   actor,
 );
 const key: string = createdTask.key;
+const placement: TaskOrderManyInput = { taskKeys: [key], direction: "top" };
+const ordered: TaskChange[] = task.orderMany(placement, actor);
+// @ts-expect-error relative task ordering requires a target.
+task.orderMany({ taskKeys: [key], direction: "before" }, actor);
 const failureFacts: FailureFacts = { entity: "task", key };
 const failure: Error = new CoreError("Missing task", "missing", failureFacts);
 const validation: Error = new InputValidationError([

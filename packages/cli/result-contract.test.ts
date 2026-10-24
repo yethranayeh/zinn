@@ -9,6 +9,7 @@ import { Database } from "bun:sqlite";
 import { runCli, runCliInTerminal } from "./testing";
 import { parseRoutes } from "./src/routes/router";
 import { routes } from "./src/routes/routes";
+import { validateOrderForms } from "./src/lib";
 import { generateResultSchemas, type ResultSchemaName } from "./src/result-schemas";
 import type { ParsedRoute } from "./src/types";
 import { createBaseline } from "../core/src/migrations/baseline";
@@ -234,6 +235,9 @@ const fixtures: Record<string, Fixture[]> = {
   "task order": [
     { schema: "TaskChange", args: ["APP-1", "top"], check: (v) => expect(v.changed).toBe(true) },
     { schema: "TaskChange", args: ["APP-1", "bottom"], check: (v) => expect(v.changed).toBe(false) },
+    { schema: "TaskChange", args: ["APP-1", "before", "APP-2"] },
+    { schema: "TaskChanges", args: ["APP-1", "APP-2", "top"] },
+    { schema: "TaskChanges", args: ["APP-1", "APP-2", "after", "APP-3"], prepare: (dir) => { success(dir, ["task", "create", "APP", "--title", "Third"]); } },
   ],
   "task archive": [
     { schema: "TaskChange", args: ["APP-1"] },
@@ -309,7 +313,8 @@ function selectResult(route: ParsedRoute, args: string[]) {
     if (selector.kind === "booleanOption") {
       return (values[selector.name] === true) === selector.value;
     }
-    const form = route.input.forms[0]!;
+    const hasDirection = route.input.forms[0]!.positionals.some(input => input.name === "direction");
+    const form = hasDirection ? validateOrderForms(positionals, route.input.forms) : route.input.forms[0]!;
     const index = form.positionals.findIndex((positional) => positional.name === selector.name);
     expect(index).toBeGreaterThanOrEqual(0);
     const count = positionals.length - (form.positionals.length - 1);

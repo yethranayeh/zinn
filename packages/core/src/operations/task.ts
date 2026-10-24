@@ -4,6 +4,7 @@ import type {
   TaskEditInput,
   TaskListInput,
   TaskSearchInput,
+  TaskOrderManyInput,
 } from "../schemas/task.js";
 import type { TaskLabelInput } from "../schemas/label.js";
 import type { Actor } from "../schemas/actor.js";
@@ -31,6 +32,7 @@ import {
   taskEditSchema,
   taskListSchema,
   taskSearchSchema,
+  taskOrderManySchema,
 } from "../schemas/task.js";
 import { actorSchema } from "../schemas/actor.js";
 
@@ -124,6 +126,101 @@ const neutralTaskDirections = {
   down: "next",
   bottom: "last",
 } as const;
+
+function orderTask(props: TaskOrderProps, actor: Actor): TaskChange {
+  const { taskKey, direction } = props;
+  const taskMatch = getTaskByKey(taskKey);
+
+  if (taskMatch.archived_at != null) {
+    throw new CoreError(`Archived task "${taskKey}" cannot be reordered`, "conflict", {
+      entity: "task",
+      key: taskMatch.key,
+      reason: "archived",
+    });
+  }
+
+  const allTasks = dbTask.getAllByColumnId(taskMatch.column_id);
+  const taskIndex = allTasks.findIndex((candidate) => candidate.id === taskMatch.id);
+  const otherTasks = allTasks.filter((candidate) => candidate.id !== taskMatch.id);
+  let placement: OrderPlacement;
+
+  switch (direction) {
+    case "top":
+    case "up":
+    case "down":
+    case "bottom":
+      placement = { direction: neutralTaskDirections[direction] };
+      break;
+    case "before":
+    case "after": {
+      const targetTask = getTaskByKey(props.targetTaskKey);
+
+      if (targetTask.id === taskMatch.id) {
+        return { task: taskMatch, changed: false };
+      }
+
+      if (targetTask.project_id !== taskMatch.project_id) {
+        throw new CoreError(
+          `Tasks "${taskKey}" and "${props.targetTaskKey}" must be in the same project`,
+          "conflict",
+          { entity: "task", key: taskMatch.key, reason: "different_project" },
+        );
+      }
+
+      if (targetTask.column_id !== taskMatch.column_id) {
+        throw new CoreError(
+          `Tasks "${taskKey}" and "${props.targetTaskKey}" must be in the same column`,
+          "conflict",
+          { entity: "task", key: taskMatch.key, reason: "different_column" },
+        );
+      }
+
+      if (targetTask.archived_at != null) {
+        throw new CoreError(
+          `Archived task "${props.targetTaskKey}" cannot be an ordering target`,
+          "conflict",
+          { entity: "task", key: targetTask.key, reason: "archived" },
+        );
+      }
+
+      const targetIndex = allTasks.findIndex((candidate) => candidate.id === targetTask.id);
+      placement = { direction, targetIndex };
+      break;
+    }
+  }
+
+  const insertionIndex = getInsertionIndex(allTasks.length, taskIndex, placement);
+
+  if (insertionIndex === taskIndex) {
+    return { task: taskMatch, changed: false };
+  }
+
+  const futurePrevTask = otherTasks[insertionIndex - 1] ?? null;
+  const futureNextTask = otherTasks[insertionIndex] ?? null;
+  const now = Date.now();
+
+  recordTaskActivity(actor, {
+    taskId: taskMatch.id,
+    action: "order",
+    changes: null,
+    createdAt: now,
+  });
+
+  return {
+    task: {
+      ...dbTask.update({
+        id: taskMatch.id,
+        task_order: generateKeyBetween(
+          futurePrevTask?.task_order ?? null,
+          futureNextTask?.task_order ?? null,
+        ),
+        updated_at: now,
+      })!,
+      key: taskMatch.key,
+    },
+    changed: true,
+  };
+}
 
 function moveTask(props: { taskKey: string; targetColumn: string }, actor: Actor): TaskChange {
   const taskMatch = getTaskByKey(props.taskKey);
@@ -498,100 +595,73 @@ export const task = {
   },
   order: (props: TaskOrderProps, actor: Actor): TaskChange => {
     const validActor = validateTaskInput(actorSchema, actor);
-    const { taskKey, direction } = props;
+    return writeTransaction(() => orderTask(props, validActor));
+  },
+  orderMany: (input: TaskOrderManyInput, actor: Actor): Array<TaskChange> => {
+    const props = validateTaskInput(taskOrderManySchema, input);
+    const validActor = validateTaskInput(actorSchema, actor);
 
     return writeTransaction(() => {
-      const taskMatch = getTaskByKey(taskKey);
+      const isBatch = props.taskKeys.length > 1;
+      const isStepDirection = props.direction === "up" || props.direction === "down";
 
-      if (taskMatch.archived_at != null) {
-        throw new CoreError(`Archived task "${taskKey}" cannot be reordered`, "conflict", {
-          entity: "task",
-          key: taskMatch.key,
-          reason: "archived",
+      if (isBatch && isStepDirection) {
+        throw new CoreError("Up and down require exactly one task key", "input", {
+          field: ["direction"],
         });
       }
 
-      const allTasks = dbTask.getAllByColumnId(taskMatch.column_id);
-      const taskIndex = allTasks.findIndex((candidate) => candidate.id === taskMatch.id);
-      const otherTasks = allTasks.filter((candidate) => candidate.id !== taskMatch.id);
-      let placement: OrderPlacement;
+      const tasks = props.taskKeys.map(getTaskByKey);
+      const first = tasks[0]!;
+      const seen = new Set<string>();
 
-      switch (direction) {
-        case "top":
-        case "up":
-        case "down":
-        case "bottom":
-          placement = { direction: neutralTaskDirections[direction] };
-          break;
-        case "before":
-        case "after": {
-          const targetTask = getTaskByKey(props.targetTaskKey);
+      for (const match of tasks) {
+        if (seen.has(match.id)) {
+          throw new CoreError(`Task "${match.key}" is listed more than once`, "input", {
+            entity: "task",
+            key: match.key,
+            field: ["taskKeys"],
+          });
+        }
 
-          if (targetTask.id === taskMatch.id) {
-            return { task: taskMatch, changed: false };
-          }
+        seen.add(match.id);
+        if (match.project_id !== first.project_id) {
+          throw new CoreError("Ordered tasks must be in the same project", "conflict", {
+            entity: "task",
+            key: match.key,
+            reason: "different_project",
+          });
+        }
 
-          if (targetTask.project_id !== taskMatch.project_id) {
-            throw new CoreError(
-              `Tasks "${taskKey}" and "${props.targetTaskKey}" must be in the same project`,
-              "conflict",
-              { entity: "task", key: taskMatch.key, reason: "different_project" },
-            );
-          }
-
-          if (targetTask.column_id !== taskMatch.column_id) {
-            throw new CoreError(
-              `Tasks "${taskKey}" and "${props.targetTaskKey}" must be in the same column`,
-              "conflict",
-              { entity: "task", key: taskMatch.key, reason: "different_column" },
-            );
-          }
-
-          if (targetTask.archived_at != null) {
-            throw new CoreError(
-              `Archived task "${props.targetTaskKey}" cannot be an ordering target`,
-              "conflict",
-              { entity: "task", key: targetTask.key, reason: "archived" },
-            );
-          }
-
-          const targetIndex = allTasks.findIndex((candidate) => candidate.id === targetTask.id);
-          placement = { direction, targetIndex };
-          break;
+        if (match.column_id !== first.column_id) {
+          throw new CoreError("Ordered tasks must be in the same column", "conflict", {
+            entity: "task",
+            key: match.key,
+            reason: "different_column",
+          });
         }
       }
 
-      const insertionIndex = getInsertionIndex(allTasks.length, taskIndex, placement);
+      const targetsListedTask =
+        isBatch &&
+        "targetTaskKey" in props &&
+        tasks.some((match) => match.key === props.targetTaskKey.toUpperCase());
 
-      if (insertionIndex === taskIndex) {
-        return { task: taskMatch, changed: false };
+      if (targetsListedTask) {
+        throw new CoreError("The ordering target cannot be one of the listed tasks", "input", {
+          entity: "task",
+          key: props.targetTaskKey,
+          field: ["targetTaskKey"],
+        });
       }
 
-      const futurePrevTask = otherTasks[insertionIndex - 1] ?? null;
-      const futureNextTask = otherTasks[insertionIndex] ?? null;
-      const now = Date.now();
-
-      recordTaskActivity(validActor, {
-        taskId: taskMatch.id,
-        action: "order",
-        changes: null,
-        createdAt: now,
+      return props.taskKeys.map((taskKey, index) => {
+        const placement: TaskOrderProps =
+          index === 0
+            ? { ...props, taskKey }
+            : { taskKey, direction: "after", targetTaskKey: props.taskKeys[index - 1]! };
+        return orderTask(placement, validActor);
       });
-
-      return {
-        task: {
-          ...dbTask.update({
-            id: taskMatch.id,
-            task_order: generateKeyBetween(
-              futurePrevTask?.task_order ?? null,
-              futureNextTask?.task_order ?? null,
-            ),
-            updated_at: now,
-          })!,
-          key: taskMatch.key,
-        },
-        changed: true,
-      };
     });
   },
   /**

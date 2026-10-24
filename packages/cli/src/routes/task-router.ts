@@ -237,19 +237,26 @@ const taskInputs = {
       {
         id: "absolute",
         positionals: [
-          taskKeyPositional,
+          { ...taskKeyPositional, max: null },
           {
             name: "direction",
             min: 1,
             max: 1,
-            value: { kind: "enum", choices: ["top", "up", "down", "bottom"] },
+            value: { kind: "enum", choices: ["top", "bottom"] },
           },
+        ],
+      },
+      {
+        id: "step",
+        positionals: [
+          taskKeyPositional,
+          { name: "direction", min: 1, max: 1, value: { kind: "enum", choices: ["up", "down"] } },
         ],
       },
       {
         id: "relative",
         positionals: [
-          taskKeyPositional,
+          { ...taskKeyPositional, max: null },
           {
             name: "direction",
             min: 1,
@@ -718,11 +725,11 @@ Example: zinn task move MDR-1 MDR-2 'In Progress'`,
     guessedFlags: { "--status": suggestTaskMove, "--column": suggestTaskMove },
   },
   order: {
-    summary: "Change a task's position within its current column.",
+    summary: "Change task positions within their current column.",
     effects: { domain: "update", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: taskInputs.order,
-    results: [jsonResult("TaskChange")],
+    results: taskChangeResults,
     run: (args) => {
       const { positionals } = parseArgs({
         options: taskInputs.order.options,
@@ -731,22 +738,26 @@ Example: zinn task move MDR-1 MDR-2 'In Progress'`,
         strict: true,
       });
       const form = validateOrderForms(positionals, taskInputs.order.forms);
-      const taskKey = positionals[0]!;
-      let orderedTask: ReturnType<typeof task.order>;
+      const directionIndex = positionals.length - (form.id === "relative" ? 2 : 1);
+      const taskKeys = positionals.slice(0, directionIndex);
+      let orders: ReturnType<typeof task.orderMany>;
+
       if (form.id === "relative") {
-        const direction =
-          positionals[1] as (typeof form)["positionals"][1]["value"]["choices"][number];
-        orderedTask = task.order(
-          { taskKey, direction, targetTaskKey: positionals[2]! },
+        const direction = positionals[
+          directionIndex
+        ] as (typeof form)["positionals"][1]["value"]["choices"][number];
+        orders = task.orderMany(
+          { taskKeys, direction, targetTaskKey: positionals[directionIndex + 1]! },
           currentActor(),
         );
       } else {
-        const direction =
-          positionals[1] as (typeof form)["positionals"][1]["value"]["choices"][number];
-        orderedTask = task.order({ taskKey, direction }, currentActor());
+        const direction = positionals[
+          directionIndex
+        ] as (typeof form)["positionals"][1]["value"]["choices"][number];
+        orders = task.orderMany({ taskKeys, direction }, currentActor());
       }
       outputChanges(
-        [orderedTask],
+        orders,
         (change) => presentTask(change.task),
         formatTaskList,
         (entry) => `${entry.key} was already in that position`,
@@ -754,11 +765,13 @@ Example: zinn task move MDR-1 MDR-2 'In Progress'`,
     },
     help: `${generateCommandUsage("task order", taskInputs.order)}
 
-Change a task's position within its current column.
-Use top or bottom for either end, up or down for one position,
-or before or after to place it relative to another task.
+Change task positions within their current column.
+Order the first task as requested, then each next task after the one before it.
+Use top or bottom for either end, or before or after for placement relative to another task.
+Up and down take one task and move it one position.
+Several tasks must be distinct active tasks in the same project and column. Their target cannot be among them.
 Ordering to the current position, or before or after itself, leaves the task unchanged.
-With --json, changed is false when the task was already in that position.
+With --json, one task prints an object and several an array. Changed is false for an unchanged step.
 
 Example: zinn task order MDR-2 before MDR-1`,
   },

@@ -29,6 +29,18 @@ export const taskTitleSchema = titleTextSchema(
 
 export const taskPrioritySchema = z.enum(["low", "medium", "high", "urgent"]);
 
+export const taskOrderManySchema = z.discriminatedUnion("direction", [
+  z.strictObject({
+    taskKeys: z.array(z.string()).min(1, "At least one task key is required"),
+    direction: z.enum(["top", "up", "down", "bottom"]),
+  }),
+  z.strictObject({
+    taskKeys: z.array(z.string()).min(1, "At least one task key is required"),
+    direction: z.enum(["before", "after"]),
+    targetTaskKey: z.string(),
+  }),
+]);
+
 export const taskCreateSchema = z.strictObject({
   project_id: z.string(),
   title: taskTitleSchema,
@@ -99,6 +111,7 @@ export const taskSearchSchema = z.strictObject({
 });
 
 export type TaskPriority = z.infer<typeof taskPrioritySchema>;
+export type TaskOrderManyInput = z.input<typeof taskOrderManySchema>;
 export type TaskArchiveFilter = z.infer<typeof taskArchiveFilterSchema>;
 export type TaskCreateInput = z.input<typeof taskCreateSchema>;
 export type TaskEditInput = z.infer<typeof taskEditSchema>;
