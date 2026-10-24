@@ -621,7 +621,7 @@ test("descriptions normalize before persistence and activity across projects, ta
         {
           type: "project",
           create: (description, index) => project.create({ key: "DESC" + index, description }, human),
-          edit: (entity, changes) => project.edit({ projectKey: entity.key!, ...changes }, human),
+          edit: (entity, changes) => project.edit({ projectKey: entity.key!, ...changes }, human).project,
           rename: { name: "Renamed" },
         },
         {
@@ -633,7 +633,7 @@ test("descriptions normalize before persistence and activity across projects, ta
         {
           type: "label",
           create: (description, index) => label.create({ name: "label-" + index, description }, human),
-          edit: (entity, changes) => label.edit({ labelName: entity.name!, ...changes }, human),
+          edit: (entity, changes) => label.edit({ labelName: entity.name!, ...changes }, human).label,
           rename: { color: "red" },
         },
       ];
@@ -745,6 +745,62 @@ test("each task mutation records one row with its actor and changes", () => {
     task.archive("APP-1", human);
     task.unarchive("APP-1", human);
     assert.deepEqual(actions("APP-1"), ["create", "edit", "edit", "edit", "move", "archive", "unarchive"]);
+  });
+});
+
+test("project, column, label and comment edits report changes without writing for matching values", () => {
+  runActivityCheck(({ human, app }) => {
+    project.edit({ projectKey: app.key, description: "Alpha\nbeta" }, human);
+    const tag = label.create({ name: "bug", color: "red", description: "Alpha\nbeta" }, human);
+    const item = task.create({ project_id: app.id, title: "Task", labelNames: [tag.name] }, human);
+    const note = comment.create({ taskKey: item.key, text: "Alpha\nbeta" }, human);
+    const db = getDb();
+    const previousTimestamp = 1;
+    db.query("UPDATE project SET updated_at = ?").run(previousTimestamp);
+    db.query("UPDATE task SET updated_at = ?").run(previousTimestamp);
+    db.query("UPDATE comment SET updated_at = ?").run(previousTimestamp);
+    const projectBefore = project.getByKey(app.key)!;
+    const columnBefore = column.getAllByProjectKey(app.key)[0]!;
+    const labelBefore = label.getByName(tag.name)!;
+    const commentBefore = comment.getByKey(note.key);
+    const taskBefore = task.getByKey(item.key);
+    const activityBefore = db.query("SELECT * FROM activity ORDER BY id").all();
+    const writesBefore = db.query<{ count: number }>("SELECT total_changes() AS count").get()!.count;
+    for (const input of [
+      { name: ` ${projectBefore.name} ` },
+      { description: "Alpha\r\nbeta" },
+      { name: projectBefore.name, description: { find: "Alpha", replace: "Alpha" } },
+    ]) {
+      assert.deepEqual(project.edit({ projectKey: app.key, ...input }, human), { project: projectBefore, changed: false });
+    }
+    assert.deepEqual(column.edit({ projectKey: app.key, columnName: "backlog", name: " Backlog " }, human), { column: columnBefore, changed: false });
+    for (const input of [
+      { name: " bug " }, { color: "red" as const }, { description: "Alpha\r\nbeta" },
+      { name: "bug", color: "red" as const, description: { find: "beta", replace: "beta" } },
+    ]) {
+      assert.deepEqual(label.edit({ labelName: "BUG", ...input }, human), { label: labelBefore, changed: false });
+    }
+    for (const text of ["Alpha\r\nbeta", { find: "beta", replace: "beta" }]) {
+      assert.deepEqual(comment.edit({ commentKey: note.key, text }, human), { comment: commentBefore, changed: false });
+    }
+    assert.deepEqual(db.query("SELECT * FROM activity ORDER BY id").all(), activityBefore);
+    assert.equal(db.query<{ count: number }>("SELECT total_changes() AS count").get()!.count, writesBefore);
+
+    const projectResult = project.edit({ projectKey: app.key, name: "Renamed" }, human);
+    assert.equal(projectResult.changed, true);
+    assert.deepEqual(projectResult.project, project.getByKey(app.key));
+    assert.ok(projectResult.project.updated_at > previousTimestamp);
+    const columnResult = column.edit({ projectKey: app.key, columnName: "Backlog", name: "backlog" }, human);
+    assert.deepEqual(columnResult, { column: { ...columnBefore, name: "backlog" }, changed: true });
+    const labelResult = label.edit({ labelName: tag.name, color: "blue" }, human);
+    assert.deepEqual(labelResult, { label: { ...labelBefore, color: "blue" }, changed: true });
+    const commentResult = comment.edit({ commentKey: note.key, text: "Edited" }, human);
+    assert.equal(commentResult.changed, true);
+    assert.deepEqual(commentResult.comment, comment.getByKey(note.key));
+    assert.ok(commentResult.comment.updated_at > previousTimestamp);
+    const newActivity = db.query<{ action: string; entity_type: string }>("SELECT * FROM activity ORDER BY id").all().slice(activityBefore.length);
+    assert.deepEqual(newActivity.map(row => [row.entity_type, row.action]), [["project", "edit"], ["column", "edit"], ["label", "edit"], ["task", "comment_edit"]]);
+    assert.deepEqual(task.getByKey(item.key), taskBefore);
   });
 });
 
@@ -971,16 +1027,16 @@ test("project description edits preserve omitted fields, skip no-ops and record 
     const described = project.create({ key: "DESC", description: "Purpose\nContext" }, human);
     assert.equal(described.description, "Purpose\nContext");
     assert.equal(dbActivity.getAllByEntity("project", described.id)[0]!.changes!.description, described.description);
-    const renamed = project.edit({ projectKey: "DESC", name: "Named" }, human);
+    const renamed = project.edit({ projectKey: "DESC", name: "Named" }, human).project;
     assert.equal(renamed.description, described.description);
-    const edited = project.edit({ projectKey: "DESC", description: "New" }, human);
+    const edited = project.edit({ projectKey: "DESC", description: "New" }, human).project;
     assert.equal(edited.name, "Named");
     assert.deepEqual(dbActivity.getAllByEntity("project", described.id).at(-1)!.changes, { description: [described.description, "New"] });
     const before = dbActivity.getAllByEntity("project", described.id);
-    assert.deepEqual(project.edit({ projectKey: "DESC", description: "New" }, human), edited);
+    assert.deepEqual(project.edit({ projectKey: "DESC", description: "New" }, human).project, edited);
     assert.deepEqual(dbActivity.getAllByEntity("project", described.id), before);
-    assert.equal(project.edit({ projectKey: "DESC", description: "" }, human).description, null);
-    assert.equal(project.edit({ projectKey: "DESC", description: null }, human).description, null);
+    assert.equal(project.edit({ projectKey: "DESC", description: "" }, human).project.description, null);
+    assert.equal(project.edit({ projectKey: "DESC", description: null }, human).project.description, null);
     getDb().exec("CREATE TRIGGER reject_description BEFORE UPDATE ON project BEGIN SELECT RAISE(ABORT, 'rejected'); END");
     const beforeFailure = dbActivity.getAllByEntity("project", described.id);
     assert.throws(() => project.edit({ projectKey: "DESC", description: "fail" }, human), /rejected/);

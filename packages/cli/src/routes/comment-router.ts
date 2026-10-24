@@ -16,6 +16,7 @@ import {
   confirmAction,
   dashValueHelp,
   output,
+  outputChanges,
   quit,
   renameFlag,
   validatePositionals,
@@ -241,7 +242,7 @@ Example: zinn task comment view 'MDR-1#1'`,
     effects: { domain: "update", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: commentInputs.edit,
-    results: [jsonResult("Comment")],
+    results: [jsonResult("CommentChange")],
     guessedFlags: {
       "--body": (args) => [
         "task",
@@ -253,13 +254,17 @@ Example: zinn task comment view 'MDR-1#1'`,
     run: async (args) => {
       const props = await parseCommentEditArgs(args);
       const edited = comment.edit({ commentKey: props.key, text: props.text }, currentActor());
-      output(presentComment(edited), (entry) =>
-        formatCommentList([entry], { showsCreatedAt: false, showsTextPreview: true }),
+      outputChanges(
+        [edited],
+        (change) => presentComment(change.comment),
+        (entries) => formatCommentList(entries, { showsCreatedAt: false, showsTextPreview: true }),
+        (entry) => `Comment ${entry.key} was unchanged`,
       );
     },
     help: `${generateCommandUsage("task comment edit", commentInputs.edit)}
 
 Replace a comment's text. Comment text cannot be blank.
+With --json, changed is false when the text already matches.
 ${textFileHelp("--text")}
 The printed result is a preview. 'task comment view' shows the full text. --json keeps the full text.
 

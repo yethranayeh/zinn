@@ -36,9 +36,9 @@ test("normalized titles persist before no-op detection, activity and search; bod
       const currentProject = project.getByKey("APP");
       const currentTask = task.getByKey(first.key);
       const before = db.query<StoredActivity>("SELECT * FROM activity ORDER BY id").all();
-      assert.deepEqual(project.edit({ projectKey: "APP", name: " App " }, actor), currentProject);
-      assert.deepEqual(column.edit({ projectKey: "APP", columnName: " Next ", name: " Next " }, actor), next);
-      assert.deepEqual(label.edit({ labelName: " bug ", name: " bug " }, actor), bug);
+      assert.deepEqual(project.edit({ projectKey: "APP", name: " App " }, actor).project, currentProject);
+      assert.deepEqual(column.edit({ projectKey: "APP", columnName: " Next ", name: " Next " }, actor).column, next);
+      assert.deepEqual(label.edit({ labelName: " bug ", name: " bug " }, actor).label, bug);
       assert.deepEqual(task.edit({ taskKey: first.key, title: " First " }, actor).task, currentTask);
       assert.deepEqual(task.move({ taskKey: first.key, targetColumn: " Next " }, actor), currentTask);
       assert.deepEqual(task.moveMany({ taskKeys: [first.key], targetColumn: " Next " }, actor), [{ task: currentTask, changed: false }]);

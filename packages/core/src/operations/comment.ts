@@ -1,4 +1,4 @@
-import type { CommentWithKey } from "../types.js";
+import type { CommentChange, CommentWithKey } from "../types.js";
 import type { CommentCreateInput, CommentDeleteInput, CommentEditInput } from "../schemas/comment.js";
 import type { Actor } from "../schemas/actor.js";
 
@@ -64,7 +64,7 @@ export const comment = {
       return createdComment;
     });
   },
-  edit: (input: CommentEditInput, actor: Actor) => {
+  edit: (input: CommentEditInput, actor: Actor): CommentChange => {
     const props = validateTaskInput(commentEditSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
@@ -73,7 +73,7 @@ export const comment = {
       const text = resolveCommentText(props.text, existing.text, `comment ${existing.key}`);
 
       if (existing.text === text) {
-        return existing;
+        return { comment: existing, changed: false };
       }
 
       const now = Date.now();
@@ -93,7 +93,7 @@ export const comment = {
         createdAt: now,
       });
 
-      return editedComment;
+      return { comment: editedComment, changed: true };
     });
   },
   delete: (input: CommentDeleteInput, actor: Actor) => {

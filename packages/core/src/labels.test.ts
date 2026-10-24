@@ -64,9 +64,9 @@ test("labels preserve atomic edits, no-op timestamps, uniqueness, and cascade in
       const second = task.create({ project_id: other.id, title: "Second", description: null, labelNames: ["BuG"] }, actor);
       assert.deepEqual(task.label.getAll(first.key).map(l => l.name), ["auth", "bug"]);
       db.query("UPDATE task SET updated_at = 1").run();
-      const renamed = label.edit({ labelName: " BUG ", name: " defect ", color: "blue", description: "Unexpected behavior" }, actor);
+      const renamed = label.edit({ labelName: " BUG ", name: " defect ", color: "blue", description: "Unexpected behavior" }, actor).label;
       assert.deepEqual(renamed, { ...bug, name: "defect", color: "blue", description: "Unexpected behavior" });
-      assert.equal(label.edit({ labelName: "defect", name: "defect", color: "blue" }, actor).id, bug.id);
+      assert.equal(label.edit({ labelName: "defect", name: "defect", color: "blue" }, actor).label.id, bug.id);
       assert.deepEqual(task.label.getAll(first.key).map(l => l.name), ["auth", "defect"]);
       assert.deepEqual(task.label.getAll(second.key).map(l => l.name), ["defect"]);
       assert.deepEqual(db.query<{ updated_at: number }>("SELECT updated_at FROM task ORDER BY id").all(), [{ updated_at: 1 }, { updated_at: 1 }]);
@@ -100,7 +100,7 @@ test("labels preserve atomic edits, no-op timestamps, uniqueness, and cascade in
       assert.deepEqual(task.label.getAll(first.key).map(l => l.name), ["defect"]);
       task.archive(first.key, actor);
       task.label.add({ taskKey: first.key, labelNames: ["AUTH"] }, actor);
-      const recased = label.edit({ labelName: "DEFECT", name: "Defect" }, actor);
+      const recased = label.edit({ labelName: "DEFECT", name: "Defect" }, actor).label;
       assert.equal(recased.id, bug.id);
       assert.equal(recased.name, "Defect");
       label.delete({ name: "dEfEcT" }, actor);

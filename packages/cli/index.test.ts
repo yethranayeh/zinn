@@ -2439,7 +2439,8 @@ test("comment create and edit cap human echoes while reads and JSON retain the f
       const editedJson = await run("task", "comment", "edit", key, "--text", text, "--json");
       expect(editedJson.code).toBe(0);
       expect(editedJson.stderr).toBe("");
-      const comment = JSON.parse(editedJson.stdout);
+      const { changed, ...comment } = JSON.parse(editedJson.stdout);
+      expect(changed).toBe(true);
       expect(comment).toEqual({
         id: expect.any(String), task_id: expect.any(String), key, text: storedText, created_at: expect.any(Number), updated_at: expect.any(Number),
       });
@@ -2523,7 +2524,8 @@ test("task comment view reads only the requested current comment, including on a
     const text = "  Current first line\n\tSecond line\n" + "Full comment text. ".repeat(40) + "\n";
     const edited = await run("task", "comment", "edit", "NOTE-1#2", "--text", text, "--json");
     expect(edited.code).toBe(0);
-    const expected = JSON.parse(edited.stdout);
+    const { changed, ...expected } = JSON.parse(edited.stdout);
+    expect(changed).toBe(true);
     const snapshot = () => withTestDb(directory, (db) => ({
       comments: db.query("SELECT * FROM comment ORDER BY id").all(),
       tasks: db.query("SELECT * FROM task ORDER BY id").all(),
@@ -2994,6 +2996,73 @@ test.serial("task delete prints the task row after Deleted, or after Deletion ca
     expect(deleted.stdout).toContain(row.trimEnd());
     expect((await runZinn(["task", "list", "ROW"], testDir)).stdout).toBe("");
   });
+});
+
+test("project, column, label and comment edits distinguish no-ops from changes in text and JSON", async () => {
+  for (const json of [false, true]) {
+    await withIsolatedZinnDir(async (directory) => {
+      const run = (...args: string[]) => runZinn(args, directory);
+      expect((await run("project", "create", "EDIT", "--name", "App", "--description", "Alpha\nbeta")).code).toBe(0);
+      expect((await run("label", "create", "bug", "--color", "red", "--description", "Alpha\nbeta")).code).toBe(0);
+      expect((await run("task", "create", "EDIT", "--title", "Task", "--label", "bug")).code).toBe(0);
+      expect((await run("task", "comment", "create", "EDIT-1", "--text", "Alpha\nbeta")).code).toBe(0);
+      withTestDb(directory, (db) => {
+        db.run("UPDATE project SET updated_at = 1");
+        db.run("UPDATE task SET updated_at = 1");
+        db.run("UPDATE comment SET updated_at = 1");
+      });
+      const snapshot = () => withTestDb(directory, (db) => ({
+        projects: db.query("SELECT * FROM project ORDER BY id").all(),
+        columns: db.query("SELECT * FROM project_column ORDER BY id").all(),
+        labels: db.query("SELECT * FROM label ORDER BY id").all(),
+        tasks: db.query("SELECT * FROM task ORDER BY id").all(),
+        comments: db.query("SELECT * FROM comment ORDER BY id").all(),
+        activity: db.query("SELECT * FROM activity ORDER BY id").all(),
+      }));
+      const before = snapshot();
+      const noOps = [
+        { args: ["project", "edit", "edit", "--name", " App "], fact: "EDIT", expected: { key: "EDIT", name: "App" } },
+        { args: ["project", "edit", "EDIT", "--description", "Alpha\r\nbeta"], fact: "EDIT", expected: { key: "EDIT", description: "Alpha\nbeta" } },
+        { args: ["project", "edit", "EDIT", "--description", "Alpha", "--replacing", "Alpha"], fact: "EDIT", expected: { key: "EDIT" } },
+        { args: ["project", "column", "edit", "EDIT", "backlog", "--name", " Backlog "], fact: "Backlog", expected: { project: "EDIT", name: "Backlog" } },
+        { args: ["label", "edit", "BUG", "--name", " bug ", "--color", "red", "--description", "Alpha\r\nbeta"], fact: "bug", expected: { name: "bug", color: "red" } },
+        { args: ["label", "edit", "bug", "--description", "Alpha", "--replacing", "Alpha"], fact: "bug", expected: { name: "bug" } },
+        { args: ["task", "comment", "edit", "edit-1#1", "--text", "Alpha\r\nbeta"], fact: "EDIT-1#1", expected: { key: "EDIT-1#1", text: "Alpha\nbeta" } },
+        { args: ["task", "comment", "edit", "EDIT-1#1", "--text", "Alpha", "--replacing", "Alpha"], fact: "EDIT-1#1", expected: { key: "EDIT-1#1" } },
+      ];
+      for (const { args, fact, expected } of noOps) {
+        const result = await run(...args, ...(json ? ["--json"] : []));
+        expect(result.code).toBe(0);
+        expect(result.stderr).toContain(fact);
+        expect(result.stderr.trim().split("\n")).toHaveLength(1);
+        if (json) {
+          expect(JSON.parse(result.stdout)).toMatchObject({ ...expected, changed: false });
+        } else {
+          expect(result.stdout).toContain(fact);
+        }
+        expect(snapshot()).toEqual(before);
+      }
+      const edits = [
+        { args: ["project", "edit", "EDIT", "--name", "Renamed", "--description", "Alpha\nbeta"], fact: "Renamed", expected: { key: "EDIT", name: "Renamed" } },
+        { args: ["project", "column", "edit", "EDIT", "Backlog", "--name", "backlog"], fact: "backlog", expected: { project: "EDIT", name: "backlog" } },
+        { args: ["label", "edit", "bug", "--color", "blue", "--description", "Alpha\nbeta"], fact: "bug", expected: { name: "bug", color: "blue" } },
+        { args: ["task", "comment", "edit", "EDIT-1#1", "--text", "Edited"], fact: "EDIT-1#1", expected: { key: "EDIT-1#1", text: "Edited" } },
+      ];
+      for (const { args, fact, expected } of edits) {
+        const result = await run(...args, ...(json ? ["--json"] : []));
+        expect(result.code).toBe(0);
+        expect(result.stderr).toBe("");
+        if (json) {
+          expect(JSON.parse(result.stdout)).toMatchObject({ ...expected, changed: true });
+        } else {
+          expect(result.stdout).toContain(fact);
+        }
+      }
+      const after = snapshot();
+      expect(after.tasks).toEqual(before.tasks);
+      expect(after.activity.length).toBe(before.activity.length + edits.length);
+    });
+  }
 });
 
 test("task edits and label commands report no-ops and mixed changes in text and JSON", async () => {
@@ -4509,6 +4578,7 @@ test("global label workflows support repeated create/edit flags and preserve tas
       name: "defect",
       color: "blue",
       description: "Fixed",
+      changed: true,
     });
     expect((await run("task", "edit", "APP-1", "--title", "Changed", "--add-label", "NEEDS REVIEW, SOON", "--add-label", "AUTH", "--remove-label", "DEFECT")).code).toBe(0);
     expect(taskViewContent((await run("task", "view", "APP-1")).stdout)).toBe(
@@ -4601,6 +4671,7 @@ test("label create, edit and list preview descriptions while view and JSON retai
       expect(JSON.parse(result.stdout)).toEqual({
         id: expect.any(String),
         name: args[2], color: "white", description,
+        ...(args[1] === "edit" ? { changed: true } : {}),
       });
     }
 
@@ -6153,7 +6224,7 @@ test("project descriptions flow through creation, partial edits, view, list and 
     expect((await run("project", "list")).stdout).toBe("DESC | DESC | Purpose More context\n");
     expect(JSON.parse((await run("project", "list", "--json")).stdout)[0].description).toBe(description);
     expect(JSON.parse((await run("project", "edit", "DESC", "--name", "Renamed", "--json")).stdout).description).toBe(description);
-    expect(JSON.parse((await run("project", "edit", "DESC", "--description", "Updated", "--json")).stdout)).toEqual({ id: expect.any(String), key: "DESC", name: "Renamed", description: "Updated" });
+    expect(JSON.parse((await run("project", "edit", "DESC", "--description", "Updated", "--json")).stdout)).toEqual({ id: expect.any(String), key: "DESC", name: "Renamed", description: "Updated", changed: true });
     expect((await run("project", "edit", "DESC", "--description", "")).stdout).toBe("DESC | Renamed\n");
     expect(JSON.parse((await run("project", "view", "DESC", "--json")).stdout).description).toBeNull();
     expect((await run("project", "edit", "DESC", "--description", "a", "--description", "b")).code).toBe(1);

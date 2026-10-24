@@ -56,11 +56,11 @@ test("comment mutations update task activity atomically and no-op edits stay unc
     });
 
     const activityCount = task.activity("APP-1").length;
-    const unchanged = comment.edit({ commentKey: created.key, text: "Original" }, human);
+    const unchanged = comment.edit({ commentKey: created.key, text: "Original" }, human).comment;
     assert.equal(unchanged.updated_at, created.updated_at);
     assert.equal(task.activity("APP-1").length, activityCount);
 
-    const edited = comment.edit({ commentKey: "APP-1#1", text: "Edited" }, human);
+    const edited = comment.edit({ commentKey: "APP-1#1", text: "Edited" }, human).comment;
     assert.equal(task.getByKey("APP-1").updated_at, 1);
     assert.deepEqual(task.activity("APP-1").at(-1)!.changes, {
       comment: { id: created.id, key: "APP-1#1" },

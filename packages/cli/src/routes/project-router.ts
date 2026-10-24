@@ -330,7 +330,7 @@ Example: zinn project view MDR`,
     effects: { domain: "update", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: projectInputs.edit,
-    results: [jsonResult("Project")],
+    results: [jsonResult("ProjectChange")],
     run: async (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
@@ -362,11 +362,17 @@ Example: zinn project view MDR`,
         { projectKey: projectChoice.key, name: values.name, description },
         currentActor(),
       );
-      output(presentProject(editedProject), (entry) => formatProjectList([entry]));
+      outputChanges(
+        [editedProject],
+        (change) => presentProject(change.project),
+        formatProjectList,
+        (entry) => `Project ${entry.key} was unchanged`,
+      );
     },
     help: `${generateCommandUsage("project edit", projectInputs.edit)}
 
 Change the supplied project fields. At least one edit flag is required.
+With --json, changed is false when all supplied values already match.
 ${requiredProjectDescription}
 Use --description '' to clear the description.
 ${textFileHelp("--description")}
@@ -532,7 +538,7 @@ Example: zinn project column list MDR`,
       effects: { domain: "update", storage: "normal-open" },
       confirmation: { kind: "none" },
       input: projectInputs.column_edit,
-      results: [jsonResult("Column")],
+      results: [jsonResult("ColumnChange")],
       run: (args: Array<string>) => {
         const { values, positionals, tokens } = parseArgs({
           args,
@@ -560,14 +566,18 @@ Example: zinn project column list MDR`,
           },
           currentActor(),
         );
-        output(presentColumn(editedColumn), (entry) =>
-          formatColumnList([entry], { showsProject: true }),
+        outputChanges(
+          [editedColumn],
+          (change) => presentColumn(change.column),
+          (entries) => formatColumnList(entries, { showsProject: true }),
+          (entry) => `Column "${entry.name}" was unchanged`,
         );
       },
       help: `${generateCommandUsage("project column edit", projectInputs.column_edit)}
 
 Rename a column.
 The --name flag is required.
+With --json, changed is false when the name already matches.
 
 Columns are matched by name, and matching is case-insensitive.
 Names are trimmed, and must remain unique within the same project.

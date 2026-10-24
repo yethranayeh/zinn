@@ -1,17 +1,16 @@
-import { CoreError } from "../errors.js";
 import type { LabelCreateInput, LabelDeleteInput, LabelEditInput } from "../schemas/label.js";
 import type { Actor } from "../schemas/actor.js";
+import type { LabelChange } from "../types.js";
 
 import { writeTransaction } from "../db.js";
-import { labelCreateSchema, labelDeleteSchema, labelEditSchema } from "../schemas/label.js";
-
 import * as dbTask from "../db/task.js";
 import * as dbTaskLabel from "../db/task-label.js";
 import * as dbLabel from "../db/label.js";
 
+import { CoreError } from "../errors.js";
+import { labelCreateSchema, labelDeleteSchema, labelEditSchema } from "../schemas/label.js";
 import { validateTaskInput } from "../schemas/task.js";
 import { actorSchema } from "../schemas/actor.js";
-
 import {
   findByName,
   resolveLabels,
@@ -60,7 +59,7 @@ export const label = {
     });
   },
   /** Editing a global definition preserves attachments and does not edit attached tasks. */
-  edit: (input: LabelEditInput, actor: Actor) => {
+  edit: (input: LabelEditInput, actor: Actor): LabelChange => {
     const props = validateTaskInput(labelEditSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
@@ -80,7 +79,7 @@ export const label = {
       const isUnchanged =
         name === match.name && description === match.description && color === match.color;
       if (isUnchanged) {
-        return match;
+        return { label: match, changed: false };
       }
 
       const existingLabel = findLabelByName(name);
@@ -111,7 +110,8 @@ export const label = {
         createdAt: Date.now(),
       });
 
-      return dbLabel.update({ id: match.id, name, description, color })!;
+      const editedLabel = dbLabel.update({ id: match.id, name, description, color })!;
+      return { label: editedLabel, changed: true };
     });
   },
   getAll: dbLabel.getAll,

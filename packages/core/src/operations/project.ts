@@ -1,5 +1,9 @@
 import type { ProjectCreateInput, ProjectEditInput } from "../schemas/project.js";
 import type { Actor } from "../schemas/actor.js";
+import type { ProjectChange } from "../types.js";
+
+import { v7 as uuidv7 } from "uuid";
+import { generateKeyBetween } from "fractional-indexing";
 
 import {
   validateProjectInput,
@@ -9,9 +13,6 @@ import {
 import { CoreError } from "../errors.js";
 import { actorSchema } from "../schemas/actor.js";
 import { validateTaskInput } from "../schemas/task.js";
-
-import { v7 as uuidv7 } from "uuid";
-import { generateKeyBetween } from "fractional-indexing";
 
 import { writeTransaction } from "../db.js";
 import * as dbProject from "../db/project.js";
@@ -79,7 +80,7 @@ export const project = {
       return createdProject;
     });
   },
-  edit: (input: ProjectEditInput, actor: Actor) => {
+  edit: (input: ProjectEditInput, actor: Actor): ProjectChange => {
     const props = validateProjectInput(projectEditSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
@@ -105,7 +106,7 @@ export const project = {
             );
       const isUnchanged = name === projectMatch.name && description === projectMatch.description;
       if (isUnchanged) {
-        return projectMatch;
+        return { project: projectMatch, changed: false };
       }
 
       const changes: Record<string, unknown> = {};
@@ -126,7 +127,14 @@ export const project = {
         createdAt: now,
       });
 
-      return dbProject.update({ id: projectMatch.id, name, description, updated_at: now })!;
+      const editedProject = dbProject.update({
+        id: projectMatch.id,
+        name,
+        description,
+        updated_at: now,
+      })!;
+
+      return { project: editedProject, changed: true };
     });
   },
   getAll: dbProject.getAll,

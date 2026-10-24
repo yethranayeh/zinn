@@ -36,7 +36,7 @@ function fixtures() {
       make: (description: string | null) => {
         project.create({ key: "PRJ", description }, human);
         return {
-          edit: (description: Parameters<typeof task.edit>[0]["description"]) => project.edit({ projectKey: "PRJ", description }, human),
+          edit: (description: Parameters<typeof task.edit>[0]["description"]) => project.edit({ projectKey: "PRJ", description }, human).project,
           read: () => getDb().query<{ text: string | null; updated_at: number }>("SELECT description AS text, updated_at FROM project WHERE key = 'PRJ'").get(),
           history: () => dbActivity.getAllByEntity("project", project.getByKey("PRJ")!.id),
         };
@@ -47,7 +47,7 @@ function fixtures() {
       make: (description: string | null) => {
         const created = label.create({ name: "bug", description }, human);
         return {
-          edit: (description: Parameters<typeof task.edit>[0]["description"]) => label.edit({ labelName: "bug", description }, human),
+          edit: (description: Parameters<typeof task.edit>[0]["description"]) => label.edit({ labelName: "bug", description }, human).label,
           read: () => getDb().query<{ text: string | null; updated_at: number }>("SELECT description AS text, 0 AS updated_at FROM label WHERE name = 'bug'").get(),
           history: () => dbActivity.getAllByEntity("label", created.id),
         };
@@ -111,7 +111,7 @@ test("oversized comment edits preserve text, timestamp, activity and search reco
       assert.deepEqual(task.activity("APP-1"), history);
       assert.deepEqual(getDb().query("SELECT * FROM task_search ORDER BY rowid").all(), search);
     }
-    assert.equal(comment.edit({ commentKey: "APP-1#1", text: { find: "😀", replace: "" } }, human).text.length, MAX_TEXT_BYTES - 4);
+    assert.equal(comment.edit({ commentKey: "APP-1#1", text: { find: "😀", replace: "" } }, human).comment.text.length, MAX_TEXT_BYTES - 4);
   });
 });
 
@@ -124,9 +124,9 @@ test("unrelated edits allow existing oversized descriptions", () => {
     for (const table of ["project", "task", "label"]) {
       getDb().query("UPDATE " + table + " SET description = ?").run(oversized);
     }
-    assert.equal(project.edit({ projectKey: "APP", name: "Renamed" }, human).description, oversized);
+    assert.equal(project.edit({ projectKey: "APP", name: "Renamed" }, human).project.description, oversized);
     assert.equal(task.edit({ taskKey: "APP-1", title: "Renamed" }, human).task.description, oversized);
-    assert.equal(label.edit({ labelName: "bug", color: "red" }, human).description, oversized);
+    assert.equal(label.edit({ labelName: "bug", color: "red" }, human).label.description, oversized);
   });
 });
 
@@ -400,20 +400,20 @@ test("comment text edits follow the same rules and record the full before and af
     assert.throws(() => comment.edit({ commentKey: "APP-1#1", text: { find: "Deploy", replace: "Ship" } }, human), matchError(2, target));
     assert.equal(history().length, 0);
 
-    const replaced = comment.edit({ commentKey: "APP-1#1", text: { find: "Deploy", replace: "Ship", all: true } }, human);
+    const replaced = comment.edit({ commentKey: "APP-1#1", text: { find: "Deploy", replace: "Ship", all: true } }, human).comment;
     assert.equal(replaced.text, "Ship on Friday. Ship early.");
     assert.equal(replaced.key, "APP-1#1");
     assert.equal(comment.getByKey("APP-1#1").text, "Ship on Friday. Ship early.");
     assert.deepEqual(history().at(-1)!.changes!.text, ["Deploy on Friday. Deploy early.", "Ship on Friday. Ship early."]);
 
-    const appended = comment.edit({ commentKey: "APP-1#1", text: { append: "Done.\n" } }, human);
+    const appended = comment.edit({ commentKey: "APP-1#1", text: { append: "Done.\n" } }, human).comment;
     assert.equal(appended.text, "Ship on Friday. Ship early.\n\nDone.\n");
     assert.equal(
-      comment.edit({ commentKey: "APP-1#1", text: { append: "More." } }, human).text,
+      comment.edit({ commentKey: "APP-1#1", text: { append: "More." } }, human).comment.text,
       "Ship on Friday. Ship early.\n\nDone.\n\nMore.",
     );
 
-    const money = comment.edit({ commentKey: "APP-1#1", text: { find: "Done.", replace: "$&$&" } }, human);
+    const money = comment.edit({ commentKey: "APP-1#1", text: { find: "Done.", replace: "$&$&" } }, human).comment;
     assert.ok(money.text.includes("$&$&"));
 
     assert.deepEqual(task.search({ query: "early" }).tasks.map((row) => row.key), ["APP-1"]);
@@ -435,7 +435,7 @@ test("a comment replace that blanks the text is rejected and a no-op records not
     assert.throws(() => comment.edit({ commentKey: "APP-1#1", text: { append: "  " } }, human), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field!.includes("append"));
     assert.deepEqual(readRow(), before);
 
-    const unchanged = comment.edit({ commentKey: "APP-1#1", text: { find: "Only", replace: "Only" } }, human);
+    const unchanged = comment.edit({ commentKey: "APP-1#1", text: { find: "Only", replace: "Only" } }, human).comment;
     assert.equal(unchanged.text, "Only this");
     assert.deepEqual(readRow(), before);
     assert.equal(history().length, 0);

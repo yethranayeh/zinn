@@ -18,6 +18,7 @@ import {
   confirmAction,
   dashValueHelp,
   output,
+  outputChanges,
   validatePositionals,
   validateUniqueOptions,
 } from "../lib.js";
@@ -221,7 +222,7 @@ Example: zinn label view bug`,
     effects: { domain: "update", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: labelInputs.edit,
-    results: [jsonResult("Label")],
+    results: [jsonResult("LabelChange")],
     run: async (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
@@ -248,13 +249,17 @@ Example: zinn label view bug`,
       });
       const edited = label.edit(input, currentActor());
 
-      output(presentLabel(edited), (entry) =>
-        formatLabelList([entry], { showsDescriptionPreview: true }),
+      outputChanges(
+        [edited],
+        (change) => presentLabel(change.label),
+        (entries) => formatLabelList(entries, { showsDescriptionPreview: true }),
+        (entry) => `Label "${entry.name}" was unchanged`,
       );
     },
     help: `${generateCommandUsage("label edit", labelInputs.edit)}
 
 Change specified fields.
+With --json, changed is false when all supplied values already match.
 Provide at least one edit flag. Use --description '' to clear the description.
 ${textFileHelp("--description")}
 Description echoes use a preview; label view and --json keep the full text.

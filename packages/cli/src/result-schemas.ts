@@ -135,6 +135,9 @@ export const projectSchema = z.strictObject({
   name: z.string(),
   description: nullableText,
 });
+export const projectChangeSchema = projectSchema.extend({
+  changed: z.boolean().describe("Whether the project's fields changed."),
+});
 export const columnSchema = z.strictObject({
   id: z.string().describe("Stored column ID."),
   project: z.string(),
@@ -142,7 +145,7 @@ export const columnSchema = z.strictObject({
   name: z.string(),
 });
 export const columnChangeSchema = columnSchema.extend({
-  changed: z.boolean().describe("Whether the column's position changed."),
+  changed: z.boolean().describe("Whether the column's name or position changed."),
 });
 export const columnTaskCountSchema = z.strictObject({
   id: columnSchema.shape.id,
@@ -162,6 +165,12 @@ export const labelSchema = z.strictObject({
       `Known label colors: ${labelColorSchema.options.join(", ")}. Other stored values may occur.`,
     ),
   description: nullableText,
+});
+export const labelChangeSchema = labelSchema.extend({
+  changed: z.boolean().describe("Whether the label's fields changed."),
+});
+export const commentChangeSchema = commentSchema.extend({
+  changed: z.boolean().describe("Whether the comment's text changed."),
 });
 
 const settingsFileBase = z.strictObject({
@@ -239,8 +248,10 @@ export const resultSchemas = {
   RelationList: z.array(relationSchema),
   RelationChange: relationChangeSchema,
   Comment: commentSchema,
+  CommentChange: commentChangeSchema,
   CommentList: z.array(commentSchema),
   Project: projectSchema,
+  ProjectChange: projectChangeSchema,
   ProjectList: z.array(projectSchema),
   ProjectView: projectViewSchema,
   Column: columnSchema,
@@ -248,6 +259,7 @@ export const resultSchemas = {
   ColumnTaskCount: columnTaskCountSchema,
   ColumnList: z.array(columnTaskCountSchema),
   Label: labelSchema,
+  LabelChange: labelChangeSchema,
   LabelList: z.array(labelSchema),
   Activity: activitySchema,
   ActivityList: z.array(activitySchema),

@@ -21,28 +21,28 @@ test("column renames keep identity and tasks, reject duplicates, and skip no-op 
       const todo = column.getAllByProjectKey("APP")[1];
       task.move({ taskKey: first.key, targetColumn: "todo" }, actor);
 
-      const renamed = column.edit({ projectKey: "app", columnName: "todo", name: " Next up " }, actor);
+      const renamed = column.edit({ projectKey: "app", columnName: "todo", name: " Next up " }, actor).column;
       assert.deepEqual(renamed, { ...todo, name: "Next up" });
       assert.equal(task.getByKey(first.key).column_id, todo!.id);
       assert.deepEqual(column.getAllByProjectKey("APP").map(c => c.name), ["Backlog", "Next up", "In Progress", "Review", "Done"]);
       assert.equal(task.move({ taskKey: first.key, targetColumn: "NEXT UP" }, actor).column_id, todo!.id);
 
-      assert.deepEqual(column.edit({ projectKey: "APP", columnName: "next up", name: "NEXT UP" }, actor), { ...todo, name: "NEXT UP" });
+      assert.deepEqual(column.edit({ projectKey: "APP", columnName: "next up", name: "NEXT UP" }, actor).column, { ...todo, name: "NEXT UP" });
       assert.throws(() => column.edit({ projectKey: "APP", columnName: "next up", name: "done" }, actor), (error) => error instanceof CoreError && error.kind === "conflict" && error.facts.entity === "column" && error.facts.key === "done");
       assert.throws(() => column.edit({ projectKey: "APP", columnName: "next up", name: " " }, actor), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field!.some((field) => ["name", "columnName"].includes(String(field))));
       assert.throws(() => column.edit({ projectKey: "APP", columnName: "missing", name: "Later" }, actor), (error) => error instanceof CoreError && error.kind === "missing" && error.facts.entity === "column" && error.facts.key === "missing");
       assert.throws(() => column.edit({ projectKey: "nope", columnName: "Done", name: "Later" }, actor), (error) => error instanceof CoreError && error.kind === "missing" && error.facts.entity === "project" && error.facts.key === "NOPE");
-      assert.equal(column.edit({ projectKey: "OTHER", columnName: "Done", name: "NEXT UP" }, actor).name, "NEXT UP");
+      assert.equal(column.edit({ projectKey: "OTHER", columnName: "Done", name: "NEXT UP" }, actor).column.name, "NEXT UP");
 
       db.exec("CREATE TRIGGER fail_column_update BEFORE UPDATE ON project_column BEGIN SELECT RAISE(ABORT, 'column written'); END");
-      assert.deepEqual(column.edit({ projectKey: "APP", columnName: "next up", name: " NEXT UP " }, actor), { ...todo, name: "NEXT UP" });
+      assert.deepEqual(column.edit({ projectKey: "APP", columnName: "next up", name: " NEXT UP " }, actor).column, { ...todo, name: "NEXT UP" });
       db.exec("DROP TRIGGER fail_column_update");
 
       assert.throws(() => column.create({ projectKey: "APP", name: "next up" }, actor), (error) => error instanceof CoreError && error.kind === "conflict" && error.facts.entity === "column" && error.facts.key === "next up");
       assert.throws(() => column.create({ projectKey: "APP", name: " next up " }, actor), (error) => error instanceof CoreError && error.kind === "conflict" && error.facts.entity === "column" && error.facts.key === "next up");
       assert.throws(() => column.create({ projectKey: "APP", name: " " }, actor), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field!.some((field) => ["name", "columnName"].includes(String(field))));
       assert.equal(column.create({ projectKey: "APP", name: " Later " }, actor).name, "Later");
-      assert.equal(column.edit({ projectKey: "APP", columnName: " later ", name: "Someday" }, actor).name, "Someday");
+      assert.equal(column.edit({ projectKey: "APP", columnName: " later ", name: "Someday" }, actor).column.name, "Someday");
     });
 
   } finally {

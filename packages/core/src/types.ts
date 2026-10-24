@@ -50,6 +50,12 @@ export type TaskChange = { task: TaskWithKey; changed: boolean };
 
 export type ColumnChange = { column: Column; changed: boolean };
 
+export type ProjectChange = { project: Project; changed: boolean };
+
+export type LabelChange = { label: Label; changed: boolean };
+
+export type CommentChange = { comment: CommentWithKey; changed: boolean };
+
 export type TaskRelationType = RelationCreateInput["relation_type"];
 export type TaskRelation = {
   id: string;

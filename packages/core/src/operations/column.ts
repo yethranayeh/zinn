@@ -91,7 +91,7 @@ export const column = {
       return createdColumn;
     });
   },
-  edit: (input: ColumnEditInput, actor: Actor) => {
+  edit: (input: ColumnEditInput, actor: Actor): ColumnChange => {
     const props = validateTaskInput(columnEditSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
@@ -100,7 +100,7 @@ export const column = {
       const { columnMatch } = requireColumnByName(project, projectColumns, props.columnName);
 
       if (props.name === columnMatch.name) {
-        return columnMatch;
+        return { column: columnMatch, changed: false };
       }
 
       const existingColumn = findByName(projectColumns, props.name);
@@ -123,7 +123,8 @@ export const column = {
         createdAt: now,
       });
 
-      return dbColumn.update({ id: columnMatch.id, name: props.name })!;
+      const editedColumn = dbColumn.update({ id: columnMatch.id, name: props.name })!;
+      return { column: editedColumn, changed: true };
     });
   },
   order: (input: ColumnOrderInput, actor: Actor): ColumnChange => {

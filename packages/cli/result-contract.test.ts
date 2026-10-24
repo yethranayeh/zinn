@@ -109,6 +109,7 @@ function expectEntityIds(schema: ResultSchemaName, value: any, rows: ReturnType<
       break;
     }
     case "Project":
+    case "ProjectChange":
     case "ProjectList":
     case "ProjectView": {
       expect(value.id).toBe(rows.projects.find((project) => project.key === value.key)!.id);
@@ -132,11 +133,13 @@ function expectEntityIds(schema: ResultSchemaName, value: any, rows: ReturnType<
       break;
     }
     case "Label":
+    case "LabelChange":
     case "LabelList": {
       expect(value.id).toBe(rows.labels.find((label) => label.name === value.name)!.id);
       break;
     }
     case "Comment":
+    case "CommentChange":
     case "CommentList": {
       const stored = rows.comments.find((comment) => comment.key === value.key)!;
       expect(value).toMatchObject({ id: stored.id, task_id: stored.task_id });
@@ -195,11 +198,17 @@ const fixtures: Record<string, Fixture[]> = {
   "project create": [{ schema: "Project", args: ["NEW"] }],
   "project list": [{ schema: "ProjectList", args: [] }, { schema: "ProjectList", args: [], empty: true }],
   "project view": [{ schema: "ProjectView", args: ["APP"] }],
-  "project edit": [{ schema: "Project", args: ["APP", "--name", "Renamed"] }],
+  "project edit": [
+    { schema: "ProjectChange", args: ["APP", "--name", "Renamed"], check: (v) => expect(v.changed).toBe(true) },
+    { schema: "ProjectChange", args: ["APP", "--name", "APP"], check: (v) => expect(v.changed).toBe(false) },
+  ],
   "project delete": [{ schema: "Project", args: ["APP", "--yes"] }],
   "project column create": [{ schema: "Column", args: ["APP", "New column"] }],
   "project column list": [{ schema: "ColumnList", args: ["APP"] }],
-  "project column edit": [{ schema: "Column", args: ["APP", "Backlog", "--name", "Ideas"] }],
+  "project column edit": [
+    { schema: "ColumnChange", args: ["APP", "Backlog", "--name", "Ideas"], check: (v) => expect(v.changed).toBe(true) },
+    { schema: "ColumnChange", args: ["APP", "Backlog", "--name", "Backlog"], check: (v) => expect(v.changed).toBe(false) },
+  ],
   "project column order": [
     { schema: "ColumnChange", args: ["APP", "Backlog", "last"], check: (v) => expect(v.changed).toBe(true) },
     { schema: "ColumnChange", args: ["APP", "Backlog", "first"], check: (v) => expect(v.changed).toBe(false) },
@@ -253,12 +262,18 @@ const fixtures: Record<string, Fixture[]> = {
   "task comment create": [{ schema: "Comment", args: ["APP-1", "--text", "Another comment"] }],
   "task comment list": [{ schema: "CommentList", args: ["APP-1"] }, { schema: "CommentList", args: ["APP-2"] }],
   "task comment view": [{ schema: "Comment", args: ["$comment"] }],
-  "task comment edit": [{ schema: "Comment", args: ["$comment", "--text", "Edited"] }],
+  "task comment edit": [
+    { schema: "CommentChange", args: ["$comment", "--text", "Edited"], check: (v) => expect(v.changed).toBe(true) },
+    { schema: "CommentChange", args: ["$comment", "--text", "A comment"], check: (v) => expect(v.changed).toBe(false) },
+  ],
   "task comment delete": [{ schema: "Comment", args: ["$comment", "--yes"] }],
   "label create": [{ schema: "Label", args: ["new-label", "--color", "blue"] }],
   "label list": [{ schema: "LabelList", args: [] }, { schema: "LabelList", args: [], empty: true }],
   "label view": [{ schema: "Label", args: ["bug"] }],
-  "label edit": [{ schema: "Label", args: ["bug", "--color", "green"] }],
+  "label edit": [
+    { schema: "LabelChange", args: ["bug", "--color", "green"], check: (v) => expect(v.changed).toBe(true) },
+    { schema: "LabelChange", args: ["bug", "--color", "red"], check: (v) => expect(v.changed).toBe(false) },
+  ],
   "label delete": [{ schema: "Label", args: ["bug", "--yes"] }],
   "activity list": [{ schema: "ActivityList", args: [] }, { schema: "ActivityList", args: ["--task", "APP-999", "--show-deleted"] }],
   "activity view": [{ schema: "Activity", args: ["$event"] }],

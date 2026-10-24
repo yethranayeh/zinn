@@ -140,10 +140,10 @@ test("project column edit renames a column in place and keeps its tasks", async 
     expect((await runZinn(["task", "view", "COL-1", "--json"], dir)).stdout).toContain(`"column": "Next up"`);
 
     const caseOnly = await runZinn(["project", "column", "edit", "COL", "next up", "--name", "NEXT UP", "--json"], dir);
-    expect(JSON.parse(caseOnly.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "COL", name: "NEXT UP" });
+    expect(JSON.parse(caseOnly.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "COL", name: "NEXT UP", changed: true });
     const dashName = await runZinn(["project", "column", "edit", "COL", "--name=--example", "NEXT UP", "--json"], dir);
     expect(dashName.code).toBe(0);
-    expect(JSON.parse(dashName.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "COL", name: "--example" });
+    expect(JSON.parse(dashName.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "COL", name: "--example", changed: true });
   });
 });
 
@@ -179,7 +179,7 @@ test("project column edit rejects invalid requests without writes", async () => 
 
     const unchanged = await runZinn(["project", "column", "edit", "COL", "todo", "--name", "TODO"], dir);
     expect(unchanged.code).toBe(0);
-    expect(unchanged.stderr).toBe("");
+    expect(unchanged.stderr).toContain("TODO");
     expect(unchanged.stdout).toContain("COL");
     expect(unchanged.stdout).toContain("TODO");
     expect(read()).toEqual(before);
