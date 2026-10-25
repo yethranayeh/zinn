@@ -24,7 +24,7 @@
 			"additionalProperties": false
 		},
 		"hooks": {
-			"description": "Commands Zinn runs after each saved change, one after another in the order listed. Read only from the global settings file and zinn.local.json cannot set them.",
+			"description": "Commands Zinn runs after each saved change, one after another in the order listed. Read only from the global settings file. zinn.local.json cannot set them.",
 			"type": "object",
 			"propertyNames": {
 				"type": "string",

@@ -51,7 +51,7 @@ export const settingsSchema = z
       )
       .optional()
       .describe(
-        "Commands Zinn runs after each saved change, one after another in the order listed. Read only from the global settings file and zinn.local.json cannot set them.",
+        "Commands Zinn runs after each saved change, one after another in the order listed. Read only from the global settings file. zinn.local.json cannot set them.",
       ),
   })
   .meta({ title: "Zinn settings" });
