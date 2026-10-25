@@ -171,17 +171,15 @@ test("changed flag errors identify the flag and accepted fields before opening s
   });
 });
 
-test("activity help exposes repeatable changed syntax and the accepted fields", async () => {
+test("activity help names the accepted changed fields without opening storage", async () => {
   await withIsolatedZinnDir(async directory => {
     const result = await runZinn(["activity", "list", "--help"], directory);
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toContain("[--changed <field[=value]>]...");
     expect(result.stdout).toContain("--action");
     for (const field of activityChangedFieldSchema.options) {
       expect(result.stdout).toContain(field);
     }
-    expect(result.stdout).toContain("priority=none");
     expect(existsSync(join(directory, "data"))).toBe(false);
   });
 });

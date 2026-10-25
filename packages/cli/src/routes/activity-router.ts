@@ -19,6 +19,8 @@ import { CliError } from "../errors.js";
 import { output, quit, validatePositionals, validateUniqueOptions } from "../lib.js";
 import { formatActivityList, presentActivities } from "../presentation/activity-presentation.js";
 
+const changedFieldList = activityChangedFieldSchema.options.join(", ");
+
 const activityInputs = {
   list: {
     options: {
@@ -55,8 +57,7 @@ const activityInputs = {
           kind: "activity-change",
           name: "field[=value]",
           pattern: `^((${activityChangedFieldSchema.options.join("|")})|(${activityChangedFieldSchema.exclude(["title", "description"]).options.join("|")})=.+)$`,
-          description:
-            "Fields: column, priority, labels, title, description. Omit the value to match any change. Values apply to column, priority and added labels, ignoring case. priority=none matches an unassigned priority.",
+          description: `Fields: ${changedFieldList}. Omit the value to match any change. Values apply to column, priority and added labels, ignoring case. priority=none matches an unassigned priority.`,
         },
       },
       limit: {
@@ -215,7 +216,7 @@ Returns all matching events unless --limit is supplied.
 --thread <id>      Match an exact thread ID, including case.
 --action <action>  Match a recorded action. Repeat to match any listed action.
 --changed <field>[=<value>] Match a task field change, with an optional value.
-                   Fields: column, priority, labels, title, description.
+                   Fields: ${changedFieldList}.
                    Values apply to column, priority and added labels, ignoring case.
                    Without a value, labels match additions and removals.
                    Title and description match any change, without a value.
