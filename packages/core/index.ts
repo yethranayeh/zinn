@@ -2,6 +2,7 @@ export type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project
 export type {
   ColumnCreateInput,
   ColumnEditInput,
+  ColumnDeleteInput,
   ColumnOrderInput,
   ColumnInspectionInput,
 } from "./src/schemas/column.js";
@@ -71,6 +72,7 @@ export { projectCreateSchema, projectEditSchema } from "./src/schemas/project.js
 export {
   columnCreateSchema,
   columnEditSchema,
+  columnDeleteSchema,
   columnOrderSchema,
   columnInspectionSchema,
 } from "./src/schemas/column.js";

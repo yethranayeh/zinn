@@ -46,6 +46,7 @@ export const errorDetailsSchema = z.strictObject({
       "ambiguous_reference",
       "text_match_count",
       "no_columns",
+      "has_tasks",
       "unmarked_database",
       "newer_database",
       "older_database",

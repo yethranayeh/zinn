@@ -31,7 +31,7 @@ References include the following ID fields:
 | Comment, including task view comments   | `id`, `task_id`                                                          |
 | Project, including project view         | `id`                                                                     |
 | Column in project view or column list   | `id`                                                                     |
-| Column create/edit/order                | `id`, `project_id`                                                       |
+| Column create/edit/order/delete         | `id`, `project_id`                                                       |
 | Label                                   | `id`                                                                     |
 
 A task's `column` is its column name. `labels` contains label names, and `label_ids` contains their IDs in matching order. Both arrays are empty when the task has no labels.
@@ -130,7 +130,7 @@ Use a JSON Schema validator with `manifest.schemas` to validate successful value
 
 ## Confirmations in scripts
 
-Project, task, label, and comment deletion, and database restore, ask for confirmation. Use `--yes` to skip a prompt:
+Project, column, task, label, and comment deletion, and database restore, ask for confirmation. Use `--yes` to skip a prompt:
 
 ```sh title="Delete a task without prompting"
 zinn task delete MDR-1 --yes --json

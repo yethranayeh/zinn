@@ -129,7 +129,7 @@ test("root help supports -h and --help and lists commands", async () => {
 
     expect(longHelp.code).toBe(0);
     expect(longHelp.stdout).toContain("Usage: zinn <command>");
-    expect(longHelp.stdout).toContain("project column {create|list|edit|order}");
+    expect(longHelp.stdout).toContain(`project column {${Object.keys(routes.project.column).join("|")}}`);
     expect(longHelp.stdout).toContain("project {create|list|view|edit|delete}");
     expect(longHelp.stdout).toContain("task {create|list|search|view|edit|move|order|archive|unarchive|delete}");
     expect(longHelp.stdout).toContain("task comment {create|list|view|edit|delete}");
@@ -423,6 +423,7 @@ const commandWords: Record<string, CommandWords> = {
   "project column list": { words: ["SHOP"], required: 1 },
   "project column edit": { words: ["SHOP", "Later"], required: 2 },
   "project column order": { words: ["SHOP", "TODO", "first"], required: 3 },
+  "project column delete": { words: ["SHOP", "TODO"], required: 2 },
   "task create": { words: ["SHOP"], required: 1, repeatableFlags: ["label", "depends-on", "related"] },
   "task list": { words: ["SHOP"], required: 0, repeatableFlags: ["label"] },
   "task search": { words: ["refine", "SHOP"], required: 1, repeatableFlags: ["label"] },
@@ -4290,6 +4291,11 @@ const runJson = async (dir: string, ...args: Array<string>) => JSON.parse((await
 // ? ZINN-143: every command that asks for confirmation, run against seedConfirmationDatabase,
 // ? with a check that its change happened.
 const CONFIRMING_COMMANDS = [
+  {
+    argsFor: (_backupPath: string) => ["project", "column", "delete", "CONF", "Review"],
+    isDone: async (dir: string) => !(await runJson(dir, "project", "column", "list", "CONF"))
+      .some((entry: { name: string }) => entry.name === "Review"),
+  },
   {
     argsFor: (_backupPath: string) => ["project", "delete", "CONF"],
     isDone: async (dir: string) => (await runJson(dir, "project", "list")).length === 0,

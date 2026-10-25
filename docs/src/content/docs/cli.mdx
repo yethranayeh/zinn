@@ -193,6 +193,16 @@ zinn project column order MDR Review after Done
 Directions follow board order: `first` is the start of the board and `last` is its end.
 Moving a column to the position it already has, or before or after itself, does nothing. Tasks stay in their columns.
 
+Delete an empty column:
+
+```sh title="Delete a column"
+zinn project column delete MDR Review
+```
+
+Deletion asks for confirmation. Use `--yes` to skip the prompt, including with `--json`. The column must hold no active or archived tasks. Use `task move` or `task delete` to clear tasks from the column. Archived tasks must be unarchived before moving.
+
+New tasks enter the first column unless `--column` flag specifies a different column. A project may have no columns. Add one with `project column create` before creating tasks.
+
 `zinn project delete MDR` asks for confirmation, then permanently deletes the project and all of its columns and tasks. `--yes` skips confirmation when the project key is **typed**. With an _omitted_ key and [defaultProject](/docs/settings), it always asks: `--yes` is ignored with a warning, and without a terminal the command refuses with exit code 1. With `--json`, type the key and pass `--yes` (see [Confirmations](/docs/scripting#confirmations-in-scripts)).
 
 ## Create and read tasks

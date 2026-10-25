@@ -612,7 +612,7 @@ function operationsWalk() {
 
   const reads: Record<string, Record<string, () => unknown>> = {
     project: { getById: () => project.getById("p1"), getByKey: () => project.getByKey("APP"), getAll: () => project.getAll(), getAllWithTaskCounts: () => project.getAllWithTaskCounts(), standardizeKey: () => project.standardizeKey("app") },
-    column: { inspect: () => column.inspect({ taskKeys: ["APP-1"] }), getById: () => column.getById("c1"), getAllByProjectKey: () => column.getAllByProjectKey("APP"), getTaskCountsByProjectKey: () => column.getTaskCountsByProjectKey("APP") },
+    column: { inspect: () => column.inspect({ taskKeys: ["APP-1"] }), getById: () => column.getById("c1"), getByName: () => column.getByName("APP", "Todo"), getAllByProjectKey: () => column.getAllByProjectKey("APP"), getTaskCountsByProjectKey: () => column.getTaskCountsByProjectKey("APP") },
     task: { getAll: () => task.getAll({}), getByKey: () => task.getByKey("APP-1"), search: () => task.search({ query: "First" }), activity: () => task.activity("APP-1") },
     "task.label": { getAll: () => task.label.getAll("APP-1") },
     comment: { getByKey: () => comment.getByKey("APP-1#1"), getAll: () => comment.getAll("APP-1") },
@@ -632,6 +632,7 @@ function operationsWalk() {
       create: () => column.create({ projectKey: "APP", name: "Blocked" }, actor),
       edit: () => column.edit({ projectKey: "APP", columnName: "Todo", name: "Later" }, actor),
       order: () => column.order({ projectKey: "APP", columnName: "Todo", direction: "last" }, actor),
+      delete: () => column.delete({ projectKey: "APP", columnName: "Todo" }, actor),
     },
     task: {
       create: () => task.create({ project_id: "p1", title: "New" }, actor),

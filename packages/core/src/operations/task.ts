@@ -351,17 +351,18 @@ export const task = {
       }
 
       const projectColumns = dbColumn.getAllByProjectId(task.project_id);
-      const initialColumn =
-        task.columnName === undefined
-          ? projectColumns[0]
-          : requireColumnByName(project, projectColumns, task.columnName).columnMatch;
-      if (initialColumn == null) {
+      if (projectColumns.length === 0) {
         throw new CoreError(`Project "${project.key}" does not have any columns`, "conflict", {
           entity: "project",
           key: project.key,
           reason: "no_columns",
         });
       }
+
+      const initialColumn =
+        task.columnName === undefined
+          ? projectColumns[0]!
+          : requireColumnByName(project, projectColumns, task.columnName).columnMatch;
 
       const lastTask = dbTask.getLastByColumnId(initialColumn.id);
       const order = generateKeyBetween(lastTask?.task_order ?? null, null);

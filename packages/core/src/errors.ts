@@ -28,6 +28,7 @@ export type FailureFacts = {
     | "ambiguous_reference"
     | "text_match_count"
     | "no_columns"
+    | "has_tasks"
     | "unmarked_database"
     | "newer_database"
     | "older_database"

@@ -12,6 +12,7 @@ import {
   column,
   project,
   columnOrderSchema,
+  columnDeleteSchema,
   projectCreateSchema,
   projectEditSchema,
 } from "@zinn-dev/core";
@@ -145,6 +146,19 @@ const projectInputs = {
   },
   column_edit: {
     options: { name: { type: "string", required: true, value: { kind: "text", name: "text" } } },
+    forms: [
+      {
+        id: "default",
+        positionals: [
+          { name: "project-key", min: 1, max: 1, value: { kind: "project-key" } },
+          { name: "column-name", min: 1, max: 1, value: { kind: "column-name" } },
+        ],
+      },
+    ],
+    constraints: [],
+  },
+  column_delete: {
+    options: { yes: { type: "boolean" } },
     forms: [
       {
         id: "default",
@@ -316,11 +330,13 @@ Example: zinn project list`,
           sections.push(formatSection("Description", viewedProject.description));
         }
 
-        const columnTaskCounts = formatColumnList(viewedProject.columns, {
-          showsTaskCounts: true,
-          archivedTaskCount: viewedProject.archivedTaskCount,
-        });
-        sections.push(formatSection("Columns", columnTaskCounts));
+        if (viewedProject.columns.length > 0) {
+          const columnTaskCounts = formatColumnList(viewedProject.columns, {
+            showsTaskCounts: true,
+            archivedTaskCount: viewedProject.archivedTaskCount,
+          });
+          sections.push(formatSection("Columns", columnTaskCounts));
+        }
 
         return sections.join("\n\n");
       });
@@ -647,6 +663,61 @@ Ordering to the current position, or before or after itself, leaves the column u
 With --json, changed is false when the column was already in that position.
 
 Example: zinn project column order MDR Review before 'In Progress'`,
+    },
+    delete: {
+      summary: "Delete an empty project column after confirmation.",
+      effects: { domain: "delete", storage: "normal-open" },
+      confirmation: { kind: "prompt", description: confirmationDescription },
+      input: projectInputs.column_delete,
+      results: [jsonResult("Column")],
+      run: async (args) => {
+        const { values, positionals, tokens } = parseArgs({
+          args,
+          options: projectInputs.column_delete.options,
+          allowPositionals: true,
+          strict: true,
+          tokens: true,
+        });
+        validateUniqueOptions(tokens, projectInputs.column_delete.options);
+        validatePositionals(positionals, projectInputs.column_delete.forms[0]);
+
+        const props = columnDeleteSchema.parse({
+          projectKey: positionals[0],
+          columnName: positionals[1],
+        });
+        const columnMatch = column.getByName(props.projectKey, props.columnName);
+        const presentedColumn = presentColumn(columnMatch);
+        const canDelete = await confirmAction(
+          `Are you sure you want to delete column "${columnMatch.name}" from ${presentedColumn.project}?`,
+          values.yes === true,
+        );
+
+        if (!canDelete) {
+          output(
+            presentedColumn,
+            (entry) =>
+              `Deletion cancelled for ${formatColumnList([entry], { showsProject: true })}`,
+          );
+          return;
+        }
+
+        const deletedColumn = column.delete(props, currentActor());
+        output(
+          presentColumn(deletedColumn),
+          (entry) => `Deleted ${formatColumnList([entry], { showsProject: true })}`,
+        );
+      },
+      help: `${generateCommandUsage("project column delete", projectInputs.column_delete)}
+
+Delete an empty project column after confirmation.
+Columns are matched by name, and matching is case-insensitive.
+A column must hold no active or archived tasks. Use task move or task delete to clear it.
+New tasks enter the project's first column unless --column selects another.
+A project may have no columns. Add one with project column create before creating tasks.
+
+Use --yes to skip the confirmation prompt, including with --json.
+
+Example: zinn project column delete MDR Review`,
     },
   },
 } satisfies RouteDef;

@@ -1,6 +1,7 @@
 import type {
   ColumnCreateInput,
   ColumnEditInput,
+  ColumnDeleteInput,
   ColumnOrderInput,
   ColumnInspectionInput,
 } from "../schemas/column.js";
@@ -24,6 +25,7 @@ import { findByName, getInsertionIndex, recordActivity, requireColumnByName } fr
 import {
   columnCreateSchema,
   columnEditSchema,
+  columnDeleteSchema,
   columnOrderSchema,
   columnInspectionSchema,
 } from "../schemas/column.js";
@@ -73,6 +75,10 @@ export const column = {
     });
   },
   getById: dbColumn.getById,
+  getByName: (projectKey: string, columnName: string) => {
+    const { project, projectColumns } = requireProjectColumns(projectKey);
+    return requireColumnByName(project, projectColumns, columnName).columnMatch;
+  },
   getAllByProjectKey: (key: string) => requireProjectColumns(key).projectColumns,
   getTaskCountsByProjectKey: (key: string) => {
     const { project, projectColumns } = requireProjectColumns(key);
@@ -230,6 +236,41 @@ export const column = {
       })!;
 
       return { column: orderedColumn, changed: true };
+    });
+  },
+  delete: (input: ColumnDeleteInput, actor: Actor) => {
+    const props = validateTaskInput(columnDeleteSchema, input);
+    const validActor = validateTaskInput(actorSchema, actor);
+
+    return writeTransaction(() => {
+      const { project, projectColumns } = requireProjectColumns(props.projectKey);
+      const { columnMatch } = requireColumnByName(project, projectColumns, props.columnName);
+      const activeTaskCount =
+        dbTask
+          .countByColumnId(project.id, "active")
+          .find((entry) => entry.column_id === columnMatch.id)?.task_count ?? 0;
+      const archivedTaskCount =
+        dbTask
+          .countByColumnId(project.id, "archived")
+          .find((entry) => entry.column_id === columnMatch.id)?.task_count ?? 0;
+
+      if (activeTaskCount + archivedTaskCount > 0) {
+        throw new CoreError(
+          `Column "${columnMatch.name}" contains ${activeTaskCount} active and ${archivedTaskCount} archived tasks`,
+          "conflict",
+          { entity: "column", key: columnMatch.name, reason: "has_tasks" },
+        );
+      }
+
+      const deletedColumn = dbColumn.deleteById(columnMatch.id)!;
+      recordActivity(validActor, {
+        entityType: "column",
+        entityId: deletedColumn.id,
+        action: "delete",
+        changes: { project: { id: project.id, key: project.key }, name: deletedColumn.name },
+        createdAt: Date.now(),
+      });
+      return deletedColumn;
     });
   },
 };

@@ -2,6 +2,106 @@ import { expect, test } from "bun:test";
 import { errorDocumentSchema } from "../src/errors";
 import { runZinn, withIsolatedZinnDir, withTestDb } from "../test-helpers";
 
+test("project column delete confirms, validates and returns the deleted column", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    expect((await runZinn(["project", "create", "COL"], dir)).code).toBe(0);
+    const read = () => withTestDb(dir, (db) => ({
+      columns: db.query("SELECT * FROM project_column ORDER BY id").all(),
+      activity: db.query("SELECT * FROM activity ORDER BY id").all(),
+    }));
+    const before = read();
+    for (const [args, expected] of [
+      [["COL", "Review"], { code: "invalid_input", details: { reason: "confirmation_required" } }],
+      [["COL"], { code: "invalid_input", details: { argument: "column-name" } }],
+      [["COL", "Review", "extra"], { code: "invalid_input" }],
+      [["COL", "Review", "--yes", "--yes"], { code: "invalid_input", details: { argument: "--yes" } }],
+      [["COL", "Review", "--unknown"], { code: "invalid_input" }],
+      [["COL", " ", "--yes"], { code: "invalid_input", details: { field: ["columnName"] } }],
+      [["COL", "Missing", "--yes"], { code: "not_found", details: { entity: "column", key: "Missing" } }],
+      [["MISSING", "Review", "--yes"], { code: "not_found", details: { entity: "project", key: "MISSING" } }],
+    ] as const) {
+      const result = await runZinn(["project", "column", "delete", ...args, "--json"], dir);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(expected);
+      expect(read()).toEqual(before);
+    }
+    const deleted = await runZinn(["project", "column", "delete", "col", " review ", "--yes", "--json"], dir);
+    expect(deleted.code).toBe(0);
+    expect(deleted.stderr).toBe("");
+    expect(JSON.parse(deleted.stdout)).toEqual({
+      id: expect.any(String), project_id: expect.any(String), project: "COL", name: "Review",
+    });
+    expect(read().columns).toHaveLength(before.columns.length - 1);
+    expect(read().activity).toHaveLength(before.activity.length + 1);
+    const text = await runZinn(["project", "column", "delete", "COL", "Done", "--yes"], dir);
+    expect(text.code).toBe(0);
+    expect(text.stderr).toBe("");
+    expect(text.stdout).toContain("Deleted");
+    expect(text.stdout).toContain("COL");
+    expect(text.stdout).toContain("Done");
+  });
+});
+
+test("project column delete reports both task counts and commands to clear the column", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "COL"], dir);
+    await runZinn(["task", "create", "COL", "--title", "Keep"], dir);
+    for (const archived of [false, true]) {
+      if (archived) {
+        await runZinn(["task", "archive", "COL-1"], dir);
+      }
+      const result = await runZinn(["project", "column", "delete", "COL", "Backlog", "--yes", "--json"], dir);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      const error = errorDocumentSchema.parse(JSON.parse(result.stderr)).error;
+      expect(error).toMatchObject({ code: "conflict", details: { entity: "column", reason: "has_tasks" } });
+      expect(error.message).toContain(`${archived ? 0 : 1} active`);
+      expect(error.message).toContain(`${archived ? 1 : 0} archived`);
+      expect(error.message).toContain("zinn task move");
+      expect(error.message).toContain("zinn task delete");
+    }
+  });
+});
+
+test("projects with no columns support reads, maintenance, recovery and deletion", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "COL"], dir);
+    const columns = JSON.parse((await runZinn(["project", "column", "list", "COL", "--json"], dir)).stdout);
+    for (const { name } of columns) {
+      expect((await runZinn(["project", "column", "delete", "COL", name, "--yes"], dir)).code).toBe(0);
+    }
+    for (const args of [
+      ["project", "list"], ["project", "view", "COL"], ["project", "column", "list", "COL"],
+      ["task", "list", "COL"], ["task", "search", "anything", "COL"], ["backup"], ["reindex"],
+    ]) {
+      const result = await runZinn([...args, "--json"], dir);
+      expect(result.code, result.stderr).toBe(0);
+      expect(() => JSON.parse(result.stdout)).not.toThrow();
+      if (args[0] === "task" || args.includes("column")) {
+        expect(JSON.parse(result.stdout)).toEqual([]);
+      }
+    }
+    const viewed = await runZinn(["project", "view", "COL"], dir);
+    expect(viewed.code).toBe(0);
+    expect(viewed.stdout).toContain("COL");
+    expect(viewed.stdout).not.toContain("Columns:");
+    const failed = await runZinn(["task", "create", "COL", "--title", "Refused", "--json"], dir);
+    expect(failed.code).toBe(1);
+    expect(failed.stdout).toBe("");
+    const error = errorDocumentSchema.parse(JSON.parse(failed.stderr)).error;
+    expect(error.details).toMatchObject({ reason: "no_columns", key: "COL" });
+    expect(error.message).toContain("zinn project column create COL <name>");
+    expect((await runZinn(["project", "column", "create", "COL", "Recovered"], dir)).code).toBe(0);
+    const created = await runZinn(["task", "create", "COL", "--title", "Recovered", "--json"], dir);
+    expect(created.code).toBe(0);
+    expect(JSON.parse(created.stdout)).toMatchObject({ key: "COL-1", column: "Recovered" });
+    await runZinn(["task", "delete", "COL-1", "--yes"], dir);
+    await runZinn(["project", "column", "delete", "COL", "Recovered", "--yes"], dir);
+    expect((await runZinn(["project", "delete", "COL", "--yes"], dir)).code).toBe(0);
+  });
+});
+
 test("project column create takes a name that begins with a dash only after --", async () => {
   await withIsolatedZinnDir(async (dir) => {
     await runZinn(["project", "create", "SHOP"], dir);

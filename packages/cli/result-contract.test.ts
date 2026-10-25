@@ -207,6 +207,7 @@ const fixtures: Record<string, Fixture[]> = {
   "project delete": [{ schema: "Project", args: ["APP", "--yes"] }],
   "project column create": [{ schema: "Column", args: ["APP", "New column"] }],
   "project column list": [{ schema: "ColumnList", args: ["APP"] }],
+  "project column delete": [{ schema: "Column", args: ["APP", "Review", "--yes"] }],
   "project column edit": [
     { schema: "ColumnChange", args: ["APP", "Backlog", "--name", "Ideas"], check: (v) => expect(v.changed).toBe(true) },
     { schema: "ColumnChange", args: ["APP", "Backlog", "--name", "Backlog"], check: (v) => expect(v.changed).toBe(false) },

@@ -1,6 +1,19 @@
 import { expect, test } from "bun:test";
 
-import { columnCreateSchema, columnEditSchema, columnOrderSchema } from "./column";
+import { columnCreateSchema, columnDeleteSchema, columnEditSchema, columnOrderSchema } from "./column";
+
+test("column deletion requires a project and a trimmed column name", () => {
+  expect(columnDeleteSchema.parse({ projectKey: "app", columnName: " Done " })).toEqual({
+    projectKey: "app", columnName: "Done",
+  });
+  for (const input of [
+    { projectKey: "APP" }, { columnName: "Done" },
+    { projectKey: "APP", columnName: " " }, { projectKey: "APP", columnName: "In\nProgress" },
+    { projectKey: "APP", columnName: "Done", name: "Later" },
+  ]) {
+    expect(columnDeleteSchema.safeParse(input).success).toBe(false);
+  }
+});
 
 test("column names are trimmed and reject blank text, line breaks and control characters", () => {
   expect(columnCreateSchema.parse({ projectKey: "app", name: " Next " })).toEqual({

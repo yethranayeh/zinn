@@ -86,3 +86,10 @@ export function updateOrder(props: Pick<Column, "id" | "column_order">) {
     RETURNING *;`)
     .get({ $id: props.id, $column_order: props.column_order });
 }
+
+export function deleteById(id: string) {
+  return getDb()
+    .query<Column, Bind<Pick<Column, "id">>>(`DELETE FROM ${DB_TABLE.projectColumn}
+    WHERE id = $id RETURNING *`)
+    .get({ $id: id });
+}

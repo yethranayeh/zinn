@@ -6,6 +6,7 @@ import { createInterface } from "node:readline/promises";
 import { z } from "zod";
 import {
   assertWritable,
+  CoreError,
   InputValidationError,
   ReadOnlyDatabaseError,
   TextEditMatchError,
@@ -213,6 +214,14 @@ export function failureMessage(error: any, fallback: string) {
 
   if (error instanceof TextEditMatchError && error.matchCount > 1) {
     return `${error.message} Use --all to replace every match.`;
+  }
+
+  if (error instanceof CoreError && error.facts.reason === "no_columns") {
+    return `${error.message}. Add a column with zinn project column create ${error.facts.key} <name>.`;
+  }
+
+  if (error instanceof CoreError && error.facts.reason === "has_tasks") {
+    return `${error.message}. Use zinn task move or zinn task delete to clear the column. Archived tasks must be unarchived before moving.`;
   }
 
   if (error?.message === "no such table: task_search") {

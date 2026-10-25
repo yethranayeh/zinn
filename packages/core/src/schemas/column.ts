@@ -15,6 +15,7 @@ export const columnEditSchema = z.strictObject({
   columnName: columnNameSchema,
   name: columnNameSchema,
 });
+export const columnDeleteSchema = columnEditSchema.omit({ name: true });
 export const columnOrderSchema = z.discriminatedUnion("direction", [
   z.strictObject({
     projectKey: z.string(),
@@ -30,6 +31,7 @@ export const columnOrderSchema = z.discriminatedUnion("direction", [
 ]);
 export type ColumnCreateInput = z.infer<typeof columnCreateSchema>;
 export type ColumnEditInput = z.infer<typeof columnEditSchema>;
+export type ColumnDeleteInput = z.infer<typeof columnDeleteSchema>;
 export type ColumnOrderInput = z.infer<typeof columnOrderSchema>;
 
 export const columnInspectionSchema = z.strictObject({
