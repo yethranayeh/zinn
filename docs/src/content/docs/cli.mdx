@@ -106,7 +106,7 @@ Only these flags repeat:
 - `--label` on `task create`, `task list` and `task search`,
 - `--depends-on` and `--related` on `task create`,
 - `--add-label` and `--remove-label` on `task edit`,
-- `--changed` on `activity list`.
+- `--action` and `--changed` on `activity list`.
 
 Any other flag given twice, `--json` and `--yes` included, **fails** without changing anything.
 A help flag is the _exception_: the first one shows help and the rest of the line is ignored, so `-h --help` works and help is given whenever needed! No problem!
@@ -477,6 +477,8 @@ zinn activity list --task MDR-1 --show-deleted
 zinn activity list --task-id 019abcdf-1234-7000-8000-123456abcdef
 zinn activity list --session conversation-id
 zinn activity list --session conversation-id --thread child-thread-id
+zinn activity list --action comment_create --action comment_edit
+zinn activity list --action edit --changed description
 zinn activity list --changed column=Review
 zinn activity list --changed priority=high --changed labels=bug
 zinn activity list --changed column=Review --changed column=Done --limit 10
@@ -497,9 +499,13 @@ Deleted history and exact ID selection include the original project-deletion eve
 
 `--session` and `--thread` match the complete stored IDs exactly, including case and whitespace. All supplied filters must match, and `--limit` applies after filtering. Rows without the requested identity do not match. No matches return empty output, or `[]` with `--json`, and exit successfully. Session activity records committed changes.
 
+`--action <action>` matches the recorded action, such as `edit`, `move`, `comment_create`, `comment_edit` or `comment_delete`. Action names use the same spelling and case as activity JSON. Repeat `--action` to match any listed action. Action and field filters must match the same event.
+
+`--changed <field>` matches a change to a task's `column`, `priority`, `labels`, `title` or `description`. Labels match additions and removals. Initial task creation fields also match, including an unassigned priority or description. Initial labels match when at least one label is recorded. Use `--action edit --changed description` to select description edits.
+
 `--changed <field>=<value>` matches a recorded change to `column`, `priority`, or `labels`, ignoring value case. Column and priority match their new values. Labels match an added label. Initial values on task creation also match. Use `--changed priority=none` for creation without a priority or a change that clears it. Column and label names match as recorded in the event, including after renaming or deletion.
 
-Repeat `--changed` for several values. Values for the same field match any of them, so `--changed column=Review --changed column=Done` selects events entering either column. Different fields must match the same event, so `--changed priority=high --changed labels=bug` selects events that both set high priority and add bug. Other supplied filters must also match, before `--limit` applies. Unknown fields fail and name the accepted fields.
+Repeat `--changed` for several filters. Filters for the same field match any of them, including a value-free filter alongside one with a value. For example, `--changed column=Review --changed column=Done` selects events entering either column. Different fields must match the same event, so `--changed priority=high --changed labels=bug` selects events that both set high priority and add bug. Other supplied filters must also match, before `--limit` applies. Unknown fields fail and name the accepted fields.
 
 Activity text uses local dates and times with a UTC offset. `activity list` uses the shortest globally unique left prefixes of at least eight hexadecimal digits for event IDs.
 

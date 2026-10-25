@@ -44,13 +44,22 @@ const sqlite: Error = new SqliteError("Busy", 5, null);
 const events: Activity[] = activity.getAll({
   sessionId: "conversation",
   threadId: "child",
-  changed: [{ field: "column", value: "Review" }, { field: "priority", value: null }],
+  actions: ["create", "edit"],
+  changed: [
+    { field: "column", value: "Review" },
+    { field: "priority", value: null },
+    { field: "description" },
+  ],
   limit: 1,
 });
 // @ts-expect-error only column, priority and labels support changed value filters.
 activity.getAll({ changed: [{ field: "comment", value: "text" }] });
 // @ts-expect-error column names cannot use null as a changed filter value.
 activity.getAll({ changed: [{ field: "column", value: null }] });
+// @ts-expect-error free-text fields support only value-free filters.
+activity.getAll({ changed: [{ field: "description", value: "text" }] });
+// @ts-expect-error action filters use the recorded action vocabulary.
+activity.getAll({ actions: ["invalid"] });
 // @ts-expect-error priority is a public vocabulary, not an arbitrary string.
 task.create({ project_id: createdProject.id, title: "Invalid", priority: "invalid" }, actor);
 // @ts-expect-error every mutation requires an explicit actor.

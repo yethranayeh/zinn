@@ -27,20 +27,29 @@ export const activityActionSchema = z.enum([
   "comment_delete",
 ]);
 export const activityEntityTypeSchema = z.enum(["task", "project", "column", "label"]);
-const changedFieldMessage = "Changed field must be column, priority or labels";
-export const activityChangedFieldSchema = z.enum(["column", "priority", "labels"], {
-  error: changedFieldMessage,
-});
+const changedFieldMessage = "Changed field must be column, priority, labels, title or description";
+export const activityChangedFieldSchema = z.enum(
+  ["column", "priority", "labels", "title", "description"],
+  {
+    error: changedFieldMessage,
+  },
+);
 export const activityChangedSchema = z.discriminatedUnion(
   "field",
   [
     z.strictObject({
-      field: activityChangedFieldSchema.exclude(["priority"]),
-      value: z.string().min(1, "Changed value cannot be empty"),
+      field: activityChangedFieldSchema.exclude(["priority", "title", "description"]),
+      value: z.string().min(1, "Changed value cannot be empty").optional(),
     }),
     z.strictObject({
       field: z.literal("priority"),
-      value: z.string().min(1, "Changed value cannot be empty").nullable(),
+      value: z.string().min(1, "Changed value cannot be empty").nullable().optional(),
+    }),
+    z.strictObject({
+      field: activityChangedFieldSchema.extract(["title", "description"]),
+      value: z
+        .never({ error: "Title and description filters match any change. Omit the value" })
+        .optional(),
     }),
   ],
   { error: changedFieldMessage },
@@ -109,6 +118,7 @@ export const activityListSchema = z
     showDeleted: z.boolean().optional(),
     sessionId: z.string().min(1, "Session ID cannot be empty").optional(),
     threadId: z.string().min(1, "Thread ID cannot be empty").optional(),
+    actions: z.array(activityActionSchema).optional(),
     changed: z.array(activityChangedSchema).optional(),
     limit: z
       .number({ error: activityLimitMessage })

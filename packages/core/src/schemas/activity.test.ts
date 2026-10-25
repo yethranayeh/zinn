@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ActivityListInput } from "./activity";
-import { activityChangedFieldSchema, activityIdSchema, activityListSchema, activityTaskIdSchema, activityTaskKeySchema, activityIdentitySelectors } from "./activity";
+import { activityActionSchema, activityChangedFieldSchema, activityIdSchema, activityListSchema, activityTaskIdSchema, activityTaskKeySchema, activityIdentitySelectors } from "./activity";
 
 test("activity IDs normalize full, compact and canonical left-prefix spellings", () => {
   const id = "019ABCDF-1234-7000-8000-123456ABCDEF";
@@ -77,6 +77,13 @@ test("session and thread filters preserve exact opaque values and reject empty o
   }
 });
 
+test("action filters accept the recorded vocabulary and reject invalid selections", () => {
+  expect(activityListSchema.parse({ actions: activityActionSchema.options })).toEqual({ actions: activityActionSchema.options });
+  for (const actions of [null, "edit", ["EDIT"], ["unknown"], [null], [1]]) {
+    expect(activityListSchema.safeParse({ actions }).success).toBe(false);
+  }
+});
+
 test("changed filters accept repeated named values and null only for priority", () => {
   const changed: NonNullable<ActivityListInput["changed"]> = [
     { field: "column", value: "Review" },
@@ -86,10 +93,16 @@ test("changed filters accept repeated named values and null only for priority", 
     { field: "labels", value: "needs=review" },
   ];
   expect(activityListSchema.parse({ changed })).toEqual({ changed });
-  for (const changed of [null, "column=Review", [{}], [{ field: "column" }], [{ field: "column", value: "" }], [{ field: "labels", value: null }], [{ field: "column", value: null }], [{ field: "priority", value: 1 }], [{ field: "column", value: "Review", extra: true }]]) {
+  for (const changed of [null, "column=Review", [{}], [{ field: "column", value: "" }], [{ field: "labels", value: null }], [{ field: "column", value: null }], [{ field: "priority", value: 1 }], [{ field: "column", value: "Review", extra: true }]]) {
     expect(activityListSchema.safeParse({ changed }).success).toBe(false);
   }
-  for (const field of ["title", "description", "comment", "unknown", "Column"]) {
+  expect(activityListSchema.parse({ changed: activityChangedFieldSchema.options.map(field => ({ field })) }))
+    .toEqual({ changed: activityChangedFieldSchema.options.map(field => ({ field })) });
+  for (const field of ["title", "description"]) {
+    expect(activityListSchema.safeParse({ changed: [{ field, value: "text" }] }).error?.issues[0]?.path)
+      .toEqual(["changed", 0, "value"]);
+  }
+  for (const field of ["comment", "unknown", "Column"]) {
     const result = activityListSchema.safeParse({ changed: [{ field, value: "value" }] });
     expect(result.success).toBe(false);
     if (!result.success) {

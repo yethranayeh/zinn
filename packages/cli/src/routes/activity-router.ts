@@ -6,7 +6,9 @@ import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
 import {
   activity,
+  activityActionSchema,
   activityChangedFieldSchema,
+  activityChangedSchema,
   activityLimitMessage,
   CoreError,
   positiveIntegerPattern,
@@ -41,15 +43,20 @@ const activityInputs = {
       "show-deleted": { type: "boolean" },
       session: { type: "string", value: { kind: "text", name: "id" } },
       thread: { type: "string", value: { kind: "text", name: "id" } },
+      action: {
+        type: "string",
+        multiple: true,
+        value: { kind: "activity-action", name: "action", choices: activityActionSchema.options },
+      },
       changed: {
         type: "string",
         multiple: true,
         value: {
           kind: "activity-change",
-          name: "field=value",
-          pattern: `^(${activityChangedFieldSchema.options.join("|")})=.+$`,
+          name: "field[=value]",
+          pattern: `^((${activityChangedFieldSchema.options.join("|")})|(${activityChangedFieldSchema.exclude(["title", "description"]).options.join("|")})=.+)$`,
           description:
-            "Fields: column, priority, labels. Match the recorded new value or added label, ignoring case. priority=none matches an unassigned priority.",
+            "Fields: column, priority, labels, title, description. Omit the value to match any change. Values apply to column, priority and added labels, ignoring case. priority=none matches an unassigned priority.",
         },
       },
       limit: {
@@ -70,7 +77,7 @@ const activityInputs = {
       },
     ],
     notes: [
-      "Repeated --changed values for one field match any value. Different fields must match the same event. All other filters must also match, before --limit applies.",
+      "Repeated --action flags match any listed action. Repeated --changed filters for one field match any of them. Different fields must match the same event. All other filters must also match, before --limit applies.",
     ],
   },
   view: {
@@ -138,6 +145,19 @@ export const activityRouter = {
           showDeleted: values["show-deleted"],
           sessionId: values.session,
           threadId: values.thread,
+          actions: values.action?.map((action) => {
+            const parsed = activityActionSchema.safeParse(action);
+            if (!parsed.success) {
+              quit(
+                `Unknown action "${action}". Use ${activityActionSchema.options.join(", ")}`,
+                undefined,
+                {
+                  argument: "--action",
+                },
+              );
+            }
+            return parsed.data;
+          }),
           changed: values.changed?.map(parseChangedFilter),
           limit: values.limit === undefined ? undefined : Number(values.limit),
         });
@@ -193,14 +213,19 @@ Returns all matching events unless --limit is supplied.
                    Requires a full UUID.
 --session <id>     Match an exact session ID, including case.
 --thread <id>      Match an exact thread ID, including case.
---changed <field=value> Match a recorded new value or added label, ignoring case.
-                   Fields: column, priority, labels. Repeat for multiple matches.
+--action <action>  Match a recorded action. Repeat to match any listed action.
+--changed <field>[=<value>] Match a task field change, with an optional value.
+                   Fields: column, priority, labels, title, description.
+                   Values apply to column, priority and added labels, ignoring case.
+                   Without a value, labels match additions and removals.
+                   Title and description match any change, without a value.
                    Use priority=none for an unassigned priority.
 --limit <n>        Return at most n matching events.
 
 Use one of --project, --project-id, --task or --task-id.
 --show-deleted requires --project or --task.
-Repeated --changed values for one field match any value.
+Repeated --action flags match any listed action.
+Repeated --changed filters for one field match any of them.
 Different fields must match the same event. All other filters must also match.
 Initial task values also match. Column and label names match as recorded.
 
@@ -210,6 +235,8 @@ With --json, return an array of full activity records.
 Examples:
   zinn activity list --limit 10
   zinn activity list --project APP
+  zinn activity list --action comment_create --action comment_edit
+  zinn activity list --action edit --changed description
   zinn activity list --changed column=Review
   zinn activity list --changed priority=high --changed labels=bug
   zinn activity list --task APP-2
@@ -252,21 +279,20 @@ Example: zinn activity view 019abcdf-1234-7`,
 
 function parseChangedFilter(input: string) {
   const separator = input.indexOf("=");
-  if (separator <= 0 || separator === input.length - 1) {
-    quit("Use --changed <field>=<value> with a nonempty field and value", undefined, {
-      argument: "--changed",
-    });
-  }
-
-  const field = activityChangedFieldSchema.safeParse(input.slice(0, separator));
-  if (!field.success) {
-    quit(field.error.issues[0]!.message, undefined, { argument: "--changed" });
-  }
-
+  const field = separator === -1 ? input : input.slice(0, separator);
   const value = input.slice(separator + 1);
-  if (field.data === "priority") {
-    return { field: field.data, value: value.toLowerCase() === "none" ? null : value };
+  const filter = activityChangedSchema.safeParse(
+    separator === -1
+      ? { field }
+      : {
+          field,
+          value: field === "priority" && value.toLowerCase() === "none" ? null : value,
+        },
+  );
+
+  if (!filter.success) {
+    quit(filter.error.issues[0]!.message, undefined, { argument: "--changed" });
   }
 
-  return { field: field.data, value };
+  return filter.data;
 }

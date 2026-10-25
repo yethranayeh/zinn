@@ -1,11 +1,35 @@
 import { expect, test } from "bun:test";
-import { activity, column, comment, label, project, task } from "../index";
+import { activity, activityActionSchema, activityChangedFieldSchema, column, comment, label, project, task } from "../index";
 import type { ActivityListInput } from "../index";
 import { getDb } from "./db";
 import * as dbActivity from "./db/activity";
 import { withTestStore } from "./testing";
 
 const actor = { name: "Activity test", email: null, kind: "human" as const };
+
+test("action filters select every recorded action and combine before the limit", () => {
+  withTestStore(() => {
+    const events = activityActionSchema.options.map((action, index) => dbActivity.create({
+      created_at: index, actor_name: actor.name, actor_email: null, actor_kind: actor.kind,
+      actor_source: null, actor_session_id: "Session", actor_thread_id: "Thread",
+      actor_agent: null, actor_model: null, actor_effort: null,
+      entity_type: "task", entity_id: "historical", action,
+      changes: action === "edit" ? { priority: [null, "high"] } : null,
+    }));
+    const before = activity.getAll();
+    for (const event of events) {
+      expect(activity.getAll({ actions: [event.action] })).toEqual([event]);
+    }
+    const selected = before.filter(event => event.action === "edit" || event.action === "comment_create");
+    expect(activity.getAll({ actions: ["edit", "comment_create"] })).toEqual(selected);
+    expect(activity.getAll({ actions: ["edit", "comment_create"], limit: 1 })).toEqual(selected.slice(0, 1));
+    expect(activity.getAll({ actions: ["edit"], changed: [{ field: "priority", value: "HIGH" }], sessionId: "Session", threadId: "Thread" }))
+      .toEqual(events.filter(event => event.action === "edit"));
+    expect(activity.getAll({ actions: ["comment_create"], changed: [{ field: "priority", value: "high" }] })).toEqual([]);
+    expect(activity.getAll({ actions: ["edit"], threadId: "thread" })).toEqual([]);
+    expect(activity.getAll()).toEqual(before);
+  });
+});
 
 test("changed filters match initial values, new priorities, moves and added labels", () => {
   withTestStore(() => {
@@ -40,6 +64,55 @@ test("changed filters match initial values, new priorities, moves and added labe
     expect(query([{ field: "labels", value: "triage" }, { field: "labels", value: "bug" }])).toEqual([added, combined, created]);
     expect(query([{ field: "labels", value: "missing" }])).toEqual([]);
     expect(query([])).toEqual(activity.getAll({ taskKey: item.key }));
+  });
+});
+
+test("value-free filters match task creation, clearing and label removals in the same event", () => {
+  withTestStore(() => {
+    const app = project.create({ key: "APP", description: "Project description" }, actor);
+    label.create({ name: "bug", description: "Label description" }, actor);
+    const item = task.create({ project_id: app.id, title: "Initial" }, actor);
+    const created = activity.getAll({ taskKey: item.key })[0]!;
+    const query = (changed: ActivityListInput["changed"], actions?: ActivityListInput["actions"]) =>
+      activity.getAll({ taskKey: item.key, changed, actions });
+    for (const field of activityChangedFieldSchema.options.filter(field => field !== "labels")) {
+      expect(query([{ field }])).toEqual([created]);
+    }
+    expect(query([{ field: "labels" }])).toEqual([]);
+
+    task.edit({ taskKey: item.key, title: "Renamed" }, actor);
+    const renamed = activity.getAll({ taskKey: item.key })[0]!;
+    task.edit({ taskKey: item.key, description: "Description", priority: "high", addLabelNames: ["bug"] }, actor);
+    const combined = activity.getAll({ taskKey: item.key })[0]!;
+    task.edit({ taskKey: item.key, description: null, priority: null, removeLabelNames: ["bug"] }, actor);
+    const cleared = activity.getAll({ taskKey: item.key })[0]!;
+    const beforeNoOps = activity.getAll();
+    task.edit({ taskKey: item.key, description: null, priority: null, removeLabelNames: ["bug"] }, actor);
+    expect(activity.getAll()).toEqual(beforeNoOps);
+    task.move({ taskKey: item.key, targetColumn: "Review" }, actor);
+    const moved = activity.getAll({ taskKey: item.key })[0]!;
+    comment.create({ taskKey: item.key, text: "A description comment" }, actor);
+    project.edit({ projectKey: app.key, description: "Updated project" }, actor);
+    label.edit({ labelName: "bug", description: "Updated label" }, actor);
+
+    expect(query([{ field: "title" }])).toEqual([renamed, created]);
+    expect(query([{ field: "description" }])).toEqual([cleared, combined, created]);
+    expect(query([{ field: "priority" }])).toEqual([cleared, combined, created]);
+    expect(query([{ field: "column" }])).toEqual([moved, created]);
+    expect(query([{ field: "labels" }])).toEqual([cleared, combined]);
+    expect(query([{ field: "labels", value: "bug" }])).toEqual([combined]);
+    expect(query([{ field: "labels" }, { field: "labels", value: "missing" }])).toEqual([cleared, combined]);
+    expect(query([{ field: "labels" }, { field: "priority", value: "high" }])).toEqual([combined]);
+    expect(query([{ field: "description" }], ["edit"])).toEqual([cleared, combined]);
+    expect(query([{ field: "title" }, { field: "description" }], ["edit"])).toEqual([]);
+    expect(activity.getAll({ changed: [{ field: "description" }] })).toEqual([cleared, combined, created]);
+
+    task.label.add({ taskKey: item.key, labelNames: ["bug"] }, actor);
+    const added = activity.getAll({ taskKey: item.key })[0]!;
+    label.delete({ name: "bug" }, actor);
+    const removed = activity.getAll({ taskKey: item.key })[0]!;
+    expect(query([{ field: "labels" }])).toEqual([removed, added, cleared, combined]);
+    expect(query([{ field: "labels", value: "bug" }])).toEqual([added, combined]);
   });
 });
 

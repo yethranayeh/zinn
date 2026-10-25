@@ -286,6 +286,20 @@ for (const runtime of ["node", "bun"]) {
       const edited = runBuilt(runtime, ["task", "edit", "BUILD-1", "--description", "Searchable output", "--json"], directory);
       expect(edited.code).toBe(0);
       expect(JSON.parse(edited.stdout).description).toBe("Searchable output");
+      const descriptionEvents = runBuilt(runtime, ["activity", "list", "--action", "edit", "--changed", "description", "--json"], directory);
+      expect(descriptionEvents.code).toBe(0);
+      expect(descriptionEvents.stderr).toBe("");
+      expect(JSON.parse(descriptionEvents.stdout)).toEqual([expect.objectContaining({
+        entity_id: JSON.parse(created.stdout).id,
+        action: "edit",
+        changes: { description: [null, "Searchable output"] },
+      })]);
+      const initialTitle = runBuilt(runtime, ["activity", "list", "--action", "create", "--action", "edit", "--changed", "title", "--limit", "1", "--json"], directory);
+      expect(initialTitle.code).toBe(0);
+      expect(JSON.parse(initialTitle.stdout)).toEqual([expect.objectContaining({
+        entity_id: JSON.parse(created.stdout).id,
+        action: "create",
+      })]);
       const searched = runBuilt(runtime, ["task", "search", "Searchable", "--json"], directory, { FORCE_COLOR: "1" });
       expect(searched.code).toBe(0);
       expect(JSON.parse(searched.stdout)[0].key).toBe("BUILD-1");

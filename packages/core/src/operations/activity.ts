@@ -219,7 +219,7 @@ function getRecordedColumnNames(value: unknown): Array<string> {
   return [value.name];
 }
 
-function getRecordedPriorities(value: unknown): Array<string | null> {
+function getRecordedNullableText(value: unknown): Array<string | null> {
   if (value !== null && typeof value !== "string") {
     return [];
   }
@@ -235,12 +235,12 @@ function getRecordedLabelNames(value: unknown): Array<string> {
   return value.filter((name): name is string => typeof name === "string");
 }
 
-function getAddedLabelNames(value: unknown): Array<string> {
+function getChangedLabelNames(value: unknown, change: "added" | "removed"): Array<string> {
   if (!isRecord(value)) {
     return [];
   }
 
-  return getRecordedLabelNames(value.added);
+  return getRecordedLabelNames(value[change]);
 }
 
 /** The values a task event records as the new value of each filterable field. */
@@ -254,16 +254,22 @@ function getRecordedValues(event: Activity): RecordedValues {
     case "create":
       return {
         column: getRecordedColumnNames(changes?.column),
-        priority: getRecordedPriorities(changes?.priority),
+        priority: getRecordedNullableText(changes?.priority),
         labels: getRecordedLabelNames(changes?.labels),
+        title: typeof changes?.title === "string" ? [changes.title] : [],
+        description: getRecordedNullableText(changes?.description),
       };
     case "move":
       return { column: getRecordedColumnNames(getRecordedNewValue(changes?.column)) };
-    case "edit":
+    case "edit": {
+      const newTitle = getRecordedNewValue(changes?.title);
       return {
-        priority: getRecordedPriorities(getRecordedNewValue(changes?.priority)),
-        labels: getAddedLabelNames(changes?.labels),
+        priority: getRecordedNullableText(getRecordedNewValue(changes?.priority)),
+        labels: getChangedLabelNames(changes?.labels, "added"),
+        title: typeof newTitle === "string" ? [newTitle] : [],
+        description: getRecordedNullableText(getRecordedNewValue(changes?.description)),
       };
+    }
     default:
       return {};
   }
@@ -286,10 +292,10 @@ export const activity = {
       );
     }
 
-    const changedValues = new Map<ActivityChangedField, Set<string | null>>();
+    const changedValues = new Map<ActivityChangedField, Set<string | null | undefined>>();
     for (const { field, value } of props.changed ?? []) {
-      const values = changedValues.get(field) ?? new Set<string | null>();
-      values.add(value === null ? null : standardizeName(value));
+      const values = changedValues.get(field) ?? new Set<string | null | undefined>();
+      values.add(value == null ? value : standardizeName(value));
       changedValues.set(field, values);
     }
     const changedFields = [...changedValues];
@@ -300,15 +306,26 @@ export const activity = {
 
       const matchesThread =
         props.threadId === undefined || event.actor_thread_id === props.threadId;
+      const matchesAction = props.actions === undefined || props.actions.includes(event.action);
 
       const recordedValues = getRecordedValues(event);
-      const matchesChanges = changedFields.every(([field, values]) =>
-        (recordedValues[field] ?? []).some((value) =>
-          values.has(value === null ? null : standardizeName(value)),
-        ),
-      );
+      const matchesChanges = changedFields.every(([field, values]) => {
+        const newValues = recordedValues[field] ?? [];
+        const hasRemovedLabels =
+          field === "labels" &&
+          event.entity_type === "task" &&
+          event.action === "edit" &&
+          getChangedLabelNames(event.changes?.labels, "removed").length > 0;
+        const matchesAnyChange =
+          values.has(undefined) && (newValues.length > 0 || hasRemovedLabels);
 
-      return matchesSession && matchesThread && matchesChanges;
+        return (
+          matchesAnyChange ||
+          newValues.some((value) => values.has(value === null ? null : standardizeName(value)))
+        );
+      });
+
+      return matchesSession && matchesThread && matchesAction && matchesChanges;
     });
 
     return props.limit === undefined ? matchingEvents : matchingEvents.slice(0, props.limit);
