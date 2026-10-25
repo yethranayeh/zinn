@@ -20,8 +20,7 @@
 	"keywords": [
 		"kanban",
 		"cli",
-		"terminal",
-		"bun"
+		"terminal"
 	],
 	"module": "index.ts",
 	"exports": {
