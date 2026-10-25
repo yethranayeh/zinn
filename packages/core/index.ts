@@ -103,6 +103,7 @@ export {
   activityChangedSchema,
   activityIdSchema,
   activityListSchema,
+  activityTimestampSchema,
   activityTaskKeySchema,
   activityTaskIdSchema,
   activityProjectKeySchema,

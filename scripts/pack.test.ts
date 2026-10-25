@@ -156,6 +156,29 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
         directory: join(root, `skill-${runtime}`),
         env: TEST_ENVIRONMENT,
       });
+      const timeOptions = {
+        runtime: Bun.which(runtime)!, cliPath: join(packedCli, "index.js"), cwd: root,
+        env: { ...TEST_ENVIRONMENT, ZINN_DIR: join(root, `activity-time-${runtime}`), TZ: "America/New_York" },
+      };
+      mkdirSync(timeOptions.env.ZINN_DIR);
+      const createdProject = runCli(["project", "create", "CLOCK", "--json"], timeOptions);
+      expect(createdProject.code, createdProject.stderr).toBe(0);
+      const recorded = JSON.parse(runCli(["activity", "list", "--json"], timeOptions).stdout);
+      const timestamp = recorded[0].created_at;
+      const selected = runCli(["activity", "list", "--since", new Date(timestamp).toISOString(), "--until", String(timestamp), "--json"], timeOptions);
+      expect(selected.code, selected.stderr).toBe(0);
+      expect(JSON.parse(selected.stdout)).toEqual(recorded);
+      const timeParserUrl = pathToFileURL(join(packedCli, "src/activity-time.js")).href;
+      const timeCode = `
+        const { activityTimeInputSchema: schema } = await import(${JSON.stringify(timeParserUrl)});
+        console.log(JSON.stringify({
+          fractions: ["1", "12", "123"].map(fraction => schema.parse("2026-10-25T13:00:00." + fraction + "+01:00")),
+          invalid: ["2026-02-29T00:00:00Z", "2026-10-25T24:00:00Z", "2016-12-31T23:59:60Z", "2026-10-25T12:00:00.1234Z", "8640000000000001"].map(value => schema.safeParse(value).success)
+        }));`;
+      expect(JSON.parse(run([runtime, "--input-type=module", "--eval", timeCode], root, timeOptions.env))).toEqual({
+        fractions: [1_792_929_600_100, 1_792_929_600_120, 1_792_929_600_123],
+        invalid: [false, false, false, false, false],
+      });
     }
     const coreStagingDirectory = join(coreDirectory, JSON.parse(sourceSnapshots[0]!.manifest).publishConfig.directory);
     const stagedCoreIdentityUrl = pathToFileURL(join(coreStagingDirectory, "src/release-identity.js")).href;

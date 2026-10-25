@@ -304,6 +304,9 @@ export const activity = {
     const changedFields = [...changedValues];
 
     const matchingEvents = events.filter((event) => {
+      const matchesTime =
+        (props.since === undefined || event.created_at >= props.since) &&
+        (props.until === undefined || event.created_at <= props.until);
       const matchesSession =
         props.sessionId === undefined || event.actor_session_id === props.sessionId;
 
@@ -328,7 +331,7 @@ export const activity = {
         );
       });
 
-      return matchesSession && matchesThread && matchesAction && matchesChanges;
+      return matchesTime && matchesSession && matchesThread && matchesAction && matchesChanges;
     });
 
     return props.limit === undefined ? matchingEvents : matchingEvents.slice(0, props.limit);

@@ -580,6 +580,7 @@ test.each([0, 9])("activity reads obey the existing read-only policy at schema v
     configureDatabase({ client: "test", version: "0.0.0", executable: "activity-test", release: "source", allowsLegacyRead: true });
     const all = activity.getAll();
     assert.equal(all.length, 2);
+    assert.deepEqual(activity.getAll({ since: 0, until: 8_640_000_000_000_000 }), all);
     assert.deepEqual(activity.getById(all[0]!.id), all[0]);
     assert.equal(activity.getAll({ taskKey: "APP-1" }).length, 1);
     assert.equal(activity.getAll({ taskKey: "APP-1", showDeleted: false }).length, 1);

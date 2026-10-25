@@ -489,6 +489,7 @@ Deleting a project records one project deletion rather than separate deletion ac
 ```sh title="List and view activity"
 zinn activity list
 zinn activity list --limit 10
+zinn activity list --since 2026-10-25T00:00:00Z --until 2026-10-25T12:00:00Z
 zinn activity list --project MDR
 zinn activity list --project MDR --show-deleted
 zinn activity list --project-id 019abcdf-1234-7000-8000-123456abcdef
@@ -506,6 +507,12 @@ zinn activity view 019abcdf-1234-7
 ```
 
 `--limit` caps the newest matching events and must be a positive safe integer. Reorders and both affected-task events from relation changes are included.
+
+`--since` and `--until` select events on or after the lower bound and on or before the upper bound, using their recorded `created_at`. Use either flag alone or both together. Equal bounds select events at exactly that millisecond. `--until` must be at or after `--since`. All supplied filters must match before `--limit` applies.
+
+Time values accept integer epoch milliseconds or `YYYY-MM-DDTHH:mm:ss` followed by `Z` for UTC or a numeric offset such as `+01:00`. Optional fractional seconds have 1 to 3 digits, so `.1`, `.12` and `.123` mean 100, 120 and 123 milliseconds. For example, `2026-10-25T12:00:00.123Z` and `2026-10-25T13:00:00.123+01:00` select the same instant on every computer. Integer inputs always mean milliseconds and must be between `-8640000000000000` and `8640000000000000`, inclusive. Use `--since=-1` for a negative value.
+
+This is a bounded subset of [RFC 3339](https://www.rfc-editor.org/rfc/rfc3339.html#section-5.6). Times require seconds and an explicit offset. Impossible dates, leap seconds, `24:00` and fractions longer than 3 digits are rejected.
 
 `--task` selects the existing active or archived task by readable key. If that task is missing, the command fails and points to `--show-deleted`.
 

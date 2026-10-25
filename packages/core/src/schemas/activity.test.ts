@@ -39,6 +39,19 @@ test("activity lists accept optional filters and positive safe-integer limits", 
   expect(activityListSchema.safeParse({ unknown: "APP" }).success).toBe(false);
 });
 
+test("activity time bounds accept integer Date values and locate invalid or reversed bounds", () => {
+  for (const field of ["since", "until"] as const) {
+    for (const value of [-8_640_000_000_000_000, -1, 0, 1, 8_640_000_000_000_000]) {
+      expect(activityListSchema.parse({ [field]: value })).toEqual({ [field]: value });
+    }
+    for (const value of [-8_640_000_000_000_001, 8_640_000_000_000_001, 0.1, NaN, Infinity, -Infinity, "1", null]) {
+      expect(activityListSchema.safeParse({ [field]: value }).error?.issues[0]?.path).toEqual([field]);
+    }
+  }
+  expect(activityListSchema.parse({ since: 0, until: 0 })).toEqual({ since: 0, until: 0 });
+  expect(activityListSchema.safeParse({ since: 1, until: 0 }).error?.issues[0]?.path).toEqual(["until"]);
+});
+
 test("task identity selectors normalize only full UUIDs and locate invalid inputs", () => {
   const id = "019abcdf-1234-7000-8000-123456abcdef";
   for (const input of [id, id.toUpperCase(), id.replaceAll("-", ""), id.replaceAll("-", "").toUpperCase()]) {

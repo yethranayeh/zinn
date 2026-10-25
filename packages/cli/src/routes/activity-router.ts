@@ -16,6 +16,7 @@ import {
 
 import { generateCommandUsage, getOptionInputs, violatesConstraint } from "../input.js";
 import { CliError } from "../errors.js";
+import { activityTimeInputSchema } from "../activity-time.js";
 import { output, quit, validatePositionals, validateUniqueOptions } from "../lib.js";
 import { formatActivityList, presentActivities } from "../presentation/activity-presentation.js";
 
@@ -45,6 +46,24 @@ const activityInputs = {
       "show-deleted": { type: "boolean" },
       session: { type: "string", value: { kind: "text", name: "id" } },
       thread: { type: "string", value: { kind: "text", name: "id" } },
+      since: {
+        type: "string",
+        value: {
+          kind: "timestamp",
+          name: "time",
+          description:
+            "Inclusive lower bound. Integer epoch milliseconds or YYYY-MM-DDTHH:mm:ss with Z or a numeric offset. Optional fractional seconds have 1 to 3 digits.",
+        },
+      },
+      until: {
+        type: "string",
+        value: {
+          kind: "timestamp",
+          name: "time",
+          description:
+            "Inclusive upper bound in the same formats as --since. Must be at or after --since.",
+        },
+      },
       action: {
         type: "string",
         multiple: true,
@@ -160,9 +179,23 @@ export const activityRouter = {
             return parsed.data;
           }),
           changed: values.changed?.map(parseChangedFilter),
+          since: parseTimeFilter(values.since, "--since"),
+          until: parseTimeFilter(values.until, "--until"),
           limit: values.limit === undefined ? undefined : Number(values.limit),
         });
       } catch (error) {
+        const isInvalidUpperBound =
+          error instanceof CoreError &&
+          error.kind === "input" &&
+          error.facts.field?.[0] === "until";
+
+        if (isInvalidUpperBound) {
+          throw new CliError(error.message, "invalid_input", {
+            argument: "--until",
+            field: error.facts.field,
+          });
+        }
+
         const isMissingCurrentSelection =
           (values.task !== undefined || values.project !== undefined) &&
           values["show-deleted"] !== true &&
@@ -214,6 +247,8 @@ Returns all matching events unless --limit is supplied.
                    Requires a full UUID.
 --session <id>     Match an exact session ID, including case.
 --thread <id>      Match an exact thread ID, including case.
+--since <time>     Include events at or after this time.
+--until <time>     Include events at or before this time.
 --action <action>  Match a recorded action. Repeat to match any listed action.
 --changed <field>[=<value>] Match a task field change, with an optional value.
                    Fields: ${changedFieldList}.
@@ -230,12 +265,17 @@ Repeated --changed filters for one field match any of them.
 Different fields must match the same event. All other filters must also match.
 Initial task values also match. Column and label names match as recorded.
 
+Times accept integer epoch milliseconds or YYYY-MM-DDTHH:mm:ss with Z or a
+numeric offset such as +01:00. Optional fractional seconds have 1 to 3 digits.
+Both bounds are inclusive. --until must be at or after --since.
+
 Use activity view <activity-id> for complete recorded changes.
 With --json, return an array of full activity records.
 
 Examples:
   zinn activity list --limit 10
   zinn activity list --project APP
+  zinn activity list --since 2026-10-25T00:00:00Z --until 2026-10-25T12:00:00Z
   zinn activity list --action comment_create --action comment_edit
   zinn activity list --action edit --changed description
   zinn activity list --changed column=Review
@@ -277,6 +317,19 @@ With --json, return one full activity record.
 Example: zinn activity view 019abcdf-1234-7`,
   },
 } satisfies RouteDef;
+
+function parseTimeFilter(value: string | undefined, argument: "--since" | "--until") {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const parsed = activityTimeInputSchema.safeParse(value);
+  if (!parsed.success) {
+    quit(parsed.error.issues[0]!.message, undefined, { argument });
+  }
+
+  return parsed.data;
+}
 
 function parseChangedFilter(input: string) {
   const separator = input.indexOf("=");

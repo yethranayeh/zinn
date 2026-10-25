@@ -95,6 +95,8 @@ If the conflicting IDs changed before the write, core throws a `CoreError` with 
 
 `activity.getAll` returns full activity records, newest first by timestamp and then event ID. Without a project or task selector it reads across the database.
 
+Optional numeric `since` and `until` fields filter the stored `created_at`, inclusively, before `limit` applies. Use either bound alone or both together. They accept integer epoch milliseconds between `-8640000000000000` and `8640000000000000`, inclusive. Equal bounds select events at exactly that millisecond. A reversed range raises an input `CoreError` whose `facts.field` is `["until"]`. Historical identity resolution uses the full recorded history before time selection.
+
 - `{ taskKey: "APP-1", showDeleted: false }` selects the existing active or archived task. A missing task raises a `CoreError` with kind `missing`; its `facts` identify entity `task` and the requested key.
 - `{ taskKey: "APP-1", showDeleted: true }` includes every recoverable existing or deleted task identity sharing that key. Omitting `showDeleted` selects only the existing task, as with `false`.
 - `{ taskId: createdTask.id }` selects one exact task identity, including a deleted task. IDs accept full, case-insensitive UUIDs with canonical hyphens or 32 hexadecimal digits. Task ID prefixes are rejected.

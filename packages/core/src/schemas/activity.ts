@@ -9,6 +9,15 @@ export const activityLimitMessage = "Activity limit must be a positive safe inte
 const UUID_HEX_LENGTH = 32;
 export const activityIdentitySelectors = ["projectKey", "projectId", "taskKey", "taskId"] as const;
 
+const maximumDateTimestamp = 8_640_000_000_000_000;
+const timestampMessage =
+  "Activity time must be integer epoch milliseconds within the JavaScript Date range";
+export const activityTimestampSchema = z
+  .number({ error: timestampMessage })
+  .int(timestampMessage)
+  .min(-maximumDateTimestamp, timestampMessage)
+  .max(maximumDateTimestamp, timestampMessage);
+
 export const activityProjectKeySchema =
   projectCreateSchema.shape.key.transform(standardizeProjectKey);
 
@@ -118,6 +127,8 @@ export const activityListSchema = z
     threadId: z.string().min(1, "Thread ID cannot be empty").optional(),
     actions: z.array(activityActionSchema).optional(),
     changed: z.array(activityChangedSchema).optional(),
+    since: activityTimestampSchema.optional(),
+    until: activityTimestampSchema.optional(),
     limit: z
       .number({ error: activityLimitMessage })
       .int(activityLimitMessage)
@@ -125,6 +136,16 @@ export const activityListSchema = z
       .optional(),
   })
   .superRefine((value, context) => {
+    const hasReversedBounds =
+      value.since !== undefined && value.until !== undefined && value.since > value.until;
+    if (hasReversedBounds) {
+      context.addIssue({
+        code: "custom",
+        path: ["until"],
+        message: "Activity until must be at or after since",
+      });
+    }
+
     const suppliedSelectors = activityIdentitySelectors.filter(
       (selector) => value[selector] !== undefined,
     );
