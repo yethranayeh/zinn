@@ -15,7 +15,7 @@ import {
 
 import { CliError, classifyFailure, type ErrorDetails } from "./errors.js";
 import { helpSpellings, routerOptionNames, positionalWords } from "./input.js";
-import { formatDescriptionPreview } from "./presentation/description-presentation.js";
+import { formatParserReasonPreview } from "./presentation/description-presentation.js";
 
 type ParsedTokens = NonNullable<ReturnType<typeof parseArgs>["tokens"]>;
 type OutputMode = "text" | "json";
@@ -36,9 +36,10 @@ export function boundParserMessage(
   }
 
   const guidance = options.guidance ?? "See usage for accepted arguments.";
-  const reason = formatDescriptionPreview(options.reason ?? message, {
-    maxLength: MAX_PARSER_MESSAGE_LENGTH - guidance.length - 1,
-  });
+  const reason = formatParserReasonPreview(
+    options.reason ?? message,
+    MAX_PARSER_MESSAGE_LENGTH - guidance.length - 1,
+  );
 
   return `${reason} ${guidance}`;
 }

@@ -115,3 +115,17 @@ test("long entity identities do not pad neighboring activity descriptions", () =
     .toBe(contentColumn);
   expect(together.split("\n")[1]).not.toContain(longKey);
 });
+
+test("activity entity previews use the 24-cell budget", () => {
+  const name = `${"界".repeat(12)}z`;
+  const event: Activity = {
+    id: "019abcdf-1234-7000-8000-123456abcde1", created_at: 1,
+    actor_name: "Test", actor_email: null, actor_kind: "human",
+    actor_source: null, actor_session_id: null, actor_thread_id: null, actor_agent: null, actor_model: null, actor_effort: null,
+    entity_type: "label", entity_id: "label-id", action: "create", changes: null,
+  };
+  const text = formatActivityList([{ event, displayId: "019abcdf", removedTasks: [],
+    navigation: { name, status: "current" } }]);
+  expect(text).toContain(`${"界".repeat(11)}…`);
+  expect(text).toContain(name);
+});

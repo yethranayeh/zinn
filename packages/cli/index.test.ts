@@ -895,6 +895,8 @@ test("long parser and routing errors bound both output modes without changing er
       { args: ["task", "create", "APP", "--title", longText, "--description", "- item"], argument: "--description", facts: ["--description", "="], repair: true },
       { args: ["task", "create", "APP", "--title", "'".repeat(300), "--description", "- item"], argument: "--description", facts: ["--description", "="], repair: true },
       { args: ["task", "create", "APP", "--title", "Kept", "--description", "- 😀\n".repeat(400)], argument: "--description", facts: ["--description", "="], repair: true },
+      { args: ["task", "create", "APP", "--title", "Kept", "--description", `- ${"e\u0301".repeat(700)}`], argument: "--description", facts: ["--description", "="], repair: true },
+      { args: ["task", "create", "APP", "--title", "Kept", "--description", `- ${"👨‍👩‍👧‍👦".repeat(200)}`], argument: "--description", facts: ["--description", "="], repair: true },
       { args: ["task", "search", `-${longText}`], facts: ["--"], repair: true },
       { args: ["task", "search", `-${longText}`, "--unknown"], facts: ["--"] },
       { args: ["task", "create", "APP", "--title", "Kept", "--body", longText], argument: "--body", facts: ["--body"], repair: true },
@@ -2606,6 +2608,9 @@ test("Unicode characters stay intact at comment, label and project preview cutof
       { text: `${"x".repeat(77)}😀zz`, preview: `${"x".repeat(77)}😀…` },
       { text: `${"x".repeat(78)}😀`, preview: `${"x".repeat(78)}😀` },
       { text: `${"x".repeat(78)}😀\nLater text`, preview: `${"x".repeat(78)}…` },
+      { text: `${"x".repeat(78)}e\u0301zz`, preview: `${"x".repeat(78)}e\u0301…` },
+      { text: `${"x".repeat(78)}👨‍👩‍👧‍👦z`, preview: `${"x".repeat(78)}…` },
+      { text: `${"界".repeat(40)}z`, preview: `${"界".repeat(39)}…` },
     ];
     for (const [index, { text, preview }] of cases.entries()) {
       const commands = [
@@ -2621,6 +2626,7 @@ test("Unicode characters stay intact at comment, label and project preview cutof
         expect(result.code).toBe(0);
         expect(result.stderr).toBe("");
         expect(result.stdout).toEndWith(` | ${preview}\n`);
+        expect(result.stdout).not.toContain("\uFFFD");
       }
 
       const listed = await run("label", "list");
@@ -2628,6 +2634,20 @@ test("Unicode characters stay intact at comment, label and project preview cutof
       expect(listed.stderr).toBe("");
       expect(listed.stdout).toContain(` | ${preview}\n`);
       expect(listed.stdout).not.toContain("\uFFFD");
+
+      const projectList = await run("project", "list");
+      expect(projectList.code).toBe(0);
+      expect(projectList.stdout).toContain(` | ${preview}\n`);
+      expect(projectList.stdout).not.toContain("\uFFFD");
+
+      const commentView = await run("task", "comment", "view", "NOTE-1#1");
+      for (const line of text.split("\n")) {
+        expect(commentView.stdout).toContain(line);
+      }
+      const labelView = await run("label", "view", "bug");
+      expect(labelView.stdout).toContain(text);
+      const projectView = await run("project", "view", "NOTE");
+      expect(projectView.stdout).toContain(text);
 
       const comment = await run("task", "comment", "view", "NOTE-1#1", "--json");
       expect(comment.code).toBe(0);

@@ -5,7 +5,7 @@ import { expect, test, spyOn } from "bun:test";
 import { ReadOnlyDatabaseError, TextEditMatchError, UnmarkedDatabaseError } from "@zinn-dev/core";
 import { parseArgs } from "node:util";
 
-import { diagnostic, flushDiagnostics, prepareOutput, setOutputMode, failureMessage, UsageError, validatePositionals, renameFlag, parseArgsMessage } from "./lib";
+import { boundParserMessage, diagnostic, flushDiagnostics, prepareOutput, setOutputMode, failureMessage, UsageError, validatePositionals, renameFlag, parseArgsMessage } from "./lib";
 
 test("parser repairs stay complete through the message limit and become guidance above it", () => {
   const messageFor = (value: string) => {
@@ -42,12 +42,31 @@ test("parser repairs stay complete through the message limit and become guidance
 test("long usage errors keep complete Unicode at the cutoff and retain structured fields", () => {
   const details = { argument: "direction" };
   for (const prefixLength of [990, 991]) {
-    const failure = new UsageError("x".repeat(prefixLength) + "😀".repeat(100), details);
-    expect(failure.message.length).toBeLessThanOrEqual(1024);
-    expect(failure.message).toContain("…");
-    expect(failure.message.isWellFormed()).toBe(true);
-    expect(failure.details).toEqual(details);
+    for (const suffix of ["😀", "e\u0301", "👨‍👩‍👧‍👦"]) {
+      const failure = new UsageError("x".repeat(prefixLength) + suffix.repeat(100), details);
+      expect(failure.message.length).toBeLessThanOrEqual(1024);
+      expect(failure.message).toContain("…");
+      expect(failure.message.isWellFormed()).toBe(true);
+      if (suffix === "e\u0301") {
+        expect(failure.message).not.toMatch(/e…/);
+      }
+      if (suffix === "👨‍👩‍👧‍👦") {
+        expect(failure.message).not.toMatch(/👨…/);
+      }
+      expect(failure.details).toEqual(details);
+    }
   }
+});
+
+test("bounded parser reasons keep a complete recovery command", () => {
+  const command = "zinn task create APP --help";
+  const message = boundParserMessage("x".repeat(1300), {
+    reason: "e\u0301".repeat(700),
+    guidance: `Run ${command}`,
+  });
+  expect(message.length).toBeLessThanOrEqual(1024);
+  expect(message).toContain(command);
+  expect(message).not.toMatch(/e…/);
 });
 
 test("flag corrections preserve option values and words after the option terminator", () => {

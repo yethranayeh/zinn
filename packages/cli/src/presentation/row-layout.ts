@@ -1,14 +1,15 @@
 import type { StyleFormat } from "./color.js";
 
 import { styleOutputText } from "./color.js";
+import { displayWidth } from "./text-width.js";
 
 export type RowCell = { text: string; style?: StyleFormat };
 
 const CELL_SEPARATOR = " | ";
 const LINE_BREAK_PATTERN = /\r?\n/;
 
-export function formatCell(cell: RowCell, width = cell.text.length) {
-  const paddedText = cell.text.padEnd(width);
+export function formatCell(cell: RowCell, width = displayWidth(cell.text)) {
+  const paddedText = `${cell.text}${" ".repeat(Math.max(0, width - displayWidth(cell.text)))}`;
 
   if (cell.style == null) {
     return paddedText;
@@ -30,7 +31,7 @@ function indentContinuationLines(text: string, indentWidth: number) {
 
 /**
  * Lines rows up by padding each cell's text to its column's **widest** text.
- * Widths use `String.length`, so emoji and CJK misalign.
+ * Widths count terminal cells, so wide text and emoji align with ASCII.
  * A row's last cell holds free text such as a title and is left unpadded.
  *
  * With `indentsContinuationLines`, a last cell that spans several lines starts each later line
@@ -45,7 +46,7 @@ export function formatRows(
 
   for (const row of rows) {
     row.forEach((cell, columnIndex) => {
-      columnWidths[columnIndex] = Math.max(columnWidths[columnIndex] ?? 0, cell.text.length);
+      columnWidths[columnIndex] = Math.max(columnWidths[columnIndex] ?? 0, displayWidth(cell.text));
     });
   }
 
@@ -54,7 +55,7 @@ export function formatRows(
       const lastCellIndex = row.length - 1;
       const lastCellStartColumn = columnWidths
         .slice(0, lastCellIndex)
-        .reduce((total, width) => total + width + CELL_SEPARATOR.length, 0);
+        .reduce((total, width) => total + width + displayWidth(CELL_SEPARATOR), 0);
 
       return row
         .map((cell, columnIndex) => {
