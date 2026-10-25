@@ -1,13 +1,14 @@
 import ts from "typescript";
 import { join } from "node:path";
-import { git } from "./package-fixture.ts";
+
+import { listWorkingTreeFiles } from "./package-fixture.ts";
 
 const repositoryDirectory = join(import.meta.dir, "..");
 const configPath = join(repositoryDirectory, "tsconfig.json");
 const config = ts.readConfigFile(configPath, ts.sys.readFile);
-const files = git(repositoryDirectory, ["ls-files", "--cached", "-z"])
-  .split("\0")
-  .filter((path) => !path.startsWith("docs/") && /\.(?:[cm]?ts|tsx)$/.test(path));
+const files = listWorkingTreeFiles(repositoryDirectory).filter(
+  (path) => !path.startsWith("docs/") && /\.(?:[cm]?ts|tsx)$/.test(path),
+);
 const parsed = ts.parseJsonConfigFileContent(
   { ...config.config, files, include: [] },
   ts.sys,

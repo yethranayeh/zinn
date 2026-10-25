@@ -23,9 +23,9 @@ export function git(directory: string, args: string[]) {
   return result.stdout.toString();
 }
 
-/** Creates a temporary source copy for package checks and links its build dependencies. */
-export function createPackageTestCopy(repositoryDirectory: string, testCopyDirectory: string) {
-  const files = git(repositoryDirectory, [
+/** Lists existing tracked and nonignored untracked working-tree files. */
+export function listWorkingTreeFiles(repositoryDirectory: string) {
+  return git(repositoryDirectory, [
     "ls-files",
     "--cached",
     "--others",
@@ -34,7 +34,16 @@ export function createPackageTestCopy(repositoryDirectory: string, testCopyDirec
     "-z",
   ])
     .split("\0")
-    .filter(Boolean);
+    .filter(
+      (path) =>
+        path !== "" &&
+        lstatSync(join(repositoryDirectory, path), { throwIfNoEntry: false }) !== undefined,
+    );
+}
+
+/** Creates a temporary source copy for package checks and links its build dependencies. */
+export function createPackageTestCopy(repositoryDirectory: string, testCopyDirectory: string) {
+  const files = listWorkingTreeFiles(repositoryDirectory);
 
   mkdirSync(testCopyDirectory, { recursive: true });
   for (const path of files) {
@@ -43,9 +52,6 @@ export function createPackageTestCopy(repositoryDirectory: string, testCopyDirec
       continue;
     }
     const source = join(repositoryDirectory, path);
-    if (!lstatSync(source, { throwIfNoEntry: false })) {
-      continue;
-    }
     const destination = join(testCopyDirectory, path);
     mkdirSync(dirname(destination), { recursive: true });
     cpSync(source, destination, { verbatimSymlinks: true });
