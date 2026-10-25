@@ -243,7 +243,10 @@ function getChangedLabelNames(value: unknown, change: "added" | "removed"): Arra
   return getRecordedLabelNames(value[change]);
 }
 
-/** The values a task event records as the new value of each filterable field. */
+/**
+ * The values a task event records as the new value of each filterable field.
+ * Changes are parsed from stored JSON, so unrecognized shapes yield no values.
+ */
 function getRecordedValues(event: Activity): RecordedValues {
   if (event.entity_type !== "task") {
     return {};
