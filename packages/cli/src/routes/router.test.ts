@@ -9,7 +9,7 @@ import { getCliOpenPolicy } from "../database";
 import { parsedRoutes } from "./routes";
 import { commandAliases } from "./aliases";
 
-// Routing reads only run and help; the rest fills the Command type
+// Metadata for commands used in routing tests.
 const commandMetadata = {
   input: { options: {}, forms: [{ id: "default", positionals: [] }], constraints: [] },
   results: [jsonResult("Task")],

@@ -185,27 +185,26 @@ test("ZINN-299: ZINN_DEBUG=1 prints routing detail on stderr and leaves stdout u
   });
 });
 
-test("namespace help lists its commands without running one", async () => {
+test("namespace help describes every descendant command in route order without running one", async () => {
   await withIsolatedZinnDir(async (testDir) => {
-    const taskHelp = await runZinn(["task", "--help"], testDir);
-    const projectHelp = await runZinn(["project", "-h"], testDir);
-    const columnHelp = await runZinn(["project", "column", "--help"], testDir);
+    const parsedRoutes = parseRoutes(routes);
+    for (const namespace of routeNamespaces) {
+      const result = await runZinn([...namespace.split(" "), "--help"], testDir);
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toContain(`Usage: zinn ${namespace} <command>`);
 
-    expect(taskHelp.code).toBe(0);
-    expect(taskHelp.stdout).toContain("Usage: zinn task <command>");
-    expect(taskHelp.stdout).toContain(
-      "  {create|list|search|view|edit|move|order|archive|unarchive|delete}",
-    );
-    expect(taskHelp.stdout).toContain("  relation {create|list|delete}");
-    expect(taskHelp.stdout).not.toContain("  task ");
-    expect(projectHelp.code).toBe(0);
-    expect(projectHelp.stdout).toContain("  {create|list|view|edit|delete}");
-    expect(projectHelp.stdout).toContain("  column {create|list|edit|order}");
-    expect(projectHelp.stdout).not.toContain("  project ");
-    expect(columnHelp.code).toBe(0);
-    expect(columnHelp.stdout).toContain("Usage: zinn project column <command>");
-    expect(columnHelp.stdout).toContain("  {create|list|edit|order}");
-    expect(columnHelp.stdout).not.toContain("  column ");
+      const commandLines = result.stdout.split("\n").filter((line) => line.startsWith("  "));
+      const namespaceRoutes = parsedRoutes.filter(({ command }) => command.startsWith(`${namespace} `));
+      expect(commandLines).toHaveLength(namespaceRoutes.length);
+      namespaceRoutes.forEach(({ command, summary }, index) => {
+        const relativeCommand = command.slice(namespace.length + 1);
+        const line = commandLines[index]!.trimStart();
+        expect(line.startsWith(`${relativeCommand}  `)).toBe(true);
+        expect(line.slice(relativeCommand.length).trimStart()).toBe(summary);
+      });
+    }
+    expect(existsSync(join(testDir, "data"))).toBe(false);
   });
 });
 
@@ -265,10 +264,12 @@ test("every namespace help exits cleanly instead of running a command", async ()
 test("a bare namespace is an error that carries the namespace help", async () => {
   await withIsolatedZinnDir(async (dir) => {
     for (const namespace of routeNamespaces) {
+      const help = await runZinn([...namespace.split(" "), "--help"], dir);
       const text = await runZinn(namespace.split(" "), dir);
       expect(text.code).toBe(1);
       expect(text.stdout).toBe("");
       expect(text.stderr).toContain(`Usage: zinn ${namespace} <command>`);
+      expect(text.stderr).toContain(help.stdout.trimEnd());
 
       const json = await runZinn([...namespace.split(" "), "--json"], dir);
       expect(json.code).toBe(1);
@@ -276,6 +277,7 @@ test("a bare namespace is an error that carries the namespace help", async () =>
       const { error } = JSON.parse(json.stderr);
       expect(typeof error.message).toBe("string");
       expect(error.help).toContain(`Usage: zinn ${namespace} <command>`);
+      expect(error.help).toBe(help.stdout.trimEnd());
     }
     expect(existsSync(join(dir, "data"))).toBe(false);
   });
@@ -307,16 +309,21 @@ test("a help flag before command words prints help for the words before it", asy
 test("an unknown command with a help flag fails with the nearest namespace help on stderr", async () => {
   await withIsolatedZinnDir(async (dir) => {
     const cases = [
-      { args: ["task", "shwo", "APP-1", "--help"], usage: "Usage: zinn task <command>" },
-      { args: ["task", "relation", "shwo", "-h"], usage: "Usage: zinn task relation <command>" },
-      { args: ["bogus", "--help"], usage: ROOT_USAGE },
+      { args: ["task", "shwo", "APP-1", "--help"], namespace: ["task"] },
+      { args: ["task", "relation", "shwo", "-h"], namespace: ["task", "relation"] },
+      { args: ["bogus", "--help"], namespace: [] },
     ];
 
-    for (const { args, usage } of cases) {
+    for (const { args, namespace } of cases) {
+      const usage = namespace.length === 0
+        ? ROOT_USAGE
+        : `Usage: zinn ${namespace.join(" ")} <command>`;
+      const help = await runZinn([...namespace, "--help"], dir);
       const text = await runZinn(args, dir);
       expect(text.code).toBe(1);
       expect(text.stdout).toBe("");
       expect(text.stderr).toContain(usage);
+      expect(text.stderr).toContain(help.stdout.trimEnd());
 
       const json = await runZinn([...args, "--json"], dir);
       expect(json.code).toBe(1);
@@ -324,6 +331,7 @@ test("an unknown command with a help flag fails with the nearest namespace help 
       const { error } = JSON.parse(json.stderr);
       expect(typeof error.message).toBe("string");
       expect(error.help).toContain(usage);
+      expect(error.help).toBe(help.stdout.trimEnd());
     }
     expect(existsSync(join(dir, "data"))).toBe(false);
   });
@@ -369,7 +377,10 @@ test("a help flag after command arguments saves nothing", async () => {
 test("root help and activity namespace help list the activity commands", async () => {
   await withIsolatedZinnDir(async (directory) => {
     expect((await runZinn(["--help"], directory)).stdout).toContain("activity {list|view}");
-    expect((await runZinn(["activity", "--help"], directory)).stdout).toContain("{list|view}");
+    const activityHelp = await runZinn(["activity", "--help"], directory);
+    for (const { command } of parseRoutes(routes).filter(({ command }) => command.startsWith("activity "))) {
+      expect(activityHelp.stdout).toContain(command.slice("activity ".length));
+    }
   });
 });
 
@@ -4523,7 +4534,7 @@ test("relation help and argument errors make types discoverable without promptin
     for (const type of relationTypeSchema.options) {
       expect(help.stdout).toContain(type);
     }
-    expect((await runZinn(["task", "relation", "--help"], testDir)).stdout).toContain("  {create|list|delete}");
+    expect((await runZinn(["task", "relation", "--help"], testDir)).stdout).toContain("Usage: zinn task relation <command>");
     expect((await runZinn(["task", "relation", "list"], testDir)).code).toBe(1);
     expect((await runZinn(["task", "relation", "list", "APP-1", "APP-2"], testDir)).code).toBe(1);
   });
@@ -4552,7 +4563,7 @@ test("relation deletion is usable without a prompt and updates list and view", a
       expect((await run("task", "relation", "delete", ...args)).code).toBe(1);
     }
     expect((await run("task", "relation", "delete", "--help")).stdout).toContain("Usage: zinn task relation delete");
-    expect((await run("task", "relation", "--help")).stdout).toContain("  {create|list|delete}");
+    expect((await run("task", "relation", "--help")).stdout).toContain("Usage: zinn task relation <command>");
   });
 });
 

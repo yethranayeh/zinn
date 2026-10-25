@@ -6,6 +6,7 @@ import { routerOptions, helpSpellings, versionSpellings, usageLabel } from "../i
 import { getCommandAliases } from "./aliases.js";
 import { classifyFailure, CliError } from "../errors.js";
 import { quotedColumnHint } from "../column-hint.js";
+import { formatCell } from "../presentation/row-layout.js";
 
 import {
   dashValueHelp,
@@ -64,11 +65,20 @@ function toCommand(args: Array<string>) {
   return args.join(" ");
 }
 
-// Groups sibling commands into one line, e.g. "  comment {create|list|edit|delete}".
-// A command without siblings is not a choice, so it gets no braces, e.g. "  backup".
-// Top-level commands in the root help are unrelated to each other, so each gets its own line.
+// Namespace help describes each command. Root help groups sibling names into choices.
 function formatCommands(parsedRoutes: Array<ParsedRoute>, prefix: string) {
   const isRootHelp = prefix === "";
+  if (!isRootHelp) {
+    const commands = parsedRoutes
+      .filter(({ command }) => command.startsWith(prefix))
+      .map(({ command, summary }) => ({ name: command.slice(prefix.length), summary }));
+    const nameWidth = Math.max(0, ...commands.map(({ name }) => name.length));
+
+    return commands
+      .map(({ name, summary }) => `  ${formatCell({ text: name }, nameWidth)}  ${summary}`)
+      .join("\n");
+  }
+
   const siblingsByParent = new Map<string, Array<string>>();
   for (const { command } of parsedRoutes) {
     if (!command.startsWith(prefix)) {
