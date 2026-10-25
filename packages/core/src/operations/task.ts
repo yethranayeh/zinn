@@ -411,7 +411,7 @@ export const task = {
     const taskProject = dbProject.getByKey(props.projectKey);
 
     if (taskProject == null) {
-      throw new CoreError(`Project with key "${props.projectKey}" does not exist!`, "missing", {
+      throw new CoreError(`Project with key "${props.projectKey}" does not exist`, "missing", {
         entity: "project",
         key: props.projectKey,
       });
@@ -435,7 +435,7 @@ export const task = {
       const projectMatch = dbProject.getByKey(props.projectKey);
 
       if (projectMatch == null) {
-        throw new CoreError(`Project with key "${props.projectKey}" does not exist!`, "missing", {
+        throw new CoreError(`Project with key "${props.projectKey}" does not exist`, "missing", {
           entity: "project",
           key: props.projectKey,
         });

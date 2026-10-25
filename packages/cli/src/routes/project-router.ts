@@ -283,7 +283,7 @@ Example: zinn project list`,
 
       if (projectMatch == null) {
         throw new CliError(
-          `Project with key "${project.standardizeKey(projectKey)}" does not exist!`,
+          `Project with key "${project.standardizeKey(projectKey)}" does not exist`,
           "not_found",
           { entity: "project", key: project.standardizeKey(projectKey), source: "explicit" },
         );
@@ -412,7 +412,7 @@ Examples:
         const projectMatch = project.getByKey(projectKey);
 
         if (projectMatch == null) {
-          throw new CliError(`Project with key "${projectKey}" does not exist!`, "not_found", {
+          throw new CliError(`Project with key "${projectKey}" does not exist`, "not_found", {
             entity: "project",
             key: projectKey,
             source: "explicit",

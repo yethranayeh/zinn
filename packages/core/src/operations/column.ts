@@ -35,7 +35,7 @@ function requireProjectColumns(projectKey: string) {
 
   if (project == null) {
     throw new CoreError(
-      `Project with key "${standardizeProjectKey(projectKey)}" does not exist!`,
+      `Project with key "${standardizeProjectKey(projectKey)}" does not exist`,
       "missing",
       { entity: "project", key: standardizeProjectKey(projectKey) },
     );

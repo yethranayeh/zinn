@@ -89,7 +89,7 @@ export const project = {
 
       if (projectMatch == null) {
         throw new CoreError(
-          `Project with key "${standardizeProjectKey(props.projectKey)}" does not exist!`,
+          `Project with key "${standardizeProjectKey(props.projectKey)}" does not exist`,
           "missing",
           { entity: "project", key: standardizeProjectKey(props.projectKey) },
         );
@@ -145,7 +145,7 @@ export const project = {
       const projectMatch = dbProject.getByKey(key);
 
       if (projectMatch == null) {
-        throw new CoreError(`Project with key "${key}" does not exist!`, "missing", {
+        throw new CoreError(`Project with key "${key}" does not exist`, "missing", {
           entity: "project",
           key,
         });

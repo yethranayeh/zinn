@@ -55,7 +55,7 @@ function requireTaskByParsedKey(parsedKey: ParsedTaskKey) {
 
   if (project == null) {
     throw new CoreError(
-      `Project with key "${standardizeProjectKey(parsedKey.projectKey)}" does not exist!`,
+      `Project with key "${standardizeProjectKey(parsedKey.projectKey)}" does not exist`,
       "missing",
       { entity: "project", key: standardizeProjectKey(parsedKey.projectKey) },
     );
@@ -63,7 +63,7 @@ function requireTaskByParsedKey(parsedKey: ParsedTaskKey) {
 
   if (task == null) {
     throw new CoreError(
-      `Task "${project.key}-${parsedKey.taskNumber}" does not exist!`,
+      `Task "${project.key}-${parsedKey.taskNumber}" does not exist`,
       "missing",
       { entity: "task", key: `${project.key}-${parsedKey.taskNumber}` },
     );
