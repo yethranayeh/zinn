@@ -27,13 +27,11 @@ export const activityActionSchema = z.enum([
   "comment_delete",
 ]);
 export const activityEntityTypeSchema = z.enum(["task", "project", "column", "label"]);
-const changedFieldMessage = "Changed field must be column, priority, labels, title or description";
-export const activityChangedFieldSchema = z.enum(
-  ["column", "priority", "labels", "title", "description"],
-  {
-    error: changedFieldMessage,
-  },
-);
+const changedFieldNames = ["column", "priority", "labels", "title", "description"] as const;
+const changedFieldMessage = `Changed field must be one of ${changedFieldNames.join(", ")}`;
+export const activityChangedFieldSchema = z.enum(changedFieldNames, {
+  error: changedFieldMessage,
+});
 export const activityChangedSchema = z.discriminatedUnion(
   "field",
   [
