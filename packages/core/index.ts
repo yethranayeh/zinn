@@ -58,6 +58,7 @@ export type { ResolvedSettings, SettingsFile, SettingsInputs } from "./src/setti
 export type { SettingsFileInspection, SettingsInspection } from "./src/settings.js";
 export type { StoreInfo } from "./src/operations/info.js";
 export type { FailureKind, FailureFacts, ValidationIssue } from "./src/errors.js";
+export type { SqliteCode, SqlitePrimaryCode } from "./src/sqlite/database.js";
 
 export {
   labelCreateSchema,
@@ -138,4 +139,4 @@ export { getStorage, storageSourceSchema } from "./src/storage.js";
 export { databaseStateSchema } from "./src/migrations/classify.js";
 export { info, infoDatabaseStateSchema } from "./src/operations/info.js";
 export { CoreError, InputValidationError, isMissingFileError } from "./src/errors.js";
-export { SqliteError } from "./src/sqlite/database.js";
+export { SqliteError, isSqliteErrorCode, isSqliteErrorFamily } from "./src/sqlite/database.js";

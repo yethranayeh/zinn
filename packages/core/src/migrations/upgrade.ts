@@ -12,7 +12,7 @@ import { mkdirSync } from "node:fs";
 
 import * as dbBackup from "../db/backup.js";
 import { CoreError } from "../errors.js";
-import { SqliteError } from "../sqlite/database.js";
+import { isSqliteErrorFamily } from "../sqlite/database.js";
 import { assertMigrationOrder, latestVersion, MIGRATIONS } from "./registry.js";
 import {
   applyPendingMigrations,
@@ -61,10 +61,6 @@ function readBusyTimeout(db: Database) {
 function setBusyTimeout(db: Database, milliseconds: number) {
   // The value is a whole number of milliseconds, as PRAGMA takes no bound parameters.
   db.exec(`PRAGMA busy_timeout = ${Math.ceil(milliseconds)}`);
-}
-
-function isBusy(error: unknown) {
-  return error instanceof SqliteError && error.code.startsWith("SQLITE_BUSY");
 }
 
 function pause(milliseconds: number) {
@@ -135,7 +131,7 @@ export function withMigrationLock<T>(
           })
           .immediate();
       } catch (error) {
-        const isLockBusy = !workStarted && isBusy(error);
+        const isLockBusy = !workStarted && isSqliteErrorFamily(error, "SQLITE_BUSY");
 
         if (!isLockBusy) {
           throw error;

@@ -25,7 +25,7 @@ import { MIGRATIONS } from "./migrations/registry.js";
 import { createSchema, SchemaNotEmptyError } from "./migrations/runner.js";
 import { upgradeDatabase } from "./migrations/upgrade.js";
 import { readCoreReleaseMode } from "./release.js";
-import { attachSuppressed, SqliteError } from "./sqlite/database.js";
+import { attachSuppressed, isSqliteErrorCode } from "./sqlite/database.js";
 import { rethrowSearchError } from "./search-error.js";
 import { withChangeHooks } from "./hooks.js";
 
@@ -118,11 +118,10 @@ function openWithRetries() {
       return openConnection();
     } catch (err) {
       // Binding and API errors are not SqliteErrors, so they are never retried.
-      const code = err instanceof SqliteError ? err.code : null;
       const isTransientStartupError =
-        code === "SQLITE_BUSY" ||
-        code === "SQLITE_BUSY_RECOVERY" ||
-        code === "SQLITE_IOERR_TRUNCATE";
+        isSqliteErrorCode(err, "SQLITE_BUSY") ||
+        isSqliteErrorCode(err, "SQLITE_BUSY_RECOVERY") ||
+        isSqliteErrorCode(err, "SQLITE_IOERR_TRUNCATE");
       const retryBudgetExhausted =
         attempt >= INITIALIZATION_ATTEMPTS ||
         performance.now() - began >= INITIALIZATION_RETRY_BUDGET_MS;

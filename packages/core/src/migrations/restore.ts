@@ -18,7 +18,7 @@ import { openDatabase } from "#sqlite";
 
 import * as dbBackup from "../db/backup.js";
 import { applyConnectionSettings } from "../connection.js";
-import { attachSuppressed, SqliteError } from "../sqlite/database.js";
+import { attachSuppressed, isSqliteErrorFamily, type SqliteError } from "../sqlite/database.js";
 import { BASELINE_VERSION } from "./baseline.js";
 import { classifyConnection } from "./classify.js";
 import { latestVersion, MIGRATIONS } from "./registry.js";
@@ -169,10 +169,9 @@ function newerBackupError(
 }
 
 /** SQLite reports a file that is not a database, or is damaged before any page can be read, with these codes. */
-function isUnreadable(error: unknown) {
+function isUnreadable(error: unknown): error is SqliteError {
   return (
-    error instanceof SqliteError &&
-    (error.code.startsWith("SQLITE_NOTADB") || error.code.startsWith("SQLITE_CORRUPT"))
+    isSqliteErrorFamily(error, "SQLITE_NOTADB") || isSqliteErrorFamily(error, "SQLITE_CORRUPT")
   );
 }
 
@@ -276,14 +275,12 @@ export function checkBackup(
 
     if (isUnreadable(error)) {
       throw new RestoreRefusedError(
-        `The file at ${path} is damaged or is not a SQLite database (${(error as Error).message}), so nothing was restored`,
+        `The file at ${path} is damaged or is not a SQLite database (${error.message}), so nothing was restored`,
         "storage",
         {
           entity: "backup",
           backupPath: path,
-          reason: (error as SqliteError).code.startsWith("SQLITE_NOTADB")
-            ? "not_database"
-            : "corrupt",
+          reason: isSqliteErrorFamily(error, "SQLITE_NOTADB") ? "not_database" : "corrupt",
         },
         { cause: error },
       );

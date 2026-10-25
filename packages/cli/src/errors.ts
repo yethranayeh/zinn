@@ -1,5 +1,7 @@
+import type { SqlitePrimaryCode } from "@zinn-dev/core";
+
 import { z } from "zod";
-import { CoreError, SqliteError } from "@zinn-dev/core";
+import { CoreError, SqliteError, isSqliteErrorFamily } from "@zinn-dev/core";
 
 export const errorCodeSchema = z.enum([
   "invalid_input",
@@ -128,19 +130,21 @@ const osReasons: Record<string, ErrorDetails["reason"]> = {
   ENODEV: "io",
   EEXIST: "io",
 };
-const sqliteReasons: Record<string, ErrorDetails["reason"]> = {
-  SQLITE_BUSY: "busy",
-  SQLITE_LOCKED: "locked",
-  SQLITE_PERM: "permission_denied",
-  SQLITE_AUTH: "permission_denied",
-  SQLITE_READONLY: "read_only",
-  SQLITE_FULL: "disk_full",
-  SQLITE_CORRUPT: "corrupt",
-  SQLITE_NOTADB: "not_database",
-  SQLITE_IOERR: "io",
-  SQLITE_CANTOPEN: "io",
-  SQLITE_NOLFS: "io",
-};
+const sqliteReasons: ReadonlyArray<
+  readonly [SqlitePrimaryCode, NonNullable<ErrorDetails["reason"]>]
+> = [
+  ["SQLITE_BUSY", "busy"],
+  ["SQLITE_LOCKED", "locked"],
+  ["SQLITE_PERM", "permission_denied"],
+  ["SQLITE_AUTH", "permission_denied"],
+  ["SQLITE_READONLY", "read_only"],
+  ["SQLITE_FULL", "disk_full"],
+  ["SQLITE_CORRUPT", "corrupt"],
+  ["SQLITE_NOTADB", "not_database"],
+  ["SQLITE_IOERR", "io"],
+  ["SQLITE_CANTOPEN", "io"],
+  ["SQLITE_NOLFS", "io"],
+];
 
 /** Selects public facts explicitly
  * Error properties and submitted objects do not go to output
@@ -175,9 +179,7 @@ function nativeFailure(error: Error): ErrorDetails | undefined {
 
   const reason =
     error instanceof SqliteError
-      ? Object.entries(sqliteReasons).find(
-          ([primary]) => code === primary || code.startsWith(`${primary}_`),
-        )?.[1]
+      ? sqliteReasons.find(([primary]) => isSqliteErrorFamily(error, primary))?.[1]
       : osReasons[code];
 
   if (reason === undefined) {

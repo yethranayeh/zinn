@@ -4,7 +4,7 @@ import type { CommandInput } from "../input.js";
 
 import { parseArgs } from "node:util";
 import { resolve } from "node:path";
-import { backup, RestoreRefusedError, getStorage } from "@zinn-dev/core";
+import { backup, RestoreRefusedError, getStorage, isSqliteErrorFamily } from "@zinn-dev/core";
 
 import { jsonResult } from "../results.js";
 import { reportLockWait } from "../database.js";
@@ -80,11 +80,7 @@ export const restoreCommand = {
     } catch (error) {
       // A refusal attempted nothing, so only a failed restore points at the backups.
       if (!(error instanceof RestoreRefusedError)) {
-        const isDamagedDatabase =
-          error instanceof Error &&
-          "code" in error &&
-          typeof error.code === "string" &&
-          error.code.startsWith("SQLITE_CORRUPT");
+        const isDamagedDatabase = isSqliteErrorFamily(error, "SQLITE_CORRUPT");
 
         if (isDamagedDatabase) {
           diagnostic(

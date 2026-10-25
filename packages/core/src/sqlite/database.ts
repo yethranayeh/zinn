@@ -50,7 +50,7 @@ export type SqliteDriver = {
  * Later SQLite releases may add extended codes; sqliteCodeName gives those their primary code's name.
  * @link https://www.sqlite.org/rescode.html
  */
-const SQLITE_CODE_NAMES: Record<number, string> = {
+const SQLITE_CODE_NAMES = {
   0: "SQLITE_OK",
   1: "SQLITE_ERROR",
   2: "SQLITE_INTERNAL",
@@ -156,7 +156,12 @@ const SQLITE_CODE_NAMES: Record<number, string> = {
   7946: "SQLITE_IOERR_ROLLBACK_ATOMIC",
   8202: "SQLITE_IOERR_DATA",
   8458: "SQLITE_IOERR_CORRUPTFS",
-};
+} as const;
+
+export type SqliteCode = (typeof SQLITE_CODE_NAMES)[keyof typeof SQLITE_CODE_NAMES];
+export type SqlitePrimaryCode = Exclude<SqliteCode, `SQLITE_${string}_${string}`>;
+
+const SQLITE_CODE_LOOKUP: Readonly<Partial<Record<number, SqliteCode>>> = SQLITE_CODE_NAMES;
 
 // The low 8 bits of an extended result code are its primary code:
 // 517 (SQLITE_BUSY_SNAPSHOT) & 0xff is 5 (SQLITE_BUSY). https://www.sqlite.org/rescode.html#extrc
@@ -167,8 +172,8 @@ const SQLITE_ERROR = 1;
 /** The symbolic name of a result code. Unlisted extended codes fall back to their primary code's name. */
 export function sqliteCodeName(errcode: number) {
   return (
-    SQLITE_CODE_NAMES[errcode] ??
-    SQLITE_CODE_NAMES[errcode & PRIMARY_CODE_MASK] ??
+    SQLITE_CODE_LOOKUP[errcode] ??
+    SQLITE_CODE_LOOKUP[errcode & PRIMARY_CODE_MASK] ??
     SQLITE_CODE_NAMES[SQLITE_ERROR]!
   );
 }
@@ -186,6 +191,18 @@ export class SqliteError extends Error {
     this.errcode = errcode;
     this.code = sqliteCodeName(errcode);
   }
+}
+
+/** Matches one exact result code on a normalized SQLite error, without inspecting its cause. */
+export function isSqliteErrorCode(error: unknown, code: SqliteCode): error is SqliteError {
+  return error instanceof SqliteError && SQLITE_CODE_LOOKUP[error.errcode] === code;
+}
+
+/** Matches a primary result code, including extended codes absent from the name lookup. */
+export function isSqliteErrorFamily(error: unknown, code: SqlitePrimaryCode): error is SqliteError {
+  return (
+    error instanceof SqliteError && SQLITE_CODE_LOOKUP[error.errcode & PRIMARY_CODE_MASK] === code
+  );
 }
 
 /**

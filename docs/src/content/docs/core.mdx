@@ -94,6 +94,14 @@ Several filters for the same field match any of them, including a value-free fil
 
 `activity.getTaskIdentities` accepts a task key string or an object containing `taskKey`, `taskId`, and `showDeleted` with the same selection rules. It returns each recoverable task's ID, key, title, and active, archived, or deleted status.
 
+## SQLite errors
+
+SQLite failures throw `SqliteError` on both Node.js and Bun. Its `code` is a symbolic name, `errcode` is the numeric extended result code, and `cause` retains the original driver error.
+
+Use `isSqliteErrorCode(error, "SQLITE_BUSY")` for an exact result code and `isSqliteErrorFamily(error, "SQLITE_BUSY")` for the primary code and all its subtypes. For example, `SQLITE_BUSY_SNAPSHOT` matches the **BUSY** family but does not exactly match `SQLITE_BUSY`. The exported `SqliteCode` and `SqlitePrimaryCode` types provide the accepted names.
+
+Both helpers accept `unknown`, narrow matching values to `SqliteError`, and inspect only that error. They do not inspect its cause. An unlisted extended code matches its known primary family. Its `code` falls back to the primary name for display, while exact matching still distinguishes it from the primary result code. A wholly unknown primary code displays as `SQLITE_ERROR` and matches neither helper.
+
 ## Database compatibility
 
 `column.inspect({ taskKeys, allowsLegacyRead })` reads existing project column names and requested task identities without creating or upgrading storage. Both are optional. It returns `{ projects: [{ key, columns }], taskKeys }`. Note that task keys that do not identify an existing task are omitted. Empty databases and unacknowledged databases without a schema version return `null` and unavailable storage raises an error.

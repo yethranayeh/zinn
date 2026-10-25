@@ -10,7 +10,13 @@ import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { openWith, sqliteCodeName, SqliteError } from "./database.ts";
+import {
+  openWith,
+  sqliteCodeName,
+  SqliteError,
+  isSqliteErrorCode,
+  isSqliteErrorFamily,
+} from "./database.ts";
 
 type Adapter = {
   driver: SqliteDriver;
@@ -79,6 +85,55 @@ function count(db: Database, table: string) {
 }
 
 export function defineContractChecks(test: DefineTest, adapter: Adapter) {
+  test("SQLite classification distinguishes exact result codes from their primary families", () => {
+    const busy = new SqliteError("database is locked", 5, null);
+    const snapshot = new SqliteError("stale snapshot", 517, null);
+    const recovery = new SqliteError("recovery in progress", 261, null);
+
+    assert.equal(isSqliteErrorCode(busy, "SQLITE_BUSY"), true);
+    assert.equal(isSqliteErrorCode(snapshot, "SQLITE_BUSY"), false);
+    assert.equal(isSqliteErrorCode(snapshot, "SQLITE_BUSY_SNAPSHOT"), true);
+    assert.equal(isSqliteErrorCode(recovery, "SQLITE_BUSY_RECOVERY"), true);
+    for (const error of [busy, snapshot, recovery]) {
+      assert.equal(isSqliteErrorFamily(error, "SQLITE_BUSY"), true);
+      assert.equal(isSqliteErrorFamily(error, "SQLITE_IOERR"), false);
+    }
+  });
+
+  test("unlisted extended codes retain family identity without matching an exact base code", () => {
+    // Subtype 100 is absent from the lookup for these primary codes.
+    const unlistedSubtype = 100 << 8;
+    const busy = new SqliteError("unknown busy subtype", unlistedSubtype | 5, null);
+    const io = new SqliteError("unknown I/O subtype", unlistedSubtype | 10, null);
+    const unknown = new SqliteError("unknown primary code", 255, null);
+
+    assert.equal(busy.code, "SQLITE_BUSY");
+    assert.equal(isSqliteErrorCode(busy, "SQLITE_BUSY"), false);
+    assert.equal(isSqliteErrorCode(busy, "SQLITE_BUSY_RECOVERY"), false);
+    assert.equal(isSqliteErrorFamily(busy, "SQLITE_BUSY"), true);
+    assert.equal(io.code, "SQLITE_IOERR");
+    assert.equal(isSqliteErrorCode(io, "SQLITE_IOERR"), false);
+    assert.equal(isSqliteErrorFamily(io, "SQLITE_IOERR"), true);
+    assert.equal(unknown.code, "SQLITE_ERROR");
+    assert.equal(isSqliteErrorCode(unknown, "SQLITE_ERROR"), false);
+    assert.equal(isSqliteErrorFamily(unknown, "SQLITE_ERROR"), false);
+  });
+
+  test("SQLite classification requires normalized errors and does not inspect causes", () => {
+    const sqlite = new SqliteError("database is locked", 5, null);
+    const shaped = Object.assign(new Error("database is locked"), {
+      name: "SQLiteError",
+      code: "SQLITE_BUSY",
+      errcode: 5,
+    });
+    const wrapped = new Error("operation failed", { cause: sqlite });
+
+    for (const error of [null, undefined, 5, "SQLITE_BUSY", {}, shaped, wrapped]) {
+      assert.equal(isSqliteErrorCode(error, "SQLITE_BUSY"), false);
+      assert.equal(isSqliteErrorFamily(error, "SQLITE_BUSY"), false);
+    }
+  });
+
   test("named bindings keep their $ prefix, may repeat, and accept explicit null", () => {
     withDatabase(adapter, (db) => {
       const statement = db.query<{ a: number; again: number; b: null }, { $a: number; $b: null }>(

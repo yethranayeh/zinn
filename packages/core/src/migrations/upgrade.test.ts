@@ -612,6 +612,26 @@ test("waiting is reported once however many attempts it takes", () => {
   });
 });
 
+test.each([261, 517, (100 << 8) | 5])("lock acquisition waits for BUSY subtype %s", (errcode) => {
+  withControlledExec((db, control) => {
+    seedBaseline(db);
+    const failure = Object.assign(new Error("database is locked"), { name: "SQLiteError", errno: errcode });
+    control.failures.set("BEGIN IMMEDIATE", failure);
+    const waits: Array<LockWait> = [];
+    let calls = 0;
+
+    const result = withMigrationLock(db, databasePath(db), { onWait: (wait) => waits.push(wait) }, () => {
+      calls++;
+      return "locked";
+    });
+
+    expect(result).toBe("locked");
+    expect(calls).toBe(1);
+    expect(waits).toHaveLength(1);
+    expectLockReleased(db);
+  });
+});
+
 test("a busy error from the work under the lock is thrown, not retried", () => {
   withDatabase((db) => {
     seedBaseline(db);

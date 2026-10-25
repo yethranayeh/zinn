@@ -63,6 +63,30 @@ test("ZINN-283: operational causes survive wrappers; unknown failures and constr
   expect(classifyFailure(cycle)).toEqual({ code: "internal" });
 });
 
+test.each([
+  { errcode: 517, reason: "busy" },
+  { errcode: 779, reason: "corrupt" },
+  { errcode: (100 << 8) | 5, reason: "busy" },
+  { errcode: (100 << 8) | 11, reason: "corrupt" },
+  { errcode: (100 << 8) | 10, reason: "io" },
+])("SQLite reason translation preserves family and cause for $errcode", ({ errcode, reason }) => {
+  const error = new SqliteError("operation failed", errcode, new Error("driver internals"));
+  const result = classifyFailure(new Error("initialization failed", { cause: error }));
+
+  expect(result).toEqual({
+    code: "storage",
+    details: { reason, cause: { code: error.code, errcode, message: error.message } },
+  });
+});
+
+test("SQLite reason translation leaves unknown primary codes and shaped errors internal", () => {
+  const unknown = new SqliteError("unknown primary code", 255, null);
+  const shaped = Object.assign(new Error("shaped corruption error"), { code: "SQLITE_CORRUPT", errcode: 11 });
+
+  expect(classifyFailure(unknown)).toEqual({ code: "internal" });
+  expect(classifyFailure(shaped)).toEqual({ code: "internal" });
+});
+
 test("ZINN-283: rare injected failures include buffered notices once and never serialize arbitrary error properties", () => {
   const lib = new URL("./lib.ts", import.meta.url).pathname;
   const core = new URL("../../core/index.ts", import.meta.url).pathname;

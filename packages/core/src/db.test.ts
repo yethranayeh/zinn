@@ -117,6 +117,9 @@ test("initialization does not repeat a wait that already consumed the retry budg
 
 test.each([
   { code: "SQLITE_BUSY_SNAPSHOT", errno: 517 },
+  { code: "SQLITE_BUSY_TIMEOUT", errno: 773 },
+  // An unlisted BUSY subtype keeps the display name but is not an exact startup retry code.
+  { code: "SQLITE_BUSY", errno: (100 << 8) | 5 },
   { code: "SQLITE_READONLY", errno: 8 },
   { code: "SQLITE_IOERR", errno: 10 },
   { code: "SQLITE_CORRUPT", errno: 11 },
