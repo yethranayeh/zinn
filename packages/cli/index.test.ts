@@ -593,8 +593,7 @@ test("the command shown for a word that begins with a single dash runs as shown,
 });
 
 const relationSuggestionCommands = parseRoutes(routes).filter(
-  ({ command, effects }) => command.startsWith("task relation ") &&
-    (effects.domain === "create" || effects.domain === "delete"),
+  ({ command, guessedFlags }) => command.startsWith("task relation ") && guessedFlags !== undefined,
 );
 const expectedRelationTypes: Record<string, string> = {
   "--depends-on": "dependency",
@@ -614,7 +613,7 @@ for (const command of relationSuggestionCommands) {
       const sourceId = JSON.parse(source.stdout).id;
       const targetId = JSON.parse(target.stdout).id;
       const words = command.command.split(" ");
-      const isCreating = command.effects.domain === "create";
+      const isCreating = command.effects.domain !== "delete";
       const flags = Object.keys(command.guessedFlags ?? {});
       expect(new Set(flags.map((flag) => expectedRelationTypes[flag]))).toEqual(new Set(relationTypeSchema.options));
       const snapshot = () => withTestDb(dir, (db) => ({
@@ -1664,7 +1663,7 @@ test("task create relation flags relate the new task to existing tasks, from the
   });
 });
 
-test("task create counts a repeated relation target once and keeps different relation types to it", async () => {
+test("task create counts identical relation requests once", async () => {
   await withIsolatedZinnDir(async (testDir) => {
     const run = (...args: string[]) => runZinn(args, testDir);
     await run("project", "create", "APP", "--name", "App");
@@ -1672,14 +1671,13 @@ test("task create counts a repeated relation target once and keeps different rel
 
     const created = await run(
       "task", "create", "APP", "--title", "Source",
-      "--depends-on", "APP-1", "--depends-on", "app-1", "--related", "APP-1", "--related", "APP-1",
+      "--depends-on", "APP-1", "--depends-on", "app-1",
     );
     const relations = (await run("task", "relation", "list", "APP-2")).stdout.trimEnd().split("\n");
 
     expect(created.code).toBe(0);
-    expect(relations).toHaveLength(2);
+    expect(relations).toHaveLength(1);
     expect(relations[0]).toMatch(/Depends on\s+\|\s+APP-1\s+\|\s+Backlog\s+\|\s+Target/);
-    expect(relations[1]).toMatch(/Related to\s+\|\s+APP-1\s+\|\s+Backlog\s+\|\s+Target/);
   });
 });
 
@@ -4553,31 +4551,33 @@ test("relation commands show directional and symmetric links, including archived
     expect(errorDocumentSchema.parse(JSON.parse((await run("--json", "task", "relation", "create", "APP-1", "APP-1", "--type", "related")).stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["targetTaskKey"] } });
     expect((await run("task", "relation", "create", "APP-1", "OTHER-99", "--type", "related")).code).toBe(1);
     expect((await run("task", "relation", "list", "OTHER-99")).code).toBe(1);
-    for (const type of ["dependency", "duplicate", "related", "subtask"]) {
+    for (const type of relationTypeSchema.options) {
       const created = await run("task", "relation", "create", "app-1", "OTHER-1", "--type", type);
       expect(created.code).toBe(0);
       expect(created.stdout).toContain("APP-1");
       expect(created.stdout).toContain("OTHER-1");
+      const outgoing = JSON.parse((await run("task", "relation", "list", "APP-1", "--json")).stdout);
+      const incoming = JSON.parse((await run("task", "relation", "list", "OTHER-1", "--json")).stdout);
+      expect(outgoing).toHaveLength(1);
+      expect(outgoing[0]).toMatchObject({ type, direction: type === "related" ? null : "outgoing", task: { key: "OTHER-1", title: "Original" } });
+      expect(incoming).toHaveLength(1);
+      expect(incoming[0]).toMatchObject({ type, direction: type === "related" ? null : "incoming", task: { key: "APP-1", title: "Copy" } });
+      if (type === "related") {
+        expect(errorDocumentSchema.parse(JSON.parse((await run("--json", "task", "relation", "create", "OTHER-1", "APP-1", "--type", "related")).stderr)).error).toMatchObject({ code: "conflict", details: { reason: "already_exists", entity: "relation" } });
+      }
+      expect((await run("task", "relation", "delete", "APP-1", "OTHER-1", "--type", type)).code).toBe(0);
     }
-    const outgoing = await run("task", "relation", "list", "APP-1");
-    expect(outgoing.stdout).toContain("Depends on   | OTHER-1 | Backlog | Original");
-    expect(outgoing.stdout).toContain("Duplicate of | OTHER-1 | Backlog | Original");
-    expect(outgoing.stdout).toContain("Parent       | OTHER-1 | Backlog | Original");
-    const incoming = await run("task", "relation", "list", "OTHER-1");
-    expect(incoming.stdout).toContain("Subtask        | APP-1 | Backlog | Copy");
-    expect(incoming.stdout).toContain("Depended on by | APP-1 | Backlog | Copy");
-    expect(incoming.stdout).toContain("Duplicated by  | APP-1 | Backlog | Copy");
-    expect(incoming.stdout).toContain("Related to     | APP-1 | Backlog | Copy");
-    expect(errorDocumentSchema.parse(JSON.parse((await run("--json", "task", "relation", "create", "OTHER-1", "APP-1", "--type", "related")).stderr)).error).toMatchObject({ code: "conflict", details: { reason: "already_exists", entity: "relation" } });
+    expect((await run("task", "relation", "create", "APP-1", "OTHER-1", "--type", "subtask")).code).toBe(0);
     await run("task", "archive", "OTHER-1");
-    expect((await run("task", "view", "APP-1")).stdout).toContain("Parent       | OTHER-1 | Backlog | Original | Archived");
+    expect((await run("task", "view", "APP-1")).stdout).toMatch(/Parent\s+\| OTHER-1 \| Backlog \| Original \| Archived/);
     const viewed = JSON.parse((await run("task", "view", "APP-1", "--json")).stdout);
     expect(viewed.relations).toContainEqual({
       id: expect.any(String),
       type: "subtask", direction: "outgoing",
       task: { id: expect.any(String), project_id: expect.any(String), column_id: expect.any(String), key: "OTHER-1", column: "Backlog", title: "Original", status: "Archived" },
     });
-    expect(errorDocumentSchema.parse(JSON.parse((await run("--json", "task", "relation", "create", "OTHER-1", "APP-1", "--type", "subtask")).stderr)).error).toMatchObject({ code: "conflict", details: { reason: "cycle" } });
+    expect((await run("task", "create", "APP", "--title", "Child", "--parent", "APP-1")).code).toBe(0);
+    expect(errorDocumentSchema.parse(JSON.parse((await run("--json", "task", "relation", "create", "OTHER-1", "APP-2", "--type", "subtask")).stderr)).error).toMatchObject({ code: "conflict", details: { reason: "cycle" } });
     expect((await run("task", "relation", "delete", "APP-1", "OTHER-1", "--type", "subtask")).code).toBe(0);
     expect((await run("task", "view", "APP-1")).stdout).not.toContain("Parent");
     expect((await run("task", "relation", "create", "OTHER-1", "APP-1", "--type", "dependency")).code).toBe(0);
@@ -4664,8 +4664,9 @@ test("relation deletion is usable without a prompt and updates list and view", a
     await run("project", "create", "APP");
     await run("task", "create", "APP", "--title", "First");
     await run("task", "create", "APP", "--title", "Second");
+    await run("task", "create", "APP", "--title", "Third");
     await run("task", "relation", "create", "APP-1", "APP-2", "--type", "related");
-    await run("task", "relation", "create", "APP-1", "APP-2", "--type", "dependency");
+    await run("task", "relation", "create", "APP-1", "APP-3", "--type", "dependency");
     const removed = await run("task", "relation", "delete", "app-2", "APP-1", "--type", "related");
     expect(removed.code).toBe(0);
     for (const fact of ["related", "APP-2", "APP-1"]) {

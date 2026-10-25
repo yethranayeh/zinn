@@ -96,13 +96,22 @@ function filterTasksByColumn(tasks: Array<Task>, columnName?: string) {
 
 type NewTaskRelation = NonNullable<TaskCreateInput["relations"]>[number];
 
-/** Keeps one request per relation type and target task, so a repeated target counts once. */
+/** Deduplicates identical requests and rejects different types for one resolved target. */
 function uniqueRelationRequests(requests: Array<NewTaskRelation>) {
   const uniqueRequests = new Map<string, NewTaskRelation>();
 
   for (const request of requests) {
     const target = getTaskByKey(request.targetTaskKey);
-    uniqueRequests.set(`${request.relation_type}:${target.id}`, request);
+    const previous = uniqueRequests.get(target.id);
+
+    if (previous !== undefined && previous.relation_type !== request.relation_type) {
+      throw new CoreError(`Conflicting relation types for task "${target.key}"`, "input", {
+        entity: "relation",
+        key: target.key,
+        field: ["relations"],
+      });
+    }
+    uniqueRequests.set(target.id, request);
   }
 
   return [...uniqueRequests.values()];

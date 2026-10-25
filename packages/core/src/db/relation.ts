@@ -20,26 +20,24 @@ export function getAllByTaskId(taskId: string) {
     .all({ $taskId: taskId });
 }
 
-export function getParentByTaskId(taskId: string) {
-  return getDb()
-    .query<TaskRelation, Bind<{ taskId: string }>>(`SELECT * FROM ${DB_TABLE.task_relations}
-      WHERE source_task_id = $taskId AND relation_type = 'subtask'`)
-    .get({ $taskId: taskId });
-}
-
 /** Returns all ancestors, excluding the supplied task itself */
-export function getAncestorIds(taskId: string) {
+export function getAncestorIds(taskId: string, excludedRelationIds: Array<string> = []) {
   return getDb()
-    .query<{ id: string }, Bind<{ taskId: string }>>(`WITH RECURSIVE ancestors(id) AS (
+    .query<
+      { id: string },
+      Bind<{ taskId: string; excluded: string }>
+    >(`WITH RECURSIVE ancestors(id) AS (
       SELECT target_task_id FROM ${DB_TABLE.task_relations}
       WHERE source_task_id = $taskId AND relation_type = 'subtask'
+        AND id NOT IN (SELECT value FROM json_each($excluded))
       UNION ALL
       SELECT relation.target_task_id FROM ${DB_TABLE.task_relations} AS relation
       JOIN ancestors ON relation.source_task_id = ancestors.id
       WHERE relation.relation_type = 'subtask'
+        AND relation.id NOT IN (SELECT value FROM json_each($excluded))
     )
     SELECT id FROM ancestors`)
-    .all({ $taskId: taskId })
+    .all({ $taskId: taskId, $excluded: JSON.stringify(excludedRelationIds) })
     .map((ancestor) => ancestor.id);
 }
 
@@ -64,7 +62,10 @@ type CreateTaskRelationInput = Pick<
   TaskRelation,
   "id" | "source_task_id" | "target_task_id" | "relation_type" | "created_at"
 >;
-export function create(props: Omit<CreateTaskRelationInput, "id" | "created_at">) {
+export function create(
+  props: Omit<CreateTaskRelationInput, "id" | "created_at">,
+  createdAt = Date.now(),
+) {
   const db = getDb();
 
   const query = db.query<TaskRelation, Bind<CreateTaskRelationInput>>(`INSERT INTO
@@ -77,7 +78,7 @@ export function create(props: Omit<CreateTaskRelationInput, "id" | "created_at">
     $source_task_id: props.source_task_id,
     $target_task_id: props.target_task_id,
     $relation_type: props.relation_type,
-    $created_at: Date.now(),
+    $created_at: createdAt,
   });
 }
 

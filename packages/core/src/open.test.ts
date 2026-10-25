@@ -617,7 +617,10 @@ function operationsWalk() {
     "task.label": { getAll: () => task.label.getAll("APP-1") },
     comment: { getByKey: () => comment.getByKey("APP-1#1"), getAll: () => comment.getAll("APP-1") },
     label: { getAll: () => label.getAll(), getByName: () => label.getByName("bug") },
-    relation: { getAll: () => relation.getAll("APP-1") },
+    relation: {
+      getAll: () => relation.getAll("APP-1"),
+      getConflicts: () => relation.getConflicts({ sourceTaskKey: "APP-1", targetTaskKey: "APP-3", relation_type: "related" }),
+    },
   };
   const mutations: Record<string, Record<string, () => unknown>> = {
     project: {

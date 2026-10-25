@@ -6,11 +6,13 @@ import type {
   TaskWithKey,
   TaskChange,
   TaskOrderManyInput,
+  RelationCreateInput,
 } from "@zinn-dev/core";
 import {
   activity,
   project,
   task,
+  relation,
   configureDatabase,
   CoreError,
   InputValidationError,
@@ -31,6 +33,17 @@ const createdTask: TaskWithKey = task.create(
   actor,
 );
 const key: string = createdTask.key;
+const relationRequest: RelationCreateInput = {
+  sourceTaskKey: key,
+  targetTaskKey: "TYPES-2",
+  relation_type: "subtask",
+};
+const conflicts = relation.getConflicts(relationRequest);
+const conflictSource: TaskWithKey | undefined = conflicts[0]?.source;
+relation.create({ ...relationRequest, replace: conflicts.map(({ id }) => id) }, actor);
+relation.create({ ...relationRequest, replace: true }, actor);
+// @ts-expect-error replacement authorization takes a boolean or relation IDs.
+relation.create({ ...relationRequest, replace: "yes" }, actor);
 const placement: TaskOrderManyInput = { taskKeys: [key], direction: "top" };
 const ordered: TaskChange[] = task.orderMany(placement, actor);
 // @ts-expect-error relative task ordering requires a target.

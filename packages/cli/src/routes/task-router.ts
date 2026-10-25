@@ -389,6 +389,8 @@ ${dashValueHelp("--description")}
 The new task is a subtask of --parent, depends on --depends-on,
 is a duplicate of --duplicate-of, and is related to --related.
 Repeat --depends-on and --related to name several tasks.
+Each target may have one relation type. Identical repeated requests count once.
+Different relation types for the same target abort creation.
 Unknown columns, labels or related tasks abort creation.
 
 Examples:

@@ -39,6 +39,7 @@ export const errorDetailsSchema = z.strictObject({
       "already_exists",
       "archived",
       "parent_exists",
+      "relation_changed",
       "cycle",
       "different_project",
       "different_column",

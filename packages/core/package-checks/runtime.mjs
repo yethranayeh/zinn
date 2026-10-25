@@ -60,6 +60,47 @@ assert.deepEqual(core.activity.getAll({ taskKey: task.key, changed: [{ field: "l
 ]);
 
 const second = core.task.create({ project_id: project.id, title: "Second" }, actor);
+const request = { sourceTaskKey: task.key, targetTaskKey: second.key, relation_type: "subtask" };
+const original = core.relation.create({ ...request, relation_type: "related" }, actor);
+const conflicts = core.relation.getConflicts(request);
+assert.deepEqual(
+	conflicts.map(({ id }) => id),
+	[original.id]
+);
+assert.equal(conflicts[0].source.key, task.key);
+assert.equal(conflicts[0].target.key, second.key);
+assert.throws(() => core.relation.create(request, actor), core.CoreError);
+const replaced = core.relation.create({ ...request, replace: conflicts.map(({ id }) => id) }, actor);
+assert.deepEqual(core.relation.getAll(task.key), [replaced]);
+const reversed = core.relation.create(
+	{ ...request, sourceTaskKey: second.key, targetTaskKey: task.key, replace: true },
+	actor
+);
+assert.equal(reversed.source_task_id, second.id);
+assert.equal(reversed.target_task_id, task.id);
+const eventsBeforeStaleWrite = core.activity.getAll();
+assert.throws(
+	() => core.relation.create({ ...request, replace: [replaced.id] }, actor),
+	(error) => error instanceof core.CoreError && error.kind === "conflict" && error.facts.reason === "relation_changed"
+);
+assert.deepEqual(core.activity.getAll(), eventsBeforeStaleWrite);
+assert.deepEqual(core.relation.getAll(task.key), [reversed]);
+assert.throws(
+	() =>
+		core.task.create(
+			{
+				project_id: project.id,
+				title: "Conflicting",
+				relations: [
+					{ relation_type: "dependency", targetTaskKey: task.key },
+					{ relation_type: "related", targetTaskKey: task.key.toLowerCase() }
+				]
+			},
+			actor
+		),
+	core.CoreError
+);
+assert.equal(core.project.getByKey(project.key).task_count, 2);
 const ordered = core.task.orderMany({ taskKeys: [second.key, task.key], direction: "top" }, actor);
 
 assert.deepEqual(

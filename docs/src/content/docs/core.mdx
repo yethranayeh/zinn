@@ -69,6 +69,27 @@ Names and titles are trimmed and cannot be blank or contain line breaks or contr
 - `task.deleteMany(taskKeys, actor)` returns the deleted tasks in input order, including archived tasks. Task keys must be distinct, ignoring case. Each deletion preserves task activity and records removed relations on the other tasks, including tasks deleted later in the same batch. `task.delete(taskKey, actor)` returns one deleted task.
 - `task.orderMany({ taskKeys, direction, targetTaskKey? }, actor)` returns a `TaskChange` per key. It orders the first task as requested, then each next task after the previous one. Multiple tasks must be distinct active tasks in the same project and column. The target cannot be among them. `up` and `down` take one task. A single task ordered before or after itself remains unchanged.
 
+## Task relations
+
+`relation.create({ sourceTaskKey, targetTaskKey, relation_type }, actor)` creates a relation. Types are `related`, `dependency`, `duplicate` and `subtask`. A pair has at most one relation across all types and both directions. Directed types preserve their source and target. An exact existing relation is an error.
+
+`relation.getConflicts({ sourceTaskKey, targetTaskKey, relation_type })` validates the requested creation and returns conflicting relation records with `source` and `target` task records. Conflicts include a different parent when creating a subtask. Self-relations, exact repeats and subtask cycles fail before confirmation.
+
+After obtaining approval, pass the returned relation IDs as `replace` to authorize exactly those removals:
+
+```ts title="Replace the approved relations"
+import { relation } from "@zinn-dev/core";
+
+const request = { sourceTaskKey: "APP-1", targetTaskKey: "APP-2", relation_type: "subtask" as const };
+const conflicts = relation.getConflicts(request);
+// Obtain approval in the calling interface before replacing these links.
+const created = relation.create({ ...request, replace: conflicts.map(({ id }) => id) }, actor);
+```
+
+If the conflicting IDs changed before the write, core throws a `CoreError` with kind `conflict` and reason `relation_changed`. `replace: true` explicitly authorizes replacing the current conflicting links without an expected-ID check. Omitting `replace` or passing `false` refuses conflicting links. Every removal and the creation share one transaction and activity timestamp. Failures preserve existing links and activity.
+
+`task.create` accepts `relations: [{ relation_type, targetTaskKey }]`. Identical type and resolved-target requests deduplicate. Different types for one target fail the whole creation without consuming a task number or recording activity.
+
 ## Activity selection
 
 `activity.getAll` returns full activity records, newest first by timestamp and then event ID. Without a project or task selector it reads across the database.

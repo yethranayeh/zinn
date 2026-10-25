@@ -36,14 +36,18 @@ function getRelations(taskKey: string, options?: RelationGetOptions): Array<Rela
     return relations;
   }
 
-  return relations.map((entry) => ({
+  return relations.map(includeRelationTasks);
+}
+
+function includeRelationTasks(entry: TaskRelation) {
+  return {
     ...entry,
     source: attachTaskKey(dbTask.getById(entry.source_task_id)!),
     target: attachTaskKey(dbTask.getById(entry.target_task_id)!),
-  }));
+  };
 }
 
-function resolveRelationTaskIds(props: RelationCreateInput) {
+function resolveRelationTaskIds(props: RelationDeleteInput) {
   const sourceTask = getTaskByKey(props.sourceTaskKey);
   const targetTask = getTaskByKey(props.targetTaskKey);
 
@@ -57,12 +61,7 @@ function resolveRelationTaskIds(props: RelationCreateInput) {
   let sourceId = sourceTask.id;
   let targetId = targetTask.id;
 
-  /**
-   * To avoid headaches with relations that
-   *  technically have no semantic source/target
-   *  it felt reasonable to invent reliable "source" and "target"
-   *  by enforcing the placements through ID comparison
-   */
+  // Symmetric relations use a canonical task-ID order.
   const isSymmetricRelation = props.relation_type === "related";
   if (isSymmetricRelation && sourceId > targetId) {
     sourceId = targetTask.id;
@@ -72,54 +71,127 @@ function resolveRelationTaskIds(props: RelationCreateInput) {
   return { source_task_id: sourceId, target_task_id: targetId, relation_type: props.relation_type };
 }
 
+type ResolvedRelation = ReturnType<typeof resolveRelationTaskIds>;
+
+function getConflictingRelations(resolved: ResolvedRelation) {
+  return dbRelation.getAllByTaskId(resolved.source_task_id).filter((entry) => {
+    const samePair =
+      entry.source_task_id === resolved.target_task_id ||
+      entry.target_task_id === resolved.target_task_id;
+    const existingParent =
+      resolved.relation_type === "subtask" &&
+      entry.relation_type === "subtask" &&
+      entry.source_task_id === resolved.source_task_id;
+    return samePair || existingParent;
+  });
+}
+
+function validateRelationCreation(resolved: ResolvedRelation, conflicts: Array<TaskRelation>) {
+  const exactMatch = conflicts.some(
+    (entry) =>
+      entry.source_task_id === resolved.source_task_id &&
+      entry.target_task_id === resolved.target_task_id &&
+      entry.relation_type === resolved.relation_type,
+  );
+  if (exactMatch) {
+    throw new CoreError("This relation already exists", "conflict", {
+      entity: "relation",
+      reason: "already_exists",
+    });
+  }
+
+  if (resolved.relation_type === "subtask") {
+    const ancestorIds = dbRelation.getAncestorIds(
+      resolved.target_task_id,
+      conflicts.map((entry) => entry.id),
+    );
+    if (ancestorIds.includes(resolved.source_task_id)) {
+      throw new CoreError("A subtask relation cannot create a cycle", "conflict", {
+        entity: "relation",
+        reason: "cycle",
+      });
+    }
+  }
+}
+
+function recordRelationActivity(
+  entry: TaskRelation,
+  actor: Actor,
+  action: "relation_create" | "relation_delete",
+  createdAt: number,
+) {
+  const changes = describeRelation(entry);
+  for (const taskId of [entry.source_task_id, entry.target_task_id]) {
+    recordTaskActivity(actor, { taskId, action, changes, createdAt });
+  }
+}
+
 export const relation = {
-  /** Records the same relation_create row on both tasks. */
+  /** Returns the validated creation's conflicting links with both connected tasks. */
+  getConflicts: (input: RelationDeleteInput) => {
+    const props = validateTaskInput(relationDeleteSchema, input);
+    const resolved = resolveRelationTaskIds(props);
+    const conflicts = getConflictingRelations(resolved);
+
+    validateRelationCreation(resolved, conflicts);
+
+    return conflicts.map(includeRelationTasks);
+  },
+  /** Creates or explicitly replaces relations and records each change on both endpoints. */
   create: (input: RelationCreateInput, actor: Actor) => {
     const props = validateTaskInput(relationCreateSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
     return writeTransaction(() => {
       const resolved = resolveRelationTaskIds(props);
-      const relationMatch = dbRelation.getByTaskIdsAndType(resolved);
+      const conflicts = getConflictingRelations(resolved);
 
-      if (relationMatch != null) {
-        throw new CoreError("This relation already exists", "conflict", {
-          entity: "relation",
-          reason: "already_exists",
-        });
-      }
+      if (Array.isArray(props.replace)) {
+        const expectedIds = new Set(props.replace);
+        const conflictsChanged =
+          expectedIds.size !== conflicts.length ||
+          conflicts.some((entry) => !expectedIds.has(entry.id));
 
-      if (resolved.relation_type === "subtask") {
-        if (dbRelation.getParentByTaskId(resolved.source_task_id) != null) {
+        if (conflictsChanged) {
           throw new CoreError(
-            "This task already has a parent. Remove its subtask relation first.",
+            "The conflicting relations changed. Run the command again to review them.",
             "conflict",
-            { entity: "task", key: props.sourceTaskKey, reason: "parent_exists" },
+            {
+              entity: "relation",
+              reason: "relation_changed",
+            },
           );
         }
-
-        const ancestorIds = dbRelation.getAncestorIds(resolved.target_task_id);
-        const wouldCreateCycle = ancestorIds.includes(resolved.source_task_id);
-        if (wouldCreateCycle) {
-          throw new CoreError("A subtask relation cannot create a cycle", "conflict", {
-            entity: "relation",
-            reason: "cycle",
-          });
-        }
       }
 
-      const createdRelation = dbRelation.create(resolved)!;
-      const changes = describeRelation(createdRelation);
+      validateRelationCreation(resolved, conflicts);
 
-      for (const taskId of [createdRelation.source_task_id, createdRelation.target_task_id]) {
-        recordTaskActivity(validActor, {
-          taskId,
-          action: "relation_create",
-          changes,
-          createdAt: createdRelation.created_at,
-        });
+      if (conflicts.length > 0 && !props.replace) {
+        const hasParent = conflicts.some(
+          (entry) =>
+            resolved.relation_type === "subtask" &&
+            entry.relation_type === "subtask" &&
+            entry.source_task_id === resolved.source_task_id,
+        );
+
+        throw new CoreError(
+          "Existing relations require explicit replacement authorization",
+          "conflict",
+          {
+            entity: hasParent ? "task" : "relation",
+            key: hasParent ? props.sourceTaskKey : undefined,
+            reason: hasParent ? "parent_exists" : "already_exists",
+          },
+        );
       }
 
+      const now = Date.now();
+      for (const entry of conflicts) {
+        recordRelationActivity(entry, validActor, "relation_delete", now);
+        dbRelation.deleteById(entry.id);
+      }
+      const createdRelation = dbRelation.create(resolved, now)!;
+      recordRelationActivity(createdRelation, validActor, "relation_create", now);
       return createdRelation;
     });
   },
@@ -136,18 +208,7 @@ export const relation = {
         throw new CoreError("This relation does not exist", "missing", { entity: "relation" });
       }
 
-      const changes = describeRelation(relationMatch);
-      const now = Date.now();
-
-      for (const taskId of [relationMatch.source_task_id, relationMatch.target_task_id]) {
-        recordTaskActivity(validActor, {
-          taskId,
-          action: "relation_delete",
-          changes,
-          createdAt: now,
-        });
-      }
-
+      recordRelationActivity(relationMatch, validActor, "relation_delete", Date.now());
       dbRelation.deleteById(relationMatch.id);
       return relationMatch;
     });

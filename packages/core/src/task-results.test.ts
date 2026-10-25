@@ -342,6 +342,7 @@ test("task create saves requested relations with the new task as source and reco
       task.create({ project_id: app.id, title: "Parent", description: null }, actor);
       task.create({ project_id: app.id, title: "Needed", description: null }, actor);
       task.create({ project_id: other.id, title: "Original", description: null }, actor);
+      task.create({ project_id: other.id, title: "Related", description: null }, actor);
       const linked = (key: string) => relation.getAll(key, { include: { tasks: true } })
         .map((r) => [r.relation_type, r.source!.key, r.target!.key])
         .sort();
@@ -354,14 +355,14 @@ test("task create saves requested relations with the new task as source and reco
           { relation_type: "subtask", targetTaskKey: "APP-1" },
           { relation_type: "dependency", targetTaskKey: "app-2" },
           { relation_type: "duplicate", targetTaskKey: "OTHER-1" },
-          { relation_type: "related", targetTaskKey: "APP-2" },
+          { relation_type: "related", targetTaskKey: "OTHER-2" },
         ],
       }, actor);
       assert.equal(created.key, "APP-3");
       assert.deepEqual(linked("APP-3"), [
         ["dependency", "APP-3", "APP-2"],
         ["duplicate", "APP-3", "OTHER-1"],
-        ["related", "APP-2", "APP-3"],
+        ["related", "OTHER-2", "APP-3"],
         ["subtask", "APP-3", "APP-1"],
       ]);
 
@@ -385,7 +386,7 @@ test("task create saves requested relations with the new task as source and reco
   }
 });
 
-test("task create ignores a repeated relation target but keeps different relation types to one task", () => {
+test("task create deduplicates identical relation requests by resolved task identity", () => {
   const directory = mkdtempSync(join(tmpdir(), "zinn-task-results-"));
   try {
     withStore(directory, () => {
@@ -405,7 +406,6 @@ test("task create ignores a repeated relation target but keeps different relatio
           { relation_type: "dependency", targetTaskKey: "app-1" },
           { relation_type: "related", targetTaskKey: "APP-2" },
           { relation_type: "related", targetTaskKey: "APP-2" },
-          { relation_type: "dependency", targetTaskKey: "APP-2" },
         ],
       }, actor);
 
@@ -414,12 +414,11 @@ test("task create ignores a repeated relation target but keeps different relatio
         .sort();
       assert.deepEqual(stored, [
         ["dependency", "APP-3", "APP-1"],
-        ["dependency", "APP-3", "APP-2"],
         ["related", "APP-2", "APP-3"],
       ]);
       assert.deepEqual(
         task.activity("APP-3").map((row) => row.action),
-        ["create", "relation_create", "relation_create", "relation_create"],
+        ["create", "relation_create", "relation_create"],
       );
     });
 

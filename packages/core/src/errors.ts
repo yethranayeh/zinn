@@ -21,6 +21,7 @@ export type FailureFacts = {
     | "already_exists"
     | "archived"
     | "parent_exists"
+    | "relation_changed"
     | "cycle"
     | "different_project"
     | "different_column"

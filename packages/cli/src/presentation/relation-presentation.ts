@@ -6,6 +6,21 @@ import { column, relation } from "@zinn-dev/core";
 import { columnNameCell } from "./column-presentation.js";
 import { formatCellSeparator, formatRows } from "./row-layout.js";
 
+export function presentRelationChange(
+  entry: ReturnType<typeof relation.create>,
+  source: TaskWithKey,
+  target: TaskWithKey,
+): PresentedRelationChange {
+  return {
+    id: entry.id,
+    type: entry.relation_type,
+    source: source.key,
+    source_task_id: source.id,
+    target: target.key,
+    target_task_id: target.id,
+  };
+}
+
 export function presentRelations(taskMatch: TaskWithKey): Array<PresentedRelation> {
   return relation.getAll(taskMatch.key, { include: { tasks: true } }).map((entry) => {
     const isSource = entry.source_task_id === taskMatch.id;
@@ -73,9 +88,18 @@ export function formatRelationList(relations: Array<PresentedRelation>) {
 }
 
 export function formatRelationChange(
-  change: PresentedRelationChange,
-  options: { action: "create" | "delete" },
-) {
+  change: Pick<PresentedRelationChange, "type" | "source" | "target">,
+  options:
+    | { action: "create" | "delete" }
+    | { action: "replace"; replaced: Array<PresentedRelationChange> },
+): string {
+  if (options.action === "replace") {
+    const previous = options.replaced.map((entry) =>
+      formatRelationChange(entry, { action: "create" }),
+    );
+
+    return `Replace these relations:\n${previous.join("\n")}\nWith:\n${formatRelationChange(change, { action: "create" })}?`;
+  }
   if (options.action === "delete") {
     return `Deleted ${change.type} relation from ${change.source} to ${change.target}`;
   }

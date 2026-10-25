@@ -4,6 +4,7 @@ import { project, relation, task } from "../../index";
 import { getDb } from "../db";
 import { CoreError } from "../errors";
 import { withTestStore } from "../testing";
+import * as dbRelation from "./relation";
 
 function fixtures() {
   const actor = { name: "Test Human", email: null, kind: "human" as const };
@@ -51,13 +52,14 @@ test("dependency preserves the dependent task as source regardless of task ID or
         sourceTaskKey: "APP-" + dependent!.number,
         targetTaskKey: "APP-" + prerequisite!.number,
         relation_type: "dependency",
+        replace: true,
       }, actor);
       assert.equal(dependency.source_task_id, dependent!.id);
       assert.equal(dependency.target_task_id, prerequisite!.id);
     }
-    // A symmetric connection between the same tasks is a separate relation.
-    relation.create({ sourceTaskKey: "APP-1", targetTaskKey: "APP-2", relation_type: "related" }, actor);
-    assert.equal(relation.getAll("APP-1").length, 3);
+    assert.throws(() => relation.create({ sourceTaskKey: "APP-1", targetTaskKey: "APP-2", relation_type: "related" }, actor),
+      (error) => error instanceof CoreError && error.kind === "conflict");
+    assert.equal(relation.getAll("APP-1").length, 1);
   });
 });
 
@@ -117,8 +119,8 @@ test("duplicate direction and optional task enrichment preserve raw lookup", () 
     assert.equal(expanded!.target!.key, "OTHER-1");
     assert.equal(expanded!.target!.title, "Original");
     assert.ok(expanded!.target!.archived_at);
-    relation.create({ sourceTaskKey: "OTHER-1", targetTaskKey: "APP-1", relation_type: "duplicate" as const }, actor);
-    assert.equal(relation.getAll("APP-1").length, 2);
+    relation.create({ sourceTaskKey: "OTHER-1", targetTaskKey: "APP-1", relation_type: "duplicate" as const, replace: true }, actor);
+    assert.equal(relation.getAll("APP-1").length, 1);
   });
 });
 
@@ -160,9 +162,10 @@ test("relation deletion matches type and direction, preserving tasks and other r
     const reverse = { sourceTaskKey: "OTHER-1", targetTaskKey: "APP-1" };
     const related = relation.create(input, actor);
     for (const relation_type of ["dependency", "duplicate"] as const) {
-      const forward = relation.create({ ...input, relation_type }, actor);
+      // Populate historical overlaps directly to verify their deletion behavior.
+      const forward = dbRelation.create({ source_task_id: before[0]!.id, target_task_id: before[1]!.id, relation_type })!;
       assert.throws(() => relation.delete({ ...reverse, relation_type }, actor), (error) => error instanceof CoreError && error.kind === "missing" && error.facts.entity === "relation");
-      const backward = relation.create({ ...reverse, relation_type }, actor);
+      const backward = dbRelation.create({ source_task_id: before[1]!.id, target_task_id: before[0]!.id, relation_type })!;
       assert.deepEqual(relation.delete({ ...input, relation_type }, actor), forward);
       assert.ok(relation.getAll("APP-1").some(r => r.id === backward.id));
     }
@@ -192,7 +195,7 @@ test("subtasks allow branching and nesting but reject multiple parents and cycle
     const before = activityCount();
     assert.throws(() => create("APP-2", "APP-1"), (error) => error instanceof CoreError && error.kind === "conflict" && error.facts.reason === "already_exists");
     assert.throws(() => create("APP-2", "APP-5"), (error) => error instanceof CoreError && error.kind === "conflict" && error.facts.reason === "parent_exists");
-    assert.throws(() => create("APP-1", "APP-2"), (error) => error instanceof CoreError && error.kind === "conflict" && error.facts.reason === "cycle");
+    assert.throws(() => create("APP-1", "APP-2"), (error) => error instanceof CoreError && error.kind === "conflict" && error.facts.reason === "already_exists");
     assert.throws(() => create("APP-1", "APP-4"), (error) => error instanceof CoreError && error.kind === "conflict" && error.facts.reason === "cycle");
     assert.throws(() => create("APP-1", "APP-1"), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field![0] === "targetTaskKey");
     assert.equal(activityCount(), before);

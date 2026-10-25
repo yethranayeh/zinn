@@ -264,7 +264,7 @@ const fixtures: Record<string, Fixture[]> = {
     { schema: "TaskChange", args: ["APP-1", "bug"], check: (v) => expect(v.changed).toBe(true) },
     { schema: "TaskChange", args: ["APP-2", "bug"], check: (v) => expect(v.changed).toBe(false) },
   ],
-  "task relation create": [{ schema: "RelationChange", args: ["APP-1", "APP-2", "--type", "related"] }],
+  "task relation create": [{ schema: "RelationChange", args: ["APP-1", "APP-2", "--type", "related", "--yes"] }],
   "task relation list": [{ schema: "RelationList", args: ["APP-1"] }],
   "task relation delete": [{ schema: "RelationChange", args: ["APP-1", "APP-2", "--type", "dependency"] }],
   "task comment create": [{ schema: "Comment", args: ["APP-1", "--text", "Another comment"] }],

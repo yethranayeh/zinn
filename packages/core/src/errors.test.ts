@@ -47,6 +47,7 @@ test("ZINN-282: expected operation failures retain facts and leave all stored ro
       label.create({ name: "bug" }, actor);
       label.create({ name: "other" }, actor);
       relation.create({ sourceTaskKey: "APP-1", targetTaskKey: "APP-2", relation_type: "subtask" }, actor);
+      relation.create({ sourceTaskKey: "APP-3", targetTaskKey: "APP-1", relation_type: "subtask" }, actor);
 
       function failure(action: () => unknown, kind: CoreError["kind"], facts: CoreError["facts"]) {
         const before = snapshot(getDb());
@@ -91,7 +92,7 @@ test("ZINN-282: expected operation failures retain facts and leave all stored ro
       failure(() => relation.create({ sourceTaskKey: "APP-1", targetTaskKey: "APP-1", relation_type: "related" }, actor), "input", { entity: "relation", field: ["targetTaskKey"] });
       failure(() => relation.create({ sourceTaskKey: "APP-1", targetTaskKey: "APP-2", relation_type: "subtask" }, actor), "conflict", { entity: "relation", reason: "already_exists" });
       failure(() => relation.create({ sourceTaskKey: "APP-1", targetTaskKey: "APP-3", relation_type: "subtask" }, actor), "conflict", { key: "APP-1", reason: "parent_exists" });
-      failure(() => relation.create({ sourceTaskKey: "APP-2", targetTaskKey: "APP-1", relation_type: "subtask" }, actor), "conflict", { reason: "cycle" });
+      failure(() => relation.create({ sourceTaskKey: "APP-2", targetTaskKey: "APP-3", relation_type: "subtask" }, actor), "conflict", { reason: "cycle" });
       failure(() => relation.delete({ sourceTaskKey: "APP-1", targetTaskKey: "APP-3", relation_type: "related" }, actor), "missing", { entity: "relation" });
       failure(() => activity.getById("ffffffff"), "missing", { entity: "activity", key: "ffffffff" });
       getDb().exec("INSERT INTO activity (id, created_at, actor_kind, entity_type, entity_id, action) VALUES ('00000000-0000-7000-8000-000000000001', 0, 'human', 'task', 'one', 'create'), ('00000000-0000-7000-8000-000000000002', 0, 'human', 'task', 'two', 'create')");

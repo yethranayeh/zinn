@@ -323,12 +323,16 @@ Use `task label remove` to remove a label attachment from one task instead. Task
 
 ```sh title="Create and list task relations"
 zinn task relation create MDR-1 MDR-2 --type dependency
-zinn task relation create MDR-1 MDR-2 --type duplicate
+zinn task relation create MDR-1 MDR-2 --type duplicate --yes
 zinn task relation create MDR-1 OTHER-1 --type related
 zinn task relation list MDR-1
 ```
 
 `dependency` means the first task depends on the second; `duplicate` means the first is a duplicate of the second. `related` is symmetric.
+
+Each task pair may have one relation across all types and both directions. Changing the type or direction asks for confirmation to replace the existing links. `--yes` authorizes replacement without a prompt, including with `--json` or without a terminal. Creating the exact existing relation is an error, including with `--yes`.
+
+One confirmation names every link to remove. If those links change while the prompt is open, the command fails and asks you to run it again. Replacement applies completely or not at all, and records the removed links and the new link in activity with one timestamp.
 
 Relations do not automatically move, complete, or archive tasks.
 Tasks from separate projects can be related to each other. Tasks can also be related to archived tasks.
@@ -337,13 +341,15 @@ JSON relation arrays from `task relation list` and `task view` are ordered by cr
 
 Use `zinn task relation create APP-2 APP-1 --type subtask` to make APP-2 a child of APP-1. Each task can have one parent and any number of subtasks, including nested subtasks.
 
-Remove the existing subtask relation before assigning a different parent. Moving or archiving a parent does not change its children, and deleting a parent removes its child relations while retaining child task data.
+Assigning a different parent asks to replace the previous parent link and any conflicting link to the new parent. Moving or archiving a parent does not change its children, and deleting a parent removes its child relations while retaining child task data.
 
 `task create` can relate the new task with `--parent`, `--depends-on`, `--duplicate-of` and `--related`. Repeat `--depends-on` and `--related` to relate several tasks:
 
 ```sh title="Create a task with relations"
 zinn task create MDR --title 'Sort the files' --parent MDR-1 --depends-on MDR-2
 ```
+
+Repeating the same relation type and target counts once, ignoring task-key case. Different relation types for the same target abort creation without saving the task, consuming its number, or recording activity.
 
 Remove a relation with `zinn task relation delete MDR-1 MDR-2 --type dependency`, using its original direction for `dependency`, `duplicate`, and `subtask`. For `related`, order does not matter.
 Relation deletion requires no confirmation.

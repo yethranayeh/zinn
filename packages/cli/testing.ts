@@ -11,6 +11,8 @@ type TerminalRunOptions = {
   input?: string;
   /** Waits for this terminal output before typing, to exercise an already active prompt. */
   inputWhen?: string;
+  /** Runs after inputWhen is observed and before the answer is sent. */
+  beforeInput?: () => void | Promise<void>;
   columns?: number;
   /** Redirects stderr while keeping stdin and stdout attached to the terminal. */
   stderrPath?: string;
@@ -40,6 +42,7 @@ export async function runCliInTerminal(args: Array<string>, options: TerminalRun
   const terminalClosed = Promise.withResolvers<void>();
   let output = "";
   let inputSent = false;
+  let pendingInput: Promise<void> | undefined;
 
   const command = [options.runtime ?? "bun", options.cliPath ?? CLI_PATH, ...args];
   const terminalCommand =
@@ -67,7 +70,11 @@ export async function runCliInTerminal(args: Array<string>, options: TerminalRun
           output.includes(options.inputWhen);
         if (shouldSendInput) {
           inputSent = true;
-          terminal.write(options.input!);
+          pendingInput = Promise.resolve().then(async () => {
+            await options.beforeInput?.();
+            terminal.write(options.input!);
+          });
+          void pendingInput.catch(() => proc.kill());
         }
       },
       exit: () => terminalClosed.resolve(),
@@ -81,6 +88,7 @@ export async function runCliInTerminal(args: Array<string>, options: TerminalRun
   const code = await proc.exited;
   await terminalClosed.promise;
   proc.terminal!.close();
+  await pendingInput;
 
   return { output: output.replaceAll("\r\n", "\n"), code };
 }

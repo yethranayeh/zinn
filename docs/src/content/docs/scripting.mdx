@@ -140,6 +140,8 @@ With `--json`, `--yes` is required for commands that ask for confirmation. Witho
 
 Project deletion has an additional rule: `--yes` skips confirmation only when the project key is typed in the command. A configured default project still requires confirmation and cannot be deleted with `--json`.
 
+`task relation create` asks only when replacing existing links. A creation without conflicts does not warrant `--yes`, including with `--json`. Replacement requires `--yes` in JSON or without a terminal. Successful replacement returns the same new-relation JSON shape as creation.
+
 For the exact command syntax, run root or namespace help, then command help:
 
 ```sh title="Discover command help"

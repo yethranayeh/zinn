@@ -1,5 +1,4 @@
 import type { TaskRelationType } from "@zinn-dev/core";
-import type { PresentedRelationChange } from "../result-schemas.js";
 import type { CommandInput } from "../input.js";
 import type { RouteDef } from "../types.js";
 
@@ -10,6 +9,9 @@ import { jsonResult } from "../results.js";
 import { generateCommandUsage, taskKeyPositional } from "../input.js";
 import {
   output,
+  diagnostic,
+  confirmAction,
+  confirmationDescription,
   quit,
   requireStringOption,
   validatePositionals,
@@ -20,6 +22,7 @@ import {
   formatRelationChange,
   formatRelationList,
   presentRelations,
+  presentRelationChange,
 } from "../presentation/relation-presentation.js";
 
 const guessedRelationTypes = new Map<string, TaskRelationType>([
@@ -31,7 +34,7 @@ const guessedRelationTypes = new Map<string, TaskRelationType>([
 
 function relationFlagSuggestions(action: "create" | "delete") {
   const options = {
-    ...relationInputs.create.options,
+    ...relationInputs[action].options,
     ...Object.fromEntries(
       [...guessedRelationTypes.keys()].map((name) => [name, { type: "string" as const }]),
     ),
@@ -80,23 +83,24 @@ function relationFlagSuggestions(action: "create" | "delete") {
   return Object.fromEntries([...guessedRelationTypes.keys()].map((name) => [`--${name}`, suggest]));
 }
 
-function parseRelationArgs(args: string[]) {
+function parseRelationArgs(args: string[], action: "create" | "delete") {
+  const input = relationInputs[action];
   const { values, positionals, tokens } = parseArgs({
     args,
-    options: relationInputs.create.options,
+    options: input.options,
     allowPositionals: true,
     strict: true,
     tokens: true,
   });
 
-  validateUniqueOptions(tokens, relationInputs.create.options);
-  validatePositionals(positionals, relationInputs.create.forms[0]);
+  validateUniqueOptions(tokens, input.options);
+  validatePositionals(positionals, input.forms[0]);
 
   const type = requireStringOption(
-    relationInputs.create.options.type,
+    relationPairInput.options.type,
     values.type,
     "type",
-    `--type must be one of these: ${relationInputs.create.options.type.value.choices.join(", ")}`,
+    `--type must be one of these: ${relationPairInput.options.type.value.choices.join(", ")}`,
   );
   const typeResult = relationTypeSchema.safeParse(type);
 
@@ -108,32 +112,41 @@ function parseRelationArgs(args: string[]) {
   const sourceTaskKey = positionals[0]!;
   const targetTaskKey = positionals[1]!;
 
-  return { sourceTaskKey, targetTaskKey, relation_type: typeResult.data };
+  return {
+    props: { sourceTaskKey, targetTaskKey, relation_type: typeResult.data },
+    isPreconfirmed: "yes" in values && values.yes === true,
+  };
 }
+
+const relationPairInput = {
+  options: {
+    type: {
+      type: "string",
+      required: true,
+      value: {
+        kind: "enum",
+        choices: relationTypeSchema.options,
+      },
+    },
+  },
+  forms: [
+    {
+      id: "default",
+      positionals: [
+        { ...taskKeyPositional, name: "source-task-key" },
+        { ...taskKeyPositional, name: "target-task-key" },
+      ],
+    },
+  ],
+  constraints: [],
+} as const satisfies CommandInput;
 
 const relationInputs = {
   create: {
-    options: {
-      type: {
-        type: "string",
-        required: true,
-        value: {
-          kind: "enum",
-          choices: relationTypeSchema.options,
-        },
-      },
-    },
-    forms: [
-      {
-        id: "default",
-        positionals: [
-          { ...taskKeyPositional, name: "source-task-key" },
-          { ...taskKeyPositional, name: "target-task-key" },
-        ],
-      },
-    ],
-    constraints: [],
+    ...relationPairInput,
+    options: { ...relationPairInput.options, yes: { type: "boolean" } },
   },
+  delete: relationPairInput,
   list: {
     options: {},
     forms: [
@@ -148,34 +161,58 @@ const relationInputs = {
 
 export const relationRouter = {
   create: {
-    summary: "Create a relation between two tasks.",
-    effects: { domain: "create", storage: "normal-open" },
-    confirmation: { kind: "none" },
+    summary: "Create a relation, confirming replacement of conflicting links.",
+    effects: { domain: "replace", storage: "normal-open" },
+    confirmation: {
+      kind: "prompt",
+      description: `Only asks when replacing existing relations. ${confirmationDescription}`,
+    },
     input: relationInputs.create,
     results: [jsonResult("RelationChange")],
     guessedFlags: relationFlagSuggestions("create"),
-    run: (args) => {
-      const props = parseRelationArgs(args);
+    run: async (args) => {
+      const { props, isPreconfirmed } = parseRelationArgs(args, "create");
       const { sourceTaskKey, targetTaskKey } = props;
-
-      const createdRelation = relation.create(props, currentActor());
-
       const source = task.getByKey(sourceTaskKey);
       const target = task.getByKey(targetTaskKey);
-      const created: PresentedRelationChange = {
-        id: createdRelation.id,
-        type: props.relation_type,
-        source: source.key,
-        source_task_id: source.id,
-        target: target.key,
-        target_task_id: target.id,
-      };
+      let replace: boolean | Array<string> = isPreconfirmed;
+
+      if (!isPreconfirmed) {
+        const conflicts = relation.getConflicts(props);
+        if (conflicts.length > 0) {
+          const canReplace = await confirmAction(
+            formatRelationChange(
+              { type: props.relation_type, source: source.key, target: target.key },
+              {
+                action: "replace",
+                replaced: conflicts.map((entry) =>
+                  presentRelationChange(entry, entry.source, entry.target),
+                ),
+              },
+            ),
+            false,
+          );
+
+          if (!canReplace) {
+            diagnostic("Relation creation cancelled");
+            return;
+          }
+
+          replace = conflicts.map((entry) => entry.id);
+        }
+      }
+
+      const createdRelation = relation.create({ ...props, replace }, currentActor());
+      const created = presentRelationChange(createdRelation, source, target);
 
       output(created, (entry) => formatRelationChange(entry, { action: "create" }));
     },
     help: `${generateCommandUsage("task relation create", relationInputs.create)}
 
 Create a relation between two tasks.
+Each pair may have one relation. Changing its type or direction asks to replace the existing links.
+Use --yes to authorize replacement without a prompt, including with --json or without a terminal.
+An exact existing relation is an error, including with --yes.
 
 Types:
   related     Connect two tasks, with any order provided to indicate relation.
@@ -183,8 +220,9 @@ Types:
   duplicate   Source is a duplicate of target.
   subtask     Source is a subtask of target (child -> parent).
 
-A task may have one parent and many subtasks. Nesting is allowed; cycles are rejected.
-Remove an existing subtask relation before assigning a different parent.
+A task may have one parent and many subtasks. Nesting is allowed. Cycles are rejected.
+Assigning a different parent asks to replace the previous parent link and any conflicting link to the new parent.
+One confirmation covers every removed link. If those links change while confirmation is open, the command fails.
 
 Relations do not automatically move, complete, or archive tasks.
 Deleting a parent removes its links and preserves its subtasks.
@@ -220,27 +258,20 @@ Example: zinn task relation list APP-1`,
     summary: "Remove only the specified relation. No confirmation is required.",
     effects: { domain: "delete", storage: "normal-open" },
     confirmation: { kind: "none" },
-    input: relationInputs.create,
+    input: relationInputs.delete,
     results: [jsonResult("RelationChange")],
     guessedFlags: relationFlagSuggestions("delete"),
     run: (args) => {
-      const props = parseRelationArgs(args);
+      const { props } = parseRelationArgs(args, "delete");
       const deletedRelation = relation.delete(props, currentActor());
 
       const source = task.getByKey(props.sourceTaskKey);
       const target = task.getByKey(props.targetTaskKey);
-      const deleted: PresentedRelationChange = {
-        id: deletedRelation.id,
-        type: props.relation_type,
-        source: source.key,
-        source_task_id: source.id,
-        target: target.key,
-        target_task_id: target.id,
-      };
+      const deleted = presentRelationChange(deletedRelation, source, target);
 
       output(deleted, (entry) => formatRelationChange(entry, { action: "delete" }));
     },
-    help: `${generateCommandUsage("task relation delete", relationInputs.create)}
+    help: `${generateCommandUsage("task relation delete", relationInputs.delete)}
 
 Remove only the specified relation. No confirmation is required.
 
