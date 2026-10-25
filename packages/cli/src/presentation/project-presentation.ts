@@ -1,9 +1,10 @@
-import type { PresentedProject } from "../result-schemas.js";
+import type { PresentedProject, PresentedProjectListEntry } from "../result-schemas.js";
 
 import { formatDescriptionPreview } from "./description-presentation.js";
 import { formatCellSeparator, formatRows } from "./row-layout.js";
 
-type ProjectRowOptions = { showsDescriptionPreview?: boolean };
+type ProjectRow = PresentedProject & { taskCounts?: PresentedProjectListEntry["taskCounts"] };
+type ProjectRowOptions = { showsDescriptionPreview?: boolean; showsTaskCounts?: boolean };
 
 export function presentProject(projectMatch: PresentedProject): PresentedProject {
   return {
@@ -15,8 +16,8 @@ export function presentProject(projectMatch: PresentedProject): PresentedProject
 }
 
 export function formatProjectList(
-  presentedProjects: Array<PresentedProject>,
-  { showsDescriptionPreview = true }: ProjectRowOptions = {},
+  presentedProjects: Array<ProjectRow>,
+  { showsDescriptionPreview = true, showsTaskCounts = false }: ProjectRowOptions = {},
 ) {
   return formatRows(
     presentedProjects.map((presented) => {
@@ -25,6 +26,15 @@ export function formatProjectList(
         : "";
       const description =
         descriptionPreview.length > 0 ? `${formatCellSeparator()}${descriptionPreview}` : "";
+
+      if (showsTaskCounts && presented.taskCounts != null) {
+        return [
+          { text: presented.key },
+          { text: presented.name },
+          { text: `${presented.taskCounts.active} active` },
+          { text: `${presented.taskCounts.archived} archived${description}` },
+        ];
+      }
 
       return [{ text: presented.key }, { text: `${presented.name}${description}` }];
     }),

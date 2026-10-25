@@ -1,6 +1,10 @@
 import type { RouteDef } from "../types.js";
 import type { CommandInput, InputConstraint } from "../input.js";
-import type { PresentedProjectView, PresentedColumnTaskCount } from "../result-schemas.js";
+import type {
+  PresentedProjectView,
+  PresentedProjectListEntry,
+  PresentedColumnTaskCount,
+} from "../result-schemas.js";
 
 import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
@@ -239,7 +243,7 @@ ${dashValueHelp("--description")}
 Example: zinn project create MDR --name 'Macrodata Refinement'`,
   },
   list: {
-    summary: "List projects, their keys, and truncated description previews.",
+    summary: "List projects with active and archived task counts.",
     effects: { domain: "read", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: projectInputs.list,
@@ -253,13 +257,17 @@ Example: zinn project create MDR --name 'Macrodata Refinement'`,
       });
       validatePositionals(positionals, projectInputs.list.forms[0]);
 
-      const projects = project.getAll();
+      const projects: Array<PresentedProjectListEntry> = project
+        .getAllWithTaskCounts()
+        .map((entry) => ({ ...presentProject(entry), taskCounts: entry.taskCounts }));
 
-      output(projects.map(presentProject), formatProjectList);
+      output(projects, (entries) => formatProjectList(entries, { showsTaskCounts: true }));
     },
     help: `${generateCommandUsage("project list", projectInputs.list)}
 
-List projects, their keys, and truncated description previews.
+List projects with active and archived task counts.
+Active tasks are unarchived tasks in any column, including Done.
+With --json, each project includes taskCounts: { active, archived }, including zeros.
 
 Example: zinn project list`,
   },

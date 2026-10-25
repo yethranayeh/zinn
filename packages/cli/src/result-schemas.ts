@@ -150,6 +150,12 @@ export const projectSchema = z.strictObject({
 export const projectChangeSchema = projectSchema.extend({
   changed: z.boolean().describe("Whether the project's fields changed."),
 });
+export const projectListEntrySchema = projectSchema.extend({
+  taskCounts: z.strictObject({
+    active: count.describe("Unarchived tasks in any column."),
+    archived: count.describe("Archived tasks."),
+  }),
+});
 export const columnSchema = z.strictObject({
   id: z.string().describe("Stored column ID."),
   project: z.string(),
@@ -264,7 +270,7 @@ export const resultSchemas = {
   CommentList: z.array(commentSchema),
   Project: projectSchema,
   ProjectChange: projectChangeSchema,
-  ProjectList: z.array(projectSchema),
+  ProjectList: z.array(projectListEntrySchema),
   ProjectView: projectViewSchema,
   Column: columnSchema,
   ColumnChange: columnChangeSchema,
@@ -294,6 +300,7 @@ export type PresentedRelation = z.infer<typeof relationSchema>;
 export type PresentedRelationChange = z.infer<typeof relationChangeSchema>;
 export type PresentedComment = z.infer<typeof commentSchema>;
 export type PresentedProject = z.infer<typeof projectSchema>;
+export type PresentedProjectListEntry = z.infer<typeof projectListEntrySchema>;
 export type PresentedProjectView = z.infer<typeof projectViewSchema>;
 export type PresentedColumn = z.infer<typeof columnSchema>;
 export type PresentedColumnTaskCount = z.infer<typeof columnTaskCountSchema>;

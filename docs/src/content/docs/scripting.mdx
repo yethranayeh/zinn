@@ -15,6 +15,8 @@ zinn task create MDR --title 'Refine the numbers' --json
 
 Read commands return the data they list or show. Write commands return the entity they create, change, or delete. Output is one JSON document on stdout; an empty list is `[]`.
 
+`project list --json` returns an array of projects with `id`, `key`, `name`, `description`, and `taskCounts: { "active": 12, "archived": 4 }`. Both counts are nonnegative integers and always present, including zero. Active tasks are unarchived tasks in any column, including Done.
+
 ## Entity identity
 
 Task, project, column, label, comment, and relation objects include their stored UUID as `id`, including nested objects and deletion results. The ID stays the same through edits and renames. Recreating an entity with the same key or name produces a new ID. Keys and names are the readable handles. IDs are returned verbatim, with `id` first in each entity object.

@@ -89,6 +89,17 @@ export function getAllByColumnId(columnId: string, archive: TaskArchiveFilter = 
     .all({ $column_id: columnId });
 }
 
+/** Counts existing tasks across all projects without loading their contents. */
+export function countByProjectId() {
+  return getDb()
+    .query<{ project_id: string; active: number; archived: number }, []>(`SELECT project_id,
+      SUM(CASE WHEN ${getArchiveCondition("active")} THEN 1 ELSE 0 END) AS active,
+      SUM(CASE WHEN ${getArchiveCondition("archived")} THEN 1 ELSE 0 END) AS archived
+    FROM ${DB_TABLE.task}
+    GROUP BY project_id`)
+    .all();
+}
+
 /** One row per column that has matching tasks. Columns without any matches are left out. */
 export function countByColumnId(projectId: string, archive: TaskArchiveFilter = "active") {
   const db = getDb();

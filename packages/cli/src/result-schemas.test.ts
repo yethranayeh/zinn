@@ -39,6 +39,23 @@ test("every generated definition compiles, and every reference resolves locally"
   checkReferences(document);
 });
 
+test("project list requires nested integer counts without changing the project contract", () => {
+  const project = { id: "project-id", key: "APP", name: "App", description: null };
+  const validate = ajv.getSchema("results#/definitions/ProjectList")!;
+  expect(validate([{ ...project, taskCounts: { active: 0, archived: 0 } }])).toBe(true);
+  expect(validate([{ ...project, taskCounts: { active: 12, archived: 4 } }])).toBe(true);
+  expect(validate([project])).toBe(false);
+  expect(validate([{ ...project, activeTaskCount: 12, archivedTaskCount: 4 }])).toBe(false);
+  for (const field of Object.keys(resultSchemas.ProjectList.element.shape.taskCounts.shape)) {
+    for (const value of [undefined, null, -1, 0.5, "1"]) {
+      expect(validate([{ ...project, taskCounts: { active: 0, archived: 0, [field]: value } }])).toBe(false);
+    }
+  }
+  expect(validate([{ ...project, taskCounts: { active: 0, archived: 0, total: 0 } }])).toBe(false);
+  expect(resultSchemas.Project.safeParse(project).success).toBe(true);
+  expect(resultSchemas.Project.safeParse({ ...project, taskCounts: { active: 0, archived: 0 } }).success).toBe(false);
+});
+
 test("recursive and shared definitions remain resolvable after embedding", () => {
   const json = z.json();
   const schemas = generateResultSchemas({

@@ -138,6 +138,18 @@ export const project = {
     });
   },
   getAll: dbProject.getAll,
+  getAllWithTaskCounts: () => {
+    const countsByProjectId = new Map(
+      dbTask
+        .countByProjectId()
+        .map(({ project_id, active, archived }) => [project_id, { active, archived }]),
+    );
+
+    return dbProject.getAll().map((projectMatch) => ({
+      ...projectMatch,
+      taskCounts: countsByProjectId.get(projectMatch.id) ?? { active: 0, archived: 0 },
+    }));
+  },
   delete: (key: string, actor: Actor) => {
     const validActor = validateTaskInput(actorSchema, actor);
 

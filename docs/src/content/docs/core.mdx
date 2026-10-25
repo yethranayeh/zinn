@@ -52,6 +52,8 @@ The client supplies its own `release` identity: `source` for development and `pu
 
 ## Shared behavior
 
+`project.getAllWithTaskCounts()` returns project records with `taskCounts: { active, archived }`. Counts cover existing tasks in each project. Active tasks are unarchived tasks in any column, including Done. Both counts are always present, including zero.
+
 Names and titles are trimmed and cannot be blank or contain line breaks or control characters.
 
 - Edits change only supplied fields. Valid edits that leave values unchanged preserve modification timestamps and record no activity.

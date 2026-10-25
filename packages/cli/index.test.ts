@@ -1194,7 +1194,7 @@ test("project create defaults the stored name to the uppercase key and allows a 
 
     const edited = await runZinn(["project", "edit", "SITE", "--name", "Website refresh"], testDir);
     expect(edited.code).toBe(0);
-    expect((await runZinn(["project", "list"], testDir)).stdout).toBe("SITE | Website refresh\n");
+    expect((await runZinn(["project", "list"], testDir)).stdout).toBe("SITE | Website refresh | 0 active | 0 archived\n");
   });
 });
 
@@ -1299,8 +1299,54 @@ test("project list renders every project once and aligns unequal key widths", as
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
     expect(lines).toHaveLength(2);
-    expect(lines).toContain("A       | Short");
-    expect(lines).toContain("LONGKEY | Long");
+    const rows = lines.map((line) => line.split("|").map((cell) => cell.trim()));
+    expect(rows).toContainEqual(["A", "Short", "0 active", "0 archived"]);
+    expect(rows).toContainEqual(["LONGKEY", "Long", "0 active", "0 archived"]);
+    expect(lines[0]!.indexOf("|")).toBe(lines[1]!.indexOf("|"));
+  });
+});
+
+test("project list reports active and archived counts in text and its JSON contract", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    const run = async (...args: Array<string>) => {
+      const result = await runZinn(args, directory);
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stderr).toBe("");
+      return result;
+    };
+    const app = JSON.parse((await run("project", "create", "APP", "--name", "Application", "--description", "Full\ndescription", "--json")).stdout);
+    const empty = JSON.parse((await run("project", "create", "EMPTY", "--json")).stdout);
+    const old = JSON.parse((await run("project", "create", "OLD", "--json")).stdout);
+    for (const title of ["Backlog", "Done", "Archived"]) {
+      await run("task", "create", "APP", "--title", title);
+    }
+    await run("task", "create", "OLD", "--title", "Old task");
+    await run("task", "move", "APP-2", "Done");
+    await run("task", "archive", "APP-3", "OLD-1");
+
+    const listed = JSON.parse((await run("project", "list", "--json")).stdout);
+    expect(listed).toEqual([
+      { ...app, taskCounts: { active: 2, archived: 1 } },
+      { ...empty, taskCounts: { active: 0, archived: 0 } },
+      { ...old, taskCounts: { active: 0, archived: 1 } },
+    ]);
+    const text = await run("project", "list");
+    expect(text.stdout.trimEnd().split("\n").map((line) => line.split("|").map((cell) => cell.trim()))).toEqual([
+      ["APP", "Application", "2 active", "1 archived", "Full description"],
+      ["EMPTY", "EMPTY", "0 active", "0 archived"],
+      ["OLD", "OLD", "0 active", "1 archived"],
+    ]);
+
+    const viewed = JSON.parse((await run("project", "view", "APP", "--json")).stdout);
+    expect(viewed.columns.reduce((sum: number, entry: { taskCount: number }) => sum + entry.taskCount, 0)).toBe(listed[0].taskCounts.active);
+    expect(viewed.archivedTaskCount).toBe(listed[0].taskCounts.archived);
+    expect(viewed).not.toHaveProperty("taskCounts");
+    expect(JSON.parse((await run("project", "edit", "APP", "--name", "Edited", "--json")).stdout)).toEqual({
+      ...app, name: "Edited", changed: true,
+    });
+    await run("task", "unarchive", "APP-3");
+    await run("task", "delete", "APP-1", "--yes");
+    expect(JSON.parse((await run("project", "list", "--json")).stdout)[0].taskCounts).toEqual({ active: 2, archived: 0 });
   });
 });
 
@@ -1438,7 +1484,7 @@ test("project create accepts an alphanumeric key in any casing and stores it upp
     const result = await runZinn(["project", "list"], testDir);
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toBe("B2B | Business\n");
+    expect(result.stdout).toBe("B2B | Business | 0 active | 0 archived\n");
   });
 });
 
@@ -4362,7 +4408,7 @@ test("--json refuses commands that ask for confirmation without --yes, deleting 
     expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({
       code: "invalid_input", details: { argument: "--yes", reason: "confirmation_required" },
     });
-    expect((await runZinn(["project", "list"], testDir)).stdout).toBe("WEB | WEB\n");
+    expect((await runZinn(["project", "list"], testDir)).stdout).toBe("WEB | WEB | 0 active | 0 archived\n");
   });
 });
 
@@ -4433,7 +4479,7 @@ test("delete commands with --yes and --json print the deleted entity", async () 
 
     expect(await deleteJson("project", "delete", "GONE")).toEqual({ id: expect.any(String), key: "GONE", name: "Gone", description: null });
     expect(JSON.parse((await run("project", "list", "--json")).stdout)).toEqual([
-      { id: expect.any(String), key: "WEB", name: "Web", description: null },
+      { id: expect.any(String), key: "WEB", name: "Web", description: null, taskCounts: { active: 1, archived: 0 } },
     ]);
   });
 });
@@ -5160,7 +5206,7 @@ test("project view bolds its section headings, dims the separators and colors co
       ].join("\n"),
     );
     expect((await run({ FORCE_COLOR: "1" }, "project", "list")).stdout).toBe(
-      `MDR${DIM_SEPARATOR}Macrodata${DIM_SEPARATOR}First line. Second line.\n`,
+      `MDR${DIM_SEPARATOR}Macrodata${DIM_SEPARATOR}2 active${DIM_SEPARATOR}1 archived${DIM_SEPARATOR}First line. Second line.\n`,
     );
 
     expect((await run({}, "project", "view", "MDR")).stdout).toBe(
@@ -5181,7 +5227,7 @@ test("project view bolds its section headings, dims the separators and colors co
         "",
       ].join("\n"),
     );
-    expect((await run({}, "project", "list")).stdout).toBe("MDR | Macrodata | First line. Second line.\n");
+    expect((await run({}, "project", "list")).stdout).toBe("MDR | Macrodata | 2 active | 1 archived | First line. Second line.\n");
     expect((await run({ FORCE_COLOR: "1" }, "project", "view", "MDR", "--json")).stdout).not.toContain("\x1b");
     const columnEnvironments: Array<Record<string, string>> = [{}, { FORCE_COLOR: "1" }, { NO_COLOR: "1" }];
     for (const env of columnEnvironments) {
@@ -6347,7 +6393,7 @@ test("project descriptions flow through creation, partial edits, view, list and 
     expect(created.code).toBe(0);
     expect(JSON.parse(created.stdout)).toEqual({ id: expect.any(String), key: "DESC", name: "DESC", description });
     expect((await run("project", "view", "DESC")).stdout).toStartWith(`DESC | DESC\n\nDescription:\n${description}\n\nColumns:\n`);
-    expect((await run("project", "list")).stdout).toBe("DESC | DESC | Purpose More context\n");
+    expect((await run("project", "list")).stdout).toBe("DESC | DESC | 0 active | 0 archived | Purpose More context\n");
     expect(JSON.parse((await run("project", "list", "--json")).stdout)[0].description).toBe(description);
     expect(JSON.parse((await run("project", "edit", "DESC", "--name", "Renamed", "--json")).stdout).description).toBe(description);
     expect(JSON.parse((await run("project", "edit", "DESC", "--description", "Updated", "--json")).stdout)).toEqual({ id: expect.any(String), key: "DESC", name: "Renamed", description: "Updated", changed: true });
@@ -6366,7 +6412,7 @@ test("project list and write rows show truncated description previews, project v
     const taskProject = JSON.parse((await run("project", "create", "PRE", "--description", description, "--json")).stdout);
     await run("task", "create", "PRE", "--title", "Task", "--description", description);
     expect((await run("task", "list", "PRE")).stdout).toBe("PRE-1 | Backlog | - | Task\n");
-    expect((await run("project", "list")).stdout).toBe(`PRE | PRE | ${preview}\n`);
+    expect((await run("project", "list")).stdout).toBe(`PRE | PRE | 1 active | 0 archived | ${preview}\n`);
     expect((await run("project", "view", "PRE")).stdout).toStartWith(`PRE | PRE\n\nDescription:\n${description}\n\nColumns:\n`);
     expect((await run("project", "edit", "PRE", "--description", description)).stdout).toBe(`PRE | PRE | ${preview}\n`);
     expect(taskProject.description).toBe(description);

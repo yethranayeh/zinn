@@ -145,6 +145,8 @@ zinn project view MDR
 zinn project column list MDR
 ```
 
+`project list` shows each project's active and archived task counts, including zeros. Active means unarchived, in any column, including Done. Parents and subtasks each count once in their owning project.
+
 `project view` shows the project's description and task counts. Use `zinn task list <project-key>` to read its tasks.
 
 `project view` and `project column list` accept an omitted project key when [defaultProject](/docs/settings) is configured.
