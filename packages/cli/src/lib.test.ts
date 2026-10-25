@@ -3,8 +3,52 @@ import type { InputForm, PositionalInput } from "./input";
 
 import { expect, test, spyOn } from "bun:test";
 import { ReadOnlyDatabaseError, TextEditMatchError, UnmarkedDatabaseError } from "@zinn-dev/core";
+import { parseArgs } from "node:util";
 
-import { diagnostic, flushDiagnostics, prepareOutput, setOutputMode, failureMessage, UsageError, validatePositionals, renameFlag } from "./lib";
+import { diagnostic, flushDiagnostics, prepareOutput, setOutputMode, failureMessage, UsageError, validatePositionals, renameFlag, parseArgsMessage } from "./lib";
+
+test("parser repairs stay complete through the message limit and become guidance above it", () => {
+  const messageFor = (value: string) => {
+    const args = ["task", "create", "SHOP", "--description", value];
+    try {
+      parseArgs({ args, options: { description: { type: "string" } }, allowPositionals: true });
+    } catch (error) {
+      return parseArgsMessage(error, args, () => undefined)!;
+    }
+    throw new Error("Expected a parser refusal");
+  };
+
+  const shortValue = "- x";
+  const shortMessage = messageFor(shortValue);
+  const paddingToLimit = 1024 - shortMessage.length;
+  expect(paddingToLimit % 2).toBe(0);
+  const atLimitValue = shortValue + "x".repeat(paddingToLimit / 2);
+  const atLimitMessage = messageFor(atLimitValue);
+  expect(atLimitMessage).toHaveLength(1024);
+  expect(atLimitMessage).toContain(`--description='${atLimitValue}'`);
+
+  const belowLimitValue = atLimitValue.slice(0, -1);
+  expect(messageFor(belowLimitValue)).toHaveLength(1022);
+  expect(messageFor(belowLimitValue)).toContain(`--description='${belowLimitValue}'`);
+
+  const aboveLimitMessage = messageFor(atLimitValue + "x");
+  expect(aboveLimitMessage.length).toBeLessThanOrEqual(1024);
+  expect(aboveLimitMessage).toContain("--description");
+  expect(aboveLimitMessage).toContain("=");
+  expect(aboveLimitMessage).toMatch(/omitt/i);
+  expect(aboveLimitMessage).not.toContain("zinn task create");
+});
+
+test("long usage errors keep complete Unicode at the cutoff and retain structured fields", () => {
+  const details = { argument: "direction" };
+  for (const prefixLength of [990, 991]) {
+    const failure = new UsageError("x".repeat(prefixLength) + "😀".repeat(100), details);
+    expect(failure.message.length).toBeLessThanOrEqual(1024);
+    expect(failure.message).toContain("…");
+    expect(failure.message.isWellFormed()).toBe(true);
+    expect(failure.details).toEqual(details);
+  }
+});
 
 test("flag corrections preserve option values and words after the option terminator", () => {
   const args = [

@@ -14,6 +14,7 @@ import {
 
 import { CliError, classifyFailure, type ErrorDetails } from "./errors.js";
 import { helpSpellings, routerOptionNames, positionalWords } from "./input.js";
+import { formatDescriptionPreview } from "./presentation/description-presentation.js";
 
 type ParsedTokens = NonNullable<ReturnType<typeof parseArgs>["tokens"]>;
 type OutputMode = "text" | "json";
@@ -22,6 +23,24 @@ let outputMode: OutputMode = "text";
 let legacyReadAllowed = false;
 const diagnostics: Array<string> = [];
 const DOUBLE_DASH = "--";
+const MAX_PARSER_MESSAGE_LENGTH = 1024;
+
+/** Keeps recovery guidance outside the shortened reason and never clips a repair command. */
+export function boundParserMessage(
+  message: string,
+  options: { reason?: string; guidance?: string } = {},
+) {
+  if (message.length <= MAX_PARSER_MESSAGE_LENGTH) {
+    return message;
+  }
+
+  const guidance = options.guidance ?? "See usage for accepted arguments.";
+  const reason = formatDescriptionPreview(options.reason ?? message, {
+    maxLength: MAX_PARSER_MESSAGE_LENGTH - guidance.length - 1,
+  });
+
+  return `${reason} ${guidance}`;
+}
 
 export function setOutputMode(mode: OutputMode) {
   outputMode = mode;
@@ -250,7 +269,7 @@ export function renderFailure(reason: unknown): void {
 /** A command was given the wrong words. The router prints the message with the command's usage lines. */
 export class UsageError extends CliError {
   constructor(message: string, details?: ErrorDetails) {
-    super(message, "invalid_input", details);
+    super(boundParserMessage(message), "invalid_input", details);
   }
 }
 
@@ -432,7 +451,15 @@ function dashValueMessage(error: any, args: Array<string>) {
     ...args.slice(flagIndex + 2).map(shellQuote),
   ].join(" ");
 
-  return `Option "${flag}" is followed by "${value}", which begins with a dash. If it is the value, join it to the flag with =: ${fixedCommand}`;
+  const reason = `Option "${flag}" is followed by "${value}", which begins with a dash.`;
+  return boundParserMessage(
+    `${reason} If it is the value, join it to the flag with =: ${fixedCommand}`,
+    {
+      reason,
+      guidance:
+        "Join the original value to its flag with =. Full command omitted because it is long.",
+    },
+  );
 }
 
 // "Unknown option '--project'."
@@ -485,7 +512,7 @@ function unknownOptionMessage(message: string, args: Array<string>, suggestFor: 
     const suggestion = suggestFor(flag);
     const reason = `Unknown option "${flag}"`;
     if (suggestion === undefined) {
-      return reason;
+      return boundParserMessage(reason);
     }
 
     const separatorIndex = suggestion.indexOf(DOUBLE_DASH);
@@ -495,7 +522,10 @@ function unknownOptionMessage(message: string, args: Array<string>, suggestFor: 
       ...args.filter(isRouterFlag),
       ...suggestion.slice(optionEnd),
     ];
-    return `${reason}. Did you mean: ${formatCommand(correctedArgs)}`;
+    return boundParserMessage(`${reason}. Did you mean: ${formatCommand(correctedArgs)}`, {
+      reason,
+      guidance: "See usage for accepted arguments. Full command omitted because it is long.",
+    });
   }
 
   // Commands define no short options, so `parseArgs` refused the first single-dash word before `--`.
@@ -503,20 +533,26 @@ function unknownOptionMessage(message: string, args: Array<string>, suggestFor: 
   const optionArgs = separatorIndex === -1 ? args : args.slice(0, separatorIndex);
   const wordIndex = optionArgs.findIndex((arg) => SHORT_OPTION_WORD_PATTERN.test(arg));
   if (wordIndex === -1) {
-    return message;
+    return boundParserMessage(message);
   }
 
   const word = args[wordIndex]!;
   const readOptions = [...word.slice(1)].map((letter) => `-${letter}`);
   const readAs = readOptions.length > 1 ? ` (Zinn read ${word} as ${readOptions.join(" ")})` : "";
   const reason = `Unknown option "${readOptions[0]}"${readAs}. If it is a value, put it after --`;
+  const compactReason = `Unknown option in "${word}".`;
+  const guidance =
+    "If it is a value, put the original word after --. Full command omitted because it is long.";
 
   // Flags after the word must stay before --, and only the router's own flags are known to be flags.
   const wordsAfter = args.slice(wordIndex + 1);
   const routerFlagsAfter = wordsAfter.filter(isRouterFlag);
   const plainWordsAfter = wordsAfter.filter((arg) => !isRouterFlag(arg));
   if (plainWordsAfter.some((arg) => arg.startsWith("-"))) {
-    return `${reason}.`;
+    return boundParserMessage(`${reason}.`, {
+      reason: compactReason,
+      guidance: "If it is a value, put the original word after --.",
+    });
   }
 
   const fixedCommand = formatCommand([
@@ -527,7 +563,7 @@ function unknownOptionMessage(message: string, args: Array<string>, suggestFor: 
     ...plainWordsAfter,
   ]);
 
-  return `${reason}: ${fixedCommand}`;
+  return boundParserMessage(`${reason}: ${fixedCommand}`, { reason: compactReason, guidance });
 }
 
 /**
@@ -546,5 +582,5 @@ export function parseArgsMessage(error: any, args: Array<string>, suggestFor: Su
     return unknownOptionMessage(error.message, args, suggestFor);
   }
 
-  return dashValueMessage(error, args) ?? error.message;
+  return dashValueMessage(error, args) ?? boundParserMessage(error.message);
 }

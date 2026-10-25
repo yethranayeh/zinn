@@ -100,6 +100,8 @@ zinn project column create MDR -- -later
 zinn task search -- -flag
 ```
 
+Parser and routing error messages are capped at 1,024 UTF-16 units. Short repair commands preserve the original values. Longer repairs give guidance and mark the full command as omitted, so apply the correction to your original input.
+
 A flag can be given once.
 Only these flags repeat:
 

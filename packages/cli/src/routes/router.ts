@@ -9,6 +9,7 @@ import { quotedColumnHint } from "../column-hint.js";
 import { formatCell } from "../presentation/row-layout.js";
 
 import {
+  boundParserMessage,
   dashValueHelp,
   diagnostic,
   failureMessage,
@@ -170,10 +171,11 @@ function routeToNamespace(
   const reason = `Unrecognized command "${unknownWord}" for "${commandName}"`;
 
   if (isHelpRequest) {
-    quit(reason, help, { argument: "command" });
+    quit(boundParserMessage(reason), help, { argument: "command" });
   }
 
-  quit(`${reason}. Run \`${commandName} --help\` for a list of available commands`, undefined, {
+  const guidance = `Run \`${commandName} --help\` for a list of available commands`;
+  quit(boundParserMessage(`${reason}. ${guidance}`, { reason, guidance }), undefined, {
     argument: "command",
   });
 }
@@ -274,8 +276,14 @@ async function route(
     const columnHint = quotedColumnHint(err, match, rawArgs, nestingLevel);
     if (columnHint !== undefined) {
       const failure = classifyFailure(err);
+      const reason = failureMessage(err, "Command failed");
+
       throw new CliError(
-        `${failureMessage(err, "Command failed")}. Did you mean: ${columnHint}`,
+        boundParserMessage(`${reason}. Did you mean: ${columnHint}`, {
+          reason,
+          guidance:
+            "Quote each column name containing spaces. Full command omitted because it is long.",
+        }),
         failure.code,
         failure.details,
         failure.help ?? getUsage(match.help),

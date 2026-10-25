@@ -64,6 +64,8 @@ Optional `error.details` carries known facts: `argument`, `field` (an array of s
 
 Check the exit status before parsing stdout or stderr. Scripts should use JSON fields such as `code` and `details`; message, help, and diagnostic wording is for people. Signals, runtime loading failures, and broken output channels are outside the handled-error contract.
 
+Parser and routing errors use the same message in text mode and `error.message`, capped at 1,024 UTF-16 units. Omitted text is marked with an ellipsis, and oversized repair commands are replaced with guidance. `error.help` and structured details retain their complete values.
+
 Text output is colored only in a terminal unless `NO_COLOR` disables it. `FORCE_COLOR=0` disables color; any other nonempty value enables it, including when output is piped. `ZINN_DEBUG=1` prints route details to stderr without changing stdout. Other `ZINN_DEBUG` values do nothing.
 
 For command input conventions, including repeated flags and values beginning with a dash, see [Text values in the CLI reference](/docs/cli#text-values).

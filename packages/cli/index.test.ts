@@ -887,6 +887,78 @@ test("the command shown for a value that begins with a dash runs as shown", asyn
   });
 });
 
+test("long parser and routing errors bound both output modes without changing error facts or writing data", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    const longText = "x".repeat(1300);
+    const cases = [
+      { args: ["task", "create", "APP", "--title", "Kept", "--description", `- ${longText}`], argument: "--description", facts: ["--description", "="], repair: true },
+      { args: ["task", "create", "APP", "--title", longText, "--description", "- item"], argument: "--description", facts: ["--description", "="], repair: true },
+      { args: ["task", "create", "APP", "--title", "'".repeat(300), "--description", "- item"], argument: "--description", facts: ["--description", "="], repair: true },
+      { args: ["task", "create", "APP", "--title", "Kept", "--description", "- 😀\n".repeat(400)], argument: "--description", facts: ["--description", "="], repair: true },
+      { args: ["task", "search", `-${longText}`], facts: ["--"], repair: true },
+      { args: ["task", "search", `-${longText}`, "--unknown"], facts: ["--"] },
+      { args: ["task", "create", "APP", "--title", "Kept", "--body", longText], argument: "--body", facts: ["--body"], repair: true },
+      { args: ["project", "list", `--${longText}`], argument: `--${longText}`, facts: ["--"] },
+      { args: ["project", "list", longText], field: [], facts: ["…"] },
+      { args: ["task", "order", "APP-1", longText], argument: "direction", facts: ["…"] },
+      { args: [longText], argument: "command", facts: ["zinn --help"] },
+      { args: ["task", longText, "--help"], argument: "command", facts: ["…"] },
+    ];
+    for (const { args, argument, field, facts, repair } of cases) {
+      const text = await runZinn(args, directory);
+      const json = await runZinn(["--json", ...args], directory);
+      expect(text.code).toBe(1);
+      expect(json.code).toBe(1);
+      expect(text.stdout).toBe("");
+      expect(json.stdout).toBe("");
+      const { error } = errorDocumentSchema.parse(JSON.parse(json.stderr));
+      expect(error.code).toBe("invalid_input");
+      expect(error.message.length).toBeLessThanOrEqual(1024);
+      expect(error.message.isWellFormed()).toBe(true);
+      expect(text.stderr).toBe(`${error.message}${error.help === undefined ? "" : `\n\n${error.help}`}\n`);
+      if (argument !== undefined) {
+        expect(error.details?.argument).toBe(argument);
+      }
+      if (field !== undefined) {
+        expect(error.details?.field).toEqual(field);
+      }
+      for (const fact of facts) {
+        expect(error.message).toContain(fact);
+      }
+      if (repair) {
+        expect(error.message).toMatch(/omitt/i);
+        expect(error.message).not.toMatch(/zinn (?:task|project)/);
+      }
+    }
+    expect(readdirSync(directory)).toEqual([]);
+  });
+});
+
+test("oversized column repair commands retain quoting guidance and leave existing data intact", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    await runZinn(["project", "create", "APP"], directory);
+    const before = await runZinn(["project", "view", "APP", "--json"], directory);
+    const activityBefore = await runZinn(["activity", "list", "--json"], directory);
+    const args = ["task", "create", "APP", "--title", "x".repeat(1300), "--column", "In", "Progress"];
+    for (const flags of [[], ["--json"]]) {
+      const refused = await runZinn([...args, ...flags], directory);
+      expect(refused.code).toBe(1);
+      expect(refused.stdout).toBe("");
+      const message = flags.length === 0
+        ? refused.stderr.split("\n\n")[0]!
+        : errorDocumentSchema.parse(JSON.parse(refused.stderr)).error.message;
+      expect(message.length).toBeLessThanOrEqual(1024);
+      expect(message).toMatch(/quot/i);
+      expect(message).toMatch(/column/i);
+      expect(message).toMatch(/omitt/i);
+      expect(message).not.toContain("zinn task create");
+    }
+    expect(await runZinn(["project", "view", "APP", "--json"], directory)).toEqual(before);
+    expect(await runZinn(["activity", "list", "--json"], directory)).toEqual(activityBefore);
+    expect(JSON.parse((await runZinn(["task", "list", "APP", "--json"], directory)).stdout)).toEqual([]);
+  });
+});
+
 test("project list, project view, the project column commands, task view and task order reject invalid requests without writes", async () => {
   await withIsolatedZinnDir(async (dir) => {
     await runZinn(["project", "create", "SHOP"], dir);
