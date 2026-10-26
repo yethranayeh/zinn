@@ -279,20 +279,38 @@ function getRecordedValues(event: Activity): RecordedValues {
 }
 
 export const activity = {
-  getAll: (input: ActivityListInput = {}) => {
+  getAll: (input: ActivityListInput = {}): { events: Array<Activity>; hasMore: boolean } => {
     const props = validateTaskInput(activityListSchema, input);
-    let events;
+    const query: dbActivity.ActivityQuery = {
+      sessionId: props.sessionId,
+      threadId: props.threadId,
+      since: props.since,
+      until: props.until,
+      actions: props.actions,
+      before: props.startingAfter === undefined ? undefined : activity.getById(props.startingAfter),
+    };
+    let fetchCandidates = (input: dbActivity.ActivityQuery) => dbActivity.getAll(input);
 
     if (props.projectKey !== undefined || props.projectId !== undefined) {
-      events = resolveProjectHistory(props);
-    } else if (props.taskKey === undefined && props.taskId === undefined) {
-      events = dbActivity.getAll();
-    } else {
+      const projectEvents = resolveProjectHistory(props);
+      query.eventIds = projectEvents.map((event) => event.id);
+      const hasCandidateFilter = [
+        query.sessionId,
+        query.threadId,
+        query.since,
+        query.until,
+        query.actions,
+        query.before,
+        props.limit,
+      ].some((value) => value !== undefined);
+      if (!hasCandidateFilter) {
+        fetchCandidates = () => projectEvents;
+      }
+    } else if (props.taskKey !== undefined || props.taskId !== undefined) {
       const { identities, projectDeletionIds } = resolveTaskHistory(props);
-      events = dbActivity.getAllForTasks(
-        props.taskId === undefined ? identities.map((identity) => identity.id) : [props.taskId],
-        projectDeletionIds,
-      );
+      const taskIds =
+        props.taskId === undefined ? identities.map((identity) => identity.id) : [props.taskId];
+      fetchCandidates = (input) => dbActivity.getAllForTasks(taskIds, projectDeletionIds, input);
     }
 
     const changedValues = new Map<ActivityChangedField, Set<string | null | undefined>>();
@@ -303,19 +321,10 @@ export const activity = {
     }
     const changedFields = [...changedValues];
 
-    const matchingEvents = events.filter((event) => {
-      const matchesTime =
-        (props.since === undefined || event.created_at >= props.since) &&
-        (props.until === undefined || event.created_at <= props.until);
-      const matchesSession =
-        props.sessionId === undefined || event.actor_session_id === props.sessionId;
-
-      const matchesThread =
-        props.threadId === undefined || event.actor_thread_id === props.threadId;
-      const matchesAction = props.actions === undefined || props.actions.includes(event.action);
-
+    const matchesChanges = (event: Activity) => {
       const recordedValues = getRecordedValues(event);
-      const matchesChanges = changedFields.every(([field, values]) => {
+
+      return changedFields.every(([field, values]) => {
         const newValues = recordedValues[field] ?? [];
         const hasRemovedLabels =
           field === "labels" &&
@@ -330,11 +339,38 @@ export const activity = {
           newValues.some((value) => values.has(value === null ? null : standardizeName(value)))
         );
       });
+    };
 
-      return matchesTime && matchesSession && matchesThread && matchesAction && matchesChanges;
-    });
+    if (props.limit === undefined) {
+      return { events: fetchCandidates(query).filter(matchesChanges), hasMore: false };
+    }
 
-    return props.limit === undefined ? matchingEvents : matchingEvents.slice(0, props.limit);
+    const matchingEvents: Array<Activity> = [];
+    const matchesNeeded = props.limit + 1;
+    query.limit = matchesNeeded;
+
+    while (matchingEvents.length < matchesNeeded) {
+      const candidates = fetchCandidates(query);
+
+      for (const event of candidates) {
+        if (matchesChanges(event)) {
+          matchingEvents.push(event);
+          if (matchingEvents.length === matchesNeeded) {
+            break;
+          }
+        }
+      }
+
+      if (candidates.length < query.limit) {
+        break;
+      }
+      query.before = candidates.at(-1)!;
+    }
+
+    return {
+      events: matchingEvents.slice(0, props.limit),
+      hasMore: matchingEvents.length > props.limit,
+    };
   },
   getById: (id: string) => {
     const hexPrefix = validateTaskInput(activityIdSchema, id);

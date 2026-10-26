@@ -52,7 +52,7 @@ test("ZINN-161: each hook runs once per change in settings order, in the caller'
     assert.deepEqual(runs(), ["second", "first"]);
 
     const projectLines = readLines(join(logs, "first.stdin")).map((line) => JSON.parse(line));
-    assert.deepEqual(projectLines, activity.getAll().map((record) => ({ ...record, task_key: null })));
+    assert.deepEqual(projectLines, activity.getAll().events.map((record) => ({ ...record, task_key: null })));
 
     const target = task.create({ project_id: app.id, title: "Target" }, human);
     const source = task.create({ project_id: app.id, title: "Source" }, human);
@@ -60,7 +60,7 @@ test("ZINN-161: each hook runs once per change in settings order, in the caller'
     relation.create({ sourceTaskKey: source.key, targetTaskKey: target.key, relation_type: "dependency" }, human);
 
     const relationLines = readLines(join(logs, "first.stdin")).map((line) => JSON.parse(line));
-    const stored = new Map(activity.getAll().map((record) => [record.id, record]));
+    const stored = new Map(activity.getAll().events.map((record) => [record.id, record]));
     assert.equal(relationLines.length, 2);
     for (const line of relationLines) {
       const { task_key, ...record } = line;

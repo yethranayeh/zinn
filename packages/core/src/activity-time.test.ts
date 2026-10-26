@@ -16,23 +16,23 @@ test("time bounds include ties, preserve original payloads and combine before th
       entity_type: index === 5 ? "label" : "task", entity_id: "historical", action: "edit",
       changes: { priority: [null, "high"], description: [null, `Full text ${index}\n`] },
     }));
-    const before = activity.getAll();
-    expect(activity.getAll({ since: 100 })).toEqual(before.filter(event => event.created_at >= 100));
-    expect(activity.getAll({ until: 102 })).toEqual(before.filter(event => event.created_at <= 102));
-    expect(activity.getAll({ since: 100, until: 102 })).toEqual(before.filter(event => event.created_at >= 100 && event.created_at <= 102));
+    const before = activity.getAll().events;
+    expect(activity.getAll({ since: 100 }).events).toEqual(before.filter(event => event.created_at >= 100));
+    expect(activity.getAll({ until: 102 }).events).toEqual(before.filter(event => event.created_at <= 102));
+    expect(activity.getAll({ since: 100, until: 102 }).events).toEqual(before.filter(event => event.created_at >= 100 && event.created_at <= 102));
     const tied = events.filter(event => event.created_at === 101).sort((left, right) => right.id.localeCompare(left.id));
-    expect(activity.getAll({ since: 101, until: 101 })).toEqual(tied);
-    expect(activity.getAll({ since: 101, until: 101, limit: 1 })).toEqual(tied.slice(0, 1));
-    expect(activity.getAll({ since: 104 })).toEqual([]);
-    expect(activity.getAll({ until: 98 })).toEqual([]);
-    expect(activity.getAll({ since: 100, until: 102, sessionId: "Session", threadId: "Thread", actions: ["edit"], changed: [{ field: "priority", value: "high" }], limit: 1 }))
+    expect(activity.getAll({ since: 101, until: 101 }).events).toEqual(tied);
+    expect(activity.getAll({ since: 101, until: 101, limit: 1 }).events).toEqual(tied.slice(0, 1));
+    expect(activity.getAll({ since: 104 }).events).toEqual([]);
+    expect(activity.getAll({ until: 98 }).events).toEqual([]);
+    expect(activity.getAll({ since: 100, until: 102, sessionId: "Session", threadId: "Thread", actions: ["edit"], changed: [{ field: "priority", value: "high" }], limit: 1 }).events)
       .toEqual([events[4]!]);
-    expect(activity.getAll({ since: 100, until: 102, threadId: "Other" })).toEqual([]);
-    expect(activity.getAll()).toEqual(before);
+    expect(activity.getAll({ since: 100, until: 102, threadId: "Other" }).events).toEqual([]);
+    expect(activity.getAll().events).toEqual(before);
     const db = getDb();
     db.exec("PRAGMA query_only = ON");
     const changes = db.query("SELECT total_changes() AS changes").get();
-    expect(activity.getAll({ since: 101, until: 101 })).toEqual(tied);
+    expect(activity.getAll({ since: 101, until: 101 }).events).toEqual(tied);
     expect(db.query("SELECT total_changes() AS changes").get()).toEqual(changes);
   });
 });
@@ -47,8 +47,8 @@ test("time filtering follows current, archived and historical identity resolutio
       const item = task.create({ project_id: app.id, title: "Original" }, actor);
       now = 20;
       task.edit({ taskKey: item.key, title: "Edited" }, actor);
-      const edited = activity.getAll({ taskKey: item.key })[0]!;
-      const query = (selector: ActivityListInput) => activity.getAll({ ...selector, since: 20, until: 20 });
+      const edited = activity.getAll({ taskKey: item.key }).events[0]!;
+      const query = (selector: ActivityListInput) => activity.getAll({ ...selector, since: 20, until: 20 }).events;
       expect(query({ taskKey: item.key })).toEqual([edited]);
       now = 25;
       task.archive(item.key, actor);
@@ -61,7 +61,7 @@ test("time filtering follows current, archived and historical identity resolutio
       now = 50;
       const replacement = project.create({ key: "APP" }, actor);
       task.create({ project_id: replacement.id, title: "Replacement" }, actor);
-      const before = activity.getAll();
+      const before = activity.getAll().events;
       for (const selector of [
         { taskId: item.id }, { taskKey: item.key, showDeleted: true },
         { projectId: app.id }, { projectKey: app.key, showDeleted: true },
@@ -70,7 +70,7 @@ test("time filtering follows current, archived and historical identity resolutio
       }
       expect(query({ taskKey: item.key })).toEqual([]);
       expect(query({ projectKey: app.key })).toEqual([]);
-      expect(activity.getAll()).toEqual(before);
+      expect(activity.getAll().events).toEqual(before);
     } finally {
       clock.mockRestore();
     }

@@ -25,7 +25,7 @@ const task = core.task.create(
 );
 
 assert.equal(core.task.getByKey(task.key).title, "Installed core");
-const created = core.activity.getAll({ taskKey: task.key })[0];
+const created = core.activity.getAll({ taskKey: task.key }).events[0];
 assert.deepEqual(
 	core.activity.getAll({
 		taskKey: task.key,
@@ -34,28 +34,51 @@ assert.deepEqual(
 			{ field: "labels", value: "RUNTIME" }
 		],
 		limit: 1
-	}),
+	}).events,
 	[created]
 );
 core.task.edit({ taskKey: task.key, priority: null }, actor);
-const cleared = core.activity.getAll({ taskKey: task.key })[0];
-assert.deepEqual(core.activity.getAll({ taskKey: task.key, changed: [{ field: "priority", value: null }] }), [cleared]);
-assert.deepEqual(core.activity.getAll({ taskKey: task.key, changed: [{ field: "labels", value: "runtime" }] }), [
-	created
-]);
-assert.deepEqual(core.activity.getAll({ taskKey: task.key, actions: ["edit"], changed: [{ field: "priority" }] }), [
+const cleared = core.activity.getAll({ taskKey: task.key }).events[0];
+assert.deepEqual(core.activity.getAll({ taskKey: task.key, changed: [{ field: "priority", value: null }] }).events, [
 	cleared
 ]);
-assert.deepEqual(core.activity.getAll({ taskKey: task.key, changed: [{ field: "title" }, { field: "description" }] }), [
+assert.deepEqual(core.activity.getAll({ taskKey: task.key, changed: [{ field: "labels", value: "runtime" }] }).events, [
 	created
 ]);
-core.task.label.remove({ taskKey: task.key, labelNames: ["runtime"] }, actor);
-const removed = core.activity.getAll({ taskKey: task.key })[0];
 assert.deepEqual(
-	core.activity.getAll({ taskKey: task.key, actions: ["edit", "move"], changed: [{ field: "labels" }] }),
+	core.activity.getAll({ taskKey: task.key, actions: ["edit"], changed: [{ field: "priority" }] }).events,
+	[cleared]
+);
+assert.deepEqual(
+	core.activity.getAll({ taskKey: task.key, changed: [{ field: "title" }, { field: "description" }] }).events,
+	[created]
+);
+core.task.label.remove({ taskKey: task.key, labelNames: ["runtime"] }, actor);
+const removed = core.activity.getAll({ taskKey: task.key }).events[0];
+const page = core.activity.getAll({ taskKey: task.key, limit: 1 });
+assert.deepEqual(page, { events: [removed], hasMore: true });
+assert.deepEqual(
+	core.activity.getAll({
+		taskKey: task.key,
+		startingAfter: removed.id.toUpperCase().replaceAll("-", ""),
+		limit: 1
+	}),
+	{ events: [cleared], hasMore: true }
+);
+assert.deepEqual(
+	core.activity.getAll({
+		taskKey: task.key,
+		startingAfter: cleared.id,
+		changed: [{ field: "priority" }],
+		limit: 1
+	}),
+	{ events: [created], hasMore: false }
+);
+assert.deepEqual(
+	core.activity.getAll({ taskKey: task.key, actions: ["edit", "move"], changed: [{ field: "labels" }] }).events,
 	[removed]
 );
-assert.deepEqual(core.activity.getAll({ taskKey: task.key, changed: [{ field: "labels", value: "runtime" }] }), [
+assert.deepEqual(core.activity.getAll({ taskKey: task.key, changed: [{ field: "labels", value: "runtime" }] }).events, [
 	created
 ]);
 
@@ -78,12 +101,12 @@ const reversed = core.relation.create(
 );
 assert.equal(reversed.source_task_id, second.id);
 assert.equal(reversed.target_task_id, task.id);
-const eventsBeforeStaleWrite = core.activity.getAll();
+const eventsBeforeStaleWrite = core.activity.getAll().events;
 assert.throws(
 	() => core.relation.create({ ...request, replace: [replaced.id] }, actor),
 	(error) => error instanceof core.CoreError && error.kind === "conflict" && error.facts.reason === "relation_changed"
 );
-assert.deepEqual(core.activity.getAll(), eventsBeforeStaleWrite);
+assert.deepEqual(core.activity.getAll().events, eventsBeforeStaleWrite);
 assert.deepEqual(core.relation.getAll(task.key), [reversed]);
 assert.throws(
 	() =>

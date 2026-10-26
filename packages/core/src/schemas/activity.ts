@@ -72,31 +72,32 @@ export const activityTaskKeySchema = z
   .refine((value) => parseTaskKey(value) != null, "Invalid task key. Expected format PROJECT-1")
   .transform(standardizeProjectKey);
 
-/** Normalizes full UUIDs and canonical left prefixes to lowercase hex. */
-export const activityIdSchema = z
-  .string()
-  .superRefine((value, context) => {
-    const hex = value.replaceAll("-", "").toLowerCase();
-    const canonical = hex
-      .padEnd(UUID_HEX_LENGTH, "0")
-      .replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
-    const isHex = /^[\da-f]+$/.test(hex) && hex.length <= UUID_HEX_LENGTH;
-    const hasCanonicalHyphens = !value.includes("-") || canonical.startsWith(value.toLowerCase());
+const activityReferenceSchema = z.string().superRefine((value, context) => {
+  const hex = value.replaceAll("-", "").toLowerCase();
+  const canonical = hex
+    .padEnd(UUID_HEX_LENGTH, "0")
+    .replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+  const isHex = /^[\da-f]+$/.test(hex) && hex.length <= UUID_HEX_LENGTH;
+  const hasCanonicalHyphens = !value.includes("-") || canonical.startsWith(value.toLowerCase());
 
-    if (!isHex || !hasCanonicalHyphens) {
-      context.addIssue({
-        code: "custom",
-        message:
-          "Invalid activity ID. Use a UUID or its left prefix, with canonical hyphens or hexadecimal digits",
-      });
-    } else if (hex.length < minimumActivityIdLength) {
-      context.addIssue({
-        code: "custom",
-        message: `Activity ID prefixes need at least ${minimumActivityIdLength} hexadecimal digits`,
-      });
-    }
-  })
-  .transform((value) => value.replaceAll("-", "").toLowerCase());
+  if (!isHex || !hasCanonicalHyphens) {
+    context.addIssue({
+      code: "custom",
+      message:
+        "Invalid activity ID. Use a UUID or its left prefix, with canonical hyphens or hexadecimal digits",
+    });
+  } else if (hex.length < minimumActivityIdLength) {
+    context.addIssue({
+      code: "custom",
+      message: `Activity ID prefixes need at least ${minimumActivityIdLength} hexadecimal digits`,
+    });
+  }
+});
+
+/** Normalizes full UUIDs and canonical left prefixes to lowercase hex. */
+export const activityIdSchema = activityReferenceSchema.transform((value) =>
+  value.replaceAll("-", "").toLowerCase(),
+);
 
 /** Accepts the full UUID spellings used by activity lookup, without any prefixes */
 function fullActivityEntityIdSchema(entity: string) {
@@ -131,6 +132,7 @@ export const activityListSchema = z
     since: activityTimestampSchema.optional(),
     until: activityTimestampSchema.optional(),
     limit: listLimitSchema.optional(),
+    startingAfter: activityReferenceSchema.optional(),
   })
   .superRefine((value, context) => {
     const hasReversedBounds =

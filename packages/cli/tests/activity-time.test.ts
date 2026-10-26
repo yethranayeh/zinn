@@ -10,7 +10,11 @@ test("activity time flags select exact instants across timezones and combine bef
     const run = async (...args: string[]) => {
       const result = await runZinn(args, directory, { ZINN_SESSION_ID: "Session", ZINN_THREAD_ID: "Thread" });
       expect(result.code, result.stderr).toBe(0);
-      expect(result.stderr).toBe("");
+      if (args.includes("--limit") && !args.includes("--action")) {
+        expect(result.stderr).toContain("--starting-after");
+      } else {
+        expect(result.stderr).toBe("");
+      }
       return result.stdout;
     };
     const list = async (...flags: string[]) => resultSchemas.ActivityList.parse(JSON.parse(await run("activity", "list", ...flags, "--json")));

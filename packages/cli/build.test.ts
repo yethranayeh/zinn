@@ -75,7 +75,11 @@ for (const runtime of ["node", "bun"]) {
       const run = (args: string[]) => {
         const result = runBuilt(runtime, args, directory, { NODE_NO_WARNINGS: "1" });
         expect(result.code, result.stderr).toBe(0);
-        expect(result.stderr).toBe("");
+        if (args.includes("--limit")) {
+          expect(result.stderr).toContain("--starting-after");
+        } else {
+          expect(result.stderr).toBe("");
+        }
         return JSON.parse(result.stdout);
       };
       run(["project", "create", "APP", "--json"]);

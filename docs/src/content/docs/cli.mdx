@@ -511,6 +511,10 @@ zinn activity view 019abcdf-1234-7
 
 `--limit` caps the newest matching events and must be an integer from `1` through `11871`. Reorders and both affected-task events from relation changes are included.
 
+Use `--starting-after <activity-id>` to continue toward older events, while excluding the cursor event. It accepts the same full IDs and unique prefixes as `activity view`. The cursor event need not match the filters. Keep the same filters when continuing. Without `--limit`, the command returns every remaining match.
+
+When another matching event exists after a capped page, stderr gives a command to continue with the last returned event's full ID. The command retains the filters and output mode. This hint also appears with `--json`, whose stdout remains an array of full activity records. Scripts can continue with the last event's ID whenever a page contains exactly the requested limit. An empty array marks exhaustion.
+
 `--since` and `--until` select events on or after the lower bound and on or before the upper bound, using their recorded `created_at`. Use either flag alone or both together. Equal bounds select events at exactly that millisecond. `--until` must be at or after `--since`. All supplied filters must match before `--limit` applies.
 
 Time values accept integer epoch milliseconds or `YYYY-MM-DDTHH:mm:ss` followed by `Z` for UTC or a numeric offset such as `+01:00`. Optional fractional seconds have 1 to 3 digits, so `.1`, `.12` and `.123` mean 100, 120 and 123 milliseconds. For example, `2026-10-25T12:00:00.123Z` and `2026-10-25T13:00:00.123+01:00` select the same instant on every computer. Integer inputs always mean milliseconds and must be between `-8640000000000000` and `8640000000000000`, inclusive. Use `--since=-1` for a negative value.

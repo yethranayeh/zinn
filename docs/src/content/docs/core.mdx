@@ -95,7 +95,20 @@ If the conflicting IDs changed before the write, core throws a `CoreError` with 
 
 ## Activity selection
 
-`activity.getAll` returns full activity records, newest first by timestamp and then event ID. Without a project or task selector it reads across the database.
+`activity.getAll` returns `{ events, hasMore }`. `events` contains full activity records, newest first by timestamp and then event ID. Without a project or task selector it reads across the database. `hasMore` is true only when another event matches after the returned page. Without `limit`, it is false.
+
+Pass `startingAfter` with the last returned event's ID to continue toward older events, excluding that event. It accepts the same full IDs and unique prefixes as `activity.getById`. The cursor event need not match the supplied filters. Every filter applies before the page cap, including `changed`. Omitting `limit` returns every remaining match.
+
+```ts title="Read the next activity page"
+const firstPage = activity.getAll({ limit: 10 });
+if (firstPage.hasMore) {
+	const nextPage = activity.getAll({
+		limit: 10,
+		startingAfter: firstPage.events.at(-1)!.id
+	});
+	console.log(nextPage.events);
+}
+```
 
 Optional numeric `since` and `until` fields filter the stored `created_at`, inclusively, before `limit` applies. Use either bound alone or both together. They accept integer epoch milliseconds between `-8640000000000000` and `8640000000000000`, inclusive. Equal bounds select events at exactly that millisecond. A reversed range raises an input `CoreError` whose `facts.field` is `["until"]`. Historical identity resolution uses the full recorded history before time selection.
 
@@ -106,7 +119,7 @@ Optional numeric `since` and `until` fields filter the stored `created_at`, incl
 - `{ projectKey: "APP", showDeleted: true }` includes every recorded existing or deleted project identity sharing that key. Omitting `showDeleted` or setting it to `false` selects only the existing project.
 - `{ projectId: createdProject.id }` selects one exact project identity, including after deletion. Project IDs accept the same full UUID spellings as task IDs, without prefixes.
 
-`projectKey`, `projectId`, `taskKey`, and `taskId` are mutually exclusive. `showDeleted` requires `projectKey` or `taskKey`, including when it is `false`. A valid exact ID or explicit deleted-history query with no recorded matches returns an empty array.
+`projectKey`, `projectId`, `taskKey`, and `taskId` are mutually exclusive. `showDeleted` requires `projectKey` or `taskKey`, including when it is `false`. A valid exact ID or explicit deleted-history query with no recorded matches returns `{ events: [], hasMore: false }`.
 
 Project selection includes task comments, label attachments, reorders, and original project-deletion snapshots. Global label-definition events are excluded. Cross-project relations include only the selected project's task event and within-project relations include both task events.
 

@@ -60,7 +60,7 @@ test("task limits follow all filters and preserve global and project order", () 
     expect(search.tasks).toHaveLength(8);
     expect(search.hiddenArchivedCount).toBe(4);
     expect(task.search({ query: "needle", limit: 1 })).toEqual({ tasks: search.tasks.slice(0, 1), hiddenArchivedCount: 4 });
-    const events = activity.getAll();
-    expect(activity.getAll({ limit: MAX_LIST_LIMIT })).toEqual(events);
+    const events = activity.getAll().events;
+    expect(activity.getAll({ limit: MAX_LIST_LIMIT }).events).toEqual(events);
   });
 });

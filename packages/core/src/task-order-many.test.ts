@@ -36,7 +36,7 @@ test("bulk ordering matches sequential single orders, including each step's resu
     const run = (bulk: boolean) => withTestStore(() => {
       seed();
       task.order({ taskKey: "APP-3", direction: "before", targetTaskKey: "APP-2" }, actor);
-      const previousActivity = new Set(activity.getAll().map(entry => entry.id));
+      const previousActivity = new Set(activity.getAll().events.map(entry => entry.id));
       const result = bulk ? task.orderMany(placement, actor) : placement.taskKeys.map((taskKey, index) => {
         const step: Parameters<typeof task.order>[0] = index === 0
           ? { ...placement, taskKey }
@@ -47,7 +47,7 @@ test("bulk ordering matches sequential single orders, including each step's resu
       return {
         order: task.getAll().map(entry => entry.key),
         results: result.map(({ task: entry, changed }) => ({ key: entry.key, order: entry.task_order, changed })),
-        activity: activity.getAll().filter(entry => !previousActivity.has(entry.id)).reverse().map(entry => {
+        activity: activity.getAll().events.filter(entry => !previousActivity.has(entry.id)).reverse().map(entry => {
           const { id, created_at, entity_id, ...facts } = entry;
           return { ...facts, key: keysById.get(entity_id) };
         }),
@@ -62,22 +62,22 @@ test("bulk ordering leaves satisfied steps and displaced neighbours untouched", 
     seed();
     task.order({ taskKey: "APP-3", direction: "before", targetTaskKey: "APP-2" }, actor);
     const before = task.getAll();
-    const eventsBefore = activity.getAll().length;
+    const eventsBefore = activity.getAll().events.length;
     const result = task.orderMany({ taskKeys: ["app-1", "APP-2"], direction: "top" }, actor);
     assert.deepEqual(result.map(entry => entry.changed), [false, true]);
     assert.deepEqual(result[0]!.task, before[0]);
     assert.deepEqual(task.getByKey("APP-3"), before.find(entry => entry.key === "APP-3"));
     assert.deepEqual(task.getAll().map(entry => entry.key), ["APP-1", "APP-2", "APP-3", "APP-4", "APP-5", "APP-6"]);
-    assert.equal(activity.getAll().length, eventsBefore + 1);
+    assert.equal(activity.getAll().events.length, eventsBefore + 1);
     const unchanged = snapshot();
     assert.deepEqual(task.orderMany({ taskKeys: ["APP-1", "APP-2"], direction: "top" }, actor).map(entry => entry.changed), [false, false]);
     assert.deepEqual(snapshot(), unchanged);
     assert.equal(task.orderMany({ taskKeys: ["APP-1"], direction: "before", targetTaskKey: "app-1" }, actor)[0]!.changed, false);
     const firstTask = task.getByKey("APP-1");
-    const reverseEvents = activity.getAll().length;
+    const reverseEvents = activity.getAll().events.length;
     assert.deepEqual(task.orderMany({ taskKeys: ["APP-2", "APP-1"], direction: "top" }, actor).map(entry => entry.changed), [true, false]);
     assert.deepEqual(task.getByKey("APP-1"), firstTask);
-    assert.equal(activity.getAll().length, reverseEvents + 1);
+    assert.equal(activity.getAll().events.length, reverseEvents + 1);
   });
 });
 

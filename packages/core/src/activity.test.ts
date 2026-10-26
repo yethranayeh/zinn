@@ -37,7 +37,7 @@ test("declared identity round-trips through mutations and every activity read", 
       actor_session_id: "Conversation/1", actor_thread_id: "Child/2", actor_agent: "Explore",
       actor_model: "provider/model@revision", actor_effort: "0.7",
     };
-    const assertIdentity = (event: ReturnType<typeof activity.getAll>[number]) => {
+    const assertIdentity = (event: ReturnType<typeof activity.getAll>["events"][number]) => {
       for (const [field, value] of Object.entries(expected)) {
         assert.equal(event[field as keyof typeof expected], value, field);
       }
@@ -50,26 +50,26 @@ test("declared identity round-trips through mutations and every activity read", 
     comment.create({ taskKey: item.key, text: "Context" }, declaredActor);
     relation.create({ sourceTaskKey: item.key, targetTaskKey: other.key, relation_type: "related" }, declaredActor);
     task.edit({ taskKey: item.key, title: "Changed" }, declaredActor);
-    for (const event of activity.getAll().filter(event => event.actor_source !== null)) {
+    for (const event of activity.getAll().events.filter(event => event.actor_source !== null)) {
       assertIdentity(event);
       assertIdentity(activity.getById(event.id));
     }
-    assert.deepEqual(new Set(activity.getAll().filter(event => event.actor_source !== null).map(event => event.entity_type)),
+    assert.deepEqual(new Set(activity.getAll().events.filter(event => event.actor_source !== null).map(event => event.entity_type)),
       new Set(["project", "column", "label", "task"]));
     for (const event of task.activity(item.key)) {
       assertIdentity(event);
     }
-    for (const event of activity.getAll({ taskKey: item.key })) {
+    for (const event of activity.getAll({ taskKey: item.key }).events) {
       assertIdentity(event);
     }
 
-    const beforeNoOp = activity.getAll();
+    const beforeNoOp = activity.getAll().events;
     task.edit({ taskKey: item.key, title: "Changed" }, declaredActor);
-    assert.deepEqual(activity.getAll(), beforeNoOp);
+    assert.deepEqual(activity.getAll().events, beforeNoOp);
     getDb().exec("CREATE TRIGGER fail_identity BEFORE INSERT ON activity BEGIN SELECT RAISE(ABORT, 'activity failed'); END");
     assert.throws(() => task.edit({ taskKey: item.key, title: "Refused" }, declaredActor));
     assert.equal(task.getByKey(item.key).title, "Changed");
-    assert.deepEqual(activity.getAll(), beforeNoOp);
+    assert.deepEqual(activity.getAll().events, beforeNoOp);
   });
 });
 
@@ -85,9 +85,9 @@ test("omitted and explicit null identity declarations read as null", () => {
         assert.equal(event![field as keyof Activity], null, field);
       }
     }
-    const before = activity.getAll();
+    const before = activity.getAll().events;
     assert.throws(() => task.create({ project_id: app.id, title: "Invalid" }, { ...agent, model: " " }));
-    assert.deepEqual(activity.getAll(), before);
+    assert.deepEqual(activity.getAll().events, before);
     assert.equal(task.getAll({ projectKey: "APP" }).length, 2);
   });
 });
@@ -136,7 +136,7 @@ test("creation IDs and activity order stay increasing within one millisecond", (
         assert.match(id, uuidV7Pattern);
       }
       assert.equal(new Set(historyIds).size, historyIds.length);
-      assert.deepEqual(activity.getAll({ taskKey: firstTask.key }).map(entry => entry.id),
+      assert.deepEqual(activity.getAll({ taskKey: firstTask.key }).events.map(entry => entry.id),
         [...historyIds].reverse());
     } finally {
       clock.mockRestore();
@@ -187,9 +187,9 @@ test("activity lists order by time then ID and apply limits after task filtering
     insertEvent({ id: outside, created_at: futureTime + 2, entity_id: other.id });
     const before = getDb().query<StoredActivity>("SELECT * FROM activity ORDER BY id").all();
     const changesBefore = getDb().query<{ count: number }>("SELECT total_changes() AS count").get()!.count;
-    assert.deepEqual(activity.getAll({ limit: 4 }).map((event) => event.id), [outside, tiedHigher, tiedLower, earlier]);
-    assert.deepEqual(activity.getAll({ taskKey: "app-1", limit: 2 }).map((event) => event.id), [tiedHigher, tiedLower]);
-    assert.equal(activity.getAll({ taskKey: "APP-1" }).length, 4);
+    assert.deepEqual(activity.getAll({ limit: 4 }).events.map((event) => event.id), [outside, tiedHigher, tiedLower, earlier]);
+    assert.deepEqual(activity.getAll({ taskKey: "app-1", limit: 2 }).events.map((event) => event.id), [tiedHigher, tiedLower]);
+    assert.equal(activity.getAll({ taskKey: "APP-1" }).events.length, 4);
     assert.throws(() => activity.getById("11111111"), (error) => error instanceof CoreError && error.kind === "conflict" && error.facts.reason === "ambiguous_reference");
     assert.deepEqual(activity.getIds().sort(), before.map((event) => event.id).sort());
     assert.deepEqual(getDb().query<StoredActivity>("SELECT * FROM activity ORDER BY id").all(), before);
@@ -212,24 +212,24 @@ test("activity identity filters match complete case-sensitive values conjunctive
       ...agent, sessionId: "conversation/two", threadId: "thread/one",
     });
     const legacy = task.create({ project_id: app.id, title: "Legacy metadata" }, human);
-    const firstEvent = activity.getAll().find((event) => event.entity_id === firstThread.id);
-    const secondEvent = activity.getAll().find((event) => event.entity_id === secondThread.id);
-    const otherEvent = activity.getAll().find((event) => event.entity_id === otherConversation.id);
-    const legacyEvent = activity.getAll().find((event) => event.entity_id === legacy.id);
+    const firstEvent = activity.getAll().events.find((event) => event.entity_id === firstThread.id);
+    const secondEvent = activity.getAll().events.find((event) => event.entity_id === secondThread.id);
+    const otherEvent = activity.getAll().events.find((event) => event.entity_id === otherConversation.id);
+    const legacyEvent = activity.getAll().events.find((event) => event.entity_id === legacy.id);
     const beforeRows = getDb().query<StoredActivity>("SELECT * FROM activity ORDER BY id").all();
     const changesBefore = getDb().query<{ count: number }>("SELECT total_changes() AS count").get()!.count;
 
-    assert.deepEqual(activity.getAll({ sessionId: "conversation/one" }).map((event) => event.id).sort(),
+    assert.deepEqual(activity.getAll({ sessionId: "conversation/one" }).events.map((event) => event.id).sort(),
       [firstEvent!.id, secondEvent!.id].sort());
-    assert.deepEqual(activity.getAll({ threadId: "thread/one" }).map((event) => event.id).sort(),
+    assert.deepEqual(activity.getAll({ threadId: "thread/one" }).events.map((event) => event.id).sort(),
       [firstEvent!.id, otherEvent!.id].sort());
-    assert.deepEqual(activity.getAll({ sessionId: "conversation/one", threadId: "thread/two" }).map((event) => event.id),
+    assert.deepEqual(activity.getAll({ sessionId: "conversation/one", threadId: "thread/two" }).events.map((event) => event.id),
       [secondEvent!.id]);
-    assert.deepEqual(activity.getAll({ sessionId: "conversation/two", threadId: "thread/two" }), []);
-    assert.deepEqual(activity.getAll({ sessionId: "Conversation/one" }), []);
-    assert.deepEqual(activity.getAll({ sessionId: "conversation/one-extra" }), []);
-    assert.deepEqual(activity.getAll({ threadId: "thread/one-extra" }), []);
-    assert.deepEqual(activity.getAll({ sessionId: "conversation/one", limit: 1 }).map((event) => event.id),
+    assert.deepEqual(activity.getAll({ sessionId: "conversation/two", threadId: "thread/two" }).events, []);
+    assert.deepEqual(activity.getAll({ sessionId: "Conversation/one" }).events, []);
+    assert.deepEqual(activity.getAll({ sessionId: "conversation/one-extra" }).events, []);
+    assert.deepEqual(activity.getAll({ threadId: "thread/one-extra" }).events, []);
+    assert.deepEqual(activity.getAll({ sessionId: "conversation/one", limit: 1 }).events.map((event) => event.id),
       [secondEvent!.id]);
     assert.equal(legacyEvent!.actor_session_id, null);
     assert.equal(legacyEvent!.actor_thread_id, null);
@@ -246,27 +246,27 @@ test("identity filters include deleted and reused task-key lifetimes and project
     const unrelated = task.create({ project_id: firstProject.id, title: "Unrelated" }, {
       ...runActor, threadId: "thread/other",
     });
-    const firstTaskCreate = activity.getAll().find((event) => event.entity_id === firstTask.id);
-    const unrelatedCreate = activity.getAll().find((event) => event.entity_id === unrelated.id);
+    const firstTaskCreate = activity.getAll().events.find((event) => event.entity_id === firstTask.id);
+    const unrelatedCreate = activity.getAll().events.find((event) => event.entity_id === unrelated.id);
 
     project.delete("RUN", runActor);
-    const aggregateDeletion = activity.getAll().find((event) => event.entity_type === "project" && event.action === "delete");
+    const aggregateDeletion = activity.getAll().events.find((event) => event.entity_type === "project" && event.action === "delete");
     const secondProject = project.create({ key: "RUN" }, runActor);
     const secondTask = task.create({ project_id: secondProject.id, title: "Second lifetime" }, runActor);
-    const secondTaskCreate = activity.getAll().find((event) => event.entity_id === secondTask.id);
+    const secondTaskCreate = activity.getAll().events.find((event) => event.entity_id === secondTask.id);
     const beforeRows = getDb().query<StoredActivity>("SELECT * FROM activity ORDER BY id").all();
     const changesBefore = getDb().query<{ count: number }>("SELECT total_changes() AS count").get()!.count;
 
     const filtered = activity.getAll({
       sessionId: "run/one", threadId: "thread/one", taskKey: "RUN-1", showDeleted: true,
-    });
+    }).events;
     assert.deepEqual(filtered.map((event) => event.id), [secondTaskCreate!.id, aggregateDeletion!.id, firstTaskCreate!.id]);
     assert.equal(filtered.filter((event) => event.entity_type === "task").length, 2);
     assert.equal(filtered.filter((event) => event.entity_type === "project" && event.action === "delete").length, 1);
     assert.ok(!filtered.some((event) => event.id === unrelatedCreate!.id));
     assert.deepEqual(activity.getAll({
       sessionId: "run/one", threadId: "thread/other", taskKey: "RUN-1", showDeleted: true,
-    }), []);
+    }).events, []);
     assert.deepEqual(getDb().query<StoredActivity>("SELECT * FROM activity ORDER BY id").all(), beforeRows);
     assert.equal(getDb().query<{ count: number }>("SELECT total_changes() AS count").get()!.count, changesBefore);
   });
@@ -277,15 +277,15 @@ test("activity finds archived and explicitly deleted tasks without requiring a l
     const item = task.create({ project_id: app.id, title: "Keep history" }, human);
     task.archive(item.key, agent);
     assert.equal(activity.getTaskIdentities("app-1")[0]!.status, "archived");
-    assert.deepEqual(activity.getAll({ taskKey: item.key }).map((event) => event.action).sort(), ["archive", "create"]);
+    assert.deepEqual(activity.getAll({ taskKey: item.key }).events.map((event) => event.action).sort(), ["archive", "create"]);
     task.delete(item.key, agent);
     assert.deepEqual(activity.getTaskIdentities({ taskKey: item.key, showDeleted: true }), [{ id: item.id, key: item.key, title: item.title, status: "deleted" }]);
-    assert.deepEqual(activity.getAll({ taskKey: item.key, showDeleted: true }).map((event) => event.action).sort(), ["archive", "create", "delete"]);
+    assert.deepEqual(activity.getAll({ taskKey: item.key, showDeleted: true }).events.map((event) => event.action).sort(), ["archive", "create", "delete"]);
     project.delete("APP", human);
-    assert.equal(activity.getAll({ taskKey: item.key, showDeleted: true }).length, 3);
-    assert.throws(() => activity.getAll({ taskKey: "APP-99" }), (error) => error instanceof CoreError && error.kind === "missing" && error.facts.entity === "task");
+    assert.equal(activity.getAll({ taskKey: item.key, showDeleted: true }).events.length, 3);
+    assert.throws(() => activity.getAll({ taskKey: "APP-99" }).events, (error) => error instanceof CoreError && error.kind === "missing" && error.facts.entity === "task");
     assert.deepEqual(activity.getTaskIdentities({ taskKey: "UNKNOWN-1", showDeleted: true }), []);
-    assert.throws(() => activity.getAll({ taskKey: "APP-0" }), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field![0] === "taskKey");
+    assert.throws(() => activity.getAll({ taskKey: "APP-0" }).events, (error) => error instanceof CoreError && error.kind === "input" && error.facts.field![0] === "taskKey");
   });
 });
 
@@ -293,23 +293,23 @@ test("explicit current-task selection includes archived tasks and reports missin
   runActivityCheck(({ human, agent, app }) => {
     const item = task.create({ project_id: app.id, title: "Current" }, human);
     const current = { taskKey: item.key, showDeleted: false };
-    assert.deepEqual(activity.getAll(current), task.activity(item.key).toReversed());
+    assert.deepEqual(activity.getAll(current).events, task.activity(item.key).toReversed());
     assert.equal(activity.getTaskIdentities(current)[0]!.status, "active");
     task.archive(item.key, agent);
-    assert.deepEqual(activity.getAll(current), task.activity(item.key).toReversed());
+    assert.deepEqual(activity.getAll(current).events, task.activity(item.key).toReversed());
     assert.equal(activity.getTaskIdentities(current)[0]!.status, "archived");
     task.delete(item.key, agent);
     const missingTask = (error: unknown) => error instanceof CoreError && error.kind === "missing" && error.facts.entity === "task" && error.facts.key === item.key;
-    assert.throws(() => activity.getAll(current), missingTask);
-    assert.throws(() => activity.getAll({ taskKey: item.key }), missingTask);
+    assert.throws(() => activity.getAll(current).events, missingTask);
+    assert.throws(() => activity.getAll({ taskKey: item.key }).events, missingTask);
     assert.throws(() => activity.getTaskIdentities(item.key), missingTask);
     assert.throws(() => activity.getTaskIdentities(current), missingTask);
-    assert.deepEqual(activity.getAll({ taskKey: "APP-99", showDeleted: true }), []);
+    assert.deepEqual(activity.getAll({ taskKey: "APP-99", showDeleted: true }).events, []);
     project.delete("APP", human);
-    assert.throws(() => activity.getAll(current), missingTask);
-    assert.throws(() => activity.getAll({ taskKey: "UNKNOWN-1", showDeleted: false }), (error) =>
+    assert.throws(() => activity.getAll(current).events, missingTask);
+    assert.throws(() => activity.getAll({ taskKey: "UNKNOWN-1", showDeleted: false }).events, (error) =>
       error instanceof CoreError && error.kind === "missing" && error.facts.entity === "task" && error.facts.key === "UNKNOWN-1");
-    assert.equal(activity.getAll({ taskKey: item.key, showDeleted: true }).length, 3);
+    assert.equal(activity.getAll({ taskKey: item.key, showDeleted: true }).events.length, 3);
   });
 });
 
@@ -320,23 +320,23 @@ test("explicit selectors separate reused task identities and preserve original p
     task.archive(first.key, runActor);
     const firstHistory = task.activity(first.key).toReversed();
     project.delete("APP", runActor);
-    const firstDeletion = activity.getAll().find((event) => event.entity_type === "project" && event.action === "delete");
+    const firstDeletion = activity.getAll().events.find((event) => event.entity_type === "project" && event.action === "delete");
     const secondProject = project.create({ key: "APP" }, human);
     const second = task.create({ project_id: secondProject.id, title: "Second" }, human);
     task.delete(second.key, runActor);
-    const secondHistory = activity.getAll({ taskKey: second.key, showDeleted: true }).filter((event) => event.entity_id === second.id);
+    const secondHistory = activity.getAll({ taskKey: second.key, showDeleted: true }).events.filter((event) => event.entity_id === second.id);
     project.delete("APP", runActor);
-    const secondDeletion = activity.getAll().find((event) => event.entity_id === secondProject.id && event.action === "delete");
+    const secondDeletion = activity.getAll().events.find((event) => event.entity_id === secondProject.id && event.action === "delete");
     const thirdProject = project.create({ key: "APP" }, human);
     const third = task.create({ project_id: thirdProject.id, title: "Third" }, human);
     const thirdHistory = task.activity(third.key).toReversed();
     const beforeRows = getDb().query<StoredActivity>("SELECT * FROM activity ORDER BY id").all();
     const changesBefore = getDb().query<{ count: number }>("SELECT total_changes() AS count").get()!.count;
 
-    assert.deepEqual(activity.getAll({ taskKey: "app-1", showDeleted: false }), thirdHistory);
-    const expanded = activity.getAll({ taskKey: "APP-1", showDeleted: true });
+    assert.deepEqual(activity.getAll({ taskKey: "app-1", showDeleted: false }).events, thirdHistory);
+    const expanded = activity.getAll({ taskKey: "APP-1", showDeleted: true }).events;
     assert.deepEqual(expanded, [...thirdHistory, ...secondHistory, firstDeletion, ...firstHistory]);
-    assert.deepEqual(thirdHistory, activity.getAll({ taskKey: "APP-1" }));
+    assert.deepEqual(thirdHistory, activity.getAll({ taskKey: "APP-1" }).events);
     assert.ok(!expanded.some((event) => event.id === secondDeletion!.id));
     assert.equal(activity.getTaskIdentities("APP-1").length, 1);
     assert.equal(activity.getTaskIdentities({ taskKey: "APP-1", showDeleted: true }).length, 3);
@@ -347,16 +347,16 @@ test("explicit selectors separate reused task identities and preserve original p
       [third, thirdHistory, "active"],
     ] as const) {
       for (const taskId of [item!.id, item!.id.toUpperCase(), item!.id.replaceAll("-", ""), item!.id.replaceAll("-", "").toUpperCase()]) {
-        assert.deepEqual(activity.getAll({ taskId }), expected);
-        assert.deepEqual(activity.getAll({ taskId, limit: 1 }), expected!.slice(0, 1));
+        assert.deepEqual(activity.getAll({ taskId }).events, expected);
+        assert.deepEqual(activity.getAll({ taskId, limit: 1 }).events, expected!.slice(0, 1));
         assert.deepEqual(activity.getTaskIdentities({ taskId }), [{ id: item!.id, key: item!.key, title: item!.title, status }]);
       }
     }
-    assert.deepEqual(activity.getAll({ taskId: first.id, sessionId: "session/one", threadId: "thread/one", limit: 2 }), [firstDeletion, ...firstHistory].slice(0, 2));
-    assert.deepEqual(activity.getAll({ taskId: first.id, sessionId: "Session/one" }), []);
-    assert.deepEqual(activity.getAll({ taskKey: "APP-1", showDeleted: false, sessionId: "session/one" }), []);
+    assert.deepEqual(activity.getAll({ taskId: first.id, sessionId: "session/one", threadId: "thread/one", limit: 2 }).events, [firstDeletion, ...firstHistory].slice(0, 2));
+    assert.deepEqual(activity.getAll({ taskId: first.id, sessionId: "Session/one" }).events, []);
+    assert.deepEqual(activity.getAll({ taskKey: "APP-1", showDeleted: false, sessionId: "session/one" }).events, []);
     const matching = expanded.filter((event) => event.actor_session_id === "session/one" && event.actor_thread_id === "thread/one");
-    assert.deepEqual(activity.getAll({ taskKey: "APP-1", showDeleted: true, sessionId: "session/one", threadId: "thread/one", limit: 2 }), matching.slice(0, 2));
+    assert.deepEqual(activity.getAll({ taskKey: "APP-1", showDeleted: true, sessionId: "session/one", threadId: "thread/one", limit: 2 }).events, matching.slice(0, 2));
     assert.deepEqual(getDb().query<StoredActivity>("SELECT * FROM activity ORDER BY id").all(), beforeRows);
     assert.equal(getDb().query<{ count: number }>("SELECT total_changes() AS count").get()!.count, changesBefore);
   });
@@ -374,7 +374,7 @@ test("exact task IDs select orphan events and snapshot identities with stable ti
     insertEvent({ id: earlier, created_at: 1, entity_id: taskId, changes });
     insertEvent({ id: tiedLower, created_at: 2, entity_id: taskId });
     insertEvent({ id: unrelated, created_at: 3, entity_id: otherId });
-    assert.deepEqual(activity.getAll({ taskId }).map((event) => event.id), [tiedLower, earlier]);
+    assert.deepEqual(activity.getAll({ taskId }).events.map((event) => event.id), [tiedLower, earlier]);
     insertEvent({
       id: tiedHigher, created_at: 2, entity_type: "project", entity_id: "old-project", action: "delete", changes: {
         tasks: [
@@ -385,24 +385,24 @@ test("exact task IDs select orphan events and snapshot identities with stable ti
       }
     });
     const expected = [tiedHigher, tiedLower, earlier].map((id) => activity.getById(id));
-    assert.deepEqual(activity.getAll({ taskId }), expected);
-    assert.deepEqual(activity.getAll({ taskId, limit: 2 }), expected.slice(0, 2));
+    assert.deepEqual(activity.getAll({ taskId }).events, expected);
+    assert.deepEqual(activity.getAll({ taskId, limit: 2 }).events, expected.slice(0, 2));
     assert.deepEqual(activity.getTaskIdentities({ taskId }), [{ id: taskId, key: "GONE-1", title: "Gone", status: "deleted" }]);
     assert.deepEqual(expected[2]!.changes, changes);
     const unknownId = "ffffffff-ffff-7fff-8fff-ffffffffffff";
-    assert.deepEqual(activity.getAll({ taskId: unknownId }), []);
+    assert.deepEqual(activity.getAll({ taskId: unknownId }).events, []);
     assert.deepEqual(activity.getTaskIdentities({ taskId: unknownId }), []);
     const empty = task.create({ project_id: app.id, title: "Empty" }, human);
     getDb().query("DELETE FROM activity WHERE entity_type = 'task' AND entity_id = ?").run(empty.id);
-    assert.deepEqual(activity.getAll({ taskId: empty.id }), []);
-    assert.deepEqual(activity.getAll({ taskKey: empty.key, showDeleted: false }), []);
+    assert.deepEqual(activity.getAll({ taskId: empty.id }).events, []);
+    assert.deepEqual(activity.getAll({ taskKey: empty.key, showDeleted: false }).events, []);
     task.archive(empty.key, agent);
     assert.equal(activity.getTaskIdentities({ taskId: empty.id })[0]!.status, "archived");
-    assert.throws(() => activity.getAll({ taskId: taskId.slice(0, -1) }), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field![0] === "taskId");
+    assert.throws(() => activity.getAll({ taskId: taskId.slice(0, -1) }).events, (error) => error instanceof CoreError && error.kind === "input" && error.facts.field![0] === "taskId");
     assert.throws(() => activity.getTaskIdentities({ taskId: "abcdef12" }), (error) => error instanceof CoreError && error.kind === "input");
-    assert.throws(() => activity.getAll({ taskKey: empty.key, taskId }), (error) => error instanceof CoreError && error.kind === "input");
-    assert.throws(() => activity.getAll({ taskId, showDeleted: false }), (error) => error instanceof CoreError && error.kind === "input");
-    assert.throws(() => activity.getAll({ showDeleted: true }), (error) => error instanceof CoreError && error.kind === "input");
+    assert.throws(() => activity.getAll({ taskKey: empty.key, taskId }).events, (error) => error instanceof CoreError && error.kind === "input");
+    assert.throws(() => activity.getAll({ taskId, showDeleted: false }).events, (error) => error instanceof CoreError && error.kind === "input");
+    assert.throws(() => activity.getAll({ showDeleted: true }).events, (error) => error instanceof CoreError && error.kind === "input");
   });
 });
 
@@ -410,7 +410,7 @@ test("current-task selection propagates database failures without reporting a mi
   runActivityCheck(({ human, app }) => {
     task.create({ project_id: app.id, title: "Present" }, human);
     getDb().exec("ALTER TABLE task RENAME TO unavailable_task");
-    assert.throws(() => activity.getAll({ taskKey: "APP-1", showDeleted: false }), (error) =>
+    assert.throws(() => activity.getAll({ taskKey: "APP-1", showDeleted: false }).events, (error) =>
       error instanceof Error && (!(error instanceof CoreError) || error.kind !== "missing") && error.message.includes("task"));
   });
 });
@@ -422,10 +422,10 @@ test("task history includes the original aggregate project deletion and every re
     task.archive(first.key, agent);
     const firstHistory = task.activity(first.key);
     project.delete("APP", agent);
-    const deletion = activity.getAll().find((event) => event.entity_type === "project" && event.action === "delete");
+    const deletion = activity.getAll().events.find((event) => event.entity_type === "project" && event.action === "delete");
     const recreatedProject = project.create({ key: "APP" }, human);
     const second = task.create({ project_id: recreatedProject.id, title: "Second lifetime" }, human);
-    const all = activity.getAll({ taskKey: "APP-1", showDeleted: true });
+    const all = activity.getAll({ taskKey: "APP-1", showDeleted: true }).events;
     assert.equal(all.length, firstHistory.length + 2);
     assert.equal(all.filter((event) => event.id === deletion!.id).length, 1);
     assert.deepEqual(all.find((event) => event.id === deletion!.id), deletion);
@@ -435,11 +435,11 @@ test("task history includes the original aggregate project deletion and every re
       { id: second.id, key: second.key, title: second.title, status: "active" },
       { id: first.id, key: first.key, title: first.title, status: "deleted" },
     ]);
-    assert.deepEqual(activity.getAll({ taskKey: "APP-1", showDeleted: true, limit: 1 }), all.slice(0, 1));
+    assert.deepEqual(activity.getAll({ taskKey: "APP-1", showDeleted: true, limit: 1 }).events, all.slice(0, 1));
     assert.equal(activity.getTaskIdentities({ taskKey: "APP-1", showDeleted: true }).length, 2);
     project.delete("APP", human);
     assert.equal(activity.getTaskIdentities({ taskKey: "APP-1", showDeleted: true }).length, 2);
-    assert.equal(activity.getAll({ taskKey: "APP-1", showDeleted: true }).filter((event) => event.entity_type === "project").length, 2);
+    assert.equal(activity.getAll({ taskKey: "APP-1", showDeleted: true }).events.filter((event) => event.entity_type === "project").length, 2);
   });
 });
 
@@ -456,7 +456,7 @@ test("deletion snapshots alone recover task identities and preserve the recorded
         ]
       }
     });
-    const events = activity.getAll({ taskKey: "gone-1", showDeleted: true });
+    const events = activity.getAll({ taskKey: "gone-1", showDeleted: true }).events;
     assert.deepEqual(events.map((event) => event.id), [aggregate, explicit]);
     assert.deepEqual(events[0], activity.getById(aggregate));
     assert.equal(events[0].entity_id, "old-project");
@@ -475,14 +475,14 @@ test("activity preserves every action, relation pair, null and unknown payload f
     const unknownId = "33333333-1111-7111-8111-111111111111";
     const changes = { future_field: { text: "  Preserve\n\tthis  ", values: [null, 3] }, title: ["First", "Renamed"] };
     insertEvent({ id: unknownId, created_at: 1, entity_id: first.id, changes });
-    const all = activity.getAll();
+    const all = activity.getAll().events;
     assert.deepEqual(new Set(all.map((event) => event.entity_type)), new Set(["task", "project", "column", "label"]));
     assert.equal(all.filter((event) => event.action === "relation_create").length, 2);
     assert.equal(all.filter((event) => event.action === "order").length, 1);
     assert.equal(all.find((event) => event.action === "order")!.changes, null);
     const event = activity.getById(unknownId);
     assert.deepEqual(event.changes, changes);
-    assert.deepEqual(activity.getAll({ taskKey: first.key }).find((item) => item.id === unknownId), event);
+    assert.deepEqual(activity.getAll({ taskKey: first.key }).events.find((item) => item.id === unknownId), event);
     assert.deepEqual(Object.keys(event).sort(), ["id", "created_at", "actor_name", "actor_email", "actor_kind", "actor_source", "actor_session_id", "actor_thread_id", "actor_agent", "actor_model", "actor_effort", "entity_type", "entity_id", "action", "changes"].sort());
     assert.equal(all.find((event) => event.entity_id === first.id && event.action === "create")!.changes!.description, "  First line\nSecond line  ");
   });
@@ -514,9 +514,9 @@ test("project selection retains every member event across explicit deletion and 
     task.delete(first.key, actor);
     task.delete(third.key, actor);
     const memberIds = new Set([app.id, ...column.getAllByProjectKey("APP").map(entry => entry.id), first.id, second.id, third.id]);
-    const expected = () => activity.getAll().filter(event => memberIds.has(event.entity_id));
-    assert.deepEqual(activity.getAll({ projectKey: "app" }), expected());
-    assert.deepEqual(activity.getAll({ projectId: app.id }), expected());
+    const expected = () => activity.getAll().events.filter(event => memberIds.has(event.entity_id));
+    assert.deepEqual(activity.getAll({ projectKey: "app" }).events, expected());
+    assert.deepEqual(activity.getAll({ projectId: app.id }).events, expected());
     assert.equal(expected().filter(event => event.action === "relation_create").length, 3);
     for (const action of ["comment_create", "comment_edit", "comment_delete", "order", "move", "archive"]) {
       assert.ok(expected().some(event => event.action === action), action);
@@ -527,25 +527,25 @@ test("project selection retains every member event across explicit deletion and 
     const firstLifetime = expected();
     const deletion = firstLifetime.find(event => event.entity_type === "project" && event.action === "delete");
     assert.deepEqual((deletion!.changes!.tasks as Array<{ id: string }>).map(entry => entry.id), [second.id]);
-    assert.deepEqual(activity.getAll({ projectKey: "APP", showDeleted: true }), firstLifetime);
-    assert.throws(() => activity.getAll({ projectKey: "APP" }), error => error instanceof CoreError && error.kind === "missing" && error.facts.entity === "project" && error.facts.key === "APP");
+    assert.deepEqual(activity.getAll({ projectKey: "APP", showDeleted: true }).events, firstLifetime);
+    assert.throws(() => activity.getAll({ projectKey: "APP" }).events, error => error instanceof CoreError && error.kind === "missing" && error.facts.entity === "project" && error.facts.key === "APP");
     const next = project.create({ key: "APP" }, actor);
     const nextTask = task.create({ project_id: next.id, title: "Next" }, actor);
-    const nextLifetime = activity.getAll().filter(event => event.entity_id === next.id || event.entity_id === nextTask.id);
-    assert.deepEqual(activity.getAll({ projectKey: "APP" }), nextLifetime);
+    const nextLifetime = activity.getAll().events.filter(event => event.entity_id === next.id || event.entity_id === nextTask.id);
+    assert.deepEqual(activity.getAll({ projectKey: "APP" }).events, nextLifetime);
     project.delete("APP", actor);
     const last = project.create({ key: "APP" }, actor);
     const lastTask = task.create({ project_id: last.id, title: "Last" }, actor);
-    const expanded = activity.getAll().filter(event => memberIds.has(event.entity_id) || [next.id, nextTask.id, last.id, lastTask.id].includes(event.entity_id));
+    const expanded = activity.getAll().events.filter(event => memberIds.has(event.entity_id) || [next.id, nextTask.id, last.id, lastTask.id].includes(event.entity_id));
     const before = getDb().query<StoredActivity>("SELECT * FROM activity ORDER BY id").all();
     const changes = getDb().query<{ count: number }>("SELECT total_changes() AS count").get()!.count;
     for (const id of [app.id, app.id.toUpperCase(), app.id.replaceAll("-", ""), app.id.replaceAll("-", "").toUpperCase()]) {
-      assert.deepEqual(activity.getAll({ projectId: id }), firstLifetime);
+      assert.deepEqual(activity.getAll({ projectId: id }).events, firstLifetime);
     }
-    assert.deepEqual(activity.getAll({ projectKey: "APP", showDeleted: true }), expanded);
+    assert.deepEqual(activity.getAll({ projectKey: "APP", showDeleted: true }).events, expanded);
     const matching = expanded.filter(event => event.actor_session_id === actor.sessionId && event.actor_thread_id === actor.threadId);
-    assert.deepEqual(activity.getAll({ projectKey: "APP", showDeleted: true, sessionId: actor.sessionId, threadId: actor.threadId, limit: 2 }), matching.slice(0, 2));
-    assert.deepEqual(activity.getAll({ projectId: app.id, sessionId: "other" }), []);
+    assert.deepEqual(activity.getAll({ projectKey: "APP", showDeleted: true, sessionId: actor.sessionId, threadId: actor.threadId, limit: 2 }).events, matching.slice(0, 2));
+    assert.deepEqual(activity.getAll({ projectId: app.id, sessionId: "other" }).events, []);
     assert.deepEqual(getDb().query<StoredActivity>("SELECT * FROM activity ORDER BY id").all(), before);
     assert.equal(getDb().query<{ count: number }>("SELECT total_changes() AS count").get()!.count, changes);
   });
@@ -561,16 +561,16 @@ test("exact project selection preserves orphan project events, empty histories a
     insertEvent({ id: earlier, created_at: 1, entity_type: "project", entity_id: id, changes });
     insertEvent({ id: tiedLower, created_at: 2, entity_type: "project", entity_id: id });
     insertEvent({ id: tiedHigher, created_at: 2, entity_type: "project", entity_id: id });
-    assert.deepEqual(activity.getAll({ projectId: id }).map(event => event.id), [tiedHigher, tiedLower, earlier]);
-    assert.deepEqual(activity.getAll({ projectId: id, limit: 2 }).map(event => event.id), [tiedHigher, tiedLower]);
-    assert.deepEqual(activity.getAll({ projectId: id })[2]!.changes, changes);
-    assert.equal(activity.getAll({ projectId: id })[0]!.changes, null);
-    assert.deepEqual(activity.getAll({ projectId: "ffffffff-ffff-7fff-8fff-ffffffffffff" }), []);
-    assert.deepEqual(activity.getAll({ projectKey: "UNKNOWN", showDeleted: true }), []);
+    assert.deepEqual(activity.getAll({ projectId: id }).events.map(event => event.id), [tiedHigher, tiedLower, earlier]);
+    assert.deepEqual(activity.getAll({ projectId: id, limit: 2 }).events.map(event => event.id), [tiedHigher, tiedLower]);
+    assert.deepEqual(activity.getAll({ projectId: id }).events[2]!.changes, changes);
+    assert.equal(activity.getAll({ projectId: id }).events[0]!.changes, null);
+    assert.deepEqual(activity.getAll({ projectId: "ffffffff-ffff-7fff-8fff-ffffffffffff" }).events, []);
+    assert.deepEqual(activity.getAll({ projectKey: "UNKNOWN", showDeleted: true }).events, []);
     getDb().query("DELETE FROM activity WHERE entity_id = ?").run(app.id);
-    assert.deepEqual(activity.getAll({ projectKey: "APP" }), []);
+    assert.deepEqual(activity.getAll({ projectKey: "APP" }).events, []);
     getDb().exec("DROP TABLE activity");
-    assert.throws(() => activity.getAll({ projectKey: "APP" }), error => !(error instanceof CoreError) || error.kind !== "missing");
+    assert.throws(() => activity.getAll({ projectKey: "APP" }).events, error => !(error instanceof CoreError) || error.kind !== "missing");
   });
 });
 
@@ -578,18 +578,18 @@ test.each([0, 9])("activity reads obey the existing read-only policy at schema v
   const reader = () => {
 
     configureDatabase({ client: "test", version: "0.0.0", executable: "activity-test", release: "source", allowsLegacyRead: true });
-    const all = activity.getAll();
+    const all = activity.getAll().events;
     assert.equal(all.length, 2);
-    assert.deepEqual(activity.getAll({ since: 0, until: 8_640_000_000_000_000 }), all);
+    assert.deepEqual(activity.getAll({ since: 0, until: 8_640_000_000_000_000 }).events, all);
     assert.deepEqual(activity.getById(all[0]!.id), all[0]);
-    assert.equal(activity.getAll({ taskKey: "APP-1" }).length, 1);
-    assert.equal(activity.getAll({ taskKey: "APP-1", showDeleted: false }).length, 1);
-    assert.equal(activity.getAll({ taskKey: "APP-1", showDeleted: true }).length, 1);
-    assert.deepEqual(activity.getAll({ projectKey: "APP" }), all);
-    assert.deepEqual(activity.getAll({ projectKey: "APP", showDeleted: true }), all);
-    assert.deepEqual(activity.getAll({ projectId: all.find(event => event.entity_type === "project")!.entity_id }), all);
+    assert.equal(activity.getAll({ taskKey: "APP-1" }).events.length, 1);
+    assert.equal(activity.getAll({ taskKey: "APP-1", showDeleted: false }).events.length, 1);
+    assert.equal(activity.getAll({ taskKey: "APP-1", showDeleted: true }).events.length, 1);
+    assert.deepEqual(activity.getAll({ projectKey: "APP" }).events, all);
+    assert.deepEqual(activity.getAll({ projectKey: "APP", showDeleted: true }).events, all);
+    assert.deepEqual(activity.getAll({ projectId: all.find(event => event.entity_type === "project")!.entity_id }).events, all);
     const taskId = activity.getTaskIdentities("APP-1")[0]!.id;
-    assert.equal(activity.getAll({ taskId }).length, 1);
+    assert.equal(activity.getAll({ taskId }).events.length, 1);
     assert.equal(activity.getTaskIdentities({ taskId })[0]!.status, "active");
     assert.equal(activity.getTaskIdentities("APP-1")[0]!.status, "active");
     assert.equal(activity.getIds().length, 2);

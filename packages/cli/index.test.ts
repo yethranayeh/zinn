@@ -7142,7 +7142,11 @@ test("activity exact task IDs retain identity, status and original project delet
     const run = async (...args: Array<string>) => {
       const result = await runZinn(args, directory);
       expect(result.code, result.stderr).toBe(0);
-      expect(result.stderr).toBe("");
+      if (args.includes("--limit") && result.stderr.length > 0) {
+        expect(result.stderr).toContain("--starting-after");
+      } else {
+        expect(result.stderr).toBe("");
+      }
       return result.stdout;
     };
     await run("project", "create", "APP");
@@ -7250,7 +7254,11 @@ test("project activity filters retain original member events and project lifetim
     const run = async (...args: Array<string>) => {
       const result = await runZinn(args, directory, { ZINN_SESSION_ID: "project/run", ZINN_THREAD_ID: "project/thread" });
       expect(result.code, result.stderr).toBe(0);
-      expect(result.stderr).toBe("");
+      if (args.includes("--limit")) {
+        expect(result.stderr).toContain("--starting-after");
+      } else {
+        expect(result.stderr).toBe("");
+      }
       return result.stdout;
     };
     const list = async (...flags: Array<string>): Promise<Array<Activity>> => JSON.parse(await run("activity", "list", ...flags, "--json"));
@@ -7415,8 +7423,8 @@ test("project activity navigation scans history a bounded number of times for ma
       const currentProject = project.create({ key: "APP" }, actor);
       const current = task.create({ project_id: currentProject.id, title: "Reused key" }, actor);
       task.archive(current.key, actor);
-      const selected = activity.getAll({ projectId: app.id, sessionId: "selected", limit: 1 });
-      const deletion = activity.getAll({ projectId: app.id, limit: 1 });
+      const selected = activity.getAll({ projectId: app.id, sessionId: "selected", limit: 1 }).events;
+      const deletion = activity.getAll({ projectId: app.id, limit: 1 }).events;
       const globalHistory = spyOn(dbActivity, "getAll");
       const deletionHistory = spyOn(dbActivity, "getTaskDeletionEvents");
       const maxFullHistoryScans = 2;
@@ -7436,7 +7444,7 @@ test("project activity navigation scans history a bounded number of times for ma
       assert.deepEqual(aggregate.removedTasks, [{ id: retained.id, key: retained.key,
         title: retained.title, status: "deleted" }]);
       checkScans();
-      const currentEvents = activity.getAll({ projectKey: "APP", limit: 1 });
+      const currentEvents = activity.getAll({ projectKey: "APP", limit: 1 }).events;
       globalHistory.mockClear();
       const [archived] = presentActivities(currentEvents, { projectKey: "APP" });
       assert.equal(archived.navigation.name, current.key);
@@ -7455,6 +7463,99 @@ test("activity returns all events by default and limits only after selecting mat
     })));
     expect(JSON.parse((await runZinn(["activity", "list", "--json"], directory)).stdout)).toEqual(events.toReversed());
     expect(JSON.parse((await runZinn(["activity", "list", "--limit", "2", "--json"], directory)).stdout)).toEqual(events.toReversed().slice(0, 2));
+  });
+});
+
+test("activity continuation commands preserve filters, globals and shell-sensitive values", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    const session = "-a session ' $(touch pagination-injected) `touch pagination-injected`\nnext";
+    const thread = "thread with spaces";
+    const records = await seedRecordedActivity(directory, Array.from({ length: 7 }, (_, index) => ({
+      id: `22222222-1234-7000-8000-${String(index).padStart(12, "0")}`,
+      created_at: index, actor_session_id: session, actor_thread_id: thread,
+      action: index % 2 === 0 ? "edit" as const : "comment_create" as const,
+      changes: { priority: [null, "high"], title: ["before", "after"] },
+    })));
+    const expected = records.filter((event) => event.action === "edit").toReversed();
+    const args = ["activity", "list", `--session=${session}`, "--thread", thread,
+      "--since", "0", "--until", "6", "--action", "edit", "--action", "comment_create",
+      "--changed", "priority=HIGH", "--changed", "priority=low", "--changed", "title",
+      "--limit", "1", "--json", "--allow-legacy-read"];
+    let result = await runZinn(args, directory);
+    for (let index = 0; index < expected.length; index++) {
+      expect(result.code, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual([expected[index]!]);
+      if (index === expected.length - 1) {
+        expect(result.stderr).toBe("");
+        break;
+      }
+      const commandStart = result.stderr.indexOf("zinn ");
+      expect(commandStart).toBeGreaterThanOrEqual(0);
+      const command = result.stderr.slice(commandStart).trimEnd();
+      expect(command).toContain(expected[index]!.id);
+      expect(command).toContain("--json");
+      expect(command).toContain("--allow-legacy-read");
+      expect(command.match(/--starting-after/g)).toHaveLength(1);
+      result = await runProcessAsync(["/bin/sh", "-c",
+        'zinn() { bun "$ZINN_TEST_CLI" "$@"; }\n' + command],
+        { cwd: directory, env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory, ZINN_TEST_CLI: CLI_PATH } });
+      expect(existsSync(join(directory, "pagination-injected"))).toBe(false);
+    }
+    const text = await runZinn(args.filter((arg) => arg !== "--json"), directory);
+    expect(text.code).toBe(0);
+    expect(text.stdout).toContain("edit");
+    expect(text.stderr).toContain("--starting-after");
+    expect(text.stderr).not.toContain("--json");
+    const uncapped = await runZinn(["activity", "list", "--starting-after", expected[0]!.id, "--json"], directory);
+    expect(uncapped.code).toBe(0);
+    expect(uncapped.stderr).toBe("");
+    expect(JSON.parse(uncapped.stdout)).toEqual(records.toReversed().slice(1));
+  });
+});
+
+test("activity continuation shares lookup errors and accepts compact and prefix IDs outside selection", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    const records = await seedRecordedActivity(directory, [
+      { id: "abcdef12-1234-7000-8000-123456abcde1", created_at: 10 },
+      { id: "abcdef12-2234-7000-8000-123456abcde2", created_at: 20 },
+      { id: "abcdef13-1234-7000-8000-123456abcde3", created_at: 30 },
+    ]);
+    for (const id of [records[1]!.id.toUpperCase().replaceAll("-", ""), "abcdef12-2"]) {
+      const result = await runZinn(["activity", "list", "--starting-after", id, "--until", "10", "--json"], directory);
+      expect(result.code).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual([records[0]!]);
+      expect(result.stderr).toBe("");
+    }
+    for (const id of ["abcdef", "abcdef12", "ffffffff", "bad-id"]) {
+      const view = await runZinn(["activity", "view", id, "--json"], directory);
+      const page = await runZinn(["activity", "list", "--starting-after", id, "--json"], directory);
+      expect(page.code).toBe(1);
+      expect(page.stdout).toBe("");
+      const pageError = JSON.parse(page.stderr).error;
+      const viewError = JSON.parse(view.stderr).error;
+      expect(pageError.code).toBe(viewError.code);
+      expect(pageError.message).toBe(viewError.message);
+      if (pageError.code === "invalid_input") {
+        expect(pageError.details.field).toEqual(["startingAfter"]);
+      } else {
+        expect(pageError.details).toEqual(viewError.details);
+      }
+    }
+    for (const ending of [records[0]!.id, records[1]!.id]) {
+      const result = await runZinn(["activity", "list", "--starting-after", ending, "--limit", "1", "--json"], directory);
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe("");
+    }
+    for (const args of [
+      ["--starting-after"],
+      ["--starting-after="],
+      ["--starting-after", records[0]!.id, "--starting-after", records[1]!.id],
+    ]) {
+      const result = await runZinn(["activity", "list", ...args, "--json"], directory);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(JSON.parse(result.stderr).error.code).toBe("invalid_input");
+    }
   });
 });
 
@@ -7555,7 +7656,11 @@ test("session activity filters return only committed changes and compose with th
     const events = async (...flags: Array<string>): Promise<Array<Activity>> => {
       const result = await run(["activity", "list", ...flags, "--json"]);
       expect(result.code).toBe(0);
-      expect(result.stderr).toBe("");
+      if (flags.includes("--limit")) {
+        expect(result.stderr).toContain("--starting-after");
+      } else {
+        expect(result.stderr).toBe("");
+      }
       return JSON.parse(result.stdout);
     };
     const first = { CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: "Conversation/A" };

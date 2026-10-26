@@ -1,4 +1,5 @@
 import type { Activity, ActivityEntityType, Bind } from "../types.js";
+import type { ActivityListInput } from "../schemas/activity.js";
 
 import { v7 as uuidv7 } from "uuid";
 
@@ -76,10 +77,69 @@ export function getAllByEntity(entityType: ActivityEntityType, entityId: string)
     .map(parseActivity);
 }
 
-export function getAll(): Array<Activity> {
+export type ActivityQuery = Pick<
+  ActivityListInput,
+  "sessionId" | "threadId" | "since" | "until" | "actions"
+> & {
+  before?: Pick<Activity, "created_at" | "id">;
+  limit?: number;
+  eventIds?: Array<string>;
+  taskIds?: Array<string>;
+  projectDeletionIds?: Array<string>;
+};
+
+export function getAll(input: ActivityQuery = {}): Array<Activity> {
+  const predicates: Array<string> = [];
+  const bindings: Record<string, string | number> = {};
+  for (const [field, column] of [
+    ["sessionId", "actor_session_id"],
+    ["threadId", "actor_thread_id"],
+    ["since", "created_at"],
+    ["until", "created_at"],
+  ] as const) {
+    const value = input[field];
+    if (value !== undefined) {
+      const operator = field === "since" ? ">=" : field === "until" ? "<=" : "=";
+      predicates.push(`${column} ${operator} $${field}`);
+      bindings[`$${field}`] = value;
+    }
+  }
+
+  if (input.actions !== undefined) {
+    predicates.push("action IN (SELECT value FROM json_each($actions))");
+    bindings.$actions = JSON.stringify(input.actions);
+  }
+
+  if (input.before !== undefined) {
+    predicates.push("(created_at, id) < ($createdAt, $id)");
+    bindings.$createdAt = input.before.created_at;
+    bindings.$id = input.before.id;
+  }
+
+  if (input.eventIds !== undefined) {
+    predicates.push("id IN (SELECT value FROM json_each($eventIds))");
+    bindings.$eventIds = JSON.stringify(input.eventIds);
+  }
+
+  if (input.taskIds !== undefined) {
+    predicates.push(`((entity_type = 'task' AND entity_id IN (SELECT value FROM json_each($taskIds)))
+      OR id IN (SELECT value FROM json_each($projectDeletionIds)))`);
+    bindings.$taskIds = JSON.stringify(input.taskIds);
+    bindings.$projectDeletionIds = JSON.stringify(input.projectDeletionIds ?? []);
+  }
+
+  const where = predicates.length === 0 ? "" : ` WHERE ${predicates.join(" AND ")}`;
+  const limit = input.limit === undefined ? "" : " LIMIT $limit";
+
+  if (input.limit !== undefined) {
+    bindings.$limit = input.limit;
+  }
+
   return getDb()
-    .query<StoredActivity>(`SELECT * FROM ${DB_TABLE.activity} ORDER BY created_at DESC, id DESC`)
-    .all()
+    .query<StoredActivity, typeof bindings>(
+      `SELECT * FROM ${DB_TABLE.activity}${where} ORDER BY created_at DESC, id DESC${limit}`,
+    )
+    .all(bindings)
     .map(parseActivity);
 }
 
@@ -115,14 +175,7 @@ export function getTaskDeletionEvents(): Array<Activity> {
 export function getAllForTasks(
   taskIds: Array<string>,
   projectDeletionIds: Array<string>,
+  input: ActivityQuery = {},
 ): Array<Activity> {
-  return getDb()
-    .query<StoredActivity, [string, string]>(
-      `SELECT * FROM ${DB_TABLE.activity}
-    WHERE (entity_type = 'task' AND entity_id IN (SELECT value FROM json_each(?)))
-      OR id IN (SELECT value FROM json_each(?))
-    ORDER BY created_at DESC, id DESC`,
-    )
-    .all(JSON.stringify(taskIds), JSON.stringify(projectDeletionIds))
-    .map(parseActivity);
+  return getAll({ ...input, taskIds, projectDeletionIds });
 }

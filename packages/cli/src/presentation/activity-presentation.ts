@@ -187,7 +187,7 @@ function getTaskNavigation(events: Array<Activity>, taskKey?: string, taskId?: s
   }
 
   if (historicalKeys.size > 0) {
-    for (const event of activity.getAll()) {
+    for (const event of activity.getAll().events) {
       if (event.action !== "delete") {
         continue;
       }
@@ -230,7 +230,7 @@ export function presentActivities(
         projectKey: options.projectKey,
         projectId: options.projectId,
         showDeleted: options.showDeleted,
-      })
+      }).events
     : events;
   const tasks = getTaskNavigation(navigationEvents, options.taskKey, options.taskId);
   const tasksById = new Map(tasks.map((identity) => [identity.id, identity]));

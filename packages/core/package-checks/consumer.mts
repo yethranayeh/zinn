@@ -54,7 +54,7 @@ const validation: Error = new InputValidationError([
   { code: "invalid_type", path: ["title"], message: "Invalid title" },
 ]);
 const sqlite: Error = new SqliteError("Busy", 5, null);
-const events: Activity[] = activity.getAll({
+const page: { events: Activity[]; hasMore: boolean } = activity.getAll({
   sessionId: "conversation",
   threadId: "child",
   actions: ["create", "edit"],
@@ -65,6 +65,7 @@ const events: Activity[] = activity.getAll({
   ],
   limit: 1,
 });
+const events: Activity[] = activity.getAll({ startingAfter: page.events[0]?.id }).events;
 // @ts-expect-error only column, priority and labels support changed value filters.
 activity.getAll({ changed: [{ field: "comment", value: "text" }] });
 // @ts-expect-error column names cannot use null as a changed filter value.

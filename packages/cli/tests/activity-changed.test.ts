@@ -12,7 +12,11 @@ test("action flags select recorded actions and combine with field and identity f
     const run = async (...args: string[]) => {
       const result = await runZinn(args, directory);
       expect(result.code, result.stderr).toBe(0);
-      expect(result.stderr).toBe("");
+      if (args.includes("--limit")) {
+        expect(result.stderr).toContain("--starting-after");
+      } else {
+        expect(result.stderr).toBe("");
+      }
       return result.stdout;
     };
     const list = async (...flags: string[]): Promise<Activity[]> => JSON.parse(await run("activity", "list", ...flags, "--json"));
@@ -58,7 +62,11 @@ test("activity changed flags match new values and added labels with repeated and
     const run = async (...args: string[]) => {
       const result = await runZinn(args, directory, { ZINN_SESSION_ID: "Session", ZINN_THREAD_ID: "Thread" });
       expect(result.code, result.stderr).toBe(0);
-      expect(result.stderr).toBe("");
+      if (args.includes("--limit")) {
+        expect(result.stderr).toContain("--starting-after");
+      } else {
+        expect(result.stderr).toBe("");
+      }
       return result.stdout;
     };
     const list = async (...flags: string[]): Promise<Activity[]> => {

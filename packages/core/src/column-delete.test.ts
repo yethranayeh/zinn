@@ -13,19 +13,19 @@ test("column deletion preserves task history and records project-scoped activity
     const first = task.create({ project_id: app.id, title: "First" }, actor);
     const original = column.getByName("app", " backlog ");
     task.move({ taskKey: first.key, targetColumn: "TODO" }, actor);
-    const history = activity.getAll({ taskKey: first.key });
-    const eventsBefore = new Set(activity.getAll().map((event) => event.id));
+    const history = activity.getAll({ taskKey: first.key }).events;
+    const eventsBefore = new Set(activity.getAll().events.map((event) => event.id));
 
     assert.deepEqual(column.delete({ projectKey: "app", columnName: " BACKLOG " }, actor), original);
     assert.equal(column.getById(original.id), null);
-    assert.deepEqual(activity.getAll({ taskKey: first.key }), history);
-    const events = activity.getAll().filter((event) => !eventsBefore.has(event.id));
+    assert.deepEqual(activity.getAll({ taskKey: first.key }).events, history);
+    const events = activity.getAll().events.filter((event) => !eventsBefore.has(event.id));
     assert.equal(events.length, 1);
     assert.deepEqual(events[0], {
       ...events[0], entity_type: "column", entity_id: original.id, action: "delete",
       changes: { project: { id: app.id, key: "APP" }, name: "Backlog" },
     });
-    assert.ok(activity.getAll({ projectKey: "APP" }).some((event) => event.id === events[0]!.id));
+    assert.ok(activity.getAll({ projectKey: "APP" }).events.some((event) => event.id === events[0]!.id));
     assert.deepEqual(getDb().query("PRAGMA foreign_key_check").all(), []);
   });
 });

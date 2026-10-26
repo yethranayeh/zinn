@@ -72,7 +72,7 @@ test("emitted core works on both runtimes and its declarations need no Bun types
           sessionId: "conversation", threadId: "child", agent: "general",
           model: "vendor/model", effort: "medium",
         });
-        const identity = core.activity.getAll({ limit: 1 })[0];
+        const identity = core.activity.getAll({ limit: 1 }).events[0];
         assert.equal(identity.actor_name, null);
         assert.equal(identity.actor_source, "adapter/build-check");
         assert.equal(identity.actor_session_id, "conversation");
@@ -80,8 +80,8 @@ test("emitted core works on both runtimes and its declarations need no Bun types
         assert.equal(identity.actor_agent, "general");
         assert.equal(identity.actor_model, "vendor/model");
         assert.equal(identity.actor_effort, "medium");
-        assert.deepEqual(core.activity.getAll({ sessionId: "conversation", threadId: "child", limit: 1 }), [identity]);
-        assert.deepEqual(core.activity.getAll({ sessionId: "conversation", threadId: "other" }), []);
+        assert.deepEqual(core.activity.getAll({ sessionId: "conversation", threadId: "child", limit: 1 }).events, [identity]);
+        assert.deepEqual(core.activity.getAll({ sessionId: "conversation", threadId: "other" }).events, []);
         const db = getDb();
         assert.equal(db.query("PRAGMA integrity_check").get().integrity_check, "ok");
         assert.deepEqual(db.query("PRAGMA foreign_key_check").all(), []);

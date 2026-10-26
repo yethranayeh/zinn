@@ -31,7 +31,7 @@ function snapshot() {
 test("bulk task deletion preserves single-delete results and history across projects and archived tasks", () => {
   withTestStore(() => {
     const { first, second, survivor } = seed();
-    const beforeIds = new Set(activity.getAll().map(event => event.id));
+    const beforeIds = new Set(activity.getAll().events.map(event => event.id));
     assert.deepEqual(task.deleteMany(["app-1", second.key], actor), [first, second]);
     assert.deepEqual(task.getAll({ archive: "all" }), [survivor]);
     assert.deepEqual(relation.getAll(survivor.key), []);
@@ -40,7 +40,7 @@ test("bulk task deletion preserves single-delete results and history across proj
     assert.equal(label.getAll().length, 1);
     assert.deepEqual(getDb().query<{ task_id: string }>("SELECT task_id FROM task_search").all(), [{ task_id: survivor.id }]);
 
-    const events = activity.getAll().filter(event => !beforeIds.has(event.id)).reverse();
+    const events = activity.getAll().events.filter(event => !beforeIds.has(event.id)).reverse();
     assert.deepEqual(events.map(event => [event.entity_id, event.action]), [
       [second.id, "relation_delete"],
       [survivor.id, "relation_delete"],

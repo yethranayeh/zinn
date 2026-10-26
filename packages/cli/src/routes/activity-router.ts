@@ -16,7 +16,16 @@ import {
 import { generateCommandUsage, getOptionInputs, violatesConstraint } from "../input.js";
 import { CliError } from "../errors.js";
 import { activityTimeInputSchema } from "../activity-time.js";
-import { output, quit, validatePositionals, validateUniqueOptions } from "../lib.js";
+import {
+  diagnostic,
+  formatCommand,
+  getOutputMode,
+  isLegacyReadAllowed,
+  output,
+  quit,
+  validatePositionals,
+  validateUniqueOptions,
+} from "../lib.js";
 import { formatActivityList, presentActivities } from "../presentation/activity-presentation.js";
 
 const changedFieldList = activityChangedFieldSchema.options.join(", ");
@@ -79,6 +88,7 @@ const activityInputs = {
         },
       },
       limit: listLimitOption,
+      "starting-after": { type: "string", value: { kind: "activity-id", name: "id" } },
     },
     forms: [{ id: "default", positionals: [] }],
     constraints: [
@@ -147,9 +157,9 @@ export const activityRouter = {
 
       const limit = parseListLimit(values.limit);
 
-      let events: ReturnType<typeof activity.getAll>;
+      let page: ReturnType<typeof activity.getAll>;
       try {
-        events = activity.getAll({
+        page = activity.getAll({
           projectKey: values.project,
           projectId: values["project-id"],
           taskKey: values.task,
@@ -174,6 +184,7 @@ export const activityRouter = {
           since: parseTimeFilter(values.since, "--since"),
           until: parseTimeFilter(values.until, "--until"),
           limit,
+          startingAfter: values["starting-after"],
         });
       } catch (error) {
         const isInvalidUpperBound =
@@ -213,7 +224,7 @@ export const activityRouter = {
         throw error;
       }
 
-      output(events, (items) =>
+      output(page.events, (items) =>
         formatActivityList(
           presentActivities(items, {
             projectKey: values.project,
@@ -224,6 +235,28 @@ export const activityRouter = {
           }),
         ),
       );
+      if (page.hasMore) {
+        const continuation = tokens.flatMap((token) => {
+          if (token.kind !== "option" || token.name === "starting-after") {
+            return [];
+          }
+
+          return [token.value === undefined ? token.rawName : `${token.rawName}=${token.value}`];
+        });
+
+        if (getOutputMode() === "json") {
+          continuation.push("--json");
+        }
+
+        if (isLegacyReadAllowed()) {
+          continuation.push("--allow-legacy-read");
+        }
+
+        continuation.push("--starting-after", page.events.at(-1)!.id);
+        diagnostic(
+          `More activity. Continue with: ${formatCommand(["activity", "list", ...continuation])}`,
+        );
+      }
     },
     help: `${generateCommandUsage("activity list", activityInputs.list)}
 
@@ -249,6 +282,11 @@ Returns all matching events unless --limit is supplied.
                    Title and description match any change, without a value.
                    Use priority=none for an unassigned priority.
 --limit <n>        ${listLimitDescription}
+--starting-after <id> Continue with older events after this activity ID.
+
+Continuation accepts the same IDs as activity view. The cursor event need not
+match the filters. Omit --limit to return every remaining match.
+When more matches exist, stderr gives the command to continue, including with --json.
 
 Use one of --project, --project-id, --task or --task-id.
 --show-deleted requires --project or --task.
