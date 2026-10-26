@@ -19,7 +19,7 @@ const { label, commands, class: className, showsPrompt = true } = Astro.props;
 			aria-label={label}>
 			<code class='block'>
 				{commands.map((command) => (
-					<span data-terminal-command class='block [&:not(:first-child)]:mt-[1.8em]'>
+					<span data-terminal-command class='block whitespace-nowrap [&:not(:first-child)]:mt-[1.8em]'>
 						{showsPrompt && <span data-terminal-prompt class='text-bronze select-none' aria-hidden='true'>$ </span>}
 						<span class='whitespace-pre' set:text={command} />
 					</span>
