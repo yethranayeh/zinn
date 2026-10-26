@@ -1,0 +1,100 @@
+---
+import BaseLayout from "../../../../layouts/BaseLayout.astro";
+import ActionLink from "../../../../components/ActionLink.astro";
+import Breadcrumbs from "../../../../components/Breadcrumbs.astro";
+import Icon from "../../../../components/Icon.astro";
+import MarkdownH1 from "../../../../components/MarkdownH1.astro";
+import PaletteStrip from "../../../../components/PaletteStrip.astro";
+import Prose from "../../../../components/Prose.astro";
+import ScreenshotGallery from "../../../../components/ScreenshotGallery.astro";
+import TerminalCommands from "../../../../components/TerminalCommands.astro";
+
+import { opencodeScenes, opencodeTheme } from "../../../../config/opencode-theme";
+import { projectLinks } from "../../../../config/site";
+---
+
+<BaseLayout title={`${opencodeTheme.title} | Zinn`} description={opencodeTheme.description}>
+	<div class='site-container py-8 md:py-12'>
+		<Breadcrumbs
+			items={[
+				{ name: "Integrations", path: "/integrations/" },
+				{ name: "OpenCode theme", path: Astro.url.pathname }
+			]}
+		/>
+
+		<section class='pb-9 md:pb-12' aria-labelledby='theme-heading'>
+			<MarkdownH1 id='theme-heading'>{opencodeTheme.title}</MarkdownH1>
+			<div class='grid gap-7 md:grid-cols-[1.1fr_1fr] md:items-end md:gap-12'>
+				<div>
+					<p class='max-w-md text-lg leading-relaxed'>{opencodeTheme.introduction}</p>
+					<div class='mt-6'><PaletteStrip /></div>
+				</div>
+				<div class='flex flex-wrap gap-3 md:justify-end'>
+					<ActionLink href={opencodeTheme.download} download='zinn.json'
+						>Download theme <Icon name='download' /></ActionLink
+					>
+					<ActionLink href='#installation' variant='outline'>Installation</ActionLink>
+				</div>
+			</div>
+		</section>
+
+		<ScreenshotGallery
+			id='opencode'
+			scenes={opencodeScenes}
+			initialScene='code'
+			label='Zinn theme in OpenCode'
+			caption={`OpenCode ${opencodeTheme.verifiedVersion}`}
+		/>
+
+		<section
+			id='installation'
+			aria-labelledby='installation-heading'
+			class='mt-12 grid gap-7 border-t border-pewter pt-8 pb-6 md:mt-16 md:grid-cols-2 md:gap-12'>
+			<div>
+				<h2 id='installation-heading' class='max-w-sm text-3xl leading-tight tracking-tight md:text-4xl'>
+					Install the theme
+				</h2>
+
+				<p class='mt-5 max-w-sm text-lg leading-relaxed'>
+					Download the theme file and add it to OpenCode’s themes directory.
+				</p>
+
+				<div class='mt-6'>
+					<ActionLink href={opencodeTheme.download} download='zinn.json'
+						>Download zinn.json <Icon name='download' /></ActionLink
+					>
+				</div>
+			</div>
+			<div class='min-w-0'>
+				<Prose>
+					<ol class='space-y-4'>
+						<li>
+							Save <code>zinn.json</code> in <code>~/.config/opencode/themes/</code>.
+						</li>
+						<li>Open <code>/themes</code> in OpenCode.</li>
+						<li>Select <code>zinn</code>.</li>
+					</ol>
+
+					<p>
+						OpenCode uses the filename as the theme name. Keep it <code>zinn.json</code>
+						and choose light, dark or system mode in OpenCode’s settings.
+					</p>
+
+					<details class='mt-3'>
+						<summary class='min-h-11 cursor-pointer py-3 font-mono text-xs'>Show shell commands</summary>
+						<TerminalCommands label='Install the OpenCode theme' commands={opencodeTheme.commands} />
+					</details>
+				</Prose>
+			</div>
+		</section>
+
+		<div class='flex flex-wrap items-center justify-between gap-5 border-t border-pewter pt-6'>
+			<p class='font-mono text-xs'>Verified with OpenCode {opencodeTheme.verifiedVersion}</p>
+			<a
+				class='inline-flex min-h-11 items-center gap-2 font-mono text-xs'
+				href={`${projectLinks.github}/tree/main/integrations/opencode/theme`}
+				>Theme source <Icon name='external-link' /></a
+			>
+		</div>
+	</div>
+</BaseLayout>

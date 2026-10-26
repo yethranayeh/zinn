@@ -1,0 +1,234 @@
+---
+import type { ScreenshotScene, ScreenshotAppearance } from "./screenshot-gallery";
+
+import Button from "./Button.astro";
+import Icon from "./Icon.astro";
+import ImageLightbox from "./ImageLightbox.astro";
+import { cloudinaryImage, cloudinarySources } from "../images/cloudinary";
+
+interface Props {
+	id: string;
+	scenes: ScreenshotScene[];
+	initialScene?: string;
+	label: string;
+	caption: string;
+}
+
+const { id, scenes, initialScene, label, caption } = Astro.props;
+const firstScene = scenes.find((scene) => scene.id === initialScene) ?? scenes[0]!;
+const firstAppearance = Object.keys(firstScene.images)[0] as ScreenshotAppearance;
+const firstImage = firstScene.images[firstAppearance]!;
+const captureCount = scenes.reduce((total, scene) => total + Object.keys(scene.images).length, 0);
+const lightboxId = `${id}-lightbox`;
+---
+
+<section
+	class='border border-pewter bg-soot p-3 text-limestone scheme-dark md:p-7'
+	aria-label={`${label} screenshots`}
+	data-image-description={label}
+	data-screenshot-gallery>
+	<div class='mb-4 flex flex-wrap items-start justify-between gap-3'>
+		<div>
+			<h2 class='text-xl leading-tight tracking-tight md:text-2xl' data-gallery-title>{firstScene.label}</h2>
+			<p class='mt-1 font-mono text-[11px]/normal text-bone' data-gallery-position>
+				<span data-gallery-current>{String(scenes.indexOf(firstScene) + 1).padStart(2, "0")}</span> / {
+					String(scenes.length).padStart(2, "0")
+				} · {caption}
+			</p>
+		</div>
+
+		<div class='flex border border-bone' role='group' aria-label='Screenshot appearance' data-gallery-controls hidden>
+			{
+				(["dark", "light"] as const).map((appearance) => (
+					<Button
+						variant='ghost-inverted'
+						class='appearance min-w-16 disabled:cursor-default'
+						data-gallery-mode={appearance}
+						aria-pressed={appearance === firstAppearance}
+						disabled={!firstScene.images[appearance]}>
+						{appearance === "dark" ? "Dark" : "Light"}
+					</Button>
+				))
+			}
+		</div>
+	</div>
+
+	<a
+		class='group/image relative block aspect-[2840/1640] cursor-zoom-in border border-pewter no-underline focus-visible:outline-offset-4'
+		href={firstImage}
+		target='_blank'
+		rel='noopener'
+		data-lightbox={lightboxId}
+		data-lightbox-title={`${firstScene.label} · ${firstAppearance}`}
+		data-gallery-preview
+		aria-label={`Enlarge ${firstScene.label}, ${firstAppearance}`}>
+		<img
+			class='block h-auto w-full'
+			src={cloudinaryImage(firstImage, 1280)}
+			srcset={cloudinarySources(firstImage)}
+			sizes='(min-width:90rem) 72rem, (min-width:64rem) calc(100vw - 16rem), (min-width:48rem) calc(100vw - 10rem), calc(100vw - 5rem)'
+			alt={`${label}, ${firstScene.label}, ${firstAppearance} mode`}
+			width='2840'
+			height='1640'
+			fetchpriority='high'
+			decoding='async'
+			data-gallery-image
+		/>
+		<span
+			class='absolute right-2 bottom-2 inline-flex items-center gap-2 border border-pewter bg-limestone px-2 py-1.5 font-mono text-[10px] text-soot md:opacity-0 md:group-hover/image:opacity-100 md:group-focus-visible/image:opacity-100'>
+			Enlarge <Icon name='external-link' class='size-3.5' />
+		</span>
+	</a>
+	<div
+		class='mt-3 flex gap-3 overflow-x-auto p-1 pb-4'
+		role='group'
+		aria-label='Screenshot scenes'
+		data-gallery-strip
+		data-gallery-controls
+		hidden>
+		{
+			scenes.map((scene) => {
+				const source = scene.images[firstAppearance] ?? Object.values(scene.images)[0]!;
+				return (
+					<Button
+						variant='ghost-inverted'
+						class='thumbnail w-32 shrink-0 flex-col items-stretch gap-2 p-0 pb-2 text-[10px] md:w-36'
+						data-gallery-scene={scene.id}
+						data-label={scene.label}
+						data-images={JSON.stringify(scene.images)}
+						aria-pressed={scene.id === firstScene.id}>
+						<img
+							class='block aspect-[2840/1640] h-auto w-full border border-pewter'
+							src={cloudinaryImage(source, 280)}
+							alt=''
+							width='2840'
+							height='1640'
+							loading='lazy'
+							decoding='async'
+						/>
+						<span class='px-1'>{scene.label}</span>
+						<span class='px-1 text-bone'>{Object.keys(scene.images).join(" + ")}</span>
+					</Button>
+				);
+			})
+		}
+	</div>
+	<div class='mt-3 flex flex-wrap items-center justify-between gap-3'>
+		<p class='font-mono text-[11px] text-bone'>{captureCount} screenshots</p>
+		<div class='flex gap-2' data-gallery-controls hidden>
+			<Button variant='ghost-inverted' class='border border-bone' data-gallery-step='-1'>
+				<Icon name='arrow-left' /> Previous
+			</Button>
+			<Button variant='ghost-inverted' class='border border-bone' data-gallery-step='1'>
+				Next <Icon name='arrow-right' />
+			</Button>
+		</div>
+	</div>
+	<p class='sr-only' role='status' aria-live='polite' data-gallery-announcement></p>
+	<noscript>
+		<ul class='mt-5 flex flex-wrap gap-x-5 gap-y-3 font-mono text-xs'>
+			{
+				scenes.flatMap((scene) =>
+					Object.entries(scene.images).map(([appearance, source]) => (
+						<li>
+							<a href={source} target='_blank' rel='noopener'>
+								{scene.label} · {appearance}
+							</a>
+						</li>
+					))
+				)
+			}
+		</ul>
+	</noscript>
+</section>
+<ImageLightbox id={lightboxId} />
+
+<style>
+	.appearance[aria-pressed="true"] {
+		background: var(--color-limestone);
+		color: var(--color-soot);
+	}
+
+	.thumbnail[aria-pressed="true"] img {
+		outline: 2px solid var(--color-bronze);
+		outline-offset: 2px;
+	}
+</style>
+
+<script>
+	import type { ScreenshotAppearance, ScreenshotScene } from "./screenshot-gallery";
+	import { cloudinaryImage, cloudinarySources } from "../images/cloudinary";
+
+	for (const gallery of document.querySelectorAll<HTMLElement>("[data-screenshot-gallery]")) {
+		const thumbnails = [...gallery.querySelectorAll<HTMLButtonElement>("[data-gallery-scene]")];
+		const scenes: ScreenshotScene[] = thumbnails.map((button) => ({
+			id: button.dataset.galleryScene!,
+			label: button.dataset.label!,
+			images: JSON.parse(button.dataset.images!)
+		}));
+		let current = thumbnails.findIndex((button) => button.getAttribute("aria-pressed") === "true");
+		let appearance = gallery.querySelector<HTMLButtonElement>("[data-gallery-mode][aria-pressed=true]")!.dataset
+			.galleryMode as ScreenshotAppearance;
+		const modes = [...gallery.querySelectorAll<HTMLButtonElement>("[data-gallery-mode]")];
+		const preview = gallery.querySelector<HTMLAnchorElement>("[data-gallery-preview]")!;
+		const image = gallery.querySelector<HTMLImageElement>("[data-gallery-image]")!;
+		const title = gallery.querySelector<HTMLElement>("[data-gallery-title]")!;
+		const position = gallery.querySelector<HTMLElement>("[data-gallery-current]")!;
+		const announcement = gallery.querySelector<HTMLElement>("[data-gallery-announcement]")!;
+		const strip = gallery.querySelector<HTMLElement>("[data-gallery-strip]")!;
+
+		function revealThumbnail() {
+			const activeBounds = thumbnails[current]!.getBoundingClientRect();
+			const stripBounds = strip.getBoundingClientRect();
+			if (activeBounds.left < stripBounds.left || activeBounds.right > stripBounds.right) {
+				strip.scrollLeft += activeBounds.left - stripBounds.left;
+			}
+		}
+
+		function selectScene(index: number, mode = appearance) {
+			current = (index + scenes.length) % scenes.length;
+			const scene = scenes[current]!;
+			appearance = scene.images[mode] ? mode : (Object.keys(scene.images)[0] as ScreenshotAppearance);
+			const source = scene.images[appearance]!;
+			image.srcset = cloudinarySources(source);
+			image.src = cloudinaryImage(source, 1280);
+			image.alt = `${gallery.dataset.imageDescription}, ${scene.label}, ${appearance} mode`;
+			preview.href = source;
+			preview.dataset.lightboxTitle = `${scene.label} · ${appearance}`;
+			preview.setAttribute("aria-label", `Enlarge ${scene.label}, ${appearance}`);
+			title.textContent = scene.label;
+			position.textContent = String(current + 1).padStart(2, "0");
+			announcement.textContent = `${scene.label}, ${appearance}. Scene ${current + 1} of ${scenes.length}.`;
+
+			for (const button of modes) {
+				const buttonMode = button.dataset.galleryMode as ScreenshotAppearance;
+				button.disabled = !scene.images[buttonMode];
+				button.setAttribute("aria-pressed", String(buttonMode === appearance));
+				button.title = button.disabled ? `No ${buttonMode} capture for this scene` : "";
+			}
+			thumbnails.forEach((button, sceneIndex) => {
+				button.setAttribute("aria-pressed", String(sceneIndex === current));
+				const thumbnail = button.querySelector<HTMLImageElement>("img")!;
+				const thumbnailScene = scenes[sceneIndex]!;
+				thumbnail.src = cloudinaryImage(
+					thumbnailScene.images[appearance] ?? Object.values(thumbnailScene.images)[0]!,
+					280
+				);
+			});
+			revealThumbnail();
+		}
+
+		thumbnails.forEach((button, index) => button.addEventListener("click", () => selectScene(index)));
+		modes.forEach((button) =>
+			button.addEventListener("click", () => selectScene(current, button.dataset.galleryMode as ScreenshotAppearance))
+		);
+		for (const button of gallery.querySelectorAll<HTMLButtonElement>("[data-gallery-step]")) {
+			button.addEventListener("click", () => selectScene(current + Number(button.dataset.galleryStep)));
+		}
+		for (const controls of gallery.querySelectorAll<HTMLElement>("[data-gallery-controls]")) {
+			controls.hidden = false;
+		}
+		revealThumbnail();
+		new ResizeObserver(revealThumbnail).observe(strip);
+	}
+</script>

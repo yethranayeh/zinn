@@ -1,0 +1,39 @@
+---
+import PageLayout from "../../layouts/PageLayout.astro";
+import Chip from "../../components/Chip.astro";
+import Icon from "../../components/Icon.astro";
+import MarkdownH1 from "../../components/MarkdownH1.astro";
+
+import { opencodeScenes, opencodeTheme } from "../../config/opencode-theme";
+import { cloudinaryImage } from "../../images/cloudinary";
+
+const preview = opencodeScenes.find((scene) => scene.id === "code")!;
+---
+
+<PageLayout title='Integrations | Zinn' description='Themes and integrations maintained by Zinn.'>
+	<MarkdownH1>Integrations</MarkdownH1>
+
+	<p class='max-w-xl text-lg leading-relaxed'>Themes and integrations maintained by Zinn.</p>
+
+	<a class='group mt-10 block max-w-3xl border border-pewter no-underline hover:no-underline' href={opencodeTheme.path}>
+		<img
+			class='aspect-[2840/1640] h-auto w-full'
+			src={cloudinaryImage(preview.images.dark!, 1280)}
+			alt='The Zinn theme displaying code and tables in OpenCode'
+			width='2840'
+			height='1640'
+		/>
+		<div class='p-5 md:p-7'>
+			<div class='flex flex-wrap items-center justify-between gap-3'>
+				<h2 class='text-2xl tracking-tight'>Zinn theme</h2>
+				<Chip>OpenCode</Chip>
+			</div>
+			<p class='mt-3 text-base leading-relaxed'>
+				{opencodeTheme.introduction}
+			</p>
+			<span class='mt-5 inline-flex min-h-11 items-center gap-2 font-mono text-xs group-hover:underline'
+				>View theme <Icon name='arrow-right' /></span
+			>
+		</div>
+	</a>
+</PageLayout>

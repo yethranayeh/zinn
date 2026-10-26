@@ -6,7 +6,12 @@ import MarkdownActions from "./MarkdownActions.astro";
 type Props = HTMLAttributes<"h1">;
 
 const pathname = Astro.url.pathname.replace(/\/$/, "");
-const showMarkdownActions = pathname === "/docs" || pathname.startsWith("/docs/") || pathname === "/changelog";
+const showMarkdownActions =
+	pathname === "/docs" ||
+	pathname.startsWith("/docs/") ||
+	pathname === "/changelog" ||
+	pathname === "/integrations" ||
+	pathname.startsWith("/integrations/");
 
 const { class: className, ...attributes } = Astro.props;
 ---

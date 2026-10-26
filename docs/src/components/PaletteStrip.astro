@@ -1,0 +1,13 @@
+---
+const inks = ["limestone", "bone", "clay", "cinnabar", "bronze", "soot", "pewter"];
+---
+
+<ul class='flex gap-1' aria-label='Zinn palette'>
+	{
+		inks.map((ink) => (
+			<li class='h-3.5 w-6 border border-soot/20' style={`background-color: var(--color-${ink})`} title={ink}>
+				<span class='sr-only'>{ink}</span>
+			</li>
+		))
+	}
+</ul>

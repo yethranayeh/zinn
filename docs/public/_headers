@@ -6,3 +6,6 @@
 
 /llms.txt
   Content-Type: text/markdown; charset=utf-8
+
+/integrations/opencode/theme/zinn.json
+  Content-Disposition: attachment; filename="zinn.json"
