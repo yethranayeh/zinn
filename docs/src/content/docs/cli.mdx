@@ -229,11 +229,14 @@ zinn task list
 zinn task list MDR
 zinn task list --all-projects
 zinn task list MDR --label CLI --label Groom
+zinn task list MDR --limit 10
 zinn task list MDR --column 'In Progress'
 zinn task list --column Done --all
 zinn task view MDR-1
 zinn task view MDR-1 --history
 ```
+
+`task list`, `task search` and `activity list` accept `--limit <n>`, a decimal integer from `1` through `11871`. The cap applies after all filters and preserves the existing order. Omit it to return every match. With `--json`, each command returns an array.
 
 Task lists are previews, so they _omit_ descriptions, but `task view` prints the full description.
 
@@ -506,7 +509,7 @@ zinn activity list --changed column=Review --changed column=Done --limit 10
 zinn activity view 019abcdf-1234-7
 ```
 
-`--limit` caps the newest matching events and must be a positive safe integer. Reorders and both affected-task events from relation changes are included.
+`--limit` caps the newest matching events and must be an integer from `1` through `11871`. Reorders and both affected-task events from relation changes are included.
 
 `--since` and `--until` select events on or after the lower bound and on or before the upper bound, using their recorded `created_at`. Use either flag alone or both together. Equal bounds select events at exactly that millisecond. `--until` must be at or after `--since`. All supplied filters must match before `--limit` applies.
 

@@ -2,6 +2,7 @@ import type { PresentedActivity } from "../result-schemas.js";
 import type { RouteDef } from "../types.js";
 import type { CommandInput } from "../input.js";
 
+import { listLimitOption, listLimitDescription, parseListLimit } from "../list-limit.js";
 import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
 import {
@@ -9,9 +10,7 @@ import {
   activityActionSchema,
   activityChangedFieldSchema,
   activityChangedSchema,
-  activityLimitMessage,
   CoreError,
-  positiveIntegerPattern,
 } from "@zinn-dev/core";
 
 import { generateCommandUsage, getOptionInputs, violatesConstraint } from "../input.js";
@@ -79,10 +78,7 @@ const activityInputs = {
           description: `Fields: ${changedFieldList}. Omit the value to match any change. Values apply to column, priority and added labels, ignoring case. priority=none matches an unassigned priority.`,
         },
       },
-      limit: {
-        type: "string",
-        value: { kind: "positive-integer", name: "n", pattern: `^${positiveIntegerPattern}\\d?$` },
-      },
+      limit: listLimitOption,
     },
     forms: [{ id: "default", positionals: [] }],
     constraints: [
@@ -149,11 +145,7 @@ export const activityRouter = {
         });
       }
 
-      // Safe integers can have one more digit than readable task numbers.
-      const limitPattern = new RegExp(activityInputs.list.options.limit.value.pattern);
-      if (values.limit !== undefined && !limitPattern.test(values.limit)) {
-        quit(activityLimitMessage, undefined, { argument: "--limit" });
-      }
+      const limit = parseListLimit(values.limit);
 
       let events: ReturnType<typeof activity.getAll>;
       try {
@@ -181,7 +173,7 @@ export const activityRouter = {
           changed: values.changed?.map(parseChangedFilter),
           since: parseTimeFilter(values.since, "--since"),
           until: parseTimeFilter(values.until, "--until"),
-          limit: values.limit === undefined ? undefined : Number(values.limit),
+          limit,
         });
       } catch (error) {
         const isInvalidUpperBound =
@@ -256,7 +248,7 @@ Returns all matching events unless --limit is supplied.
                    Without a value, labels match additions and removals.
                    Title and description match any change, without a value.
                    Use priority=none for an unassigned priority.
---limit <n>        Return at most n matching events.
+--limit <n>        ${listLimitDescription}
 
 Use one of --project, --project-id, --task or --task-id.
 --show-deleted requires --project or --task.

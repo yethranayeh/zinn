@@ -413,9 +413,9 @@ export const task = {
 
     if (props.projectKey == null) {
       const taskMatches = filterTasksByLabels(dbTask.getAll(props.archive), props.labelNames);
-      return filterTasksByColumn(taskMatches, props.columnName).map((taskMatch) =>
-        attachTaskKey(taskMatch),
-      );
+      return filterTasksByColumn(taskMatches, props.columnName)
+        .slice(0, props.limit)
+        .map((taskMatch) => attachTaskKey(taskMatch));
     }
 
     const taskProject = dbProject.getByKey(props.projectKey);
@@ -431,9 +431,9 @@ export const task = {
       dbTask.getAllByProjectId(taskProject.id, props.archive),
       props.labelNames,
     );
-    return filterTasksByColumn(taskMatches, props.columnName).map((taskMatch) =>
-      attachTaskKey(taskMatch, taskProject.key),
-    );
+    return filterTasksByColumn(taskMatches, props.columnName)
+      .slice(0, props.limit)
+      .map((taskMatch) => attachTaskKey(taskMatch, taskProject.key));
   },
   getByKey: getTaskByKey,
   search: (input: TaskSearchInput) => {

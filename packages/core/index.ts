@@ -143,3 +143,9 @@ export { databaseStateSchema } from "./src/migrations/classify.js";
 export { info, infoDatabaseStateSchema } from "./src/operations/info.js";
 export { CoreError, InputValidationError, isMissingFileError } from "./src/errors.js";
 export { SqliteError, isSqliteErrorCode, isSqliteErrorFamily } from "./src/sqlite/database.js";
+export {
+  MAX_LIST_LIMIT,
+  listLimitSchema,
+  listLimitMessage,
+  listLimitPattern,
+} from "./src/schemas/integer.js";

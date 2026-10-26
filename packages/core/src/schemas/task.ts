@@ -4,13 +4,14 @@ import { InputValidationError } from "../errors.js";
 import { standardizeName, standardizeProjectKey } from "../lib.js";
 import { titleTextSchema } from "./title-text.js";
 import { columnNameSchema } from "./column.js";
-
 import { labelNameSchema } from "./label.js";
 import { descriptionSchema, descriptionEditSchema } from "./description.js";
 import { relationTypeSchema } from "./relation.js";
 import { projectKeyPattern } from "./project.js";
+import { positiveIntegerPattern, listLimitSchema } from "./integer.js";
 
-export const positiveIntegerPattern = "[1-9]\\d{0,14}";
+export { positiveIntegerPattern } from "./integer.js";
+export { listLimitMessage as searchLimitMessage } from "./integer.js";
 
 const taskKeyRegex = new RegExp(`^(${projectKeyPattern})-(${positiveIntegerPattern})$`);
 
@@ -105,11 +106,11 @@ export const taskEditSchema = z
   }, "Cannot add and remove the same label");
 
 const searchQueryMessage = "Search query cannot be blank";
-export const searchLimitMessage = "Search limit must be a positive integer";
 
 export const taskArchiveFilterSchema = z.enum(["active", "archived", "all"]);
 
 export const taskListSchema = z.strictObject({
+  limit: listLimitSchema.optional(),
   projectKey: z.string().optional(),
   columnName: columnNameSchema.optional(),
   archive: taskArchiveFilterSchema.optional(),
@@ -123,11 +124,7 @@ export const taskSearchSchema = z.strictObject({
   projectKey: z.string().optional(),
   archive: taskArchiveFilterSchema.optional(),
   labelNames: z.array(labelNameSchema).optional(),
-  limit: z
-    .number({ error: searchLimitMessage })
-    .int(searchLimitMessage)
-    .min(1, searchLimitMessage)
-    .optional(),
+  limit: listLimitSchema.optional(),
 });
 
 export type TaskPriority = z.infer<typeof taskPrioritySchema>;

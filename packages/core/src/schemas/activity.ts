@@ -3,12 +3,13 @@ import { z } from "zod";
 import { standardizeProjectKey } from "../lib.js";
 import { parseTaskKey } from "./task.js";
 import { projectCreateSchema } from "./project.js";
+import { listLimitSchema } from "./integer.js";
 
+export { listLimitMessage as activityLimitMessage } from "./integer.js";
 export const minimumActivityIdLength = 8;
-export const activityLimitMessage = "Activity limit must be a positive safe integer";
-const UUID_HEX_LENGTH = 32;
 export const activityIdentitySelectors = ["projectKey", "projectId", "taskKey", "taskId"] as const;
 
+const UUID_HEX_LENGTH = 32;
 const maximumDateTimestamp = 8_640_000_000_000_000;
 const timestampMessage =
   "Activity time must be integer epoch milliseconds within the JavaScript Date range";
@@ -129,11 +130,7 @@ export const activityListSchema = z
     changed: z.array(activityChangedSchema).optional(),
     since: activityTimestampSchema.optional(),
     until: activityTimestampSchema.optional(),
-    limit: z
-      .number({ error: activityLimitMessage })
-      .int(activityLimitMessage)
-      .min(1, activityLimitMessage)
-      .optional(),
+    limit: listLimitSchema.optional(),
   })
   .superRefine((value, context) => {
     const hasReversedBounds =

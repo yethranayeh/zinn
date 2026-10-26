@@ -29,12 +29,12 @@ test("activity task keys share readable-key parsing and normalize project casing
   }
 });
 
-test("activity lists accept optional filters and positive safe-integer limits", () => {
+test("activity lists accept optional filters and limits from 1 through 11871", () => {
   expect(activityListSchema.parse({})).toEqual({});
-  expect(activityListSchema.parse({ taskKey: "app-1", limit: Number.MAX_SAFE_INTEGER }))
-    .toEqual({ taskKey: "APP-1", limit: Number.MAX_SAFE_INTEGER });
-  for (const limit of [0, -1, 1.5, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1, "2", null]) {
-    expect(activityListSchema.safeParse({ limit }).error?.issues).toMatchObject([{ path: ["limit"] }]);
+  expect(activityListSchema.parse({ taskKey: "app-1", limit: 11_871 }))
+    .toEqual({ taskKey: "APP-1", limit: 11_871 });
+  for (const limit of [0, -1, 1.5, 11_872, Infinity, NaN, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER + 1, "2", null]) {
+    expect(activityListSchema.safeParse({ limit }).error?.issues[0]?.path).toEqual(["limit"]);
   }
   expect(activityListSchema.safeParse({ unknown: "APP" }).success).toBe(false);
 });

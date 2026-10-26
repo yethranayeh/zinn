@@ -9,8 +9,6 @@ import { parseArgs } from "node:util";
 import {
   task,
   project,
-  positiveIntegerPattern,
-  searchLimitMessage,
   parseTaskKey,
   taskCreateSchema,
   taskEditSchema,
@@ -18,6 +16,7 @@ import {
   taskPrioritySchema,
 } from "@zinn-dev/core";
 
+import { listLimitOption, listLimitDescription, parseListLimit } from "../list-limit.js";
 import { CliError } from "../errors.js";
 import {
   generateCommandUsage,
@@ -141,6 +140,7 @@ const taskInputs = {
   },
   list: {
     options: {
+      limit: listLimitOption,
       archived: { type: "boolean" },
       all: { type: "boolean" },
       "all-projects": { type: "boolean" },
@@ -161,10 +161,7 @@ const taskInputs = {
       archived: { type: "boolean" },
       all: { type: "boolean" },
       "all-projects": { type: "boolean" },
-      limit: {
-        type: "string",
-        value: { kind: "positive-integer", name: "n", pattern: `^${positiveIntegerPattern}$` },
-      },
+      limit: listLimitOption,
       label: { type: "string", multiple: true, value: { kind: "label-name", name: "name" } },
     },
     forms: [
@@ -423,7 +420,9 @@ Examples:
       const projectKey = resolveProjectKey(positionals[0], { allProjects: values["all-projects"] });
       const archive = values.all ? "all" : values.archived ? "archived" : "active";
 
+      const limit = parseListLimit(values.limit);
       const tasks = task.getAll({
+        limit,
         projectKey,
         archive,
         labelNames: values.label,
@@ -442,6 +441,7 @@ Use --archived to list archived tasks or --all to list both.
 Repeat --label to require every specified label.
 --column matches an exact column name. Column and label matching ignore case.
 All supplied filters must match.
+--limit <n>: ${listLimitDescription}
 
 Use 'task view' to see a task's full details, including its description.
 
@@ -473,18 +473,13 @@ Example: zinn task list MDR --label cli`,
       }
 
       const archive = values.all ? "all" : values.archived ? "archived" : "active";
-      const limitPattern = new RegExp(taskInputs.search.options.limit.value.pattern);
-
-      if (values.limit !== undefined && !limitPattern.test(values.limit)) {
-        quit(searchLimitMessage, undefined, { argument: "--limit" });
-      }
 
       const isTaskKeyQuery = parseTaskKey(query.trim()) !== null;
       const projectKey = resolveProjectKey(positionals[1], {
         allProjects: values["all-projects"],
         useDefault: !isTaskKeyQuery,
       });
-      const limit = values.limit === undefined ? undefined : Number(values.limit);
+      const limit = parseListLimit(values.limit);
       const result = task.search({
         query,
         projectKey,
@@ -514,7 +509,7 @@ Every word must match. Quote a query with several words.
 A task-key query overrides the configured default project; a typed project key still filters it.
 
 By default, only active tasks are searched. Use --archived to search archived tasks or --all to search both.
-Use --limit to show at most <n> results.
+--limit <n>: ${listLimitDescription}
 Repeat --label to require every specified label, ignoring case.
 
 Example: zinn task search 'refinement quota' MDR --limit 5`,
