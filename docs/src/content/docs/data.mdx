@@ -4,11 +4,17 @@ description: Learn where Zinn stores data and how database backups, restores, an
 breadcrumb: Data and backups
 ---
 
+import Aside from "../../components/Aside.astro";
+
 # Data and backups
 
 Zinn stores every project in one local SQLite database. The default database is `~/.zinn/data/zinn.sqlite`. The backups of the database are stored in `~/.zinn/backups/`. `ZINN_DIR` or a settings file can select another Zinn directory. See [Settings](/docs/settings) for directory selection and precedence.
 
-Keep the active Zinn directory on a local filesystem, outside network shares such as SMB and synchronized folders such as OneDrive or Dropbox. SQLite's [WAL mode](https://sqlite.org/wal.html) coordinates processes on the same machine through shared memory; file synchronization does not coordinate database transactions.
+<Aside label='Keep the database on a local filesystem'>
+
+Keep the active Zinn directory outside network shares such as SMB and synchronized folders such as OneDrive or Dropbox. SQLite's [WAL mode](https://sqlite.org/wal.html) coordinates processes on the same machine through shared memory; file synchronization does not coordinate database transactions.
+
+</Aside>
 
 The CLI and core library can share the selected database. On a local filesystem, commands can share it too: Zinn waits up to 30 seconds for each lock acquisition, then fails if the lock is still held. Of course, the command's total running time can exceed 30 seconds.
 

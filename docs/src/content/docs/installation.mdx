@@ -5,6 +5,7 @@ breadcrumb: Install
 ---
 
 import AgentSetup from "../../components/AgentSetup.astro";
+import Aside from "../../components/Aside.astro";
 
 # Install Zinn
 
@@ -98,7 +99,13 @@ npm i @zinn-dev/core@latest
 
 Name `@latest`: npm saves core with a `^0.x` range, which stays within one minor release.
 
-A newer release upgrades an older database the first time it opens it, saving a backup first. Older releases then open that database read-only, so upgrade the CLI and core together when they share a database.
+A newer release upgrades an older database the first time it opens it, saving a backup first.
+
+<Aside label='Upgrade the CLI and core together'>
+
+Older releases open an upgraded database read-only. For example, a newer CLI upgrades the database, then a project that still depends on an older core opens it. When the CLI and core share a database, upgrade them together.
+
+</Aside>
 
 See [Data and backups](/docs/data) for backup, restore, and database-upgrade behavior.
 
