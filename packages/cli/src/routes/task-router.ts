@@ -14,6 +14,7 @@ import {
   taskEditSchema,
   taskDeleteManySchema,
   taskPrioritySchema,
+  taskSortSchema,
 } from "@zinn-dev/core";
 
 import { listLimitOption, listLimitDescription, parseListLimit } from "../list-limit.js";
@@ -141,6 +142,10 @@ const taskInputs = {
   list: {
     options: {
       limit: listLimitOption,
+      sort: {
+        type: "string",
+        value: { kind: "enum", name: "key", choices: taskSortSchema.options },
+      },
       archived: { type: "boolean" },
       all: { type: "boolean" },
       "all-projects": { type: "boolean" },
@@ -421,8 +426,16 @@ Examples:
       const archive = values.all ? "all" : values.archived ? "archived" : "active";
 
       const limit = parseListLimit(values.limit);
+      const sort = taskSortSchema.optional().safeParse(values.sort);
+      if (!sort.success) {
+        quit(`Unknown sort "${values.sort}". Use ${taskSortSchema.options.join(", ")}`, undefined, {
+          argument: "--sort",
+        });
+      }
+
       const tasks = task.getAll({
         limit,
+        sort: sort.data,
         projectKey,
         archive,
         labelNames: values.label,
@@ -441,6 +454,8 @@ Use --archived to list archived tasks or --all to list both.
 Repeat --label to require every specified label.
 --column matches an exact column name. Column and label matching ignore case.
 All supplied filters must match.
+--sort activity lists the most recently active tasks first, including comments and relations.
+Equal activity times keep board order. Without --sort, board order is preserved.
 --limit <n>: ${listLimitDescription}
 
 Use 'task view' to see a task's full details, including its description.

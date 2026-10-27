@@ -42,6 +42,7 @@ import {
   getTaskByKey,
   findTaskByExactKey,
   attachTaskKey,
+  getTaskLastActivityTimes,
   resolveLabels,
   recordTaskActivity,
   updateTaskSearchRecord,
@@ -410,17 +411,9 @@ export const task = {
   },
   getAll: (input: TaskListInput = {}) => {
     const props = validateTaskInput(taskListSchema, input);
+    const taskProject = props.projectKey == null ? null : dbProject.getByKey(props.projectKey);
 
-    if (props.projectKey == null) {
-      const taskMatches = filterTasksByLabels(dbTask.getAll(props.archive), props.labelNames);
-      return filterTasksByColumn(taskMatches, props.columnName)
-        .slice(0, props.limit)
-        .map((taskMatch) => attachTaskKey(taskMatch));
-    }
-
-    const taskProject = dbProject.getByKey(props.projectKey);
-
-    if (taskProject == null) {
+    if (props.projectKey != null && taskProject == null) {
       throw new CoreError(`Project with key "${props.projectKey}" does not exist`, "missing", {
         entity: "project",
         key: props.projectKey,
@@ -428,12 +421,23 @@ export const task = {
     }
 
     const taskMatches = filterTasksByLabels(
-      dbTask.getAllByProjectId(taskProject.id, props.archive),
+      taskProject == null
+        ? dbTask.getAll(props.archive)
+        : dbTask.getAllByProjectId(taskProject.id, props.archive),
       props.labelNames,
     );
-    return filterTasksByColumn(taskMatches, props.columnName)
+    const filteredTasks = filterTasksByColumn(taskMatches, props.columnName);
+
+    if (props.sort === "activity") {
+      const lastActivityTimes = getTaskLastActivityTimes(filteredTasks);
+      filteredTasks.sort(
+        (left, right) => lastActivityTimes.get(right.id)! - lastActivityTimes.get(left.id)!,
+      );
+    }
+
+    return filteredTasks
       .slice(0, props.limit)
-      .map((taskMatch) => attachTaskKey(taskMatch, taskProject.key));
+      .map((taskMatch) => attachTaskKey(taskMatch, taskProject?.key));
   },
   getByKey: getTaskByKey,
   search: (input: TaskSearchInput) => {

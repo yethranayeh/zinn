@@ -230,6 +230,7 @@ zinn task list MDR
 zinn task list --all-projects
 zinn task list MDR --label CLI --label Groom
 zinn task list MDR --limit 10
+zinn task list MDR --sort activity --limit 10
 zinn task list MDR --column 'In Progress'
 zinn task list --column Done --all
 zinn task view MDR-1
@@ -237,6 +238,8 @@ zinn task view MDR-1 --history
 ```
 
 `task list`, `task search` and `activity list` accept `--limit <n>`, a decimal integer from `1` through `11871`. The cap applies after all filters and preserves the existing order. Omit it to return every match. With `--json`, each command returns an array.
+
+`task list --sort activity` lists tasks by their newest recorded activity, including task changes, comments and relations. Tasks without recorded activity use their update time. Newest comes first, and equal times keep board order. Filters apply before sorting, and `--limit` caps the sorted result. Without `--sort`, board order is preserved. Sorting changes only the order in text and JSON.
 
 Task lists are previews, so they _omit_ descriptions, but `task view` prints the full description.
 

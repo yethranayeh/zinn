@@ -81,6 +81,7 @@ export {
   taskPrioritySchema,
   taskEditSchema,
   taskListSchema,
+  taskSortSchema,
   taskSearchSchema,
   taskOrderManySchema,
   taskDeleteManySchema,

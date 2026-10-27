@@ -108,9 +108,11 @@ export const taskEditSchema = z
 const searchQueryMessage = "Search query cannot be blank";
 
 export const taskArchiveFilterSchema = z.enum(["active", "archived", "all"]);
+export const taskSortSchema = z.enum(["activity"]);
 
 export const taskListSchema = z.strictObject({
   limit: listLimitSchema.optional(),
+  sort: taskSortSchema.optional(),
   projectKey: z.string().optional(),
   columnName: columnNameSchema.optional(),
   archive: taskArchiveFilterSchema.optional(),

@@ -56,6 +56,8 @@ The client supplies its own `release` identity: `source` for development and `pu
 
 `task.getAll`, `task.search` and `activity.getAll` accept an optional numeric `limit`, an integer from `1` through `11871`, inclusive. The cap applies after all filters and preserves the existing order. Omitting it returns every match. `task.search` counts all hidden archived matches before applying the cap.
 
+`task.getAll({ sort: "activity", limit: 10 })` returns the ten most recently active tasks. Last activity is the newest recorded task event, including comments and relations, or `updated_at` when no events exist. Filters apply before sorting, and the limit applies afterward. Equal times keep board order. Omitting `sort` preserves board order. Task records keep their existing fields.
+
 Names and titles are trimmed and cannot be blank or contain line breaks or control characters.
 
 - Edits change only supplied fields. Valid edits that leave values unchanged preserve modification timestamps and record no activity.
