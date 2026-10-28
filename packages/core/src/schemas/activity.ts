@@ -4,24 +4,14 @@ import { standardizeProjectKey } from "../lib.js";
 import { parseTaskKey } from "./task.js";
 import { projectCreateSchema } from "./project.js";
 import { listLimitSchema } from "./integer.js";
+import { timestampSchema } from "./timestamp.js";
 
 export { listLimitMessage as activityLimitMessage } from "./integer.js";
 export const minimumActivityIdLength = 8;
 export const activityIdentitySelectors = ["projectKey", "projectId", "taskKey", "taskId"] as const;
-
-const UUID_HEX_LENGTH = 32;
-const maximumDateTimestamp = 8_640_000_000_000_000;
-const timestampMessage =
-  "Activity time must be integer epoch milliseconds within the JavaScript Date range";
-export const activityTimestampSchema = z
-  .number({ error: timestampMessage })
-  .int(timestampMessage)
-  .min(-maximumDateTimestamp, timestampMessage)
-  .max(maximumDateTimestamp, timestampMessage);
-
+export const activityTimestampSchema = timestampSchema;
 export const activityProjectKeySchema =
   projectCreateSchema.shape.key.transform(standardizeProjectKey);
-
 export const activityActionSchema = z.enum([
   "create",
   "edit",
@@ -37,7 +27,14 @@ export const activityActionSchema = z.enum([
   "comment_delete",
 ]);
 export const activityEntityTypeSchema = z.enum(["task", "project", "column", "label"]);
-const changedFieldNames = ["column", "priority", "labels", "title", "description"] as const;
+const changedFieldNames = [
+  "column",
+  "priority",
+  "labels",
+  "title",
+  "description",
+  "due_at",
+] as const;
 const changedFieldMessage = `Changed field must be one of ${changedFieldNames.join(", ")}`;
 export const activityChangedFieldSchema = z.enum(changedFieldNames, {
   error: changedFieldMessage,
@@ -46,7 +43,7 @@ export const activityChangedSchema = z.discriminatedUnion(
   "field",
   [
     z.strictObject({
-      field: activityChangedFieldSchema.exclude(["priority", "title", "description"]),
+      field: activityChangedFieldSchema.exclude(["priority", "title", "description", "due_at"]),
       value: z.string().min(1, "Changed value cannot be empty").optional(),
     }),
     z.strictObject({
@@ -54,9 +51,9 @@ export const activityChangedSchema = z.discriminatedUnion(
       value: z.string().min(1, "Changed value cannot be empty").nullable().optional(),
     }),
     z.strictObject({
-      field: activityChangedFieldSchema.extract(["title", "description"]),
+      field: activityChangedFieldSchema.extract(["title", "description", "due_at"]),
       value: z
-        .never({ error: "Title and description filters match any change. Omit the value" })
+        .never({ error: "Title, description and due_at filters match any change. Omit the value" })
         .optional(),
     }),
   ],
@@ -72,6 +69,7 @@ export const activityTaskKeySchema = z
   .refine((value) => parseTaskKey(value) != null, "Invalid task key. Expected format PROJECT-1")
   .transform(standardizeProjectKey);
 
+const UUID_HEX_LENGTH = 32;
 const activityReferenceSchema = z.string().superRefine((value, context) => {
   const hex = value.replaceAll("-", "").toLowerCase();
   const canonical = hex

@@ -9,6 +9,7 @@ import {
   minimumActivityIdLength,
   project,
   task,
+  timestampSchema,
 } from "@zinn-dev/core";
 import { formatDescriptionPreview } from "./description-presentation.js";
 import { formatRows } from "./row-layout.js";
@@ -37,6 +38,7 @@ const RECORDED_FIELDS = new Set([
   "title",
   "description",
   "priority",
+  "due_at",
   "color",
   "column",
   "columns",
@@ -383,6 +385,13 @@ function isRecordedChangePair(event: Activity, value: unknown): value is [unknow
   );
 }
 
+function formatDeadline(value: unknown) {
+  const parsed = timestampSchema.safeParse(value);
+  return parsed.success
+    ? formatLocalTime(parsed.data, { includesSeconds: true })
+    : summarizeValue(value);
+}
+
 function formatRemovedTasks(entry: PresentedActivity) {
   return entry.removedTasks.map((identity) => `removed ${identity.key} (${identity.id})`);
 }
@@ -419,6 +428,11 @@ function formatChangeSummary(
           }
           if (field === "title" && options.omitsIdentity && isSnapshot) {
             return summarizeValue(value);
+          }
+          if (field === "due_at") {
+            return isRecordedChangePair(event, value)
+              ? `${field}: ${formatDeadline(value[0])} → ${formatDeadline(value[1])}`
+              : `${field}: ${formatDeadline(value)}`;
           }
           if (isRecordedChangePair(event, value)) {
             return `${field}: ${summarizeValue(value[0])} → ${summarizeValue(value[1])}`;
@@ -531,9 +545,10 @@ function formatRecordedChanges(event: Activity) {
       unknownFields[field] = value;
       continue;
     }
+    const formatValue = field === "due_at" ? formatDeadline : formatRecordedValue;
     const body = isRecordedChangePair(event, value)
-      ? `${formatSection("From", formatRecordedValue(value[0]))}\n\n${formatSection("To", formatRecordedValue(value[1]))}`
-      : formatRecordedValue(value);
+      ? `${formatSection("From", formatValue(value[0]))}\n\n${formatSection("To", formatValue(value[1]))}`
+      : formatValue(value);
     sections.push(formatSection(field, body));
   }
   if (Object.keys(unknownFields).length > 0) {

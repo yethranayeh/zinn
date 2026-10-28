@@ -113,6 +113,7 @@ function createTask(title: string) {
     title,
     description: "original description",
     priority: null,
+    due_at: null,
     comment_count: 0,
     task_order: "a0",
     created_at: 10,

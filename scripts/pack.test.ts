@@ -168,9 +168,9 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
       const selected = runCli(["activity", "list", "--since", new Date(timestamp).toISOString(), "--until", String(timestamp), "--json"], timeOptions);
       expect(selected.code, selected.stderr).toBe(0);
       expect(JSON.parse(selected.stdout)).toEqual(recorded);
-      const timeParserUrl = pathToFileURL(join(packedCli, "src/activity-time.js")).href;
+      const timeParserUrl = pathToFileURL(join(packedCli, "src/timestamp-input.js")).href;
       const timeCode = `
-        const { activityTimeInputSchema: schema } = await import(${JSON.stringify(timeParserUrl)});
+        const { timestampInputSchema: schema } = await import(${JSON.stringify(timeParserUrl)});
         console.log(JSON.stringify({
           fractions: ["1", "12", "123"].map(fraction => schema.parse("2026-10-25T13:00:00." + fraction + "+01:00")),
           invalid: ["2026-02-29T00:00:00Z", "2026-10-25T24:00:00Z", "2016-12-31T23:59:60Z", "2026-10-25T12:00:00.1234Z", "8640000000000001"].map(value => schema.safeParse(value).success)

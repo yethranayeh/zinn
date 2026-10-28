@@ -9,6 +9,7 @@ import { descriptionSchema, descriptionEditSchema } from "./description.js";
 import { relationTypeSchema } from "./relation.js";
 import { projectKeyPattern } from "./project.js";
 import { positiveIntegerPattern, listLimitSchema } from "./integer.js";
+import { timestampSchema } from "./timestamp.js";
 
 export { positiveIntegerPattern } from "./integer.js";
 export { listLimitMessage as searchLimitMessage } from "./integer.js";
@@ -67,6 +68,7 @@ export const taskCreateSchema = z.strictObject({
   title: taskTitleSchema,
   description: descriptionSchema.default(null),
   priority: taskPrioritySchema.nullable().optional(),
+  due_at: timestampSchema.nullable().optional(),
   labelNames: z.array(labelNameSchema).optional(),
   columnName: columnNameSchema.optional(),
   // The new task is the source and targetTaskKey the target, as in relation create.
@@ -81,6 +83,7 @@ export const taskEditSchema = z
     title: taskTitleSchema.optional(),
     description: descriptionEditSchema.optional(),
     priority: taskPrioritySchema.nullable().optional(),
+    due_at: timestampSchema.nullable().optional(),
     addLabelNames: z.array(labelNameSchema).optional(),
     removeLabelNames: z.array(labelNameSchema).optional(),
   })
@@ -88,11 +91,19 @@ export const taskEditSchema = z
     const hasTitle = value.title !== undefined;
     const hasDescription = value.description !== undefined;
     const hasPriority = value.priority !== undefined;
+    const hasDeadline = value.due_at !== undefined;
     const hasLabelsToAdd = (value.addLabelNames?.length ?? 0) > 0;
     const hasLabelsToRemove = (value.removeLabelNames?.length ?? 0) > 0;
 
-    return hasTitle || hasDescription || hasPriority || hasLabelsToAdd || hasLabelsToRemove;
-  }, "Provide at least one field to edit: title, description, priority, or labels")
+    return (
+      hasTitle ||
+      hasDescription ||
+      hasPriority ||
+      hasDeadline ||
+      hasLabelsToAdd ||
+      hasLabelsToRemove
+    );
+  }, "Provide at least one field to edit: title, description, priority, due_at, or labels")
   .refine((value) => {
     const normalizedRemovedLabelNames = new Set(
       (value.removeLabelNames ?? []).map(standardizeName),
@@ -108,26 +119,52 @@ export const taskEditSchema = z
 const searchQueryMessage = "Search query cannot be blank";
 
 export const taskArchiveFilterSchema = z.enum(["active", "archived", "all"]);
-export const taskSortSchema = z.enum(["activity"]);
+export const taskSortSchema = z.enum(["activity", "due"]);
 
-export const taskListSchema = z.strictObject({
-  limit: listLimitSchema.optional(),
-  sort: taskSortSchema.optional(),
-  projectKey: z.string().optional(),
-  columnName: columnNameSchema.optional(),
-  archive: taskArchiveFilterSchema.optional(),
-  labelNames: z.array(labelNameSchema).optional(),
-});
+const deadlineFilters = {
+  dueSince: timestampSchema.optional(),
+  dueUntil: timestampSchema.optional(),
+};
 
-export const taskSearchSchema = z.strictObject({
-  query: z
-    .string({ error: searchQueryMessage })
-    .refine((value) => value.trim().length > 0, searchQueryMessage),
-  projectKey: z.string().optional(),
-  archive: taskArchiveFilterSchema.optional(),
-  labelNames: z.array(labelNameSchema).optional(),
-  limit: listLimitSchema.optional(),
-});
+function validateDeadlineBounds(
+  value: { dueSince?: number; dueUntil?: number },
+  context: z.RefinementCtx,
+) {
+  const hasReversedBounds =
+    value.dueSince !== undefined && value.dueUntil !== undefined && value.dueSince > value.dueUntil;
+  if (hasReversedBounds) {
+    context.addIssue({
+      code: "custom",
+      path: ["dueUntil"],
+      message: "dueUntil must be at or after dueSince",
+    });
+  }
+}
+
+export const taskListSchema = z
+  .strictObject({
+    ...deadlineFilters,
+    limit: listLimitSchema.optional(),
+    sort: taskSortSchema.optional(),
+    projectKey: z.string().optional(),
+    columnName: columnNameSchema.optional(),
+    archive: taskArchiveFilterSchema.optional(),
+    labelNames: z.array(labelNameSchema).optional(),
+  })
+  .superRefine(validateDeadlineBounds);
+
+export const taskSearchSchema = z
+  .strictObject({
+    ...deadlineFilters,
+    query: z
+      .string({ error: searchQueryMessage })
+      .refine((value) => value.trim().length > 0, searchQueryMessage),
+    projectKey: z.string().optional(),
+    archive: taskArchiveFilterSchema.optional(),
+    labelNames: z.array(labelNameSchema).optional(),
+    limit: listLimitSchema.optional(),
+  })
+  .superRefine(validateDeadlineBounds);
 
 export type TaskPriority = z.infer<typeof taskPrioritySchema>;
 export type TaskOrderManyInput = z.input<typeof taskOrderManySchema>;

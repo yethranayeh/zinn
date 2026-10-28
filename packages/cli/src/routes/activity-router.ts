@@ -15,7 +15,7 @@ import {
 
 import { generateCommandUsage, getOptionInputs, violatesConstraint } from "../input.js";
 import { CliError } from "../errors.js";
-import { activityTimeInputSchema } from "../activity-time.js";
+import { parseTimestampInput } from "../timestamp-input.js";
 import {
   diagnostic,
   formatCommand,
@@ -181,8 +181,8 @@ export const activityRouter = {
             return parsed.data;
           }),
           changed: values.changed?.map(parseChangedFilter),
-          since: parseTimeFilter(values.since, "--since"),
-          until: parseTimeFilter(values.until, "--until"),
+          since: parseTimestampInput(values.since, "--since"),
+          until: parseTimestampInput(values.until, "--until"),
           limit,
           startingAfter: values["starting-after"],
         });
@@ -347,19 +347,6 @@ With --json, return one full activity record.
 Example: zinn activity view 019abcdf-1234-7`,
   },
 } satisfies RouteDef;
-
-function parseTimeFilter(value: string | undefined, argument: "--since" | "--until") {
-  if (value === undefined) {
-    return undefined;
-  }
-
-  const parsed = activityTimeInputSchema.safeParse(value);
-  if (!parsed.success) {
-    quit(parsed.error.issues[0]!.message, undefined, { argument });
-  }
-
-  return parsed.data;
-}
 
 function parseChangedFilter(input: string) {
   const separator = input.indexOf("=");

@@ -101,6 +101,7 @@ function expectEntityIds(schema: ResultSchemaName, value: any, rows: ReturnType<
         id: stored.id,
         project_id: stored.project_id,
         column_id: stored.column_id,
+        due_at: stored.due_at,
         created_at: stored.created_at,
         updated_at: stored.updated_at,
       });

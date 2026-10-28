@@ -38,6 +38,7 @@ export type Task = {
   description: string | null;
   task_order: string;
   priority: TaskPriority | null;
+  due_at: number | null;
   comment_count: number;
   created_at: number;
   updated_at: number;

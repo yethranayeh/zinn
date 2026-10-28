@@ -69,7 +69,7 @@ test("version 2 preserves every version 1 activity value and adds nullable ident
     const nonActivityBefore = nonActivitySnapshot(db);
     const countBefore = count(db, "activity");
 
-    upgradeSchema(db);
+    upgradeSchema(db, [actorIdentityMigration]);
 
     expect(readSchemaVersion(db)).toBe(2);
     expect(count(db, "activity")).toBe(countBefore);
@@ -95,7 +95,7 @@ test("a version 2 upgrade has the same activity columns as a fresh schema", () =
   withDatabase((db) => {
     seedActivityRows(db);
     db.exec("PRAGMA user_version = 1");
-    upgradeSchema(db);
+    upgradeSchema(db, [actorIdentityMigration]);
     upgradedColumns = expectedActivityColumns(db);
   });
 

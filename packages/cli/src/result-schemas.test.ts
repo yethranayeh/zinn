@@ -80,7 +80,7 @@ test("unsupported schema conversions fail instead of emitting an unconstrained r
 });
 
 test("wire schemas distinguish null, omission, history and mutation cardinality", () => {
-  const task = { id: "task-id", key: "APP-1", project_id: "project-id", status: "Active", column: "Backlog", column_id: "column-id", title: "One", description: null, priority: null, labels: [], label_ids: [], created_at: 1, updated_at: 2 };
+  const task = { id: "task-id", key: "APP-1", project_id: "project-id", status: "Active", column: "Backlog", column_id: "column-id", title: "One", description: null, priority: null, due_at: null, labels: [], label_ids: [], created_at: 1, updated_at: 2 };
   function accepts(name: string, value: unknown) {
     return ajv.getSchema(`results#/definitions/${name}`)!(value);
   }

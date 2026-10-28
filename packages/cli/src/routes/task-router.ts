@@ -18,6 +18,7 @@ import {
 } from "@zinn-dev/core";
 
 import { listLimitOption, listLimitDescription, parseListLimit } from "../list-limit.js";
+import { parseTimestampInput } from "../timestamp-input.js";
 import { CliError } from "../errors.js";
 import {
   generateCommandUsage,
@@ -100,6 +101,42 @@ const priorityOption = {
   },
 } as const;
 
+const dueOption = {
+  type: "string",
+  value: {
+    kind: "timestamp",
+    name: "timestamp",
+    description:
+      "Integer epoch milliseconds or YYYY-MM-DDTHH:mm:ss[.SSS] with Z or a numeric offset. Fractions have 1 to 3 digits. none clears the deadline, ignoring case. Omission leaves it unset on creation and unchanged on edit.",
+  },
+} as const;
+
+const deadlineFilterOptions = {
+  "due-since": {
+    type: "string",
+    value: {
+      kind: "timestamp",
+      name: "timestamp",
+      description:
+        "Inclusive lower deadline bound. Integer epoch milliseconds or a timestamp with seconds and Z or a numeric offset. Fractions have 1 to 3 digits. Undated tasks do not match.",
+    },
+  },
+  "due-until": {
+    type: "string",
+    value: {
+      kind: "timestamp",
+      name: "timestamp",
+      description:
+        "Inclusive upper deadline bound in the same formats as --due-since. Must be at or after --due-since. Undated tasks do not match.",
+    },
+  },
+} as const;
+
+const deadlineHelp =
+  "--due accepts integer epoch milliseconds or YYYY-MM-DDTHH:mm:ss[.SSS] with Z or a numeric offset such as +01:00. Fractional seconds have 1 to 3 digits. Use --due none to clear it. Omission leaves it unset on creation and unchanged on edit.";
+const deadlineFilterHelp =
+  "--due-since and --due-until select deadlines inclusively, using integer epoch milliseconds or timestamps with seconds and Z or a numeric offset. Fractional seconds have 1 to 3 digits. Either bound may appear alone. --due-until must be at or after --due-since. Undated tasks do not match. All filters apply before --limit.";
+
 const taskEditConstraint = {
   kind: "atLeastOne",
   members: [
@@ -107,6 +144,7 @@ const taskEditConstraint = {
     "option:description",
     "option:description-file",
     "option:priority",
+    "option:due",
     "option:add-label",
     "option:remove-label",
   ],
@@ -119,6 +157,7 @@ const taskInputs = {
       description: { type: "string", value: { kind: "text", name: "text" } },
       "description-file": textFileOption,
       priority: priorityOption,
+      due: dueOption,
       label: { type: "string", multiple: true, value: { kind: "label-name", name: "name" } },
       column: { type: "string", value: { kind: "column-name", name: "name" } },
       parent: { type: "string", value: { kind: "task-key", name: "task-key" } },
@@ -141,6 +180,7 @@ const taskInputs = {
   },
   list: {
     options: {
+      ...deadlineFilterOptions,
       limit: listLimitOption,
       sort: {
         type: "string",
@@ -163,6 +203,7 @@ const taskInputs = {
   },
   search: {
     options: {
+      ...deadlineFilterOptions,
       archived: { type: "boolean" },
       all: { type: "boolean" },
       "all-projects": { type: "boolean" },
@@ -201,6 +242,7 @@ const taskInputs = {
       "description-file": textFileOption,
       ...textEditOptions,
       priority: priorityOption,
+      due: dueOption,
       "add-label": { type: "string", multiple: true, value: { kind: "label-name", name: "name" } },
       "remove-label": {
         type: "string",
@@ -349,6 +391,7 @@ export const taskRouter = {
       const fields = {
         title,
         priority,
+        due_at: parseDue(values.due),
         labelNames: values.label,
         columnName: values.column,
         relations: parseNewTaskRelations(values),
@@ -383,6 +426,7 @@ Create a task at the bottom of a column. Without --column, it starts in the proj
 ${requiredProjectDescription}
 
 Priority values: ${priorityOption.value.choices.join(", ")}; defaults to none.
+${deadlineHelp}
 Repeat --label to attach multiple existing labels.
 ${textFileHelp("--description")}
 
@@ -434,6 +478,7 @@ Examples:
       }
 
       const tasks = task.getAll({
+        ...parseDeadlineFilters(values),
         limit,
         sort: sort.data,
         projectKey,
@@ -456,6 +501,8 @@ Repeat --label to require every specified label.
 All supplied filters must match.
 --sort activity lists the most recently active tasks first, including comments and relations.
 Equal activity times keep board order. Without --sort, board order is preserved.
+--sort due lists earliest deadlines first, with undated tasks last. Equal deadlines keep board order. Task positions stay unchanged.
+${deadlineFilterHelp}
 --limit <n>: ${listLimitDescription}
 
 Use 'task view' to see a task's full details, including its description.
@@ -496,6 +543,7 @@ Example: zinn task list MDR --label cli`,
       });
       const limit = parseListLimit(values.limit);
       const result = task.search({
+        ...parseDeadlineFilters(values),
         query,
         projectKey,
         archive,
@@ -526,6 +574,7 @@ A task-key query overrides the configured default project; a typed project key s
 By default, only active tasks are searched. Use --archived to search archived tasks or --all to search both.
 --limit <n>: ${listLimitDescription}
 Repeat --label to require every specified label, ignoring case.
+${deadlineFilterHelp}
 
 Example: zinn task search 'refinement quota' MDR --limit 5`,
   },
@@ -621,7 +670,7 @@ Examples:
   zinn task view MDR-1 --history`,
   },
   edit: {
-    summary: "Edit a task's title, description, priority, or label attachments.",
+    summary: "Edit a task's title, description, priority, deadline, or label attachments.",
     effects: { domain: "update", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: taskInputs.edit,
@@ -643,6 +692,7 @@ Examples:
         taskKey,
         title: values.title,
         priority: parsePriority(values.priority),
+        due_at: parseDue(values.due),
         addLabelNames: values["add-label"],
         removeLabelNames: values["remove-label"],
       };
@@ -652,7 +702,7 @@ Examples:
       // Without a text source nothing was read, so this usage error still comes before any input.
       if (violatesConstraint(taskEditConstraint, getOptionInputs(values))) {
         quit(
-          "Provide at least one edit flag: --title, --description, --description-file, --priority, --add-label, or --remove-label",
+          "Provide at least one edit flag: --title, --description, --description-file, --priority, --due, --add-label, or --remove-label",
           undefined,
           { field: [] },
         );
@@ -669,7 +719,8 @@ Examples:
     },
     help: `${generateCommandUsage("task edit", taskInputs.edit)}
 
-Edit a task's title, description, priority, or label attachments.
+Edit a task's title, description, priority, deadline, or label attachments.
+${deadlineHelp}
 Use --priority none to clear priority.
 Priority values: ${priorityOption.value.choices.join(", ")}.
 Provide at least one edit flag. Use --description '' to clear the description.
@@ -978,6 +1029,21 @@ function parseNewTaskRelations(flags: NewTaskRelationFlags) {
   return targetsByType.flatMap(([relation_type, targetTaskKeys]) =>
     targetTaskKeys.map((targetTaskKey) => ({ relation_type, targetTaskKey })),
   );
+}
+
+function parseDue(value: string | undefined) {
+  return value?.toLowerCase() === "none" ? null : parseTimestampInput(value, "--due");
+}
+
+function parseDeadlineFilters(values: { "due-since"?: string; "due-until"?: string }) {
+  const dueSince = parseTimestampInput(values["due-since"], "--due-since");
+  const dueUntil = parseTimestampInput(values["due-until"], "--due-until");
+  const hasReversedBounds = dueSince !== undefined && dueUntil !== undefined && dueSince > dueUntil;
+  if (hasReversedBounds) {
+    quit("--due-until must be at or after --due-since", undefined, { argument: "--due-until" });
+  }
+
+  return { dueSince, dueUntil };
 }
 
 function parsePriority(value: string | undefined) {

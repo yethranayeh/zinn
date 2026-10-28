@@ -368,7 +368,7 @@ test("task create saves requested relations with the new task as source and reco
 
       const childActions = task.activity("APP-3").map((row) => row.action);
       assert.deepEqual(childActions, ["create", "relation_create", "relation_create", "relation_create", "relation_create"]);
-      assert.deepEqual(Object.keys(task.activity("APP-3")[0]!.changes!), ["title", "description", "priority", "column", "labels"]);
+      assert.deepEqual(Object.keys(task.activity("APP-3")[0]!.changes!), ["title", "description", "priority", "due_at", "column", "labels"]);
       const parentRow = task.activity("APP-1").at(-1);
       assert.equal(parentRow!.action, "relation_create");
       assert.deepEqual(parentRow!.changes, task.activity("APP-3")[1]!.changes);

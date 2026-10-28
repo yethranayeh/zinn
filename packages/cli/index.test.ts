@@ -2191,6 +2191,7 @@ test("task view prints the task row followed by Description, Relations, and Comm
       title: "Refine the numbers",
       description,
       priority: "high",
+      due_at: null,
       labels: ["bug", "cli"],
       label_ids: [expect.any(String), expect.any(String)],
       created_at: expect.any(Number),
@@ -3070,6 +3071,7 @@ test("task move prints the task row, while --json returns the full task", async 
       title: "Detailed task",
       description: "Hidden from move output",
       priority: "high",
+      due_at: null,
       labels: ["urgent"],
       label_ids: [expect.any(String)],
       created_at: expect.any(Number),
@@ -3303,6 +3305,7 @@ test("task write commands print JSON with the full task details, unchanged by th
       title: "one",
       description: "Full text",
       priority: "high",
+      due_at: null,
       labels: ["urgent"],
       label_ids: [expect.any(String)],
       created_at: expect.any(Number),
@@ -3320,6 +3323,7 @@ test("task write commands print JSON with the full task details, unchanged by th
       title: "uno",
       description: "Full text",
       priority: "high",
+      due_at: null,
       labels: ["urgent"],
       label_ids: [expect.any(String)],
       created_at: expect.any(Number),
@@ -3338,6 +3342,7 @@ test("task write commands print JSON with the full task details, unchanged by th
       title: "uno",
       description: "Full text",
       priority: "high",
+      due_at: null,
       labels: ["urgent"],
       label_ids: [expect.any(String)],
       created_at: expect.any(Number),
@@ -4243,6 +4248,7 @@ test("--json prints the created entity on write commands, wherever the flag is p
       title: "Ship it",
       description: null,
       priority: null,
+      due_at: null,
       labels: [],
       label_ids: [],
       created_at: expect.any(Number),
@@ -4487,6 +4493,7 @@ test("delete commands with --yes and --json print the deleted entity", async () 
       title: "Ship it",
       description: null,
       priority: null,
+      due_at: null,
       labels: [],
       label_ids: [],
       created_at: expect.any(Number),
@@ -6321,7 +6328,7 @@ test("--allow-legacy-read never lets a command change an unmarked database", asy
 
 test("--allow-legacy-read does not warn about a database that has a schema version", async () => {
   await withIsolatedZinnDir(async (dir) => {
-    await createDatabase(dir, 1);
+    await createDatabase(dir, CURRENT_SCHEMA_VERSION);
     const current = await runZinn(["task", "list", "MIG", LEGACY_FLAG], dir);
     expect(current.code).toBe(0);
     expect(current.stderr).toBe("");

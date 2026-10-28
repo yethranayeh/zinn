@@ -44,6 +44,7 @@ export function presentTask(taskMatch: TaskWithKey): PresentedTask {
     title: taskMatch.title,
     description: taskMatch.description,
     priority: taskMatch.priority,
+    due_at: taskMatch.due_at ?? null,
     labels: labels.map((label) => label.name),
     label_ids: labels.map((label) => label.id),
     created_at: taskMatch.created_at,
@@ -68,13 +69,17 @@ export function formatTaskList(
         .map((labelName) => formatCell(labelNameCell(labelName, labelColorsByName.get(labelName)!)))
         .join(LABEL_NAME_SEPARATOR);
       const labels = hasLabels ? `${formatCellSeparator()}${labelNames}` : "";
+      const deadline =
+        presentedTask.due_at == null
+          ? ""
+          : `${formatCellSeparator()}Due ${formatLocalTime(presentedTask.due_at, { includesSeconds: true })}`;
 
       return [
         { text: `${options.prefix ?? ""}${presentedTask.key}` },
         ...statusCells,
         columnNameCell(presentedTask.column),
         taskPriorityCell(presentedTask.priority, options.showsFullPriority ?? false),
-        { text: `${presentedTask.title}${labels}` },
+        { text: `${presentedTask.title}${deadline}${labels}` },
       ];
     }),
   );

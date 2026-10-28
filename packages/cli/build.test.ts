@@ -284,9 +284,14 @@ for (const runtime of ["node", "bun"]) {
       const project = runBuilt(runtime, ["project", "create", "BUILD", "--json"], directory);
       expect(project.code).toBe(0);
       expect(JSON.parse(project.stdout).key).toBe("BUILD");
-      const created = runBuilt(runtime, ["task", "create", "BUILD", "--title", "Built CLI", "--json"], directory);
+      const created = runBuilt(runtime, ["task", "create", "BUILD", "--title", "Built CLI", "--due", "2026-10-25T12:34:56.123Z", "--json"], directory);
       expect(created.code).toBe(0);
-      expect(JSON.parse(created.stdout)).toMatchObject({ key: "BUILD-1", title: "Built CLI" });
+      expect(JSON.parse(created.stdout)).toMatchObject({ key: "BUILD-1", title: "Built CLI", due_at: 1_792_931_696_123 });
+      const due = runBuilt(runtime, ["task", "list", "BUILD", "--due-since", "2026-10-25T13:34:56.123+01:00", "--due-until", "1792931696123", "--sort", "due", "--json"], directory);
+      expect(due.code, due.stderr).toBe(0);
+      expect(JSON.parse(due.stdout).map((row: { key: string }) => row.key)).toEqual(["BUILD-1"]);
+      const dueText = runBuilt(runtime, ["task", "view", "BUILD-1"], directory, { TZ: "UTC" });
+      expect(dueText.stdout).toContain("2026-10-25 12:34:56.123 +00:00");
       const edited = runBuilt(runtime, ["task", "edit", "BUILD-1", "--description", "Searchable output", "--json"], directory);
       expect(edited.code).toBe(0);
       expect(JSON.parse(edited.stdout).description).toBe("Searchable output");

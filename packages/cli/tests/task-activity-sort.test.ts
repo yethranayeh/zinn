@@ -61,7 +61,7 @@ test("task list sorts filtered tasks before limiting with unchanged text and JSO
 test("sort metadata is discoverable and invalid or repeated values fail without writes", async () => {
   await withIsolatedZinnDir(async directory => {
     const route = parsedRoutes.find(route => route.command === "task list")!;
-    expect(route.input?.options?.sort?.value).toMatchObject({ kind: "enum", choices: ["activity"] });
+    expect(route.input?.options?.sort?.value).toMatchObject({ kind: "enum", choices: ["activity", "due"] });
     const help = await runZinn(["task", "list", "--help"], directory);
     expect(help.code).toBe(0);
     for (const fact of ["--sort", "activity", "comments", "relations"]) {

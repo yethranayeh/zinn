@@ -144,8 +144,8 @@ export function create(task: Omit<Task, "archived_at" | "comment_count">) {
   const db = getDb();
 
   const q = db.query<Task, Bind<Omit<Task, "archived_at" | "comment_count">>>(`INSERT INTO
-    ${DB_TABLE.task}  (id, project_id, column_id, number, title, description, priority, task_order, created_at, updated_at)
-    VALUES            ($id, $project_id, $column_id, $number, $title, $description, $priority, $task_order, $created_at, $updated_at);`);
+    ${DB_TABLE.task}  (id, project_id, column_id, number, title, description, priority, due_at, task_order, created_at, updated_at)
+    VALUES            ($id, $project_id, $column_id, $number, $title, $description, $priority, $due_at, $task_order, $created_at, $updated_at);`);
 
   q.run({
     $id: task.id,
@@ -155,6 +155,7 @@ export function create(task: Omit<Task, "archived_at" | "comment_count">) {
     $title: task.title,
     $description: task.description,
     $priority: task.priority,
+    $due_at: task.due_at,
     $task_order: task.task_order,
     $created_at: task.created_at,
     $updated_at: task.updated_at,
@@ -168,6 +169,7 @@ const TASK_UPDATE_COLUMNS = [
   "title",
   "description",
   "priority",
+  "due_at",
   "task_order",
   "updated_at",
   "archived_at",

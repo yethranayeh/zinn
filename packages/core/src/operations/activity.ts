@@ -4,6 +4,7 @@ import type { Activity } from "../types.js";
 
 import { activityIdSchema, activityListSchema } from "../schemas/activity.js";
 import { validateTaskInput } from "../schemas/task.js";
+import { timestampSchema } from "../schemas/timestamp.js";
 import { standardizeName, standardizeProjectKey } from "../lib.js";
 import { attachTaskKey, findTaskByExactKey } from "./shared.js";
 import * as dbActivity from "../db/activity.js";
@@ -196,7 +197,7 @@ function resolveTaskHistory({ taskKey, taskId, showDeleted }: ActivityTaskSelect
   return { identities: [...identities.values()], projectDeletionIds };
 }
 
-type RecordedValues = Partial<Record<ActivityChangedField, Array<string | null>>>;
+type RecordedValues = Partial<Record<ActivityChangedField, Array<string | number | null>>>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -225,6 +226,11 @@ function getRecordedNullableText(value: unknown): Array<string | null> {
   }
 
   return [value];
+}
+
+function getRecordedDeadline(value: unknown): Array<number | null> {
+  const parsed = timestampSchema.nullable().safeParse(value);
+  return parsed.success ? [parsed.data] : [];
 }
 
 function getRecordedLabelNames(value: unknown): Array<string> {
@@ -261,6 +267,7 @@ function getRecordedValues(event: Activity): RecordedValues {
         labels: getRecordedLabelNames(changes?.labels),
         title: typeof changes?.title === "string" ? [changes.title] : [],
         description: getRecordedNullableText(changes?.description),
+        due_at: getRecordedDeadline(changes?.due_at),
       };
     case "move":
       return { column: getRecordedColumnNames(getRecordedNewValue(changes?.column)) };
@@ -271,6 +278,7 @@ function getRecordedValues(event: Activity): RecordedValues {
         labels: getChangedLabelNames(changes?.labels, "added"),
         title: typeof newTitle === "string" ? [newTitle] : [],
         description: getRecordedNullableText(getRecordedNewValue(changes?.description)),
+        due_at: getRecordedDeadline(getRecordedNewValue(changes?.due_at)),
       };
     }
     default:
@@ -336,7 +344,11 @@ export const activity = {
 
         return (
           matchesAnyChange ||
-          newValues.some((value) => values.has(value === null ? null : standardizeName(value)))
+          newValues.some(
+            (value) =>
+              typeof value !== "number" &&
+              values.has(value === null ? null : standardizeName(value)),
+          )
         );
       });
     };

@@ -55,7 +55,7 @@ The client supplies its own `release` identity: `source` for development and `pu
 
 `task.getAll`, `task.search` and `activity.getAll` accept an optional numeric `limit`, an integer from `1` through `11871`, inclusive. The cap applies after all filters and preserves the existing order. Omitting it returns every match. `task.search` counts all hidden archived matches before applying the cap.
 
-`task.getAll({ sort: "activity", limit: 10 })` returns the ten most recently active tasks. Last activity is the newest recorded task event, including comments and relations, or `updated_at` when no events exist. Filters apply before sorting, and the limit applies afterward. Equal times keep board order. Omitting `sort` preserves board order. Task records keep their existing fields.
+`task.getAll({ sort: "activity", limit: 10 })` returns the ten most recently active tasks. Last activity is the newest recorded task event, including comments and relations, or `updated_at` when no events exist. Filters apply before sorting, and the limit applies afterward. Equal times keep board order. Omitting `sort` preserves board order.
 
 Names and titles are trimmed and cannot be blank or contain line breaks or control characters.
 
@@ -73,6 +73,16 @@ Names and titles are trimmed and cannot be blank or contain line breaks or contr
 - `task.deleteMany(taskKeys, actor)` returns the deleted tasks in input order, including archived tasks. Task keys must be distinct, ignoring case. Each deletion preserves task activity and records removed relations on the other tasks, including tasks deleted later in the same batch. `task.delete(taskKey, actor)` returns one deleted task.
 - `project.delete(key, actor)` records aggregate project deletion history and one `relation_delete` event per removed cross-project relation on its surviving task, including archived tasks. Surviving task modification timestamps are preserved.
 - `task.orderMany({ taskKeys, direction, targetTaskKey? }, actor)` returns a `TaskChange` per key. It orders the first task as requested, then each next task after the previous one. Multiple tasks must be distinct active tasks in the same project and column. The target cannot be among them. `up` and `down` take one task. A single task ordered before or after itself remains unchanged.
+
+## Task deadlines
+
+Task results include `due_at: number | null`, an exact deadline in integer Unix epoch milliseconds. `task.create` accepts optional `due_at`. Omission or `null` creates an undated task. `task.edit` also accepts `due_at`. Omission preserves the current value and `null` clears it. Repeating the current value or clearing an unset deadline is a no-op that preserves `updated_at` and records no activity.
+
+`timestampSchema`, exported by core, validates integer milliseconds in the JavaScript `Date` range from `-8640000000000000` through `8640000000000000`, inclusive. `activityTimestampSchema` remains exported as an alias to the same schema.
+
+`task.getAll` and `task.search` accept optional `dueSince` and `dueUntil` bounds. Both are inclusive. Use either bound alone or both together. Equal bounds select that exact millisecond, and a reversed range is invalid. A supplied deadline bound excludes tasks whose `due_at` is `null`. Deadline bounds intersect with the other filters before the result limit applies. Search retains its relevance and task-key order.
+
+`task.getAll({ sort: "due" })` sorts by earliest deadline first, puts undated tasks last, and preserves board order for equal deadlines and undated tasks. This is opt-in and does not change task positions. `task.search` has no due sort option.
 
 ## Task relations
 
@@ -130,6 +140,8 @@ Task selection includes original project-deletion events whose snapshots contain
 `actions` accepts an array of recorded action names, such as `create`, `edit`, `move` or `comment_create`. An event matches any listed action. Action names are case-sensitive and use the `ActivityAction` vocabulary across entity types.
 
 `changed` accepts an array of task field filters. Use `{ field }` to match any change to `column`, `priority`, `labels`, `title` or `description`. Labels match additions and removals. Initial task fields also match, including null priority and description. Initial labels match when at least one label is recorded.
+
+Use `{ field: "due_at" }` to match any recorded deadline change. Do not supply `value` for this field. Task creation snapshots include the initial deadline, including `null` when it is unset. Deadline edits record the previous and new values. Earlier activity payloads retain their recorded shape.
 
 Use `{ field, value }` with `column`, `priority` or `labels` to select recorded new values or added labels. Initial values on task creation also match. String values compare case-insensitively, using the names recorded at the time of the event. Use `{ field: "priority", value: null }` to match an unassigned priority on creation or a change that clears it. String values must be nonempty.
 

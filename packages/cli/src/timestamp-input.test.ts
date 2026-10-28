@@ -1,20 +1,20 @@
 import { expect, test } from "bun:test";
-import { activityTimeInputSchema } from "./activity-time";
+import { timestampInputSchema } from "./timestamp-input";
 
 test("time inputs preserve equivalent instants, scaled fractions and epoch milliseconds", () => {
   const base = 1_792_929_600_000;
   for (const value of ["2026-10-25T12:00:00Z", "2026-10-25T13:00:00+01:00", "2026-10-25T08:00:00-04:00", String(base)]) {
-    expect(activityTimeInputSchema.parse(value)).toBe(base);
+    expect(timestampInputSchema.parse(value)).toBe(base);
   }
   for (const [fraction, milliseconds] of [["1", 100], ["12", 120], ["123", 123], ["001", 1]] as const) {
-    expect(activityTimeInputSchema.parse(`2026-10-25T12:00:00.${fraction}Z`)).toBe(base + milliseconds);
+    expect(timestampInputSchema.parse(`2026-10-25T12:00:00.${fraction}Z`)).toBe(base + milliseconds);
   }
   for (const value of [-8_640_000_000_000_000, -1, 0, 1, 1_700_000_000, 8_640_000_000_000_000]) {
-    expect(activityTimeInputSchema.parse(String(value))).toBe(value);
+    expect(timestampInputSchema.parse(String(value))).toBe(value);
   }
-  expect(activityTimeInputSchema.parse("2024-02-29T00:00:00Z")).toBe(1_709_164_800_000);
-  expect(activityTimeInputSchema.parse("2000-02-29T00:00:00Z")).toBe(951_782_400_000);
-  expect(activityTimeInputSchema.parse("2026-10-25T02:30:00+01:00") - activityTimeInputSchema.parse("2026-10-25T02:30:00+02:00"))
+  expect(timestampInputSchema.parse("2024-02-29T00:00:00Z")).toBe(1_709_164_800_000);
+  expect(timestampInputSchema.parse("2000-02-29T00:00:00Z")).toBe(951_782_400_000);
+  expect(timestampInputSchema.parse("2026-10-25T02:30:00+01:00") - timestampInputSchema.parse("2026-10-25T02:30:00+02:00"))
     .toBe(3_600_000);
 });
 
@@ -29,6 +29,6 @@ test("time inputs reject normalization, unsupported precision, missing offsets a
     "2026-10-25 12:00:00Z", "2026-10-25T12:00:00Z\n", "1\n", " 1", "1 ",
     "1.0", "1e3", "0x10", "NaN", "Infinity", "8640000000000001", "-8640000000000001",
   ]) {
-    expect(activityTimeInputSchema.safeParse(value).success, value).toBe(false);
+    expect(timestampInputSchema.safeParse(value).success, value).toBe(false);
   }
 });

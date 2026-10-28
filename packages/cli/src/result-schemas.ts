@@ -36,6 +36,9 @@ export const taskSchema = z.strictObject({
     .describe(
       `Known priorities: ${taskPrioritySchema.options.join(", ")}. Other stored values may occur.`,
     ),
+  due_at: timestamp
+    .nullable()
+    .describe("Exact deadline in epoch milliseconds, or null when unset."),
   labels: z.array(z.string()).describe("Attached label names."),
   label_ids: z.array(z.string()).describe("Attached label IDs, in the same order as labels."),
   created_at: timestamp,

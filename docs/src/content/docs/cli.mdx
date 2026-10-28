@@ -20,6 +20,7 @@ Use this page for command behavior, shared input rules, and practical examples. 
   - [Move and order tasks](#move-and-order-tasks)
   - [Archive and delete tasks](#archive-and-delete-tasks)
   - [Task priority](#task-priority)
+  - [Task deadlines](#task-deadlines)
 - [Labels](#labels)
 - [Task relations](#task-relations)
 - [Task comments](#task-comments)
@@ -230,6 +231,7 @@ zinn task list --all-projects
 zinn task list MDR --label CLI --label Groom
 zinn task list MDR --limit 10
 zinn task list MDR --sort activity --limit 10
+zinn task list MDR --due-since 2026-10-25T00:00:00Z --sort due
 zinn task list MDR --column 'In Progress'
 zinn task list --column Done --all
 zinn task view MDR-1
@@ -239,6 +241,8 @@ zinn task view MDR-1 --history
 `task list`, `task search` and `activity list` accept `--limit <n>`, a decimal integer from `1` through `11871`. The cap applies after all filters and preserves the existing order. Omit it to return every match. With `--json`, each command returns an array.
 
 `task list --sort activity` lists tasks by their newest recorded activity, including task changes, comments and relations. Tasks without recorded activity use their update time. Newest comes first, and equal times keep board order. Filters apply before sorting, and `--limit` caps the sorted result. Without `--sort`, board order is preserved. Sorting changes only the order in text and JSON.
+
+`task list --sort due` lists deadlines from earliest to latest. Tasks without a deadline come last. Equal deadlines and undated tasks keep board order. Sorting does not change task positions. See [Task deadlines](#task-deadlines) for filters and input rules.
 
 Task lists are previews, so they _omit_ descriptions, but `task view` prints the full description.
 
@@ -267,6 +271,7 @@ zinn task search 'quarterly quota' MDR
 zinn task search MDR-1
 zinn task search auth --all --limit 5
 zinn task search auth MDR --label cli
+zinn task search refinement --due-until 2026-10-25T17:00:00+02:00
 ```
 
 Each query matches the start of a word, ignoring case and accents, so `cafe` finds "Café" and `auth` finds "Authentication". Every word must match somewhere in the task: its title, its description, or any of its comments. A comment match lists the task the comment belongs to.
@@ -485,6 +490,25 @@ zinn task edit MDR-1 --priority none
 
 Use `none` to clear priority. Priority does not affect board ordering.
 
+## Task deadlines
+
+Set one exact deadline when creating or editing a task:
+
+```sh title="Set, clear and filter task deadlines"
+zinn task create MDR --title 'Review the refinement report' --due 2026-10-25T15:30:00.123Z
+zinn task list MDR --due-since 2026-10-25T00:00:00Z --due-until 2026-10-25T18:00:00+02:00 --sort due
+zinn task search refinement MDR --due-until 2026-10-25T18:00:00+02:00
+zinn task edit MDR-1 --due none
+```
+
+`--due` accepts integer Unix epoch milliseconds or a complete timestamp with seconds and an explicit `Z` or numeric UTC offset, such as `2026-10-25T17:00:00+02:00`. Fractional seconds may have one to three digits. Integer values range from `-8640000000000000` to `8640000000000000`, inclusive. Date-only values, timestamps without an offset, relative dates, impossible dates, leap seconds, `24:00`, and fractions longer than three digits are rejected.
+
+Use `--due none` to clear a deadline. The word is case-insensitive. Omitting `--due` leaves a new task undated and leaves an edited task unchanged. Repeating the current deadline or clearing an unset deadline does not update the task or record activity.
+
+`--due-since` and `--due-until` select deadlines inclusively on task list and search. Use either bound alone or both together. Equal bounds select that exact millisecond. An upper bound before the lower bound is invalid. Undated tasks do not match a supplied bound. Deadline bounds intersect the other filters and apply before `--limit`. Search keeps its existing relevance order, including task-key matches. Due sorting is available on task list only. It does not change board order or the default list and search order.
+
+Task text shows deadlines in local time with a UTC offset, seconds, and any nonzero milliseconds. Full task JSON objects include `due_at` as integer epoch milliseconds or `null` when unset. Activity text uses the same precision for deadline changes. Event timestamps keep their existing precision.
+
 ## Activity
 
 Zinn records changes to tasks, projects, columns, labels, relations, and comments, including who made them.
@@ -506,6 +530,7 @@ zinn activity list --session conversation-id
 zinn activity list --session conversation-id --thread child-thread-id
 zinn activity list --action comment_create --action comment_edit
 zinn activity list --action edit --changed description
+zinn activity list --task MDR-1 --changed due_at
 zinn activity list --changed column=Review
 zinn activity list --changed priority=high --changed labels=bug
 zinn activity list --changed column=Review --changed column=Done --limit 10
@@ -538,11 +563,13 @@ Deleted history and exact ID selection include the original project-deletion eve
 
 `--action <action>` matches the recorded action, such as `edit`, `move`, `comment_create`, `comment_edit` or `comment_delete`. Action names use the same spelling and case as activity JSON. Repeat `--action` to match any listed action. Action and field filters must match the same event.
 
-`--changed <field>` matches a change to a task's `column`, `priority`, `labels`, `title` or `description`. Labels match additions and removals. Initial task creation fields also match, including an unassigned priority or description. Initial labels match when at least one label is recorded. Use `--action edit --changed description` to select description edits.
+`--changed <field>` matches a change to a task's `column`, `priority`, `labels`, `title`, `description` or `due_at`. Labels match additions and removals. Initial task creation fields also match, including an unassigned priority or description and an unset deadline. Initial labels match when at least one label is recorded. Use `--action edit --changed description` to select description edits. `due_at` matches any deadline change and does not take a value.
 
 `--changed <field>=<value>` matches a recorded change to `column`, `priority`, or `labels`, ignoring value case. Column and priority match their new values. Labels match an added label. Initial values on task creation also match. Use `--changed priority=none` for creation without a priority or a change that clears it. Column and label names match as recorded in the event, including after renaming or deletion.
 
 Repeat `--changed` for several filters. Filters for the same field match any of them, including a value-free filter alongside one with a value. For example, `--changed column=Review --changed column=Done` selects events entering either column. Different fields must match the same event, so `--changed priority=high --changed labels=bug` selects events that both set high priority and add bug. Other supplied filters must also match, before `--limit` applies. Unknown fields fail and name the accepted fields.
+
+Task creation snapshots include `due_at` as an integer epoch-millisecond value or `null`. A deadline edit records its previous and new values, with `null` for an unset deadline. Older activity payloads keep their recorded shape.
 
 Activity text uses local dates and times with a UTC offset. `activity list` uses the shortest globally unique left prefixes of at least eight hexadecimal digits for event IDs.
 

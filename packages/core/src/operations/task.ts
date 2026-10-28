@@ -95,6 +95,24 @@ function filterTasksByColumn(tasks: Array<Task>, columnName?: string) {
   return tasks.filter((taskMatch) => matchingColumnIds.has(taskMatch.column_id));
 }
 
+function filterTasksByDeadline<T extends Pick<Task, "due_at">>(
+  tasks: Array<T>,
+  bounds: { dueSince?: number; dueUntil?: number },
+) {
+  if (bounds.dueSince === undefined && bounds.dueUntil === undefined) {
+    return tasks;
+  }
+
+  return tasks.filter((taskMatch) => {
+    const deadline = taskMatch.due_at;
+    return (
+      deadline !== null &&
+      (bounds.dueSince === undefined || deadline >= bounds.dueSince) &&
+      (bounds.dueUntil === undefined || deadline <= bounds.dueUntil)
+    );
+  });
+}
+
 type NewTaskRelation = NonNullable<TaskCreateInput["relations"]>[number];
 
 /** Deduplicates identical requests and rejects different types for one resolved target. */
@@ -378,6 +396,7 @@ export const task = {
         description: task.description,
         task_order: order,
         priority: task.priority ?? null,
+        due_at: task.due_at ?? null,
         created_at: now,
         updated_at: now,
       })!;
@@ -394,6 +413,7 @@ export const task = {
           title: createdTask.title,
           description: createdTask.description,
           priority: createdTask.priority,
+          due_at: createdTask.due_at,
           column: { id: initialColumn.id, name: initialColumn.name },
           labels: labels.map((label) => label.name),
         },
@@ -426,13 +446,28 @@ export const task = {
         : dbTask.getAllByProjectId(taskProject.id, props.archive),
       props.labelNames,
     );
-    const filteredTasks = filterTasksByColumn(taskMatches, props.columnName);
+    const filteredTasks = filterTasksByDeadline(
+      filterTasksByColumn(taskMatches, props.columnName),
+      props,
+    );
 
     if (props.sort === "activity") {
       const lastActivityTimes = getTaskLastActivityTimes(filteredTasks);
       filteredTasks.sort(
         (left, right) => lastActivityTimes.get(right.id)! - lastActivityTimes.get(left.id)!,
       );
+    } else if (props.sort === "due") {
+      filteredTasks.sort((left, right) => {
+        if (left.due_at === null) {
+          return right.due_at === null ? 0 : 1;
+        }
+
+        if (right.due_at === null) {
+          return -1;
+        }
+
+        return left.due_at - right.due_at;
+      });
     }
 
     return filteredTasks
@@ -476,7 +511,10 @@ export const task = {
       .filter((row) => !pinnedTasks.some((pinned) => pinned.id === row.id))
       .map(({ project_key, ...row }) => attachTaskKey(row, project_key));
 
-    const matches = filterTasksByLabels([...pinnedTasks, ...textMatches], props.labelNames);
+    const matches = filterTasksByDeadline(
+      filterTasksByLabels([...pinnedTasks, ...textMatches], props.labelNames),
+      props,
+    );
     const hiddenArchivedCount =
       archive === "active"
         ? matches.filter((taskMatch) => taskMatch.archived_at != null).length
@@ -529,8 +567,15 @@ export const task = {
 
       const isPriorityUnchanged =
         props.priority === undefined || props.priority === existing.priority;
+      const isDeadlineUnchanged = props.due_at === undefined || props.due_at === existing.due_at;
 
-      if (isTitleUnchanged && isDescriptionUnchanged && isPriorityUnchanged && areLabelsUnchanged) {
+      const isTaskUnchanged =
+        isTitleUnchanged &&
+        isDescriptionUnchanged &&
+        isPriorityUnchanged &&
+        isDeadlineUnchanged &&
+        areLabelsUnchanged;
+      if (isTaskUnchanged) {
         return { task: existing, changed: false };
       }
 
@@ -555,6 +600,10 @@ export const task = {
         changes.priority = [existing.priority, props.priority];
       }
 
+      if (!isDeadlineUnchanged) {
+        changes.due_at = [existing.due_at, props.due_at];
+      }
+
       if (!areLabelsUnchanged) {
         changes.labels = {
           added: labelsToAdd.map((label) => label.name),
@@ -575,6 +624,7 @@ export const task = {
         title: props.title,
         description,
         priority: props.priority,
+        due_at: props.due_at,
         updated_at: now,
       })!;
 
