@@ -10,7 +10,7 @@ Add this entry to the `plugins` array in `~/.config/opencode/cli.json`:
 { "package": "@zinn-dev/opencode@0.1.0", "options": { "rows": 2, "current": "glyph" } }
 ```
 
-Read the [setup, options, compatibility, update and removal guide](https://zinn.sh/docs/opencode).
+Read the [setup, options, compatibility, update and removal guide](https://zinn.sh/integrations/opencode/inspector).
 
 ## Development
 

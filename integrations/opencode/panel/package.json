@@ -9,7 +9,7 @@
 		"url": "git+https://github.com/yethranayeh/zinn.git",
 		"directory": "integrations/opencode/panel"
 	},
-	"homepage": "https://zinn.sh/docs/opencode",
+	"homepage": "https://zinn.sh/integrations/opencode/inspector",
 	"exports": {
 		"./tui": "./pkg/tui.tsx"
 	},

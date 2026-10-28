@@ -1,3 +1,4 @@
+import { opencodeInspector } from "../src/config/opencode-inspector";
 import { opencodeScenes, opencodeTheme } from "../src/config/opencode-theme";
 import { agentSetupPrompt, installCommand, minimumNodeVersion } from "../src/config/site";
 import { splitShellCommands } from "../src/markdown/shell-commands";
@@ -85,8 +86,14 @@ async function expectMarkdownTwin(page: string, source: string) {
 	const sourceText = await Bun.file(join(contentDirectory, source)).text();
 	const lastUpdated = sourceText.match(/^lastUpdated: "([^"]+)"$/m)?.[1];
 	let expectedMarkdown = sourceText.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trimStart()
-      .replace('import AgentSetup from "../../components/AgentSetup.astro";\n\n', "")
-      .replace("<AgentSetup />\n\n", "");
+      .replace('import AgentSetup from "../../components/AgentSetup.astro";\n', "")
+      .replace('import Aside from "../../components/Aside.astro";\n', "")
+      .replace(/^\n/, "")
+      .replace("<AgentSetup />\n\n", "")
+      .replace(/<Aside label='([^']+)'>\n\n([\s\S]*?)\n\n<\/Aside>\n\n/g, (_match, label, content) => {
+        const quoted = content.split("\n").map((line) => (line.trim() ? `> ${line}` : ">")).join("\n");
+        return `> **${label}**\n>\n${quoted}\n\n`;
+      });
 	if (lastUpdated) {
 		expectedMarkdown = expectedMarkdown.replace(/^(# .+)$/m, `$1\n\nLast updated: ${lastUpdated}`);
 	}
@@ -221,7 +228,7 @@ test("every generated public endpoint is served with its expected type", async (
 	expect(robots.includes("Sitemap: https://zinn.sh/sitemap-index.xml")).toBe(process.env.SITE_TEST_ENV === "production");
 	const sitemap = await (await server.fetch("/sitemap-0.xml")).text();
 	const locations = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]!);
-	expect(locations).toEqual(["https://zinn.sh/", ...[...markdownPages, "integrations", opencodeTheme.path.slice(1)].sort().map((page) => `https://zinn.sh/${page}/`)]);
+	expect(locations).toEqual(["https://zinn.sh/", ...[...markdownPages, "integrations", opencodeTheme.path.slice(1), opencodeInspector.path.slice(1)].sort().map((page) => `https://zinn.sh/${page}/`)]);
 	for (const location of locations) {
 		expect((await server.fetch(new URL(location).pathname)).status).toBe(200);
 	}
@@ -258,7 +265,7 @@ test("agent setup prompt uses the installation command and supported runtime", a
   }
 });
 
-test.each([...docsPages, "changelog", "integrations", opencodeTheme.path.slice(1)])("%s offers its Markdown actions directly after the heading", async (page) => {
+test.each([...docsPages, "changelog", "integrations", opencodeTheme.path.slice(1), opencodeInspector.path.slice(1)])("%s offers its Markdown actions directly after the heading", async (page) => {
   const html = await (await server.fetch(`/${page}`)).text();
   expect(html).toMatch(new RegExp(`</h1>\\s*<div[^>]*>[\\s\\S]*?data-copy-url="/${page}\\.md"`));
   expect(html).toContain(`href="/${page}.md"`);
@@ -308,4 +315,27 @@ test("integration routes expose the gallery, Markdown and canonical theme downlo
 	expect(download.headers.get("Content-Type")).toContain("application/json");
 	expect(download.headers.get("Content-Disposition")).toContain('filename="zinn.json"');
 	expect(await download.text()).toBe(await Bun.file(join(docsDirectory, "../integrations/opencode/theme/zinn.json")).text());
+});
+
+
+test("inspector integration page carries the setup guide and its Markdown twin", async () => {
+	const index = await server.fetch("/integrations");
+	expect(await index.text()).toContain(`href="${opencodeInspector.path}"`);
+	const response = await server.fetch(opencodeInspector.path);
+	expect(response.status).toBe(200);
+	const html = await response.text();
+	expect(html).toContain(`rel="canonical" href="https://zinn.sh${opencodeInspector.path}/"`);
+	expect(html).toContain('rel="alternate" type="text/markdown"');
+	expect(html).toContain(opencodeInspector.package);
+	expect(html).toContain("cli.json");
+	expect(html).toContain("ZINN_THREAD_ID");
+	const markdown = await server.fetch(`${opencodeInspector.path}.md`);
+	expect(markdown.status).toBe(200);
+	expect(markdown.headers.get("Content-Type")).toContain("text/markdown");
+	const text = await markdown.text();
+	expect(text).toContain(opencodeInspector.package);
+	expect(text).toContain(opencodeInspector.verifiedVersion);
+	expect(text).toContain(opencodeInspector.minimumCliVersion);
+	expect(text).toContain("cli.json");
+	expect(text).toContain("ZINN_THREAD_ID");
 });
