@@ -1,0 +1,51 @@
+---
+import { npmPackageUrl } from "../../config/releases";
+
+interface Props {
+	cli: string;
+	core: string;
+}
+
+const { cli, core } = Astro.props;
+---
+
+<div class='release-packages'>
+	<a href={npmPackageUrl("cli", cli)}>CLI {cli}</a>
+	<a href={npmPackageUrl("core", core)}>Core {core}</a>
+</div>
+
+<style>
+	.release-packages {
+		position: relative;
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		margin-top: 1.25rem;
+		border-block: 1px solid var(--color-soot);
+		font-size: 0.875rem;
+		line-height: 1.6;
+	}
+
+	.release-packages a {
+		display: block;
+		padding-block: 0.375rem;
+		text-align: center;
+	}
+
+	/* The divider closes against the top and bottom rules. */
+	.release-packages::after {
+		content: "";
+		position: absolute;
+		top: -1px;
+		bottom: -1px;
+		left: 50%;
+		width: 1px;
+		background: var(--color-soot);
+	}
+
+	/* Bleed to the plate frame and the rail rule while the rail layout is active. */
+	@media (min-width: 64rem) {
+		.release-packages {
+			margin-inline: calc(var(--plate-padding-inline, 0px) * -1) calc(var(--rail-meta-padding-right, 0px) * -1);
+		}
+	}
+</style>

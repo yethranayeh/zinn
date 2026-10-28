@@ -57,7 +57,7 @@ A database with a newer schema can be read, but Zinn refuses changes to it. Use 
 
 ## Databases without a schema version
 
-A database created before version [Eridu/cli-0.37.0/core-0.26.0](/changelog#0370-eridu---2026-10-08), is **unmarked**. Zinn refuses to open it, and `zinn migrate` does not upgrade it. Add `--allow-legacy-read` to a command to request best-effort, read-only access:
+A database created before version [Eridu/cli-0.37.0/core-0.26.0](/changelog#release-0370), is **unmarked**. Zinn refuses to open it, and `zinn migrate` does not upgrade it. Add `--allow-legacy-read` to a command to request best-effort, read-only access:
 
 ```sh title="Read an unmarked database"
 zinn task list MDR --allow-legacy-read

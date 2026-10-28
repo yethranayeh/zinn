@@ -1,6 +1,7 @@
 import { opencodeInspector } from "../src/config/opencode-inspector";
 import { opencodeScenes, opencodeTheme } from "../src/config/opencode-theme";
 import { agentSetupPrompt, installCommand, minimumNodeVersion } from "../src/config/site";
+import { markdownBody } from "../src/markdown/markdown-body";
 import { splitShellCommands } from "../src/markdown/shell-commands";
 import { expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
@@ -85,15 +86,8 @@ async function expectMarkdownTwin(page: string, source: string) {
 	const markdown = await markdownResponse.text();
 	const sourceText = await Bun.file(join(contentDirectory, source)).text();
 	const lastUpdated = sourceText.match(/^lastUpdated: "([^"]+)"$/m)?.[1];
-	let expectedMarkdown = sourceText.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trimStart()
-      .replace('import AgentSetup from "../../components/AgentSetup.astro";\n', "")
-      .replace('import Aside from "../../components/Aside.astro";\n', "")
-      .replace(/^\n/, "")
-      .replace("<AgentSetup />\n\n", "")
-      .replace(/<Aside label='([^']+)'>\n\n([\s\S]*?)\n\n<\/Aside>\n\n/g, (_match, label, content) => {
-        const quoted = content.split("\n").map((line) => (line.trim() ? `> ${line}` : ">")).join("\n");
-        return `> **${label}**\n>\n${quoted}\n\n`;
-      });
+	const sourceBody = sourceText.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trimStart();
+	let expectedMarkdown = `${markdownBody(sourceBody)}\n`;
 	if (lastUpdated) {
 		expectedMarkdown = expectedMarkdown.replace(/^(# .+)$/m, `$1\n\nLast updated: ${lastUpdated}`);
 	}
