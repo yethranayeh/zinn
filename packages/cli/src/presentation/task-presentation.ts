@@ -46,6 +46,8 @@ export function presentTask(taskMatch: TaskWithKey): PresentedTask {
     priority: taskMatch.priority,
     labels: labels.map((label) => label.name),
     label_ids: labels.map((label) => label.id),
+    created_at: taskMatch.created_at,
+    updated_at: taskMatch.updated_at,
   };
 }
 

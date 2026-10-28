@@ -36,6 +36,10 @@ References include the following ID fields:
 
 A task's `column` is its column name. `labels` contains label names, and `label_ids` contains their IDs in matching order. Both arrays are empty when the task has no labels.
 
+Full task objects include required integer `created_at` and `updated_at` values in epoch milliseconds. This applies to list, search, view, create, edit, move, order, archive, unarchive, label attachment changes and delete results, including bulk results. Related task summaries include `id`, `key`, `project_id`, `column`, `column_id`, `title` and `status`.
+
+The update time tracks meaningful task changes, including label attachments. Operations that lead to no change, comments, relations, column renames and global label definition edits preserve it. See [task timestamps](/docs/cli#create-and-read-tasks) for the operations that actually advance it.
+
 In relation create/delete results, `source_task_id` identifies the task named by `source`, and `target_task_id` identifies the task named by `target`. This also applies to symmetric `related` relations.
 
 Use a task's `id` with `activity list --task-id`, or a project's `id` with `activity list --project-id`, to select its history. Activity records have their own event `id` and the affected entity's `entity_id`; recorded `changes` payloads are preserved as written.

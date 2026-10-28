@@ -38,6 +38,8 @@ export const taskSchema = z.strictObject({
     ),
   labels: z.array(z.string()).describe("Attached label names."),
   label_ids: z.array(z.string()).describe("Attached label IDs, in the same order as labels."),
+  created_at: timestamp,
+  updated_at: timestamp,
 });
 
 export const relationSchema = z.strictObject({
@@ -127,8 +129,6 @@ export const actorSchema = activitySchema.pick({
 });
 
 export const taskDetailSchema = taskSchema.extend({
-  created_at: timestamp,
-  updated_at: timestamp,
   relations: z.array(relationSchema),
   comments: z.array(commentSchema),
 });

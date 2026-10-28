@@ -97,7 +97,13 @@ function expectEntityIds(schema: ResultSchemaName, value: any, rows: ReturnType<
     case "TaskChanges": {
       const stored = rows.tasks.find((task) => task.key === value.key)!;
       expect(stored).toBeDefined();
-      expect(value).toMatchObject({ id: stored.id, project_id: stored.project_id, column_id: stored.column_id });
+      expect(value).toMatchObject({
+        id: stored.id,
+        project_id: stored.project_id,
+        column_id: stored.column_id,
+        created_at: stored.created_at,
+        updated_at: stored.updated_at,
+      });
       expect(rows.columns.find((column) => column.id === value.column_id)?.name).toBe(value.column);
       expect(value.label_ids).toEqual(value.labels.map((name: string) => rows.labels.find((label) => label.name === name)!.id));
       expect([...value.label_ids].sort()).toEqual(rows.attachments.filter((entry) => entry.task_id === stored.id).map((entry) => entry.label_id).sort());
@@ -217,7 +223,12 @@ const fixtures: Record<string, Fixture[]> = {
     { schema: "ColumnChange", args: ["APP", "Backlog", "first"], check: (v) => expect(v.changed).toBe(false) },
   ],
   "task create": [{ schema: "Task", args: ["APP", "--title", "New task"] }],
-  "task list": [{ schema: "TaskList", args: ["APP"] }, { schema: "TaskList", args: ["APP", "--column", "Absent"] }],
+  "task list": [
+    { schema: "TaskList", args: ["APP"] },
+    { schema: "TaskList", args: ["APP", "--column", "Absent"] },
+    { schema: "TaskList", args: ["APP", "--archived"], prepare: (dir) => { success(dir, ["task", "archive", "APP-1"]); } },
+    { schema: "TaskList", args: ["APP", "--all"], prepare: (dir) => { success(dir, ["task", "archive", "APP-1"]); } },
+  ],
   "task search": [{ schema: "TaskList", args: ["Alpha", "APP"] }, { schema: "TaskList", args: ["Unmatched"] }],
   "task view": [
     { schema: "TaskDetail", args: ["APP-1"], check: (value) => expect(Object.hasOwn(value, "activity")).toBe(false) },

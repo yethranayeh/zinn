@@ -80,7 +80,7 @@ test("unsupported schema conversions fail instead of emitting an unconstrained r
 });
 
 test("wire schemas distinguish null, omission, history and mutation cardinality", () => {
-  const task = { id: "task-id", key: "APP-1", project_id: "project-id", status: "Active", column: "Backlog", column_id: "column-id", title: "One", description: null, priority: null, labels: [], label_ids: [] };
+  const task = { id: "task-id", key: "APP-1", project_id: "project-id", status: "Active", column: "Backlog", column_id: "column-id", title: "One", description: null, priority: null, labels: [], label_ids: [], created_at: 1, updated_at: 2 };
   function accepts(name: string, value: unknown) {
     return ajv.getSchema(`results#/definitions/${name}`)!(value);
   }
@@ -94,7 +94,7 @@ test("wire schemas distinguish null, omission, history and mutation cardinality"
   expect(accepts("Task", { ...task, priority: 1 })).toBe(false);
   expect(accepts("Task", { ...task, labels: null })).toBe(false);
   expect(accepts("Task", { ...task, extra: true })).toBe(false);
-  const detail = { ...task, created_at: 1, updated_at: 2, relations: [], comments: [] };
+  const detail = { ...task, relations: [], comments: [] };
   expect(accepts("TaskDetail", detail)).toBe(true);
   expect(accepts("TaskDetail", { ...detail, activity: [] })).toBe(false);
   expect(accepts("TaskDetailHistory", detail)).toBe(false);
@@ -106,7 +106,9 @@ test("wire schemas distinguish null, omission, history and mutation cardinality"
     expect(accepts("TaskDetail", missing)).toBe(false);
     expect(accepts("TaskDetailHistory", { ...missing, activity: [] })).toBe(false);
     expect(accepts("TaskDetail", { ...detail, [field]: "2026-10-24" })).toBe(false);
-    expect(accepts("Task", { ...task, [field]: 1 })).toBe(false);
+    for (const invalid of [null, "2026-10-24", 1.5]) {
+      expect(accepts("Task", { ...task, [field]: invalid })).toBe(false);
+    }
   }
   const change = { ...task, changed: false };
   expect(accepts("TaskChange", change)).toBe(true);

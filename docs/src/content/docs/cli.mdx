@@ -243,7 +243,7 @@ zinn task view MDR-1 --history
 
 Task lists are previews, so they _omit_ descriptions, but `task view` prints the full description.
 
-`task view` includes the task's creation and update times in local time with a UTC offset. In JSON, `created_at` and `updated_at` are stored epoch milliseconds. Edits, label attachment changes, moves, reorders, archiving and unarchiving advance the update time when they change the task. Comments, relations, and operations that lead to no changes leave it untouched.
+`task view` includes the task's creation and update times in local time with a UTC offset. Full task JSON objects include `created_at` and `updated_at` as stored integer epoch milliseconds across list, search, view, creation, updates and deletion, including bulk results. Edits, label attachment changes, moves, reorders, archiving and unarchiving advance the update time when they change the task. Comments, relations, column renames, global label-definition edits and operations that lead to no changes leave it untouched.
 
 An omitted project key uses [defaultProject](/docs/settings), or every project when none is configured. `--all-projects` overrides the default.
 

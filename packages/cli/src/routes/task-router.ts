@@ -550,8 +550,6 @@ Example: zinn task search 'refinement quota' MDR --limit 5`,
       const taskMatch = task.getByKey(positionals[0]!);
       const detail = {
         ...presentTask(taskMatch),
-        created_at: taskMatch.created_at,
-        updated_at: taskMatch.updated_at,
         relations: presentRelations(taskMatch),
         comments: presentComments(taskMatch.key),
       };

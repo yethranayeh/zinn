@@ -2100,14 +2100,16 @@ test("task view exposes stored timestamps after its content and history, using l
     }
     expect((await run("activity", "list", "--project", "TIME", "--json")).stdout).toBe(activityBefore);
 
+    const createdTask = JSON.parse(created.stdout);
+    expect(Number.isInteger(createdTask.created_at)).toBe(true);
+    expect(Number.isInteger(createdTask.updated_at)).toBe(true);
+    expect(createdTask.created_at).toBe(createdTask.updated_at);
     for (const result of [
-      JSON.parse(created.stdout),
       JSON.parse((await run("task", "list", "TIME", "--json")).stdout)[0],
       JSON.parse((await run("task", "search", "Timestamped", "TIME", "--json")).stdout)[0],
       JSON.parse((await run("task", "edit", "TIME-1", "--title", "Timestamped", "--json")).stdout),
     ]) {
-      expect(Object.hasOwn(result, "created_at")).toBe(false);
-      expect(Object.hasOwn(result, "updated_at")).toBe(false);
+      expect(result).toMatchObject({ created_at: createdAt, updated_at: updatedAt });
     }
 
     expect((await run("task", "comment", "create", "TIME-1", "--text", "Another comment")).code).toBe(0);
@@ -3070,6 +3072,8 @@ test("task move prints the task row, while --json returns the full task", async 
       priority: "high",
       labels: ["urgent"],
       label_ids: [expect.any(String)],
+      created_at: expect.any(Number),
+      updated_at: expect.any(Number),
       changed: true,
     });
   });
@@ -3301,6 +3305,8 @@ test("task write commands print JSON with the full task details, unchanged by th
       priority: "high",
       labels: ["urgent"],
       label_ids: [expect.any(String)],
+      created_at: expect.any(Number),
+      updated_at: expect.any(Number),
     });
 
     const edited = await runZinn(["task", "edit", "ROW-1", "--title", "uno", "--json"], testDir);
@@ -3316,6 +3322,8 @@ test("task write commands print JSON with the full task details, unchanged by th
       priority: "high",
       labels: ["urgent"],
       label_ids: [expect.any(String)],
+      created_at: expect.any(Number),
+      updated_at: expect.any(Number),
       changed: true,
     });
 
@@ -3332,6 +3340,8 @@ test("task write commands print JSON with the full task details, unchanged by th
       priority: "high",
       labels: ["urgent"],
       label_ids: [expect.any(String)],
+      created_at: expect.any(Number),
+      updated_at: expect.any(Number),
       changed: true,
     });
   });
@@ -4235,6 +4245,8 @@ test("--json prints the created entity on write commands, wherever the flag is p
       priority: null,
       labels: [],
       label_ids: [],
+      created_at: expect.any(Number),
+      updated_at: expect.any(Number),
     });
   });
 });
@@ -4477,6 +4489,8 @@ test("delete commands with --yes and --json print the deleted entity", async () 
       priority: null,
       labels: [],
       label_ids: [],
+      created_at: expect.any(Number),
+      updated_at: expect.any(Number),
     });
     expect(JSON.parse((await run("task", "list", "WEB", "--json")).stdout)).toMatchObject([
       { key: "WEB-2" },
