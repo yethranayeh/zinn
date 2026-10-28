@@ -4,15 +4,28 @@ import { join } from "node:path";
 import { listWorkingTreeFiles } from "./package-fixture.ts";
 
 const repositoryDirectory = join(import.meta.dir, "..");
-const configPath = join(repositoryDirectory, "tsconfig.json");
+const project = process.argv[2];
+const inspectorDirectory = "integrations/opencode/panel/";
+
+if (project !== undefined && project !== inspectorDirectory.slice(0, -1)) {
+  throw new Error(`Unknown TypeScript project: ${project}`);
+}
+
+const projectDirectory =
+  project === undefined ? repositoryDirectory : join(repositoryDirectory, project);
+const configPath = join(projectDirectory, "tsconfig.json");
 const config = ts.readConfigFile(configPath, ts.sys.readFile);
-const files = listWorkingTreeFiles(repositoryDirectory).filter(
-  (path) => !path.startsWith("docs/") && /\.(?:[cm]?ts|tsx)$/.test(path),
-);
+const files = listWorkingTreeFiles(repositoryDirectory).filter((path) => {
+  const ownsFile =
+    project === undefined
+      ? !path.startsWith("docs/") && !path.startsWith(inspectorDirectory)
+      : path.startsWith(inspectorDirectory);
+  return ownsFile && /\.(?:[cm]?ts|tsx)$/.test(path);
+});
 const parsed = ts.parseJsonConfigFileContent(
-  { ...config.config, files, include: [] },
+  { ...config.config, files: files.map((path) => join(repositoryDirectory, path)), include: [] },
   ts.sys,
-  repositoryDirectory,
+  projectDirectory,
 );
 const program = ts.createProgram(parsed.fileNames, parsed.options);
 const diagnostics = [

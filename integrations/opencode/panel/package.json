@@ -1,0 +1,53 @@
+{
+	"name": "@zinn-dev/opencode",
+	"version": "0.1.0",
+	"type": "module",
+	"description": "Experimental Zinn task inspector for the OpenCode TUI.",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/yethranayeh/zinn.git",
+		"directory": "integrations/opencode/panel"
+	},
+	"homepage": "https://zinn.sh/docs/opencode",
+	"exports": {
+		"./tui": "./pkg/tui.tsx"
+	},
+	"files": [
+		"pkg/types.ts",
+		"pkg/options.ts",
+		"pkg/data.ts",
+		"pkg/session.ts",
+		"pkg/scan.ts",
+		"pkg/rows.ts",
+		"pkg/theme.ts",
+		"pkg/components.tsx",
+		"pkg/dialogs.tsx",
+		"pkg/commands.ts",
+		"pkg/sidebar.tsx",
+		"pkg/tui.tsx"
+	],
+	"scripts": {
+		"test": "bun test --timeout 120000 pkg tests",
+		"typecheck": "bun ../../../scripts/typecheck.ts integrations/opencode/panel",
+		"test:package": "bun test --timeout 120000 tests/package.test.ts",
+		"prepublishOnly": "bun checks/release.ts && bun run typecheck && bun run test"
+	},
+	"dependencies": {
+		"@opencode/plugin": "2.2.0"
+	},
+	"peerDependencies": {
+		"@opentui/core": "0.7.0",
+		"@opentui/solid": "0.7.0",
+		"solid-js": ">=1.9.0"
+	},
+	"devDependencies": {
+		"@opencode/theme": "2.2.0",
+		"@opentui/core": "0.7.0",
+		"@opentui/solid": "0.7.0",
+		"solid-js": "^1.9.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

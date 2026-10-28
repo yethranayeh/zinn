@@ -1,0 +1,235 @@
+/** @jsxImportSource @opentui/solid */
+import type { RGBA } from "@opentui/core";
+import type { JSX } from "@opentui/solid";
+import type { Ctx } from "./types.ts";
+import type { CurrentMark } from "./options.ts";
+import type { DisplayRow } from "./rows.ts";
+
+import { For, Show, createMemo, createSignal } from "solid-js";
+
+import {
+  CHIP_PAD,
+  CHIP_PRIORITY,
+  CONTEXT_SEPARATOR,
+  LABEL_SEPARATOR,
+  PRIORITY_COLOR,
+  labelColors,
+} from "./data.ts";
+import { MARKER_COLUMNS, RAIL_COLUMNS, SESSION_GLYPH, priorityLetter } from "./options.ts";
+import { truncate } from "./rows.ts";
+import { panelTheme, toneColor } from "./theme.ts";
+
+export function Overflow(props: {
+  ctx: Ctx;
+  count: number;
+  label: string;
+  onOpen: () => void;
+}): JSX.Element {
+  const theme = () => panelTheme(props.ctx);
+  const [hover, setHover] = createSignal(false);
+  const onClick = (event: { stopPropagation: () => void }) => {
+    event.stopPropagation();
+
+    if (hover()) {
+      props.onOpen();
+    }
+  };
+
+  return (
+    <box
+      flexDirection="row"
+      backgroundColor={hover() ? theme().backgroundElement : "transparent"}
+      onMouseOver={() => setHover(true)}
+      onMouseOut={() => setHover(false)}
+      onMouseUp={onClick}
+    >
+      <text flexShrink={0} fg={theme().textMuted}>{`+${props.count} ${props.label}`}</text>
+    </box>
+  );
+}
+
+type MetaPart = {
+  text: string;
+  color: string | null;
+  chip: boolean;
+  sep: boolean;
+};
+
+export function Row(props: {
+  ctx: Ctx;
+  row: DisplayRow;
+  titleColumns: number;
+  metaColumns: number;
+  dense: boolean;
+  current: CurrentMark;
+  markGlyph?: string;
+  onOpen: () => void;
+}): JSX.Element {
+  const theme = () => panelTheme(props.ctx);
+  const keyColor = toneColor(props.ctx, props.row.tone);
+  const metaColor = () => theme().textMuted;
+  const glyph = () => props.current === "glyph";
+  const markerColumns = () => {
+    if (!props.dense) {
+      return MARKER_COLUMNS + (glyph() ? RAIL_COLUMNS : 0);
+    }
+    return (glyph() ? RAIL_COLUMNS : 0) + (props.row.created ? 1 : 0);
+  };
+  const metaIndent = () => markerColumns() + 1;
+  const sessionMark = () => props.markGlyph ?? (props.row.mine ? SESSION_GLYPH : " ");
+  const statusGlyph = () => (props.dense ? (props.row.created ? "+" : "") : props.row.glyph);
+  const [hover, setHover] = createSignal(false);
+  const onEnter = () => setHover(true);
+  const onLeave = () => setHover(false);
+  const wash = (color: RGBA) => {
+    const [r, g, b] = color.toInts();
+    const byte = (n: number) => n.toString(16).padStart(2, "0");
+    return `#${byte(r)}${byte(g)}${byte(b)}${hover() ? "33" : "1a"}`;
+  };
+  const done = () => props.row.column === "Done";
+  const background = () =>
+    done() ? wash(theme().success) : hover() ? theme().backgroundElement : "transparent";
+  const rail = () => true;
+  const railColor = () => (done() ? theme().success : "transparent");
+  const onClick = (event: { stopPropagation: () => void }) => {
+    event.stopPropagation();
+    if (hover()) {
+      props.onOpen();
+    }
+  };
+
+  const head = (
+    <box flexDirection="row" gap={1}>
+      <text width={markerColumns()} flexShrink={0} fg={keyColor()}>
+        {glyph() ? <span style={{ fg: theme().accent }}>{sessionMark()}</span> : null}
+        {statusGlyph()}
+      </text>
+
+      <text flexShrink={0} fg={keyColor()}>
+        {props.row.key}
+      </text>
+      {!props.dense && (
+        <text flexShrink={0} fg={metaColor()}>
+          {priorityLetter(props.row.priority)}
+        </text>
+      )}
+
+      <text wrapMode="none" flexShrink={1} fg={metaColor()}>
+        {truncate(props.row.title, props.titleColumns)}
+      </text>
+    </box>
+  );
+
+  const metaPlan = createMemo<MetaPart[]>(() => {
+    const budget = props.metaColumns;
+    const parts: MetaPart[] = [];
+    const contexts: MetaPart[] = [];
+    if (props.row.column.length > 0) {
+      contexts.push({ text: props.row.column, color: null, chip: false, sep: false });
+    }
+    if (props.row.priority) {
+      contexts.push({
+        text: props.row.priority,
+        color: PRIORITY_COLOR[props.row.priority] ?? null,
+        chip: props.row.priority === CHIP_PRIORITY,
+        sep: false,
+      });
+    }
+
+    let used = contexts.reduce(
+      (sum, part) => sum + part.text.length + (part.chip ? CHIP_PAD : 0),
+      0,
+    );
+    used += Math.max(0, contexts.length - 1) * CONTEXT_SEPARATOR.length;
+    contexts.forEach((part, index) => {
+      if (index > 0) {
+        parts.push({ text: CONTEXT_SEPARATOR, color: null, chip: false, sep: true });
+      }
+      parts.push(part);
+    });
+
+    let shown = 0;
+    for (let i = 0; i < props.row.labels.length; i++) {
+      const label = props.row.labels[i]!;
+      const separator =
+        contexts.length > 0 || shown > 0 ? (shown > 0 ? LABEL_SEPARATOR : CONTEXT_SEPARATOR) : "";
+      const leftovers = props.row.labels.length - i - 1;
+      const reserve = leftovers > 0 ? 2 + String(leftovers).length : 0;
+      if (used + separator.length + label.length + reserve > budget) {
+        break;
+      }
+      if (separator.length > 0) {
+        parts.push({ text: separator, color: null, chip: false, sep: true });
+      }
+      parts.push({ text: label, color: labelColors.get(label) ?? null, chip: false, sep: false });
+      used += separator.length + label.length;
+      shown++;
+    }
+
+    const hidden = props.row.labels.length - shown;
+    if (hidden > 0) {
+      const tail = ` +${hidden}`;
+      if (used + tail.length <= budget) {
+        parts.push({ text: tail, color: null, chip: false, sep: false });
+      }
+    }
+    return parts;
+  });
+
+  const meta = (
+    <box flexDirection="row">
+      <text flexShrink={0}>{` `.repeat(metaIndent())}</text>
+      <text wrapMode="none" flexShrink={1} fg={metaColor()}>
+        <For each={metaPlan()}>
+          {(part) => (
+            <Show
+              when={!part.chip}
+              fallback={
+                <>
+                  <span style={{ fg: metaColor() }}> </span>
+                  <span style={{ fg: part.color, bg: `${part.color}33` }}>{part.text}</span>
+                  <span style={{ fg: metaColor() }}> </span>
+                </>
+              }
+            >
+              <span style={{ fg: part.sep ? theme().borderSubtle : (part.color ?? metaColor()) }}>
+                {part.text}
+              </span>
+            </Show>
+          )}
+        </For>
+      </text>
+    </box>
+  );
+
+  if (!props.dense) {
+    return (
+      <box
+        flexDirection="row"
+        backgroundColor={background()}
+        border={rail() ? ["left"] : []}
+        borderColor={railColor()}
+        onMouseOver={onEnter}
+        onMouseOut={onLeave}
+        onMouseUp={onClick}
+      >
+        {head}
+      </box>
+    );
+  }
+
+  return (
+    <box
+      flexDirection="column"
+      backgroundColor={background()}
+      border={rail() ? ["left"] : []}
+      borderColor={railColor()}
+      onMouseOver={onEnter}
+      onMouseOut={onLeave}
+      onMouseUp={onClick}
+    >
+      {head}
+      {meta}
+    </box>
+  );
+}

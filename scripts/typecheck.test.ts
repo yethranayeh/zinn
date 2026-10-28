@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -19,10 +28,23 @@ beforeEach(() => {
   for (const name of ["typecheck.ts", "package-fixture.ts"]) {
     copyFileSync(join(import.meta.dir, name), join(directory, "scripts", name));
   }
-  symlinkSync(join(repositoryDirectory, "node_modules"), join(directory, "node_modules"), "junction");
-  writeFileSync(join(directory, "tsconfig.json"), JSON.stringify({
-    compilerOptions: { strict: true, noEmit: true, skipLibCheck: true, target: "ESNext", types: [] },
-  }));
+  symlinkSync(
+    join(repositoryDirectory, "node_modules"),
+    join(directory, "node_modules"),
+    "junction",
+  );
+  writeFileSync(
+    join(directory, "tsconfig.json"),
+    JSON.stringify({
+      compilerOptions: {
+        strict: true,
+        noEmit: true,
+        skipLibCheck: true,
+        target: "ESNext",
+        types: [],
+      },
+    }),
+  );
   writeFileSync(join(directory, "retained.ts"), "export const retained: number = 1;\n");
   git(directory, ["add", "--all"]);
 });
@@ -39,7 +61,11 @@ function runTypecheck() {
     env: TEST_ENVIRONMENT,
   });
   expect(readFileSync(indexPath)).toEqual(indexBefore);
-  return { exitCode: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
+  return {
+    exitCode: result.exitCode,
+    stdout: result.stdout.toString(),
+    stderr: result.stderr.toString(),
+  };
 }
 
 test("typecheck checks an unstaged rename without requiring the deleted root", () => {
@@ -102,4 +128,42 @@ test("typecheck excludes website roots and files ignored by Git", () => {
   expect(result.exitCode).toBe(0);
   expect(result.stdout).toBe("");
   expect(result.stderr).toBe("");
+});
+
+test("the inspector compiler owns every current TypeScript file in its project", () => {
+  const inspector = join(directory, "integrations/opencode/panel");
+  mkdirSync(join(inspector, "pkg"), { recursive: true });
+  mkdirSync(join(inspector, "tests"));
+  writeFileSync(
+    join(inspector, "tsconfig.json"),
+    JSON.stringify({
+      extends: "../../../tsconfig.json",
+      include: ["pkg/**/*.ts"],
+    }),
+  );
+  writeFileSync(join(inspector, "pkg/source.ts"), "export const valid: number = 1;\n");
+  git(directory, ["add", "integrations"]);
+  writeFileSync(join(inspector, "tests/untracked.ts"), 'export const invalid: number = "wrong";\n');
+
+  const root = runTypecheck();
+  expect(root.exitCode).toBe(0);
+  const inspectorCheck = Bun.spawnSync(
+    [process.execPath, "scripts/typecheck.ts", "integrations/opencode/panel"],
+    {
+      cwd: directory,
+      env: TEST_ENVIRONMENT,
+    },
+  );
+  expect(inspectorCheck.exitCode).toBe(1);
+  expect(inspectorCheck.stderr.toString()).toContain("untracked.ts");
+  expect(inspectorCheck.stderr.toString()).toContain("TS2322");
+  writeFileSync(join(inspector, "tests/untracked.ts"), "export const valid: number = 1;\n");
+  const valid = Bun.spawnSync(
+    [process.execPath, "scripts/typecheck.ts", "integrations/opencode/panel"],
+    {
+      cwd: directory,
+      env: TEST_ENVIRONMENT,
+    },
+  );
+  expect(valid.exitCode).toBe(0);
 });
