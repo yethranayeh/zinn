@@ -17,7 +17,7 @@ import {
 } from "./data.ts";
 import { MARKER_COLUMNS, RAIL_COLUMNS, SESSION_GLYPH, priorityLetter } from "./options.ts";
 import { truncate } from "./rows.ts";
-import { panelTheme, toneColor } from "./theme.ts";
+import { TINT_ALPHA_STRONG, TINT_ALPHA_SUBTLE, panelTheme, toneColor } from "./theme.ts";
 
 export function Overflow(props: {
   ctx: Ctx;
@@ -66,7 +66,7 @@ export function Row(props: {
   onOpen: () => void;
 }): JSX.Element {
   const theme = () => panelTheme(props.ctx);
-  const keyColor = toneColor(props.ctx, props.row.tone);
+  const keyColor = toneColor(props.ctx, () => props.row.tone);
   const metaColor = () => theme().textMuted;
   const glyph = () => props.current === "glyph";
   const markerColumns = () => {
@@ -84,12 +84,12 @@ export function Row(props: {
   const wash = (color: RGBA) => {
     const [r, g, b] = color.toInts();
     const byte = (n: number) => n.toString(16).padStart(2, "0");
-    return `#${byte(r)}${byte(g)}${byte(b)}${hover() ? "33" : "1a"}`;
+    return `#${byte(r)}${byte(g)}${byte(b)}${hover() ? TINT_ALPHA_STRONG : TINT_ALPHA_SUBTLE}`;
   };
   const done = () => props.row.column === "Done";
   const background = () =>
     done() ? wash(theme().success) : hover() ? theme().backgroundElement : "transparent";
-  const rail = () => true;
+  // Every row reserves the left border, coloured only for Done rows so nothing shifts.
   const railColor = () => (done() ? theme().success : "transparent");
   const onClick = (event: { stopPropagation: () => void }) => {
     event.stopPropagation();
@@ -161,7 +161,7 @@ export function Row(props: {
       if (separator.length > 0) {
         parts.push({ text: separator, color: null, chip: false, sep: true });
       }
-      parts.push({ text: label, color: labelColors.get(label) ?? null, chip: false, sep: false });
+      parts.push({ text: label, color: labelColors().get(label) ?? null, chip: false, sep: false });
       used += separator.length + label.length;
       shown++;
     }
@@ -176,7 +176,7 @@ export function Row(props: {
     return parts;
   });
 
-  const meta = (
+  const meta = () => (
     <box flexDirection="row">
       <text flexShrink={0}>{` `.repeat(metaIndent())}</text>
       <text wrapMode="none" flexShrink={1} fg={metaColor()}>
@@ -187,7 +187,9 @@ export function Row(props: {
               fallback={
                 <>
                   <span style={{ fg: metaColor() }}> </span>
-                  <span style={{ fg: part.color, bg: `${part.color}33` }}>{part.text}</span>
+                  <span style={{ fg: part.color, bg: `${part.color}${TINT_ALPHA_STRONG}` }}>
+                    {part.text}
+                  </span>
                   <span style={{ fg: metaColor() }}> </span>
                 </>
               }
@@ -202,34 +204,18 @@ export function Row(props: {
     </box>
   );
 
-  if (!props.dense) {
-    return (
-      <box
-        flexDirection="row"
-        backgroundColor={background()}
-        border={rail() ? ["left"] : []}
-        borderColor={railColor()}
-        onMouseOver={onEnter}
-        onMouseOut={onLeave}
-        onMouseUp={onClick}
-      >
-        {head}
-      </box>
-    );
-  }
-
   return (
     <box
-      flexDirection="column"
+      flexDirection={props.dense ? "column" : "row"}
       backgroundColor={background()}
-      border={rail() ? ["left"] : []}
+      border={["left"]}
       borderColor={railColor()}
       onMouseOver={onEnter}
       onMouseOut={onLeave}
       onMouseUp={onClick}
     >
       {head}
-      {meta}
+      <Show when={props.dense}>{meta()}</Show>
     </box>
   );
 }

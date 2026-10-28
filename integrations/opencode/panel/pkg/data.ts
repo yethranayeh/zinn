@@ -1,6 +1,7 @@
 import type { Ctx, DetailState, Loaded, Relation, TaskDetail, TaskSummary } from "./types.ts";
 
 import { appendFileSync } from "node:fs";
+import { createSignal } from "solid-js";
 
 type BunProc = Bun.Subprocess<"ignore", "pipe", "pipe">;
 
@@ -157,7 +158,7 @@ export const CHIP_PRIORITY = "urgent";
 export const CHIP_PAD = 2;
 export const CONTEXT_SEPARATOR = " | ";
 export const LABEL_SEPARATOR = ", ";
-export let labelColors: LabelColors = new Map();
+export const [labelColors, setLabelColors] = createSignal<LabelColors>(new Map());
 export function parseLabelColors(raw: string): LabelColors {
   let data: unknown;
   try {
@@ -290,7 +291,7 @@ export function loadLabelColors(force = false): Promise<void> {
   const pending = runZinn(["label", "list", "--json"])
     .then((result) => {
       if (result.ok) {
-        labelColors = parseLabelColors(result.value);
+        setLabelColors(parseLabelColors(result.value));
         labelColorsAt = Date.now();
       }
     })

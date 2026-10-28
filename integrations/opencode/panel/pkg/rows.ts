@@ -24,7 +24,6 @@ export type RowTone = "normal" | "done" | "created" | "blocked" | "warning";
 export type DisplayRow = {
   key: string;
   title: string;
-  count: number;
   glyph: string;
   tone: RowTone;
   unknown: boolean;
@@ -42,7 +41,6 @@ export function sameDisplayRow(a: DisplayRow, b: DisplayRow): boolean {
   return (
     a.key === b.key &&
     a.title === b.title &&
-    a.count === b.count &&
     a.priority === b.priority &&
     a.column === b.column &&
     a.glyph === b.glyph &&

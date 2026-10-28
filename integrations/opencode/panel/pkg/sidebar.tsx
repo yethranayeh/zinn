@@ -39,7 +39,7 @@ import {
   SLOT_COLUMNS,
 } from "./options.ts";
 import { columnGlyph, rowTone, stableRows, truncate } from "./rows.ts";
-import { newestIdleID, scanSession } from "./scan.ts";
+import { mentionCounts, newestIdleID, scanSession } from "./scan.ts";
 import {
   PROBE_CONCURRENCY,
   activityProbesSupported,
@@ -359,7 +359,6 @@ export function Sidebar(props: {
       return {
         key: mention.key,
         title: summary?.title ?? "",
-        count: mention.count,
         priority,
         labels,
         column,
@@ -377,7 +376,6 @@ export function Sidebar(props: {
       (mention): DisplayRow => ({
         key: mention.key,
         title: "",
-        count: mention.count,
         glyph: "⚠",
         tone: "warning",
         unknown: true,
@@ -390,12 +388,13 @@ export function Sidebar(props: {
     );
     return stableRows(unknownRowCache, candidates);
   });
-  const open = (key: string, unknown: boolean) => openDetail(props.ctx, key, unknown);
+  const mentionCountsByKey = createMemo(() => mentionCounts(scan().known));
+  const open = (key: string, unknown: boolean) =>
+    openDetail(props.ctx, key, unknown, mentionCountsByKey().get(key));
   const visibleKnown = createMemo(() => knownRows().slice(0, SECTION_ROWS));
   const knownOverflow = createMemo(() => knownRows().length - visibleKnown().length);
   const visibleUnknown = createMemo(() => unknownRows().slice(0, SECTION_ROWS));
   const unknownOverflow = createMemo(() => unknownRows().length - visibleUnknown().length);
-  const railColumns = () => RAIL_COLUMNS;
   const contentIndent = () => RAIL_COLUMNS + (props.options.current === "glyph" ? 1 : 0) + 1;
   const titleColumns = createMemo(() => {
     const rows = [...visibleKnown(), ...visibleUnknown()];
@@ -405,16 +404,15 @@ export function Sidebar(props: {
     }
     const gaps = props.options.rows === 2 ? 3 : 4;
     const priority = props.options.rows === 2 ? 0 : PRIORITY_COLUMNS;
-    return Math.max(8, SLOT_COLUMNS - railColumns() - MARKER_COLUMNS - priority - key - gaps);
+    return Math.max(8, SLOT_COLUMNS - RAIL_COLUMNS - MARKER_COLUMNS - priority - key - gaps);
   });
-  const metaColumns = createMemo(() => Math.max(8, SLOT_COLUMNS - railColumns() - MARKER_COLUMNS));
+  const metaColumns = Math.max(8, SLOT_COLUMNS - RAIL_COLUMNS - MARKER_COLUMNS);
   let published: PanelSnapshot | undefined;
   createEffect(() => {
     const loaded = map();
     published = {
-      sessionID: props.sessionID,
       map: loaded.ok ? loaded.value : undefined,
-      chatKeys: scan().known.map((mention) => mention.key),
+      known: scan().known,
     };
     publishPanel(published);
   });
@@ -442,20 +440,22 @@ export function Sidebar(props: {
     const loaded = map();
     openPicker(
       props.ctx,
-      "Zinn · keys in this chat",
+      "Zinn | keys in this chat",
       knownKeys(),
       loaded.ok ? loaded.value : undefined,
       false,
+      mentionCountsByKey(),
     );
   };
   const unknownPicker = () => {
     const loaded = map();
     openPicker(
       props.ctx,
-      "Zinn · unknown keys in this chat",
+      "Zinn | unknown keys in this chat",
       unknownKeys(),
       loaded.ok ? loaded.value : undefined,
       true,
+      mentionCountsByKey(),
     );
   };
 
@@ -489,7 +489,7 @@ export function Sidebar(props: {
               ctx={props.ctx}
               row={row}
               titleColumns={titleColumns()}
-              metaColumns={metaColumns()}
+              metaColumns={metaColumns}
               dense={props.options.rows === 2}
               current={props.options.current}
               markGlyph={
@@ -516,7 +516,7 @@ export function Sidebar(props: {
               ctx={props.ctx}
               row={row}
               titleColumns={titleColumns()}
-              metaColumns={metaColumns()}
+              metaColumns={metaColumns}
               dense={props.options.rows === 2 && !row.unknown}
               current={props.options.current}
               onOpen={() => open(row.key, row.unknown)}

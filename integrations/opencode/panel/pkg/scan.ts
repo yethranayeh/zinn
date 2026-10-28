@@ -261,3 +261,7 @@ export function newestIdleID(
   const last = messages[messages.length - 1];
   return last !== undefined && last.type === "idle" ? last.id : undefined;
 }
+
+export function mentionCounts(mentions: readonly Mention[]): ReadonlyMap<string, number> {
+  return new Map(mentions.map((mention) => [mention.key, mention.count]));
+}

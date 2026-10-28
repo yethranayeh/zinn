@@ -1,10 +1,11 @@
-import type { Ctx, TaskSummary } from "./types.ts";
+import type { Ctx, Mention, TaskSummary } from "./types.ts";
+
 import { openPicker } from "./dialogs.tsx";
+import { mentionCounts } from "./scan.ts";
 
 export type PanelSnapshot = {
-  sessionID: string;
   map: Map<string, TaskSummary> | undefined;
-  chatKeys: string[];
+  known: readonly Mention[];
 };
 
 export let activePanel: PanelSnapshot | undefined;
@@ -38,7 +39,15 @@ export function registerCommands(ctx: Ctx): void {
           });
           return;
         }
-        openPicker(ctx, "Zinn · keys in this chat", panel.chatKeys, panel.map, false);
+        const keys = panel.known.map((mention) => mention.key);
+        openPicker(
+          ctx,
+          "Zinn | keys in this chat",
+          keys,
+          panel.map,
+          false,
+          mentionCounts(panel.known),
+        );
       },
     },
     {
@@ -55,8 +64,7 @@ export function registerCommands(ctx: Ctx): void {
       slashName: "zinn",
       run() {
         const panel = activePanel;
-        const map = panel?.map;
-        if (!map) {
+        if (!panel?.map) {
           ctx.ui.toast.show({
             variant: "warning",
             title: "Zinn",
@@ -64,7 +72,15 @@ export function registerCommands(ctx: Ctx): void {
           });
           return;
         }
-        openPicker(ctx, "Zinn · all tasks", [...map.keys()], map, false);
+        const map = panel.map;
+        openPicker(
+          ctx,
+          "Zinn | all tasks",
+          [...map.keys()],
+          map,
+          false,
+          mentionCounts(panel.known),
+        );
       },
     },
   ];

@@ -4,7 +4,6 @@ type Row = Parameters<typeof stableRows>[1][number];
 const row = (over: Partial<Row> = {}): Row => ({
   key: "ZTP-1",
   title: "Fix the calibration",
-  count: 2,
   glyph: "▸",
   tone: "normal",
   unknown: false,
@@ -28,7 +27,6 @@ test("compares every visible row value", () => {
   ]> = [
     ["key", { key: "ZTP-2" }],
     ["title", { title: "something else" }],
-    ["count", { count: 3 }],
     ["priority", { priority: "urgent" }],
     ["column", { column: "Done" }],
     ["glyph", { glyph: "✔" }],

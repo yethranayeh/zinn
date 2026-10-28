@@ -3,11 +3,24 @@
 	"version": "0.1.0",
 	"type": "module",
 	"description": "Experimental Zinn task inspector for the OpenCode TUI.",
+	"keywords": [
+		"zinn",
+		"opencode",
+		"opencode-plugin",
+		"tui",
+		"kanban",
+		"task-management",
+		"ai-agents",
+		"developer-tools"
+	],
 	"license": "MIT",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/yethranayeh/zinn.git",
 		"directory": "integrations/opencode/panel"
+	},
+	"bugs": {
+		"url": "https://github.com/yethranayeh/zinn/issues"
 	},
 	"homepage": "https://zinn.sh/integrations/opencode/inspector",
 	"exports": {

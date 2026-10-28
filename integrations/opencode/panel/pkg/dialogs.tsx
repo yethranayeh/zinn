@@ -19,10 +19,23 @@ export function RelationLine(props: { ctx: Ctx; relation: Relation }): JSX.Eleme
   );
 }
 
-export function Detail(props: { ctx: Ctx; taskKey: string; unknown: boolean }): JSX.Element {
+export function Detail(props: {
+  ctx: Ctx;
+  taskKey: string;
+  unknown: boolean;
+  mentions?: number;
+}): JSX.Element {
   const theme = () => panelTheme(props.ctx);
   const [state, setState] = createSignal<DetailState>({ kind: "loading" });
   let alive = true;
+  const mentionLine = () => {
+    const count = props.mentions;
+    if (count === undefined) {
+      return undefined;
+    }
+
+    return `mentioned ${count} ${count === 1 ? "time" : "times"} in this chat`;
+  };
 
   onMount(() => {
     const started = Date.now();
@@ -89,7 +102,7 @@ export function Detail(props: { ctx: Ctx; taskKey: string; unknown: boolean }): 
                   <Show when={index() > 0}>
                     <span>{", "}</span>
                   </Show>
-                  <span style={{ fg: labelColors.get(label) ?? theme().textMuted }}>{label}</span>
+                  <span style={{ fg: labelColors().get(label) ?? theme().textMuted }}>{label}</span>
                 </>
               )}
             </For>
@@ -104,6 +117,9 @@ export function Detail(props: { ctx: Ctx; taskKey: string; unknown: boolean }): 
           </box>
         </Show>
         <text fg={theme().textMuted}>{`comments: ${detail.comments}`}</text>
+        <Show when={mentionLine()}>
+          <text fg={theme().textMuted}>{mentionLine()}</text>
+        </Show>
         <Show when={detail.description.length > 0}>
           <text fg={theme().text}>{firstParagraph(detail.description)}</text>
         </Show>
@@ -154,10 +170,10 @@ export function pickerOptions(
   }
   return out;
 }
-export function openDetail(ctx: Ctx, key: string, unknown: boolean): void {
+export function openDetail(ctx: Ctx, key: string, unknown: boolean, mentions?: number): void {
   log(ctx, "row clicked, opening dialog", { key, unknown });
   ctx.ui.dialog.show(
-    () => <Detail ctx={ctx} taskKey={key} unknown={unknown} />,
+    () => <Detail ctx={ctx} taskKey={key} unknown={unknown} mentions={mentions} />,
     () => log(ctx, "dialog closed", { key }),
   );
   ctx.ui.dialog.set({ size: "large" });
@@ -168,6 +184,7 @@ export function openPicker(
   keys: readonly string[],
   map: Map<string, TaskSummary> | undefined,
   includeUnknown: boolean,
+  mentions?: ReadonlyMap<string, number>,
 ): void {
   const options = pickerOptions(keys, map, includeUnknown);
 
@@ -186,6 +203,6 @@ export function openPicker(
     if (value === undefined) {
       return;
     }
-    openDetail(ctx, value, includeUnknown);
+    openDetail(ctx, value, includeUnknown, mentions?.get(value));
   });
 }
