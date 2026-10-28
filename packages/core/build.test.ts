@@ -41,9 +41,46 @@ test("emitted core works on both runtimes and its declarations need no Bun types
       import * as core from ${JSON.stringify(outputUrl("index.js"))};
       import { getDb } from ${JSON.stringify(outputUrl("src/db.js"))};
       import { readCoreReleaseMode } from ${JSON.stringify(outputUrl("src/release.js"))};
+      import { upgradeSchema } from ${JSON.stringify(outputUrl("src/migrations/runner.js"))};
       const adapterPath = typeof Bun === "undefined" ? "node" : "bun";
       const adapter = await import(${JSON.stringify(outputUrl("src/sqlite/"))} + adapterPath + ".js");
       defineContractChecks(test, adapter);
+
+      test("emitted migrations reject changed child targets and verify exact declared definitions", () => {
+        const db = adapter.openDatabase(":memory:");
+        try {
+          db.exec("PRAGMA foreign_keys = ON");
+          db.exec("PRAGMA legacy_alter_table = OFF");
+          db.exec("CREATE TABLE parent (id TEXT PRIMARY KEY)");
+          db.exec("CREATE TABLE child (parent_id TEXT REFERENCES parent(id))");
+          db.exec("INSERT INTO parent VALUES ('p1')");
+          db.exec("INSERT INTO child VALUES ('p1')");
+          db.exec("PRAGMA user_version = 1");
+          const migration = {
+            version: 2, name: "rename parent", rebuilds: ["parent"],
+            apply(db) {
+              db.exec("ALTER TABLE parent RENAME TO parent_old");
+              db.exec("CREATE TABLE parent (id TEXT PRIMARY KEY)");
+              db.exec("INSERT INTO parent SELECT id FROM parent_old");
+            },
+          };
+          assert.throws(() => upgradeSchema(db, [migration]), (error) => {
+            assert.ok(error.message.includes("child"));
+            assert.ok(error.message.includes("parent_old"));
+            return true;
+          });
+          assert.equal(db.query("PRAGMA user_version").get().user_version, 1);
+          assert.equal(db.query("SELECT count(*) AS count FROM child").get().count, 1);
+          assert.equal(db.query("PRAGMA foreign_keys").get().foreign_keys, 1);
+          const before = { table: "parent", columns: [{ from: "parent_id", to: "id" }], onUpdate: "NO ACTION", onDelete: "NO ACTION" };
+          upgradeSchema(db, [{ ...migration, foreignKeyChanges: { child: { before: [before], after: [{ ...before, table: "parent_old" }] } } }]);
+          assert.equal(db.query("PRAGMA user_version").get().user_version, 2);
+          assert.equal(db.query("PRAGMA foreign_key_list(child)").get().table, "parent_old");
+          assert.deepEqual(db.query("PRAGMA foreign_key_check").all(), []);
+        } finally {
+          db.close();
+        }
+      });
 
       test("emitted public API uses the runtime adapter and retains source identity", () => {
         process.env.ZINN_DIR = ${JSON.stringify(join(directory, "store"))} + "-" + adapterPath;

@@ -3,6 +3,14 @@ import type { Database } from "../sqlite/database.js";
 import { BASELINE_VERSION } from "./baseline.js";
 import { actorIdentityMigration } from "./actor-identity.js";
 
+export type ForeignKeyDefinition = {
+  table: string;
+  /** Column pairs in composite-key order. A null target means the parent's primary key. */
+  columns: ReadonlyArray<{ from: string; to: string | null }>;
+  onUpdate: string;
+  onDelete: string;
+};
+
 export type Migration = {
   /** The schema version this migration brings the database to. */
   version: number;
@@ -13,6 +21,16 @@ export type Migration = {
    * The runner requires each to hold as many rows afterwards as before.
    */
   rebuilds: ReadonlyArray<string>;
+  /** Complete expected definitions for each table whose foreign keys intentionally change. */
+  foreignKeyChanges?: Readonly<
+    Record<
+      string,
+      {
+        before: ReadonlyArray<ForeignKeyDefinition>;
+        after: ReadonlyArray<ForeignKeyDefinition>;
+      }
+    >
+  >;
   /** Whether `apply` calls `regenerateSearch`. */
   regeneratesSearch?: boolean;
   /**

@@ -10,6 +10,7 @@ import { attachSuppressed } from "../sqlite/database.js";
 import { BASELINE_VERSION, createBaseline } from "./baseline.js";
 import { assertMigrationOrder, latestVersion, MIGRATIONS } from "./registry.js";
 import { CoreError } from "../errors.js";
+import { prepareForeignKeyVerification, verifyForeignKeyDefinitions } from "./foreign-keys.js";
 
 /** SQLite's default `user_version`, which no Zinn version writes, making it an **unmarked** DB. */
 const UNMARKED_VERSION = 0;
@@ -71,9 +72,12 @@ export function withForeignKeysOff<T>(db: Database, action: () => T): T {
 }
 
 function applyMigration(db: Database, migration: Migration) {
+  const expectedForeignKeys = prepareForeignKeyVerification(db, migration);
   const countsBefore = migration.rebuilds.map((table) => ({ table, count: countRows(db, table) }));
 
   migration.apply(db);
+
+  verifyForeignKeyDefinitions(db, migration, expectedForeignKeys);
 
   for (const { table, count } of countsBefore) {
     const countAfter = countRows(db, table);

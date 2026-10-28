@@ -151,6 +151,8 @@ Both helpers accept `unknown`, narrow matching values to `SqliteError`, and insp
 
 Opening a database can upgrade it, even for a read operation. Upgrades save a backup first and apply completely or not at all. Upgrades and restores check that foreign keys reference existing tables and rows before committing.
 
+Each migration step also checks existing foreign-key definitions, including those in tables it does not rebuild. An unexpected change rolls back the upgrade. Intentional changes must match the migration's declared starting and resulting definitions.
+
 - Older databases upgrade automatically when both the core package and client are published releases, or when `ZINN_DIR` explicitly selects a separate database. Source clients otherwise open older databases read-only until an explicit `migrate.run`.
 - Databases newer than core supports open read-only.
 - Databases without a schema version are refused unless `allowsLegacyRead` enables best-effort, read-only access.
