@@ -7,6 +7,7 @@ import { pageDate } from "./config/page-date";
 const page = z.object({
   title: z.string(),
   description: z.string(),
+  lastUpdated: pageDate.optional(),
 });
 
 /**
@@ -17,10 +18,10 @@ const page = z.object({
 export const collections = {
   docs: defineCollection({
     loader: glob({ pattern: "**/*.mdx", base: "./src/content/docs" }),
-    schema: page.extend({ breadcrumb: z.string().optional() }),
+    schema: page,
   }),
   pages: defineCollection({
     loader: glob({ pattern: "**/*.mdx", base: "./src/content/pages" }),
-    schema: page.extend({ lastUpdated: pageDate.optional() }),
+    schema: page,
   }),
 };

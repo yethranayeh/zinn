@@ -7,10 +7,7 @@ const zPath = z.match(/\sd="([^"]+)"/)![1];
 const zParts = zPath.split(/(?=M)/);
 ---
 
-<BaseLayout
-	title='Page not found | Zinn'
-	description='This page could not be found. Return to the Zinn homepage.'
-	noindex>
+<BaseLayout title='Page not found' description='This page could not be found. Return to the Zinn homepage.' noindex>
 	<div class='relative isolate flex flex-1 flex-col bg-soot text-limestone selection:bg-limestone selection:text-soot'>
 		<div class='site-container flex flex-1 flex-col py-6 md:py-8'>
 			<section

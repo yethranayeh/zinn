@@ -1,6 +1,8 @@
 ---
-import { getCollection, render, type CollectionEntry } from "astro:content";
-import InfoLayout from "../layouts/InfoLayout.astro";
+import type { CollectionEntry } from "astro:content";
+import { getCollection, render } from "astro:content";
+
+import ProseLayout from "../layouts/ProseLayout.astro";
 import { components } from "../markdown/components";
 
 export async function getStaticPaths() {
@@ -17,6 +19,6 @@ const { entry } = Astro.props;
 const { Content } = await render(entry);
 ---
 
-<InfoLayout {...entry.data}>
+<ProseLayout {...entry.data}>
 	<Content components={components} />
-</InfoLayout>
+</ProseLayout>

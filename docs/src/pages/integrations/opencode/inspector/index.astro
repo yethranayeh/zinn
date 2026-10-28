@@ -26,14 +26,9 @@ const pluginConfig = `{
 }`;
 ---
 
-<BaseLayout title={`${opencodeInspector.title} for OpenCode | Zinn`} description={opencodeInspector.description}>
+<BaseLayout title='OpenCode task inspector' description={opencodeInspector.description}>
 	<div class='site-container py-8 md:py-12'>
-		<Breadcrumbs
-			items={[
-				{ name: "Integrations", path: "/integrations/" },
-				{ name: "OpenCode task inspector", path: Astro.url.pathname }
-			]}
-		/>
+		<Breadcrumbs />
 
 		<section class='pb-9 md:pb-12'>
 			<MarkdownH1>{opencodeInspector.title}</MarkdownH1>
