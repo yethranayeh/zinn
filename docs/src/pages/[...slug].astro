@@ -6,13 +6,13 @@ import ProseLayout from "../layouts/ProseLayout.astro";
 import { components } from "../markdown/components";
 
 export async function getStaticPaths() {
-	const entries = await getCollection("pages");
+	const entries = await getCollection("prose");
 
-	return entries.map((entry) => ({ params: { page: entry.id }, props: { entry } }));
+	return entries.map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
 }
 
 interface Props {
-	entry: CollectionEntry<"pages">;
+	entry: CollectionEntry<"prose">;
 }
 
 const { entry } = Astro.props;

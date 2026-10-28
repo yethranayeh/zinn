@@ -10,9 +10,9 @@ const docsDirectory = resolve(import.meta.dir, "..");
 const contentDirectory = join(docsDirectory, "src/content");
 const markdownSources = (await readdir(contentDirectory, { recursive: true }))
 	.filter((file) => file.endsWith(".mdx")).sort();
-// A page's route drops the pages/ folder, the .mdx extension and a trailing index, so docs/index.mdx serves /docs.
-const routeOf = (source: string) => source.replace(/^pages\//, "").replace(/\.mdx$/, "").replace(/\/index$/, "");
-const trustSources = markdownSources.filter((source) => source.startsWith("pages/"));
+// A page's route is its path under src/content without the .mdx extension and a trailing index, so docs/index.mdx serves /docs.
+const routeOf = (source: string) => source.replace(/\.mdx$/, "").replace(/\/index$/, "");
+const trustSources = markdownSources.filter((source) => !source.startsWith("docs/"));
 const trustPages = trustSources.map(routeOf);
 const docsSources = markdownSources.filter((source) => source.startsWith("docs/"));
 const docsPages = docsSources.map(routeOf);

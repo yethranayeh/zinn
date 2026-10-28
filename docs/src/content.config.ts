@@ -4,24 +4,19 @@ import { z } from "astro/zod";
 
 import { pageDate } from "./config/page-date";
 
-const page = z.object({
-  title: z.string(),
-  description: z.string(),
-  lastUpdated: pageDate.optional(),
-});
-
 /**
- * Folders mirror the URLs
- * `docs/installation.mdx` serves `/docs/installation`
- * `pages/about.mdx` serves `/about`
+ * File paths mirror the URLs
+ * `content/docs/installation.mdx` serves `/docs/installation`
+ * `content/about.mdx` serves `/about`
+ * An `index.mdx` serves its folder, so `content/docs/index.mdx` serves `/docs`
  */
 export const collections = {
-  docs: defineCollection({
-    loader: glob({ pattern: "**/*.mdx", base: "./src/content/docs" }),
-    schema: page,
-  }),
-  pages: defineCollection({
-    loader: glob({ pattern: "**/*.mdx", base: "./src/content/pages" }),
-    schema: page,
+  prose: defineCollection({
+    loader: glob({ pattern: "**/*.mdx", base: "./src/content" }),
+    schema: z.object({
+      title: z.string(),
+      description: z.string(),
+      lastUpdated: pageDate.optional(),
+    }),
   }),
 };

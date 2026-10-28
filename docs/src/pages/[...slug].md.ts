@@ -1,6 +1,5 @@
 import type { APIRoute, GetStaticPaths } from "astro";
 import { getCollection } from "astro:content";
-import { docsSlug } from "../config/routes";
 
 // HTML-only elements are omitted from the twin. An aside keeps its label as a quoted note.
 function markdownBody(body: string) {
@@ -22,28 +21,19 @@ function markdownBody(body: string) {
 }
 
 export const getStaticPaths = (async () => {
-  const pages = await getCollection("pages");
-  const docs = await getCollection("docs");
+  const entries = await getCollection("prose");
 
-  return [
-    ...pages.map((entry) => {
-      const markdown = entry.body ? markdownBody(entry.body) : entry.body;
-      return {
-        params: { page: entry.id },
-        props: {
-          markdown: entry.data.lastUpdated
-            ? markdown?.replace(/^(# .+)$/m, `$1\n\nLast updated: ${entry.data.lastUpdated}`)
-            : markdown,
-        },
-      };
-    }),
-    ...docs.map((entry) => ({
-      params: { page: ["docs", docsSlug(entry)].filter(Boolean).join("/") },
+  return entries.map((entry) => {
+    const markdown = entry.body ? markdownBody(entry.body) : entry.body;
+    return {
+      params: { slug: entry.id },
       props: {
-        markdown: entry.body ? markdownBody(entry.body) : entry.body,
+        markdown: entry.data.lastUpdated
+          ? markdown?.replace(/^(# .+)$/m, `$1\n\nLast updated: ${entry.data.lastUpdated}`)
+          : markdown,
       },
-    })),
-  ];
+    };
+  });
 }) satisfies GetStaticPaths;
 
 // MDX entry bodies arrive trimmed, so end the file with a newline as its source does.
