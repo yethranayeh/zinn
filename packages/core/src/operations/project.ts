@@ -19,9 +19,16 @@ import * as dbProject from "../db/project.js";
 import * as dbColumn from "../db/column.js";
 import * as dbTask from "../db/task.js";
 import * as dbSearch from "../db/search.js";
+import * as dbRelation from "../db/relation.js";
 
 import { standardizeProjectKey } from "../lib.js";
-import { attachTaskKey, recordActivity, resolveDescription } from "./shared.js";
+import {
+  attachTaskKey,
+  describeRelation,
+  recordActivity,
+  recordTaskActivity,
+  resolveDescription,
+} from "./shared.js";
 
 export const project = {
   getById: dbProject.getById,
@@ -171,6 +178,28 @@ export const project = {
         const keyedTask = attachTaskKey(taskMatch, projectMatch.key);
         return { id: keyedTask.id, key: keyedTask.key, title: keyedTask.title };
       });
+      const deletedTaskIds = new Set(projectTasks.map(({ id }) => id));
+      const now = Date.now();
+
+      for (const taskMatch of projectTasks) {
+        for (const relationMatch of dbRelation.getAllByTaskId(taskMatch.id)) {
+          const otherTaskId =
+            relationMatch.source_task_id === taskMatch.id
+              ? relationMatch.target_task_id
+              : relationMatch.source_task_id;
+
+          if (deletedTaskIds.has(otherTaskId)) {
+            continue;
+          }
+
+          recordTaskActivity(validActor, {
+            taskId: otherTaskId,
+            action: "relation_delete",
+            changes: describeRelation(relationMatch),
+            createdAt: now,
+          });
+        }
+      }
 
       recordActivity(validActor, {
         entityType: "project",
@@ -183,7 +212,7 @@ export const project = {
           columns,
           tasks,
         },
-        createdAt: Date.now(),
+        createdAt: now,
       });
 
       for (const taskMatch of projectTasks) {

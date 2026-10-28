@@ -93,6 +93,30 @@ test("ZINN-161: a nested write runs hooks once, a no-op runs none, and a deleted
   });
 });
 
+test("project deletion delivers survivor relation activity and aggregate history in one hook run", () => {
+  withHookStore((logs) => ({ only: recordingHook(logs, "only") }), ({ logs, runs }) => {
+    const removed = project.create({ key: "REMOVED" }, human);
+    const kept = project.create({ key: "KEPT" }, human);
+    const deleted = task.create({ project_id: removed.id, title: "Deleted" }, human);
+    const survivor = task.create({ project_id: kept.id, title: "Survivor" }, human);
+    relation.create({ sourceTaskKey: deleted.key, targetTaskKey: survivor.key, relation_type: "dependency" }, human);
+    const runsBefore = runs().length;
+    writeFileSync(join(logs, "only.stdin"), "");
+
+    project.delete(removed.key, human);
+
+    assert.equal(runs().length, runsBefore + 1);
+    const records = readLines(join(logs, "only.stdin")).map(line => JSON.parse(line));
+    assert.deepEqual(records.map(record => [record.action, record.task_key]), [
+      ["relation_delete", survivor.key], ["delete", null],
+    ]);
+    const stored = new Map(activity.getAll().events.map(event => [event.id, event]));
+    for (const { task_key, ...record } of records) {
+      assert.deepEqual(record, stored.get(record.id));
+    }
+  });
+});
+
 test("ZINN-161: ZINN_HOOKS=0 saves changes without running hooks", () => {
   withHookStore((logs) => ({ only: recordingHook(logs, "only") }), ({ runs }) => {
     project.create({ key: "APP" }, human);

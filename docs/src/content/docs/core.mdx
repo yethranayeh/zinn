@@ -72,6 +72,7 @@ Names and titles are trimmed and cannot be blank or contain line breaks or contr
 - After a change commits, core runs the [hooks](/docs/hooks) from the global settings file in the calling process, with its working directory and environment. `ZINN_HOOKS=0` saves changes without running them.
 - Bulk task moves, orders, archives, unarchives and deletes apply in input order and succeed or fail together.
 - `task.deleteMany(taskKeys, actor)` returns the deleted tasks in input order, including archived tasks. Task keys must be distinct, ignoring case. Each deletion preserves task activity and records removed relations on the other tasks, including tasks deleted later in the same batch. `task.delete(taskKey, actor)` returns one deleted task.
+- `project.delete(key, actor)` records aggregate project deletion history and one `relation_delete` event per removed cross-project relation on its surviving task, including archived tasks. Surviving task modification timestamps are preserved.
 - `task.orderMany({ taskKeys, direction, targetTaskKey? }, actor)` returns a `TaskChange` per key. It orders the first task as requested, then each next task after the previous one. Multiple tasks must be distinct active tasks in the same project and column. The target cannot be among them. `up` and `down` take one task. A single task ordered before or after itself remains unchanged.
 
 ## Task relations

@@ -491,6 +491,7 @@ Use `none` to clear priority. Priority does not affect board ordering.
 Zinn records changes to tasks, projects, columns, labels, relations, and comments, including who made them.
 
 Deleting a project records one project deletion rather than separate deletion activity for every cascaded row.
+Each removed cross-project relation records `relation_delete` activity on its surviving task, including archived tasks, without changing that task's `updated_at`.
 
 ```sh title="List and view activity"
 zinn activity list
