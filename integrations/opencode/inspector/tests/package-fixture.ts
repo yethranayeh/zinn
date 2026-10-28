@@ -7,7 +7,7 @@ import { listWorkingTreeFiles } from "../../../../scripts/package-fixture.ts";
 import { TEST_ENVIRONMENT } from "../../../../scripts/test-isolation.ts";
 
 const repository = resolve(import.meta.dir, "../../../..");
-const integration = "integrations/opencode/panel/";
+const integration = "integrations/opencode/inspector/";
 export const hostVersion = "2.2.0";
 
 export function run(args: string[], cwd: string, env: Record<string, string | undefined>) {

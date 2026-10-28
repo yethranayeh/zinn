@@ -17,7 +17,7 @@
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/yethranayeh/zinn.git",
-		"directory": "integrations/opencode/panel"
+		"directory": "integrations/opencode/inspector"
 	},
 	"bugs": {
 		"url": "https://github.com/yethranayeh/zinn/issues"
@@ -42,7 +42,7 @@
 	],
 	"scripts": {
 		"test": "bun test --timeout 120000 pkg tests",
-		"typecheck": "bun ../../../scripts/typecheck.ts integrations/opencode/panel",
+		"typecheck": "bun ../../../scripts/typecheck.ts integrations/opencode/inspector",
 		"test:package": "bun test --timeout 120000 tests/package.test.ts",
 		"prepublishOnly": "bun checks/release.ts && bun run typecheck && bun run test"
 	},

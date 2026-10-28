@@ -69,7 +69,7 @@ Remove the \`${opencodeInspector.packageName}\` entry from \`cli.json\`, then st
 
 Verified with OpenCode ${opencodeInspector.verifiedVersion}.
 
-[Inspector source](${projectLinks.github}/tree/main/integrations/opencode/panel)
+[Inspector source](${projectLinks.github}/tree/main/integrations/opencode/inspector)
 `,
     { headers: { "Content-Type": "text/markdown; charset=utf-8" } },
   );

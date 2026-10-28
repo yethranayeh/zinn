@@ -5,7 +5,7 @@ import { listWorkingTreeFiles } from "./package-fixture.ts";
 
 const repositoryDirectory = join(import.meta.dir, "..");
 const project = process.argv[2];
-const inspectorDirectory = "integrations/opencode/panel/";
+const inspectorDirectory = "integrations/opencode/inspector/";
 
 if (project !== undefined && project !== inspectorDirectory.slice(0, -1)) {
   throw new Error(`Unknown TypeScript project: ${project}`);

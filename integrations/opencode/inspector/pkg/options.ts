@@ -22,15 +22,15 @@ export function priorityLetter(priority: string | null): string {
   return PRIORITY_LETTER[priority] ?? "";
 }
 export type CurrentMark = "off" | "glyph";
-export type PanelOptions = {
+export type InspectorOptions = {
   rows: 1 | 2;
   current: CurrentMark;
 };
-export const DEFAULT_OPTIONS: PanelOptions = { rows: 1, current: "off" };
+export const DEFAULT_OPTIONS: InspectorOptions = { rows: 1, current: "off" };
 export function readCurrentMark(value: unknown): CurrentMark {
   return value === "glyph" ? "glyph" : "off";
 }
-export function readOptions(options: unknown): PanelOptions {
+export function readOptions(options: unknown): InspectorOptions {
   if (typeof options !== "object" || options === null) {
     return DEFAULT_OPTIONS;
   }

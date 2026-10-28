@@ -3,7 +3,7 @@
 	"private": true,
 	"workspaces": [
 		"packages/*",
-		"integrations/opencode/panel",
+		"integrations/opencode/inspector",
 		"docs"
 	],
 	"type": "module",
@@ -20,8 +20,8 @@
 		"docs:check": "bun run --cwd docs check",
 		"docs:deploy": "bun run --cwd docs deploy",
 		"docs:preview": "bun run --cwd docs preview",
-		"opencode:test": "bun run --cwd integrations/opencode/panel test",
-		"opencode:typecheck": "bun scripts/typecheck.ts integrations/opencode/panel"
+		"opencode:test": "bun run --cwd integrations/opencode/inspector test",
+		"opencode:typecheck": "bun scripts/typecheck.ts integrations/opencode/inspector"
 	},
 	"devDependencies": {
 		"@types/bun": "latest",

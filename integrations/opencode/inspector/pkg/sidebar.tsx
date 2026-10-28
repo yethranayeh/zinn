@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/solid */
 import type { JSX } from "@opentui/solid";
 import type { PanelSnapshot } from "./commands.ts";
-import type { PanelOptions } from "./options.ts";
+import type { InspectorOptions } from "./options.ts";
 import type { DisplayRow } from "./rows.ts";
 import type { ScanCache } from "./scan.ts";
 import type { Ctx, Loaded, Scan, TaskSummary } from "./types.ts";
@@ -49,14 +49,14 @@ import {
   runPool,
   sessionRunning,
 } from "./session.ts";
-import { panelTheme } from "./theme.ts";
+import { inspectorTheme } from "./theme.ts";
 
 export function Sidebar(props: {
   ctx: Ctx;
   sessionID: string;
-  options: PanelOptions;
+  options: InspectorOptions;
 }): JSX.Element {
-  const theme = () => panelTheme(props.ctx);
+  const theme = () => inspectorTheme(props.ctx);
   const [map, setMap] = createSignal<Loaded<Map<string, TaskSummary>>>({
     ok: false,
     error: "Zinn unavailable",

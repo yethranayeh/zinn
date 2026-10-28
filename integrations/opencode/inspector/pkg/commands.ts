@@ -35,7 +35,7 @@ export function registerCommands(ctx: Ctx): void {
           ctx.ui.toast.show({
             variant: "warning",
             title: "Zinn",
-            message: "no session panel mounted",
+            message: "no session sidebar mounted",
           });
           return;
         }

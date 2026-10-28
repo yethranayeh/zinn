@@ -27,7 +27,7 @@
         "wrangler": "4.147.0",
       },
     },
-    "integrations/opencode/panel": {
+    "integrations/opencode/inspector": {
       "name": "@zinn-dev/opencode",
       "version": "0.1.0",
       "dependencies": {
@@ -727,7 +727,7 @@
 
     "@zinn-dev/docs": ["@zinn-dev/docs@workspace:docs"],
 
-    "@zinn-dev/opencode": ["@zinn-dev/opencode@workspace:integrations/opencode/panel"],
+    "@zinn-dev/opencode": ["@zinn-dev/opencode@workspace:integrations/opencode/inspector"],
 
     "@zinn-dev/tui": ["@zinn-dev/tui@workspace:packages/tui"],
 

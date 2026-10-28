@@ -51,7 +51,7 @@ export async function verifyHost(fixture: ReturnType<typeof packInspector>, cons
     run([process.execPath, consumer.releasedCLI, "task", "comment", "create", "PKG-1", "--text", "Child activity"], app, { ...env, OPENCODE_SESSION_ID: child.id });
     run([process.execPath, consumer.releasedCLI, "task", "comment", "create", "PKG-3", "--text", "Root activity"], app, { ...env, ZINN_SESSION_ID: root.id });
     run([process.execPath, consumer.releasedCLI, "task", "move", "PKG-3", "Done"], app, env);
-    const log = join(fixture.directory, "panel.log");
+    const log = join(fixture.directory, "inspector.log");
     const config = join(configDirectory, "cli.json");
     const frames: string[] = [];
     const launch = async (plugins: unknown[], mode: "install" | "update" | "remove") => {
@@ -59,7 +59,7 @@ export async function verifyHost(fixture: ReturnType<typeof packInspector>, cons
       writeFileSync(log, "");
       let output = "";
       const tui = Bun.spawn([consumer.host, "--server", base, "--session", root.id, app], {
-        cwd: app, env: { ...env, OPENCODE_SERVER_PASSWORD: password, ZINN_PANEL_LOG: log, TERM: "xterm-256color" },
+        cwd: app, env: { ...env, OPENCODE_SERVER_PASSWORD: password, ZINN_INSPECTOR_LOG: log, TERM: "xterm-256color" },
         terminal: { cols: 140, rows: 45, data(terminal, bytes) {
           const text = new TextDecoder().decode(bytes);
           output += text;

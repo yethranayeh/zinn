@@ -6,10 +6,10 @@ import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-j
 
 import { labelColors, loadDetail, log, PRIORITY_COLOR } from "./data.ts";
 import { firstParagraph, truncate } from "./rows.ts";
-import { panelTheme } from "./theme.ts";
+import { inspectorTheme } from "./theme.ts";
 
 export function RelationLine(props: { ctx: Ctx; relation: Relation }): JSX.Element {
-  const theme = () => panelTheme(props.ctx);
+  const theme = () => inspectorTheme(props.ctx);
   const arrow = () => (props.relation.direction === "incoming" ? "←" : "→");
 
   return (
@@ -25,7 +25,7 @@ export function Detail(props: {
   unknown: boolean;
   mentions?: number;
 }): JSX.Element {
-  const theme = () => panelTheme(props.ctx);
+  const theme = () => inspectorTheme(props.ctx);
   const [state, setState] = createSignal<DetailState>({ kind: "loading" });
   let alive = true;
   const mentionLine = () => {

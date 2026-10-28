@@ -17,7 +17,7 @@ import {
 } from "./data.ts";
 import { MARKER_COLUMNS, RAIL_COLUMNS, SESSION_GLYPH, priorityLetter } from "./options.ts";
 import { truncate } from "./rows.ts";
-import { TINT_ALPHA_STRONG, TINT_ALPHA_SUBTLE, panelTheme, toneColor } from "./theme.ts";
+import { TINT_ALPHA_STRONG, TINT_ALPHA_SUBTLE, inspectorTheme, toneColor } from "./theme.ts";
 
 export function Overflow(props: {
   ctx: Ctx;
@@ -25,7 +25,7 @@ export function Overflow(props: {
   label: string;
   onOpen: () => void;
 }): JSX.Element {
-  const theme = () => panelTheme(props.ctx);
+  const theme = () => inspectorTheme(props.ctx);
   const [hover, setHover] = createSignal(false);
   const onClick = (event: { stopPropagation: () => void }) => {
     event.stopPropagation();
@@ -65,7 +65,7 @@ export function Row(props: {
   markGlyph?: string;
   onOpen: () => void;
 }): JSX.Element {
-  const theme = () => panelTheme(props.ctx);
+  const theme = () => inspectorTheme(props.ctx);
   const keyColor = toneColor(props.ctx, () => props.row.tone);
   const metaColor = () => theme().textMuted;
   const glyph = () => props.current === "glyph";

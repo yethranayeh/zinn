@@ -30,7 +30,7 @@ export function errorText(error: unknown): string {
   return String(error);
 }
 export function log(_ctx: Ctx, message: string, extra?: Record<string, unknown>): void {
-  const path = process.env.ZINN_PANEL_LOG;
+  const path = process.env.ZINN_INSPECTOR_LOG;
   if (!path) {
     return;
   }

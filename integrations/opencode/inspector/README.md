@@ -22,4 +22,4 @@ bun run opencode:typecheck
 bun run opencode:test
 ```
 
-For a local checkout, use its absolute `integrations/opencode/panel` directory as the package value in an isolated OpenCode `cli.json`. Replace that directory's source to update it, or remove the config entry to stop loading it.
+For a local checkout, use its absolute `integrations/opencode/inspector` directory as the package value in an isolated OpenCode `cli.json`. Replace that directory's source to update it, or remove the config entry to stop loading it.

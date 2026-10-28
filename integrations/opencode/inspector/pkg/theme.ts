@@ -2,7 +2,7 @@ import type { RGBA } from "@opentui/core";
 import type { RowTone } from "./rows.ts";
 import type { Ctx } from "./types.ts";
 
-export type PanelTheme = {
+export type InspectorTheme = {
   text: RGBA;
   textMuted: RGBA;
   error: RGBA;
@@ -18,7 +18,7 @@ export const TINT_ALPHA_SUBTLE = "1a";
 export const TINT_ALPHA_STRONG = "33";
 
 // Read theme values inside a reactive computation so theme changes repaint.
-export function panelTheme(ctx: Ctx): PanelTheme {
+export function inspectorTheme(ctx: Ctx): InspectorTheme {
   const t = ctx.theme;
   return {
     text: t.text.base,
@@ -34,7 +34,7 @@ export function panelTheme(ctx: Ctx): PanelTheme {
 }
 
 export function toneColor(ctx: Ctx, tone: () => RowTone): () => RGBA {
-  const theme = () => panelTheme(ctx);
+  const theme = () => inspectorTheme(ctx);
   return () => {
     const value = tone();
     if (value === "warning" || value === "blocked") {

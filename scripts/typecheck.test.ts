@@ -131,7 +131,7 @@ test("typecheck excludes website roots and files ignored by Git", () => {
 });
 
 test("the inspector compiler owns every current TypeScript file in its project", () => {
-  const inspector = join(directory, "integrations/opencode/panel");
+  const inspector = join(directory, "integrations/opencode/inspector");
   mkdirSync(join(inspector, "pkg"), { recursive: true });
   mkdirSync(join(inspector, "tests"));
   writeFileSync(
@@ -148,7 +148,7 @@ test("the inspector compiler owns every current TypeScript file in its project",
   const root = runTypecheck();
   expect(root.exitCode).toBe(0);
   const inspectorCheck = Bun.spawnSync(
-    [process.execPath, "scripts/typecheck.ts", "integrations/opencode/panel"],
+    [process.execPath, "scripts/typecheck.ts", "integrations/opencode/inspector"],
     {
       cwd: directory,
       env: TEST_ENVIRONMENT,
@@ -159,7 +159,7 @@ test("the inspector compiler owns every current TypeScript file in its project",
   expect(inspectorCheck.stderr.toString()).toContain("TS2322");
   writeFileSync(join(inspector, "tests/untracked.ts"), "export const valid: number = 1;\n");
   const valid = Bun.spawnSync(
-    [process.execPath, "scripts/typecheck.ts", "integrations/opencode/panel"],
+    [process.execPath, "scripts/typecheck.ts", "integrations/opencode/inspector"],
     {
       cwd: directory,
       env: TEST_ENVIRONMENT,
