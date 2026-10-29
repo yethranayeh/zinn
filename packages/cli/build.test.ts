@@ -101,6 +101,10 @@ for (const runtime of ["node", "bun"]) {
   test(`${runtime}: ZINN-161: built hooks get the change, warn on failure and never hold up the command`, () => {
     withDirectory((directory) => {
       const recorded = join(directory, "recorded.ndjson");
+      const description = "x".repeat(LARGER_THAN_PIPE_BUFFER);
+      const descriptionPath = join(directory, "description.txt");
+      // Keep the hook payload large without exceeding Linux's single-argument limit.
+      writeFileSync(descriptionPath, description);
       writeFileSync(join(directory, "settings.json"), JSON.stringify({
         hooks: {
           recording: { command: `cat > '${recorded}'` },
@@ -114,10 +118,11 @@ for (const runtime of ["node", "bun"]) {
       expect(runBuilt(runtime, ["project", "create", "APP"], directory).code).toBe(0);
 
       const started = Date.now();
-      const result = runBuilt(runtime, ["task", "create", "APP", "--title", "Large", "--description", "x".repeat(LARGER_THAN_PIPE_BUFFER), "--json"], directory, { NODE_NO_WARNINGS: "1" });
+      const result = runBuilt(runtime, ["task", "create", "APP", "--title", "Large", "--description-file", descriptionPath, "--json"], directory, { NODE_NO_WARNINGS: "1" });
       expect(Date.now() - started).toBeLessThan(HOOK_COMMAND_LIMIT_MS);
       expect(result.code, result.stderr).toBe(0);
       expect(JSON.parse(result.stdout).key).toBe("APP-1");
+      expect(JSON.parse(result.stdout).description).toBe(description);
       for (const name of ["failing", "slow"]) {
         expect(result.stderr).toContain(`"${name}"`);
       }

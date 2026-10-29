@@ -222,7 +222,7 @@ const routeNamespaces = [
 
 const ROOT_USAGE = "Usage: zinn <command>";
 
-test("every command help exits cleanly instead of running the command", async () => {
+test.each(routeCommands)("%s help exits cleanly instead of running the command", async (command) => {
   await withIsolatedZinnDir(async (dir) => {
     // ? ZINN-67: arguments before and after the flag do not change which help prints.
     const argumentsAroundFlag = [
@@ -230,14 +230,12 @@ test("every command help exits cleanly instead of running the command", async ()
       { before: ["APP-1"], after: ["APP-2", "--json"] },
     ];
 
-    for (const command of routeCommands) {
-      for (const flag of HELP_FLAGS) {
-        for (const { before, after } of argumentsAroundFlag) {
-          const result = await runZinn([...command.split(" "), ...before, flag, ...after], dir);
-          expect(result.code).toBe(0);
-          expect(result.stderr).toBe("");
-          expect(result.stdout).toContain(`Usage: zinn ${command}`);
-        }
+    for (const flag of HELP_FLAGS) {
+      for (const { before, after } of argumentsAroundFlag) {
+        const result = await runZinn([...command.split(" "), ...before, flag, ...after], dir);
+        expect(result.code).toBe(0);
+        expect(result.stderr).toBe("");
+        expect(result.stdout).toContain(`Usage: zinn ${command}`);
       }
     }
     expect(existsSync(join(dir, "data"))).toBe(false);
