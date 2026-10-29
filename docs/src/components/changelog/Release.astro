@@ -3,16 +3,19 @@ import MarkdownH2 from "../MarkdownH2.astro";
 import Prose from "../Prose.astro";
 import PackageBand from "./PackageBand.astro";
 
-import { formatReleaseDate, getRelease, releaseAnchor } from "../../config/releases";
+import { formatReleaseDate, releaseAnchor } from "../../config/changelog";
 
 interface Props {
 	version: string;
+	name?: string;
+	date: string;
+	cli: string;
+	core: string;
 	first?: boolean;
 }
 
-const { version, first = false } = Astro.props;
-const release = getRelease(version);
-const anchor = releaseAnchor(release.version);
+const { version, name, date, cli, core, first = false } = Astro.props;
+const anchor = releaseAnchor(version);
 ---
 
 <section aria-labelledby={anchor} class='release-plate-section'>
@@ -31,13 +34,13 @@ const anchor = releaseAnchor(release.version);
 					<div class='rail-meta'>
 						<Prose>
 							<MarkdownH2 id={anchor} style='margin-top: 0; margin-bottom: 0.5rem'>
-								<span class='rail-version'>{release.version}</span>
-								{release.name && <span class='rail-name'>{release.name}</span>}
+								<span class='rail-version'>{version}</span>
+								{name && <span class='rail-name'>{name}</span>}
 							</MarkdownH2>
-							<time class='rail-date' datetime={release.date}>
-								{formatReleaseDate(release.date)}
+							<time class='rail-date' datetime={date}>
+								{formatReleaseDate(date)}
 							</time>
-							<PackageBand cli={release.cli} core={release.core} />
+							<PackageBand cli={cli} core={core} />
 						</Prose>
 					</div>
 					<div class='rail-notes'>

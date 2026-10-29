@@ -1,0 +1,24 @@
+---
+version: 0.37.0
+name: Eridu
+date: "2026-10-08"
+cli: 0.37.0
+core: 0.26.0
+---
+
+### Added
+
+- Move, archive or unarchive several tasks in one command. Each operation applies to all supplied tasks atomically.
+- Restore a database with `zinn restore`, repair its search index with `zinn reindex`, and apply supported schema upgrades with `zinn migrate`.
+- Configure `storage.directory` in global `settings.json` or per-codebase `zinn.local.json`. Note that `ZINN_DIR` overrides both.
+- Core exposes database configuration, migration and recovery operations, plus bulk task operations.
+
+### Changed
+
+- **Breaking database compatibility:** databases now record a schema version. Published releases upgrade supported older versions after saving a backup. Unmarked databases created before version tracking require `--allow-legacy-read` for best-effort read-only access and cannot be upgraded with `zinn migrate`. Save a snapshot with `zinn backup` before upgrading. See [database upgrades](/docs/data#upgrade-a-database).
+- **Breaking JSON:** `zinn project view --json` replaces `tasks` with `columns` containing `name` and `taskCount`, plus `archivedTaskCount`. Use `zinn task list <project-key> --json` to read tasks. Move, archive and unarchive return an object for one task or an array for several, with a `changed` flag on each result.
+
+### Fixed
+
+- Backups use unique filenames and become available only after the snapshot is complete.
+- SQLite writes use stronger commit durability, and statements created inside a transaction cannot outlive it.

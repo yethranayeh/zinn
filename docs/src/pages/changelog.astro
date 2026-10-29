@@ -1,0 +1,36 @@
+---
+import { render } from "astro:content";
+
+import BaseLayout from "../layouts/BaseLayout.astro";
+import ChangelogIntro from "../components/changelog/ChangelogIntro.astro";
+import Release from "../components/changelog/Release.astro";
+import ReleaseNoteHeading from "../components/changelog/ReleaseNoteHeading.astro";
+import MarkdownH1 from "../components/MarkdownH1.astro";
+
+import { getReleases } from "../config/changelog";
+import { components } from "../markdown/components";
+
+const noteComponents = { ...components, h3: ReleaseNoteHeading };
+const releases = await Promise.all(
+	(await getReleases()).map(async (entry) => ({ data: entry.data, Content: (await render(entry)).Content }))
+);
+---
+
+<BaseLayout
+	title='Changelog'
+	description='Release notes for Zinn, a kanban CLI and core library, including breaking changes and database upgrades.'>
+	<ChangelogIntro>
+		<MarkdownH1 id='changelog'>CHANGELOG</MarkdownH1>
+		<p>
+			Notable changes to Zinn. Each CLI release names the core version it includes. <strong>Breaking</strong> changes
+			include the action needed when upgrading.
+		</p>
+	</ChangelogIntro>
+	{
+		releases.map(({ data, Content }, index) => (
+			<Release {...data} first={index === 0}>
+				<Content components={noteComponents} />
+			</Release>
+		))
+	}
+</BaseLayout>

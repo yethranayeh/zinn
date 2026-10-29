@@ -1,0 +1,12 @@
+---
+import type { HTMLAttributes } from "astro/types";
+
+import MarkdownH3 from "../MarkdownH3.astro";
+
+type Props = HTMLAttributes<"h3">;
+
+// Every release repeats the same headings, so their generated ids would collide on the page.
+const { id: _id, ...attributes } = Astro.props;
+---
+
+<MarkdownH3 {...attributes}><slot /></MarkdownH3>

@@ -1,0 +1,22 @@
+---
+version: 0.39.0
+date: "2026-10-11"
+cli: 0.39.0
+core: 0.28.0
+---
+
+### Added
+
+- Configure `defaultProject` in `settings.json` or `zinn.local.json` to use a project when its key is omitted. Use `--all-projects` to list or search tasks across projects.
+- Read task activity with `zinn task view <task-key> --history`.
+- Validate settings files with the published [JSON Schema](/schemas/settings/v1.json).
+
+### Changed
+
+- **Breaking confirmations:** `project delete`, `task delete` and `restore` require `--yes` when stdin or stdout is redirected. Unanswered confirmations exit with code **1** before changing data. Scripts must pass `--yes` and type the project key when deleting a project. Piped answers do not confirm an operation.
+- **Breaking settings isolation:** `ZINN_DIR` reads settings only from the selected store's `settings.json`. Put settings needed by that store there. Global and per-codebase files are ignored.
+
+### Fixed
+
+- Activity history marks deleted entities and distinguishes task IDs when a task key is reused.
+- Migrations and restores refuse to commit if foreign keys reference missing tables, as well as missing rows.

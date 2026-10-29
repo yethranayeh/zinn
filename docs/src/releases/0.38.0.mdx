@@ -1,0 +1,18 @@
+---
+version: 0.38.0
+date: "2026-10-10"
+cli: 0.38.0
+core: 0.27.0
+---
+
+### Added
+
+- Read recorded changes with `zinn activity list` and `zinn activity view`.
+- Assign a column and relations when creating a task, and filter task lists by column.
+- Append text or replace matching text when editing descriptions and comments, using `--append` or `--replacing`.
+- Core exposes activity reads and structured text edits.
+
+### Changed
+
+- **Breaking arguments:** extra positional words, repeated single-use options and conflicting options **fail** with usage help. Remove extra arguments and pass each single use option once.
+- **Breaking validation:** task titles and project, column and label names are trimmed and must be nonblank single lines without control characters. Use descriptions for multiline text.

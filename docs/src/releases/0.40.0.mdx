@@ -1,0 +1,12 @@
+---
+version: 0.40.0
+date: "2026-10-15"
+cli: 0.40.0
+core: 0.29.0
+---
+
+### Changed
+
+- Install the CLI with `npm i -g @zinn-dev/cli`. The CLI and core ship as ESM JavaScript with TypeScript declarations and run on Node.js 24.15.0 or newer. Bun remains supported. See [installation](/docs/installation).
+- Confirmation prompts use stderr. Enter declines, and `y` or `Y` confirms.
+- **Breaking core API:** `readReleaseMode` is removed from the public exports. Pass your client's `release` identity directly to `configureDatabase` with `source` for development or `published` for prepared release artifacts. Core determines its own identity independently.

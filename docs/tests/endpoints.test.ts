@@ -1,7 +1,6 @@
 import { opencodeInspector } from "../src/config/opencode-inspector";
 import { opencodeScenes, opencodeTheme } from "../src/config/opencode-theme";
 import { agentSetupPrompt, installCommand, minimumNodeVersion } from "../src/config/site";
-import { markdownBody } from "../src/markdown/markdown-body";
 import { splitShellCommands } from "../src/markdown/shell-commands";
 import { expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
@@ -14,10 +13,12 @@ const markdownSources = (await readdir(contentDirectory, { recursive: true }))
 // A page's route is its path under src/content without the .mdx extension and a trailing index, so docs/index.mdx serves /docs.
 const routeOf = (source: string) => source.replace(/\.mdx$/, "").replace(/\/index$/, "");
 const trustSources = markdownSources.filter((source) => !source.startsWith("docs/"));
-const trustPages = trustSources.map(routeOf);
+// The changelog page is built from src/releases, so it has no file under src/content.
+const trustPages = [...trustSources.map(routeOf), "changelog"];
 const docsSources = markdownSources.filter((source) => source.startsWith("docs/"));
 const docsPages = docsSources.map(routeOf);
-const markdownPages = markdownSources.map(routeOf).sort();
+const markdownPages = [...markdownSources.map(routeOf), "changelog"].sort();
+const releasesDirectory = join(docsDirectory, "src/releases");
 const baseUrl = process.env.SITE_TEST_URL;
 if (!baseUrl) {
 	throw new Error("Run bun run --cwd docs test to start the local Cloudflare server.");
@@ -86,8 +87,15 @@ async function expectMarkdownTwin(page: string, source: string) {
 	const markdown = await markdownResponse.text();
 	const sourceText = await Bun.file(join(contentDirectory, source)).text();
 	const lastUpdated = sourceText.match(/^lastUpdated: "([^"]+)"$/m)?.[1];
-	const sourceBody = sourceText.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trimStart();
-	let expectedMarkdown = `${markdownBody(sourceBody)}\n`;
+	let expectedMarkdown = sourceText.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trimStart()
+      .replace('import AgentSetup from "../../components/AgentSetup.astro";\n', "")
+      .replace('import Aside from "../../components/Aside.astro";\n', "")
+      .replace(/^\n/, "")
+      .replace("<AgentSetup />\n\n", "")
+      .replace(/<Aside label='([^']+)'>\n\n([\s\S]*?)\n\n<\/Aside>\n\n/g, (_match, label, content) => {
+        const quoted = content.split("\n").map((line) => (line.trim() ? `> ${line}` : ">")).join("\n");
+        return `> **${label}**\n>\n${quoted}\n\n`;
+      });
 	if (lastUpdated) {
 		expectedMarkdown = expectedMarkdown.replace(/^(# .+)$/m, `$1\n\nLast updated: ${lastUpdated}`);
 	}
@@ -96,6 +104,57 @@ async function expectMarkdownTwin(page: string, source: string) {
 	expect(markdown).not.toContain("layout:");
 	return markdown;
 }
+
+test("changelog and its Markdown twin list every release entry, newest first", async () => {
+	const releases = await Promise.all(
+		(await readdir(releasesDirectory)).filter((file) => file.endsWith(".mdx")).map(async (file) => {
+			const source = await Bun.file(join(releasesDirectory, file)).text();
+			const [, frontmatter = "", notes = ""] = source.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/) ?? [];
+			const field = (key: string) => frontmatter.match(new RegExp(`^${key}: "?([^"\\r\\n]+)"?$`, "m"))?.[1];
+			return {
+				version: field("version")!, name: field("name"), date: field("date")!,
+				cli: field("cli")!, core: field("core")!, notes: notes.trim()
+			};
+		})
+	);
+	releases.sort((a, b) => b.date.localeCompare(a.date));
+	expect(releases.length).toBeGreaterThan(0);
+
+	const markdownResponse = await server.fetch("/changelog.md");
+	expect(markdownResponse.status).toBe(200);
+	expect(markdownResponse.headers.get("Content-Type")).toContain("text/markdown");
+	const markdown = await markdownResponse.text();
+	expect(markdown).toStartWith("# CHANGELOG\n");
+	expect(markdown).toEndWith("\n");
+	const html = await (await server.fetch("/changelog")).text();
+	expect(html).toContain('rel="alternate" type="text/markdown" href="/changelog.md"');
+	expect(html).toContain('rel="canonical" href="https://zinn.sh/changelog/"');
+	expect(html).toMatch(/<h1[^>]*>[^<]+<\/h1>/);
+
+	let markdownCursor = 0;
+	let htmlCursor = 0;
+	for (const release of releases) {
+		const heading = [release.version, release.name].filter(Boolean).join(" ");
+		const headingAt = markdown.indexOf(`\n## ${heading} - ${release.date}\n`, markdownCursor);
+		expect(headingAt).toBeGreaterThanOrEqual(markdownCursor);
+		const cliUrl = `https://www.npmjs.com/package/@zinn-dev/cli/v/${release.cli}`;
+		const coreUrl = `https://www.npmjs.com/package/@zinn-dev/core/v/${release.core}`;
+		const packagesAt = markdown.indexOf(`[CLI ${release.cli}](${cliUrl})`, headingAt);
+		expect(packagesAt).toBeGreaterThan(headingAt);
+		expect(markdown.indexOf(`[Core ${release.core}](${coreUrl})`, packagesAt)).toBeGreaterThan(packagesAt);
+		const notesAt = markdown.indexOf(release.notes, packagesAt);
+		expect(notesAt).toBeGreaterThan(packagesAt);
+		markdownCursor = notesAt + release.notes.length;
+
+		const anchorAt = html.indexOf(`id="release-${release.version.replaceAll(".", "")}"`, htmlCursor);
+		expect(anchorAt).toBeGreaterThanOrEqual(htmlCursor);
+		const timeAt = html.indexOf(`datetime="${release.date}"`, anchorAt);
+		expect(timeAt).toBeGreaterThan(anchorAt);
+		expect(html.indexOf(`href="${cliUrl}"`, timeAt)).toBeGreaterThan(timeAt);
+		expect(html.indexOf(`href="${coreUrl}"`, timeAt)).toBeGreaterThan(timeAt);
+		htmlCursor = timeAt;
+	}
+});
 
 test.each(docsSources)("docs page %s has a Markdown twin and breadcrumbs matching its structured data", async (source) => {
 	const page = routeOf(source);
