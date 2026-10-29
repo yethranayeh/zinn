@@ -231,6 +231,31 @@ test("every generated public endpoint is served with its expected type", async (
 	expect(schema.type).toBe("object");
 });
 
+// Sitemap pages that have no Markdown twin, each with the reason. Empty because every page has one.
+const pagesWithoutMarkdownTwin: Record<string, string> = {};
+
+test("every sitemap page has a Markdown twin", async () => {
+	const sitemap = await (await server.fetch("/sitemap-0.xml")).text();
+	const pathnames = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => new URL(match[1]!).pathname);
+	expect(pathnames.length).toBeGreaterThan(0);
+	const missing: string[] = [];
+	for (const pathname of pathnames) {
+		if (pathname in pagesWithoutMarkdownTwin) {
+			continue;
+		}
+		// Same rule as the rel="alternate" link in BaseLayout.
+		const twinPath = pathname === "/" ? "/index.md" : `${pathname.replace(/\/$/, "")}.md`;
+		const response = await server.fetch(twinPath);
+		// A route without a GET handler is built as the HTML 404 page under the .md name, so the body must not be HTML.
+		const body = await response.text();
+		const isMarkdown = (response.headers.get("Content-Type") ?? "").includes("text/markdown") && !body.trimStart().startsWith("<");
+		if (response.status !== 200 || !isMarkdown) {
+			missing.push(twinPath);
+		}
+	}
+	expect(missing).toEqual([]);
+});
+
 test("social preview is a 1200 by 630 PNG linked by homepage metadata", async () => {
 	const html = await (await server.fetch("/")).text();
 	expect(html).toContain('content="https://zinn.sh/social/zinn.png"');
