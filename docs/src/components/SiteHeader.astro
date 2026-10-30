@@ -15,11 +15,11 @@ const links = [
 		<Branding />
 
 		<nav
-			class='flex min-w-0 flex-1 flex-wrap items-center justify-end gap-x-4 font-mono text-xs leading-normal'
+			class='grid h-11 min-w-0 flex-auto grid-cols-[1fr_2fr] grid-rows-[22px_22px] self-stretch font-mono text-xs leading-normal min-[375px]:flex min-[375px]:flex-nowrap min-[375px]:items-stretch min-[375px]:justify-end min-[375px]:gap-0 sm:h-6 sm:flex-none sm:self-end'
 			aria-label='Zinn documentation'>
 			{
 				links.map((link) => (
-					<NavLink class='pb-1' href={link.path}>
+					<NavLink variant='header' href={link.path}>
 						{link.name}
 					</NavLink>
 				))

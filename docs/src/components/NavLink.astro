@@ -2,16 +2,28 @@
 interface Props {
 	href: string;
 	class?: string;
+	variant?: "default" | "header";
 }
 
-const { href, class: className } = Astro.props;
+const { href, class: className, variant = "default" } = Astro.props;
 const currentPath = Astro.url.pathname.replace(/\/$/, "");
 const targetPath = href.replace(/\/$/, "");
 const isCurrentPage = currentPath === targetPath;
+
+const headerCellClass = [
+	"flex flex-none items-center justify-center border-l border-soot/22 bg-limestone font-mono text-xs leading-none whitespace-nowrap text-soot no-underline transition-none",
+	"hover:bg-bone hover:text-soot hover:no-underline",
+	"aria-[current=page]:border-cinnabar aria-[current=page]:bg-cinnabar aria-[current=page]:text-limestone",
+	"aria-[current=page]:hover:bg-cinnabar aria-[current=page]:hover:text-limestone",
+	"focus-visible:outline-2 focus-visible:outline-offset-[-3px]",
+	"max-[375px]:h-[22px] max-[375px]:nth-2:border-r max-[375px]:nth-3:col-span-full max-[375px]:nth-3:border-r max-[375px]:nth-3:border-t",
+	"min-[375px]:h-11 min-[375px]:px-2 min-[375px]:last:border-r",
+	"sm:h-6 sm:border sm:border-b-0 sm:px-3 sm:not-first:-ml-px sm:focus-visible:outline-offset-[6px]"
+].join(" ");
 ---
 
 <a
-	class:list={[className, "aria-[current=page]:underline"]}
+	class:list={[className, variant === "header" ? headerCellClass : "aria-[current=page]:underline"]}
 	href={href}
 	aria-current={isCurrentPage ? "page" : undefined}>
 	<slot />
