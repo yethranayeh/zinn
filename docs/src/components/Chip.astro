@@ -7,7 +7,10 @@ const { class: className, ...attributes } = Astro.props;
 ---
 
 <span
-	class:list={["inline-block bg-soot px-2.5 py-[5px] font-mono text-xs leading-normal text-limestone", className]}
+	class:list={[
+		"inline-block bg-soot px-2.5 py-[5px] font-mono text-xs leading-normal text-soot-foreground",
+		className
+	]}
 	{...attributes}>
 	<slot />
 </span>

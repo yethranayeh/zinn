@@ -39,13 +39,13 @@ const anchor = releaseAnchor(version);
 								<span class='block'>{version}</span>
 								{
 									name && (
-										<span class='mt-1 block text-sm leading-normal font-normal tracking-[0.12em] uppercase opacity-70'>
+										<span class='mt-1 block text-sm leading-normal font-normal tracking-[0.12em] text-muted-foreground uppercase'>
 											{name}
 										</span>
 									)
 								}
 							</MarkdownH2>
-							<time class='block text-base leading-[1.7] font-normal opacity-70' datetime={date}>
+							<time class='block text-base leading-[1.7] font-normal text-muted-foreground' datetime={date}>
 								{formatReleaseDate(date)}
 							</time>
 							<PackageBand cli={cli} core={core} />
