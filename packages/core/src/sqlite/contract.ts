@@ -434,6 +434,57 @@ export function defineContractChecks(test: DefineTest, adapter: Adapter) {
     });
   });
 
+  test("an immediate transaction inside a deferred one throws without running and leaves the outer one usable", () => {
+    withDatabase(adapter, (db) => {
+      db.exec("CREATE TABLE item (value TEXT)");
+      const insert = db.query("INSERT INTO item VALUES (?)");
+      let didRunInner = false;
+
+      db.transaction(() => {
+        insert.run("outer");
+        assert.throws(
+          () =>
+            db
+              .transaction(() => {
+                didRunInner = true;
+              })
+              .immediate(),
+          (error) => error instanceof Error && !(error instanceof SqliteError),
+        );
+        assert.equal(db.inTransaction, true);
+        insert.run("outer after");
+      }).deferred();
+
+      assert.equal(didRunInner, false);
+      assert.equal(db.inTransaction, false);
+      db.transaction(() => {
+        db.transaction(() => insert.run("later immediate")).immediate();
+      }).immediate();
+      assert.deepEqual(db.query("SELECT value FROM item ORDER BY value").all(), [
+        { value: "later immediate" },
+        { value: "outer" },
+        { value: "outer after" },
+      ]);
+    });
+  });
+
+  test("a deferred transaction inside an immediate one runs in a savepoint", () => {
+    withDatabase(adapter, (db) => {
+      db.exec("CREATE TABLE item (value TEXT)");
+      const insert = db.query("INSERT INTO item VALUES (?)");
+
+      db.transaction(() => {
+        insert.run("outer");
+        db.transaction(() => insert.run("inner")).deferred();
+      }).immediate();
+
+      assert.deepEqual(db.query("SELECT value FROM item ORDER BY value").all(), [
+        { value: "inner" },
+        { value: "outer" },
+      ]);
+    });
+  });
+
   test("a nested transaction runs in a savepoint inside the outer one", () => {
     withDatabase(adapter, (db) => {
       db.exec("CREATE TABLE item (value TEXT)");

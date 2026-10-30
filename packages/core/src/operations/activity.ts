@@ -6,7 +6,7 @@ import { activityIdSchema, activityListSchema } from "../schemas/activity.js";
 import { validateTaskInput } from "../schemas/task.js";
 import { timestampSchema } from "../schemas/timestamp.js";
 import { standardizeName, standardizeProjectKey } from "../lib.js";
-import { attachTaskKey, findTaskByExactKey } from "./shared.js";
+import { attachTaskKey, findTaskByExactKey, requireSingleIdMatch } from "./shared.js";
 import * as dbActivity from "../db/activity.js";
 import * as dbTask from "../db/task.js";
 import * as dbProject from "../db/project.js";
@@ -386,30 +386,7 @@ export const activity = {
   },
   getById: (id: string) => {
     const hexPrefix = validateTaskInput(activityIdSchema, id);
-    const matches = dbActivity.getByIdPrefix(hexPrefix);
-
-    if (matches.length === 0) {
-      throw new CoreError(`No activity matches "${id}"`, "missing", {
-        entity: "activity",
-        key: id,
-      });
-    }
-
-    if (matches.length > 1) {
-      throw new CoreError(
-        `Activity ID "${id}" is ambiguous. Candidates: ${matches.map((event) => event.id).join(", ")}. Provide more characters`,
-        "conflict",
-        {
-          entity: "activity",
-          key: id,
-          reason: "ambiguous_reference",
-          matchCount: matches.length,
-          candidateIds: matches.map((event) => event.id),
-        },
-      );
-    }
-
-    return matches[0]!;
+    return requireSingleIdMatch("activity", id, dbActivity.getByIdPrefix(hexPrefix));
   },
   getIds: dbActivity.getIds,
   getTaskIdentities: (input: string | ActivityTaskSelector) => {

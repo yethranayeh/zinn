@@ -263,3 +263,8 @@ export function writeTransaction<T>(fn: () => T): T {
 
   return connection.inTransaction ? write() : withChangeHooks(write);
 }
+
+/** Runs fn in one deferred transaction, so every read inside sees the same snapshot. */
+export function readTransaction<T>(fn: () => T): T {
+  return getDb().transaction(fn).deferred();
+}

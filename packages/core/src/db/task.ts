@@ -185,7 +185,8 @@ function getCandidateTasksCte(where: string) {
     )`;
 }
 
-function getPageOrder(sort: TaskListQuery["sort"], alias: string) {
+/** Orders ordered_tasks rows for every task list, so the first page and later pages agree. */
+function getListOrder(sort: TaskListQuery["sort"], alias: string) {
   const boardOrder = BOARD_ORDER_KEYS.map((key) => `${alias}.${key} ASC`).join(", ");
 
   if (sort === "due") {
@@ -217,7 +218,8 @@ function getPageAfterCondition(sort: TaskListQuery["sort"]) {
   return `${boardCurrent} > ${boardAnchor}`;
 }
 
-function getOrderedTasksCte(sort: TaskListQuery["sort"]) {
+function getOrderedTasksCtes(sort: TaskListQuery["sort"], where: string) {
+  const ctes = [getCandidateTasksCte(where)];
   const activityJoin =
     sort === "activity"
       ? `LEFT JOIN task_activity
@@ -225,8 +227,19 @@ function getOrderedTasksCte(sort: TaskListQuery["sort"]) {
       : "";
   const activityTime =
     sort === "activity" ? `, ${TASK_LAST_ACTIVITY_TIME_SQL} AS activity_time` : "";
+  // Only the due sort reads due_at, so other sorts also work on older schemas without it.
+  const dueKeys =
+    sort === "due"
+      ? `,
+        (task.due_at IS NULL) AS due_null_rank,
+        COALESCE(task.due_at, 0) AS due_value`
+      : "";
 
-  return `ordered_tasks AS (
+  if (sort === "activity") {
+    ctes.push(TASK_ACTIVITY_CTE);
+  }
+
+  ctes.push(`ordered_tasks AS (
       SELECT task.id,
         project.key AS project_key,
         (project_column.column_order IS NOT NULL) AS column_order_null_rank,
@@ -234,49 +247,27 @@ function getOrderedTasksCte(sort: TaskListQuery["sort"]) {
         (task.archived_at IS NOT NULL) AS archive_rank,
         (task.task_order IS NOT NULL) AS task_order_null_rank,
         COALESCE(task.task_order, '') AS task_order,
-        task.number AS number,
-        (task.due_at IS NULL) AS due_null_rank,
-        COALESCE(task.due_at, 0) AS due_value${activityTime}
-      FROM ${DB_TABLE.task}
+        task.number AS number${dueKeys}${activityTime}
+      ${TASK_LIST_FROM}
       INNER JOIN candidate_tasks
         ON candidate_tasks.id = task.id
-      INNER JOIN ${DB_TABLE.project}
-        ON project.id = task.project_id
-      INNER JOIN ${DB_TABLE.projectColumn}
-        ON project_column.id = task.column_id
       ${activityJoin}
-    )`;
+    )`);
+
+  return ctes.join(",\n");
 }
 
 /** Returns task-list rows after applying core-resolved filters, ordering and limit. */
 export function getList(input: TaskListQuery) {
   const { where, limit, bindings } = buildTaskListFilters(input);
-  const order =
-    input.sort === "due"
-      ? `(task.due_at IS NULL) ASC, task.due_at ASC, ${GLOBAL_TASK_ORDER}`
-      : GLOBAL_TASK_ORDER;
-
-  if (input.sort === "activity") {
-    return getDb()
-      .query<Task, Record<string, string | number>>(`WITH ${getCandidateTasksCte(where)},
-      ${TASK_ACTIVITY_CTE}
-    SELECT task.*
-    ${TASK_LIST_FROM}
-    INNER JOIN candidate_tasks
-      ON candidate_tasks.id = task.id
-    LEFT JOIN task_activity
-      ON task_activity.entity_id = task.id
-    ORDER BY ${TASK_LAST_ACTIVITY_TIME_SQL} DESC,
-      ${GLOBAL_TASK_ORDER}
-    ${limit}`)
-      .all(bindings);
-  }
 
   return getDb()
-    .query<Task, Record<string, string | number>>(`SELECT task.*
-    ${TASK_LIST_FROM}
-    ${where}
-    ORDER BY ${order}
+    .query<Task, Record<string, string | number>>(`WITH ${getOrderedTasksCtes(input.sort, where)}
+    SELECT task.*
+    FROM ordered_tasks AS current
+    INNER JOIN ${DB_TABLE.task}
+      ON task.id = current.id
+    ORDER BY ${getListOrder(input.sort, "current")}
     ${limit}`)
     .all(bindings);
 }
@@ -284,23 +275,15 @@ export function getList(input: TaskListQuery) {
 /** Returns one bounded task page and whether the live cursor matches the list filters. */
 export function getPageAfter(input: TaskPageQuery): TaskPageMatches {
   const { where, limit, bindings } = buildTaskListFilters(input);
-  const orderedTasksCte = getOrderedTasksCte(input.sort);
-  const pageOrder = getPageOrder(input.sort, "page_ids");
+  const pageOrder = getListOrder(input.sort, "page_ids");
   const afterCondition = getPageAfterCondition(input.sort);
-  const ctes = [getCandidateTasksCte(where)];
-
-  if (input.sort === "activity") {
-    ctes.push(TASK_ACTIVITY_CTE);
-  }
-
-  ctes.push(orderedTasksCte);
   bindings.$afterTaskId = input.afterTaskId;
 
   const rows = getDb()
     .query<
       TaskPageRow,
       Record<string, string | number>
-    >(`WITH ${ctes.join(",\n")}, cursor_state AS (
+    >(`WITH ${getOrderedTasksCtes(input.sort, where)}, cursor_state AS (
       SELECT EXISTS (
         SELECT 1 FROM ordered_tasks WHERE id = $afterTaskId
       ) AS cursor_in_selection
@@ -310,7 +293,7 @@ export function getPageAfter(input: TaskPageQuery): TaskPageMatches {
       INNER JOIN ordered_tasks AS anchor
         ON anchor.id = $afterTaskId
       WHERE ${afterCondition}
-      ORDER BY ${getPageOrder(input.sort, "current")}
+      ORDER BY ${getListOrder(input.sort, "current")}
       ${limit}
     )
     SELECT cursor_state.cursor_in_selection, task.*

@@ -614,16 +614,12 @@ Integrations can supply `ZINN_SESSION_ID` and `ZINN_THREAD_ID`. When either is s
 
 These aliases work in every namespace that has the primary command, with the same arguments, options and confirmations:
 
-<div class='my-6 [&_table]:w-full [&_th]:pb-2 [&_th]:pr-6 [&_th]:text-left [&_td]:py-1 [&_td]:pr-6'>
-
 | Primary command | Alias  |
 | --------------- | ------ |
 | `view`          | `show` |
 | `list`          | `ls`   |
 | `delete`        | `rm`   |
 | `create`        | `new`  |
-
-</div>
 
 For example, `zinn task show APP-1` runs `zinn task view APP-1`, and `zinn task comment new APP-1 --text 'Verified'` creates a comment. Alias words used as values stay values: `zinn task list rm` lists tasks in project `rm`.
 

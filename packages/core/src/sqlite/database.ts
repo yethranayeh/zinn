@@ -517,6 +517,8 @@ type StatementParams<Params> = Params extends Array<unknown> ? Params : [Params]
  */
 const NESTED_TRANSACTION_SAVEPOINT = "zinn_nested_transaction";
 
+type TransactionMode = "IMMEDIATE" | "DEFERRED";
+
 export class Database {
   private readonly driver: SqliteDriver;
   private readonly connection: DriverConnection;
@@ -524,6 +526,8 @@ export class Database {
   private isClosed = false;
   /** How many transaction() calls are running, the outermost included. */
   private transactionDepth = 0;
+  /** The mode of the outermost running transaction() call, or null when none is running. */
+  private outerTransactionMode: TransactionMode | null = null;
 
   constructor(driver: SqliteDriver, connection: DriverConnection) {
     this.driver = driver;
@@ -595,7 +599,12 @@ export class Database {
 
   /**
    * `transaction(fn).immediate()` runs fn inside BEGIN IMMEDIATE and commits.
-   * Inside another transaction it runs in a savepoint instead.
+   * `transaction(fn).deferred()` does the same with BEGIN DEFERRED, which takes no write lock up front.
+   * Inside another transaction either one runs in a savepoint instead.
+   * `.immediate()` inside a `.deferred()` transaction throws before running fn.
+   * Its savepoint would not take the write lock, so a write there could fail at once with SQLITE_BUSY_SNAPSHOT,
+   * which the busy timeout does not retry.
+   * @link https://www.sqlite.org/isolation.html
    * If fn or COMMIT fails, an open transaction is rolled back and the original error is rethrown.
    * If SQLite rolled the transaction back by itself, statements throw until this call returns.
    */
@@ -606,10 +615,23 @@ export class Database {
     };
   }
 
-  private runTransaction<T>(fn: () => T, mode: "IMMEDIATE" | "DEFERRED"): T {
+  private runTransaction<T>(fn: () => T, mode: TransactionMode): T {
     const isNested = this.inTransaction;
+    const isImmediateInDeferred =
+      isNested && mode === "IMMEDIATE" && this.outerTransactionMode === "DEFERRED";
+
+    if (isImmediateInDeferred) {
+      throw new Error(
+        "An immediate transaction cannot run inside a deferred one. Start the outer transaction with immediate() instead.",
+      );
+    }
+
     this.exec(isNested ? `SAVEPOINT ${NESTED_TRANSACTION_SAVEPOINT}` : `BEGIN ${mode}`);
     this.transactionDepth++;
+
+    if (!isNested) {
+      this.outerTransactionMode = mode;
+    }
 
     try {
       const result = fn();
@@ -636,6 +658,10 @@ export class Database {
       throw error;
     } finally {
       this.transactionDepth--;
+
+      if (!isNested) {
+        this.outerTransactionMode = null;
+      }
     }
   }
 }

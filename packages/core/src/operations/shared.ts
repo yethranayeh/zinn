@@ -161,6 +161,39 @@ export function resolveLabels(names: Array<string>) {
   return [...matches.values()];
 }
 
+/** Returns the one record a UUID prefix matched, or throws the missing or ambiguous reference error. */
+export function requireSingleIdMatch<T extends { id: string }>(
+  entity: "activity" | "task",
+  reference: string,
+  matches: Array<T>,
+) {
+  if (matches.length === 0) {
+    throw new CoreError(`No ${entity} matches "${reference}"`, "missing", {
+      entity,
+      key: reference,
+    });
+  }
+
+  if (matches.length > 1) {
+    const label = `${entity.charAt(0).toUpperCase()}${entity.slice(1)}`;
+    const candidateIds = matches.map((match) => match.id);
+
+    throw new CoreError(
+      `${label} ID "${reference}" is ambiguous. Candidates: ${candidateIds.join(", ")}. Provide more characters`,
+      "conflict",
+      {
+        entity,
+        key: reference,
+        reason: "ambiguous_reference",
+        matchCount: matches.length,
+        candidateIds,
+      },
+    );
+  }
+
+  return matches[0]!;
+}
+
 export function findByName<T extends { name: string }>(matches: Array<T>, name: string) {
   return matches.find((match) => standardizeName(match.name) === standardizeName(name));
 }

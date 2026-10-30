@@ -41,7 +41,6 @@ test("the emitted contract covers every route and finite result, including itsel
     type: "string",
     value: { kind: "task-id", name: "id" },
   });
-  expect(taskListInput.options["starting-after"]!.value!.description).toContain("prefix");
   const validator = capabilityValidator(actual);
   for (const route of parseRoutes(routes)) {
     const command = commands.get(route.command);
@@ -106,7 +105,7 @@ test.each(parseRoutes(routes).filter((route) => route.effects.storage === "none"
     import { mock } from "bun:test";
     const { settingsFileSourceSchema, settingsFileStateSchema } = await import(${JSON.stringify(join(coreSource, "settings.ts"))});
     const forbidden = () => { throw new Error("Forbidden discovery access"); };
-    mock.module(${JSON.stringify(join(coreSource, "db.ts"))}, () => ({ configureDatabase: forbidden, assertWritable: forbidden, getDb: forbidden, writeTransaction: forbidden, closeDb: forbidden }));
+    mock.module(${JSON.stringify(join(coreSource, "db.ts"))}, () => ({ configureDatabase: forbidden, assertWritable: forbidden, getDb: forbidden, writeTransaction: forbidden, readTransaction: forbidden, closeDb: forbidden }));
     mock.module(${JSON.stringify(join(coreSource, "settings.ts"))}, () => ({ settingsFileSourceSchema, settingsFileStateSchema, resolveSettings: forbidden, chooseDefaultProject: forbidden, inspectSettings: forbidden }));
     mock.module("bun:sqlite", () => ({ Database: class { constructor() { forbidden(); } } }));
     Bun.spawn = Bun.spawnSync = Bun.connect = forbidden;

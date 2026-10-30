@@ -15,7 +15,7 @@ import { v7 as uuidv7 } from "uuid";
 import { generateKeyBetween } from "fractional-indexing";
 
 import { CoreError } from "../errors.js";
-import { getDb, writeTransaction } from "../db.js";
+import { readTransaction, writeTransaction } from "../db.js";
 import { rethrowSearchError } from "../search-error.js";
 import { taskLabelSchema } from "../schemas/label.js";
 
@@ -45,6 +45,7 @@ import {
   getTaskByKey,
   findTaskByExactKey,
   attachTaskKey,
+  requireSingleIdMatch,
   resolveLabels,
   recordTaskActivity,
   updateTaskSearchRecord,
@@ -470,73 +471,53 @@ export const task = {
   getPage: (input: TaskPageInput = {}) => {
     const props = validateTaskInput(taskPageSchema, input);
 
-    return getDb()
-      .transaction(() => {
-        let cursorTaskId: string | undefined;
-        if (props.startingAfter !== undefined) {
-          const cursorPrefix = normalizeUuidReference(props.startingAfter);
-          const cursorMatches = dbTask.getByIdPrefix(cursorPrefix);
+    return readTransaction(() => {
+      let cursorTaskId: string | undefined;
+      if (props.startingAfter !== undefined) {
+        const cursorPrefix = normalizeUuidReference(props.startingAfter);
+        cursorTaskId = requireSingleIdMatch(
+          "task",
+          props.startingAfter,
+          dbTask.getByIdPrefix(cursorPrefix),
+        ).id;
+      }
 
-          if (cursorMatches.length === 0) {
-            throw new CoreError(`No task matches "${props.startingAfter}"`, "missing", {
+      const { taskProject, query } = resolveTaskListSelection(props);
+      const fetchLimit = props.limit === undefined ? undefined : props.limit + 1;
+      let taskMatches: Array<Task>;
+
+      if (cursorTaskId === undefined) {
+        taskMatches = dbTask.getList({ ...query, limit: fetchLimit });
+      } else {
+        const page = dbTask.getPageAfter({
+          ...query,
+          limit: fetchLimit,
+          afterTaskId: cursorTaskId,
+        });
+
+        if (!page.cursorInSelection) {
+          throw new CoreError(
+            `Task cursor "${props.startingAfter}" does not match the task list selection`,
+            "input",
+            {
               entity: "task",
               key: props.startingAfter,
-            });
-          }
-
-          if (cursorMatches.length > 1) {
-            throw new CoreError(
-              `Task ID "${props.startingAfter}" is ambiguous. Candidates: ${cursorMatches.map(({ id }) => id).join(", ")}. Provide more characters`,
-              "conflict",
-              {
-                entity: "task",
-                key: props.startingAfter,
-                reason: "ambiguous_reference",
-                matchCount: cursorMatches.length,
-                candidateIds: cursorMatches.map(({ id }) => id),
-              },
-            );
-          }
-
-          cursorTaskId = cursorMatches[0]!.id;
+              field: ["startingAfter"],
+            },
+          );
         }
 
-        const { taskProject, query } = resolveTaskListSelection(props);
-        const fetchLimit = props.limit === undefined ? undefined : props.limit + 1;
-        let taskMatches: Array<Task>;
+        taskMatches = page.tasks;
+      }
 
-        if (cursorTaskId === undefined) {
-          taskMatches = dbTask.getList({ ...query, limit: fetchLimit });
-        } else {
-          const page = dbTask.getPageAfter({
-            ...query,
-            limit: fetchLimit,
-            afterTaskId: cursorTaskId,
-          });
+      const hasMore = props.limit !== undefined && taskMatches.length > props.limit;
+      const selectedTasks = hasMore ? taskMatches.slice(0, props.limit) : taskMatches;
 
-          if (!page.cursorInSelection) {
-            throw new CoreError(
-              `Task cursor "${props.startingAfter}" does not match the task list selection`,
-              "input",
-              {
-                entity: "task",
-                key: props.startingAfter,
-                field: ["startingAfter"],
-              },
-            );
-          }
-
-          taskMatches = page.tasks;
-        }
-
-        const hasMore = props.limit !== undefined && taskMatches.length > props.limit;
-        const selectedTasks = hasMore ? taskMatches.slice(0, props.limit) : taskMatches;
-        return {
-          tasks: selectedTasks.map((taskMatch) => attachTaskKey(taskMatch, taskProject?.key)),
-          hasMore,
-        };
-      })
-      .deferred();
+      return {
+        tasks: selectedTasks.map((taskMatch) => attachTaskKey(taskMatch, taskProject?.key)),
+        hasMore,
+      };
+    });
   },
   getByKey: getTaskByKey,
   search: (input: TaskSearchInput) => {

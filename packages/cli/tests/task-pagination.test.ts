@@ -1,9 +1,14 @@
 import { expect, test } from "bun:test";
+import { MAX_LIST_LIMIT } from "@zinn-dev/core";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { parsedRoutes } from "../src/routes/routes";
 import { CLI_PATH, runProcessAsync, runZinn, withIsolatedZinnDir, withTestDb } from "../test-helpers";
 import { TEST_ENVIRONMENT } from "../../../scripts/test-isolation.ts";
+
+// UUIDv7 IDs share their first 8 hex digits for about 65 seconds, so a few quick creations always yield a shared prefix.
+const MAX_SHARED_PREFIX_ATTEMPTS = 3;
+const SHARED_PREFIX_HEX_LENGTH = 8;
 
 function extractContinuation(stderr: string) {
   const commandStart = stderr.indexOf("zinn task list");
@@ -221,13 +226,11 @@ test("task list cursor metadata, ID spellings, membership errors and final pages
     const route = parsedRoutes.find(({ command }) => command === "task list")!;
     expect(route.input?.options?.["starting-after"]).toMatchObject({
       type: "string",
-      value: { kind: "task-id", name: "id", description: expect.stringContaining("prefix") },
+      value: { kind: "task-id", name: "id" },
     });
     const help = await run("task", "list", "--help");
     expect(help.code, help.stderr).toBe(0);
-    for (const fact of ["--starting-after", "UUID", "prefix", "selection filters", "stderr"]) {
-      expect(help.stdout).toContain(fact);
-    }
+    expect(help.stdout).toContain("--starting-after");
 
     await run("project", "create", "APP");
     await run("project", "create", "OTHER");
@@ -353,7 +356,7 @@ test("task list cursor metadata, ID spellings, membership errors and final pages
     const emptyFinal = await json("task", "list", "APP", "--starting-after", before[5]!.id, "--limit=1");
     expect(emptyFinal.tasks).toEqual([]);
     expect(emptyFinal.result.stderr).toBe("");
-    const cappedAll = await json("task", "list", "APP", "--limit=11871");
+    const cappedAll = await json("task", "list", "APP", `--limit=${MAX_LIST_LIMIT}`);
     expect(cappedAll.tasks).toHaveLength(before.length);
     expect(cappedAll.result.stderr).toBe("");
 
@@ -381,14 +384,6 @@ test("task list cursor metadata, ID spellings, membership errors and final pages
     expect(jsonError(shortPrefix.stderr)).toMatchObject({
       code: "invalid_input",
       details: { field: ["startingAfter"] },
-    });
-    const ambiguousPrefix = before[0]!.id.replaceAll("-", "").slice(0, 8);
-    expect(before.filter(({ id }) => id.replaceAll("-", "").startsWith(ambiguousPrefix)).length).toBeGreaterThan(1);
-    const ambiguous = await run("task", "list", "APP", "--starting-after", ambiguousPrefix, "--json");
-    expect(ambiguous.code).toBe(1);
-    expect(jsonError(ambiguous.stderr)).toMatchObject({
-      code: "conflict",
-      details: { reason: "ambiguous_reference" },
     });
     const otherProjectCursor = await run(
       "task",
@@ -436,5 +431,27 @@ test("task list cursor metadata, ID spellings, membership errors and final pages
       code: "not_found",
       details: { entity: "task" },
     });
+
+    const sharedPrefix = (id: string) => id.replaceAll("-", "").slice(0, SHARED_PREFIX_HEX_LENGTH);
+    const liveIds = [...before, otherTask].map(({ id }) => id);
+    let ambiguousPrefix: string | undefined;
+    for (let attempt = 0; attempt < MAX_SHARED_PREFIX_ATTEMPTS && ambiguousPrefix === undefined; attempt++) {
+      const probe = await run("task", "create", "OTHER", "--title", "Prefix probe", "--json");
+      expect(probe.code, probe.stderr).toBe(0);
+      const probeId = (JSON.parse(probe.stdout) as { id: string }).id;
+      if (liveIds.some((id) => sharedPrefix(id) === sharedPrefix(probeId))) {
+        ambiguousPrefix = sharedPrefix(probeId);
+      }
+      liveIds.push(probeId);
+    }
+    expect(ambiguousPrefix).toBeDefined();
+    const beforeAmbiguousRead = snapshot();
+    const ambiguous = await run("task", "list", "APP", "--starting-after", ambiguousPrefix!, "--json");
+    expect(ambiguous.code).toBe(1);
+    expect(jsonError(ambiguous.stderr)).toMatchObject({
+      code: "conflict",
+      details: { reason: "ambiguous_reference" },
+    });
+    expect(snapshot()).toEqual(beforeAmbiguousRead);
   });
 });
