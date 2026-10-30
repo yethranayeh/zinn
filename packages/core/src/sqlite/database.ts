@@ -600,12 +600,15 @@ export class Database {
    * If SQLite rolled the transaction back by itself, statements throw until this call returns.
    */
   transaction<T>(fn: () => T) {
-    return { immediate: () => this.runTransaction(fn) };
+    return {
+      immediate: () => this.runTransaction(fn, "IMMEDIATE"),
+      deferred: () => this.runTransaction(fn, "DEFERRED"),
+    };
   }
 
-  private runTransaction<T>(fn: () => T): T {
+  private runTransaction<T>(fn: () => T, mode: "IMMEDIATE" | "DEFERRED"): T {
     const isNested = this.inTransaction;
-    this.exec(isNested ? `SAVEPOINT ${NESTED_TRANSACTION_SAVEPOINT}` : "BEGIN IMMEDIATE");
+    this.exec(isNested ? `SAVEPOINT ${NESTED_TRANSACTION_SAVEPOINT}` : `BEGIN ${mode}`);
     this.transactionDepth++;
 
     try {

@@ -18,6 +18,7 @@ import {
 } from "@zinn-dev/core";
 
 import { listLimitOption, listLimitDescription, parseListLimit } from "../list-limit.js";
+import { formatListContinuation } from "../list-continuation.js";
 import { parseTimestampInput } from "../timestamp-input.js";
 import { CliError } from "../errors.js";
 import {
@@ -191,6 +192,15 @@ const taskInputs = {
       "all-projects": { type: "boolean" },
       label: { type: "string", multiple: true, value: { kind: "label-name", name: "name" } },
       column: { type: "string", value: { kind: "column-name", name: "name" } },
+      "starting-after": {
+        type: "string",
+        value: {
+          kind: "task-id",
+          name: "id",
+          description:
+            "Task UUID or globally unambiguous left prefix with at least 8 hexadecimal digits. Canonical or compact, case-insensitive",
+        },
+      },
     },
     forms: [
       {
@@ -199,7 +209,10 @@ const taskInputs = {
       },
     ],
     constraints: [archiveConstraint, projectScopeConstraint],
-    notes: [projectScopeDescription],
+    notes: [
+      projectScopeDescription,
+      "A --starting-after task must match every selection filter. Cursor resolution uses current task identities before list filtering.",
+    ],
   },
   search: {
     options: {
@@ -477,7 +490,7 @@ Examples:
         });
       }
 
-      const tasks = task.getAll({
+      const page = task.getPage({
         ...parseDeadlineFilters(values),
         limit,
         sort: sort.data,
@@ -485,11 +498,29 @@ Examples:
         archive,
         labelNames: values.label,
         columnName: values.column,
+        startingAfter: values["starting-after"],
       });
 
-      output(tasks.map(presentTask), (presentedTasks) =>
+      output(page.tasks.map(presentTask), (presentedTasks) =>
         formatTaskList(presentedTasks, { showsStatus: values.all }),
       );
+
+      if (page.hasMore) {
+        const selectionTokens = tokens.filter(
+          (token) => token.kind !== "option" || token.name !== "all-projects",
+        );
+
+        const projectScope = projectKey === undefined ? ["--all-projects"] : [projectKey];
+        diagnostic(
+          `More tasks. Continue with: ${formatListContinuation(
+            ["task", "list"],
+            projectScope,
+            selectionTokens,
+            "starting-after",
+            page.tasks.at(-1)!.id,
+          )}`,
+        );
+      }
     },
     help: `${generateCommandUsage("task list", taskInputs.list)}
 
@@ -504,6 +535,10 @@ Equal activity times keep board order. Without --sort, board order is preserved.
 --sort due lists earliest deadlines first, with undated tasks last. Equal deadlines keep board order. Task positions stay unchanged.
 ${deadlineFilterHelp}
 --limit <n>: ${listLimitDescription}
+--starting-after <id>: Continue after a current matching task. Accepts a UUID, canonical or compact, case-insensitive.
+Use the task's id from --json output as the cursor.
+The task cursor must match all selection filters. Movement or edits can change current sort positions between commands.
+When additional matches remain after --limit, stderr gives a shell-quoted command to continue, including with --json.
 
 Use 'task view' to see a task's full details, including its description.
 

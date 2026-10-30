@@ -157,18 +157,13 @@ const boardFirstActivityTime = 100;
 const dueFirstActivityTime = 200;
 const newestOutsideFilterActivityTime = 300;
 getDb()
-	.query(`UPDATE activity SET created_at = CASE entity_id
+	.query(
+		`UPDATE activity SET created_at = CASE entity_id
 		WHEN ? THEN ?
 		WHEN ? THEN ?
-	END WHERE entity_type = 'task' AND entity_id IN (?, ?)`)
-	.run(
-		boardFirst.id,
-		boardFirstActivityTime,
-		dueFirst.id,
-		dueFirstActivityTime,
-		boardFirst.id,
-		dueFirst.id
-	);
+	END WHERE entity_type = 'task' AND entity_id IN (?, ?)`
+	)
+	.run(boardFirst.id, boardFirstActivityTime, dueFirst.id, dueFirstActivityTime, boardFirst.id, dueFirst.id);
 assert.deepEqual(
 	core.task.getAll({ projectKey: listProject.key, limit: 1 }).map(({ key }) => key),
 	[boardFirst.key]
@@ -210,6 +205,42 @@ assert.deepEqual(
 		})
 		.map(({ key }) => key),
 	[dueFirst.key]
+);
+getDb().query("UPDATE activity SET created_at = ? WHERE entity_type = 'task' AND entity_id = ?").run(400, dueFirst.id);
+assert.deepEqual(
+	core.task.getPage({
+		projectKey: listProject.key,
+		sort: "activity",
+		labelNames: ["runtime"],
+		dueSince: 0,
+		dueUntil: 10,
+		limit: 1
+	}),
+	{ tasks: [dueFirst], hasMore: true }
+);
+assert.deepEqual(
+	core.task.getPage({
+		projectKey: listProject.key,
+		sort: "activity",
+		labelNames: ["runtime"],
+		dueSince: 0,
+		dueUntil: 10,
+		limit: 1,
+		startingAfter: dueFirst.id.toUpperCase().replaceAll("-", "")
+	}),
+	{ tasks: [boardFirst], hasMore: false }
+);
+assert.deepEqual(
+	core.task.getPage({
+		projectKey: listProject.key,
+		sort: "activity",
+		columnName: "done",
+		labelNames: ["runtime", "RUNTIME"],
+		dueSince: 0,
+		dueUntil: 0,
+		limit: 1
+	}),
+	{ tasks: [dueFirst], hasMore: false }
 );
 
 assert.equal(getDb().driver, driver, "Core selected the wrong SQLite adapter");

@@ -48,9 +48,19 @@ test("task list sorts filtered tasks before limiting with unchanged text and JSO
       for (const limit of [[], ["--limit", "2"]]) {
         const expectedKeys = limit.length === 0 ? keys : keys.slice(0, 2);
         const sorted = ["task", "list", ...args, "--sort", "activity", ...limit];
-        expect(JSON.parse(await run(...sorted, "--json"))).toEqual(expectedKeys.map(key => rowsByKey.get(key)));
-        const text = await run(...sorted);
-        expect(text.trim().split("\n").filter(Boolean).map(line => line.split("|")[0]!.trim())).toEqual(expectedKeys);
+        const json = await runZinn([...sorted, "--json"], directory);
+        expect(json.code, json.stderr).toBe(0);
+        expect(JSON.parse(json.stdout)).toEqual(expectedKeys.map(key => rowsByKey.get(key)));
+        const text = await runZinn(sorted, directory);
+        expect(text.code, text.stderr).toBe(0);
+        expect(text.stdout.trim().split("\n").filter(Boolean).map(line => line.split("|")[0]!.trim())).toEqual(expectedKeys);
+        if (keys.length > expectedKeys.length) {
+          expect(json.stderr).toContain("--starting-after");
+          expect(text.stderr).toContain("--starting-after");
+        } else {
+          expect(json.stderr).toBe("");
+          expect(text.stderr).toBe("");
+        }
       }
     }
     expect(JSON.parse(await run("task", "list", "--all-projects", "--all", "--json"))).toEqual(allRows);

@@ -40,9 +40,37 @@ const TASK_LIST_FROM = `FROM ${DB_TABLE.task}
       ON project.id = task.project_id
     INNER JOIN ${DB_TABLE.projectColumn}
       ON project_column.id = task.column_id`;
+const TASK_ACTIVITY_CTE = `task_activity AS (
+      SELECT entity_id, MAX(created_at) AS created_at
+      FROM ${DB_TABLE.activity}
+      WHERE entity_type = 'task'
+        AND entity_id IN (SELECT id FROM candidate_tasks)
+      GROUP BY entity_id
+    )`;
+const TASK_LAST_ACTIVITY_TIME_SQL = "COALESCE(task_activity.created_at, task.updated_at)";
+const BOARD_ORDER_KEYS = [
+  "project_key",
+  "column_order_null_rank",
+  "column_order",
+  "archive_rank",
+  "task_order_null_rank",
+  "task_order",
+  "number",
+];
 
 export function getById(taskId: string) {
   return getDb().query<Task, [string]>(`SELECT * FROM ${DB_TABLE.task} WHERE id = ?`).get(taskId);
+}
+
+/** Returns all live task IDs matching a normalized UUID prefix. */
+export function getByIdPrefix(hexPrefix: string) {
+  return getDb()
+    .query<{ id: string }, [string]>(
+      `SELECT id FROM ${DB_TABLE.task}
+      WHERE LOWER(REPLACE(id, '-', '')) LIKE ?
+      ORDER BY id ASC`,
+    )
+    .all(`${hexPrefix}%`);
 }
 
 // TODO: refined parameters, preferably of type SQLBindings
@@ -88,8 +116,15 @@ export type TaskListQuery = Pick<
   columnIds?: Array<string>;
 };
 
-/** Returns task-list rows after applying core-resolved filters, ordering and limit. */
-export function getList(input: TaskListQuery) {
+export type TaskPageQuery = TaskListQuery & { afterTaskId: string };
+
+type TaskPageRow = { cursor_in_selection: number } & {
+  [Key in keyof Task]: Task[Key] | null;
+};
+
+export type TaskPageMatches = { cursorInSelection: boolean; tasks: Array<Task> };
+
+function buildTaskListFilters(input: TaskListQuery) {
   const predicates: Array<string> = [];
   const bindings: Record<string, string | number> = {};
   const archiveCondition = getArchiveCondition(input.archive ?? "active");
@@ -133,36 +168,105 @@ export function getList(input: TaskListQuery) {
   }
 
   const where = predicates.length === 0 ? "" : `WHERE ${predicates.join(" AND ")}`;
-  const order =
-    input.sort === "due"
-      ? `(task.due_at IS NULL) ASC, task.due_at ASC, ${GLOBAL_TASK_ORDER}`
-      : GLOBAL_TASK_ORDER;
   const limit = input.limit === undefined ? "" : "LIMIT $limit";
 
   if (input.limit !== undefined) {
     bindings.$limit = input.limit;
   }
 
-  if (input.sort === "activity") {
-    return getDb()
-      .query<Task, Record<string, string | number>>(`WITH candidate_tasks AS (
+  return { where, limit, bindings };
+}
+
+function getCandidateTasksCte(where: string) {
+  return `candidate_tasks AS (
       SELECT task.id
       ${TASK_LIST_FROM}
       ${where}
-    ), task_activity AS (
-      SELECT entity_id, MAX(created_at) AS created_at
-      FROM ${DB_TABLE.activity}
-      WHERE entity_type = 'task'
-        AND entity_id IN (SELECT id FROM candidate_tasks)
-      GROUP BY entity_id
-    )
+    )`;
+}
+
+function getPageOrder(sort: TaskListQuery["sort"], alias: string) {
+  const boardOrder = BOARD_ORDER_KEYS.map((key) => `${alias}.${key} ASC`).join(", ");
+
+  if (sort === "due") {
+    return `${alias}.due_null_rank ASC, ${alias}.due_value ASC, ${boardOrder}`;
+  }
+
+  if (sort === "activity") {
+    return `${alias}.activity_time DESC, ${boardOrder}`;
+  }
+
+  return boardOrder;
+}
+
+function getPageAfterCondition(sort: TaskListQuery["sort"]) {
+  const boardCurrent = `(${BOARD_ORDER_KEYS.map((key) => `current.${key}`).join(", ")})`;
+  const boardAnchor = `(${BOARD_ORDER_KEYS.map((key) => `anchor.${key}`).join(", ")})`;
+
+  if (sort === "due") {
+    const current = `(current.due_null_rank, current.due_value, ${BOARD_ORDER_KEYS.map((key) => `current.${key}`).join(", ")})`;
+    const anchor = `(anchor.due_null_rank, anchor.due_value, ${BOARD_ORDER_KEYS.map((key) => `anchor.${key}`).join(", ")})`;
+    return `${current} > ${anchor}`;
+  }
+
+  if (sort === "activity") {
+    return `current.activity_time < anchor.activity_time
+      OR (current.activity_time = anchor.activity_time AND ${boardCurrent} > ${boardAnchor})`;
+  }
+
+  return `${boardCurrent} > ${boardAnchor}`;
+}
+
+function getOrderedTasksCte(sort: TaskListQuery["sort"]) {
+  const activityJoin =
+    sort === "activity"
+      ? `LEFT JOIN task_activity
+        ON task_activity.entity_id = task.id`
+      : "";
+  const activityTime =
+    sort === "activity" ? `, ${TASK_LAST_ACTIVITY_TIME_SQL} AS activity_time` : "";
+
+  return `ordered_tasks AS (
+      SELECT task.id,
+        project.key AS project_key,
+        (project_column.column_order IS NOT NULL) AS column_order_null_rank,
+        COALESCE(project_column.column_order, '') AS column_order,
+        (task.archived_at IS NOT NULL) AS archive_rank,
+        (task.task_order IS NOT NULL) AS task_order_null_rank,
+        COALESCE(task.task_order, '') AS task_order,
+        task.number AS number,
+        (task.due_at IS NULL) AS due_null_rank,
+        COALESCE(task.due_at, 0) AS due_value${activityTime}
+      FROM ${DB_TABLE.task}
+      INNER JOIN candidate_tasks
+        ON candidate_tasks.id = task.id
+      INNER JOIN ${DB_TABLE.project}
+        ON project.id = task.project_id
+      INNER JOIN ${DB_TABLE.projectColumn}
+        ON project_column.id = task.column_id
+      ${activityJoin}
+    )`;
+}
+
+/** Returns task-list rows after applying core-resolved filters, ordering and limit. */
+export function getList(input: TaskListQuery) {
+  const { where, limit, bindings } = buildTaskListFilters(input);
+  const order =
+    input.sort === "due"
+      ? `(task.due_at IS NULL) ASC, task.due_at ASC, ${GLOBAL_TASK_ORDER}`
+      : GLOBAL_TASK_ORDER;
+
+  if (input.sort === "activity") {
+    return getDb()
+      .query<Task, Record<string, string | number>>(`WITH ${getCandidateTasksCte(where)},
+      ${TASK_ACTIVITY_CTE}
     SELECT task.*
     ${TASK_LIST_FROM}
     INNER JOIN candidate_tasks
       ON candidate_tasks.id = task.id
     LEFT JOIN task_activity
       ON task_activity.entity_id = task.id
-    ORDER BY COALESCE(task_activity.created_at, task.updated_at) DESC,
+    ORDER BY ${TASK_LAST_ACTIVITY_TIME_SQL} DESC,
       ${GLOBAL_TASK_ORDER}
     ${limit}`)
       .all(bindings);
@@ -175,6 +279,59 @@ export function getList(input: TaskListQuery) {
     ORDER BY ${order}
     ${limit}`)
     .all(bindings);
+}
+
+/** Returns one bounded task page and whether the live cursor matches the list filters. */
+export function getPageAfter(input: TaskPageQuery): TaskPageMatches {
+  const { where, limit, bindings } = buildTaskListFilters(input);
+  const orderedTasksCte = getOrderedTasksCte(input.sort);
+  const pageOrder = getPageOrder(input.sort, "page_ids");
+  const afterCondition = getPageAfterCondition(input.sort);
+  const ctes = [getCandidateTasksCte(where)];
+
+  if (input.sort === "activity") {
+    ctes.push(TASK_ACTIVITY_CTE);
+  }
+
+  ctes.push(orderedTasksCte);
+  bindings.$afterTaskId = input.afterTaskId;
+
+  const rows = getDb()
+    .query<
+      TaskPageRow,
+      Record<string, string | number>
+    >(`WITH ${ctes.join(",\n")}, cursor_state AS (
+      SELECT EXISTS (
+        SELECT 1 FROM ordered_tasks WHERE id = $afterTaskId
+      ) AS cursor_in_selection
+    ), page_ids AS (
+      SELECT current.*
+      FROM ordered_tasks AS current
+      INNER JOIN ordered_tasks AS anchor
+        ON anchor.id = $afterTaskId
+      WHERE ${afterCondition}
+      ORDER BY ${getPageOrder(input.sort, "current")}
+      ${limit}
+    )
+    SELECT cursor_state.cursor_in_selection, task.*
+    FROM cursor_state
+    LEFT JOIN page_ids
+      ON 1 = 1
+    LEFT JOIN ${DB_TABLE.task}
+      ON task.id = page_ids.id
+    ORDER BY ${pageOrder}`)
+    .all(bindings);
+
+  const cursorInSelection = rows[0]?.cursor_in_selection === 1;
+  const tasks: Array<Task> = [];
+
+  for (const { cursor_in_selection, ...taskRow } of rows) {
+    if (cursor_in_selection === 1 && taskRow.id !== null) {
+      tasks.push(taskRow as Task);
+    }
+  }
+
+  return { cursorInSelection, tasks };
 }
 
 export function getAllByColumnId(columnId: string, archive: TaskArchiveFilter = "active") {

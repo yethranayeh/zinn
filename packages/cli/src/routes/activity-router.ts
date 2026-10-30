@@ -16,16 +16,8 @@ import {
 import { generateCommandUsage, getOptionInputs, violatesConstraint } from "../input.js";
 import { CliError } from "../errors.js";
 import { parseTimestampInput } from "../timestamp-input.js";
-import {
-  diagnostic,
-  formatCommand,
-  getOutputMode,
-  isLegacyReadAllowed,
-  output,
-  quit,
-  validatePositionals,
-  validateUniqueOptions,
-} from "../lib.js";
+import { formatListContinuation } from "../list-continuation.js";
+import { diagnostic, output, quit, validatePositionals, validateUniqueOptions } from "../lib.js";
 import { formatActivityList, presentActivities } from "../presentation/activity-presentation.js";
 
 const changedFieldList = activityChangedFieldSchema.options.join(", ");
@@ -236,25 +228,14 @@ export const activityRouter = {
         ),
       );
       if (page.hasMore) {
-        const continuation = tokens.flatMap((token) => {
-          if (token.kind !== "option" || token.name === "starting-after") {
-            return [];
-          }
-
-          return [token.value === undefined ? token.rawName : `${token.rawName}=${token.value}`];
-        });
-
-        if (getOutputMode() === "json") {
-          continuation.push("--json");
-        }
-
-        if (isLegacyReadAllowed()) {
-          continuation.push("--allow-legacy-read");
-        }
-
-        continuation.push("--starting-after", page.events.at(-1)!.id);
         diagnostic(
-          `More activity. Continue with: ${formatCommand(["activity", "list", ...continuation])}`,
+          `More activity. Continue with: ${formatListContinuation(
+            ["activity", "list"],
+            [],
+            tokens,
+            "starting-after",
+            page.events.at(-1)!.id,
+          )}`,
         );
       }
     },

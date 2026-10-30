@@ -10,6 +10,7 @@ import { relationTypeSchema } from "./relation.js";
 import { projectKeyPattern } from "./project.js";
 import { positiveIntegerPattern, listLimitSchema } from "./integer.js";
 import { timestampSchema } from "./timestamp.js";
+import { uuidReferenceSchema } from "./uuid-reference.js";
 
 export { positiveIntegerPattern } from "./integer.js";
 export { listLimitMessage as searchLimitMessage } from "./integer.js";
@@ -153,6 +154,10 @@ export const taskListSchema = z
   })
   .superRefine(validateDeadlineBounds);
 
+export const taskPageSchema = taskListSchema.safeExtend({
+  startingAfter: uuidReferenceSchema("Task").optional(),
+});
+
 export const taskSearchSchema = z
   .strictObject({
     ...deadlineFilters,
@@ -172,6 +177,7 @@ export type TaskArchiveFilter = z.infer<typeof taskArchiveFilterSchema>;
 export type TaskCreateInput = z.input<typeof taskCreateSchema>;
 export type TaskEditInput = z.infer<typeof taskEditSchema>;
 export type TaskListInput = z.infer<typeof taskListSchema>;
+export type TaskPageInput = z.input<typeof taskPageSchema>;
 export type TaskSearchInput = z.infer<typeof taskSearchSchema>;
 
 export function validateTaskInput<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {

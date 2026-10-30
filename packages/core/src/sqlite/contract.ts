@@ -368,6 +368,72 @@ export function defineContractChecks(test: DefineTest, adapter: Adapter) {
     });
   });
 
+  test("deferred transactions read query-only snapshots while another WAL connection commits", () => {
+    withDirectory((directory) => {
+      const path = join(directory, "deferred.sqlite");
+      const reader = adapter.openDatabase(path);
+      const writer = adapter.openDatabase(path);
+
+      try {
+        reader.exec(
+          "PRAGMA journal_mode = WAL; CREATE TABLE item (value INTEGER); INSERT INTO item VALUES (1)",
+        );
+        reader.exec("PRAGMA query_only = ON");
+        const result = reader
+          .transaction(() => {
+            assert.equal(reader.inTransaction, true);
+            const before = reader.query<{ value: number }>("SELECT value FROM item").all();
+            writer.query("INSERT INTO item VALUES (2)").run();
+            const during = reader.query<{ value: number }>("SELECT value FROM item").all();
+            return { before, during };
+          })
+          .deferred();
+
+        assert.deepEqual(result, {
+          before: [{ value: 1 }],
+          during: [{ value: 1 }],
+        });
+        assert.equal(reader.inTransaction, false);
+        assert.deepEqual(writer.query("SELECT value FROM item ORDER BY value").all(), [
+          { value: 1 },
+          { value: 2 },
+        ]);
+        assert.throws(
+          () => reader.query("INSERT INTO item VALUES (3)").run(),
+          (error) => assertSqliteError(error, "SQLITE_READONLY", 8),
+        );
+      } finally {
+        reader.close();
+        writer.close();
+      }
+    });
+  });
+
+  test("nested deferred transactions use savepoints and roll back callback failures", () => {
+    withDatabase(adapter, (db) => {
+      db.exec("CREATE TABLE item (value TEXT)");
+      const insert = db.query("INSERT INTO item VALUES (?)");
+      const failure = new Error("deferred callback failed");
+
+      assert.throws(
+        () =>
+          db
+            .transaction(() => {
+              insert.run("outer");
+              db.transaction(() => {
+                assert.equal(db.inTransaction, true);
+                insert.run("inner");
+              }).deferred();
+              throw failure;
+            })
+            .deferred(),
+        (error) => error === failure,
+      );
+      assert.equal(db.inTransaction, false);
+      assert.deepEqual(db.query("SELECT value FROM item").all(), []);
+    });
+  });
+
   test("a nested transaction runs in a savepoint inside the outer one", () => {
     withDatabase(adapter, (db) => {
       db.exec("CREATE TABLE item (value TEXT)");

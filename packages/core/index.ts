@@ -10,6 +10,7 @@ export type {
   TaskCreateInput,
   TaskEditInput,
   TaskListInput,
+  TaskPageInput,
   TaskSearchInput,
   TaskOrderManyInput,
 } from "./src/schemas/task.js";
@@ -81,6 +82,7 @@ export {
   taskPrioritySchema,
   taskEditSchema,
   taskListSchema,
+  taskPageSchema,
   taskSortSchema,
   taskSearchSchema,
   taskOrderManySchema,

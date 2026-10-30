@@ -4,6 +4,7 @@ import type {
   Activity,
   Actor,
   TaskWithKey,
+  TaskPageInput,
   TaskChange,
   TaskOrderManyInput,
   RelationCreateInput,
@@ -17,6 +18,7 @@ import {
   CoreError,
   InputValidationError,
   SqliteError,
+  taskPageSchema,
 } from "@zinn-dev/core";
 
 const actor: Actor = { name: "consumer", email: "consumer@example.test", kind: "human" };
@@ -33,6 +35,11 @@ const createdTask: TaskWithKey = task.create(
   actor,
 );
 const key: string = createdTask.key;
+const taskPageInput: TaskPageInput = { limit: 2, sort: "activity", startingAfter: createdTask.id };
+const taskPage = task.getPage(taskPageInput);
+const pageTasks: TaskWithKey[] = taskPage.tasks;
+const pageHasMore: boolean = taskPage.hasMore;
+const parsedTaskPage = taskPageSchema.safeParse({ startingAfter: createdTask.id, limit: 1 });
 const relationRequest: RelationCreateInput = {
   sourceTaskKey: key,
   targetTaskKey: "TYPES-2",
@@ -54,6 +61,9 @@ const validation: Error = new InputValidationError([
   { code: "invalid_type", path: ["title"], message: "Invalid title" },
 ]);
 const sqlite: Error = new SqliteError("Busy", 5, null);
+void pageTasks;
+void pageHasMore;
+void parsedTaskPage;
 const page: { events: Activity[]; hasMore: boolean } = activity.getAll({
   sessionId: "conversation",
   threadId: "child",

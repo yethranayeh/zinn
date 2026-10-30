@@ -57,6 +57,24 @@ The client supplies its own `release` identity: `source` for development and `pu
 
 `task.getAll({ sort: "activity", limit: 10 })` returns the ten most recently active tasks. Last activity is the newest recorded task event, including comments and relations, or `updated_at` when no events exist. Filters apply before sorting, and the limit applies afterward. Equal times keep board order. Omitting `sort` preserves board order.
 
+`task.getAll` returns an array. `task.getPage` accepts the same task-list filters plus optional `startingAfter` and returns `{ tasks, hasMore }`. Use a task's `id` as the cursor. It accepts a canonical or compact UUID, case-insensitively, or a globally unambiguous left prefix with at least eight hexadecimal digits in either spelling.
+
+The cursor resolves against current tasks globally before list filters. The selected task must match every selection filter. The cursor is excluded, and the next page starts after its current position under the selected sort. Omit `limit` to return every remaining task with `hasMore: false`.
+
+```ts title="Read the next task page"
+const firstPage = task.getPage({ projectKey: "APP", limit: 10 });
+if (firstPage.hasMore) {
+	const nextPage = task.getPage({
+		projectKey: "APP",
+		limit: 10,
+		startingAfter: firstPage.tasks.at(-1)!.id
+	});
+	console.log(nextPage.tasks);
+}
+```
+
+Each call reads one current database snapshot. Separate calls do not share a snapshot. Moves, reorders, edits, new activity and other changes can change task positions between pages and cause repeats or skips.
+
 Names and titles are trimmed and cannot be blank or contain line breaks or control characters.
 
 - Edits change only supplied fields. Valid edits that leave values unchanged preserve modification timestamps and record no activity.
