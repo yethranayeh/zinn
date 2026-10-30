@@ -71,6 +71,17 @@ Optional `error.details` carries known facts: `argument`, `field` (an array of s
 
 Check the exit status before parsing stdout or stderr. Scripts should use JSON fields such as `code` and `details`; message, help, and diagnostic wording is for people. Signals, runtime loading failures, and broken output channels are outside the handled-error contract.
 
+Parser and routing refusals identify these cases in `error.details.reason`, with code `invalid_input`:
+
+- `dash_value`: an option value beginning with a dash must be joined to its flag with `=`.
+- `unknown_option`: an option is unknown, whether or not a correction is suggested.
+- `unknown_command`: no command matches in the namespace.
+- `missing_command`: a namespace was supplied without a command.
+- `missing_argument`: a required positional argument, required string option, or string option value is missing.
+- `unexpected_argument`: more positional arguments were supplied than the command accepts.
+
+A checked suggestion to quote a column name uses reason `unquoted_column`. It retains the underlying error code and other details, such as `not_found` with the missing column's `entity` and `key`. Existing recovery reasons, including `confirmation_required`, `older_database`, and `missing_index`, identify their respective refusals. Other validation errors retain their known `argument` or `field` facts. Usage help alone does not imply a reason.
+
 Parser and routing errors use the same message in text mode and `error.message`, capped at 1,024 UTF-16 units. Omitted text is marked with an ellipsis, and oversized repair commands are replaced with guidance. `error.help` and structured details retain their complete values.
 
 Text output is colored only in a terminal unless `NO_COLOR` disables it. `FORCE_COLOR=0` disables color; any other nonempty value enables it, including when output is piped. `ZINN_DEBUG=1` prints route details to stderr without changing stdout. Other `ZINN_DEBUG` values do nothing.

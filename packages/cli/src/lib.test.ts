@@ -5,7 +5,7 @@ import { expect, test, spyOn } from "bun:test";
 import { ReadOnlyDatabaseError, TextEditMatchError, UnmarkedDatabaseError } from "@zinn-dev/core";
 import { parseArgs } from "node:util";
 
-import { boundParserMessage, diagnostic, flushDiagnostics, prepareOutput, setOutputMode, failureMessage, UsageError, validatePositionals, renameFlag, parseArgsMessage } from "./lib";
+import { boundParserMessage, diagnostic, flushDiagnostics, prepareOutput, setOutputMode, failureMessage, UsageError, validatePositionals, renameFlag, parseArgsFailure } from "./lib";
 
 test("parser repairs stay complete through the message limit and become guidance above it", () => {
   const messageFor = (value: string) => {
@@ -13,7 +13,7 @@ test("parser repairs stay complete through the message limit and become guidance
     try {
       parseArgs({ args, options: { description: { type: "string" } }, allowPositionals: true });
     } catch (error) {
-      return parseArgsMessage(error, args, () => undefined)!;
+      return parseArgsFailure(error, args, () => undefined, ["task", "create"])!.message;
     }
     throw new Error("Expected a parser refusal");
   };

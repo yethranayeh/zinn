@@ -1,19 +1,13 @@
 import type { ParseArgsOptionsConfig } from "node:util";
 import type { InputForm, InputOptions, InputOption } from "./input.js";
+import type { ErrorDetails } from "./errors.js";
 
 import { parseArgs } from "node:util";
 import { createInterface } from "node:readline/promises";
 import { z } from "zod";
-import {
-  assertWritable,
-  CoreError,
-  InputValidationError,
-  ReadOnlyDatabaseError,
-  TextEditMatchError,
-  UnmarkedDatabaseError,
-} from "@zinn-dev/core";
+import { assertWritable, InputValidationError } from "@zinn-dev/core";
 
-import { CliError, classifyFailure, type ErrorDetails } from "./errors.js";
+import { CliError, classifyFailure, recoveryHint } from "./errors.js";
 import { helpSpellings, routerOptionNames, positionalWords } from "./input.js";
 import { formatParserReasonPreview } from "./presentation/description-presentation.js";
 
@@ -204,29 +198,9 @@ export function failureMessage(error: any, fallback: string) {
     return new InputValidationError(error.issues).message;
   }
 
-  const isOlderReadOnly = error instanceof ReadOnlyDatabaseError && error.reason === "older";
-  if (isOlderReadOnly) {
-    return `${error.message}. Run \`zinn migrate\` to upgrade it.`;
-  }
-
-  if (error instanceof UnmarkedDatabaseError) {
-    return `${error.message}. Add --allow-legacy-read to read it anyway.`;
-  }
-
-  if (error instanceof TextEditMatchError && error.matchCount > 1) {
-    return `${error.message} Use --all to replace every match.`;
-  }
-
-  if (error instanceof CoreError && error.facts.reason === "no_columns") {
-    return `${error.message}. Add a column with zinn project column create ${error.facts.key} <name>.`;
-  }
-
-  if (error instanceof CoreError && error.facts.reason === "has_tasks") {
-    return `${error.message}. Use zinn task move or zinn task delete to clear the column. Archived tasks must be unarchived before moving.`;
-  }
-
-  if (error?.message === "no such table: task_search") {
-    return `${error.message}. Run \`zinn reindex\` to rebuild the search index.`;
+  const hint = recoveryHint(error);
+  if (hint !== undefined) {
+    return `${error.message}${hint.suffix}`;
   }
 
   return typeof error?.message === "string" ? error.message : fallback;
@@ -243,8 +217,11 @@ export function quit(reason: string | Error, help?: string, details?: ErrorDetai
 
 /** Emits one handled failure, including any notices collected before it. */
 export function renderFailure(reason: unknown): void {
+  const classified = classifyFailure(reason);
   const failure = {
-    ...classifyFailure(reason),
+    code: classified.code,
+    details: classified.details,
+    help: classified.help,
     message: failureMessage(reason, "Something went wrong"),
   };
   const pendingDiagnostics = diagnostics.splice(0);
@@ -295,6 +272,7 @@ export function validatePositionals(positionals: Array<string>, form: InputForm)
 
   if (missingWord !== undefined) {
     throw new UsageError(`Missing argument ${missingWord}`, {
+      reason: "missing_argument",
       argument: missingWord.replaceAll(/[\[\]<>]/g, "").replace(/\.\.\.$/, ""),
     });
   }
@@ -303,7 +281,10 @@ export function validatePositionals(positionals: Array<string>, form: InputForm)
   const extraWord = positionals[words.length];
 
   if (!hasRepeatingWord && extraWord !== undefined) {
-    throw new UsageError(`Unexpected argument "${extraWord}"`, { field: [] });
+    throw new UsageError(`Unexpected argument "${extraWord}"`, {
+      field: [],
+      reason: "unexpected_argument",
+    });
   }
 }
 
@@ -349,7 +330,7 @@ type SelectedOrderForm<Form extends InputForm> = Form extends unknown
 
 /** Selects an order form after checking its required leading words. */
 export function validateOrderForms<Form extends InputForm>(
-  positionals: string[],
+  positionals: Array<string>,
   forms: readonly Form[],
 ): SelectedOrderForm<Form> {
   const firstForm = forms[0]!;
@@ -403,7 +384,7 @@ export function requireStringOption(
   message: string,
 ): string {
   if (value === undefined) {
-    quit(message, undefined, { argument: `--${name}` });
+    quit(message, undefined, { argument: `--${name}`, reason: "missing_argument" });
   }
 
   return value;
@@ -483,7 +464,7 @@ export function formatCommand(args: Array<string>) {
 }
 
 /** The words of the command a user likely meant by a flag the command does not take, if known. */
-type SuggestFor = (flag: string) => Array<string> | undefined;
+type SuggestFor = (flag: string) => { args: Array<string>; route: Array<string> } | undefined;
 
 /** Renames an option without changing values or words after `--` */
 export function renameFlag(
@@ -516,26 +497,34 @@ export function renameFlag(
  *  and otherwise the usage line shown with it is the fix.
  * A word with a single dash shows the user's command with it after `--`.
  */
-function unknownOptionMessage(message: string, args: Array<string>, suggestFor: SuggestFor) {
+function unknownOptionMessage(
+  message: string,
+  args: Array<string>,
+  suggestFor: SuggestFor,
+  route: Array<string>,
+): { message: string; suggestedRoute?: Array<string> } {
   const flag = UNKNOWN_LONG_OPTION_PATTERN.exec(message)?.[1];
   if (flag !== undefined) {
     const suggestion = suggestFor(flag);
     const reason = `Unknown option "${flag}"`;
     if (suggestion === undefined) {
-      return boundParserMessage(reason);
+      return { message: boundParserMessage(reason) };
     }
 
-    const separatorIndex = suggestion.indexOf(DOUBLE_DASH);
-    const optionEnd = separatorIndex === -1 ? suggestion.length : separatorIndex;
+    const separatorIndex = suggestion.args.indexOf(DOUBLE_DASH);
+    const optionEnd = separatorIndex === -1 ? suggestion.args.length : separatorIndex;
     const correctedArgs = [
-      ...suggestion.slice(0, optionEnd),
+      ...suggestion.args.slice(0, optionEnd),
       ...args.filter(isRouterFlag),
-      ...suggestion.slice(optionEnd),
+      ...suggestion.args.slice(optionEnd),
     ];
-    return boundParserMessage(`${reason}. Did you mean: ${formatCommand(correctedArgs)}`, {
-      reason,
-      guidance: "See usage for accepted arguments. Full command omitted because it is long.",
-    });
+    return {
+      message: boundParserMessage(`${reason}. Did you mean: ${formatCommand(correctedArgs)}`, {
+        reason,
+        guidance: "See usage for accepted arguments. Full command omitted because it is long.",
+      }),
+      suggestedRoute: suggestion.route,
+    };
   }
 
   // Commands define no short options, so `parseArgs` refused the first single-dash word before `--`.
@@ -543,7 +532,7 @@ function unknownOptionMessage(message: string, args: Array<string>, suggestFor: 
   const optionArgs = separatorIndex === -1 ? args : args.slice(0, separatorIndex);
   const wordIndex = optionArgs.findIndex((arg) => SHORT_OPTION_WORD_PATTERN.test(arg));
   if (wordIndex === -1) {
-    return boundParserMessage(message);
+    return { message: boundParserMessage(message) };
   }
 
   const word = args[wordIndex]!;
@@ -559,10 +548,13 @@ function unknownOptionMessage(message: string, args: Array<string>, suggestFor: 
   const routerFlagsAfter = wordsAfter.filter(isRouterFlag);
   const plainWordsAfter = wordsAfter.filter((arg) => !isRouterFlag(arg));
   if (plainWordsAfter.some((arg) => arg.startsWith("-"))) {
-    return boundParserMessage(`${reason}.`, {
-      reason: compactReason,
-      guidance: "If it is a value, put the original word after --.",
-    });
+    return {
+      message: boundParserMessage(`${reason}.`, {
+        reason: compactReason,
+        guidance: "If it is a value, put the original word after --.",
+      }),
+      suggestedRoute: route,
+    };
   }
 
   const fixedCommand = formatCommand([
@@ -573,24 +565,52 @@ function unknownOptionMessage(message: string, args: Array<string>, suggestFor: 
     ...plainWordsAfter,
   ]);
 
-  return boundParserMessage(`${reason}: ${fixedCommand}`, { reason: compactReason, guidance });
+  return {
+    message: boundParserMessage(`${reason}: ${fixedCommand}`, { reason: compactReason, guidance }),
+    suggestedRoute: route,
+  };
 }
 
 /**
- * The message for an argument error from parseArgs, rewritten where parseArgs' own advice misleads.
+ * An argument failure from parseArgs, rewritten where parseArgs' own advice misleads.
  * parseArgs names the flag only in its message text, which Node and Bun word the same.
  * `null` for any other error.
  */
-export function parseArgsMessage(error: any, args: Array<string>, suggestFor: SuggestFor) {
+export function parseArgsFailure(
+  error: any,
+  args: Array<string>,
+  suggestFor: SuggestFor,
+  route: Array<string>,
+) {
   const code = error?.code;
   const isParseArgsError = typeof code === "string" && code.startsWith("ERR_PARSE_ARGS_");
   if (!isParseArgsError) {
     return null;
   }
 
+  const argument = /(?:Unknown option|Option) '(-[^' ]+)/.exec(error.message)?.[1];
   if (code === "ERR_PARSE_ARGS_UNKNOWN_OPTION") {
-    return unknownOptionMessage(error.message, args, suggestFor);
+    const hint = unknownOptionMessage(error.message, args, suggestFor, route);
+    return new CliError(
+      hint.message,
+      "invalid_input",
+      { argument, reason: "unknown_option" },
+      undefined,
+      hint.suggestedRoute,
+    );
   }
 
-  return dashValueMessage(error, args) ?? boundParserMessage(error.message);
+  const dashMessage = dashValueMessage(error, args);
+  const isMissingValue =
+    code === "ERR_PARSE_ARGS_INVALID_OPTION_VALUE" && / argument missing$/.test(error.message);
+  const reason =
+    dashMessage !== null ? "dash_value" : isMissingValue ? "missing_argument" : undefined;
+
+  return new CliError(
+    dashMessage ?? boundParserMessage(error.message),
+    "invalid_input",
+    { argument, reason },
+    undefined,
+    dashMessage === null ? undefined : route,
+  );
 }

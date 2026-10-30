@@ -1,7 +1,14 @@
 import type { SqlitePrimaryCode } from "@zinn-dev/core";
 
 import { z } from "zod";
-import { CoreError, SqliteError, isSqliteErrorFamily } from "@zinn-dev/core";
+import {
+  CoreError,
+  ReadOnlyDatabaseError,
+  SqliteError,
+  TextEditMatchError,
+  UnmarkedDatabaseError,
+  isSqliteErrorFamily,
+} from "@zinn-dev/core";
 
 export const errorCodeSchema = z.enum([
   "invalid_input",
@@ -32,6 +39,13 @@ export const errorDetailsSchema = z.strictObject({
   settingsPath: z.string().optional(),
   reason: z
     .enum([
+      "dash_value",
+      "unknown_option",
+      "unknown_command",
+      "missing_command",
+      "missing_argument",
+      "unexpected_argument",
+      "unquoted_column",
       "confirmation_required",
       "invalid_json",
       "invalid_settings",
@@ -92,18 +106,60 @@ export const errorDocumentSchema = z.strictObject({
 export type ErrorCode = z.infer<typeof errorCodeSchema>;
 export type ErrorDetails = z.infer<typeof errorDetailsSchema>;
 export type CliFailure = z.infer<typeof errorDocumentSchema>["error"];
+type ClassifiedFailure = Omit<CliFailure, "message"> & { suggestedRoute?: Array<string> };
 
-/** A failure detected by the CLI, with only facts intended for its public output. */
+/** A CLI failure with public facts and an internal recovery route. */
 export class CliError extends Error {
   constructor(
     message: string,
     readonly code: ErrorCode = "invalid_input",
     readonly details?: ErrorDetails,
     public help?: string,
+    readonly suggestedRoute?: Array<string>,
   ) {
     super(message);
     this.name = "CliError";
   }
+}
+
+/** Recovery text and its single suggested route, when one is identified. */
+export function recoveryHint(
+  error: unknown,
+): { suffix: string; suggestedRoute?: Array<string> } | undefined {
+  if (error instanceof ReadOnlyDatabaseError && error.reason === "older") {
+    return { suffix: ". Run `zinn migrate` to upgrade it.", suggestedRoute: ["migrate"] };
+  }
+
+  if (error instanceof UnmarkedDatabaseError) {
+    return { suffix: ". Add --allow-legacy-read to read it anyway." };
+  }
+
+  if (error instanceof TextEditMatchError && error.matchCount > 1) {
+    return { suffix: " Use --all to replace every match." };
+  }
+
+  if (error instanceof CoreError && error.facts.reason === "no_columns") {
+    return {
+      suffix: `. Add a column with zinn project column create ${error.facts.key} <name>.`,
+      suggestedRoute: ["project", "column", "create"],
+    };
+  }
+
+  if (error instanceof CoreError && error.facts.reason === "has_tasks") {
+    return {
+      suffix:
+        ". Use zinn task move or zinn task delete to clear the column. Archived tasks must be unarchived before moving.",
+    };
+  }
+
+  if (error instanceof Error && error.message === "no such table: task_search") {
+    return {
+      suffix: ". Run `zinn reindex` to rebuild the search index.",
+      suggestedRoute: ["reindex"],
+    };
+  }
+
+  return undefined;
 }
 
 const coreCodes = {
@@ -200,7 +256,9 @@ function nativeFailure(error: Error): ErrorDetails | undefined {
 }
 
 /** Finds causes of initialization wrappers without serializing their error chains. */
-export function classifyFailure(error: unknown): Omit<CliFailure, "message"> {
+export function classifyFailure(error: unknown): ClassifiedFailure {
+  const suggestedRoute = recoveryHint(error)?.suggestedRoute;
+  const recovery = suggestedRoute === undefined ? {} : { suggestedRoute };
   const visited = new Set<Error>();
   let current = error;
   let classified: Omit<CliFailure, "message"> | undefined;
@@ -209,7 +267,13 @@ export function classifyFailure(error: unknown): Omit<CliFailure, "message"> {
     visited.add(current);
 
     if (current instanceof CliError) {
-      return { code: current.code, details: current.details, help: current.help };
+      return {
+        code: current.code,
+        details: current.details,
+        help: current.help,
+        ...recovery,
+        ...(current.suggestedRoute === undefined ? {} : { suggestedRoute: current.suggestedRoute }),
+      };
     }
 
     if (current instanceof CoreError && classified === undefined) {
@@ -244,7 +308,7 @@ export function classifyFailure(error: unknown): Omit<CliFailure, "message"> {
 
     if (native !== undefined) {
       if (classified === undefined) {
-        return { code: "storage", details: native };
+        return { code: "storage", details: native, ...recovery };
       }
 
       if (classified.code === "storage") {
@@ -256,5 +320,5 @@ export function classifyFailure(error: unknown): Omit<CliFailure, "message"> {
 
     current = current.cause;
   }
-  return classified ?? { code: "internal" };
+  return { ...(classified ?? { code: "internal" }), ...recovery };
 }

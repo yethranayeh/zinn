@@ -17,7 +17,7 @@ import {
   isAllowLegacyReadFlag,
   isHelpFlag,
   isRouterFlag,
-  parseArgsMessage,
+  parseArgsFailure,
   prepareOutput,
   quit,
   renderFailure,
@@ -52,7 +52,7 @@ function getUsage(help: string) {
   return help.split("\n\n")[0]!;
 }
 
-function getCommandHelp(help: string, aliases: string[][]) {
+function getCommandHelp(help: string, aliases: Array<string>[]) {
   if (aliases.length === 0) {
     return help;
   }
@@ -165,19 +165,43 @@ function routeToNamespace(
   }
 
   if (unknownWord == null) {
-    quit(`Missing a command for "${commandName}"`, help, { argument: "command" });
+    quit(`Missing a command for "${commandName}"`, help, {
+      argument: "command",
+      reason: "missing_command",
+    });
   }
 
   const reason = `Unrecognized command "${unknownWord}" for "${commandName}"`;
 
   if (isHelpRequest) {
-    quit(boundParserMessage(reason), help, { argument: "command" });
+    quit(boundParserMessage(reason), help, { argument: "command", reason: "unknown_command" });
   }
 
   const guidance = `Run \`${commandName} --help\` for a list of available commands`;
-  quit(boundParserMessage(`${reason}. ${guidance}`, { reason, guidance }), undefined, {
-    argument: "command",
-  });
+  throw new CliError(
+    boundParserMessage(`${reason}. ${guidance}`, { reason, guidance }),
+    "invalid_input",
+    { argument: "command", reason: "unknown_command" },
+    undefined,
+    namespace === "" ? [] : namespace.split(" "),
+  );
+}
+
+/** Resolves the longest canonical or alias command prefix. */
+function findCommand(parsedRoutes: ParsedRoute[], args: Array<string>) {
+  for (let endIndex = args.length; endIndex >= 0; endIndex--) {
+    const command = toCommand(args.slice(0, endIndex));
+    const match = parsedRoutes.find(
+      (route) =>
+        route.command === command || route.aliases.some((path) => toCommand(path) === command),
+    );
+
+    if (match !== undefined) {
+      return { match, nestingLevel: endIndex };
+    }
+  }
+
+  return undefined;
 }
 
 export function parseRoutes(routesDef: RouteDef, prefix?: string) {
@@ -231,21 +255,10 @@ async function route(
     ? filteredRoutableArgs.slice(0, helpFlagIndex)
     : [...filteredRoutableArgs, ...passthroughArgs];
 
-  let match: ParsedRoute | null = null;
-  let nestingLevel = 0;
-
-  for (let endIndex = args.length; endIndex >= 0; endIndex--) {
-    const command = toCommand(args.slice(0, endIndex));
-    const matchedRoute = parsedRoutes.find(
-      (r) => r.command === command || r.aliases.some((path) => toCommand(path) === command),
-    );
-
-    if (matchedRoute) {
-      match = matchedRoute;
-      nestingLevel = endIndex;
-      break;
-    }
-  }
+  const { match, nestingLevel } = findCommand(parsedRoutes, args) ?? {
+    match: null,
+    nestingLevel: 0,
+  };
 
   if (isDebugOutputEnabled()) {
     diagnostic(`::router.route ${match?.command ?? "namespace"}`);
@@ -285,8 +298,9 @@ async function route(
             "Quote each column name containing spaces. Full command omitted because it is long.",
         }),
         failure.code,
-        failure.details,
+        { ...failure.details, reason: "unquoted_column" },
         failure.help ?? getUsage(match.help),
+        match.command.split(" "),
       );
     }
 
@@ -305,20 +319,28 @@ async function route(
           failure.code,
           failure.details,
           getUsage(match.help),
+          failure.suggestedRoute,
         );
       }
     }
 
-    const suggestFor = (flag: string) => match.guessedFlags?.[flag]?.(commandArgs);
-    const parseArgsReason = parseArgsMessage(err, rawArgs, suggestFor);
-    if (parseArgsReason != null) {
-      const argument = /(?:Unknown option|Option) '(-[^' ]+)/.exec(err.message)?.[1];
+    const suggestFor = (flag: string) => {
+      const suggestion = match.guessedFlags?.[flag]?.(commandArgs);
+      if (suggestion === undefined) {
+        return undefined;
+      }
 
-      quit(
-        parseArgsReason,
-        getUsage(match.help),
-        argument === undefined ? undefined : { argument },
-      );
+      const target = findCommand(parsedRoutes, suggestion);
+
+      return target === undefined
+        ? undefined
+        : { args: suggestion, route: target.match.command.split(" ") };
+    };
+
+    const parserFailure = parseArgsFailure(err, rawArgs, suggestFor, match.command.split(" "));
+    if (parserFailure !== null) {
+      parserFailure.help = getUsage(match.help);
+      throw parserFailure;
     }
 
     throw err;

@@ -50,6 +50,37 @@ beforeAll(() => {
 }, BUILD_CHECK_TIMEOUT_MS);
 
 for (const runtime of ["node", "bun"]) {
+  test(`${runtime}: ZINN-346: built parser refusals expose reasons without internal routes`, () => {
+    withDirectory((directory) => {
+      for (const args of [
+        ["project", "create", "APP"],
+        ["task", "create", "APP", "--title", "Example"],
+      ]) {
+        const result = runBuilt(runtime, [...args, "--json"], directory);
+        expect(result.code, result.stderr).toBe(0);
+      }
+      const cases = [
+        { args: ["task"], reason: "missing_command" },
+        { args: ["task", "nonsense"], reason: "unknown_command" },
+        { args: ["task", "view"], reason: "missing_argument" },
+        { args: ["task", "create", "APP", "--title"], reason: "missing_argument" },
+        { args: ["task", "create", "APP"], reason: "missing_argument" },
+        { args: ["task", "view", "APP-1", "extra"], reason: "unexpected_argument" },
+        { args: ["task", "edit", "APP-1", "--description", "- bullet"], reason: "dash_value" },
+        { args: ["task", "edit", "APP-1", "--status", "Review"], reason: "unknown_option" },
+        { args: ["task", "view", "-later"], reason: "unknown_option" },
+        { args: ["task", "move", "APP-1", "In", "Progress"], reason: "unquoted_column", code: "not_found" },
+      ];
+      for (const { args, reason, code = "invalid_input" } of cases) {
+        const result = runBuilt(runtime, [...args, "--json"], directory);
+        expect(result.code, result.stderr).toBe(1);
+        expect(result.stdout).toBe("");
+        const error = errorDocumentSchema.parse(JSON.parse(result.stderr)).error;
+        expect(error).toMatchObject({ code, details: { reason } });
+      }
+    });
+  });
+
   test(`${runtime}: built whoami reports declared identity without creating storage`, () => {
     withDirectory((directory) => {
       const declarations = { CODEX_SESSION_ID: "session", CODEX_THREAD_ID: "thread", ZINN_MODEL: "model" };

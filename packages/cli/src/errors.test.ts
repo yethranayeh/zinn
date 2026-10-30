@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CoreError, SqliteError } from "@zinn-dev/core";
-import { classifyFailure, errorDocumentSchema } from "./errors";
+import { CliError, classifyFailure, errorDetailsSchema, errorDocumentSchema } from "./errors";
 import { openDatabase } from "../../core/src/sqlite/bun";
 import { MIGRATIONS, latestVersion } from "../../core/src/migrations/registry";
 
@@ -144,6 +144,127 @@ test("ZINN-283: invocation failures expose their argument or field and preserve 
   } finally {
     f.close();
   }
+});
+
+test("ZINN-346: refusal reasons preserve public facts and leave tasks and activity unchanged", () => {
+  const f = fixture();
+  try {
+    f.succeed("project", "create", "APP");
+    f.succeed("task", "create", "APP", "--title", "Example");
+    const task = f.succeed("task", "view", "APP-1");
+    const activity = f.succeed("activity", "list", "--project", "APP");
+    const cases = [
+      { args: [], details: { argument: "command", reason: "missing_command" } },
+      { args: ["task"], details: { argument: "command", reason: "missing_command" } },
+      { args: ["task", "comment"], details: { argument: "command", reason: "missing_command" } },
+      { args: ["nonsense"], details: { argument: "command", reason: "unknown_command" } },
+      { args: ["task", "comment", "nonsense"], details: { argument: "command", reason: "unknown_command" } },
+      { args: ["task", "nonsense", "--help"], details: { argument: "command", reason: "unknown_command" } },
+      { args: ["task", "view"], details: { argument: "task-key", reason: "missing_argument" } },
+      { args: ["task", "create", "APP", "--title"], details: { argument: "--title", reason: "missing_argument" } },
+      { args: ["task", "create", "APP"], details: { argument: "--title", reason: "missing_argument" } },
+      { args: ["task", "order", "APP-1"], details: { reason: "missing_argument" } },
+      { args: ["task", "view", "APP-1", "extra"], details: { field: [], reason: "unexpected_argument" } },
+      { args: ["task", "order", "APP-1", "top", "extra"], details: { field: [], reason: "unexpected_argument" } },
+      { args: ["task", "edit", "APP-1", "--description", "- bullet"], details: { argument: "--description", reason: "dash_value" } },
+      { args: ["task", "edit", "APP-1", "--status", "Review"], details: { argument: "--status", reason: "unknown_option" } },
+      { args: ["task", "view", "APP-1", "--bad"], details: { argument: "--bad", reason: "unknown_option" } },
+      { args: ["task", "view", "-later"], details: { reason: "unknown_option" } },
+      { args: ["project", "column", "edit", "APP", "In", "Progress", "--name", "Working"], details: { field: [], reason: "unquoted_column" } },
+      { args: ["task", "move", "APP-1", "In", "Progress"], code: "not_found", details: { entity: "column", key: "Progress", source: "explicit", reason: "unquoted_column" } },
+    ];
+    for (const { args, code = "invalid_input", details } of cases) {
+      expect(f.fail(...args), args.join(" ")).toMatchObject({ code, details });
+    }
+    for (const args of [
+      ["task", "order", "APP-1", "sideways"],
+      ["task", "view", "APP-1", "--history", "--history"],
+      ["task", "list", "--archived", "--all"],
+      ["task", "create", "APP", "--title", ""],
+      ["task", "create", "APP", "--title", "Title", "--priority", "invalid"],
+    ]) {
+      expect(f.fail(...args).details?.reason, args.join(" ")).toBeUndefined();
+    }
+    expect(f.fail("task", "delete", "APP-1")).toMatchObject({ details: { reason: "confirmation_required" } });
+    const literal = f.invoke("task", "view", "--json", "--", "--bad");
+    expect(literal.code).toBe(1);
+    expect(literal.stdout).toBe("");
+    expect(errorDocumentSchema.parse(JSON.parse(literal.stderr)).error).toMatchObject({
+      code: "invalid_input", details: { field: ["taskKey"] },
+    });
+    for (const args of [[], ["--json", "--help"], ["task", "--json", "--help", "--bad"], ["task", "view", "--json", "--help", "--bad"]]) {
+      const result = f.invoke(...args);
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stderr).toBe("");
+    }
+    expect(f.succeed("task", "view", "APP-1")).toEqual(task);
+    expect(f.succeed("activity", "list", "--project", "APP")).toEqual(activity);
+
+    const manifest = f.succeed("capabilities");
+    const publicError = manifest.schemas.definitions.ErrorEnvelope.properties.error;
+    expect(publicError.properties.details.properties.reason.enum).toEqual(errorDetailsSchema.shape.reason.unwrap().options);
+    expect(publicError.properties).not.toHaveProperty("suggestedRoute");
+    expect(publicError.properties.details.properties).not.toHaveProperty("suggestedRoute");
+  } finally {
+    f.close();
+  }
+});
+
+test("ZINN-346: canonical repair routes survive rendering limits and never enter the public envelope", () => {
+  const f = fixture();
+  const lib = new URL("./lib.ts", import.meta.url).pathname;
+  const errors = new URL("./errors.ts", import.meta.url).pathname;
+  const routes = new URL("./routes/routes.ts", import.meta.url).pathname;
+  const router = new URL("./routes/router.ts", import.meta.url).pathname;
+  const cases = [
+    { args: ["task", "new", "APP", "--body", "description"], route: ["task", "create"] },
+    { args: ["task", "edit", "APP-1", "--status", "Review"], route: ["task", "move"] },
+    { args: ["task", "new", "APP", "--description", "- bullet"], route: ["task", "create"] },
+    { args: ["task", "show", "-later"], route: ["task", "view"] },
+    { args: ["task", "move", "APP-1", "In", "Progress"], route: ["task", "move"] },
+    { args: ["task", "nonsense"], route: ["task"] },
+    { args: ["nonsense"], route: [] },
+    { args: ["task", "new", "APP", "--description", "- " + "x".repeat(1600)], route: ["task", "create"] },
+    { args: ["task", "new", "APP", "--body", "x".repeat(1600)], route: ["task", "create"] },
+    { args: ["task", "show", "APP-1", "--bad"], route: null },
+    { args: ["task", "view"], route: null },
+  ];
+  try {
+    f.succeed("project", "create", "APP");
+    f.succeed("task", "create", "APP", "--title", "Example");
+    for (const { args, route } of cases) {
+      const result = Bun.spawnSync([process.execPath, "--eval", `
+        import { mock } from "bun:test";
+        const lib = await import(${JSON.stringify(lib)});
+        const { classifyFailure } = await import(${JSON.stringify(errors)});
+        const render = lib.renderFailure;
+        mock.module(${JSON.stringify(lib)}, () => ({ ...lib, renderFailure(error) {
+          console.log(JSON.stringify(classifyFailure(error).suggestedRoute ?? null));
+          render(error);
+        } }));
+        const { parsedRoutes } = await import(${JSON.stringify(routes)});
+        const { createRouter } = await import(${JSON.stringify(router)});
+        await createRouter(parsedRoutes).route(${JSON.stringify([...args, "--json"])});
+      `], { cwd: f.directory, env: { ...TEST_ENVIRONMENT, ZINN_DIR: f.directory } });
+      expect(result.exitCode, result.stderr.toString()).toBe(1);
+      expect(JSON.parse(result.stdout.toString()), args.join(" ")).toEqual(route);
+      const failure = errorDocumentSchema.parse(JSON.parse(result.stderr.toString())).error;
+      expect(failure.message.length).toBeLessThanOrEqual(1024);
+    }
+  } finally {
+    f.close();
+  }
+});
+
+test("internal recovery routes survive wrappers and reuse the recovery classifications", () => {
+  const error = new CliError("repair", "invalid_input", { reason: "unknown_option" }, undefined, ["task", "move"]);
+  expect(classifyFailure(new Error("outer", { cause: error }))).toMatchObject({
+    code: "invalid_input", details: { reason: "unknown_option" }, suggestedRoute: ["task", "move"],
+  });
+  expect(classifyFailure(new CoreError("empty", "conflict", { reason: "no_columns", key: "APP" }))).toMatchObject({
+    code: "conflict", details: { reason: "no_columns" }, suggestedRoute: ["project", "column", "create"],
+  });
+  expect(classifyFailure(new CoreError("occupied", "conflict", { reason: "has_tasks" }))).not.toHaveProperty("suggestedRoute");
 });
 
 test("label validation prints plain messages and preserves JSON error facts without writes", () => {
