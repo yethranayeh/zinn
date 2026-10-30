@@ -18,9 +18,9 @@ const { version, name, date, cli, core, first = false } = Astro.props;
 const anchor = releaseAnchor(version);
 ---
 
-<section aria-labelledby={anchor} class='release-plate-section'>
+<section aria-labelledby={anchor} class='border-t border-soot'>
 	<div class='site-container'>
-		<div class='release-plate'>
+		<div class='release-plate relative max-w-5xl'>
 			<div
 				aria-hidden='true'
 				class:list={[
@@ -28,24 +28,32 @@ const anchor = releaseAnchor(version);
 					{ "frame-start": first }
 				]}>
 			</div>
-			<div class='release-plate-content'>
-				<div class='rail-rule' aria-hidden='true'></div>
-				<div class='rail-grid'>
-					<div class='rail-meta'>
+			<div class='px-[var(--plate-padding-inline)] py-10 md:py-14'>
+				<div class='rail-rule max-lg:hidden' aria-hidden='true'></div>
+				<div
+					class='grid grid-cols-1 items-start gap-x-[var(--rail-gap)] lg:grid-cols-[var(--rail-width)_minmax(0,1fr)]'>
+					<div
+						class='max-lg:mb-2 max-lg:pb-6 lg:sticky lg:top-[calc(var(--site-header-height)_+_1.5rem)] lg:pr-[var(--rail-meta-padding-right)]'>
 						<Prose>
 							<MarkdownH2 id={anchor} style='margin-top: 0; margin-bottom: 0.5rem'>
-								<span class='rail-version'>{version}</span>
-								{name && <span class='rail-name'>{name}</span>}
+								<span class='block'>{version}</span>
+								{
+									name && (
+										<span class='mt-1 block text-sm leading-normal font-normal tracking-[0.12em] uppercase opacity-70'>
+											{name}
+										</span>
+									)
+								}
 							</MarkdownH2>
-							<time class='rail-date' datetime={date}>
+							<time class='block text-base leading-[1.7] font-normal opacity-70' datetime={date}>
 								{formatReleaseDate(date)}
 							</time>
 							<PackageBand cli={cli} core={core} />
 						</Prose>
 					</div>
-					<div class='rail-notes'>
+					<div>
 						<Prose>
-							<div class='release-notes'>
+							<div class='[&>h3:first-child]:mt-0'>
 								<slot />
 							</div>
 						</Prose>
@@ -57,22 +65,11 @@ const anchor = releaseAnchor(version);
 </section>
 
 <style>
-	.release-plate-section {
-		border-top: 1px solid var(--color-soot);
-	}
-
 	.release-plate {
 		--plate-padding-inline: 2rem;
 		--rail-width: 14rem;
 		--rail-gap: 3rem;
 		--rail-meta-padding-right: 1.5rem;
-		position: relative;
-		max-width: 64rem;
-	}
-
-	.release-plate-content {
-		padding-block: 2.5rem;
-		padding-inline: var(--plate-padding-inline);
 	}
 
 	.rail-rule {
@@ -84,72 +81,9 @@ const anchor = releaseAnchor(version);
 		background: var(--color-pewter);
 	}
 
-	.rail-grid {
-		display: grid;
-		grid-template-columns: var(--rail-width) minmax(0, 1fr);
-		column-gap: var(--rail-gap);
-		align-items: start;
-	}
-
-	.rail-meta {
-		align-self: start;
-		padding-right: var(--rail-meta-padding-right);
-		position: sticky;
-		top: calc(var(--site-header-height) + 1.5rem);
-	}
-
-	.rail-version {
-		display: block;
-	}
-
-	.rail-name {
-		display: block;
-		margin-top: 0.25rem;
-		font-size: 0.875rem;
-		font-weight: 400;
-		letter-spacing: 0.12em;
-		line-height: 1.5;
-		text-transform: uppercase;
-		opacity: 0.7;
-	}
-
-	.rail-date {
-		display: block;
-		font-size: 1rem;
-		font-weight: 400;
-		opacity: 0.7;
-	}
-
-	.release-notes > :global(h3:first-child) {
-		margin-top: 0;
-	}
-
-	@media (min-width: 768px) {
-		.release-plate-content {
-			padding-block: 3.5rem;
-		}
-	}
-
 	@media (max-width: 48rem) {
 		.release-plate {
 			--plate-padding-inline: 1rem;
-		}
-	}
-
-	@media (max-width: 64rem) {
-		.rail-rule {
-			display: none;
-		}
-
-		.rail-grid {
-			grid-template-columns: 1fr;
-		}
-
-		.rail-meta {
-			position: static;
-			padding-right: 0;
-			padding-bottom: 1.5rem;
-			margin-bottom: 0.5rem;
 		}
 	}
 </style>
