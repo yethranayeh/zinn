@@ -8,6 +8,7 @@ import { withTestStore } from "./testing.js";
 const actor = { name: "Task list query", email: null, kind: "human" as const };
 const LARGE_DESCRIPTION_LENGTH = 16_384;
 const LARGE_DESCRIPTION = "x".repeat(LARGE_DESCRIPTION_LENGTH);
+const ACTIVITY_TIMESTAMP = 100;
 
 type StatementWithAll = { all(...params: Array<unknown>): Array<unknown> };
 
@@ -46,6 +47,7 @@ test("board and due limits materialize filtered task rows before returning", () 
     create(app.id, "Selected later Kelvin", 1, "Kelvin", true, LARGE_DESCRIPTION);
     const appEarlier = create(app.id, "Selected earlier Kelvin", -1, "Kelvin", true, LARGE_DESCRIPTION);
     const otherKelvin = create(other.id, "Selected other Kelvin", 0, "Kelvin", true);
+    getDb().query("UPDATE activity SET created_at = ?").run(ACTIVITY_TIMESTAMP);
     const beforeTasks = getDb().query("SELECT * FROM task ORDER BY id").all();
     const beforeActivity = getDb().query("SELECT * FROM activity ORDER BY id").all();
 
@@ -81,8 +83,17 @@ test("board and due limits materialize filtered task rows before returning", () 
       }).map(({ key }) => key)).toEqual([appKelvin.key]);
       expect(task.getAll({ sort: "due", labelNames: ["selected"], limit: 2 }).map(({ key }) => key))
         .toEqual([appEarlier.key, appBacklog.key]);
-      expect(task.getAll({ sort: "activity", limit: 1 })).toHaveLength(1);
-      expect(materializedTaskRows).toEqual([2, 1, 2, 7]);
+      expect(task.getAll({ sort: "activity", limit: 1 }).map(({ key }) => key)).toEqual([appBacklog.key]);
+      expect(task.getAll({
+        sort: "activity",
+        labelNames: ["selected"],
+        columnName: "kelvin",
+        dueSince: 0,
+        dueUntil: 0,
+        limit: 1,
+      }).map(({ key }) => key)).toEqual([appKelvin.key]);
+      expect(task.getAll({ sort: "activity" })).toHaveLength(7);
+      expect(materializedTaskRows).toEqual([2, 1, 2, 1, 1, 7]);
       expect(getDb().query<{ query_only: number }>("PRAGMA query_only").get()?.query_only).toBe(1);
       expect(getDb().query("SELECT * FROM task ORDER BY id").all()).toEqual(beforeTasks);
       expect(getDb().query("SELECT * FROM activity ORDER BY id").all()).toEqual(beforeActivity);

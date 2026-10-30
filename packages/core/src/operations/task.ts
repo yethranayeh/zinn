@@ -42,7 +42,6 @@ import {
   getTaskByKey,
   findTaskByExactKey,
   attachTaskKey,
-  getTaskLastActivityTimes,
   resolveLabels,
   recordTaskActivity,
   updateTaskSearchRecord,
@@ -454,20 +453,10 @@ export const task = {
       columnIds: getTaskListColumnIds(props.columnName, taskProject?.id),
       dueSince: props.dueSince,
       dueUntil: props.dueUntil,
-      sort: props.sort === "due" ? "due" : undefined,
-      limit: props.sort === "activity" ? undefined : props.limit,
+      sort: props.sort,
+      limit: props.limit,
     });
-
-    if (props.sort === "activity") {
-      const lastActivityTimes = getTaskLastActivityTimes(taskMatches);
-      taskMatches.sort(
-        (left, right) => lastActivityTimes.get(right.id)! - lastActivityTimes.get(left.id)!,
-      );
-    }
-
-    const selectedTasks =
-      props.sort === "activity" ? taskMatches.slice(0, props.limit) : taskMatches;
-    return selectedTasks.map((taskMatch) => attachTaskKey(taskMatch, taskProject?.key));
+    return taskMatches.map((taskMatch) => attachTaskKey(taskMatch, taskProject?.key));
   },
   getByKey: getTaskByKey,
   search: (input: TaskSearchInput) => {

@@ -35,6 +35,11 @@ const PROJECT_TASK_ORDER = `project_column.column_order ASC,
       task.number ASC`;
 const GLOBAL_TASK_ORDER = `project.key ASC,
       ${PROJECT_TASK_ORDER}`;
+const TASK_LIST_FROM = `FROM ${DB_TABLE.task}
+    INNER JOIN ${DB_TABLE.project}
+      ON project.id = task.project_id
+    INNER JOIN ${DB_TABLE.projectColumn}
+      ON project_column.id = task.column_id`;
 
 export function getById(taskId: string) {
   return getDb().query<Task, [string]>(`SELECT * FROM ${DB_TABLE.task} WHERE id = ?`).get(taskId);
@@ -74,14 +79,16 @@ export function getAllByProjectId(projectId: string, archive: TaskArchiveFilter 
     .all({ $project_id: projectId });
 }
 
-export type TaskListQuery = Pick<TaskListInput, "archive" | "dueSince" | "dueUntil" | "limit"> & {
+export type TaskListQuery = Pick<
+  TaskListInput,
+  "archive" | "dueSince" | "dueUntil" | "limit" | "sort"
+> & {
   projectId?: string;
   labelIds?: Array<string>;
   columnIds?: Array<string>;
-  sort?: "due";
 };
 
-/** Returns task-list rows after applying the core-resolved filters and the requested board/due cap. */
+/** Returns task-list rows after applying core-resolved filters, ordering and limit. */
 export function getList(input: TaskListQuery) {
   const predicates: Array<string> = [];
   const bindings: Record<string, string | number> = {};
@@ -136,13 +143,34 @@ export function getList(input: TaskListQuery) {
     bindings.$limit = input.limit;
   }
 
+  if (input.sort === "activity") {
+    return getDb()
+      .query<Task, Record<string, string | number>>(`WITH candidate_tasks AS (
+      SELECT task.id
+      ${TASK_LIST_FROM}
+      ${where}
+    ), task_activity AS (
+      SELECT entity_id, MAX(created_at) AS created_at
+      FROM ${DB_TABLE.activity}
+      WHERE entity_type = 'task'
+        AND entity_id IN (SELECT id FROM candidate_tasks)
+      GROUP BY entity_id
+    )
+    SELECT task.*
+    ${TASK_LIST_FROM}
+    INNER JOIN candidate_tasks
+      ON candidate_tasks.id = task.id
+    LEFT JOIN task_activity
+      ON task_activity.entity_id = task.id
+    ORDER BY COALESCE(task_activity.created_at, task.updated_at) DESC,
+      ${GLOBAL_TASK_ORDER}
+    ${limit}`)
+      .all(bindings);
+  }
+
   return getDb()
     .query<Task, Record<string, string | number>>(`SELECT task.*
-    FROM ${DB_TABLE.task}
-    INNER JOIN ${DB_TABLE.project}
-      ON project.id = task.project_id
-    INNER JOIN ${DB_TABLE.projectColumn}
-      ON project_column.id = task.column_id
+    ${TASK_LIST_FROM}
     ${where}
     ORDER BY ${order}
     ${limit}`)

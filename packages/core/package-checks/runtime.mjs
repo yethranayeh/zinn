@@ -153,6 +153,22 @@ const dueFirst = core.task.create(
 	{ project_id: listProject.id, title: "Due first", due_at: 0, columnName: "Done", labelNames: ["runtime"] },
 	actor
 );
+const boardFirstActivityTime = 100;
+const dueFirstActivityTime = 200;
+const newestOutsideFilterActivityTime = 300;
+getDb()
+	.query(`UPDATE activity SET created_at = CASE entity_id
+		WHEN ? THEN ?
+		WHEN ? THEN ?
+	END WHERE entity_type = 'task' AND entity_id IN (?, ?)`)
+	.run(
+		boardFirst.id,
+		boardFirstActivityTime,
+		dueFirst.id,
+		dueFirstActivityTime,
+		boardFirst.id,
+		dueFirst.id
+	);
 assert.deepEqual(
 	core.task.getAll({ projectKey: listProject.key, limit: 1 }).map(({ key }) => key),
 	[boardFirst.key]
@@ -165,6 +181,27 @@ assert.deepEqual(
 	core.task
 		.getAll({
 			projectKey: listProject.key,
+			columnName: "done",
+			labelNames: ["runtime", "RUNTIME"],
+			dueSince: 0,
+			dueUntil: 0,
+			limit: 1
+		})
+		.map(({ key }) => key),
+	[dueFirst.key]
+);
+assert.deepEqual(
+	core.task.getAll({ projectKey: listProject.key, sort: "activity", limit: 1 }).map(({ key }) => key),
+	[dueFirst.key]
+);
+getDb()
+	.query("UPDATE activity SET created_at = ? WHERE entity_type = 'task' AND entity_id = ?")
+	.run(newestOutsideFilterActivityTime, boardFirst.id);
+assert.deepEqual(
+	core.task
+		.getAll({
+			projectKey: listProject.key,
+			sort: "activity",
 			columnName: "done",
 			labelNames: ["runtime", "RUNTIME"],
 			dueSince: 0,

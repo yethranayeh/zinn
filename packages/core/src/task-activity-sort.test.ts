@@ -2,7 +2,6 @@ import { expect, spyOn, test } from "bun:test";
 import { comment, label, project, relation, task, taskListSchema } from "../index";
 import { getDb } from "./db";
 import * as dbActivity from "./db/activity";
-import { getTaskLastActivityTimes } from "./operations/shared";
 import { withTestStore } from "./testing";
 
 const actor = { name: "Test", email: null, kind: "human" as const };
@@ -65,7 +64,7 @@ test("activity sorting follows task changes, comments and both relation endpoint
   });
 });
 
-test("last activity uses event timestamps and falls back only when task history is absent", () => {
+test("activity sorting uses event timestamps and falls back only when task history is absent", () => {
   withTestStore(() => {
     const app = project.create({ key: "APP" }, actor);
     const first = task.create({ project_id: app.id, title: "First" }, actor);
@@ -82,8 +81,6 @@ test("last activity uses event timestamps and falls back only when task history 
     dbActivity.create({ ...event, entity_type: "project", entity_id: third.id, created_at: 100 });
     dbActivity.create({ ...event, entity_id: "deleted-task", created_at: 200 });
 
-    const times = getTaskLastActivityTimes(task.getAll());
-    expect([...times.entries()]).toEqual([[first.id, 50], [second.id, 40], [third.id, 0]]);
     expect(task.getAll({ sort: "activity" }).map(({ key }) => key)).toEqual([first.key, second.key, third.key]);
     expect(task.getAll({ sort: "activity", limit: 2 }).map(({ key }) => key)).toEqual([first.key, second.key]);
   });
@@ -109,17 +106,12 @@ test("activity sorting composes with every task filter and keeps board order on 
         }
         task.order({ taskKey: `${key}-3`, direction: "top" }, actor);
       }
-      const aggregate = spyOn(dbActivity, "getLatestTaskEventTimes");
-      try {
-        expect(task.getAll({ archive: "all" }).map(({ key }) => key)).toEqual([
-          "APP-1", "APP-3", "APP-2", "APP-4", "OTHER-1", "OTHER-3", "OTHER-2", "OTHER-4",
-        ]);
-        expect(aggregate).not.toHaveBeenCalled();
-        task.getAll({ sort: "activity" });
-        expect(aggregate).toHaveBeenCalledTimes(1);
-      } finally {
-        aggregate.mockRestore();
-      }
+      expect(task.getAll({ archive: "all" }).map(({ key }) => key)).toEqual([
+        "APP-1", "APP-3", "APP-2", "APP-4", "OTHER-1", "OTHER-3", "OTHER-2", "OTHER-4",
+      ]);
+      expect(task.getAll({ archive: "all", sort: "activity" }).map(({ key }) => key)).toEqual([
+        "APP-1", "APP-3", "APP-2", "APP-4", "OTHER-1", "OTHER-3", "OTHER-2", "OTHER-4",
+      ]);
       for (const projectKey of [undefined, "app"]) {
         for (const archive of [undefined, "active", "archived", "all"] as const) {
           for (const columnName of [undefined, "done", "missing"]) {

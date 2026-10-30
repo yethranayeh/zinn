@@ -77,20 +77,6 @@ export function getAllByEntity(entityType: ActivityEntityType, entityId: string)
     .map(parseActivity);
 }
 
-export function getLatestTaskEventTimes(taskIds: Array<string>) {
-  if (taskIds.length === 0) {
-    return [];
-  }
-
-  return getDb()
-    .query<{ entity_id: string; created_at: number }, [string]>(
-      `SELECT entity_id, MAX(created_at) AS created_at FROM ${DB_TABLE.activity}
-      WHERE entity_type = 'task' AND entity_id IN (SELECT value FROM json_each(?))
-      GROUP BY entity_id`,
-    )
-    .all(JSON.stringify(taskIds));
-}
-
 export type ActivityQuery = Pick<
   ActivityListInput,
   "sessionId" | "threadId" | "since" | "until" | "actions"

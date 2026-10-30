@@ -106,17 +106,6 @@ export function attachTaskKey(task: Task, projectKey?: string): TaskWithKey {
   return { ...task, key: `${key}-${task.number}` };
 }
 
-/** Uses the newest recorded task event, or the task's update time when no history exists. */
-export function getTaskLastActivityTimes(tasks: Array<Pick<Task, "id" | "updated_at">>) {
-  const eventTimes = new Map(
-    dbActivity
-      .getLatestTaskEventTimes(tasks.map(({ id }) => id))
-      .map(({ entity_id, created_at }) => [entity_id, created_at]),
-  );
-
-  return new Map(tasks.map(({ id, updated_at }) => [id, eventTimes.get(id) ?? updated_at]));
-}
-
 export function attachCommentKey(comment: Comment, taskKey: string): CommentWithKey {
   return { ...comment, key: `${taskKey}#${comment.number}` };
 }
