@@ -1,0 +1,84 @@
+---
+import type { HTMLAttributes } from "astro/types";
+
+type Props = HTMLAttributes<"table">;
+
+const { class: className, ...attributes } = Astro.props;
+---
+
+<div class='markdown-table relative my-8 after:pointer-events-none after:absolute after:inset-0 after:content-[""]'>
+	<div class='markdown-table-scroll overflow-x-auto overscroll-x-contain focus-visible:outline-offset-4'>
+		<table
+			class:list={["w-full border-collapse border border-soot bg-bone text-base leading-[1.55]", className]}
+			{...attributes}>
+			<slot />
+		</table>
+	</div>
+</div>
+
+<style>
+	/* Foreground shadows remain visible over opaque table cells. */
+	.markdown-table::after {
+		background:
+			radial-gradient(farthest-side at 0 50%, var(--table-start-shadow, transparent), transparent) left / 0.75rem 100%
+				no-repeat,
+			radial-gradient(farthest-side at 100% 50%, var(--table-end-shadow, transparent), transparent) right / 0.75rem 100%
+				no-repeat;
+	}
+
+	.markdown-table:has([data-clipped-start]) {
+		--table-start-shadow: rgb(28 24 21 / 0.16);
+	}
+
+	.markdown-table:has([data-clipped-end]) {
+		--table-end-shadow: rgb(28 24 21 / 0.16);
+	}
+
+	.markdown-table-scroll :global(table:has(td:nth-child(3)) td:last-child) {
+		min-width: 16rem;
+	}
+</style>
+
+<script>
+	const headings = Array.from(document.querySelectorAll<HTMLElement>("main :is(h1, h2, h3, h4, h5, h6)[id]"));
+
+	for (const container of document.querySelectorAll<HTMLElement>(".markdown-table-scroll")) {
+		const heading = headings.findLast((candidate) =>
+			Boolean(candidate.compareDocumentPosition(container) & Node.DOCUMENT_POSITION_FOLLOWING)
+		);
+		const table = container.querySelector("table")!;
+
+		function updateClippedEdges() {
+			container.toggleAttribute("data-clipped-start", container.scrollLeft > 0);
+			container.toggleAttribute(
+				"data-clipped-end",
+				Math.ceil(container.scrollLeft + container.clientWidth) < container.scrollWidth
+			);
+		}
+
+		function updateScrollRegion() {
+			const overflows = container.scrollWidth > container.clientWidth;
+			if (overflows) {
+				container.setAttribute("tabindex", "0");
+				container.setAttribute("role", "region");
+				if (heading) {
+					container.setAttribute("aria-labelledby", heading.id);
+				} else {
+					container.setAttribute("aria-label", "Table");
+				}
+			} else {
+				container.removeAttribute("tabindex");
+				container.removeAttribute("role");
+				container.removeAttribute("aria-labelledby");
+				container.removeAttribute("aria-label");
+			}
+			updateClippedEdges();
+		}
+
+		container.addEventListener("scroll", updateClippedEdges, { passive: true });
+		const observer = new ResizeObserver(updateScrollRegion);
+		observer.observe(container);
+		observer.observe(table);
+		updateScrollRegion();
+	}
+</script>

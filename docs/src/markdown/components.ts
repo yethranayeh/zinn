@@ -3,6 +3,10 @@ import MarkdownH1 from "../components/MarkdownH1.astro";
 import MarkdownH2 from "../components/MarkdownH2.astro";
 import MarkdownH3 from "../components/MarkdownH3.astro";
 import MarkdownList from "../components/MarkdownList.astro";
+import MarkdownTable from "../components/MarkdownTable.astro";
+import MarkdownTableCell from "../components/MarkdownTableCell.astro";
+import MarkdownTableHeaderCell from "../components/MarkdownTableHeaderCell.astro";
+import MarkdownTableRow from "../components/MarkdownTableRow.astro";
 
 // The components MDX docs pages render in place of these elements.
 export const components = {
@@ -11,4 +15,8 @@ export const components = {
   h3: MarkdownH3,
   ul: MarkdownList,
   pre: MarkdownCommands,
+  table: MarkdownTable,
+  th: MarkdownTableHeaderCell,
+  td: MarkdownTableCell,
+  tr: MarkdownTableRow,
 };
