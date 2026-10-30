@@ -1,0 +1,130 @@
+---
+title: Zinn for Codex
+description: Build and install the local Zinn task inspector and execution-identity hooks for Codex desktop.
+---
+
+# Zinn for Codex
+
+Inspect local Zinn tasks alongside a Codex desktop conversation. The plugin provides manual task lookup, full descriptions, comments, relation navigation and observed task references from the current chat. Optional hooks supply execution identity for direct Zinn commands.
+
+The source builds version **0.1.0** as a candidate in a self-contained local marketplace. The plugin includes its runtime JavaScript and inspector assets.
+
+## Requirements
+
+- macOS with `/usr/bin/sandbox-exec` available.
+- Codex desktop with local plugin marketplaces, lifecycle hooks and MCP Apps conversation panels.
+- Node.js 24.15.0 or newer and the Zinn CLI on the app's `PATH`.
+- An existing Zinn database that the installed CLI can read.
+- Node to run the **built** plugin, and <span class="opacity-70">(optionally)</span> Bun to **build** the plugin.
+
+The inspector backend and its CLI children run with OS file-write and network access denied. The launcher **requires** that protection to start. The hook process runs with the host user's permissions and writes its own reference files.
+
+The launcher holds a read-only SQLite connection while the backend runs. SQLite can create its normal `-wal` and `-shm` coordination files beside the selected database before the protected backend starts. The launcher reads schema metadata and leaves task data unchanged. See [SQLite's read-only WAL rules](https://www.sqlite.org/wal.html#readonly).
+
+Hook lookups use the same read-only connection and protected CLI path when verifying task references.
+
+## Select the database
+
+Run `zinn info --json` in your terminal to check the data directory you want. Create `~/.config/zinn/codex.json` with its absolute path:
+
+```json
+{
+	"store": "/absolute/path/to/.zinn"
+}
+```
+
+The plugin reads this configuration at process startup. The inspector always reads the selected database. It verifies that `data/zinn.sqlite` exists before calling the CLI. Restart Codex after changing the configuration.
+
+Normal CLI settings and `ZINN_DIR` select the database used by agent commands. Set `ZINN_DIR` for commands that should use the same custom directory as the inspector. The plugin's `store` selects inspection and reference verification.
+
+If the desktop app cannot find `zinn`, use the executable's absolute path:
+
+```json
+{
+	"store": "/absolute/path/to/.zinn",
+	"cli": ["/absolute/path/to/zinn"]
+}
+```
+
+`cli` is an array containing the executable and any fixed arguments. The app must also be able to find `node` on its `PATH`.
+
+## Build and install
+
+From a Zinn source checkout:
+
+```sh
+bun install --cwd integrations/codex --frozen-lockfile
+bun run codex:build
+codex plugin marketplace add ./integrations/codex/dist
+```
+
+Open Codex's Plugins browser, choose the **Zinn** marketplace and install **Zinn**. Review and trust the plugin's hook definitions when Codex requests it, then start a new chat. Installing or enabling a plugin does not automatically trust its hooks. See [OpenAI's plugin setup guide](https://developers.openai.com/plugins/build/plugins).
+
+For an already built marketplace, register the extracted marketplace root instead:
+
+```sh
+codex plugin marketplace add /absolute/path/to/zinn-codex
+```
+
+Keep the extracted directory available as the marketplace source. Codex manages the installed copy. The built folder contains `.agents/plugins/marketplace.json` and `plugins/zinn`, including the manifest, hooks, MCP configuration, bundled scripts, HTML and license notices.
+
+`bun run codex:package` builds the marketplace and writes `zinn-codex-0.1.0.tar.gz` and its SHA-256 file to `integrations/codex/release-dist`. The archive includes a `zinn-codex` marketplace root. Consumers can extract and register it without installing build dependencies.
+
+## Inspect tasks
+
+In a chat, open a new side tab, choose **More tools**, then **Plugins and MCPs**, and open **Zinn task inspector**. Launcher labels can vary by Codex version.
+
+Enter a task key from your database, such as `APP-1`. Task descriptions and comments are displayed as literal text, preserving line breaks. Select a relation to open the related task. **Refresh** reads the selected task and current-chat references again.
+
+Observed references come from supported direct CLI calls, task keys in agent dispatches and completed replies. A reference is an observation, rather than a task assignment or proof that the task changed. References refresh every five seconds while the panel is visible, keeping the selected task open. Task details are re-read when opened or refreshed.
+
+Each request uses the host's current chat metadata. Manual lookup remains available when that metadata is absent or conflicting. Completed-reply keys are checked against the selected store. A missing key is retained as a warning when its project prefix is represented by tasks in that store.
+
+## Hook settings
+
+The configuration accepts these options:
+
+| Option          | Default                     | Behavior                                                                            |
+| --------------- | --------------------------- | ----------------------------------------------------------------------------------- |
+| `store`         | Required                    | Absolute Zinn data directory for inspection and reply verification.                 |
+| `cli`           | `["zinn"]`                  | Executable and fixed arguments used for local reads.                                |
+| `dataDirectory` | `~/.local/share/zinn-codex` | Absolute directory for reference files, outside the Zinn data directory.            |
+| `observe`       | `true`                      | Record task references for the current-chat list.                                   |
+| `identity`      | `true`                      | Supply the callback's agent profile and model to supported direct commands.         |
+| `captureEffort` | `false`                     | Read exact execution metadata from the callback's transcript file to supply effort. |
+
+Use absolute paths in JSON. The default data path is resolved from the user's home directory. `ZINN_CODEX_CONFIG` can select a different absolute configuration-file path when it is set in the host's environment.
+
+Identity capture handles one literal direct `zinn` command, or the configured CLI invocation. It leaves compound shell commands and shell expansions unchanged. Explicit `ZINN_AGENT`, `ZINN_MODEL` and `ZINN_EFFORT` assignments in that command take precedence. Unknown values clear inherited hook attribution for that command. Codex requires a `PreToolUse` allow response to accept rewritten input. The plugin uses that response and does not register a `PermissionRequest` hook. Review its definitions before trusting them. See [Codex hooks](https://learn.chatgpt.com/docs/hooks). Zinn records activity only when the CLI operation makes a change.
+
+With `captureEffort: true`, effort is supplied only when the transcript's thread, turn and model match the callback and exactly one matching turn context exists. Missing, partial, oversized or ambiguous metadata leaves effort unknown. Duplicate contexts can occur after compaction. See [CLI actor identity](/docs/cli#who-am-i) for the recorded fields.
+
+To stop reference recording and identity capture, set both `observe` and `identity` to `false`. To keep recording references and disable identity capture, set only `identity` to `false`. These settings take effect on the next hook invocation. Previously recorded references remain available until their files are removed.
+
+## Local data and privacy
+
+The observer writes task keys, their source, selected-store paths, chat IDs and timestamps. It processes shell text, dispatch text and completed replies in memory to find those keys. The reference files contain this metadata rather than command arguments, prompts, replies or task contents. Effort capture processes the callback's transcript file in memory and retains no transcript copy.
+
+Each chat has at most 1,024 reference records of at most 16 KiB each. Reaching that limit is reported by the inspector. Reference data persists across plugin upgrades and has no automatic expiry. Disable observation before removing reference files. With the default dedicated directory, remove `~/.local/share/zinn-codex` to clear them. For a custom directory, remove only the integration's chat subdirectories.
+
+The plugin uses local STDIO and has no hosted server. Task data returned through the native panel passes through Codex. Your host's data-handling settings and policies apply. Keep database files, transcripts and reference files out of public support reports.
+
+## Update, disable and remove
+
+Build the selected source version again, or extract a new versioned marketplace archive. Refresh the source and update or reinstall Zinn through Codex's Plugins browser, then restart Codex. Keep `codex.json` and the reference directory outside the plugin folder. Review changed hook definitions again when requested.
+
+Disable **Zinn** in the Plugins browser to stop loading it. Uninstall it there to remove the installed plugin. Remove the marketplace source with:
+
+```sh
+codex plugin marketplace remove zinn
+```
+
+Your Zinn database, configuration and reference files remain under your control. Remove the dedicated reference directory separately if you want to clear the integration's metadata. To roll back, register the previous built marketplace and reinstall that version.
+
+## Troubleshooting and compatibility
+
+For startup failures, check the configuration path, absolute store path, app `PATH`, Node version and `sandbox-exec` availability. Run the configured CLI's `zinn info --json` equivalent with the same `ZINN_DIR` to check database compatibility.
+
+For an empty recent list, check hook trust and `observe`, then mention a real task key in a completed reply or run a direct CLI lookup. Failed verification is reported separately from a missing task. A newly created task becomes available on the next refresh.
+
+The build is scoped to local Codex desktop execution on macOS. Host plugin, hook and native-panel interfaces can change. Verify native opening, hook trust, references, update and removal when adopting a new host version. Report the plugin, Codex, Node and CLI versions through [Contact](/contact).

@@ -21,6 +21,12 @@ Verified with OpenCode ${opencodeTheme.verifiedVersion}.
 ${opencodeInspector.description}
 
 [View the inspector](https://zinn.sh${opencodeInspector.path}) for setup, options, compatibility, update and removal.
+
+## Codex
+
+Local task inspection and optional execution-identity hooks alongside a Codex desktop chat.
+
+[View Codex setup](https://zinn.sh/integrations/codex) for the source build, database selection, hook trust, privacy, compatibility and removal.
 `,
     { headers: { "Content-Type": "text/markdown; charset=utf-8" } },
   );

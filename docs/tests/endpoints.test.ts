@@ -12,7 +12,7 @@ const markdownSources = (await readdir(contentDirectory, { recursive: true }))
 	.filter((file) => file.endsWith(".mdx")).sort();
 // A page's route is its path under src/content without the .mdx extension and a trailing index, so docs/index.mdx serves /docs.
 const routeOf = (source: string) => source.replace(/\.mdx$/, "").replace(/\/index$/, "");
-const trustSources = markdownSources.filter((source) => !source.startsWith("docs/"));
+const trustSources = markdownSources.filter((source) => !source.includes("/"));
 // The changelog page is built from src/releases, so it has no file under src/content.
 const trustPages = [...trustSources.map(routeOf), "changelog"];
 const docsSources = markdownSources.filter((source) => source.startsWith("docs/"));
