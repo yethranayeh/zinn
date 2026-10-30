@@ -77,22 +77,25 @@ function filterTasksByLabels<T extends Pick<Task, "id">>(
   return tasks.filter((taskMatch) => taskIdsByLabel.every((taskIds) => taskIds.has(taskMatch.id)));
 }
 
-function filterTasksByColumn(tasks: Array<Task>, columnName?: string) {
+function getTaskListColumnIds(columnName: string | undefined, projectId: string | undefined) {
   if (columnName === undefined) {
-    return tasks;
+    return undefined;
   }
 
-  const projectIds = new Set(tasks.map((taskMatch) => taskMatch.project_id));
+  const projectIds =
+    projectId === undefined
+      ? dbProject.getAll().map((projectMatch) => projectMatch.id)
+      : [projectId];
   const matchingColumnIds = new Set<string>();
 
-  for (const projectId of projectIds) {
-    const columnMatch = findByName(dbColumn.getAllByProjectId(projectId), columnName);
+  for (const id of projectIds) {
+    const columnMatch = findByName(dbColumn.getAllByProjectId(id), columnName);
     if (columnMatch !== undefined) {
       matchingColumnIds.add(columnMatch.id);
     }
   }
 
-  return tasks.filter((taskMatch) => matchingColumnIds.has(taskMatch.column_id));
+  return [...matchingColumnIds];
 }
 
 function filterTasksByDeadline<T extends Pick<Task, "due_at">>(
@@ -440,39 +443,31 @@ export const task = {
       });
     }
 
-    const taskMatches = filterTasksByLabels(
-      taskProject == null
-        ? dbTask.getAll(props.archive)
-        : dbTask.getAllByProjectId(taskProject.id, props.archive),
-      props.labelNames,
-    );
-    const filteredTasks = filterTasksByDeadline(
-      filterTasksByColumn(taskMatches, props.columnName),
-      props,
-    );
+    const labelIds =
+      props.labelNames === undefined || props.labelNames.length === 0
+        ? []
+        : resolveLabels(props.labelNames).map((labelMatch) => labelMatch.id);
+    const taskMatches = dbTask.getList({
+      projectId: taskProject?.id,
+      archive: props.archive,
+      labelIds,
+      columnIds: getTaskListColumnIds(props.columnName, taskProject?.id),
+      dueSince: props.dueSince,
+      dueUntil: props.dueUntil,
+      sort: props.sort === "due" ? "due" : undefined,
+      limit: props.sort === "activity" ? undefined : props.limit,
+    });
 
     if (props.sort === "activity") {
-      const lastActivityTimes = getTaskLastActivityTimes(filteredTasks);
-      filteredTasks.sort(
+      const lastActivityTimes = getTaskLastActivityTimes(taskMatches);
+      taskMatches.sort(
         (left, right) => lastActivityTimes.get(right.id)! - lastActivityTimes.get(left.id)!,
       );
-    } else if (props.sort === "due") {
-      filteredTasks.sort((left, right) => {
-        if (left.due_at === null) {
-          return right.due_at === null ? 0 : 1;
-        }
-
-        if (right.due_at === null) {
-          return -1;
-        }
-
-        return left.due_at - right.due_at;
-      });
     }
 
-    return filteredTasks
-      .slice(0, props.limit)
-      .map((taskMatch) => attachTaskKey(taskMatch, taskProject?.key));
+    const selectedTasks =
+      props.sort === "activity" ? taskMatches.slice(0, props.limit) : taskMatches;
+    return selectedTasks.map((taskMatch) => attachTaskKey(taskMatch, taskProject?.key));
   },
   getByKey: getTaskByKey,
   search: (input: TaskSearchInput) => {

@@ -143,6 +143,38 @@ assert.deepEqual(
 	[task.key, second.key]
 );
 assert.deepEqual(core.task.getAll({ archive: "all" }), []);
+
+const listProject = core.project.create({ key: "LIST" }, actor);
+const boardFirst = core.task.create(
+	{ project_id: listProject.id, title: "Board first", due_at: 10, labelNames: ["runtime"] },
+	actor
+);
+const dueFirst = core.task.create(
+	{ project_id: listProject.id, title: "Due first", due_at: 0, columnName: "Done", labelNames: ["runtime"] },
+	actor
+);
+assert.deepEqual(
+	core.task.getAll({ projectKey: listProject.key, limit: 1 }).map(({ key }) => key),
+	[boardFirst.key]
+);
+assert.deepEqual(
+	core.task.getAll({ projectKey: listProject.key, sort: "due", limit: 1 }).map(({ key }) => key),
+	[dueFirst.key]
+);
+assert.deepEqual(
+	core.task
+		.getAll({
+			projectKey: listProject.key,
+			columnName: "done",
+			labelNames: ["runtime", "RUNTIME"],
+			dueSince: 0,
+			dueUntil: 0,
+			limit: 1
+		})
+		.map(({ key }) => key),
+	[dueFirst.key]
+);
+
 assert.equal(getDb().driver, driver, "Core selected the wrong SQLite adapter");
 getDb().close();
 

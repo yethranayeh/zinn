@@ -1,5 +1,5 @@
 import type { Bind, Task } from "../types.js";
-import type { TaskArchiveFilter } from "../schemas/task.js";
+import type { TaskArchiveFilter, TaskListInput } from "../schemas/task.js";
 
 export type { TaskArchiveFilter } from "../schemas/task.js";
 
@@ -29,6 +29,13 @@ export function matchesArchiveFilter(task: Pick<Task, "archived_at">, filter: Ta
   }
 }
 
+const PROJECT_TASK_ORDER = `project_column.column_order ASC,
+      (task.archived_at IS NOT NULL) ASC,
+      task.task_order ASC,
+      task.number ASC`;
+const GLOBAL_TASK_ORDER = `project.key ASC,
+      ${PROJECT_TASK_ORDER}`;
+
 export function getById(taskId: string) {
   return getDb().query<Task, [string]>(`SELECT * FROM ${DB_TABLE.task} WHERE id = ?`).get(taskId);
 }
@@ -47,11 +54,7 @@ export function getAll(archive: TaskArchiveFilter = "active") {
     INNER JOIN ${DB_TABLE.projectColumn}
       ON project_column.id = task.column_id
     ${whereClause}
-    ORDER BY project.key ASC,
-      project_column.column_order ASC,
-      (task.archived_at IS NOT NULL) ASC,
-      task.task_order ASC,
-      task.number ASC`)
+    ORDER BY ${GLOBAL_TASK_ORDER}`)
     .all();
 }
 
@@ -67,11 +70,83 @@ export function getAllByProjectId(projectId: string, archive: TaskArchiveFilter 
       ON project_column.id = task.column_id
     WHERE task.project_id = $project_id
       ${archiveCluase}
-    ORDER BY project_column.column_order ASC,
-      (task.archived_at IS NOT NULL) ASC,
-      task.task_order ASC,
-      task.number ASC`)
+    ORDER BY ${PROJECT_TASK_ORDER}`)
     .all({ $project_id: projectId });
+}
+
+export type TaskListQuery = Pick<TaskListInput, "archive" | "dueSince" | "dueUntil" | "limit"> & {
+  projectId?: string;
+  labelIds?: Array<string>;
+  columnIds?: Array<string>;
+  sort?: "due";
+};
+
+/** Returns task-list rows after applying the core-resolved filters and the requested board/due cap. */
+export function getList(input: TaskListQuery) {
+  const predicates: Array<string> = [];
+  const bindings: Record<string, string | number> = {};
+  const archiveCondition = getArchiveCondition(input.archive ?? "active");
+
+  if (archiveCondition != null) {
+    predicates.push(archiveCondition);
+  }
+
+  if (input.projectId !== undefined) {
+    predicates.push("task.project_id = $project_id");
+    bindings.$project_id = input.projectId;
+  }
+
+  for (const [index, labelId] of (input.labelIds ?? []).entries()) {
+    const bindingName = `$label_id_${index}`;
+    predicates.push(`EXISTS (
+      SELECT 1 FROM ${DB_TABLE.taskLabel}
+      WHERE ${DB_TABLE.taskLabel}.task_id = task.id
+        AND ${DB_TABLE.taskLabel}.label_id = ${bindingName}
+    )`);
+    bindings[bindingName] = labelId;
+  }
+
+  if (input.columnIds !== undefined) {
+    if (input.columnIds.length === 0) {
+      predicates.push("1 = 0");
+    } else {
+      predicates.push("task.column_id IN (SELECT value FROM json_each($columnIds))");
+      bindings.$columnIds = JSON.stringify(input.columnIds);
+    }
+  }
+
+  if (input.dueSince !== undefined) {
+    predicates.push("task.due_at IS NOT NULL AND task.due_at >= $dueSince");
+    bindings.$dueSince = input.dueSince;
+  }
+
+  if (input.dueUntil !== undefined) {
+    predicates.push("task.due_at IS NOT NULL AND task.due_at <= $dueUntil");
+    bindings.$dueUntil = input.dueUntil;
+  }
+
+  const where = predicates.length === 0 ? "" : `WHERE ${predicates.join(" AND ")}`;
+  const order =
+    input.sort === "due"
+      ? `(task.due_at IS NULL) ASC, task.due_at ASC, ${GLOBAL_TASK_ORDER}`
+      : GLOBAL_TASK_ORDER;
+  const limit = input.limit === undefined ? "" : "LIMIT $limit";
+
+  if (input.limit !== undefined) {
+    bindings.$limit = input.limit;
+  }
+
+  return getDb()
+    .query<Task, Record<string, string | number>>(`SELECT task.*
+    FROM ${DB_TABLE.task}
+    INNER JOIN ${DB_TABLE.project}
+      ON project.id = task.project_id
+    INNER JOIN ${DB_TABLE.projectColumn}
+      ON project_column.id = task.column_id
+    ${where}
+    ORDER BY ${order}
+    ${limit}`)
+    .all(bindings);
 }
 
 export function getAllByColumnId(columnId: string, archive: TaskArchiveFilter = "active") {
