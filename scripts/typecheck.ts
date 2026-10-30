@@ -6,8 +6,12 @@ import { listWorkingTreeFiles } from "./package-fixture.ts";
 const repositoryDirectory = join(import.meta.dir, "..");
 const project = process.argv[2];
 const inspectorDirectory = "integrations/opencode/inspector/";
+const codexDirectory = "integrations/codex/";
 
-if (project !== undefined && project !== inspectorDirectory.slice(0, -1)) {
+if (
+  project !== undefined &&
+  ![inspectorDirectory, codexDirectory].some((directory) => project === directory.slice(0, -1))
+) {
   throw new Error(`Unknown TypeScript project: ${project}`);
 }
 
@@ -18,8 +22,10 @@ const config = ts.readConfigFile(configPath, ts.sys.readFile);
 const files = listWorkingTreeFiles(repositoryDirectory).filter((path) => {
   const ownsFile =
     project === undefined
-      ? !path.startsWith("docs/") && !path.startsWith(inspectorDirectory)
-      : path.startsWith(inspectorDirectory);
+      ? !path.startsWith("docs/") &&
+        !path.startsWith(inspectorDirectory) &&
+        !path.startsWith(codexDirectory)
+      : path.startsWith(project + "/");
   return ownsFile && /\.(?:[cm]?ts|tsx)$/.test(path);
 });
 const parsed = ts.parseJsonConfigFileContent(

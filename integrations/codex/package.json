@@ -1,0 +1,21 @@
+{
+	"name": "@zinn-dev/codex",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Zinn hooks and native task inspector for Codex desktop.",
+	"license": "MIT",
+	"engines": {
+		"node": ">=24.15.0"
+	},
+	"scripts": {
+		"build": "bun build.ts",
+		"package": "bun package.ts",
+		"test": "bun run --cwd ../../packages/cli build && bun test --timeout 30000 tests"
+	},
+	"devDependencies": {
+		"@modelcontextprotocol/sdk": "1.32.1",
+		"@modelcontextprotocol/ext-apps": "1.7.5",
+		"zod": "4.6.5"
+	}
+}

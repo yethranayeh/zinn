@@ -21,7 +21,11 @@
 		"docs:deploy": "bun run --cwd docs deploy",
 		"docs:preview": "bun run --cwd docs preview",
 		"opencode:test": "bun run --cwd integrations/opencode/inspector test",
-		"opencode:typecheck": "bun scripts/typecheck.ts integrations/opencode/inspector"
+		"opencode:typecheck": "bun scripts/typecheck.ts integrations/opencode/inspector",
+		"codex:build": "bun run --cwd integrations/codex build",
+		"codex:package": "bun run --cwd integrations/codex package",
+		"codex:test": "bun run --cwd integrations/codex test",
+		"codex:typecheck": "bun scripts/typecheck.ts integrations/codex"
 	},
 	"devDependencies": {
 		"@types/bun": "latest",
