@@ -1,6 +1,7 @@
 import { expect, spyOn, test } from "bun:test";
 
 import { column, label, project, task } from "../index.js";
+import type { TaskWithKey } from "../index.js";
 import { getDb } from "./db.js";
 import { Statement } from "./sqlite/database.js";
 import { withTestStore } from "./testing.js";
@@ -11,6 +12,7 @@ const LARGE_DESCRIPTION = "x".repeat(LARGE_DESCRIPTION_LENGTH);
 const ACTIVITY_TIMESTAMP = 100;
 
 type StatementWithAll = { all(...params: Array<unknown>): Array<unknown> };
+type StatementWithGet = { get(...params: Array<unknown>): unknown };
 
 function isTaskRow(row: unknown): row is { project_id: string; task_order: string } {
   return row !== null && typeof row === "object" && "project_id" in row && "task_order" in row;
@@ -118,5 +120,93 @@ test("unknown columns select nothing while label and project errors keep their p
         kind: "missing",
         facts: expect.objectContaining({ entity: "project" }),
       }));
+  });
+});
+
+test("task lists and pages reuse selected project keys without per-task project reads", () => {
+  withTestStore(() => {
+    const app = project.create({ key: "APP" }, actor);
+    const other = project.create({ key: "OTHER" }, actor);
+    const create = (projectId: string, title: string, dueAt: number | null) =>
+      task.create({ project_id: projectId, title, due_at: dueAt }, actor);
+    const appFirst = create(app.id, "App first", null);
+    const appEarlier = create(app.id, "App earlier", -1);
+    const appArchived = create(app.id, "App archived", 2);
+    const otherFirst = create(other.id, "Other first", 0);
+    const otherEarlier = create(other.id, "Other earlier", -1);
+    const otherArchived = create(other.id, "Other archived", null);
+    task.archive(appArchived.key, actor);
+    task.archive(otherArchived.key, actor);
+    getDb().query(`UPDATE activity SET created_at = CASE entity_id
+      WHEN $appEarlier THEN 300 WHEN $appArchived THEN 400
+      WHEN $otherEarlier THEN 500 WHEN $otherArchived THEN 300 ELSE 100 END
+      WHERE entity_type = 'task'`).run({
+      $appEarlier: appEarlier.id,
+      $appArchived: appArchived.id,
+      $otherEarlier: otherEarlier.id,
+      $otherArchived: otherArchived.id,
+    });
+
+    const orders = {
+      board: [appFirst, appEarlier, appArchived, otherFirst, otherEarlier, otherArchived],
+      due: [appEarlier, otherEarlier, otherFirst, appArchived, appFirst, otherArchived],
+      activity: [otherEarlier, appArchived, appEarlier, otherArchived, appFirst, otherFirst],
+    };
+    const snapshots = new Map(
+      orders.board.map(({ key }) => [key, task.getByKey(key)]),
+    );
+    const projectReads: Array<string> = [];
+    const statementPrototype = Statement.prototype as unknown as StatementWithGet;
+    const originalGet = statementPrototype.get;
+    const reader = spyOn(statementPrototype, "get").mockImplementation(function (
+      this: StatementWithGet,
+      ...params: Array<unknown>
+    ) {
+      const row = originalGet.apply(this, params);
+      if (row !== null && typeof row === "object" && "task_count" in row && "key" in row) {
+        projectReads.push(row.key as string);
+      }
+      return row;
+    });
+
+    try {
+      getDb().exec("PRAGMA query_only = ON");
+      for (const projectKey of [undefined, app.key]) {
+        const expectedProjectReads = projectKey === undefined ? [] : [projectKey];
+        const check = <T>(read: () => T, expected: T) => {
+          projectReads.length = 0;
+          expect(read()).toEqual(expected);
+          expect(projectReads).toEqual(expectedProjectReads);
+        };
+        for (const sort of [undefined, "due", "activity"] as const) {
+          for (const archive of ["active", "archived", "all"] as const) {
+            const selection = { projectKey, sort, archive };
+            const expected = orders[sort ?? "board"]
+              .map(({ key }) => snapshots.get(key)!)
+              .filter((row) => projectKey === undefined || row.project_id === app.id)
+              .filter((row) => archive === "all" || (row.archived_at !== null) === (archive === "archived"));
+            check(() => task.getAll(selection), expected);
+            check(() => task.getAll({ ...selection, limit: 1 }), expected.slice(0, 1));
+            check(() => task.getPage(selection), { tasks: expected, hasMore: false });
+
+            let startingAfter: string | undefined;
+            for (let index = 0; index <= expected.length; index++) {
+              const tasks: Array<TaskWithKey> = expected.slice(index, index + 1);
+              check(() => task.getPage({ ...selection, limit: 1, startingAfter }), {
+                tasks,
+                hasMore: index + 1 < expected.length,
+              });
+              startingAfter = tasks[0]?.id;
+            }
+          }
+        }
+      }
+      projectReads.length = 0;
+      expect(task.getAll({ columnName: "missing" })).toEqual([]);
+      expect(task.getPage({ columnName: "missing", limit: 1 })).toEqual({ tasks: [], hasMore: false });
+      expect(projectReads).toEqual([]);
+    } finally {
+      reader.mockRestore();
+    }
   });
 });

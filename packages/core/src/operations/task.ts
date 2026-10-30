@@ -125,7 +125,7 @@ function resolveTaskListSelection(props: TaskListInput) {
     sort: props.sort,
   };
 
-  return { taskProject, query };
+  return query;
 }
 
 function filterTasksByDeadline<T extends Pick<Task, "due_at">>(
@@ -464,9 +464,10 @@ export const task = {
   },
   getAll: (input: TaskListInput = {}) => {
     const props = validateTaskInput(taskListSchema, input);
-    const { taskProject, query } = resolveTaskListSelection(props);
+    const query = resolveTaskListSelection(props);
     const taskMatches = dbTask.getList({ ...query, limit: props.limit });
-    return taskMatches.map((taskMatch) => attachTaskKey(taskMatch, taskProject?.key));
+
+    return taskMatches.map(({ project_key, ...row }) => attachTaskKey(row, project_key));
   },
   getPage: (input: TaskPageInput = {}) => {
     const props = validateTaskInput(taskPageSchema, input);
@@ -482,9 +483,9 @@ export const task = {
         ).id;
       }
 
-      const { taskProject, query } = resolveTaskListSelection(props);
+      const query = resolveTaskListSelection(props);
       const fetchLimit = props.limit === undefined ? undefined : props.limit + 1;
-      let taskMatches: Array<Task>;
+      let taskMatches: Array<dbTask.TaskListRow>;
 
       if (cursorTaskId === undefined) {
         taskMatches = dbTask.getList({ ...query, limit: fetchLimit });
@@ -514,7 +515,7 @@ export const task = {
       const selectedTasks = hasMore ? taskMatches.slice(0, props.limit) : taskMatches;
 
       return {
-        tasks: selectedTasks.map((taskMatch) => attachTaskKey(taskMatch, taskProject?.key)),
+        tasks: selectedTasks.map(({ project_key, ...row }) => attachTaskKey(row, project_key)),
         hasMore,
       };
     });

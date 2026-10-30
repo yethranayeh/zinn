@@ -118,11 +118,13 @@ export type TaskListQuery = Pick<
 
 export type TaskPageQuery = TaskListQuery & { afterTaskId: string };
 
+export type TaskListRow = Task & { project_key: string };
+
 type TaskPageRow = { cursor_in_selection: number } & {
-  [Key in keyof Task]: Task[Key] | null;
+  [Key in keyof TaskListRow]: TaskListRow[Key] | null;
 };
 
-export type TaskPageMatches = { cursorInSelection: boolean; tasks: Array<Task> };
+export type TaskPageMatches = { cursorInSelection: boolean; tasks: Array<TaskListRow> };
 
 function buildTaskListFilters(input: TaskListQuery) {
   const predicates: Array<string> = [];
@@ -262,8 +264,11 @@ export function getList(input: TaskListQuery) {
   const { where, limit, bindings } = buildTaskListFilters(input);
 
   return getDb()
-    .query<Task, Record<string, string | number>>(`WITH ${getOrderedTasksCtes(input.sort, where)}
-    SELECT task.*
+    .query<
+      TaskListRow,
+      Record<string, string | number>
+    >(`WITH ${getOrderedTasksCtes(input.sort, where)}
+    SELECT task.*, current.project_key
     FROM ordered_tasks AS current
     INNER JOIN ${DB_TABLE.task}
       ON task.id = current.id
@@ -296,7 +301,7 @@ export function getPageAfter(input: TaskPageQuery): TaskPageMatches {
       ORDER BY ${getListOrder(input.sort, "current")}
       ${limit}
     )
-    SELECT cursor_state.cursor_in_selection, task.*
+    SELECT cursor_state.cursor_in_selection, task.*, page_ids.project_key
     FROM cursor_state
     LEFT JOIN page_ids
       ON 1 = 1
@@ -306,11 +311,11 @@ export function getPageAfter(input: TaskPageQuery): TaskPageMatches {
     .all(bindings);
 
   const cursorInSelection = rows[0]?.cursor_in_selection === 1;
-  const tasks: Array<Task> = [];
+  const tasks: Array<TaskListRow> = [];
 
   for (const { cursor_in_selection, ...taskRow } of rows) {
     if (cursor_in_selection === 1 && taskRow.id !== null) {
-      tasks.push(taskRow as Task);
+      tasks.push(taskRow as TaskListRow);
     }
   }
 
