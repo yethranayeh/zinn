@@ -7,7 +7,7 @@ Requires OpenCode 2.2.0 and Zinn CLI 0.41.0 or newer on `PATH`.
 Add this entry to the `plugins` array in `~/.config/opencode/cli.json`:
 
 ```json
-{ "package": "@zinn-dev/opencode@0.2.0", "options": { "rows": 2, "current": "glyph" } }
+{ "package": "@zinn-dev/opencode@0.3.0", "options": { "rows": 2, "current": "glyph" } }
 ```
 
 Read the [setup, options, compatibility, update and removal guide](https://zinn.sh/integrations/opencode/inspector).

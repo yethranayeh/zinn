@@ -1,6 +1,6 @@
 {
 	"name": "@zinn-dev/opencode",
-	"version": "0.3.0-dev",
+	"version": "0.3.0",
 	"type": "module",
 	"description": "Experimental Zinn task inspector for the OpenCode TUI.",
 	"keywords": [
