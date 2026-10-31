@@ -5,23 +5,36 @@ interface Props {
 	releases: ChangelogRelease[];
 }
 
-// Sits right of the max-w-5xl release plates. Only the full 90rem content width leaves room for it.
+// Sits right of the max-w-5xl release plates. Its ground runs to the viewport edge, so the section rules stop at the plate frame.
 const { releases } = Astro.props;
 ---
 
-<div class='pointer-events-none absolute inset-0 hidden min-[90rem]:block'>
+<div class='release-index-margin pointer-events-none absolute inset-0 hidden min-[90rem]:block'>
 	<div class='site-container h-full'>
 		<nav
 			aria-label='Releases'
-			class='pointer-events-auto sticky top-[calc(var(--site-header-height)_+_1.5rem)] ml-[calc(var(--container-5xl)_+_2rem)] py-10 md:py-14'>
-			<p class='mb-3 text-sm tracking-[0.12em] text-muted-foreground uppercase'>Releases</p>
-			<ul class='max-h-[calc(100vh_-_var(--site-header-height)_-_6rem)] overflow-y-auto text-sm leading-[1.6]'>
+			class='pointer-events-auto sticky top-[calc(var(--site-header-height)_+_1.5rem)] ml-[var(--container-5xl)] flex max-h-[calc(100vh_-_var(--site-header-height)_-_3rem)] w-56 flex-col px-8 py-10 md:py-14'>
+			<div class='mb-3 flex shrink-0 items-baseline justify-between border-b border-soot/22 pb-2'>
+				<span class='font-mono text-[11px] tracking-[0.08em] text-muted-foreground uppercase'>Releases</span>
+				<span class='font-mono text-[11px] text-muted-foreground tabular-nums'>{releases.length}</span>
+			</div>
+
+			<ul class='-mx-2 min-h-0 overflow-y-auto overscroll-contain text-sm leading-[1.6]'>
 				{
 					releases.map(({ anchor, version, lineLabel }) => (
 						<li>
-							<a href={`#${anchor}`} class='flex justify-between gap-4 py-0.5'>
-								<span>{version}</span>
-								<span class='text-muted-foreground'>{lineLabel}</span>
+							<a
+								href={`#${anchor}`}
+								class='group relative flex items-baseline justify-between gap-3 px-2 py-1 hover:bg-soot/8 hover:no-underline focus-visible:outline-offset-[-2px]'
+								data-release-link>
+								<span
+									aria-hidden='true'
+									class='absolute top-1 bottom-1 left-0 w-0.5 bg-soot opacity-0 group-data-[current]:opacity-100'
+								/>
+								<span class='tabular-nums group-data-[current]:font-semibold'>{version}</span>
+								<span class='text-right text-muted-foreground group-hover:text-soot group-data-[current]:text-soot'>
+									{lineLabel}
+								</span>
 							</a>
 						</li>
 					))
@@ -30,3 +43,63 @@ const { releases } = Astro.props;
 		</nav>
 	</div>
 </div>
+
+<style>
+	.release-index-margin::before {
+		content: "";
+		position: absolute;
+		inset-block: 0;
+		right: 0;
+		left: calc(50% - var(--site-content-width) / 2 + var(--site-gutter) + var(--container-5xl));
+		background: var(--color-limestone);
+	}
+</style>
+
+<script>
+	const links = [...document.querySelectorAll<HTMLAnchorElement>("[data-release-link]")];
+	const targets = links
+		.map((link) => document.getElementById(link.hash.slice(1)))
+		.filter((target): target is HTMLElement => target !== null);
+	const header = document.querySelector<HTMLElement>("body > header");
+	let scheduled = false;
+
+	// Marks the release whose heading last crossed under the sticky header. The 24px gap matches scroll-padding-top.
+	function updateCurrent() {
+		scheduled = false;
+		const line = (header?.getBoundingClientRect().height ?? 0) + 24;
+		let current = targets[0];
+		for (const target of targets) {
+			if (target.getBoundingClientRect().top <= line + 1) {
+				current = target;
+			} else {
+				break;
+			}
+		}
+		if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1) {
+			current = targets.at(-1) ?? current;
+		}
+		for (const link of links) {
+			const isCurrent = current !== undefined && link.hash.slice(1) === current.id;
+			link.toggleAttribute("data-current", isCurrent);
+			if (isCurrent) {
+				link.setAttribute("aria-current", "location");
+			} else {
+				link.removeAttribute("aria-current");
+			}
+		}
+	}
+
+	function scheduleCurrent() {
+		if (scheduled) {
+			return;
+		}
+		scheduled = true;
+		requestAnimationFrame(updateCurrent);
+	}
+
+	updateCurrent();
+	window.addEventListener("scroll", scheduleCurrent, { passive: true });
+	window.addEventListener("resize", scheduleCurrent);
+	window.addEventListener("load", scheduleCurrent);
+	document.fonts.ready.then(scheduleCurrent);
+</script>
