@@ -12,8 +12,10 @@ import { loadSettings } from "../settings";
 import { INSPECTOR_VERSION } from "../runtime";
 import { readTask } from "./task-reader";
 import { readRecent } from "./references";
+import { createCliReader } from "../shared/cli";
 
 const settings = loadSettings();
+const reader = createCliReader(settings);
 const resourceUri = `ui://zinn/inspector-${INSPECTOR_VERSION}.html`;
 const server = new McpServer({ name: "zinn", version: INSPECTOR_VERSION });
 registerAppTool(
@@ -31,8 +33,8 @@ registerAppTool(
     },
   },
 
-  async ({ key }) => {
-    const result = readTask(settings, key, true);
+  async ({ key }, extra) => {
+    const result = await readTask(settings, key, reader, extra.signal);
     return {
       content: [
         {
@@ -61,7 +63,7 @@ registerAppTool(
   },
   async (_args, extra) => ({
     content: [],
-    structuredContent: { ...readRecent(settings, extra._meta, true) },
+    structuredContent: { ...(await readRecent(settings, reader, extra._meta, extra.signal)) },
   }),
 );
 
@@ -75,5 +77,23 @@ registerAppResource(server, "Zinn task inspector", resourceUri, {}, async () => 
     },
   ],
 }));
+
+let shuttingDown = false;
+async function shutdown() {
+  if (shuttingDown) {
+    return;
+  }
+  shuttingDown = true;
+  await reader.close();
+  await server.close();
+  process.stdin.pause();
+}
+
+process.once("SIGTERM", () => void shutdown());
+process.once("SIGINT", () => void shutdown());
+process.stdin.once("end", () => void shutdown());
+process.stdin.once("close", () => void shutdown());
+process.stdout.once("error", () => void shutdown());
+server.server.onclose = () => void shutdown();
 
 await server.connect(new StdioServerTransport());

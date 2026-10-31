@@ -4,8 +4,19 @@ import { loadSettings } from "../settings";
 import { rewrite } from "./identity";
 import { lookupEffort } from "./effort";
 import { observe } from "./observe";
+import { HOOK_VERIFICATION_BUDGET_MS } from "../shared/cli";
 
 const MAX_INPUT_BYTES = 1024 * 1024;
+const verificationDeadline = performance.now() + HOOK_VERIFICATION_BUDGET_MS;
+const cancellation = new AbortController();
+function cancel() {
+  cancellation.abort();
+  process.stdin.destroy();
+}
+
+process.once("SIGTERM", cancel);
+process.once("SIGINT", cancel);
+
 let payload: HookPayload | undefined;
 let output: Record<string, unknown> | null = null;
 
@@ -32,7 +43,10 @@ try {
 
   if (payload) {
     try {
-      observe(payload, settings);
+      await observe(payload, settings, {
+        deadline: verificationDeadline,
+        signal: cancellation.signal,
+      });
     } catch {
       // Observation failures must not change command execution or attribution.
     }

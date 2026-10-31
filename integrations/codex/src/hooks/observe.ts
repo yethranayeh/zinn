@@ -5,7 +5,7 @@ import type { Observation, Reference } from "../shared/feed";
 import { isAbsolute, resolve } from "node:path";
 import { homedir } from "node:os";
 
-import { readTaskList } from "../shared/cli";
+import { createCliReader, HOOK_VERIFICATION_BUDGET_MS, readTaskList } from "../shared/cli";
 import { calls } from "../shared/calls";
 import { argvKeys, keyCandidates, projectOf } from "../shared/keys";
 import { persist } from "../shared/feed";
@@ -25,7 +25,14 @@ const MAX_TEXT_KEYS = 32;
 const MAX_CALLS = 16;
 const MAX_DISPATCH_KEYS = 6;
 
-export function observe(payload: HookPayload, settings: Settings): void {
+export async function observe(
+  payload: HookPayload,
+  settings: Settings,
+  {
+    deadline = performance.now() + HOOK_VERIFICATION_BUDGET_MS,
+    signal,
+  }: { deadline?: number; signal?: AbortSignal } = {},
+): Promise<void> {
   if (!settings.observe || !payload.session_id) {
     return;
   }
@@ -78,7 +85,17 @@ export function observe(payload: HookPayload, settings: Settings): void {
   let replyFailedStore: string | null = null;
 
   if (candidates.length > 0) {
-    const result = readTaskList(settings);
+    const reader = createCliReader(settings, { deadline });
+    let result;
+
+    try {
+      const info = await reader.run(["info"], signal);
+      const current =
+        info.ok && info.value?.database?.state === "current" && info.value.database.error === null;
+      result = current ? await readTaskList(reader, signal) : { ok: false as const };
+    } finally {
+      await reader.close();
+    }
 
     if (
       result.ok &&

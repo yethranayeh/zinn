@@ -11,17 +11,14 @@ The source builds version **0.1.0** as a candidate in a self-contained local mar
 
 ## Requirements
 
-- macOS with `/usr/bin/sandbox-exec` available.
 - Codex desktop with local plugin marketplaces, lifecycle hooks and MCP Apps conversation panels.
-- Node.js 24.15.0 or newer and the Zinn CLI on the app's `PATH`.
+- Node.js 24.15.0 or newer and an official Zinn CLI release 0.43.0 or newer on the app's `PATH`.
 - An existing Zinn database that the installed CLI can read.
 - Node to run the **built** plugin, and <span class="text-muted-foreground">(optionally)</span> Bun to **build** the plugin.
 
-The inspector backend and its CLI children run with OS file-write and network access denied. The launcher **requires** that protection to start. The hook process runs with the host user's permissions and writes its own reference files.
+The inspector and hook verification use ordinary CLI read commands with the host user's permissions. Normal database compatibility rules apply, including backups and automatic upgrades when the CLI opens an older database. Current-schema reads leave task data and activity unchanged. SQLite manages its normal WAL coordination files.
 
-The launcher holds a read-only SQLite connection while the backend runs. SQLite can create its normal `-wal` and `-shm` coordination files beside the selected database before the protected backend starts. The launcher reads schema metadata and leaves task data unchanged. See [SQLite's read-only WAL rules](https://www.sqlite.org/wal.html#readonly).
-
-Hook lookups use the same read-only connection and protected CLI path when verifying task references.
+Configured CLI executables are trusted local programs. The hook writes its own reference files.
 
 ## Select the database
 
@@ -33,7 +30,7 @@ Run `zinn info --json` in your terminal to check the data directory you want. Cr
 }
 ```
 
-The plugin reads this configuration at process startup. The inspector always reads the selected database. It verifies that `data/zinn.sqlite` exists before calling the CLI. Restart Codex after changing the configuration.
+The plugin reads this configuration at process startup. The inspector always reads the selected database. It checks CLI compatibility with `--version` before reading tasks. Restart Codex after changing the configuration.
 
 Normal CLI settings and `ZINN_DIR` select the database used by agent commands. Set `ZINN_DIR` for commands that should use the same custom directory as the inspector. The plugin's `store` selects inspection and reference verification.
 
@@ -80,6 +77,8 @@ Observed references come from supported direct CLI calls, task keys in agent dis
 
 Each request uses the host's current chat metadata. Manual lookup remains available when that metadata is absent or conflicting. Completed-reply keys are checked against the selected store. A missing key is retained as a warning when its project prefix is represented by tasks in that store.
 
+Panel reads can wait for another process or an automatic upgrade to finish. Cancelling a request or closing the backend stops its CLI child. Periodic refresh waits for the pending reference read to complete.
+
 ## Hook settings
 
 The configuration accepts these options:
@@ -100,6 +99,8 @@ Identity capture handles one literal direct `zinn` command, or the configured CL
 With `captureEffort: true`, effort is supplied only when the transcript's thread, turn and model match the callback and exactly one matching turn context exists. Missing, partial, oversized or ambiguous metadata leaves effort unknown. Duplicate contexts can occur after compaction. See [CLI actor identity](/docs/cli#who-am-i) for the recorded fields.
 
 To stop reference recording and identity capture, set both `observe` and `identity` to `false`. To keep recording references and disable identity capture, set only `identity` to `false`. These settings take effect on the next hook invocation. Previously recorded references remain available until their files are removed.
+
+Optional reply and dispatch verification shares a short deadline across CLI compatibility, `info --json` and task lookup. It proceeds when the schema is current. Unavailable completed-reply verification is recorded separately. Execution identity remains independent. The schema check is best effort because another client can replace or restore the database before the following read.
 
 ## Local data and privacy
 
@@ -123,8 +124,8 @@ Your Zinn database, configuration and reference files remain under your control.
 
 ## Troubleshooting and compatibility
 
-For startup failures, check the configuration path, absolute store path, app `PATH`, Node version and `sandbox-exec` availability. Run the configured CLI's `zinn info --json` equivalent with the same `ZINN_DIR` to check database compatibility.
+For startup failures, check the configuration path, absolute store path, app `PATH`, Node version and CLI version. Run the configured CLI's `zinn info --json` equivalent with the same `ZINN_DIR` to check database compatibility.
 
 For an empty recent list, check hook trust and `observe`, then mention a real task key in a completed reply or run a direct CLI lookup. Failed verification is reported separately from a missing task. A newly created task becomes available on the next refresh.
 
-The build is scoped to local Codex desktop execution on macOS. Host plugin, hook and native-panel interfaces can change. Verify native opening, hook trust, references, update and removal when adopting a new host version. Report the plugin, Codex, Node and CLI versions through [Contact](/contact).
+The backend uses Node and ordinary CLI commands. Native plugin, hook and panel behavior also depends on the Codex host and operating system. Verify native opening, hook trust, references, update and removal when adopting a new host version. Report the plugin, Codex, Node and CLI versions through [Contact](/contact).

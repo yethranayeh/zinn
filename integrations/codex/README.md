@@ -1,8 +1,8 @@
 # Zinn for Codex
 
-A local task inspector and optional task-reference and execution-identity hooks for Codex desktop on macOS.
+An Experimental local task inspector and optional task-reference and execution-identity hooks for Codex desktop.
 
-Requires Node.js 24.15.0 or newer and the Zinn CLI on `PATH`. Select an existing Zinn data directory in `~/.config/zinn/codex.json`:
+Requires Node.js 24.15.0 or newer and an official Zinn CLI release 0.43.0 or newer on `PATH`. Select an existing Zinn data directory in `~/.config/zinn/codex.json`:
 
 ```json
 { "store": "/absolute/path/to/.zinn" }

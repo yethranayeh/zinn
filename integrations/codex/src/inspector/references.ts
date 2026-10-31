@@ -1,5 +1,5 @@
 import type { Settings } from "../settings";
-import type { Task } from "../shared/cli";
+import type { CliReader, Task } from "../shared/cli";
 
 import { readFeed } from "../shared/feed";
 import { readTaskList } from "../shared/cli";
@@ -36,11 +36,12 @@ export function resolveChat(metadata?: Record<string, unknown>) {
   return { kind: session ? ("bound" as const) : ("absent_metadata" as const), session };
 }
 
-export function readRecent(
+export async function readRecent(
   settings: Settings,
+  reader: CliReader,
   metadata?: Record<string, unknown>,
-  alreadyProtected = false,
-): RecentRead {
+  signal?: AbortSignal,
+): Promise<RecentRead> {
   const empty = { store: settings.store, references: [], incomplete: 0, atCapacity: false };
   const binding = resolveChat(metadata);
 
@@ -69,7 +70,7 @@ export function readRecent(
       return { ...result, kind: "ready" };
     }
 
-    const tasks = readTaskList(settings, alreadyProtected);
+    const tasks = await readTaskList(reader, signal);
     if (!tasks.ok || !Array.isArray(tasks.value)) {
       return {
         ...result,
