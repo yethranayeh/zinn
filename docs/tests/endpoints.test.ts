@@ -1,5 +1,6 @@
 import { opencodeInspector } from "../src/config/opencode-inspector";
 import { opencodeScenes, opencodeTheme } from "../src/config/opencode-theme";
+import { integrationLines, type IntegrationLine } from "../src/config/release-lines";
 import { agentSetupPrompt, installCommand, minimumNodeVersion } from "../src/config/site";
 import { splitShellCommands } from "../src/markdown/shell-commands";
 import { expect, test } from "bun:test";
@@ -106,19 +107,45 @@ async function expectMarkdownTwin(page: string, source: string) {
 }
 
 test("changelog and its Markdown twin list every release entry, newest first", async () => {
-	const releases = await Promise.all(
-		(await readdir(releasesDirectory)).filter((file) => file.endsWith(".mdx")).map(async (file) => {
-			const source = await Bun.file(join(releasesDirectory, file)).text();
-			const [, frontmatter = "", notes = ""] = source.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/) ?? [];
-			const field = (key: string) => frontmatter.match(new RegExp(`^${key}: "?([^"\\r\\n]+)"?$`, "m"))?.[1];
-			return {
-				version: field("version")!, name: field("name"), date: field("date")!,
-				cli: field("cli")!, core: field("core")!, notes: notes.trim()
-			};
-		})
-	);
-	releases.sort((a, b) => b.date.localeCompare(a.date));
-	expect(releases.length).toBeGreaterThan(0);
+	const npmUrl = (name: string, version: string) => `https://www.npmjs.com/package/@zinn-dev/${name}/v/${version}`;
+	const readRelease = async (file: string) => {
+		const source = await Bun.file(join(releasesDirectory, file)).text();
+		const [, frontmatter = "", notes = ""] = source.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/) ?? [];
+		const field = (key: string) => frontmatter.match(new RegExp(`^${key}: "?([^"\\r\\n]+)"?$`, "m"))?.[1];
+		return { field, notes: notes.trim() };
+	};
+	const releaseFiles = (await readdir(releasesDirectory, { recursive: true })).filter((file) => file.endsWith(".mdx"));
+	const zinnReleases = await Promise.all(releaseFiles.filter((file) => !file.includes("/")).map(async (file) => {
+		const { field, notes } = await readRelease(file);
+		const version = field("version")!;
+		const cli = field("cli")!;
+		const core = field("core")!;
+		return {
+			zinnLine: true, version, date: field("date")!, notes,
+			title: version, name: field("name"),
+			// Published links point at these anchors.
+			anchor: `release-${version.replaceAll(".", "")}`,
+			packages: [{ label: `CLI ${cli}`, url: npmUrl("cli", cli) }, { label: `Core ${core}`, url: npmUrl("core", core) }]
+		};
+	}));
+	const integrationReleases = await Promise.all(releaseFiles.filter((file) => file.includes("/")).map(async (file) => {
+		const line = file.split("/")[0] as IntegrationLine;
+		expect(Object.keys(integrationLines)).toContain(line);
+		const { label, packageName } = integrationLines[line];
+		const { field, notes } = await readRelease(file);
+		const version = field("version")!;
+		return {
+			zinnLine: false, version, date: field("date")!, notes,
+			title: `${label} ${version}`, name: undefined,
+			anchor: `release-${line}-${version.replaceAll(".", "")}`,
+			packages: [{ label: `@zinn-dev/${packageName} ${version}`, url: npmUrl(packageName, version) }]
+		};
+	}));
+	// Zinn releases come before integration releases from the same day.
+	const releases = [...zinnReleases, ...integrationReleases]
+		.sort((a, b) => b.date.localeCompare(a.date) || Number(b.zinnLine) - Number(a.zinnLine));
+	expect(zinnReleases.length).toBeGreaterThan(0);
+	expect(integrationReleases.length).toBeGreaterThan(0);
 
 	const markdownResponse = await server.fetch("/changelog.md");
 	expect(markdownResponse.status).toBe(200);
@@ -134,24 +161,25 @@ test("changelog and its Markdown twin list every release entry, newest first", a
 	let markdownCursor = 0;
 	let htmlCursor = 0;
 	for (const release of releases) {
-		const heading = [release.version, release.name].filter(Boolean).join(" ");
+		const heading = [release.title, release.name].filter(Boolean).join(" ");
 		const headingAt = markdown.indexOf(`\n## ${heading} - ${release.date}\n`, markdownCursor);
 		expect(headingAt).toBeGreaterThanOrEqual(markdownCursor);
-		const cliUrl = `https://www.npmjs.com/package/@zinn-dev/cli/v/${release.cli}`;
-		const coreUrl = `https://www.npmjs.com/package/@zinn-dev/core/v/${release.core}`;
-		const packagesAt = markdown.indexOf(`[CLI ${release.cli}](${cliUrl})`, headingAt);
+		const packageLine = release.packages.map(({ label, url }) => `[${label}](${url})`).join(" | ");
+		const packagesAt = markdown.indexOf(`\n${packageLine}\n`, headingAt);
 		expect(packagesAt).toBeGreaterThan(headingAt);
-		expect(markdown.indexOf(`[Core ${release.core}](${coreUrl})`, packagesAt)).toBeGreaterThan(packagesAt);
 		const notesAt = markdown.indexOf(release.notes, packagesAt);
 		expect(notesAt).toBeGreaterThan(packagesAt);
 		markdownCursor = notesAt + release.notes.length;
 
-		const anchorAt = html.indexOf(`id="release-${release.version.replaceAll(".", "")}"`, htmlCursor);
+		const anchorAt = html.indexOf(`id="${release.anchor}"`, htmlCursor);
 		expect(anchorAt).toBeGreaterThanOrEqual(htmlCursor);
+		expect(html.indexOf(`>${release.title}<`, anchorAt)).toBeGreaterThan(anchorAt);
 		const timeAt = html.indexOf(`datetime="${release.date}"`, anchorAt);
 		expect(timeAt).toBeGreaterThan(anchorAt);
-		expect(html.indexOf(`href="${cliUrl}"`, timeAt)).toBeGreaterThan(timeAt);
-		expect(html.indexOf(`href="${coreUrl}"`, timeAt)).toBeGreaterThan(timeAt);
+		for (const { url } of release.packages) {
+			expect(html.indexOf(`href="${url}"`, timeAt)).toBeGreaterThan(timeAt);
+		}
+		expect(html).toContain(`href="#${release.anchor}"`);
 		htmlCursor = timeAt;
 	}
 });

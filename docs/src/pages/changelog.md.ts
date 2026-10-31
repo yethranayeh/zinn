@@ -1,17 +1,17 @@
 import type { APIRoute } from "astro";
 
-import { getReleases, npmPackageUrl } from "../config/changelog";
+import { getReleases } from "../config/changelog";
 
 const intro =
-  "Notable changes to Zinn. Each CLI release names the core version it includes. **Breaking** changes include the action needed when upgrading.";
+  "Notable changes to Zinn and its integrations. Each CLI release names the core version it includes, and integrations release on their own versions. **Breaking** changes include the action needed when upgrading.";
 
 export const GET: APIRoute = async () => {
   const releases = await getReleases();
-  const sections = releases.map(({ data, body }) => {
-    const name = data.name ? ` ${data.name}` : "";
-    const packages = `[CLI ${data.cli}](${npmPackageUrl("cli", data.cli)}) | [Core ${data.core}](${npmPackageUrl("core", data.core)})`;
+  const sections = releases.map(({ heading, name, date, packages, entry }) => {
+    const title = name ? `${heading} ${name}` : heading;
+    const packageLinks = packages.map(({ label, url }) => `[${label}](${url})`).join(" | ");
 
-    return `## ${data.version}${name} - ${data.date}\n\n${packages}\n\n${body?.trim()}`;
+    return `## ${title} - ${date}\n\n${packageLinks}\n\n${entry.body?.trim()}`;
   });
 
   return new Response(`# CHANGELOG\n\n${intro}\n\n${sections.join("\n\n")}\n`, {

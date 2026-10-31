@@ -1,0 +1,32 @@
+---
+import type { ChangelogRelease } from "../../config/changelog";
+
+interface Props {
+	releases: ChangelogRelease[];
+}
+
+// Sits right of the max-w-5xl release plates. Only the full 90rem content width leaves room for it.
+const { releases } = Astro.props;
+---
+
+<div class='pointer-events-none absolute inset-0 hidden min-[90rem]:block'>
+	<div class='site-container h-full'>
+		<nav
+			aria-label='Releases'
+			class='pointer-events-auto sticky top-[calc(var(--site-header-height)_+_1.5rem)] ml-[calc(var(--container-5xl)_+_2rem)] py-10 md:py-14'>
+			<p class='mb-3 text-sm tracking-[0.12em] text-muted-foreground uppercase'>Releases</p>
+			<ul class='max-h-[calc(100vh_-_var(--site-header-height)_-_6rem)] overflow-y-auto text-sm leading-[1.6]'>
+				{
+					releases.map(({ anchor, version, lineLabel }) => (
+						<li>
+							<a href={`#${anchor}`} class='flex justify-between gap-4 py-0.5'>
+								<span>{version}</span>
+								<span class='text-muted-foreground'>{lineLabel}</span>
+							</a>
+						</li>
+					))
+				}
+			</ul>
+		</nav>
+	</div>
+</div>

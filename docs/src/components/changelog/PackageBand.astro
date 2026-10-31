@@ -1,16 +1,20 @@
 ---
-import { npmPackageUrl } from "../../config/changelog";
+import type { ReleasePackage } from "../../config/changelog";
 
 interface Props {
-	cli: string;
-	core: string;
+	packages: ReleasePackage[];
 }
 
-const { cli, core } = Astro.props;
+const { packages } = Astro.props;
 ---
 
 <div
-	class='relative mt-5 grid grid-cols-2 border-y border-soot text-sm leading-[1.6] after:absolute after:-top-px after:-bottom-px after:left-1/2 after:w-px after:bg-soot after:content-[""] lg:-ml-[var(--plate-padding-inline)] lg:-mr-[var(--rail-meta-padding-right)]'>
-	<a href={npmPackageUrl("cli", cli)} class='block py-1.5 text-center'>CLI {cli}</a>
-	<a href={npmPackageUrl("core", core)} class='block py-1.5 text-center'>Core {core}</a>
+	class='mt-5 grid auto-cols-fr grid-flow-col border-y border-soot text-sm leading-[1.6] lg:-ml-[var(--plate-padding-inline)] lg:-mr-[var(--rail-meta-padding-right)]'>
+	{
+		packages.map(({ label, url }) => (
+			<a href={url} class='block border-soot py-1.5 text-center not-first:border-l'>
+				{label}
+			</a>
+		))
+	}
 </div>

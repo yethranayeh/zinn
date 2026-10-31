@@ -1,21 +1,21 @@
 ---
+import type { ReleasePackage } from "../../config/changelog";
 import MarkdownH2 from "../MarkdownH2.astro";
 import Prose from "../Prose.astro";
 import PackageBand from "./PackageBand.astro";
 
-import { formatReleaseDate, releaseAnchor } from "../../config/changelog";
+import { formatReleaseDate } from "../../config/changelog";
 
 interface Props {
-	version: string;
+	anchor: string;
+	heading: string;
 	name?: string;
 	date: string;
-	cli: string;
-	core: string;
+	packages: ReleasePackage[];
 	first?: boolean;
 }
 
-const { version, name, date, cli, core, first = false } = Astro.props;
-const anchor = releaseAnchor(version);
+const { anchor, heading, name, date, packages, first = false } = Astro.props;
 ---
 
 <section aria-labelledby={anchor} class='border-t border-soot'>
@@ -36,7 +36,7 @@ const anchor = releaseAnchor(version);
 						class='max-lg:mb-2 max-lg:pb-6 lg:sticky lg:top-[calc(var(--site-header-height)_+_1.5rem)] lg:pr-[var(--rail-meta-padding-right)]'>
 						<Prose>
 							<MarkdownH2 id={anchor} style='margin-top: 0; margin-bottom: 0.5rem'>
-								<span class='block'>{version}</span>
+								<span class='block'>{heading}</span>
 								{
 									name && (
 										<span class='mt-1 block text-sm leading-normal font-normal tracking-[0.12em] text-muted-foreground uppercase'>
@@ -48,7 +48,7 @@ const anchor = releaseAnchor(version);
 							<time class='block text-base leading-[1.7] font-normal text-muted-foreground' datetime={date}>
 								{formatReleaseDate(date)}
 							</time>
-							<PackageBand cli={cli} core={core} />
+							<PackageBand packages={packages} />
 						</Prose>
 					</div>
 					<div>

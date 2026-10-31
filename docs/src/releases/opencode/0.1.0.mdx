@@ -1,0 +1,11 @@
+---
+version: 0.1.0
+date: "2026-10-28"
+---
+
+### Added
+
+- The OpenCode sidepanel lists the Zinn tasks mentioned in the current conversation, read through the local Zinn CLI. Selecting a task opens its details. Requires OpenCode 2.2.0 and Zinn CLI 0.41.0 or newer. See [OpenCode task inspector](/integrations/opencode/inspector).
+- Task details show status, priority, labels, relations, comment count and the first paragraph of the description. Opened from a mention, they also count the task's mentions in this conversation.
+- `/zinn` finds a loaded active task. The command palette also offers **Zinn: task keys in this chat** and **Zinn: pick a task from the board**.
+- The `rows` option set to `2` adds column, priority and labels to each task in the sidepanel. The `current` option set to `"glyph"` marks tasks with recorded activity from this conversation, and the mark animates while the conversation is busy.

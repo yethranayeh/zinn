@@ -21,7 +21,7 @@ export const collections = {
       lastUpdated: pageDate.optional(),
     }),
   }),
-  // One file per release. src/pages/changelog.astro lists them.
+  // One file per Zinn release. src/pages/changelog.astro lists them.
   releases: defineCollection({
     loader: glob({ pattern: "*.mdx", base: "./src/releases" }),
     schema: z.object({
@@ -30,6 +30,18 @@ export const collections = {
       date: z.iso.date(),
       cli: semver,
       core: semver,
+    }),
+  }),
+  // One folder per integration, one file per release, such as `releases/opencode/0.2.0.mdx`.
+  integrationReleases: defineCollection({
+    loader: glob({
+      pattern: "*/*.mdx",
+      base: "./src/releases",
+      generateId: ({ entry }) => entry.replace(/\.mdx$/, ""),
+    }),
+    schema: z.object({
+      version: semver,
+      date: z.iso.date(),
     }),
   }),
 };
