@@ -14,8 +14,11 @@ import { INSPECTOR_VERSION } from "./src/runtime";
 const root = import.meta.dir;
 export async function build(output = join(root, "dist")) {
   const plugin = join(output, "plugins/zinn");
+
+  mkdirSync(join(plugin, ".codex-plugin"), { recursive: true });
   mkdirSync(join(plugin, "hooks"), { recursive: true });
   mkdirSync(join(output, ".agents/plugins"), { recursive: true });
+
   const bundledPackages = new Set<string>();
 
   for (const [entry, target, filename] of [
@@ -68,25 +71,20 @@ export async function build(output = join(root, "dist")) {
 
   const json = (path: string, value: unknown) =>
     writeFileSync(path, JSON.stringify(value, null, 2) + "\n");
-  json(join(plugin, "plugin.json"), {
-    $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  // The portable loader skips hooks: https://github.com/openai/codex/blob/rust-v0.166.0-alpha.5.1/codex-rs/core-plugins/src/loader.rs#L917-L929
+  json(join(plugin, ".codex-plugin/plugin.json"), {
     name: "zinn",
     version: INSPECTOR_VERSION,
     description: "Experimental local task inspection and execution identity for Codex desktop.",
-    extensions: {
-      "com.openai": {
-        hooks: "./hooks/hooks.json",
-        interface: {
-          displayName: "Zinn",
-          shortDescription: "Inspect local Zinn tasks",
-          developerName: "Zinn",
-          websiteURL: "https://zinn.sh/integrations/codex",
-        },
-      },
+    hooks: "./hooks/hooks.json",
+    interface: {
+      displayName: "Zinn",
+      shortDescription: "Inspect local Zinn tasks",
+      developerName: "Zinn",
+      websiteURL: "https://zinn.sh/integrations/codex",
     },
   });
-  json(join(plugin, "mcp.json"), {
-    $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  json(join(plugin, ".mcp.json"), {
     mcpServers: {
       zinn: {
         type: "stdio",

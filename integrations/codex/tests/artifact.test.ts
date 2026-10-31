@@ -7,6 +7,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { packageIntegration } from "../package";
 import { INSPECTOR_VERSION } from "../src/runtime";
+import { EVENTS } from "../src/hooks/observe";
 import { persist, type Observation } from "../src/shared/feed";
 import { cliPath, fixture, inspectStore, seedOlderStore, waitFor } from "./helpers";
 const context = fixture();
@@ -161,10 +162,15 @@ else { process.on('SIGTERM', () => {}); writeFileSync(${JSON.stringify(marker)},
 
 test("artifact contains only portable bundled assets and dependency notices", () => {
     expect(createHash("sha256").update(readFileSync(packaged.archive)).digest("hex")).toBe(packaged.sha256);
-    const manifest = JSON.parse(readFileSync(join(artifact.plugin, "plugin.json"), "utf8"));
+    expect(existsSync(join(artifact.plugin, "plugin.json"))).toBe(false);
+    expect(existsSync(join(artifact.plugin, "mcp.json"))).toBe(false);
+    const manifest = JSON.parse(readFileSync(join(artifact.plugin, ".codex-plugin/plugin.json"), "utf8"));
     expect(manifest.name).toBe("zinn");
     expect(manifest.version).toBe(INSPECTOR_VERSION);
-    const mcp = JSON.parse(readFileSync(join(artifact.plugin, "mcp.json"), "utf8"));
+    expect(manifest.hooks).toBe("./hooks/hooks.json");
+    const hooks = JSON.parse(readFileSync(join(artifact.plugin, manifest.hooks), "utf8"));
+    expect(Object.keys(hooks.hooks).sort()).toEqual([...EVENTS].sort());
+    const mcp = JSON.parse(readFileSync(join(artifact.plugin, ".mcp.json"), "utf8"));
     expect(mcp.mcpServers.zinn).toMatchObject({ type: "stdio", command: "node", args: ["${PLUGIN_ROOT}/launcher.mjs"], cwd: "${PLUGIN_ROOT}" });
     const html = readFileSync(join(artifact.plugin, "widget.html"), "utf8");
     expect(html).not.toMatch(/(?:src|href)=["'](?:https?:|\/_astro|\/fonts)/);
@@ -175,7 +181,7 @@ test("artifact contains only portable bundled assets and dependency notices", ()
     expect(notices).toContain("@modelcontextprotocol/sdk");
     expect(notices).toContain("@modelcontextprotocol/ext-apps");
     expect(notices).toContain("zod");
-    for (const file of ["server.mjs", "launcher.mjs", "hook.mjs", "widget.html", "plugin.json", "mcp.json"]) {
+    for (const file of ["server.mjs", "launcher.mjs", "hook.mjs", "widget.html", ".codex-plugin/plugin.json", ".mcp.json", "hooks/hooks.json"]) {
         const text = readFileSync(join(artifact.plugin, file), "utf8");
         expect(text).not.toContain("/Users/");
         expect(text).not.toContain("research/");
