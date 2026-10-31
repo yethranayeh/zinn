@@ -11,16 +11,26 @@ interface Props {
 	fullTitle?: string;
 	description: string;
 	noindex?: boolean;
+	/** Social image path under the site root. Defaults to the site card. */
+	socialImage?: string;
+	/** Alt text for the social image. */
+	socialImageAlt?: string;
 }
 
-const { title, fullTitle, description, noindex = false } = Astro.props;
+const {
+	title,
+	fullTitle,
+	description,
+	noindex = false,
+	socialImage = "/social/zinn.png",
+	socialImageAlt = "Zinn | A kanban workflow in the terminal. Install and zinn --help on a dark terminal panel."
+} = Astro.props;
 const documentTitle = fullTitle ?? `${title} | Zinn`;
 // Since the page renders inside this layout, breadcrumbs read the page name from here
 Astro.locals.pageTitle = title;
 const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
 const markdownPath = Astro.url.pathname === "/" ? "/index.md" : `${Astro.url.pathname.replace(/\/$/, "")}.md`;
-const socialImageUrl = new URL("/social/zinn.png", Astro.site);
-const socialImageAlt = "Zinn | A kanban workflow in the terminal. Install and zinn --help on a dark terminal panel.";
+const socialImageUrl = new URL(socialImage, Astro.site);
 const website = {
 	"@context": "https://schema.org",
 	"@type": "WebSite",
