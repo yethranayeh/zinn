@@ -24,8 +24,11 @@ core: 0.31.0
   - Oversized input fails without writing changes.
 - Descriptions and comment text normalize CRLF pairs to LF, including append, find and replacement inputs. Other whitespace, including lone carriage returns is preserved.
 - `task view` includes creation and update times.
+- **Breaking storage:** a folder chosen through `ZINN_DIR` or `storage.directory` must already exist. Create it with `mkdir -p <path>` first.
+  - A missing folder, a path that is not a folder, or an empty `ZINN_DIR` fails with `error.code` `storage` and `error.details.reason` `invalid_storage`. The default `~/.zinn` folder is still created on first use. See [Settings](/docs/settings).
 
 ### Fixed
 
 - Invalid text-source flag combinations fail before reading files or stdin.
 - Upgrades from schema version 1 preserve SQLite execution errors on older Bun versions and roll back the failed migration.
+- The manifest schema in `zinn capabilities --json` describes the manifest exactly, including the fixed order of `invocation.canonicalArgv`.
