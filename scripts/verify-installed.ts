@@ -15,7 +15,7 @@ import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { createPackageTestCopy, PACKAGE_NAMES, readNodeMinimum } from "./package-fixture.ts";
-import { readVerifiedDownload } from "./archive-cache.ts";
+import { readVerifiedDownload, removeUnusedDownloads } from "./archive-cache.ts";
 import { checkSkillExamples, readWorkflowSkill } from "./skill-checks.ts";
 import { runCli } from "../packages/cli/testing.ts";
 import {
@@ -31,6 +31,11 @@ const METADATA_TIMEOUT_MS = 60_000;
 const COMMAND_TIMEOUT_MS = 120_000;
 const NODE_DOWNLOAD_TIMEOUT_MS = 600_000;
 const NODE_DOWNLOAD_CACHE_DIRECTORY = join(homedir(), ".cache", "zinn", "node");
+const NODE_DOWNLOAD_PATTERN = /^node-v.+\.tar\.xz$/;
+
+function nodeArchiveName(version: string) {
+  return `node-v${version}-darwin-${process.arch}.tar.xz`;
+}
 
 // Even during a publish dry-run, build package files and install them for testing.
 const TOOL_ENVIRONMENT = Object.fromEntries(
@@ -127,9 +132,18 @@ async function prepareNodeRuntimes(
     `Node versions: ${[...versions].join(", ")}; downloaded Node files: ${NODE_DOWNLOAD_CACHE_DIRECTORY}`,
   );
 
+  const unusedDownloads = removeUnusedDownloads(
+    NODE_DOWNLOAD_CACHE_DIRECTORY,
+    new Set([...versions].map(nodeArchiveName)),
+    NODE_DOWNLOAD_PATTERN,
+  );
+  if (unusedDownloads.length > 0) {
+    console.log(`Removed Node downloads these checks no longer use: ${unusedDownloads.join(", ")}`);
+  }
+
   const runtimes: Runtime[] = [];
   for (const version of versions) {
-    const nodeDownloadName = `node-v${version}-darwin-${process.arch}.tar.xz`;
+    const nodeDownloadName = nodeArchiveName(version);
 
     const releaseUrl = `https://nodejs.org/dist/v${version}`;
     const sums = await (await download(`${releaseUrl}/SHASUMS256.txt`)).text();

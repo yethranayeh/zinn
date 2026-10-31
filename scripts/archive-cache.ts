@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
 /** Reuses a verified download, or downloads, checks and saves a replacement. */
@@ -33,4 +33,22 @@ export async function readVerifiedDownload(
   } finally {
     rmSync(temporaryDirectory, { recursive: true, force: true });
   }
+}
+
+/** Deletes cached downloads matching `pattern` that are not in `usedNames`, and returns their names. */
+export function removeUnusedDownloads(
+  cacheDirectory: string,
+  usedNames: ReadonlySet<string>,
+  pattern: RegExp,
+) {
+  if (!existsSync(cacheDirectory)) {
+    return [];
+  }
+  const unused = readdirSync(cacheDirectory, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && pattern.test(entry.name) && !usedNames.has(entry.name))
+    .map((entry) => entry.name);
+  for (const name of unused) {
+    rmSync(join(cacheDirectory, name));
+  }
+  return unused;
 }

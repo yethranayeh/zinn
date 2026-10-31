@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { readVerifiedDownload } from "./archive-cache.ts";
+import { readVerifiedDownload, removeUnusedDownloads } from "./archive-cache.ts";
 
 const DOWNLOAD_DATA = Buffer.from("complete archive bytes");
 const INCOMPLETE_DOWNLOAD_DATA = DOWNLOAD_DATA.subarray(0, DOWNLOAD_DATA.length / 2);
@@ -59,6 +59,32 @@ test("failed downloads and incorrect checksums never leave a final cached file",
       writeFileSync(temporaryPath, DOWNLOAD_DATA);
     });
     expect(readFileSync(cachePath)).toEqual(DOWNLOAD_DATA);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("unused downloads are removed and everything else in the cache stays", () => {
+  const root = mkdtempSync(join(tmpdir(), "zinn-archive-unused-"));
+  const pattern = /^node-v.+\.tar\.xz$/;
+  try {
+    for (const name of ["node-v1.0.0.tar.xz", "node-v1.1.0.tar.xz", "node-v2.0.0.tar.xz", "notes.txt"]) {
+      writeFileSync(join(root, name), DOWNLOAD_DATA);
+    }
+    mkdirSync(join(root, ".download-pending"));
+    writeFileSync(join(root, ".download-pending", "node-v3.0.0.tar.xz"), INCOMPLETE_DOWNLOAD_DATA);
+
+    const removed = removeUnusedDownloads(root, new Set(["node-v1.1.0.tar.xz", "node-v2.0.0.tar.xz"]), pattern);
+
+    expect(removed).toEqual(["node-v1.0.0.tar.xz"]);
+    expect(readdirSync(root).sort()).toEqual([
+      ".download-pending",
+      "node-v1.1.0.tar.xz",
+      "node-v2.0.0.tar.xz",
+      "notes.txt",
+    ]);
+    expect(readdirSync(join(root, ".download-pending"))).toEqual(["node-v3.0.0.tar.xz"]);
+    expect(removeUnusedDownloads(join(root, "missing"), new Set(), pattern)).toEqual([]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
