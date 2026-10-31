@@ -67,7 +67,7 @@ test("ZINN-133: text and JSON report paths and versions without creating the def
     expect(text.stdout).toContain(fact);
   }
   expect(existsSync(join(home, ".zinn"))).toBe(false);
-  expect(readdirSync(join(root, "repo"), { recursive: true })).toEqual([".git", "nested"]);
+  expect(readdirSync(join(root, "repo"), { recursive: true }).sort()).toEqual([".git", "nested"]);
   const version = run(["--version"]);
   expect(version.stdout.trim()).toBe(cliPackage.version);
 });

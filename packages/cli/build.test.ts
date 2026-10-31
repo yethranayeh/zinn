@@ -257,15 +257,16 @@ for (const runtime of ["node", "bun"]) {
     });
   }, BUILD_CHECK_TIMEOUT_MS);
 
-  test(`${runtime}: existing empty folders and the default store initialize, and restore creates data inside an existing folder`, () => {
+  test(`${runtime}: reads refuse an existing empty folder, project create initializes it and the default store, and restore creates data inside an existing folder`, () => {
     withDirectory((directory) => {
       const empty = join(directory, "empty");
       mkdirSync(empty);
       const listed = runBuilt(runtime, ["project", "list", "--json"], empty);
-      expect(listed.code).toBe(0);
-      expect(JSON.parse(listed.stdout)).toEqual([]);
-      expect(existsSync(join(empty, "data", "zinn.sqlite"))).toBe(true);
+      expect(listed.code).toBe(1);
+      expect(JSON.parse(listed.stderr).error).toMatchObject({ code: "not_found", details: { entity: "database" } });
+      expect(readdirSync(empty)).toEqual([]);
       expect(runBuilt(runtime, ["project", "create", "RESTORED"], empty).code).toBe(0);
+      expect(existsSync(join(empty, "data", "zinn.sqlite"))).toBe(true);
       const saved = runBuilt(runtime, ["backup", "--json"], empty);
       expect(saved.code).toBe(0);
       const destination = join(directory, "destination");
