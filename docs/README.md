@@ -16,7 +16,11 @@ bun run docs:check
 bun run docs:build
 bun run docs:preview
 bun run --cwd docs test
+bun run foundry:dev
+bun run foundry:build
 ```
+
+The `foundry:` scripts run and build Foundry, which acts as the reference source for the components in `src/components/ui`.
 
 Default builds are previews: they carry `noindex` and omit analytics. For a production build, use `PUBLIC_SITE_ENV=production bun run docs:build`.
 

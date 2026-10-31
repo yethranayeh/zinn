@@ -1,0 +1,24 @@
+---
+import Chip from "../../src/components/ui/chip/Chip.astro";
+import ComponentHeading from "../components/ComponentHeading.astro";
+import Specimen from "../components/Specimen.astro";
+import FoundryLayout from "../layouts/FoundryLayout.astro";
+---
+
+<FoundryLayout title='Chip' description='Chip is a compact label on Soot.'>
+	<ComponentHeading folder='chip'>
+		<p>
+			A compact label on Soot. It wraps with its text and has no interactive states. Content inside it keeps its own semantics,
+			such as a <code>time</code> element for a date.
+		</p>
+	</ComponentHeading>
+
+	<div class='grid gap-4 md:grid-cols-2'>
+		<Specimen label='<Chip>'>
+			<Chip>Label</Chip>
+		</Specimen>
+		<Specimen label='<Chip> with a time element'>
+			<Chip><time datetime='2026-10-31'>31.10.2026</time></Chip>
+		</Specimen>
+	</div>
+</FoundryLayout>

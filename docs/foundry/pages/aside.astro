@@ -1,0 +1,24 @@
+---
+import Aside from "../../src/components/ui/aside/Aside.astro";
+import ComponentHeading from "../components/ComponentHeading.astro";
+import Specimen from "../components/Specimen.astro";
+import FoundryLayout from "../layouts/FoundryLayout.astro";
+---
+
+<FoundryLayout title='Aside' description='Aside holds commentary or an important caveat in the reading flow.'>
+	<ComponentHeading folder='aside'>
+		<p>
+			Commentary or an important caveat, inside the reading flow. Its label names the aside for assistive technology and states
+			what it is, so the Clay rule is never the only signal.
+		</p>
+		<p>Keep it in the reading column, where its text matches the prose around it.</p>
+	</ComponentHeading>
+
+	<Specimen label='<Aside label="Note">' block>
+		<div class='max-w-[65ch]'>
+			<Aside label='Note'>
+				<p>The body keeps the size and color of the prose around it.</p>
+			</Aside>
+		</div>
+	</Specimen>
+</FoundryLayout>

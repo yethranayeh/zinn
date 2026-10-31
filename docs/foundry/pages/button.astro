@@ -1,0 +1,88 @@
+---
+import Button from "../../src/components/ui/button/Button.astro";
+import { buttonVariants, type ButtonSize, type ButtonVariant } from "../../src/components/ui/button/variants";
+import Icon from "../../src/components/ui/icon/Icon.astro";
+import ComponentHeading from "../components/ComponentHeading.astro";
+import Specimen from "../components/Specimen.astro";
+import FoundryLayout from "../layouts/FoundryLayout.astro";
+
+const variants = Object.keys(buttonVariants.variants.variant) as ButtonVariant[];
+const sizes = Object.keys(buttonVariants.variants.size) as ButtonSize[];
+// Variants made for Soot surfaces render on Soot.
+const sootVariants: ButtonVariant[] = ["ghost-inverted"];
+// Sizes made for a single icon show one instead of a text label.
+const iconSizes: ButtonSize[] = ["icon", "responsive-icon"];
+---
+
+<FoundryLayout title='Button' description='Button renders every action on zinn.sh, as a button or as a link.'>
+	<ComponentHeading folder='button'>
+		<p>
+			Use Button for every action on zinn.sh.
+			Given <code>href</code>, it renders a link.
+			Otherwise it renders a button whose <code>type</code> defaults to <code>button</code>.
+		</p>
+		<p>
+			Ghost suits actions inside other components, and ghost-inverted is the same on Soot. Solid and outline suit actions that
+			stand on their own. Labels use MonoMMM at every size.
+		</p>
+		<p>A class passed to Button replaces any conflicting class from its variant or size.</p>
+	</ComponentHeading>
+
+	<section class='flex flex-col gap-4' aria-labelledby='variants'>
+		<h2 id='variants' class='text-xl font-semibold'>Variants and sizes</h2>
+		<div class='overflow-x-auto border border-soot/20'>
+			<table class='w-full border-collapse'>
+				<thead>
+					<tr class='border-b border-soot/20 font-mono text-xs text-muted-foreground'>
+						<th class='p-3 text-left font-normal'>variant</th>
+						{sizes.map((size) => <th class='p-3 text-left font-normal'>size="{size}"</th>)}
+					</tr>
+				</thead>
+				<tbody>
+					{
+						variants.map((variant) => (
+							<tr
+								class:list={[
+									"border-b border-soot/20 last:border-b-0",
+									sootVariants.includes(variant) && "bg-soot text-soot-foreground"
+								]}>
+								<th
+									class:list={[
+										"p-3 text-left font-mono text-xs font-normal",
+										sootVariants.includes(variant) ? "text-soot-muted-foreground" : "text-muted-foreground"
+									]}>
+									variant="{variant}"
+								</th>
+								{sizes.map((size) => (
+									<td class='p-3'>
+										{iconSizes.includes(size) ? (
+											<Button variant={variant} size={size} aria-label='Copy'>
+												<Icon name='copy' />
+											</Button>
+										) : (
+											<Button variant={variant} size={size}>
+												Button
+											</Button>
+										)}
+									</td>
+								))}
+							</tr>
+						))
+					}
+				</tbody>
+			</table>
+		</div>
+	</section>
+
+	<section class='flex flex-col gap-4' aria-labelledby='states'>
+		<h2 id='states' class='text-xl font-semibold'>Links and states</h2>
+		<div class='grid gap-4 md:grid-cols-2'>
+			<Specimen label='<Button href="/" variant="outline" size="large">'>
+				<Button href='/' variant='outline' size='large'>Foundry</Button>
+			</Specimen>
+			<Specimen label='<Button variant="solid" disabled>'>
+				<Button variant='solid' disabled>Saving</Button>
+			</Specimen>
+		</div>
+	</section>
+</FoundryLayout>

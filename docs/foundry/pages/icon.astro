@@ -1,0 +1,43 @@
+---
+import Icon from "../../src/components/ui/icon/Icon.astro";
+import { iconNames } from "../../src/components/ui/icon/names";
+import ComponentHeading from "../components/ComponentHeading.astro";
+import Specimen from "../components/Specimen.astro";
+import FoundryLayout from "../layouts/FoundryLayout.astro";
+---
+
+<FoundryLayout title='Icon' description="Icon shows a symbol from zinn.sh's icon sprite.">
+	<ComponentHeading folder='icon'>
+		<p>
+			Icons come from the site's sprite, <code>public/icons.svg</code>, and fill with the current text color. They are hidden
+			from assistive technology, so the link or button around an icon carries its label.
+		</p>
+		<p>The default size is 18px. A size class changes it.</p>
+	</ComponentHeading>
+
+	<section class='flex flex-col gap-4' aria-labelledby='names'>
+		<h2 id='names' class='text-xl font-semibold'>Names</h2>
+		<ul class='grid grid-cols-2 border-t border-l border-soot/20 sm:grid-cols-4 lg:grid-cols-7'>
+			{
+				iconNames.map((name) => (
+					<li class='flex flex-col items-center gap-3 border-r border-b border-soot/20 p-6'>
+						<Icon name={name} />
+						<span class='font-mono text-xs wrap-anywhere text-muted-foreground'>{name}</span>
+					</li>
+				))
+			}
+		</ul>
+	</section>
+
+	<section class='flex flex-col gap-4' aria-labelledby='sizes'>
+		<h2 id='sizes' class='text-xl font-semibold'>Sizes</h2>
+		<div class='grid gap-4 md:grid-cols-2'>
+			<Specimen label='<Icon name="arrow-right" />'>
+				<Icon name='arrow-right' />
+			</Specimen>
+			<Specimen label='<Icon name="arrow-right" class="size-6" />'>
+				<Icon name='arrow-right' class='size-6' />
+			</Specimen>
+		</div>
+	</section>
+</FoundryLayout>

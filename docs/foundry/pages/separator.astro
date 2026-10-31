@@ -1,0 +1,38 @@
+---
+import Separator from "../../src/components/ui/separator/Separator.astro";
+import { separatorVariants, type SeparatorOrientation } from "../../src/components/ui/separator/variants";
+import ComponentHeading from "../components/ComponentHeading.astro";
+import Specimen from "../components/Specimen.astro";
+import FoundryLayout from "../layouts/FoundryLayout.astro";
+
+const orientations = Object.keys(separatorVariants.variants.orientation) as SeparatorOrientation[];
+// Each orientation needs a parent that gives it room: a column for a horizontal line, a row with a height for a vertical one.
+const parents: Record<SeparatorOrientation, string> = {
+	horizontal: "flex w-full flex-col gap-4",
+	vertical: "flex h-12 items-center gap-4"
+};
+---
+
+<FoundryLayout title='Separator' description='Separator is a decorative line between parts of a layout.'>
+	<ComponentHeading folder='separator'>
+		<p>
+			A decorative 1px Pewter line, hidden from assistive technology. A horizontal line fills the width of its parent, and a
+			vertical line fills the height of a flex row.
+		</p>
+		<p>For a boundary that readers should hear, use a heading or a landmark instead.</p>
+	</ComponentHeading>
+
+	<div class='grid gap-4 md:grid-cols-2'>
+		{
+			orientations.map((orientation) => (
+				<Specimen label={`<Separator orientation="${orientation}" />`}>
+					<div class={parents[orientation]}>
+						<span>One</span>
+						<Separator orientation={orientation} />
+						<span>Two</span>
+					</div>
+				</Specimen>
+			))
+		}
+	</div>
+</FoundryLayout>

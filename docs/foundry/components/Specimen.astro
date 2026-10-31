@@ -1,0 +1,19 @@
+---
+interface Props {
+	/** What the specimen shows, usually its props. */
+	label: string;
+	/** Lays the specimen out as a block instead of a row, for components that fill the width. */
+	block?: boolean;
+}
+
+const { label, block = false } = Astro.props;
+---
+
+<figure class='flex min-w-0 flex-col border border-soot/20'>
+	<div class:list={["min-h-24 flex-1 p-6", block ? "block" : "flex flex-wrap items-center gap-4"]}>
+		<slot />
+	</div>
+	<figcaption class='border-t border-soot/20 px-3 py-2 font-mono text-xs wrap-anywhere text-muted-foreground'>
+		{label}
+	</figcaption>
+</figure>

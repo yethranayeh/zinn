@@ -1,0 +1,37 @@
+---
+import "../styles/foundry.css";
+
+interface Props {
+	/** The page name. The document title is `{title} | Zinn Foundry`, or `Zinn Foundry` without one. */
+	title?: string;
+	description: string;
+}
+
+const { title, description } = Astro.props;
+const documentTitle = title ? `${title} | Zinn Foundry` : "Zinn Foundry";
+---
+
+<!doctype html>
+<html lang='en' class='bg-limestone font-sans text-soot scheme-light [font-synthesis:none]'>
+	<head>
+		<meta charset='utf-8' />
+		<meta name='viewport' content='width=device-width, initial-scale=1' />
+		<meta name='theme-color' content='#e8e0cc' />
+		<meta name='description' content={description} />
+		<title>{documentTitle}</title>
+		<link rel='icon' href='/favicon.svg' type='image/svg+xml' />
+		<link rel='preload' href='/fonts/AlanSans.ttf' as='font' type='font/ttf' crossorigin />
+		<link rel='preload' href='/fonts/monoMMM_5.ttf' as='font' type='font/ttf' crossorigin />
+	</head>
+	<body class='flex min-h-svh flex-col selection:bg-soot selection:text-limestone'>
+		<header class='border-b border-soot'>
+			<div class='site-container flex h-(--site-brand-height) items-center'>
+				<a href='/' class='font-mono text-xs no-underline hover:underline'>Zinn Foundry</a>
+			</div>
+		</header>
+
+		<main class='site-container flex min-w-0 flex-1 flex-col gap-12 py-12'>
+			<slot />
+		</main>
+	</body>
+</html>

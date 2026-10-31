@@ -6,9 +6,11 @@
 		"dev": "bun --bun astro dev --host 127.0.0.1",
 		"build": "bun --bun astro build",
 		"check": "bun --bun astro check",
-		"test": "PUBLIC_SITE_ENV=production bun run build && bun tests/run.ts",
+		"test": "PUBLIC_SITE_ENV=production bun run build && bun run foundry:build && bun tests/run.ts",
 		"deploy": "bun run test && bunx wrangler deploy",
-		"preview": "bun --bun astro preview --host 127.0.0.1"
+		"preview": "bun --bun astro preview --host 127.0.0.1",
+		"foundry:dev": "bun --bun astro dev --config foundry.config.mjs --host 127.0.0.1",
+		"foundry:build": "bun --bun astro build --config foundry.config.mjs"
 	},
 	"dependencies": {
 		"@astrojs/markdown-satteri": "0.4.3",

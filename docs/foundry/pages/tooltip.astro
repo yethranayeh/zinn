@@ -1,0 +1,32 @@
+---
+import Button from "../../src/components/ui/button/Button.astro";
+import Icon from "../../src/components/ui/icon/Icon.astro";
+import Tooltip from "../../src/components/ui/tooltip/Tooltip.astro";
+import ComponentHeading from "../components/ComponentHeading.astro";
+import Specimen from "../components/Specimen.astro";
+import FoundryLayout from "../layouts/FoundryLayout.astro";
+---
+
+<FoundryLayout title='Tooltip' description='Tooltip shows a text hint for a button or link.'>
+	<ComponentHeading folder='tooltip'>
+		<p>
+			A text hint for a button or link. It shows on hover and keyboard focus, and Escape dismisses it. The pointer can move into
+			the hint without closing it.
+		</p>
+		<p>The hint adds no tab stop, so the button or link inside still needs its own accessible name.</p>
+		<p>
+			To show a temporary message instead, dispatch a bubbling <code>tooltip-message</code> event with the text as its detail.
+			A <code>null</code> detail restores the hint.
+		</p>
+	</ComponentHeading>
+
+	<Specimen label='<Tooltip text="Copy as Markdown">'>
+		<div class='ml-auto'>
+			<Tooltip text='Copy as Markdown'>
+				<Button size='icon' aria-label='Copy as Markdown'>
+					<Icon name='copy' />
+				</Button>
+			</Tooltip>
+		</div>
+	</Specimen>
+</FoundryLayout>
