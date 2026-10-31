@@ -35,3 +35,9 @@ bun run docs:deploy
 ```
 
 This builds and deploys the production site. Deployment configuration is in [wrangler.jsonc](wrangler.jsonc).
+
+```sh
+bun run foundry:deploy
+```
+
+This builds and deploys Foundry to [foundry.zinn.sh](https://foundry.zinn.sh), configured in [wrangler.foundry.jsonc](wrangler.foundry.jsonc).

@@ -110,7 +110,10 @@ test("Foundry's build holds exactly the pages in foundry/pages", () => {
 test("Foundry's build copies only the listed files from public", async () => {
   const { shippedPublicFiles } = await import("../foundry.config.mjs");
   const publicFiles = [...new Bun.Glob("**/*").scanSync({ cwd: join(docsDirectory, "public"), dot: true })];
-  const copiedFiles = publicFiles.filter((file) => existsSync(join(foundryBuildDirectory, file))).sort();
+  // Foundry writes its own _headers.
+  const copiedFiles = publicFiles
+    .filter((file) => file !== "_headers" && existsSync(join(foundryBuildDirectory, file)))
+    .sort();
   expect(copiedFiles).toEqual([...shippedPublicFiles].sort());
 });
 
@@ -125,4 +128,15 @@ test("every path Foundry's pages and styles reference exists in its build", () =
       .map((path) => `${relative(foundryBuildDirectory, file)}: ${path}`),
   );
   expect(missingPaths).toEqual([]);
+});
+
+test("Foundry's build serves the headers from foundry/_headers", () => {
+  expect(readFileSync(join(foundryBuildDirectory, "_headers"), "utf8")).toBe(readFileSync(join(foundryDirectory, "_headers"), "utf8"));
+});
+
+test("every Foundry page asks search engines not to index it", () => {
+  const pagesWithoutNoindex = [...new Bun.Glob("**/*.html").scanSync({ cwd: foundryBuildDirectory })].filter(
+    (page) => !readFileSync(join(foundryBuildDirectory, page), "utf8").includes('<meta name="robots" content="noindex">'),
+  );
+  expect(pagesWithoutNoindex).toEqual([]);
 });

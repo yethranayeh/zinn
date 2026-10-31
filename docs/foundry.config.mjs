@@ -1,5 +1,5 @@
 // @ts-check
-import { readdir, rm } from "node:fs/promises";
+import { copyFile, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "astro/config";
@@ -21,7 +21,7 @@ export const shippedPublicFiles = [
 	"pixelarticons-LICENSE.txt"
 ];
 
-// Astro copies all of public/ into the build, so this removes what Foundry does not ship
+// Astro copies all of public/ into the build, so this removes what Foundry does not ship and adds its own _headers
 /** @type {import("astro").AstroIntegration} */
 const shipListedPublicFiles = {
 	name: "foundry-public-files",
@@ -39,6 +39,7 @@ const shipListedPublicFiles = {
 				}
 			};
 			await removeUnlisted("");
+			await copyFile(fromDocs("./foundry/_headers"), join(fileURLToPath(dir), "_headers"));
 		}
 	}
 };

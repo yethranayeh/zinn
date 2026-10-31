@@ -10,7 +10,8 @@
 		"deploy": "bun run test && bunx wrangler deploy",
 		"preview": "bun --bun astro preview --host 127.0.0.1",
 		"foundry:dev": "bun --bun astro dev --config foundry.config.mjs --host 127.0.0.1",
-		"foundry:build": "bun --bun astro build --config foundry.config.mjs"
+		"foundry:build": "bun --bun astro build --config foundry.config.mjs",
+		"foundry:deploy": "bun run test && bunx wrangler deploy --config wrangler.foundry.jsonc"
 	},
 	"dependencies": {
 		"@astrojs/markdown-satteri": "0.4.3",

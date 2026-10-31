@@ -22,6 +22,7 @@
 		"docs:preview": "bun run --cwd docs preview",
 		"foundry:dev": "bun run --cwd docs foundry:dev",
 		"foundry:build": "bun run --cwd docs foundry:build",
+		"foundry:deploy": "bun run --cwd docs foundry:deploy",
 		"opencode:test": "bun run --cwd integrations/opencode/inspector test",
 		"opencode:typecheck": "bun scripts/typecheck.ts integrations/opencode/inspector",
 		"codex:build": "bun run --cwd integrations/codex build",
