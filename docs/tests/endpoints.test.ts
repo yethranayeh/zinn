@@ -183,7 +183,10 @@ test("changelog and its Markdown twin list every release entry, newest first", a
   );
   // Zinn releases come before integration releases from the same day.
   const releases = [...zinnReleases, ...integrationReleases].sort(
-    (a, b) => b.date.localeCompare(a.date) || Number(b.zinnLine) - Number(a.zinnLine),
+    (a, b) =>
+      b.date.localeCompare(a.date) ||
+      Number(b.zinnLine) - Number(a.zinnLine) ||
+      b.version.localeCompare(a.version, undefined, { numeric: true }),
   );
   expect(zinnReleases.length).toBeGreaterThan(0);
   expect(integrationReleases.length).toBeGreaterThan(0);

@@ -1,5 +1,5 @@
 const packageName = "@zinn-dev/opencode";
-const version = "0.2.0";
+const version = "0.3.0";
 
 export const opencodeInspector = {
   title: "Zinn task inspector",

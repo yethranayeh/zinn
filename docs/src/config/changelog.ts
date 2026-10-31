@@ -75,7 +75,10 @@ export async function getReleases(): Promise<ChangelogRelease[]> {
     release.entry.collection === "releases" ? 0 : 1;
 
   return [...zinnReleases, ...integrationReleases].sort(
-    (a, b) => b.date.localeCompare(a.date) || zinnFirst(a) - zinnFirst(b),
+    (a, b) =>
+      b.date.localeCompare(a.date) ||
+      zinnFirst(a) - zinnFirst(b) ||
+      b.version.localeCompare(a.version, undefined, { numeric: true }),
   );
 }
 
