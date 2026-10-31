@@ -1,6 +1,6 @@
 {
 	"name": "@zinn-dev/opencode",
-	"version": "0.2.0",
+	"version": "0.3.0-dev",
 	"type": "module",
 	"description": "Experimental Zinn task inspector for the OpenCode TUI.",
 	"keywords": [
@@ -46,15 +46,19 @@
 		"test:package": "bun test --timeout 120000 tests/package.test.ts",
 		"prepublishOnly": "bun checks/release.ts && bun run typecheck && bun run test"
 	},
-	"dependencies": {
-		"@opencode/plugin": "2.2.0"
-	},
 	"peerDependencies": {
+		"@opencode/plugin": "2.2.0",
 		"@opentui/core": "0.7.0",
 		"@opentui/solid": "0.7.0",
 		"solid-js": ">=1.9.0"
 	},
+	"peerDependenciesMeta": {
+		"@opencode/plugin": {
+			"optional": true
+		}
+	},
 	"devDependencies": {
+		"@opencode/plugin": "2.2.0",
 		"@opencode/theme": "2.2.0",
 		"@opentui/core": "0.7.0",
 		"@opentui/solid": "0.7.0",
