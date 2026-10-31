@@ -1,6 +1,6 @@
 ---
 import BaseLayout from "../../../../layouts/BaseLayout.astro";
-import ActionLink from "../../../../components/ActionLink.astro";
+import Button from "../../../../components/Button.astro";
 import Breadcrumbs from "../../../../components/Breadcrumbs.astro";
 import Icon from "../../../../components/Icon.astro";
 import InspectorCollage from "../../../../components/InspectorCollage.astro";
@@ -40,8 +40,8 @@ const pluginConfig = `{
 			<div class='grid gap-7 md:grid-cols-[1.1fr_1fr] md:items-end md:gap-12'>
 				<p class='max-w-md text-lg leading-relaxed'>Experimental. {opencodeInspector.description}</p>
 				<div class='flex flex-wrap gap-3 md:justify-end'>
-					<ActionLink href='#installation'>Installation</ActionLink>
-					<ActionLink href={source} variant='outline'>Source</ActionLink>
+					<Button href='#installation' variant='solid' size='large'>Installation</Button>
+					<Button href={source} variant='outline' size='large'>Source</Button>
 				</div>
 			</div>
 		</section>

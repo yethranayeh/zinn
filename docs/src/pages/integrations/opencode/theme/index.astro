@@ -1,6 +1,6 @@
 ---
 import BaseLayout from "../../../../layouts/BaseLayout.astro";
-import ActionLink from "../../../../components/ActionLink.astro";
+import Button from "../../../../components/Button.astro";
 import Breadcrumbs from "../../../../components/Breadcrumbs.astro";
 import Icon from "../../../../components/Icon.astro";
 import MarkdownH1 from "../../../../components/MarkdownH1.astro";
@@ -25,10 +25,10 @@ import { projectLinks } from "../../../../config/site";
 					<div class='mt-6'><PaletteStrip /></div>
 				</div>
 				<div class='flex flex-wrap gap-3 md:justify-end'>
-					<ActionLink href={opencodeTheme.download} download='zinn.json'
-						>Download theme <Icon name='download' /></ActionLink
+					<Button href={opencodeTheme.download} download='zinn.json' variant='solid' size='large'
+						>Download theme <Icon name='download' /></Button
 					>
-					<ActionLink href='#installation' variant='outline'>Installation</ActionLink>
+					<Button href='#installation' variant='outline' size='large'>Installation</Button>
 				</div>
 			</div>
 		</section>
@@ -55,8 +55,8 @@ import { projectLinks } from "../../../../config/site";
 				</p>
 
 				<div class='mt-6'>
-					<ActionLink href={opencodeTheme.download} download='zinn.json'
-						>Download zinn.json <Icon name='download' /></ActionLink
+					<Button href={opencodeTheme.download} download='zinn.json' variant='solid' size='large'
+						>Download zinn.json <Icon name='download' /></Button
 					>
 				</div>
 			</div>
