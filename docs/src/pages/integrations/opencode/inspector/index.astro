@@ -3,20 +3,18 @@ import BaseLayout from "../../../../layouts/BaseLayout.astro";
 import Button from "../../../../components/ui/button/Button.astro";
 import Breadcrumbs from "../../../../components/Breadcrumbs.astro";
 import Icon from "../../../../components/ui/icon/Icon.astro";
-import ImageLightbox from "../../../../components/ImageLightbox.astro";
 import InspectorCollage from "../../../../components/InspectorCollage.astro";
 import MarkdownH1 from "../../../../components/MarkdownH1.astro";
 import MarkdownH2 from "../../../../components/MarkdownH2.astro";
 import MarkdownList from "../../../../components/MarkdownList.astro";
-import MarkdownTable from "../../../../components/MarkdownTable.astro";
-import MarkdownTableCell from "../../../../components/MarkdownTableCell.astro";
-import MarkdownTableHeaderCell from "../../../../components/MarkdownTableHeaderCell.astro";
-import MarkdownTableRow from "../../../../components/MarkdownTableRow.astro";
+import Table from "../../../../components/ui/table/Table.astro";
+import TableCell from "../../../../components/ui/table/TableCell.astro";
+import TableHead from "../../../../components/ui/table/TableHead.astro";
+import TableRow from "../../../../components/ui/table/TableRow.astro";
 import Prose from "../../../../components/Prose.astro";
-import ScreenshotFigure from "../../../../components/ScreenshotFigure.astro";
 import TerminalCommands from "../../../../components/TerminalCommands.astro";
 
-import { inspectorCollage, inspectorPalette, opencodeInspector } from "../../../../config/opencode-inspector";
+import { inspectorCollage, opencodeInspector } from "../../../../config/opencode-inspector";
 import { projectLinks } from "../../../../config/site";
 
 const source = `${projectLinks.github}/tree/main/integrations/opencode/inspector`;
@@ -95,20 +93,6 @@ const pluginConfig = `{
 					<strong>Zinn: task keys in this chat</strong> and{" "}
 					<strong>Zinn: pick a task from the board</strong>.
 				</p>
-				<figure class='mt-8'>
-					<div class='border border-pewter bg-soot p-3 text-soot-foreground scheme-dark md:p-7'>
-						<div class='grid gap-5'>
-							<ScreenshotFigure lightboxId='inspector-palette' {...inspectorPalette.shots.composer} />
-							<div class='grid gap-5 sm:grid-cols-2'>
-								<ScreenshotFigure lightboxId='inspector-palette' {...inspectorPalette.shots.commands} />
-								<ScreenshotFigure lightboxId='inspector-palette' {...inspectorPalette.shots.allTasks} />
-							</div>
-							<ScreenshotFigure lightboxId='inspector-palette' {...inspectorPalette.shots.keysInChat} />
-						</div>
-					</div>
-					<figcaption class='mt-3 font-mono text-[11px] text-muted-foreground'>{inspectorPalette.caption}</figcaption>
-				</figure>
-				<ImageLightbox id='inspector-palette' />
 				<p>
 					Task details include status, priority, labels, relations, comment count and the first paragraph of the
 					description. When the detail is opened from a task key mentioned in this chat, it also says how many times
@@ -117,32 +101,32 @@ const pluginConfig = `{
 				</p>
 
 				<MarkdownH2 id='options'>Options</MarkdownH2>
-				<MarkdownTable>
+				<Table>
 					<thead>
 						<tr>
-							<MarkdownTableHeaderCell>Option</MarkdownTableHeaderCell>
-							<MarkdownTableHeaderCell>Default</MarkdownTableHeaderCell>
-							<MarkdownTableHeaderCell>Behavior</MarkdownTableHeaderCell>
+							<TableHead>Option</TableHead>
+							<TableHead>Default</TableHead>
+							<TableHead>Behavior</TableHead>
 						</tr>
 					</thead>
 					<tbody>
-						<MarkdownTableRow>
-							<MarkdownTableCell><code>rows</code></MarkdownTableCell>
-							<MarkdownTableCell><code>1</code></MarkdownTableCell>
-							<MarkdownTableCell>
+						<TableRow>
+							<TableCell><code>rows</code></TableCell>
+							<TableCell><code>1</code></TableCell>
+							<TableCell>
 								Accepts <code>1</code> or <code>2</code>. <code>2</code> includes column, priority and labels.
-							</MarkdownTableCell>
-						</MarkdownTableRow>
-						<MarkdownTableRow>
-							<MarkdownTableCell><code>current</code></MarkdownTableCell>
-							<MarkdownTableCell><code>"off"</code></MarkdownTableCell>
-							<MarkdownTableCell>
+							</TableCell>
+						</TableRow>
+						<TableRow>
+							<TableCell><code>current</code></TableCell>
+							<TableCell><code>"off"</code></TableCell>
+							<TableCell>
 								Accepts <code>"off"</code> or <code>"glyph"</code>. <code>"glyph"</code> marks tasks with recorded activity
 								from this conversation family.
-							</MarkdownTableCell>
-						</MarkdownTableRow>
+							</TableCell>
+						</TableRow>
 					</tbody>
-				</MarkdownTable>
+				</Table>
 
 				<MarkdownH2>Conversation marks</MarkdownH2>
 				<p>

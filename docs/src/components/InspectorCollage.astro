@@ -51,16 +51,6 @@ const percent = (value: number, total: number) => `${((value / total) * 100).toF
 							))
 						)
 					}
-					{
-						parts.map((part, index) => (
-							<span
-								class='pointer-events-none absolute z-20 flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-bronze bg-soot font-mono text-[10px] text-bronze'
-								style={`left: ${percent(part.x, width)}; top: ${part.callout.top}%;`}
-								aria-hidden='true'>
-								{index + 1}
-							</span>
-						))
-					}
 				</div>
 
 				{
@@ -156,7 +146,8 @@ const percent = (value: number, total: number) => `${((value / total) * 100).toF
 			for (const button of callout.querySelectorAll<HTMLButtonElement>("[data-step]")) {
 				button.addEventListener("click", () => {
 					const partImages = grouped.get(part) ?? [];
-					stateIndex[part] = ((stateIndex[part] ?? 0) + Number(button.dataset.step) + partImages.length) % partImages.length;
+					stateIndex[part] =
+						((stateIndex[part] ?? 0) + Number(button.dataset.step) + partImages.length) % partImages.length;
 					render();
 				});
 			}

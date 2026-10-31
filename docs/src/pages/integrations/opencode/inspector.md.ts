@@ -1,9 +1,5 @@
 import type { APIRoute } from "astro";
-import {
-  inspectorCollage,
-  inspectorPalette,
-  opencodeInspector,
-} from "../../../config/opencode-inspector";
+import { inspectorCollage, opencodeInspector } from "../../../config/opencode-inspector";
 import { projectLinks } from "../../../config/site";
 
 export const GET: APIRoute = () =>
@@ -47,10 +43,6 @@ OpenCode loads this TUI-only package through its native [CLI plugin configuratio
 ## Find and inspect tasks
 
 Run \`/zinn\` to find a loaded active task. The command palette also offers **Zinn: task keys in this chat** and **Zinn: pick a task from the board**.
-
-${Object.values(inspectorPalette.shots)
-  .map((shot) => `![${shot.alt}](${shot.image})`)
-  .join("\n\n")}
 
 Task details include status, priority, labels, relations, comment count and the first paragraph of the description. When the detail is opened from a task key mentioned in this chat, it also says how many times that task was mentioned. Unknown keys are shown when their project prefix appears among the loaded tasks. Select the ZINN heading to refresh task and label data.
 
