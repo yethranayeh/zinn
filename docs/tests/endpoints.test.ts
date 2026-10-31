@@ -90,7 +90,7 @@ async function expectMarkdownTwin(page: string, source: string) {
 	const lastUpdated = sourceText.match(/^lastUpdated: "([^"]+)"$/m)?.[1];
 	let expectedMarkdown = sourceText.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trimStart()
       .replace('import AgentSetup from "../../components/AgentSetup.astro";\n', "")
-      .replace('import Aside from "../../components/Aside.astro";\n', "")
+      .replace('import Aside from "../../components/ui/aside/Aside.astro";\n', "")
       .replace(/^\n/, "")
       .replace("<AgentSetup />\n\n", "")
       .replace(/<Aside label='([^']+)'>\n\n([\s\S]*?)\n\n<\/Aside>\n\n/g, (_match, label, content) => {

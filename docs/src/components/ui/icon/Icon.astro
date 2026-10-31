@@ -1,0 +1,13 @@
+---
+import { twMerge } from "tailwind-merge";
+
+interface Props {
+	name: "external-link" | "copy" | "check" | "arrow-left" | "arrow-right" | "download" | "close";
+	class?: string;
+}
+const { name, class: className } = Astro.props;
+---
+
+<svg class={twMerge("size-4.5 shrink-0 fill-current", className)} viewBox='0 0 24 24' aria-hidden='true'>
+	<use href={`/icons.svg#${name}`}></use>
+</svg>

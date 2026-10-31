@@ -1,0 +1,37 @@
+---
+import type { HTMLAttributes } from "astro/types";
+import { twMerge } from "tailwind-merge";
+import { buttonVariants, type ButtonSize, type ButtonVariant } from "./variants";
+
+type ButtonProps = HTMLAttributes<"button"> & { href?: undefined };
+type LinkProps = HTMLAttributes<"a"> & { href: string };
+
+// Renders a link when given href
+type Props = (ButtonProps | LinkProps) & { variant?: ButtonVariant; size?: ButtonSize };
+
+const {
+	variant = buttonVariants.defaultVariants.variant,
+	size = buttonVariants.defaultVariants.size,
+	class: className,
+	...attributes
+} = Astro.props;
+
+const classes = twMerge(
+	buttonVariants.base,
+	buttonVariants.variants.variant[variant],
+	buttonVariants.variants.size[size],
+	className
+);
+---
+
+{
+	attributes.href === undefined ? (
+		<button class={classes} {...{ type: "button", ...attributes }}>
+			<slot />
+		</button>
+	) : (
+		<a class={classes} {...attributes}>
+			<slot />
+		</a>
+	)
+}

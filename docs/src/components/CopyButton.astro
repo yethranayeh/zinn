@@ -1,8 +1,9 @@
 ---
 import type { ComponentProps } from "astro/types";
 import type { WebsiteEvent } from "../scripts/analytics";
-import Button from "./Button.astro";
-import Icon from "./Icon.astro";
+
+import Button from "./ui/button/Button.astro";
+import Icon from "./ui/icon/Icon.astro";
 
 type Props = ComponentProps<typeof Button> & {
 	value?: string;

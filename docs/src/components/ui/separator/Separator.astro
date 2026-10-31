@@ -1,0 +1,20 @@
+---
+// Adapted from https://ui.shadcn.com/docs/components/base/separator
+import type { SeparatorOrientation } from "./variants";
+
+import { twMerge } from "tailwind-merge";
+import { separatorVariants } from "./variants";
+
+interface Props {
+	orientation?: SeparatorOrientation;
+	class?: string;
+}
+
+const { orientation = separatorVariants.defaultVariants.orientation, class: className } = Astro.props;
+---
+
+<div
+	aria-hidden='true'
+	data-orientation={orientation}
+	class={twMerge(separatorVariants.base, separatorVariants.variants.orientation[orientation], className)}>
+</div>
