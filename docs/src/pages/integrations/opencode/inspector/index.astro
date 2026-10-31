@@ -7,6 +7,10 @@ import InspectorCollage from "../../../../components/InspectorCollage.astro";
 import MarkdownH1 from "../../../../components/MarkdownH1.astro";
 import MarkdownH2 from "../../../../components/MarkdownH2.astro";
 import MarkdownList from "../../../../components/MarkdownList.astro";
+import MarkdownTable from "../../../../components/MarkdownTable.astro";
+import MarkdownTableCell from "../../../../components/MarkdownTableCell.astro";
+import MarkdownTableHeaderCell from "../../../../components/MarkdownTableHeaderCell.astro";
+import MarkdownTableRow from "../../../../components/MarkdownTableRow.astro";
 import Prose from "../../../../components/Prose.astro";
 import TerminalCommands from "../../../../components/TerminalCommands.astro";
 
@@ -96,23 +100,33 @@ const pluginConfig = `{
 					Select the ZINN heading to refresh task and label data.
 				</p>
 
-				<MarkdownH2>Options</MarkdownH2>
-				<dl class='my-6 space-y-5'>
-					<div>
-						<dt class='font-mono font-semibold'>rows</dt>
-						<dd class='mt-1'>
-							Values <code>1</code> and <code>2</code>, default <code>1</code>. <code>2</code> includes column, priority and
-							labels.
-						</dd>
-					</div>
-					<div>
-						<dt class='font-mono font-semibold'>current</dt>
-						<dd class='mt-1'>
-							Values <code>"off"</code> and <code>"glyph"</code>, default <code>"off"</code>.
-							<code>"glyph"</code> marks tasks with recorded activity from this conversation family.
-						</dd>
-					</div>
-				</dl>
+				<MarkdownH2 id='options'>Options</MarkdownH2>
+				<MarkdownTable>
+					<thead>
+						<tr>
+							<MarkdownTableHeaderCell>Option</MarkdownTableHeaderCell>
+							<MarkdownTableHeaderCell>Default</MarkdownTableHeaderCell>
+							<MarkdownTableHeaderCell>Behavior</MarkdownTableHeaderCell>
+						</tr>
+					</thead>
+					<tbody>
+						<MarkdownTableRow>
+							<MarkdownTableCell><code>rows</code></MarkdownTableCell>
+							<MarkdownTableCell><code>1</code></MarkdownTableCell>
+							<MarkdownTableCell>
+								Accepts <code>1</code> or <code>2</code>. <code>2</code> includes column, priority and labels.
+							</MarkdownTableCell>
+						</MarkdownTableRow>
+						<MarkdownTableRow>
+							<MarkdownTableCell><code>current</code></MarkdownTableCell>
+							<MarkdownTableCell><code>"off"</code></MarkdownTableCell>
+							<MarkdownTableCell>
+								Accepts <code>"off"</code> or <code>"glyph"</code>. <code>"glyph"</code> marks tasks with recorded activity
+								from this conversation family.
+							</MarkdownTableCell>
+						</MarkdownTableRow>
+					</tbody>
+				</MarkdownTable>
 
 				<MarkdownH2>Conversation marks</MarkdownH2>
 				<p>
@@ -121,7 +135,7 @@ const pluginConfig = `{
 					activity, rather than an assignment or ownership claim.
 				</p>
 				<p>
-					OpenCode's native shell session ID is recorded by Zinn as a thread ID. An explicit
+					OpenCode's native shell session ID is recorded by Zinn as a thread ID. An explicit{" "}
 					<code>ZINN_SESSION_ID</code> and <code>ZINN_THREAD_ID</code> pair takes precedence. The inspector recognizes both
 					routes. See <a href='/docs/cli#who-am-i'>actor identity</a> for the CLI contract.
 				</p>

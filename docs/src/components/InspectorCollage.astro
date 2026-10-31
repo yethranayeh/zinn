@@ -1,8 +1,7 @@
 ---
 import type { InspectorCollagePart } from "../config/opencode-inspector";
 
-import Button from "./Button.astro";
-import Icon from "./Icon.astro";
+import FigureCallout from "./FigureCallout.astro";
 
 interface Props {
 	base: string;
@@ -17,7 +16,7 @@ const { base, width, height, caption, parts, class: className } = Astro.props;
 const percent = (value: number, total: number) => `${((value / total) * 100).toFixed(3)}%`;
 ---
 
-<figure class:list={["inspector-collage", className]}>
+<figure class:list={["inspector-collage isolate", className]}>
 	<div class='border border-pewter bg-soot p-3 text-soot-foreground scheme-dark md:p-7'>
 		<div class='@container' data-collage>
 			<div class='relative grid grid-cols-1 gap-3 @min-[640px]:grid-cols-2 @min-[880px]:block'>
@@ -37,7 +36,7 @@ const percent = (value: number, total: number) => `${((value / total) * 100).toF
 						parts.map((part) =>
 							part.states.map((state, index) => (
 								<img
-									class='absolute opacity-0 transition-opacity duration-150 ease-out data-active:opacity-100 data-highlight:outline-1 data-highlight:outline-solid data-highlight:outline-bronze motion-reduce:transition-none'
+									class='absolute opacity-0 data-active:opacity-100 data-highlight:outline-1 data-highlight:outline-solid data-highlight:outline-bronze'
 									data-part-image={part.id}
 									data-image-label={state.label}
 									data-active={index === 0 ? "" : undefined}
@@ -68,45 +67,14 @@ const percent = (value: number, total: number) => `${((value / total) * 100).toF
 				{
 					parts.map((part, index) => (
 						<div
-							class='z-30 w-full border border-pewter bg-soot p-2 @min-[880px]:absolute @min-[880px]:top-[var(--callout-top)] @min-[880px]:right-[var(--callout-right)] @min-[880px]:w-60 @min-[880px]:-translate-y-1/2'
-							data-callout={part.id}
-							data-part-label={part.label}
+							class='z-30 w-full @min-[880px]:absolute @min-[880px]:top-[var(--callout-top)] @min-[880px]:right-[var(--callout-right)] @min-[880px]:w-60 @min-[880px]:-translate-y-1/2'
 							style={`--callout-top: ${part.callout.top}%; --callout-right: ${part.callout.right}%;`}>
-							<div class='flex items-center gap-2'>
-								<span
-									class='flex size-5 shrink-0 items-center justify-center rounded-full border border-bronze font-mono text-[10px] text-bronze'
-									aria-hidden='true'>
-									{index + 1}
-								</span>
-								<span class='font-mono text-xs'>{part.label}</span>
-							</div>
-							<div class='mt-1 flex items-center justify-between gap-2'>
-								<span class='font-mono text-[11px] text-bone' data-state-label>
-									{part.states[0]!.label}
-								</span>
-								<div class='flex items-center gap-1' data-controls hidden>
-									<Button
-										variant='ghost-inverted'
-										size='icon'
-										class='border border-pewter'
-										data-step='-1'
-										aria-label={`Previous ${part.label} state`}>
-										<Icon name='arrow-left' class='size-4' />
-									</Button>
-									<span class='font-mono text-[10px] text-soot-muted-foreground' data-position>
-										01 / {String(part.states.length).padStart(2, "0")}
-									</span>
-									<Button
-										variant='ghost-inverted'
-										size='icon'
-										class='border border-pewter'
-										data-step='1'
-										aria-label={`Next ${part.label} state`}>
-										<Icon name='arrow-right' class='size-4' />
-									</Button>
-								</div>
-							</div>
-							<span class='sr-only' role='status' aria-live='polite' data-announcement />
+							<FigureCallout
+								number={index + 1}
+								id={part.id}
+								label={part.label}
+								states={part.states.map((state) => state.label)}
+							/>
 						</div>
 					))
 				}

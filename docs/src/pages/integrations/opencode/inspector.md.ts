@@ -48,8 +48,10 @@ Task details include status, priority, labels, relations, comment count and the 
 
 ## Options
 
-- \`rows\`: values \`1\` and \`2\`, default \`1\`. \`2\` includes column, priority and labels.
-- \`current\`: values \`"off"\` and \`"glyph"\`, default \`"off"\`. \`"glyph"\` marks tasks with recorded activity from this conversation family.
+| Option    | Default | Behavior                                                                                                  |
+| --------- | ------- | --------------------------------------------------------------------------------------------------------- |
+| \`rows\`    | \`1\`     | Accepts \`1\` or \`2\`. \`2\` includes column, priority and labels.                                             |
+| \`current\` | \`"off"\` | Accepts \`"off"\` or \`"glyph"\`. \`"glyph"\` marks tasks with recorded activity from this conversation family. |
 
 ## Conversation marks
 

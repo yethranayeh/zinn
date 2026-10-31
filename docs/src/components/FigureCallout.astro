@@ -1,0 +1,60 @@
+---
+interface Props {
+	/** 1-based callout number. */
+	number: number;
+	/** Stable key the owning figure script uses to find the related images. */
+	id: string;
+	label: string;
+	/** State labels in order. The first one is shown before the script runs. */
+	states: readonly string[];
+	class?: string;
+}
+
+const { number, id, label, states, class: className } = Astro.props;
+const displayNumber = String(number).padStart(2, "0");
+const initialPosition = String(1).padStart(2, "0");
+const displayCount = String(states.length).padStart(2, "0");
+---
+
+<div
+	class:list={[
+		"group border border-pewter border-t-2 border-t-bronze/70 bg-soot hover:border-t-bronze focus-within:border-t-bronze",
+		className
+	]}
+	data-callout={id}
+	data-part-label={label}>
+	<div
+		class='flex items-center justify-between gap-2 border-b border-pewter/60 bg-limestone/5 px-2 py-1 group-focus-within:bg-limestone/10 group-hover:bg-limestone/10'>
+		<span class='font-mono text-[10px] tracking-[0.1em] text-soot-muted-foreground uppercase'>
+			<span class='text-bronze'>{displayNumber}</span>
+			<span class='mx-1 text-pewter'>/</span>
+			{label}
+		</span>
+		<span class='font-mono text-[10px] text-soot-muted-foreground tabular-nums' data-position>
+			{initialPosition} / {displayCount}
+		</span>
+	</div>
+	<div class='flex items-center justify-between gap-2 px-2 py-1.5'>
+		<span class='flex min-w-0 items-center gap-1.5 font-mono text-[11px] text-bone'>
+			<span class='text-bronze' aria-hidden='true'>›</span>
+			<span class='truncate' data-state-label>{states[0]!}</span>
+		</span>
+		<div class='flex items-center' data-controls hidden>
+			<button
+				type='button'
+				class='grid size-7 cursor-pointer place-items-center font-mono text-sm text-soot-muted-foreground hover:text-bronze focus-visible:outline-offset-2'
+				data-step='-1'
+				aria-label={`Previous ${label} state`}>
+				‹
+			</button>
+			<button
+				type='button'
+				class='grid size-7 cursor-pointer place-items-center font-mono text-sm text-soot-muted-foreground hover:text-bronze focus-visible:outline-offset-2'
+				data-step='1'
+				aria-label={`Next ${label} state`}>
+				›
+			</button>
+		</div>
+	</div>
+	<span class='sr-only' role='status' aria-live='polite' data-announcement></span>
+</div>
