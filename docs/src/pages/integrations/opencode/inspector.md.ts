@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { opencodeInspector } from "../../../config/opencode-inspector";
+import { inspectorCollage, opencodeInspector } from "../../../config/opencode-inspector";
 import { projectLinks } from "../../../config/site";
 
 export const GET: APIRoute = () =>
@@ -9,6 +9,10 @@ export const GET: APIRoute = () =>
 Experimental. ${opencodeInspector.description}
 
 The inspector reads tasks, labels and recorded activity through the local Zinn CLI. It uses the same [data directory and settings](https://zinn.sh/docs/settings) as the CLI running in that environment. It loads active tasks from the default project, or from every project when no default is set. With a remote OpenCode server, the inspector still runs locally and reads the local CLI's database.
+
+## Screenshots
+
+${inspectorCollage.caption}
 
 ## Requirements
 

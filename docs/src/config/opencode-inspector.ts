@@ -31,18 +31,22 @@ export interface InspectorCollagePart {
 }
 
 const collageAssets = {
-  base: "/images/opencode-inspector/base.png",
-  sidepanelRows2: "/images/opencode-inspector/sidepanel-rows-2.png",
-  sidepanelRows1: "/images/opencode-inspector/sidepanel-rows-1.png",
-  detailsZoc2: "/images/opencode-inspector/details-zoc-2.png",
-  detailsZoc9: "/images/opencode-inspector/details-zoc-9.png",
+  base: "https://res.cloudinary.com/drwbqceye/image/upload/v1793456931/base_rjvdw8.png",
+  sidepanelRows2:
+    "https://res.cloudinary.com/drwbqceye/image/upload/v1793456931/sidepanel-rows-2_aszk0i.png",
+  sidepanelRows1:
+    "https://res.cloudinary.com/drwbqceye/image/upload/v1793456931/sidepanel-rows-1_tjtryl.png",
+  detailsZoc2:
+    "https://res.cloudinary.com/drwbqceye/image/upload/v1793456931/details-zoc-2_wajnpy.png",
+  detailsZoc9:
+    "https://res.cloudinary.com/drwbqceye/image/upload/v1793456931/details-zoc-9_dtekzb.png",
 };
 
 export const inspectorCollage = {
   base: collageAssets.base,
   width: 2994,
   height: 1570,
-  caption: `The sidepanel and task details in two states each. Captured in OpenCode ${opencodeInspector.verifiedVersion}.`,
+  caption: "The sidepanel and task details in two states each.",
   parts: [
     {
       id: "sidepanel",

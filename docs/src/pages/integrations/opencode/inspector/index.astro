@@ -3,13 +3,14 @@ import BaseLayout from "../../../../layouts/BaseLayout.astro";
 import ActionLink from "../../../../components/ActionLink.astro";
 import Breadcrumbs from "../../../../components/Breadcrumbs.astro";
 import Icon from "../../../../components/Icon.astro";
+import InspectorCollage from "../../../../components/InspectorCollage.astro";
 import MarkdownH1 from "../../../../components/MarkdownH1.astro";
 import MarkdownH2 from "../../../../components/MarkdownH2.astro";
 import MarkdownList from "../../../../components/MarkdownList.astro";
 import Prose from "../../../../components/Prose.astro";
 import TerminalCommands from "../../../../components/TerminalCommands.astro";
 
-import { opencodeInspector } from "../../../../config/opencode-inspector";
+import { inspectorCollage, opencodeInspector } from "../../../../config/opencode-inspector";
 import { projectLinks } from "../../../../config/site";
 
 const source = `${projectLinks.github}/tree/main/integrations/opencode/inspector`;
@@ -40,6 +41,15 @@ const pluginConfig = `{
 				</div>
 			</div>
 		</section>
+
+		<InspectorCollage
+			base={inspectorCollage.base}
+			width={inspectorCollage.width}
+			height={inspectorCollage.height}
+			caption={inspectorCollage.caption}
+			parts={inspectorCollage.parts}
+			class='mb-12 md:mb-16'
+		/>
 
 		<div class='max-w-3xl'>
 			<Prose>

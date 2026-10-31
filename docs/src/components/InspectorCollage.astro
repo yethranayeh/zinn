@@ -1,0 +1,176 @@
+---
+import type { InspectorCollagePart } from "../config/opencode-inspector";
+
+import Button from "./Button.astro";
+import Icon from "./Icon.astro";
+
+interface Props {
+	base: string;
+	width: number;
+	height: number;
+	caption: string;
+	parts: InspectorCollagePart[];
+	class?: string;
+}
+
+const { base, width, height, caption, parts, class: className } = Astro.props;
+const percent = (value: number, total: number) => `${((value / total) * 100).toFixed(3)}%`;
+---
+
+<figure class:list={["inspector-collage", className]}>
+	<div class='border border-pewter bg-soot p-3 text-soot-foreground scheme-dark md:p-7'>
+		<div class='@container' data-collage>
+			<div class='relative grid grid-cols-1 gap-3 @min-[640px]:grid-cols-2 @min-[880px]:block'>
+				<div
+					class='relative col-span-full outline-1 outline-solid outline-pewter'
+					style={`aspect-ratio: ${width} / ${height}`}>
+					<img
+						class='absolute inset-0 size-full'
+						src={base}
+						width={width}
+						height={height}
+						alt=''
+						loading='eager'
+						decoding='async'
+					/>
+					{
+						parts.map((part) =>
+							part.states.map((state, index) => (
+								<img
+									class='absolute opacity-0 transition-opacity duration-150 ease-out data-active:opacity-100 data-highlight:outline-1 data-highlight:outline-solid data-highlight:outline-bronze motion-reduce:transition-none'
+									data-part-image={part.id}
+									data-image-label={state.label}
+									data-active={index === 0 ? "" : undefined}
+									src={state.image}
+									width={part.width}
+									height={state.height}
+									alt={state.alt}
+									aria-hidden={index === 0 ? undefined : "true"}
+									loading={index === 0 ? "eager" : "lazy"}
+									decoding='async'
+									style={`left: ${percent(part.x, width)}; top: ${percent(part.y, height)}; width: ${percent(part.width, width)}; height: ${percent(state.height, height)};`}
+								/>
+							))
+						)
+					}
+					{
+						parts.map((part, index) => (
+							<span
+								class='pointer-events-none absolute z-20 flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-bronze bg-soot font-mono text-[10px] text-bronze'
+								style={`left: ${percent(part.x, width)}; top: ${part.callout.top}%;`}
+								aria-hidden='true'>
+								{index + 1}
+							</span>
+						))
+					}
+				</div>
+
+				{
+					parts.map((part, index) => (
+						<div
+							class='z-30 w-full border border-pewter bg-soot p-2 @min-[880px]:absolute @min-[880px]:top-[var(--callout-top)] @min-[880px]:right-[var(--callout-right)] @min-[880px]:w-60 @min-[880px]:-translate-y-1/2'
+							data-callout={part.id}
+							data-part-label={part.label}
+							style={`--callout-top: ${part.callout.top}%; --callout-right: ${part.callout.right}%;`}>
+							<div class='flex items-center gap-2'>
+								<span
+									class='flex size-5 shrink-0 items-center justify-center rounded-full border border-bronze font-mono text-[10px] text-bronze'
+									aria-hidden='true'>
+									{index + 1}
+								</span>
+								<span class='font-mono text-xs'>{part.label}</span>
+							</div>
+							<div class='mt-1 flex items-center justify-between gap-2'>
+								<span class='font-mono text-[11px] text-bone' data-state-label>
+									{part.states[0]!.label}
+								</span>
+								<div class='flex items-center gap-1' data-controls hidden>
+									<Button
+										variant='ghost-inverted'
+										size='icon'
+										class='border border-pewter'
+										data-step='-1'
+										aria-label={`Previous ${part.label} state`}>
+										<Icon name='arrow-left' class='size-4' />
+									</Button>
+									<span class='font-mono text-[10px] text-soot-muted-foreground' data-position>
+										01 / {String(part.states.length).padStart(2, "0")}
+									</span>
+									<Button
+										variant='ghost-inverted'
+										size='icon'
+										class='border border-pewter'
+										data-step='1'
+										aria-label={`Next ${part.label} state`}>
+										<Icon name='arrow-right' class='size-4' />
+									</Button>
+								</div>
+							</div>
+							<span class='sr-only' role='status' aria-live='polite' data-announcement />
+						</div>
+					))
+				}
+			</div>
+		</div>
+	</div>
+	<figcaption class='mt-3 font-mono text-[11px] text-muted-foreground'>{caption}</figcaption>
+</figure>
+
+<script>
+	for (const collage of document.querySelectorAll<HTMLElement>("[data-collage]")) {
+		for (const callout of collage.querySelectorAll<HTMLElement>("[data-callout]")) {
+			const part = callout.dataset.callout!;
+			const images = [...collage.querySelectorAll<HTMLImageElement>(`[data-part-image="${part}"]`)];
+			const stateLabel = callout.querySelector<HTMLElement>("[data-state-label]")!;
+			const position = callout.querySelector<HTMLElement>("[data-position]")!;
+			const announcement = callout.querySelector<HTMLElement>("[data-announcement]")!;
+			let current = Math.max(
+				0,
+				images.findIndex((image) => image.hasAttribute("data-active"))
+			);
+			let highlighted = false;
+
+			function setHighlight(on: boolean) {
+				highlighted = on;
+				images.forEach((image) => {
+					image.toggleAttribute("data-highlight", on && image.hasAttribute("data-active"));
+				});
+			}
+
+			function select(index: number) {
+				current = (index + images.length) % images.length;
+				images.forEach((image, imageIndex) => {
+					const active = imageIndex === current;
+					image.toggleAttribute("data-active", active);
+					image.setAttribute("aria-hidden", String(!active));
+				});
+				if (highlighted) {
+					setHighlight(true);
+				}
+				const label = images[current]!.dataset.imageLabel!;
+				stateLabel.textContent = label;
+				position.textContent = `${String(current + 1).padStart(2, "0")} / ${String(images.length).padStart(2, "0")}`;
+				announcement.textContent = `${callout.dataset.partLabel}: ${label}. State ${current + 1} of ${images.length}.`;
+			}
+
+			for (const button of callout.querySelectorAll<HTMLButtonElement>("[data-step]")) {
+				button.addEventListener("click", () => select(current + Number(button.dataset.step)));
+			}
+			for (const controls of callout.querySelectorAll<HTMLElement>("[data-controls]")) {
+				controls.hidden = false;
+			}
+			callout.addEventListener("pointerenter", () => setHighlight(true));
+			callout.addEventListener("pointerleave", () => {
+				if (!callout.matches(":focus-within")) {
+					setHighlight(false);
+				}
+			});
+			callout.addEventListener("focusin", () => setHighlight(true));
+			callout.addEventListener("focusout", () => {
+				if (!callout.contains(document.activeElement)) {
+					setHighlight(false);
+				}
+			});
+		}
+	}
+</script>
