@@ -106,3 +106,23 @@ test("Foundry's build holds exactly the pages in foundry/pages", () => {
   const builtPages = [...new Bun.Glob("**/*.html").scanSync({ cwd: foundryBuildDirectory })].sort();
   expect(builtPages).toEqual(expectedPages);
 });
+
+test("Foundry's build copies only the listed files from public", async () => {
+  const { shippedPublicFiles } = await import("../foundry.config.mjs");
+  const publicFiles = [...new Bun.Glob("**/*").scanSync({ cwd: join(docsDirectory, "public"), dot: true })];
+  const copiedFiles = publicFiles.filter((file) => existsSync(join(foundryBuildDirectory, file))).sort();
+  expect(copiedFiles).toEqual([...shippedPublicFiles].sort());
+});
+
+test("every path Foundry's pages and styles reference exists in its build", () => {
+  // Matches root-relative paths in attributes and in CSS url().
+  const referencePattern = /(?:(?:href|src)="|url\(["']?)(\/[^"'#?)\s]*)/g;
+  const builtFiles = [...new Bun.Glob("**/*.{html,css}").scanSync({ cwd: foundryBuildDirectory, absolute: true })];
+  const missingPaths = builtFiles.flatMap((file) =>
+    [...readFileSync(file, "utf8").matchAll(referencePattern)]
+      .map(([, path]) => (path.endsWith("/") ? `${path}index.html` : path))
+      .filter((path) => !existsSync(join(foundryBuildDirectory, path)))
+      .map((path) => `${relative(foundryBuildDirectory, file)}: ${path}`),
+  );
+  expect(missingPaths).toEqual([]);
+});
