@@ -432,6 +432,7 @@ export function Sidebar(props: {
     const loaded = map();
     return loaded.ok ? undefined : loaded.error;
   });
+  const sectionHasRows = () => knownRows().length + unknownRows().length > 0;
   const knownKeys = () => scan().known.map((mention) => mention.key);
   const unknownKeys = () => scan().unknown.map((mention) => mention.key);
   const knownPicker = () => {
@@ -467,15 +468,15 @@ export function Sidebar(props: {
       </RailLine>
 
       <Show when={failure()}>
-        <RailLine ctx={props.ctx} glyph="│">
+        <RailLine ctx={props.ctx} glyph={sectionHasRows() ? "│" : "┗"}>
           <text wrapMode="none" flexShrink={1} fg={theme().error}>
             {truncate(failure() ?? "", 40)}
           </text>
         </RailLine>
       </Show>
 
-      <Show when={!loading() && map().ok && knownRows().length === 0 && unknownRows().length === 0}>
-        <RailLine ctx={props.ctx} glyph="│">
+      <Show when={!loading() && map().ok && !sectionHasRows()}>
+        <RailLine ctx={props.ctx} glyph="┗">
           <text fg={theme().textMuted}>no task keys in this chat</text>
         </RailLine>
       </Show>
@@ -549,7 +550,7 @@ export function Sidebar(props: {
         </Show>
       </Show>
 
-      <Show when={!loading() && map().ok && knownRows().length + unknownRows().length > 0}>
+      <Show when={!loading() && map().ok && sectionHasRows()}>
         <RailLine ctx={props.ctx} glyph="┗">
           <text fg={theme().textMuted}>recent mentions</text>
         </RailLine>
