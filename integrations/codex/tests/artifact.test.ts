@@ -32,12 +32,133 @@ function fingerprint() {
     const directory = join(context.settings.store, "data");
     return readdirSync(directory).sort().map(file => [file, createHash("sha256").update(readFileSync(join(directory, file))).digest("hex")]);
 }
-async function connect(config = context.config) {
+async function connect(config = context.config, overrides: NodeJS.ProcessEnv = {}, cwd = context.directory) {
     const client = new Client({ name: "zinn-artifact-check", version: "1.0.0" });
-    const transport = new StdioClientTransport({ command: "node", args: [join(artifact.plugin, "launcher.mjs")], cwd: context.directory, env: { ...context.env as Record<string, string>, ZINN_CODEX_CONFIG: config } });
-    await client.connect(transport);
+    const env = Object.fromEntries(Object.entries({ ...context.env, ZINN_CODEX_CONFIG: config, ...overrides }).filter((entry): entry is [string, string] => entry[1] !== undefined));
+    const transport = new StdioClientTransport({ command: "node", args: [join(artifact.plugin, "launcher.mjs")], cwd, env });
+    try {
+        await client.connect(transport);
+    } catch (error) {
+        await client.close();
+        throw error;
+    }
     return client;
 }
+test.skipIf(process.platform === "win32")("configuration-free panel uses the Unix PATH and resolves stores independently of plugin cwd", async () => {
+    const bin = join(context.directory, "bin");
+    mkdirSync(bin);
+    writeFileSync(join(bin, "zinn"), `#!/usr/bin/env node\nimport(${JSON.stringify(pathToFileURL(cliPath).href)});\n`, { mode: 0o755 });
+    const localSettings = join(artifact.plugin, "zinn.local.json");
+    const unrelatedStore = join(context.directory, "plugin-context-store");
+    writeFileSync(localSettings, JSON.stringify({ storage: { directory: unrelatedStore } }));
+    try {
+        for (const selection of ["default", "global", "environment", "relative-environment", "older", "absent"]) {
+            const home = join(context.directory, `home-${selection}`);
+            mkdirSync(join(home, ".zinn"), { recursive: true });
+            const store = selection === "relative-environment"
+                ? join(home, "relative-store")
+                : selection === "global" || selection === "environment"
+                    ? join(context.directory, `${selection}-selected-store`)
+                    : join(home, ".zinn");
+            mkdirSync(store, { recursive: true });
+            if (selection === "older") {
+                seedOlderStore(store);
+            } else if (selection !== "absent") {
+                context.cli(["project", "create", "APP"], store);
+                context.cli(["task", "create", "APP", "--title", `${selection} task`], store);
+            }
+            if (selection === "global" || selection === "environment") {
+                writeFileSync(join(home, ".zinn/settings.json"), JSON.stringify({ storage: { directory: selection === "environment" ? unrelatedStore : store } }));
+            }
+            const env = {
+                HOME: home, USERPROFILE: home, ZINN_CODEX_CONFIG: undefined,
+                ZINN_DIR: selection === "relative-environment" ? "./relative-store" : selection === "environment" ? store : undefined,
+                PATH: `${bin}:${process.env.PATH}`,
+            };
+            let ordinaryState;
+            let ordinaryTask;
+            if (selection === "older") {
+                const control = Bun.spawnSync(["node", cliPath, "task", "view", "APP-1", "--json"], { env: { ...context.env, ...env, ZINN_DIR: store } });
+                expect(control.exitCode).toBe(0);
+                ordinaryTask = JSON.parse(control.stdout.toString());
+                ordinaryState = inspectStore(store);
+            }
+            const client = await connect(context.config, env, artifact.plugin);
+            try {
+                const result = (await client.callTool({ name: "inspect_task", arguments: { key: "APP-1" } })).structuredContent as any;
+                expect(result.store).toBe(store);
+                expect(result.kind).toBe(selection === "absent" ? "error" : "ready");
+                expect(existsSync(join(home, ".config/zinn/codex.json"))).toBe(false);
+                if (selection === "older") {
+                    expect(result.task).toEqual(ordinaryTask);
+                    expect(inspectStore(store)).toEqual(ordinaryState);
+                    expect(existsSync(join(store, "backups"))).toBe(false);
+                }
+                if (selection === "absent") {
+                    expect(existsSync(join(store, "data/zinn.sqlite"))).toBe(false);
+                }
+            } finally {
+                await client.close();
+            }
+        }
+        expect(existsSync(unrelatedStore)).toBe(false);
+        const badHome = join(context.directory, "invalid-home");
+        mkdirSync(join(badHome, ".zinn"), { recursive: true });
+        writeFileSync(join(badHome, ".zinn/settings.json"), "broken json");
+        await expect(connect(context.config, { HOME: badHome, USERPROFILE: badHome, ZINN_DIR: undefined, ZINN_CODEX_CONFIG: undefined, PATH: `${bin}:${process.env.PATH}` }, artifact.plugin)).rejects.toThrow();
+        expect(existsSync(join(badHome, ".zinn/data"))).toBe(false);
+    } finally {
+        rmSync(localSettings);
+    }
+}, 30000);
+
+test("an options file can omit store and explicit store selection retains precedence", async () => {
+    const config = join(context.directory, "options-without-store.json");
+    const { store: _store, ...options } = context.settings;
+    writeFileSync(config, JSON.stringify(options));
+    const discovered = await connect(config);
+    try {
+        expect((await discovered.callTool({ name: "inspect_task", arguments: { key: "APP-1" } })).structuredContent).toMatchObject({ kind: "ready", store: context.settings.store });
+    } finally {
+        await discovered.close();
+    }
+    const pinned = await connect(context.config, { ZINN_DIR: join(context.directory, "wrong-inherited-store") });
+    try {
+        expect((await pinned.callTool({ name: "inspect_task", arguments: { key: "APP-1" } })).structuredContent).toMatchObject({ kind: "ready", store: context.settings.store });
+    } finally {
+        await pinned.close();
+    }
+});
+
+test("closing during store discovery reaps its owned child", async () => {
+    const marker = join(context.directory, "discovery-child.json");
+    const script = join(context.directory, "pending-discovery.mjs");
+    writeFileSync(script, `import {writeFileSync} from 'node:fs';
+if (process.argv[2] === '--version') { console.log('0.43.0'); }
+else { process.on('SIGTERM', () => {}); writeFileSync(${JSON.stringify(marker)}, JSON.stringify({pid:process.pid})); setInterval(() => {}, 1000); }`);
+    const config = join(context.directory, "pending-discovery.json");
+    writeFileSync(config, JSON.stringify({ cli: ["node", script] }));
+    const client = new Client({ name: "zinn-startup-check", version: "1.0.0" });
+    const transport = new StdioClientTransport({ command: "node", args: [join(artifact.plugin, "launcher.mjs")], env: { ...context.env as Record<string, string>, ZINN_CODEX_CONFIG: config } });
+    const connecting = client.connect(transport).catch(() => undefined);
+    try {
+        await waitFor(() => existsSync(marker));
+        const pid = JSON.parse(readFileSync(marker, "utf8")).pid;
+        await client.close();
+        await connecting;
+        await waitFor(() => {
+            try {
+                process.kill(pid, 0);
+                return false;
+            } catch {
+                return true;
+            }
+        });
+    } finally {
+        await client.close();
+    }
+});
+
 test("artifact contains only portable bundled assets and dependency notices", () => {
     expect(createHash("sha256").update(readFileSync(packaged.archive)).digest("hex")).toBe(packaged.sha256);
     const manifest = JSON.parse(readFileSync(join(artifact.plugin, "plugin.json"), "utf8"));

@@ -8,13 +8,24 @@ import {
 } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
 
-import { loadSettings } from "../settings";
+import { loadSettings, resolveSettings } from "../settings";
 import { INSPECTOR_VERSION } from "../runtime";
 import { readTask } from "./task-reader";
 import { readRecent } from "./references";
 import { createCliReader } from "../shared/cli";
 
-const settings = loadSettings();
+const startup = new AbortController();
+const cancelStartup = () => startup.abort();
+
+process.once("SIGTERM", cancelStartup);
+process.once("SIGINT", cancelStartup);
+
+const { settings } = await resolveSettings(loadSettings(), { signal: startup.signal });
+
+startup.signal.throwIfAborted();
+process.removeListener("SIGTERM", cancelStartup);
+process.removeListener("SIGINT", cancelStartup);
+
 const reader = createCliReader(settings);
 const resourceUri = `ui://zinn/inspector-${INSPECTOR_VERSION}.html`;
 const server = new McpServer({ name: "zinn", version: INSPECTOR_VERSION });

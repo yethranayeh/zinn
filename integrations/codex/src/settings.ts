@@ -1,6 +1,9 @@
+import type { CliResult } from "./shared/cli";
+
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { createCliReader } from "./shared/cli";
 
 export type Settings = {
   store: string;
@@ -11,6 +14,8 @@ export type Settings = {
   captureEffort: boolean;
 };
 
+export type SettingsOptions = Omit<Settings, "store"> & { store?: string };
+
 function canonicalPath(path: string): string {
   if (existsSync(path)) {
     return realpathSync(path);
@@ -19,14 +24,42 @@ function canonicalPath(path: string): string {
   return join(canonicalPath(dirname(path)), basename(path));
 }
 
-export function loadSettings(env = process.env, home = homedir()): Settings {
+function selectStore(options: SettingsOptions, path: string): Settings {
+  const store = canonicalPath(resolve(path));
+  const data = options.dataDirectory;
+
+  if (data === store || data.startsWith(store + sep)) {
+    throw new Error("dataDirectory must be outside the selected Zinn data directory.");
+  }
+
+  return { ...options, store };
+}
+
+export function loadSettings(env = process.env, home = homedir()): SettingsOptions {
   const configPath = env.ZINN_CODEX_CONFIG ?? join(home, ".config/zinn/codex.json");
   if (!isAbsolute(configPath)) {
     throw new Error("ZINN_CODEX_CONFIG must be an absolute path.");
   }
 
-  const value = JSON.parse(readFileSync(configPath, "utf8"));
-  if (typeof value.store !== "string" || !isAbsolute(value.store)) {
+  let value;
+  try {
+    value = JSON.parse(readFileSync(configPath, "utf8"));
+  } catch (error) {
+    const missingDefault =
+      env.ZINN_CODEX_CONFIG === undefined && (error as NodeJS.ErrnoException).code === "ENOENT";
+
+    if (!missingDefault) {
+      throw error;
+    }
+
+    value = {};
+  }
+
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("codex.json must contain an options object.");
+  }
+
+  if (value.store !== undefined && (typeof value.store !== "string" || !isAbsolute(value.store))) {
     throw new Error("Set store to an absolute Zinn data directory in codex.json.");
   }
 
@@ -35,11 +68,7 @@ export function loadSettings(env = process.env, home = homedir()): Settings {
     throw new Error("dataDirectory must be an absolute path.");
   }
 
-  const store = canonicalPath(resolve(value.store));
   const data = canonicalPath(resolve(dataDirectory));
-  if (data === store || data.startsWith(store + sep)) {
-    throw new Error("dataDirectory must be outside the selected Zinn data directory.");
-  }
 
   const cli = value.cli ?? ["zinn"];
   if (
@@ -56,12 +85,49 @@ export function loadSettings(env = process.env, home = homedir()): Settings {
     }
   }
 
-  return {
-    store,
+  const options: SettingsOptions = {
+    store: value.store,
     dataDirectory: data,
     cli,
     observe: value.observe ?? true,
     identity: value.identity ?? true,
     captureEffort: value.captureEffort ?? false,
   };
+  return options.store === undefined ? options : selectStore(options, options.store);
+}
+
+export async function resolveSettings(
+  options: SettingsOptions,
+  {
+    deadline,
+    signal,
+    cwd = homedir(),
+  }: { deadline?: number; signal?: AbortSignal; cwd?: string } = {},
+): Promise<{ settings: Settings; info?: CliResult }> {
+  if (options.store !== undefined) {
+    return { settings: selectStore(options, options.store) };
+  }
+
+  const reader = createCliReader(options, { deadline, cwd });
+  try {
+    const info = await reader.run(["info"], signal);
+    signal?.throwIfAborted();
+    if (!info.ok) {
+      throw new Error(info.error);
+    }
+
+    const storage = info.value?.storage;
+
+    if (
+      typeof storage?.directory !== "string" ||
+      storage.directory === "" ||
+      storage.error !== null
+    ) {
+      throw new Error(storage?.error ?? "Could not resolve the Zinn data directory.");
+    }
+
+    return { settings: selectStore(options, resolve(cwd, storage.directory)), info };
+  } finally {
+    await reader.close();
+  }
 }

@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { existsSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { build } from "../build";
 import { rewrite } from "../src/hooks/identity";
@@ -182,6 +182,82 @@ test("key scanning accepts the CLI number range and excludes free-text arguments
     observe({ ...base, session_id: "redacted-arguments", hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command: "zinn task edit APP-1 --title APP-999 --description 'APP-777'" } }, context.settings);
     expect(readFeed(context.settings.dataDirectory, "redacted-arguments", context.settings.store).references.map(item => item.key)).toEqual(["APP-1"]);
 });
+test("implicit configuration is optional while existing legacy options remain supported", () => {
+    const home = join(context.directory, "settings-home");
+    mkdirSync(home);
+    expect(loadSettings({}, home)).toMatchObject({ store: undefined, cli: ["zinn"], identity: true, observe: true });
+    mkdirSync(join(home, ".config/zinn"), { recursive: true });
+    writeFileSync(join(home, ".config/zinn/codex.json"), JSON.stringify(context.settings));
+    expect(loadSettings({}, home)).toMatchObject(context.settings);
+});
+
+test("configuration-free identity works when the CLI is unavailable and observations fail neutrally", () => {
+    const home = join(context.directory, "identity-home");
+    const noExecutables = join(home, "empty-bin");
+    mkdirSync(noExecutables, { recursive: true });
+    const env = { ...context.env, HOME: home, USERPROFILE: home, ZINN_CODEX_CONFIG: undefined, ZINN_DIR: undefined, PATH: noExecutables };
+    const node = Bun.which("node")!;
+    const invoke = (payload: HookPayload) => Bun.spawnSync([node, join(artifact.plugin, "hook.mjs")], { env, stdin: Buffer.from(JSON.stringify(payload)) });
+    const identity = invoke({ ...base, hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "zinn task view APP-1" } });
+    expect(identity.exitCode).toBe(0);
+    expect(identity.stderr.byteLength).toBe(0);
+    expect(JSON.parse(identity.stdout.toString()).hookSpecificOutput).toMatchObject({ permissionDecision: "allow", updatedInput: { command: expect.stringContaining("ZINN_MODEL=") } });
+    const stop = invoke({ ...base, hook_event_name: "Stop", last_assistant_message: "APP-1" });
+    expect(stop.exitCode).toBe(0);
+    expect(stop.stderr.byteLength).toBe(0);
+    expect(JSON.parse(stop.stdout.toString())).toEqual({});
+    expect(existsSync(join(home, ".zinn"))).toBe(false);
+    expect(existsSync(join(home, ".config"))).toBe(false);
+});
+
+test("default-store discovery shares the observer deadline", () => {
+    const script = join(context.directory, "default-budget.mjs");
+    const log = join(context.directory, "default-budget.jsonl");
+    writeFileSync(script, `import {appendFileSync} from 'node:fs';
+const args = process.argv.slice(2); appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');
+setTimeout(() => { if (args[0] === '--version') { console.log('0.43.0'); }
+else { console.log(JSON.stringify({storage:{directory:${JSON.stringify(context.settings.store)},error:null},database:{state:'current',error:null}})); } }, 600);`);
+    const config = join(context.directory, "default-budget-config.json");
+    const { store: _store, ...options } = context.settings;
+    writeFileSync(config, JSON.stringify({ ...options, cli: ["node", script] }));
+    const began = performance.now();
+    const result = Bun.spawnSync(["node", join(artifact.plugin, "hook.mjs")], { env: { ...context.env, ZINN_CODEX_CONFIG: config }, stdin: Buffer.from(JSON.stringify({ ...base, session_id: "default-budget", hook_event_name: "Stop", last_assistant_message: "APP-1" })) });
+    expect(result.exitCode).toBe(0);
+    expect(performance.now() - began).toBeLessThan(3000);
+    const calls = readFileSync(log, "utf8").trim().split("\n").map(line => JSON.parse(line));
+    expect(calls).toContainEqual(["info", "--json"]);
+    expect(calls.some(args => args[0] === "task")).toBe(false);
+    expect(readFeed(context.settings.dataDirectory, "default-budget", context.settings.store).replyFailures).toBe(1);
+});
+
+test("command observations follow global and project storage settings", () => {
+    const home = join(context.directory, "command-home");
+    const workspace = join(context.directory, "command-workspace");
+    const localStore = join(context.directory, "command-local-store");
+    mkdirSync(join(home, ".zinn"), { recursive: true });
+    mkdirSync(workspace);
+    mkdirSync(localStore);
+    writeFileSync(join(home, ".zinn/settings.json"), JSON.stringify({ storage: { directory: context.settings.store } }));
+    const config = join(context.directory, "command-options.json");
+    const { store: _store, ...options } = context.settings;
+    writeFileSync(config, JSON.stringify(options));
+    const env = { ...context.env, HOME: home, USERPROFILE: home, ZINN_DIR: undefined, ZINN_CODEX_CONFIG: config };
+    for (const selection of ["global", "project"]) {
+        if (selection === "project") {
+            writeFileSync(join(workspace, "zinn.local.json"), JSON.stringify({ storage: { directory: localStore } }));
+        }
+        const session = `command-${selection}`;
+        const payload = { ...base, session_id: session, cwd: workspace, hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command: "zinn task view APP-1" } };
+        const result = Bun.spawnSync(["node", join(artifact.plugin, "hook.mjs")], { env, stdin: Buffer.from(JSON.stringify(payload)) });
+        expect(result.exitCode).toBe(0);
+        expect(result.stderr.byteLength).toBe(0);
+        const store = selection === "project" ? localStore : context.settings.store;
+        expect(readFeed(context.settings.dataDirectory, session, store).references.map(item => item.key)).toEqual(["APP-1"]);
+        expect(readFeed(context.settings.dataDirectory, session, join(home, ".zinn")).references).toEqual([]);
+    }
+    expect(existsSync(join(localStore, "data"))).toBe(false);
+});
+
 test("missing configuration, disabled hooks and malformed input leave operations unchanged", () => {
     const payload = JSON.stringify({ ...base, hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "zinn info" } });
     for (const [input, config] of [["broken json", context.config], [payload, join(context.directory, "missing.json")]]) {
@@ -198,6 +274,10 @@ test("missing configuration, disabled hooks and malformed input leave operations
 test("configuration rejects relative paths and data paths inside the database directory", () => {
     const config = join(context.directory, "invalid.json");
     const load = () => loadSettings({ ZINN_CODEX_CONFIG: config });
+    for (const value of [null, [], true, 1, "value"]) {
+        writeFileSync(config, JSON.stringify(value));
+        expect(load).toThrow();
+    }
     writeFileSync(config, JSON.stringify({ store: "relative" }));
     expect(load).toThrow();
     const alias = join(context.directory, "store-alias");

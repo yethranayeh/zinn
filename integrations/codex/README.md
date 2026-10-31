@@ -2,11 +2,7 @@
 
 An Experimental local task inspector and optional task-reference and execution-identity hooks for Codex desktop.
 
-Requires Node.js 24.15.0 or newer and an official Zinn CLI release 0.43.0 or newer on `PATH`. Select an existing Zinn data directory in `~/.config/zinn/codex.json`:
-
-```json
-{ "store": "/absolute/path/to/.zinn" }
-```
+Requires Node.js 24.15.0 or newer and an official Zinn CLI release 0.43.0 or newer on `PATH`. Default-store setup needs no plugin configuration file. The plugin uses the CLI's settings from your home directory, including inherited `ZINN_DIR` and global storage selection.
 
 Read the [setup, permissions, compatibility and removal guide](https://zinn.sh/integrations/codex).
 

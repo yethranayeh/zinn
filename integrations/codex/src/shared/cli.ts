@@ -1,4 +1,4 @@
-import type { Settings } from "../settings";
+import type { SettingsOptions } from "../settings";
 
 import { spawn } from "node:child_process";
 
@@ -60,8 +60,8 @@ function supportsVersion(text: string) {
 
 /** Owns CLI children until they exit, including cancellation and backend shutdown. */
 export function createCliReader(
-  settings: Pick<Settings, "store" | "cli">,
-  { deadline }: { deadline?: number } = {},
+  settings: Pick<SettingsOptions, "store" | "cli">,
+  { deadline, cwd = process.cwd() }: { deadline?: number; cwd?: string } = {},
 ): CliReader {
   const active = new Set<{ stop(): void; done: Promise<CliResult> }>();
   let closed = false;
@@ -79,8 +79,12 @@ export function createCliReader(
       return { ok: false, error: "The Zinn verification deadline was reached." };
     }
     const child = spawn(settings.cli[0]!, [...settings.cli.slice(1), ...args], {
-      cwd: json ? settings.store : process.cwd(),
-      env: { ...process.env, ZINN_DIR: settings.store, ZINN_CODEX_CONFIG: undefined },
+      cwd: json ? (settings.store ?? cwd) : cwd,
+      env: {
+        ...process.env,
+        ZINN_DIR: settings.store ?? process.env.ZINN_DIR,
+        ZINN_CODEX_CONFIG: undefined,
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let failure: string | undefined;

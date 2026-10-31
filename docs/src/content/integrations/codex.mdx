@@ -22,7 +22,13 @@ Configured CLI executables are trusted local programs. The hook writes its own r
 
 ## Select the database
 
-Run `zinn info --json` in your terminal to check the data directory you want. Create `~/.config/zinn/codex.json` with its absolute path:
+Default-store setup needs no plugin configuration file. The plugin runs `zinn info --json` from your home directory to resolve the database location. It honors `ZINN_DIR` inherited by Codex and the CLI's settings in that context, including global storage selection. Without an override, Zinn uses `~/.zinn`.
+
+The inspector keeps that selected directory until it restarts. It checks CLI compatibility with `--version` before reading tasks. Restart Codex after changing its environment or storage settings.
+
+Agent commands use their own working directory, CLI settings and `ZINN_DIR`. Their selected database can differ from the inspector's. Set `ZINN_DIR` in Codex's environment when inspection should use a custom directory.
+
+For plugin-specific options, set `ZINN_CODEX_CONFIG` in Codex's environment to an absolute JSON-file path. An explicit `store` selects inspection and reference verification independently of agent commands:
 
 ```json
 {
@@ -30,15 +36,12 @@ Run `zinn info --json` in your terminal to check the data directory you want. Cr
 }
 ```
 
-The plugin reads this configuration at process startup. The inspector always reads the selected database. It checks CLI compatibility with `--version` before reading tasks. Restart Codex after changing the configuration.
-
-Normal CLI settings and `ZINN_DIR` select the database used by agent commands. Set `ZINN_DIR` for commands that should use the same custom directory as the inspector. The plugin's `store` selects inspection and reference verification.
+An options file can omit `store` and use ordinary discovery. Existing `~/.config/zinn/codex.json` files are also read when present. A selected configuration file must be readable and valid.
 
 If the desktop app cannot find `zinn`, use the executable's absolute path:
 
 ```json
 {
-	"store": "/absolute/path/to/.zinn",
 	"cli": ["/absolute/path/to/zinn"]
 }
 ```
@@ -85,7 +88,7 @@ The configuration accepts these options:
 
 | Option          | Default                     | Behavior                                                                            |
 | --------------- | --------------------------- | ----------------------------------------------------------------------------------- |
-| `store`         | Required                    | Absolute Zinn data directory for inspection and reply verification.                 |
+| `store`         | CLI selection               | Optional absolute Zinn data directory for inspection and reply verification.        |
 | `cli`           | `["zinn"]`                  | Executable and fixed arguments used for local reads.                                |
 | `dataDirectory` | `~/.local/share/zinn-codex` | Absolute directory for reference files, outside the Zinn data directory.            |
 | `observe`       | `true`                      | Record task references for the current-chat list.                                   |
