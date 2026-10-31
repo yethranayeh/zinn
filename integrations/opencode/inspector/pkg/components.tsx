@@ -15,7 +15,7 @@ import {
   PRIORITY_COLOR,
   labelColors,
 } from "./data.ts";
-import { MARKER_COLUMNS, RAIL_COLUMNS, SESSION_GLYPH, priorityLetter } from "./options.ts";
+import { RAIL_COLUMNS, SESSION_GLYPH, priorityLetter } from "./options.ts";
 import { truncate } from "./rows.ts";
 import { TINT_ALPHA_STRONG, TINT_ALPHA_SUBTLE, inspectorTheme, toneColor } from "./theme.ts";
 
@@ -38,12 +38,35 @@ export function Overflow(props: {
   return (
     <box
       flexDirection="row"
+      gap={1}
       backgroundColor={hover() ? theme().backgroundElement : "transparent"}
       onMouseOver={() => setHover(true)}
       onMouseOut={() => setHover(false)}
       onMouseUp={onClick}
     >
+      <text width={RAIL_COLUMNS} flexShrink={0} fg={theme().borderSubtle}>
+        │
+      </text>
       <text flexShrink={0} fg={theme().textMuted}>{`+${props.count} ${props.label}`}</text>
+    </box>
+  );
+}
+
+export function RailLine(props: {
+  ctx: Ctx;
+  glyph: string;
+  color?: RGBA;
+  onMouseDown?: () => void;
+  children: JSX.Element;
+}): JSX.Element {
+  const theme = () => inspectorTheme(props.ctx);
+
+  return (
+    <box flexDirection="row" gap={1} onMouseDown={props.onMouseDown}>
+      <text width={RAIL_COLUMNS} flexShrink={0} fg={props.color ?? theme().borderSubtle}>
+        {props.glyph}
+      </text>
+      {props.children}
     </box>
   );
 }
@@ -69,15 +92,46 @@ export function Row(props: {
   const keyColor = toneColor(props.ctx, () => props.row.tone);
   const metaColor = () => theme().textMuted;
   const glyph = () => props.current === "glyph";
-  const markerColumns = () => {
-    if (!props.dense) {
-      return MARKER_COLUMNS + (glyph() ? RAIL_COLUMNS : 0);
+  const done = () => props.row.column === "Done";
+  const mark = () => {
+    if (glyph() && props.row.mine) {
+      return props.markGlyph ?? SESSION_GLYPH;
     }
-    return (glyph() ? RAIL_COLUMNS : 0) + (props.row.created ? 1 : 0);
+
+    if (props.row.created) {
+      return "+";
+    }
+
+    if (!props.dense) {
+      return props.row.glyph || "│";
+    }
+
+    return "│";
   };
-  const metaIndent = () => markerColumns() + 1;
-  const sessionMark = () => props.markGlyph ?? (props.row.mine ? SESSION_GLYPH : " ");
-  const statusGlyph = () => (props.dense ? (props.row.created ? "+" : "") : props.row.glyph);
+  const markColor = () => {
+    if (glyph() && props.row.mine) {
+      return theme().accent;
+    }
+
+    if (props.row.created) {
+      return theme().info;
+    }
+
+    if (props.row.unknown) {
+      return theme().warning;
+    }
+
+    if (done()) {
+      return theme().success;
+    }
+
+    if (!props.dense && props.row.glyph.length > 0) {
+      return keyColor();
+    }
+
+    return theme().borderSubtle;
+  };
+  const railColor = () => (done() ? theme().success : theme().borderSubtle);
   const [hover, setHover] = createSignal(false);
   const onEnter = () => setHover(true);
   const onLeave = () => setHover(false);
@@ -86,11 +140,8 @@ export function Row(props: {
     const byte = (n: number) => n.toString(16).padStart(2, "0");
     return `#${byte(r)}${byte(g)}${byte(b)}${hover() ? TINT_ALPHA_STRONG : TINT_ALPHA_SUBTLE}`;
   };
-  const done = () => props.row.column === "Done";
   const background = () =>
     done() ? wash(theme().success) : hover() ? theme().backgroundElement : "transparent";
-  // Every row reserves the left border, coloured only for Done rows so nothing shifts.
-  const railColor = () => (done() ? theme().success : "transparent");
   const onClick = (event: { stopPropagation: () => void }) => {
     event.stopPropagation();
     if (hover()) {
@@ -100,9 +151,8 @@ export function Row(props: {
 
   const head = (
     <box flexDirection="row" gap={1}>
-      <text width={markerColumns()} flexShrink={0} fg={keyColor()}>
-        {glyph() ? <span style={{ fg: theme().accent }}>{sessionMark()}</span> : null}
-        {statusGlyph()}
+      <text width={RAIL_COLUMNS} flexShrink={0} fg={markColor()}>
+        {mark()}
       </text>
 
       <text flexShrink={0} fg={keyColor()}>
@@ -177,8 +227,10 @@ export function Row(props: {
   });
 
   const meta = () => (
-    <box flexDirection="row">
-      <text flexShrink={0}>{` `.repeat(metaIndent())}</text>
+    <box flexDirection="row" gap={1}>
+      <text width={RAIL_COLUMNS} flexShrink={0} fg={railColor()}>
+        │
+      </text>
       <text wrapMode="none" flexShrink={1} fg={metaColor()}>
         <For each={metaPlan()}>
           {(part) => (
@@ -208,8 +260,6 @@ export function Row(props: {
     <box
       flexDirection={props.dense ? "column" : "row"}
       backgroundColor={background()}
-      border={["left"]}
-      borderColor={railColor()}
       onMouseOver={onEnter}
       onMouseOut={onLeave}
       onMouseUp={onClick}

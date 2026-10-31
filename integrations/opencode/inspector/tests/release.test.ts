@@ -26,7 +26,8 @@ test.each(["0.1.0-dev", "0.2.0-alpha.1", "0.2.0-rc.1"])("publication refuses pre
 });
 
 test("the reviewed release version passes the version gate without publishing", () => {
-  writeFileSync(join(directory, "package.json"), JSON.stringify(manifest));
+  const releaseVersion = manifest.version.replace(/-dev$/, "");
+  writeFileSync(join(directory, "package.json"), JSON.stringify({ ...manifest, version: releaseVersion }));
   const result = Bun.spawnSync([process.execPath, resolve(import.meta.dir, "../checks/release.ts")], {
     cwd: directory, env: TEST_ENVIRONMENT,
   });

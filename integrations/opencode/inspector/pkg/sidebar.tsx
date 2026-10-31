@@ -18,7 +18,7 @@ import {
 } from "solid-js";
 
 import { clearPanel, publishPanel } from "./commands.ts";
-import { Overflow, Row } from "./components.tsx";
+import { Overflow, RailLine, Row } from "./components.tsx";
 import {
   BOARD_TTL_MS,
   errorText,
@@ -30,7 +30,6 @@ import {
 } from "./data.ts";
 import { openDetail, openPicker } from "./dialogs.tsx";
 import {
-  MARKER_COLUMNS,
   PRIORITY_COLUMNS,
   RAIL_COLUMNS,
   RUNNING_FRAMES,
@@ -395,18 +394,17 @@ export function Sidebar(props: {
   const knownOverflow = createMemo(() => knownRows().length - visibleKnown().length);
   const visibleUnknown = createMemo(() => unknownRows().slice(0, SECTION_ROWS));
   const unknownOverflow = createMemo(() => unknownRows().length - visibleUnknown().length);
-  const contentIndent = () => RAIL_COLUMNS + (props.options.current === "glyph" ? 1 : 0) + 1;
   const titleColumns = createMemo(() => {
     const rows = [...visibleKnown(), ...visibleUnknown()];
     let key = 0;
     for (const row of rows) {
       key = Math.max(key, row.key.length);
     }
-    const gaps = props.options.rows === 2 ? 3 : 4;
+    const gaps = props.options.rows === 2 ? 2 : 3;
     const priority = props.options.rows === 2 ? 0 : PRIORITY_COLUMNS;
-    return Math.max(8, SLOT_COLUMNS - RAIL_COLUMNS - MARKER_COLUMNS - priority - key - gaps);
+    return Math.max(8, SLOT_COLUMNS - RAIL_COLUMNS - priority - key - gaps);
   });
-  const metaColumns = Math.max(8, SLOT_COLUMNS - RAIL_COLUMNS - MARKER_COLUMNS);
+  const metaColumns = Math.max(8, SLOT_COLUMNS - RAIL_COLUMNS - 1);
   let published: PanelSnapshot | undefined;
   createEffect(() => {
     const loaded = map();
@@ -461,29 +459,40 @@ export function Sidebar(props: {
 
   return (
     <box flexDirection="column">
-      <box flexDirection="row" gap={1} paddingLeft={contentIndent()} onMouseDown={reload}>
+      <RailLine ctx={props.ctx} glyph="┏" onMouseDown={reload}>
         <text fg={theme().text}>
           <b>ZINN</b>
         </text>
         <text fg={theme().textMuted}>[{headerDetail()}]</text>
-      </box>
+      </RailLine>
+
       <Show when={failure()}>
-        <text fg={theme().error}>{truncate(failure() ?? "", 40)}</text>
+        <RailLine ctx={props.ctx} glyph="│">
+          <text wrapMode="none" flexShrink={1} fg={theme().error}>
+            {truncate(failure() ?? "", 40)}
+          </text>
+        </RailLine>
       </Show>
+
       <Show when={!loading() && map().ok && knownRows().length === 0 && unknownRows().length === 0}>
-        <text fg={theme().textMuted}>no task keys in this chat</text>
+        <RailLine ctx={props.ctx} glyph="│">
+          <text fg={theme().textMuted}>no task keys in this chat</text>
+        </RailLine>
       </Show>
+
       <For each={visibleKnown()}>
         {(row, index) => (
           <>
             <Show when={props.options.rows === 2 && index() > 0}>
-              <box
-                height={1}
-                borderStyle="single"
-                border={["top"]}
-                borderColor={theme().borderSubtle}
-                marginLeft={contentIndent()}
-              />
+              <RailLine ctx={props.ctx} glyph="│">
+                <box
+                  flexGrow={1}
+                  height={1}
+                  borderStyle="single"
+                  border={["top"]}
+                  borderColor={theme().borderSubtle}
+                />
+              </RailLine>
             </Show>
             <Row
               ctx={props.ctx}
@@ -502,14 +511,21 @@ export function Sidebar(props: {
           </>
         )}
       </For>
+
       <Show when={knownOverflow() > 0}>
         <Overflow ctx={props.ctx} count={knownOverflow()} label="more" onOpen={knownPicker} />
       </Show>
+
       <Show when={createdKeys().size > 0}>
-        <text fg={theme().info}>{`+ created this session (${createdKeys().size})`}</text>
+        <RailLine ctx={props.ctx} glyph="│">
+          <text fg={theme().info}>{`+ created this session (${createdKeys().size})`}</text>
+        </RailLine>
       </Show>
+
       <Show when={unknownRows().length > 0}>
-        <text fg={theme().warning}>unknown keys (not in store)</text>
+        <RailLine ctx={props.ctx} glyph="│">
+          <text fg={theme().warning}>unknown keys (not in store)</text>
+        </RailLine>
         <For each={visibleUnknown()}>
           {(row) => (
             <Row
@@ -534,9 +550,9 @@ export function Sidebar(props: {
       </Show>
 
       <Show when={!loading() && map().ok && knownRows().length + unknownRows().length > 0}>
-        <box paddingLeft={contentIndent()}>
+        <RailLine ctx={props.ctx} glyph="┗">
           <text fg={theme().textMuted}>recent mentions</text>
-        </box>
+        </RailLine>
       </Show>
     </box>
   );
