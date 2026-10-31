@@ -102,6 +102,10 @@ export function Row(props: {
       return "+";
     }
 
+    if (done()) {
+      return "│";
+    }
+
     if (!props.dense) {
       return props.row.glyph || "│";
     }
@@ -131,7 +135,11 @@ export function Row(props: {
 
     return theme().borderSubtle;
   };
+  const createdBadge = () => !props.dense && props.row.created && mark() !== "+";
   const railColor = () => (done() ? theme().success : theme().borderSubtle);
+  const metaMark = () => (props.row.created && mark() !== "+" ? "+" : "│");
+  const metaMarkColor = () =>
+    props.row.created && mark() !== "+" ? theme().info : railColor();
   const [hover, setHover] = createSignal(false);
   const onEnter = () => setHover(true);
   const onLeave = () => setHover(false);
@@ -157,6 +165,9 @@ export function Row(props: {
 
       <text flexShrink={0} fg={keyColor()}>
         {props.row.key}
+        <Show when={createdBadge()}>
+          <span style={{ fg: theme().info }}>+</span>
+        </Show>
       </text>
       {!props.dense && (
         <text flexShrink={0} fg={metaColor()}>
@@ -165,7 +176,7 @@ export function Row(props: {
       )}
 
       <text wrapMode="none" flexShrink={1} fg={metaColor()}>
-        {truncate(props.row.title, props.titleColumns)}
+        {truncate(props.row.title, props.titleColumns - (createdBadge() ? 1 : 0))}
       </text>
     </box>
   );
@@ -228,8 +239,8 @@ export function Row(props: {
 
   const meta = () => (
     <box flexDirection="row" gap={1}>
-      <text width={RAIL_COLUMNS} flexShrink={0} fg={railColor()}>
-        │
+      <text width={RAIL_COLUMNS} flexShrink={0} fg={metaMarkColor()}>
+        {metaMark()}
       </text>
       <text wrapMode="none" flexShrink={1} fg={metaColor()}>
         <For each={metaPlan()}>
