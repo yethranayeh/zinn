@@ -1,0 +1,15 @@
+---
+import type { HTMLAttributes } from "astro/types";
+import { twMerge } from "tailwind-merge";
+import TableRow from "../../../src/components/ui/table/TableRow.astro";
+
+type Props = HTMLAttributes<"tr">;
+
+const { class: className, ...attributes } = Astro.props;
+---
+
+<TableRow
+	class={twMerge("even:bg-[color-mix(in_srgb,var(--color-bone)_40%,transparent)] [&:last-child>td]:border-b-soot", className)}
+	{...attributes}>
+	<slot />
+</TableRow>

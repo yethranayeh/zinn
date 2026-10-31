@@ -1,0 +1,18 @@
+---
+import type { HTMLAttributes } from "astro/types";
+import { twMerge } from "tailwind-merge";
+import TableHead from "../../../src/components/ui/table/TableHead.astro";
+
+type Props = HTMLAttributes<"th">;
+
+const { class: className, ...attributes } = Astro.props;
+---
+
+<TableHead
+	class={twMerge(
+		"border-b-0 bg-soot px-5 py-2.5 text-[0.8125rem] tracking-[0.02em] normal-case not-first:border-l-0",
+		className
+	)}
+	{...attributes}>
+	<slot />
+</TableHead>

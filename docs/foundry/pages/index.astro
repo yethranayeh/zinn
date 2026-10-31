@@ -1,15 +1,17 @@
 ---
 import globalCss from "../../src/styles/global.css?raw";
 import FoundryLayout from "../layouts/FoundryLayout.astro";
-import { uiComponents } from "../ui";
+import { proposedComponents, uiComponents } from "../ui";
 
 // The palette and typefaces come from the @theme block, so this page lists what the site defines.
 const theme = globalCss.match(/@theme \{([\s\S]*?)\n\}/)?.[1] ?? "";
-const colors = [...theme.matchAll(/(?:\/\* (.+?) \*\/\s*)?--color-([\w-]+): ([^;]+);/g)].map(([, note, name, value]) => ({
-	name,
-	note,
-	value: value.replace(/^var\(--color-([\w-]+)\)$/, "$1")
-}));
+const colors = [...theme.matchAll(/(?:\/\* (.+?) \*\/\s*)?--color-([\w-]+): ([^;]+);/g)].map(
+	([, note, name, value]) => ({
+		name,
+		note,
+		value: value.replace(/^var\(--color-([\w-]+)\)$/, "$1")
+	})
+);
 const typefaces = [...theme.matchAll(/--font-([\w-]+): "([^"]+)"/g)].map(([, name, family]) => ({ name, family }));
 ---
 
@@ -33,6 +35,26 @@ const typefaces = [...theme.matchAll(/--font-([\w-]+): "([^"]+)"/g)].map(([, nam
 			}
 		</ul>
 	</section>
+
+	{
+		proposedComponents.length > 0 && (
+			<section class='flex flex-col gap-4' aria-labelledby='proposed'>
+				<h2 id='proposed' class='text-xl font-semibold'>
+					Proposed
+				</h2>
+				<p>Proposed specimens are not used on zinn.sh.</p>
+				<ul class='grid border-t border-l border-soot/20 sm:grid-cols-2 lg:grid-cols-3'>
+					{proposedComponents.map((component) => (
+						<li class='border-r border-b border-soot/20'>
+							<a href={`/proposed/${component.folder}/`} class='block p-4 font-mono text-sm'>
+								{component.name}
+							</a>
+						</li>
+					))}
+				</ul>
+			</section>
+		)
+	}
 
 	<section class='flex flex-col gap-4' aria-labelledby='palette'>
 		<h2 id='palette' class='text-xl font-semibold'>Palette</h2>

@@ -1,0 +1,13 @@
+---
+import type { HTMLAttributes } from "astro/types";
+import { twMerge } from "tailwind-merge";
+import Table from "../../../src/components/ui/table/Table.astro";
+
+type Props = HTMLAttributes<"table">;
+
+const { class: className, ...attributes } = Astro.props;
+---
+
+<Table class={twMerge("bg-transparent", className)} {...attributes}>
+	<slot />
+</Table>

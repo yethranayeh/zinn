@@ -1,20 +1,29 @@
 ---
-import { uiComponents } from "../ui";
+import Chip from "../../src/components/ui/chip/Chip.astro";
+import { proposedComponents, uiComponents } from "../ui";
 
 interface Props {
-	/** The component's folder in src/components/ui. */
+	/** The component's folder in src/components/ui or foundry/proposed. */
 	folder: string;
 }
 
 const { folder } = Astro.props;
-const component = uiComponents.find((entry) => entry.folder === folder);
+const uiComponent = uiComponents.find((entry) => entry.folder === folder);
+const proposedComponent = proposedComponents.find((entry) => entry.folder === folder);
+if (uiComponent && proposedComponent) {
+	throw new Error(`${folder} is in both src/components/ui and foundry/proposed`);
+}
+const component = uiComponent ?? proposedComponent;
 if (!component) {
-	throw new Error(`No component in src/components/ui/${folder}`);
+	throw new Error(`No component in src/components/ui/${folder} or foundry/proposed/${folder}`);
 }
 ---
 
 <header class='flex flex-col gap-4'>
-	<h1 class='text-3xl font-semibold md:text-4xl'>{component.name}</h1>
+	<div class='flex flex-wrap items-center gap-3'>
+		<h1 class='text-3xl font-semibold md:text-4xl'>{component.name}</h1>
+		{proposedComponent && <Chip data-status='proposed'>Proposed</Chip>}
+	</div>
 	<p class='font-mono text-xs wrap-anywhere text-muted-foreground'>{component.source}</p>
 	<div
 		class='flex max-w-[65ch] flex-col gap-3 [&_code]:bg-[color-mix(in_srgb,currentColor_8%,transparent)] [&_code]:px-[0.22em] [&_code]:py-[0.05em] [&_code]:text-[0.85em]'>

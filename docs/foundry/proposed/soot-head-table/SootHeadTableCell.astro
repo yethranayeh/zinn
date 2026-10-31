@@ -1,0 +1,19 @@
+---
+import type { HTMLAttributes } from "astro/types";
+import { twMerge } from "tailwind-merge";
+import TableCell from "../../../src/components/ui/table/TableCell.astro";
+
+type Props = HTMLAttributes<"td">;
+
+const { class: className, ...attributes } = Astro.props;
+---
+
+<TableCell
+	class={twMerge(
+		"border-b-soot/14 px-5 py-3.5 not-first:border-l-0",
+		"[&_code]:bg-[color-mix(in_srgb,currentColor_8%,transparent)]! [&_code]:px-[0.22em] [&_code]:py-[0.05em] [&_code]:text-[0.85em] [&_code]:inset-ring-0",
+		className
+	)}
+	{...attributes}>
+	<slot />
+</TableCell>

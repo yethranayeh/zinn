@@ -8,6 +8,7 @@ const uiDirectory = join(sourceDirectory, "components/ui");
 const stylesDirectory = join(sourceDirectory, "styles");
 const foundryDirectory = join(docsDirectory, "foundry");
 const foundryPagesDirectory = join(foundryDirectory, "pages");
+const proposedDirectory = join(foundryDirectory, "proposed");
 const foundryBuildDirectory = join(docsDirectory, "dist-foundry");
 
 const sourceFilePattern = "**/*.{astro,ts,mts,js,mjs,mdx}";
@@ -17,6 +18,10 @@ const allowedPackages = ["astro/types", "tailwind-merge"];
 const importPattern = /(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"']+)["']/g;
 
 const uiFolders = readdirSync(uiDirectory, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name);
+
+const proposedFolders = readdirSync(proposedDirectory, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name);
 
@@ -77,6 +82,20 @@ test("nothing in src imports Foundry", () => {
       .map(({ specifier }) => `${relative(docsDirectory, file)}: ${specifier}`),
   );
   expect(foundryImports).toEqual([]);
+});
+
+test.each(proposedFolders)("foundry/proposed/%s has a Foundry page", (folder) => {
+  expect(existsSync(join(foundryPagesDirectory, "proposed", `${folder}.astro`))).toBe(true);
+});
+
+test.each(proposedFolders)("the built page for foundry/proposed/%s shows the Proposed tag", (folder) => {
+  const page = readFileSync(join(foundryBuildDirectory, "proposed", folder, "index.html"), "utf8");
+  expect(page).toContain('data-status="proposed"');
+});
+
+test.each(uiFolders)("the built page for src/components/ui/%s shows no Proposed tag", (folder) => {
+  const page = readFileSync(join(foundryBuildDirectory, folder, "index.html"), "utf8");
+  expect(page).not.toContain('data-status="proposed"');
 });
 
 test("Foundry's build holds exactly the pages in foundry/pages", () => {

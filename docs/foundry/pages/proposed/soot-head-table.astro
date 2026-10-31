@@ -1,0 +1,73 @@
+---
+import SootHeadTable from "../../proposed/soot-head-table/SootHeadTable.astro";
+import SootHeadTableCell from "../../proposed/soot-head-table/SootHeadTableCell.astro";
+import SootHeadTableHead from "../../proposed/soot-head-table/SootHeadTableHead.astro";
+import SootHeadTableRow from "../../proposed/soot-head-table/SootHeadTableRow.astro";
+import ComponentHeading from "../../components/ComponentHeading.astro";
+import Specimen from "../../components/Specimen.astro";
+import FoundryLayout from "../../layouts/FoundryLayout.astro";
+import { aliases, options } from "../../samples";
+---
+
+<FoundryLayout title='SootHeadTable' description='SootHeadTable is the Table with a Soot header row and zebra rows.'>
+	<ComponentHeading folder='soot-head-table'>
+		<p>
+			The Table with a Soot header row and zebra rows, composed from the same parts: <code>SootHeadTable</code>, <code
+				>SootHeadTableRow</code
+			>, <code>SootHeadTableHead</code> and <code>SootHeadTableCell</code>. It takes the same props as the Table parts.
+		</p>
+	</ComponentHeading>
+
+	<div class='grid gap-4'>
+		<Specimen label='<SootHeadTable> with two columns' block>
+			<SootHeadTable>
+				<thead>
+					<SootHeadTableRow>
+						<SootHeadTableHead>Primary command</SootHeadTableHead>
+						<SootHeadTableHead>Alias</SootHeadTableHead>
+					</SootHeadTableRow>
+				</thead>
+				<tbody>
+					{
+						aliases.map(([command, alias]) => (
+							<SootHeadTableRow>
+								<SootHeadTableCell>
+									<code>{command}</code>
+								</SootHeadTableCell>
+								<SootHeadTableCell>
+									<code>{alias}</code>
+								</SootHeadTableCell>
+							</SootHeadTableRow>
+						))
+					}
+				</tbody>
+			</SootHeadTable>
+		</Specimen>
+		<Specimen label='<SootHeadTable> with three columns' block>
+			<SootHeadTable>
+				<thead>
+					<SootHeadTableRow>
+						<SootHeadTableHead>Option</SootHeadTableHead>
+						<SootHeadTableHead>Default</SootHeadTableHead>
+						<SootHeadTableHead>Behavior</SootHeadTableHead>
+					</SootHeadTableRow>
+				</thead>
+				<tbody>
+					{
+						options.map(([option, fallback, behavior]) => (
+							<SootHeadTableRow>
+								<SootHeadTableCell>
+									<code>{option}</code>
+								</SootHeadTableCell>
+								<SootHeadTableCell>
+									<code>{fallback}</code>
+								</SootHeadTableCell>
+								<SootHeadTableCell>{behavior}</SootHeadTableCell>
+							</SootHeadTableRow>
+						))
+					}
+				</tbody>
+			</SootHeadTable>
+		</Specimen>
+	</div>
+</FoundryLayout>
