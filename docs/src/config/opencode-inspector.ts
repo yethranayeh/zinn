@@ -94,3 +94,56 @@ export const inspectorCollage = {
     },
   ] satisfies InspectorCollagePart[],
 };
+
+export interface InspectorPaletteShot {
+  image: string;
+  width: number;
+  height: number;
+  alt: string;
+  caption: string;
+}
+
+const paletteAssets = {
+  composer:
+    "https://res.cloudinary.com/drwbqceye/image/upload/v1793468908/composer-zinn_hxs8ok.png",
+  commands:
+    "https://res.cloudinary.com/drwbqceye/image/upload/v1793468909/palette-commands-zinn_vd9nvg.png",
+  keysInChat:
+    "https://res.cloudinary.com/drwbqceye/image/upload/v1793468909/palette-keys-in-chat_h2mp95.png",
+  allTasks:
+    "https://res.cloudinary.com/drwbqceye/image/upload/v1793468908/palette-all-tasks_qf0iwd.png",
+};
+
+export const inspectorPalette = {
+  caption: "Finding tasks from the composer and the command palette.",
+  shots: {
+    composer: {
+      image: paletteAssets.composer,
+      width: 2290,
+      height: 406,
+      alt: "Slash command list in the composer with /zinn highlighted",
+      caption: "Type / and choose /zinn.",
+    },
+    commands: {
+      image: paletteAssets.commands,
+      width: 840,
+      height: 756,
+      alt: "Command palette with the Zinn commands",
+      caption: "The command palette lists both Zinn pickers.",
+    },
+    allTasks: {
+      image: paletteAssets.allTasks,
+      width: 840,
+      height: 756,
+      alt: "Zinn task picker searching all tasks for ZOC",
+      caption: "Pick a task from the board.",
+    },
+    keysInChat: {
+      image: paletteAssets.keysInChat,
+      width: 840,
+      height: 280,
+      alt: "Zinn task picker listing task keys from this chat",
+      caption: "Pick a task mentioned in this chat.",
+    },
+  } satisfies Record<string, InspectorPaletteShot>,
+};

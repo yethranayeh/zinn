@@ -3,6 +3,7 @@ import BaseLayout from "../../../../layouts/BaseLayout.astro";
 import Button from "../../../../components/Button.astro";
 import Breadcrumbs from "../../../../components/Breadcrumbs.astro";
 import Icon from "../../../../components/Icon.astro";
+import ImageLightbox from "../../../../components/ImageLightbox.astro";
 import InspectorCollage from "../../../../components/InspectorCollage.astro";
 import MarkdownH1 from "../../../../components/MarkdownH1.astro";
 import MarkdownH2 from "../../../../components/MarkdownH2.astro";
@@ -12,9 +13,10 @@ import MarkdownTableCell from "../../../../components/MarkdownTableCell.astro";
 import MarkdownTableHeaderCell from "../../../../components/MarkdownTableHeaderCell.astro";
 import MarkdownTableRow from "../../../../components/MarkdownTableRow.astro";
 import Prose from "../../../../components/Prose.astro";
+import ScreenshotFigure from "../../../../components/ScreenshotFigure.astro";
 import TerminalCommands from "../../../../components/TerminalCommands.astro";
 
-import { inspectorCollage, opencodeInspector } from "../../../../config/opencode-inspector";
+import { inspectorCollage, inspectorPalette, opencodeInspector } from "../../../../config/opencode-inspector";
 import { projectLinks } from "../../../../config/site";
 
 const source = `${projectLinks.github}/tree/main/integrations/opencode/inspector`;
@@ -93,6 +95,20 @@ const pluginConfig = `{
 					<strong>Zinn: task keys in this chat</strong> and{" "}
 					<strong>Zinn: pick a task from the board</strong>.
 				</p>
+				<figure class='mt-8'>
+					<div class='border border-pewter bg-soot p-3 text-soot-foreground scheme-dark md:p-7'>
+						<div class='grid gap-5'>
+							<ScreenshotFigure lightboxId='inspector-palette' {...inspectorPalette.shots.composer} />
+							<div class='grid gap-5 sm:grid-cols-2'>
+								<ScreenshotFigure lightboxId='inspector-palette' {...inspectorPalette.shots.commands} />
+								<ScreenshotFigure lightboxId='inspector-palette' {...inspectorPalette.shots.allTasks} />
+							</div>
+							<ScreenshotFigure lightboxId='inspector-palette' {...inspectorPalette.shots.keysInChat} />
+						</div>
+					</div>
+					<figcaption class='mt-3 font-mono text-[11px] text-muted-foreground'>{inspectorPalette.caption}</figcaption>
+				</figure>
+				<ImageLightbox id='inspector-palette' />
 				<p>
 					Task details include status, priority, labels, relations, comment count and the first paragraph of the
 					description. When the detail is opened from a task key mentioned in this chat, it also says how many times
