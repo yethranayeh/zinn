@@ -40,7 +40,7 @@ OpenCode loads this TUI-only package through its native [CLI plugin configuratio
 
 Run \`/zinn\` to find a loaded active task. The command palette also offers **Zinn: task keys in this chat** and **Zinn: pick a task from the board**.
 
-Task details include status, priority, labels, relations, comment count and the first paragraph of the description. Unknown keys are shown when their project prefix appears among the loaded tasks. Select the ZINN heading to refresh task and label data.
+Task details include status, priority, labels, relations, comment count and the first paragraph of the description. When the detail is opened from a task key mentioned in this chat, it also says how many times that task was mentioned. Unknown keys are shown when their project prefix appears among the loaded tasks. Select the ZINN heading to refresh task and label data.
 
 ## Options
 
