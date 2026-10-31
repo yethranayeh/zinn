@@ -7,6 +7,7 @@ import { parseArgs } from "node:util";
 import Ajv from "ajv";
 import { Database } from "bun:sqlite";
 import { runCli, runCliInTerminal } from "./testing";
+import { createEmptyDatabase } from "./test-helpers";
 import { parseRoutes } from "./src/routes/router";
 import { routes } from "./src/routes/routes";
 import { validateOrderForms } from "./src/lib";
@@ -205,7 +206,7 @@ const fixtures: Record<string, Fixture[]> = {
   "capabilities": [{ schema: "Capabilities", args: [] }],
   "whoami": [{ schema: "Actor", args: [] }],
   "project create": [{ schema: "Project", args: ["NEW"] }],
-  "project list": [{ schema: "ProjectList", args: [] }, { schema: "ProjectList", args: [], empty: true }],
+  "project list": [{ schema: "ProjectList", args: [] }, { schema: "ProjectList", args: [], empty: true, prepare: createEmptyDatabase }],
   "project view": [{ schema: "ProjectView", args: ["APP"] }],
   "project edit": [
     { schema: "ProjectChange", args: ["APP", "--name", "Renamed"], check: (v) => expect(v.changed).toBe(true) },
@@ -289,7 +290,7 @@ const fixtures: Record<string, Fixture[]> = {
   ],
   "task comment delete": [{ schema: "Comment", args: ["$comment", "--yes"] }],
   "label create": [{ schema: "Label", args: ["new-label", "--color", "blue"] }],
-  "label list": [{ schema: "LabelList", args: [] }, { schema: "LabelList", args: [], empty: true }],
+  "label list": [{ schema: "LabelList", args: [] }, { schema: "LabelList", args: [], empty: true, prepare: createEmptyDatabase }],
   "label view": [{ schema: "Label", args: ["bug"] }],
   "label edit": [
     { schema: "LabelChange", args: ["bug", "--color", "green"], check: (v) => expect(v.changed).toBe(true) },

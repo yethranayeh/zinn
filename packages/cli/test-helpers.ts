@@ -1,8 +1,10 @@
 import { Database } from "bun:sqlite";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
+import { createSchema } from "../core/src/migrations/runner";
+import { openDatabase } from "../core/src/sqlite/bun";
 
 // Concurrent Bun startup stalls under macOS user temp directory
 const temporaryRoot = process.platform === "darwin" ? "/private/tmp" : tmpdir();
@@ -57,6 +59,18 @@ export function runZinn(
     env: { ...TEST_ENVIRONMENT, ...additionalEnv, ZINN_DIR: testDir },
     cwd: testDir,
   });
+}
+
+/** Creates a database at the latest schema with no records or activity. */
+export function createEmptyDatabase(testDir: string) {
+  mkdirSync(join(testDir, "data"), { recursive: true });
+  const db = openDatabase(join(testDir, "data", "zinn.sqlite"));
+
+  try {
+    createSchema(db);
+  } finally {
+    db.close();
+  }
 }
 
 export function withTestDb<T>(testDir: string, inspect: (db: Database) => T) {

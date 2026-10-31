@@ -1,11 +1,11 @@
 import * as adapter from "#sqlite";
 import { expect, spyOn, test } from "bun:test";
 import { strict as assert } from "node:assert";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getStorage } from "./storage";
 import { assertWritable, configureDatabase, getDb, resetDatabaseForTests } from "./db";
-import { ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./migrations/open-policy";
+import { MissingDatabaseError, ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./migrations/open-policy";
 import { createSchema } from "./migrations/runner";
 import type { OpenOptions } from "./sqlite/database";
 import { openWith, SqliteError } from "./sqlite/database";
@@ -58,7 +58,7 @@ function runInitializationCheck(inputFailure: ControlledFailure, failures: numbe
     const began = performance.now();
     try {
 
-      const db = getDb();
+      const db = getDb({ createsDatabase: true });
       const cached = getDb() === db;
       const timeout = db.query<{ timeout: number }>("PRAGMA busy_timeout").get()!.timeout;
       const foreignKeys = db.query<{ foreign_keys: number }>("PRAGMA foreign_keys").get()!.foreign_keys;
@@ -150,7 +150,7 @@ test("initialization does not retry an error that is not a SQLite failure", () =
 test("reset closes connections and prepared statements before selecting another store", () => {
   withTestStore((directory) => {
     const originalStorage = getStorage();
-    const original = getDb();
+    const original = getDb({ createsDatabase: true });
     original.exec("CREATE TABLE reset_test (value TEXT); INSERT INTO reset_test VALUES ('kept')");
     const statement = original.query<{ value: string }>("SELECT value FROM reset_test");
     expect(statement.get()).toEqual({ value: "kept" });
@@ -165,7 +165,7 @@ test("reset closes connections and prepared statements before selecting another 
     expect(() => original.exec("SELECT 1")).toThrow();
     expect(() => statement.get()).toThrow();
     expect(getStorage().directory).toBe(next);
-    expect(getDb()).not.toBe(original);
+    expect(getDb({ createsDatabase: true })).not.toBe(original);
     expect(getDb().query("SELECT name FROM sqlite_schema WHERE name = 'reset_test'").all()).toEqual([]);
 
     resetDatabaseForTests();
@@ -195,6 +195,7 @@ test("reset clears the opening policy and read-only state", () => {
     mkdirSync(fresh);
     resetDatabaseForTests();
     process.env.ZINN_DIR = fresh;
+    getDb({ createsDatabase: true });
     expect(() => assertWritable()).not.toThrow();
   });
 });
@@ -202,7 +203,7 @@ test("reset clears the opening policy and read-only state", () => {
 test("a failed close leaves the connection and selected store available for cleanup", () => {
   withTestStore(() => {
     const storage = getStorage();
-    const connection = getDb();
+    const connection = getDb({ createsDatabase: true });
     const failure = new Error("controlled close failure");
     const close = spyOn(connection, "close").mockImplementation(() => { throw failure; });
     try {
@@ -216,5 +217,29 @@ test("a failed close leaves the connection and selected store available for clea
     }
     resetDatabaseForTests();
     expect(() => connection.exec("SELECT 1")).toThrow();
+  });
+});
+
+test("ZINN-458: an open that does not create leaves a store without a database as it was", () => {
+  withTestStore((directory) => {
+    expect(() => getDb()).toThrow(MissingDatabaseError);
+    expect(() => assertWritable()).toThrow(MissingDatabaseError);
+    expect(readdirSync(directory)).toEqual([]);
+
+    mkdirSync(getStorage().dataDirectory);
+    writeFileSync(getStorage().databasePath, "");
+    expect(() => getDb()).toThrow(MissingDatabaseError);
+    expect(readdirSync(getStorage().dataDirectory)).toEqual(["zinn.sqlite"]);
+    expect(statSync(getStorage().databasePath).size).toBe(0);
+  });
+});
+
+test("ZINN-458: an open that creates initializes a zero-byte database file", () => {
+  withTestStore(() => {
+    mkdirSync(getStorage().dataDirectory);
+    writeFileSync(getStorage().databasePath, "");
+    getDb({ createsDatabase: true });
+    resetDatabaseForTests();
+    expect(() => assertWritable()).not.toThrow();
   });
 });

@@ -43,7 +43,7 @@ mkdir -p ./.zinn-example
 ZINN_DIR=./.zinn-example node example.ts
 ```
 
-Core opens the database on first use.
+Core opens the database on first use. `project.create` and `label.create` create it when the store has none. Other operations throw a `CoreError` with kind `missing`, entity `database` and the `databasePath`, and create nothing.
 
 By default it shares `~/.zinn/data/zinn.sqlite` with the CLI, but `ZINN_DIR` and settings files can select another location. See [Settings](/docs/settings) for directory selection.
 

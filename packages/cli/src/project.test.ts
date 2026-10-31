@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { runCli, runCliInTerminal } from "../testing";
+import { createEmptyDatabase } from "../test-helpers";
 import { errorDocumentSchema } from "./errors";
 
 const PREFIX = join(tmpdir(), "zinndefaulttest-");
@@ -109,6 +110,7 @@ test("ZINN_DIR selects an empty or populated store without applying the reposito
     const emptyStore = join(directory, "empty-store");
     mkdirSync(emptyStore);
     const emptyRun = (...args: Array<string>) => runZinnFrom(args, directory, repository, { ZINN_DIR: emptyStore });
+    createEmptyDatabase(emptyStore);
 
     for (const args of [["task", "list"], ["task", "search", "needle"]]) {
       const result = emptyRun(...args, "--json");
@@ -162,6 +164,7 @@ test("ZINN_DIR ignores malformed repository and home settings but validates its 
     writeFileSync(globalSettingsPath, "{");
     mkdirSync(store);
     const invoke = (...args: Array<string>) => runZinnFrom(args, directory, repository, { ZINN_DIR: store });
+    createEmptyDatabase(store);
 
     const ignoredMalformedFiles = invoke("task", "list", "--json");
     expect(ignoredMalformedFiles.code).toBe(0);

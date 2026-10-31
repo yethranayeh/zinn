@@ -2,7 +2,7 @@ import type { LabelCreateInput, LabelDeleteInput, LabelEditInput } from "../sche
 import type { Actor } from "../schemas/actor.js";
 import type { LabelChange } from "../types.js";
 
-import { writeTransaction } from "../db.js";
+import { getDb, writeTransaction } from "../db.js";
 import * as dbTask from "../db/task.js";
 import * as dbTaskLabel from "../db/task-label.js";
 import * as dbLabel from "../db/label.js";
@@ -27,6 +27,9 @@ export const label = {
   create: (input: LabelCreateInput, actor: Actor) => {
     const props = validateTaskInput(labelCreateSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
+
+    // A label needs no existing record, so creating one creates the database when the store has none.
+    getDb({ createsDatabase: true });
 
     return writeTransaction(() => {
       if (findLabelByName(props.name) != null) {

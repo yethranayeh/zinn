@@ -1,11 +1,13 @@
 import { expect, test } from "bun:test";
 import { column, project, relation, task } from "../index";
+import { getDb } from "./db";
 import { withTestStore } from "./testing";
 
 const actor = { name: "Test Human", email: null, kind: "human" as const };
 
 test("project task counts include empty projects and leave ordinary project records unchanged", () => {
   withTestStore(() => {
+    getDb({ createsDatabase: true });
     expect(project.getAllWithTaskCounts()).toEqual([]);
     const empty = project.create({ key: "EMPTY" }, actor);
 

@@ -265,6 +265,9 @@ test("internal recovery routes survive wrappers and reuse the recovery classific
     code: "conflict", details: { reason: "no_columns" }, suggestedRoute: ["project", "column", "create"],
   });
   expect(classifyFailure(new CoreError("occupied", "conflict", { reason: "has_tasks" }))).not.toHaveProperty("suggestedRoute");
+  expect(classifyFailure(new CoreError("none", "missing", { entity: "database", databasePath: "/store/data/zinn.sqlite" }))).toMatchObject({
+    code: "not_found", details: { entity: "database" }, suggestedRoute: ["project", "create"],
+  });
 });
 
 test("label validation prints plain messages and preserves JSON error facts without writes", () => {

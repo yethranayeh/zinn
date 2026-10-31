@@ -463,10 +463,10 @@ test("a fresh database gets the baseline and every migration, ending at the late
   });
 });
 
-test("getDb() creates a fresh database at the latest schema and version", () => {
+test("an open that creates the database gives it the latest schema and version", () => {
   withDirectory((directory) => {
     const initialized = withStore(directory, () => {
-      const db = getDb();
+      const db = getDb({ createsDatabase: true });
       return { schema: schemaObjects(db), version: readSchemaVersion(db) };
     });
     expect(initialized.version).toBe(latestVersion(MIGRATIONS));

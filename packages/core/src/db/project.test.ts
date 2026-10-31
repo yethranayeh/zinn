@@ -9,6 +9,7 @@ const project = await import("./project");
 const column = await import("./column");
 const task = await import("./task");
 const { getStorage: storage } = await import("../storage");
+const { getDb } = await import("../db");
 
 // Core reads ZINN_DIR once, on first use, so an earlier use without the preload would redirect these writes.
 if (storage().directory !== TEST_RUN_DIR) {
@@ -16,6 +17,8 @@ if (storage().directory !== TEST_RUN_DIR) {
     `Refusing to run: core resolved its directory to "${storage().directory}", not this run's "${TEST_RUN_DIR}"`,
   );
 }
+
+getDb({ createsDatabase: true });
 
 test("project.create can establish a project", () => {
   const created = project.create({ key: "WIP", name: "Work In Progress" });

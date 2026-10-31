@@ -170,6 +170,18 @@ export class UnmarkedDatabaseError extends CoreError {
   }
 }
 
+/** Thrown when the store has no database and the operation does not create one. Nothing was created. */
+export class MissingDatabaseError extends CoreError {
+  override name = "MissingDatabaseError";
+
+  constructor(databasePath: string) {
+    super(`There is no Zinn database at ${databasePath}`, "missing", {
+      entity: "database",
+      databasePath,
+    });
+  }
+}
+
 function describeReadOnly(
   reason: ReadOnlyReason,
   { databasePath, version, latestVersion }: DatabaseFacts,

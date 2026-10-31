@@ -9,6 +9,7 @@ const actor = { name: "Activity test", email: null, kind: "human" as const };
 
 test("time bounds include ties, preserve original payloads and combine before the limit", () => {
   withTestStore(() => {
+    getDb({ createsDatabase: true });
     const events = [99, 100, 101, 101, 102, 103].map((created_at, index) => dbActivity.create({
       created_at, actor_name: actor.name, actor_email: null, actor_kind: actor.kind,
       actor_source: null, actor_session_id: "Session", actor_thread_id: "Thread",

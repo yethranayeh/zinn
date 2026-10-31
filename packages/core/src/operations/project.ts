@@ -14,7 +14,7 @@ import { CoreError } from "../errors.js";
 import { actorSchema } from "../schemas/actor.js";
 import { validateTaskInput } from "../schemas/task.js";
 
-import { writeTransaction } from "../db.js";
+import { getDb, writeTransaction } from "../db.js";
 import * as dbProject from "../db/project.js";
 import * as dbColumn from "../db/column.js";
 import * as dbTask from "../db/task.js";
@@ -36,6 +36,9 @@ export const project = {
   create: (input: ProjectCreateInput, actor: Actor) => {
     const props = validateProjectInput(projectCreateSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
+
+    // A project needs no existing record, so creating one creates the database when the store has none.
+    getDb({ createsDatabase: true });
 
     return writeTransaction(() => {
       // Checked inside the transaction, so another process cannot add the key in between.

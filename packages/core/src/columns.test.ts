@@ -14,7 +14,7 @@ test("column renames keep identity and tasks, reject duplicates, and skip no-op 
     withStore(directory, () => {
 
       const actor = { name: "Test Human", email: null, kind: "human" as const };
-      const db = getDb();
+      const db = getDb({ createsDatabase: true });
       const app = project.create({ key: "APP", name: "App" }, actor);
       project.create({ key: "OTHER" }, actor);
       const first = task.create({ project_id: app.id, title: "First", description: null }, actor);
@@ -56,7 +56,7 @@ test("column orders move only the moved column and skip no-op writes", () => {
     withStore(directory, () => {
 
       const actor = { name: "Test Human", email: null, kind: "human" as const };
-      const db = getDb();
+      const db = getDb({ createsDatabase: true });
       project.create({ key: "APP", name: "App" }, actor);
       const names = () => column.getAllByProjectKey("APP").map(c => c.name);
       const order = (columnName: string, direction: Parameters<typeof column.order>[0]["direction"], targetColumnName?: string) =>

@@ -1,13 +1,13 @@
 import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import { test, expect } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 import packageJson from "./package.json";
 import { runCliInTerminal } from "./testing";
-import { CLI_PATH, runProcessAsync, runZinn, withIsolatedZinnDir, withTestDb } from "./test-helpers";
+import { CLI_PATH, createEmptyDatabase, runProcessAsync, runZinn, withIsolatedZinnDir, withTestDb } from "./test-helpers";
 import { parseRoutes } from "./src/routes/router";
 import { routes } from "./src/routes/routes";
 import { errorDocumentSchema } from "./src/errors";
@@ -1271,6 +1271,7 @@ test.serial("project delete keeps the project when confirmation is declined", as
 
 test("project delete rejects an unknown key", async () => {
   await withIsolatedZinnDir(async (testDir) => {
+    createEmptyDatabase(testDir);
     const result = await runZinn(["--json", "project", "delete", "NOSUCH"], testDir);
 
     expect(result.code).toBe(1);
@@ -1280,6 +1281,7 @@ test("project delete rejects an unknown key", async () => {
 
 test("project list on an empty database exits cleanly without inventing a row", async () => {
   await withIsolatedZinnDir(async (testDir) => {
+    createEmptyDatabase(testDir);
     const result = await runZinn(["project", "list"], testDir);
 
     expect(result.code).toBe(0);
@@ -1463,6 +1465,7 @@ test("project view JSON contains the project, per-column task counts in board or
 
 test("project view validates its project key", async () => {
   await withIsolatedZinnDir(async (testDir) => {
+    createEmptyDatabase(testDir);
     const missing = await runZinn(["project", "view"], testDir);
     const extra = await runZinn(["project", "view", "ONE", "TWO"], testDir);
     const unknown = await runZinn(["--json", "project", "view", "unknown"], testDir);
@@ -1514,6 +1517,7 @@ test("project create rejects blank or non-single-line names", async () => {
 
 test("task create rejects an unknown project", async () => {
   await withIsolatedZinnDir(async (testDir) => {
+    createEmptyDatabase(testDir);
     const result = await runZinn(["--json", "task", "create", "NOPE", "--title", "orphan task"], testDir);
 
     expect(result.code).toBe(1);
@@ -1781,6 +1785,7 @@ test("a project without columns rejects task creation without consuming a task n
 
 test("task list on an empty database exits cleanly without output", async () => {
   await withIsolatedZinnDir(async (testDir) => {
+    createEmptyDatabase(testDir);
     const result = await runZinn(["task", "list"], testDir);
 
     expect(result.code).toBe(0);
@@ -1980,6 +1985,7 @@ test("task list for an empty project does not leak another project's tasks", asy
 
 test("task list rejects an unknown project", async () => {
   await withIsolatedZinnDir(async (testDir) => {
+    createEmptyDatabase(testDir);
     const result = await runZinn(["--json", "task", "list", "NOSUCH"], testDir);
 
     expect(result.code).toBe(1);
@@ -3845,6 +3851,7 @@ test("task archive is idempotent and unarchive restores active listing", async (
 
 test("task archive and unarchive require a valid existing task key", async () => {
   await withIsolatedZinnDir(async (testDir) => {
+    createEmptyDatabase(testDir);
     expect((await runZinn(["task", "archive"], testDir)).stderr).toContain("Usage: zinn task archive");
     expect((await runZinn(["task", "unarchive"], testDir)).stderr).toContain("Usage: zinn task unarchive");
     expect(errorDocumentSchema.parse(JSON.parse((await runZinn(["--json", "task", "archive", "INVALID"], testDir)).stderr)).error).toMatchObject({ code: "invalid_input", message: expect.stringContaining("INVALID"), details: { field: ["taskKey"] } });
@@ -4278,6 +4285,7 @@ test("--json combines a task and its relations into one document on task view", 
 
 test("--json prints an empty array for empty lists, while text output stays empty", async () => {
   await withIsolatedZinnDir(async (testDir) => {
+    createEmptyDatabase(testDir);
     expect((await runZinn(["project", "list"], testDir)).stdout).toBe("");
     expect(JSON.parse((await runZinn(["project", "list", "--json"], testDir)).stdout)).toEqual([]);
     expect(JSON.parse((await runZinn(["label", "list", "--json"], testDir)).stdout)).toEqual([]);
@@ -5998,6 +6006,70 @@ async function createDatabase(dir: string, version: number) {
   withTestDb(dir, (db) => db.run(`PRAGMA user_version = ${version}`));
 }
 
+function storeSnapshot(dir: string) {
+  return readdirSync(dir, { recursive: true, encoding: "utf8" }).sort().map((entry) => {
+    const path = join(dir, entry);
+    return { entry, size: statSync(path).isFile() ? statSync(path).size : null };
+  });
+}
+
+test("ZINN-458: reads and writes that need records report a missing or empty database and leave the store as it was", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const emptyFolder = join(dir, "empty-folder");
+    mkdirSync(emptyFolder);
+    const zeroByteFile = join(dir, "zero-byte");
+    mkdirSync(join(zeroByteFile, "data"), { recursive: true });
+    writeFileSync(join(zeroByteFile, "data", "zinn.sqlite"), "");
+    const commands = [
+      ["task", "view", "APP-1"],
+      ["task", "list"],
+      ["project", "list"],
+      ["task", "comment", "create", "APP-1", "--text", "Note"],
+      ["label", "edit", "bug", "--color", "red"],
+    ];
+
+    for (const store of [emptyFolder, zeroByteFile]) {
+      const before = storeSnapshot(store);
+      for (const args of commands) {
+        const json = await runZinn(["--json", ...args], store);
+        expect(json.code, args.join(" ")).toBe(1);
+        expect(json.stdout).toBe("");
+        expect(errorDocumentSchema.parse(JSON.parse(json.stderr)).error).toMatchObject({
+          code: "not_found",
+          details: { entity: "database", databasePath: join(store, "data", "zinn.sqlite") },
+        });
+
+        const text = await runZinn(args, store);
+        expect(text.code).toBe(1);
+        expect(text.stderr).toContain("zinn project create");
+      }
+      expect(storeSnapshot(store)).toEqual(before);
+
+      expect((await runZinn(["project", "create", "APP"], store)).code).toBe(0);
+      expect((await runZinn(["task", "list", "--json"], store)).code).toBe(0);
+    }
+  });
+});
+
+test("ZINN-458: label create creates the database, like project create", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    expect((await runZinn(["label", "create", "bug"], dir)).code).toBe(0);
+    expect(JSON.parse((await runZinn(["project", "list", "--json"], dir)).stdout)).toEqual([]);
+    expect(JSON.parse((await runZinn(["label", "list", "--json"], dir)).stdout)).toMatchObject([{ name: "bug" }]);
+  });
+});
+
+test("ZINN-458: refusals of a missing database name the command that creates one", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    for (const args of [["backup"], ["migrate"], ["reindex"]]) {
+      const result = await runZinn(args, dir);
+      expect(result.code, args.join(" ")).toBe(1);
+      expect(result.stderr).toContain("zinn project create");
+    }
+    expect(readdirSync(dir)).toEqual([]);
+  });
+});
+
 test("migrate refuses when there is no database and creates no files", async () => {
   await withIsolatedZinnDir(async (dir) => {
     const result = await runZinn(["--json", "migrate"], dir);
@@ -6471,7 +6543,46 @@ test("project list and write rows show truncated description previews, project v
 
 test("concurrent fresh initialization supports readers and project creators", async () => {
   await withIsolatedZinnDir(async (dir) => {
-    for (const operation of ["list", "create"]) {
+    for (let round = 0; round < 3; round++) {
+      const store = join(dir, `list-${round}`);
+      mkdirSync(store);
+      const results = await Promise.all(Array.from({ length: 40 }, () =>
+        runZinn(["project", "list", "--json"], store, { AI_AGENT: "concurrency-test" }),
+      ));
+
+      // ZINN-458: readers of a store without a database report it and create nothing.
+      for (const result of results) {
+        expect(result.code).toBe(1);
+        expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "database" } });
+      }
+      expect(readdirSync(store)).toEqual([]);
+    }
+
+    for (let round = 0; round < 3; round++) {
+      const store = join(dir, `mixed-${round}`);
+      mkdirSync(store);
+      const results = await Promise.all(Array.from({ length: 40 }, (_, index) =>
+        runZinn(index % 2 === 0
+          ? ["project", "list", "--json"]
+          : ["project", "create", `P${index}`, "--json"], store, { AI_AGENT: "concurrency-test" }),
+      ));
+
+      // A reader that loses the race with the creating writer reports the missing database.
+      for (const [index, result] of results.entries()) {
+        if (index % 2 === 1 || result.code === 0) {
+          expect(result.stderr).toBe("");
+          expect(result.code).toBe(0);
+        } else {
+          expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "database" } });
+        }
+      }
+      withTestDb(store, (db) => {
+        expect(db.query("SELECT COUNT(*) AS count FROM project").get()).toEqual({ count: 20 });
+        expect(db.query("PRAGMA integrity_check").all()).toEqual([{ integrity_check: "ok" }]);
+      });
+    }
+
+    for (const operation of ["create"]) {
       for (let round = 0; round < 3; round++) {
         const store = join(dir, `${operation}-${round}`);
         mkdirSync(store);
@@ -7081,7 +7192,9 @@ async function seedRecordedActivity(
   directory: string,
   inputs: Array<Pick<Activity, "id"> & Partial<Activity>>,
 ) {
-  expect((await runZinn(["activity", "list", "--json"], directory)).code).toBe(0);
+  if (!existsSync(join(directory, "data", "zinn.sqlite"))) {
+    createEmptyDatabase(directory);
+  }
   const events: Array<Activity> = inputs.map((input) => ({
     id: input.id,
     created_at: input.created_at ?? Date.UTC(2026, 9, 8, 10, 30),
@@ -7113,6 +7226,7 @@ async function seedRecordedActivity(
 
 test("activity empty lists and unrecoverable task histories return empty results", async () => {
   await withIsolatedZinnDir(async (directory) => {
+    createEmptyDatabase(directory);
     for (const args of [["activity", "list"], ["activity", "list", "--task", "gone-2", "--show-deleted"], ["activity", "list", "--task-id", "ffffffff-ffff-7fff-8fff-ffffffffffff"]]) {
       const text = await runZinn(args, directory);
       expect(text).toEqual({ code: 0, stdout: "", stderr: "" });

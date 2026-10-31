@@ -138,6 +138,13 @@ export function recoveryHint(
     return { suffix: " Use --all to replace every match." };
   }
 
+  if (error instanceof CoreError && error.kind === "missing" && error.facts.entity === "database") {
+    return {
+      suffix: ". Create one with `zinn project create`.",
+      suggestedRoute: ["project", "create"],
+    };
+  }
+
   if (error instanceof CoreError && error.facts.reason === "no_columns") {
     return {
       suffix: `. Add a column with zinn project column create ${error.facts.key} <name>.`,

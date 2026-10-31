@@ -278,11 +278,17 @@ test("a default-database fixture resolves inside the test's HOME, and ZINN_DIR s
   });
 });
 
-test("a missing default database is created at the latest version, without a settings file", () => {
+test("ZINN-458: a read reports a missing default database, and project create creates it at the latest version, without a settings file", () => {
   withHome((home) => {
     const mainDir = join(home, ".zinn");
 
-    expect(runOpen({ home }, {})).toEqual({ projects: [], wrote: true });
+    const outcome = runOpen({ home }, {});
+    expect(outcome.readError).toMatchObject({
+      name: "MissingDatabaseError",
+      kind: "missing",
+      facts: { entity: "database", databasePath: join(mainDir, "data", "zinn.sqlite") },
+    });
+    expect(outcome.wrote).toBe(true);
     expect(readDatabase(mainDir).version).toBe(latestVersion(MIGRATIONS));
     expect(projectKeys(mainDir)).toEqual(["NEW"]);
     expect(existsSync(join(mainDir, "settings.json"))).toBe(false);

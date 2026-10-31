@@ -18,6 +18,7 @@ import {
   decideOpen,
   DEFAULT_OPEN_POLICY,
   isProtectedStorage,
+  MissingDatabaseError,
   ReadOnlyDatabaseError,
   UnmarkedDatabaseError,
 } from "./migrations/open-policy.js";
@@ -33,6 +34,11 @@ let db: Database | null = null;
 let policy: OpenPolicy = DEFAULT_OPEN_POLICY;
 /** Why the open database refuses changes, null while it accepts them. */
 let readOnly: { reason: ReadOnlyReason; facts: DatabaseFacts } | null = null;
+
+export type DatabaseAccess = {
+  /** Creates the database when the store has none. Only operations that need no existing record pass it. */
+  createsDatabase?: boolean;
+};
 
 const INITIALIZATION_RETRY_BUDGET_MS = 1_000;
 const INITIALIZATION_ATTEMPTS = 5;
@@ -68,8 +74,9 @@ function isWritable(decision: OpenDecision) {
 /**
  * Classifies the database and decides how it opens. Writes stay blocked by `query_only`
  *  until the decision allows them, so nothing can write before the state is known.
+ * An empty database counts as missing unless the access creates one.
  */
-function prepare(connection: Database): Prepared {
+function prepare(connection: Database, { createsDatabase = false }: DatabaseAccess): Prepared {
   connection.exec("PRAGMA query_only = ON");
 
   const classification = classifyConnection(connection, MIGRATIONS);
@@ -81,6 +88,10 @@ function prepare(connection: Database): Prepared {
     allowsLegacyRead: policy.allowsLegacyRead,
   });
 
+  if (decision.action === "create" && !createsDatabase) {
+    throw new MissingDatabaseError(getStorage().databasePath);
+  }
+
   if (isWritable(decision)) {
     connection.exec("PRAGMA query_only = OFF");
     connection.exec("PRAGMA journal_mode = WAL;");
@@ -91,13 +102,16 @@ function prepare(connection: Database): Prepared {
   return { ...classification, decision };
 }
 
-function openConnection() {
-  const connection = openDatabase(getStorage().databasePath);
+function openConnection(access: DatabaseAccess) {
+  // Without the create flag, the open never creates a file
+  const connection = openDatabase(getStorage().databasePath, {
+    create: access.createsDatabase === true,
+  });
 
   try {
     // Arm waiting before reading the state or switching to WAL can encounter another process.
     applyConnectionSettings(connection);
-    return { connection, ...prepare(connection) };
+    return { connection, ...prepare(connection, access) };
   } catch (err) {
     try {
       connection.close();
@@ -110,12 +124,12 @@ function openConnection() {
 }
 
 /** Opens the connection, retrying only the startup races that SQLite's busy handler does not cover. */
-function openWithRetries() {
+function openWithRetries(access: DatabaseAccess) {
   const began = performance.now();
 
   for (let attempt = 1; ; attempt++) {
     try {
-      return openConnection();
+      return openConnection(access);
     } catch (err) {
       // Binding and API errors are not SqliteErrors, so they are never retried.
       const isTransientStartupError =
@@ -170,7 +184,7 @@ function settle(connection: Database, prepared: Prepared): typeof readOnly {
         }
 
         // Another process created the database first, so open it as it is now.
-        const reclassified = prepare(connection);
+        const reclassified = prepare(connection, { createsDatabase: true });
         if (reclassified.decision.action === "create") {
           throw error;
         }
@@ -199,19 +213,26 @@ function settle(connection: Database, prepared: Prepared): typeof readOnly {
   }
 }
 
-export function getDb() {
+/** Opens the database once per process. Without `createsDatabase`, a store with no database throws MissingDatabaseError. */
+export function getDb(access: DatabaseAccess = {}) {
   if (db == null) {
     // Resolved outside the try, so a refused folder is reported as it is, not as a problem initializing Zinn.
     const { databasePath } = getStorage();
     let connection: Database | null = null;
 
     try {
+      const isMissing = !existsSync(databasePath);
+
+      if (isMissing && access.createsDatabase !== true) {
+        throw new MissingDatabaseError(databasePath);
+      }
+
       // The data directory is created only for a store that does not exist yet.
-      if (!existsSync(databasePath)) {
+      if (isMissing) {
         ensureDataDirectory();
       }
 
-      const opened = openWithRetries();
+      const opened = openWithRetries(access);
       connection = opened.connection;
       readOnly = settle(connection, opened);
       db = connection;
@@ -224,7 +245,7 @@ export function getDb() {
         }
       }
 
-      if (err instanceof UnmarkedDatabaseError) {
+      if (err instanceof UnmarkedDatabaseError || err instanceof MissingDatabaseError) {
         throw err;
       }
 

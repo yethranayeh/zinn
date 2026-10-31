@@ -44,7 +44,7 @@ test("labels preserve atomic edits, no-op timestamps, uniqueness, and cascade in
     withStore(directory, () => {
 
       const actor = { name: "Test Human", email: null, kind: "human" as const };
-      const db = getDb();
+      const db = getDb({ createsDatabase: true });
       assert.equal(db.query<{ foreign_keys: number }>("PRAGMA foreign_keys").get()!.foreign_keys, 1);
       const app = project.create({ key: "APP" }, actor);
       const other = project.create({ key: "OTHER" }, actor);

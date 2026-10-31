@@ -9,6 +9,7 @@ const actor = { name: "Activity test", email: null, kind: "human" as const };
 
 test("action filters select every recorded action and combine before the limit", () => {
   withTestStore(() => {
+    getDb({ createsDatabase: true });
     const events = activityActionSchema.options.map((action, index) => dbActivity.create({
       created_at: index, actor_name: actor.name, actor_email: null, actor_kind: actor.kind,
       actor_source: null, actor_session_id: "Session", actor_thread_id: "Thread",
@@ -189,6 +190,7 @@ test("changed filters combine with every identity selector, session and thread b
 
 test("changed filters ignore absent or unrelated payloads and preserve matching records in full", () => {
   withTestStore(() => {
+    getDb({ createsDatabase: true });
     const base = {
       created_at: 1, actor_name: null, actor_email: null, actor_kind: "agent" as const,
       actor_source: null, actor_session_id: null, actor_thread_id: null, actor_agent: null,

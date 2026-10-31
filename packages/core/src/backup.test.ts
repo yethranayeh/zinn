@@ -15,7 +15,7 @@ test("same-time backups preserve earlier snapshots and include uncheckpointed WA
 
       const { backupDirectory, databasePath } = getStorage();
       setSystemTime(new Date("2026-10-03T12:30:05Z"));
-      const db = getDb();
+      const db = getDb({ createsDatabase: true });
       db.exec("PRAGMA wal_autocheckpoint = 0");
       db.exec("CREATE TABLE backup_test (value INTEGER)");
       db.exec("INSERT INTO backup_test VALUES (0)");
