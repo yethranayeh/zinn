@@ -1,0 +1,36 @@
+---
+version: 0.43.0
+date: "2026-10-31"
+cli: 0.43.0
+core: 0.32.0
+---
+
+### Added
+
+- Tasks can have deadlines. `task create` and `task edit` accept `--due <timestamp>`, and `--due none` clears it. `task list` and `task search` select deadlines with `--due-since` and `--due-until`, and `task list --sort due` puts the earliest first. See [CLI](/docs/cli).
+  - Timestamps are integer epoch milliseconds or a complete timestamp with `Z` or a numeric offset. Task JSON includes `due_at`, and activity records deadline changes. Core adds `dueSince`, `dueUntil` and `timestampSchema`.
+- `task list` and `activity list` continue a long result with `--starting-after <id>`. When `--limit` cuts the results short, stderr prints the command that continues them. Core adds `task.getPage`, which returns `{ tasks, hasMore }`.
+- `task list --sort activity` lists the most recently active tasks first, counting comments and relations. `task list` also accepts `--limit`.
+- `activity list` selects history with `--changed`, `--action`, `--since` and `--until`.
+  - `--changed <field>` matches a change to `column`, `priority`, `labels`, `title`, `description` or `due_at`. `column`, `priority` and `labels` also take a value, as in `--changed column=Review`.
+  - `--action <action>` matches recorded actions such as `move` or `comment_create`. `--since` and `--until` bound the recorded time, inclusively.
+  - Repeat a flag to match any of its values. Core accepts the same filters as `changed`, `actions`, `since` and `until`.
+- `project column delete` deletes an empty column after confirmation. A project can have no columns, and creating a task in it fails until a column is added. Core adds `column.delete` and `column.getByName`.
+- `project list` shows each project's active and archived task counts. JSON entries include `taskCounts`, and core adds `project.getAllWithTaskCounts`.
+- Parser and routing failures report `error.details.reason`, such as `unknown_option` or `missing_argument`. `zinn capabilities --json` lists every value. See [Scripting](/docs/scripting).
+- Core exports `isSqliteErrorCode` and `isSqliteErrorFamily`, which match SQLite result codes and narrow the error to `SqliteError`. See [Core](/docs/core).
+
+### Changed
+
+- A published release upgrades databases at schema version 1 or 2 to version 3 on first use, after saving a backup.
+- **Breaking store initialization:** only `project create` and `label create` create a database when the store has none. Other commands fail with `not_found`, `details.entity: "database"` and `details.databasePath`, exit with code `1` and write nothing.
+  - Core operations other than `project.create` and `label.create` throw a `CoreError` with kind `missing` and entity `database`. See [Core](/docs/core).
+- **Breaking relations:** a task pair holds one relation across all types and directions. `task relation create` names the conflicting links and asks before replacing them, and `--yes` replaces them without asking, including with `--json`. `task create` refuses two relation types for the same target.
+  - Core callers pass `replace` to `relation.create`, with the IDs from `relation.getConflicts` or `true`, or receive a conflict. See [Core](/docs/core).
+- **Breaking core API:** `activity.getAll` returns `{ events, hasMore }` instead of an array and accepts `startingAfter`. Read the records from `events`. `activity list --json` still prints an array.
+- **Breaking limits:** `--limit` on `task list`, `task search` and `activity list` accepts an integer from `1` through `11871`. Scripts that passed a larger value must lower it. `task list` and `activity list` can continue with `--starting-after`.
+- Full task objects in every `--json` result include `created_at`, `updated_at` and `due_at`. Consumers validating results against a previous release's schemas must refresh `zinn capabilities --json`. See [Scripting](/docs/scripting).
+- Deleting a project records a `relation_delete` event on each surviving task that loses a cross-project relation, including archived tasks, without changing its `updated_at`.
+- Namespace help, such as `zinn task --help`, lists each command on its own line with a short summary.
+- Table columns stay aligned with wide characters, emoji and combining marks. Description previews and comment echoes never split a character.
+- Parser and routing error messages are capped at 1,024 UTF-16 units. `error.help` and `error.details` keep their complete values.
