@@ -34,18 +34,17 @@ const percent = (value: number, total: number) => `${((value / total) * 100).toF
 					/>
 					{
 						parts.map((part) =>
-							part.states.map((state, index) => (
+							part.states.map((state) => (
 								<img
-									class='absolute opacity-0 data-active:opacity-100 data-highlight:outline-1 data-highlight:outline-solid data-highlight:outline-bronze'
+									class='absolute'
 									data-part-image={part.id}
 									data-image-label={state.label}
-									data-active={index === 0 ? "" : undefined}
 									src={state.image}
 									width={part.width}
 									height={state.height}
 									alt={state.alt}
-									aria-hidden={index === 0 ? undefined : "true"}
-									loading={index === 0 ? "eager" : "lazy"}
+									hidden
+									loading='lazy'
 									decoding='async'
 									style={`left: ${percent(part.x, width)}; top: ${percent(part.y, height)}; width: ${percent(part.width, width)}; height: ${percent(state.height, height)};`}
 								/>
@@ -86,59 +85,83 @@ const percent = (value: number, total: number) => `${((value / total) * 100).toF
 
 <script>
 	for (const collage of document.querySelectorAll<HTMLElement>("[data-collage]")) {
-		for (const callout of collage.querySelectorAll<HTMLElement>("[data-callout]")) {
-			const part = callout.dataset.callout!;
-			const images = [...collage.querySelectorAll<HTMLImageElement>(`[data-part-image="${part}"]`)];
-			const stateLabel = callout.querySelector<HTMLElement>("[data-state-label]")!;
-			const position = callout.querySelector<HTMLElement>("[data-position]")!;
-			const announcement = callout.querySelector<HTMLElement>("[data-announcement]")!;
-			let current = Math.max(
-				0,
-				images.findIndex((image) => image.hasAttribute("data-active"))
-			);
-			let highlighted = false;
+		const callouts = [...collage.querySelectorAll<HTMLElement>("[data-callout]")];
+		const images = [...collage.querySelectorAll<HTMLImageElement>("[data-part-image]")];
+		const grouped = new Map<string, HTMLImageElement[]>();
+		for (const image of images) {
+			const part = image.dataset.partImage!;
+			const partImages = grouped.get(part) ?? [];
+			partImages.push(image);
+			grouped.set(part, partImages);
+		}
+		const stateIndex: Record<string, number> = {};
+		for (const part of grouped.keys()) {
+			stateIndex[part] = 0;
+		}
+		let activePart: string | null = null;
 
-			function setHighlight(on: boolean) {
-				highlighted = on;
-				images.forEach((image) => {
-					image.toggleAttribute("data-highlight", on && image.hasAttribute("data-active"));
+		function render() {
+			for (const [part, partImages] of grouped) {
+				partImages.forEach((image, index) => {
+					image.hidden = part !== activePart || index !== stateIndex[part];
 				});
 			}
-
-			function select(index: number) {
-				current = (index + images.length) % images.length;
-				images.forEach((image, imageIndex) => {
-					const active = imageIndex === current;
-					image.toggleAttribute("data-active", active);
-					image.setAttribute("aria-hidden", String(!active));
-				});
-				if (highlighted) {
-					setHighlight(true);
+			for (const callout of callouts) {
+				const part = callout.dataset.callout!;
+				const partImages = grouped.get(part) ?? [];
+				const index = stateIndex[part] ?? 0;
+				const stateLabel = callout.querySelector<HTMLElement>("[data-state-label]");
+				const position = callout.querySelector<HTMLElement>("[data-position]");
+				const controls = callout.querySelector<HTMLElement>("[data-controls]");
+				if (stateLabel) {
+					stateLabel.textContent = partImages[index]?.dataset.imageLabel ?? "";
 				}
-				const label = images[current]!.dataset.imageLabel!;
-				stateLabel.textContent = label;
-				position.textContent = `${String(current + 1).padStart(2, "0")} / ${String(images.length).padStart(2, "0")}`;
-				announcement.textContent = `${callout.dataset.partLabel}: ${label}. State ${current + 1} of ${images.length}.`;
+				if (position) {
+					position.textContent = `${String(index + 1).padStart(2, "0")} / ${String(partImages.length).padStart(2, "0")}`;
+				}
+				if (controls) {
+					controls.hidden = partImages.length <= 1;
+				}
+				if (part === activePart) {
+					const announcement = callout.querySelector<HTMLElement>("[data-announcement]");
+					if (announcement) {
+						announcement.textContent = `${callout.dataset.partLabel}: ${partImages[index]?.dataset.imageLabel}. State ${index + 1} of ${partImages.length}.`;
+					}
+				}
 			}
+		}
 
-			for (const button of callout.querySelectorAll<HTMLButtonElement>("[data-step]")) {
-				button.addEventListener("click", () => select(current + Number(button.dataset.step)));
-			}
-			for (const controls of callout.querySelectorAll<HTMLElement>("[data-controls]")) {
-				controls.hidden = false;
-			}
-			callout.addEventListener("pointerenter", () => setHighlight(true));
+		for (const callout of callouts) {
+			const part = callout.dataset.callout!;
+			callout.addEventListener("pointerenter", () => {
+				activePart = part;
+				render();
+			});
 			callout.addEventListener("pointerleave", () => {
 				if (!callout.matches(":focus-within")) {
-					setHighlight(false);
+					activePart = null;
+					render();
 				}
 			});
-			callout.addEventListener("focusin", () => setHighlight(true));
+			callout.addEventListener("focusin", () => {
+				activePart = part;
+				render();
+			});
 			callout.addEventListener("focusout", () => {
 				if (!callout.contains(document.activeElement)) {
-					setHighlight(false);
+					activePart = null;
+					render();
 				}
 			});
+			for (const button of callout.querySelectorAll<HTMLButtonElement>("[data-step]")) {
+				button.addEventListener("click", () => {
+					const partImages = grouped.get(part) ?? [];
+					stateIndex[part] = ((stateIndex[part] ?? 0) + Number(button.dataset.step) + partImages.length) % partImages.length;
+					render();
+				});
+			}
 		}
+
+		render();
 	}
 </script>

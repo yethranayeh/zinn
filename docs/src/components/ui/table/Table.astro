@@ -1,15 +1,16 @@
 ---
 import type { HTMLAttributes } from "astro/types";
+import { twMerge } from "tailwind-merge";
 
 type Props = HTMLAttributes<"table">;
 
 const { class: className, ...attributes } = Astro.props;
 ---
 
-<div class='markdown-table relative my-8 after:pointer-events-none after:absolute after:inset-0 after:content-[""]'>
-	<div class='markdown-table-scroll overflow-x-auto overscroll-x-contain focus-visible:outline-offset-4'>
+<div class='table-frame relative my-8 after:pointer-events-none after:absolute after:inset-0 after:content-[""]'>
+	<div class='table-scroll overflow-x-auto overscroll-x-contain focus-visible:outline-offset-4'>
 		<table
-			class:list={["w-full border-collapse border border-soot bg-bone text-base leading-[1.55]", className]}
+			class={twMerge("w-full border-collapse border border-soot bg-bone text-base leading-[1.55]", className)}
 			{...attributes}>
 			<slot />
 		</table>
@@ -18,7 +19,7 @@ const { class: className, ...attributes } = Astro.props;
 
 <style>
 	/* Foreground shadows remain visible over opaque table cells. */
-	.markdown-table::after {
+	.table-frame::after {
 		background:
 			radial-gradient(farthest-side at 0 50%, var(--table-start-shadow, transparent), transparent) left / 0.75rem 100%
 				no-repeat,
@@ -26,15 +27,15 @@ const { class: className, ...attributes } = Astro.props;
 				no-repeat;
 	}
 
-	.markdown-table:has([data-clipped-start]) {
+	.table-frame:has([data-clipped-start]) {
 		--table-start-shadow: rgb(28 24 21 / 0.16);
 	}
 
-	.markdown-table:has([data-clipped-end]) {
+	.table-frame:has([data-clipped-end]) {
 		--table-end-shadow: rgb(28 24 21 / 0.16);
 	}
 
-	.markdown-table-scroll :global(table:has(td:nth-child(3)) td:last-child) {
+	.table-scroll :global(table:has(td:nth-child(3)) td:last-child) {
 		min-width: 16rem;
 	}
 </style>
@@ -42,7 +43,7 @@ const { class: className, ...attributes } = Astro.props;
 <script>
 	const headings = Array.from(document.querySelectorAll<HTMLElement>("main :is(h1, h2, h3, h4, h5, h6)[id]"));
 
-	for (const container of document.querySelectorAll<HTMLElement>(".markdown-table-scroll")) {
+	for (const container of document.querySelectorAll<HTMLElement>(".table-scroll")) {
 		const heading = headings.findLast((candidate) =>
 			Boolean(candidate.compareDocumentPosition(container) & Node.DOCUMENT_POSITION_FOLLOWING)
 		);

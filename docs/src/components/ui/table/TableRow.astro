@@ -1,5 +1,6 @@
 ---
 import type { HTMLAttributes } from "astro/types";
+import { twMerge } from "tailwind-merge";
 
 type Props = HTMLAttributes<"tr">;
 
@@ -7,7 +8,7 @@ const { class: className, ...attributes } = Astro.props;
 ---
 
 <tr
-	class:list={["even:bg-[color-mix(in_srgb,var(--color-limestone)_45%,var(--color-bone))]", className]}
+	class={twMerge("even:bg-[color-mix(in_srgb,var(--color-limestone)_45%,var(--color-bone))]", className)}
 	{...attributes}>
 	<slot />
 </tr>

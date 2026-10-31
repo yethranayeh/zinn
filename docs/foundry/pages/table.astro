@@ -1,0 +1,93 @@
+---
+import Table from "../../src/components/ui/table/Table.astro";
+import TableCell from "../../src/components/ui/table/TableCell.astro";
+import TableHead from "../../src/components/ui/table/TableHead.astro";
+import TableRow from "../../src/components/ui/table/TableRow.astro";
+import ComponentHeading from "../components/ComponentHeading.astro";
+import Specimen from "../components/Specimen.astro";
+import FoundryLayout from "../layouts/FoundryLayout.astro";
+
+const aliases = [
+	["view", "show"],
+	["list", "ls"],
+	["delete", "rm"],
+	["create", "new"]
+];
+const options = [
+	["store", "CLI selection", "Optional absolute Zinn data directory for inspection and reply verification."],
+	["cli", '["zinn"]', "Executable and fixed arguments used for local reads."],
+	[
+		"dataDirectory",
+		"~/.local/share/zinn-codex",
+		"Absolute directory for reference files, outside the Zinn data directory."
+	],
+	["observe", "true", "Record task references for the current-chat list."],
+	["identity", "true", "Supply the callback's agent profile and model to supported direct commands."],
+	["captureEffort", "false", "Read exact execution metadata from the callback's transcript file to supply effort."]
+];
+---
+
+<FoundryLayout title='Table' description='Table lays out rows and columns of short facts.'>
+	<ComponentHeading folder='table'>
+		<p>
+			Table holds reference data in rows and columns. Docs pages get it from their Markdown pipe tables. Pages written
+			in Astro compose the parts directly: <code>Table</code>, <code>TableRow</code>, <code>TableHead</code> and <code
+				>TableCell</code
+			>.
+		</p>
+		<p>A table that overflows scrolls inside its frame. Code in a cell stays on one line.</p>
+	</ComponentHeading>
+
+	<div class='grid gap-4'>
+		<Specimen label='<Table> with two columns' block>
+			<Table>
+				<thead>
+					<TableRow>
+						<TableHead>Primary command</TableHead>
+						<TableHead>Alias</TableHead>
+					</TableRow>
+				</thead>
+				<tbody>
+					{
+						aliases.map(([command, alias]) => (
+							<TableRow>
+								<TableCell>
+									<code>{command}</code>
+								</TableCell>
+								<TableCell>
+									<code>{alias}</code>
+								</TableCell>
+							</TableRow>
+						))
+					}
+				</tbody>
+			</Table>
+		</Specimen>
+		<Specimen label='<Table> with three columns' block>
+			<Table>
+				<thead>
+					<TableRow>
+						<TableHead>Option</TableHead>
+						<TableHead>Default</TableHead>
+						<TableHead>Behavior</TableHead>
+					</TableRow>
+				</thead>
+				<tbody>
+					{
+						options.map(([option, fallback, behavior]) => (
+							<TableRow>
+								<TableCell>
+									<code>{option}</code>
+								</TableCell>
+								<TableCell>
+									<code>{fallback}</code>
+								</TableCell>
+								<TableCell>{behavior}</TableCell>
+							</TableRow>
+						))
+					}
+				</tbody>
+			</Table>
+		</Specimen>
+	</div>
+</FoundryLayout>
