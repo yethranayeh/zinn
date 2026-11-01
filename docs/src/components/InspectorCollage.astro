@@ -31,6 +31,7 @@ const percent = (value: number, total: number) => `${((value / total) * 100).toF
 						alt=''
 						loading='eager'
 						decoding='async'
+						data-collage-base
 					/>
 					{
 						parts.map((part) =>
@@ -45,6 +46,7 @@ const percent = (value: number, total: number) => `${((value / total) * 100).toF
 									alt={state.alt}
 									hidden
 									loading='lazy'
+									fetchpriority='low'
 									decoding='async'
 									style={`left: ${percent(part.x, width)}; top: ${percent(part.y, height)}; width: ${percent(part.width, width)}; height: ${percent(state.height, height)};`}
 								/>
@@ -154,5 +156,20 @@ const percent = (value: number, total: number) => `${((value / total) * 100).toF
 		}
 
 		render();
+
+		// Warm the part captures once the base is in, so a first hover or focus paints without waiting.
+		const baseImage = collage.querySelector<HTMLImageElement>("[data-collage-base]");
+		const prefetchParts = () => {
+			for (const image of images) {
+				image.loading = "eager";
+				image.decode().catch(() => {});
+			}
+		};
+		if (baseImage?.complete) {
+			prefetchParts();
+		} else {
+			baseImage?.addEventListener("load", prefetchParts, { once: true });
+			baseImage?.addEventListener("error", prefetchParts, { once: true });
+		}
 	}
 </script>
