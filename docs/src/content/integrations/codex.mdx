@@ -18,6 +18,8 @@ The source builds version **0.1.0** as a candidate in a self-contained local mar
 
 The inspector and hook verification use ordinary CLI read commands with the host user's permissions. Normal database compatibility rules apply, including backups and automatic upgrades when the CLI opens an older database. Current-schema reads leave task data and activity unchanged. SQLite manages its normal WAL coordination files.
 
+The packaged Node backend is tested on macOS, Linux and Windows. Identity command rewriting uses Unix shell syntax.
+
 Configured CLI executables are trusted local programs. The hook writes its own reference files.
 
 ## Select the database
@@ -117,7 +119,7 @@ The plugin uses local STDIO and has no hosted server. Task data returned through
 
 ## Update, disable and remove
 
-Build the selected source version again, or extract a new versioned marketplace archive. Refresh the source and update or reinstall Zinn through Codex's Plugins browser, then restart Codex. Keep `codex.json` and the reference directory outside the plugin folder. Review changed hook definitions again when requested.
+Build the selected source version again, or extract a new versioned marketplace archive. Refresh the source and update or reinstall Zinn through Codex's Plugins browser. Restart Codex only if refreshed changes do not appear. Keep `codex.json` and the reference directory outside the plugin folder. Review changed hook definitions again when requested.
 
 Disable **Zinn** in the Plugins browser to stop loading it. Uninstall it there to remove the installed plugin. Remove the marketplace source with:
 
