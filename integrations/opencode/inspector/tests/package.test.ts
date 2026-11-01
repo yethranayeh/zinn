@@ -20,6 +20,9 @@ test("the packed inspector installs independently with exact compatible OpenTUI 
   expect(manifest.name).toBe(fixture.manifest.name);
   expect(manifest.version).toBe(fixture.manifest.version);
   expect(manifest.exports).toEqual(fixture.manifest.exports);
+  expect(manifest.exports["./tui"]).toBe("./dist/tui.js");
+  expect(existsSync(join(consumer.installed, "dist/tui.js"))).toBe(true);
+  expect(existsSync(join(consumer.installed, "pkg/tui.tsx"))).toBe(false);
   expect(manifest.dependencies).toBeUndefined();
   expect(manifest.peerDependencies["@opencode/plugin"]).toBe("2.2.0");
   expect(manifest.peerDependenciesMeta["@opencode/plugin"]).toEqual({ optional: true });
@@ -44,7 +47,7 @@ for (const version of ["0.41.0", "current"]) {
     const native = command(["task", "create", "PKG", "--title", "Native child"], { OPENCODE_SESSION_ID: "ses_child" });
     const unrelated = command(["task", "create", "PKG", "--title", "Other conversation"], { OPENCODE_SESSION_ID: "ses_other" });
     const probe = join(consumer.consumer, "contracts.ts");
-    writeFileSync(probe, `import {probeAnySession} from ${JSON.stringify(join(consumer.installed, "pkg/session.ts"))};\nconsole.log(JSON.stringify(await Promise.all(${JSON.stringify([explicit.key, native.key, unrelated.key])}.map(key => probeAnySession(["ses_root", "ses_child"], key)))));\n`);
+    writeFileSync(probe, `import {probeAnySession} from ${JSON.stringify(join(consumer.installed, "dist/session.js"))};\nconsole.log(JSON.stringify(await Promise.all(${JSON.stringify([explicit.key, native.key, unrelated.key])}.map(key => probeAnySession(["ses_root", "ses_child"], key)))));\n`);
     expect(JSON.parse(run([process.execPath, probe], consumer.consumer, env))).toEqual([
       { mine: true, unsupported: false }, { mine: true, unsupported: false }, { mine: false, unsupported: false },
     ]);

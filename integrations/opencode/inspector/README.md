@@ -7,7 +7,7 @@ Requires OpenCode 2.2.0 and Zinn CLI 0.41.0 or newer on `PATH`.
 Add this entry to the `plugins` array in `~/.config/opencode/cli.json`:
 
 ```json
-{ "package": "@zinn-dev/opencode@0.3.0", "options": { "rows": 2, "current": "glyph" } }
+{ "package": "@zinn-dev/opencode@0.3.1", "options": { "rows": 2, "current": "glyph" } }
 ```
 
 Read the [setup, options, compatibility, update and removal guide](https://zinn.sh/integrations/opencode/inspector).
@@ -22,4 +22,4 @@ bun run opencode:typecheck
 bun run opencode:test
 ```
 
-For a local checkout, use its absolute `integrations/opencode/inspector` directory as the package value in an isolated OpenCode `cli.json`. Replace that directory's source to update it, or remove the config entry to stop loading it.
+For a local checkout, run `bun run build` in `integrations/opencode/inspector`, then use its absolute directory as the package value in an isolated OpenCode `cli.json`. Rebuild to apply source changes, or remove the config entry to stop loading it.

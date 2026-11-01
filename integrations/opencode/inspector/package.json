@@ -1,6 +1,6 @@
 {
 	"name": "@zinn-dev/opencode",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"type": "module",
 	"description": "Experimental Zinn task inspector for the OpenCode TUI.",
 	"keywords": [
@@ -24,27 +24,18 @@
 	},
 	"homepage": "https://zinn.sh/integrations/opencode/inspector",
 	"exports": {
-		"./tui": "./pkg/tui.tsx"
+		"./tui": "./dist/tui.js"
 	},
 	"files": [
-		"pkg/types.ts",
-		"pkg/options.ts",
-		"pkg/data.ts",
-		"pkg/session.ts",
-		"pkg/scan.ts",
-		"pkg/rows.ts",
-		"pkg/theme.ts",
-		"pkg/components.tsx",
-		"pkg/dialogs.tsx",
-		"pkg/commands.ts",
-		"pkg/sidebar.tsx",
-		"pkg/tui.tsx"
+		"dist"
 	],
 	"scripts": {
+		"build": "bun checks/build.mjs",
 		"test": "bun test --timeout 120000 pkg tests",
 		"typecheck": "bun ../../../scripts/typecheck.ts integrations/opencode/inspector",
 		"test:package": "bun test --timeout 120000 tests/package.test.ts",
-		"prepublishOnly": "bun checks/release.ts && bun run typecheck && bun run test"
+		"prepack": "bun run build",
+		"prepublishOnly": "bun run build && bun checks/release.ts && bun run typecheck && bun run test"
 	},
 	"peerDependencies": {
 		"@opencode/plugin": "2.2.0",
@@ -58,10 +49,13 @@
 		}
 	},
 	"devDependencies": {
+		"@babel/core": "7.29.7",
+		"@babel/preset-typescript": "7.27.1",
 		"@opencode/plugin": "2.2.0",
 		"@opencode/theme": "2.2.0",
 		"@opentui/core": "0.7.0",
 		"@opentui/solid": "0.7.0",
+		"babel-preset-solid": "1.9.12",
 		"solid-js": "^1.9.0"
 	},
 	"publishConfig": {

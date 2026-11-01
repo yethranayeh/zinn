@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -46,6 +46,7 @@ export function packInspector(updated = false) {
   }
   writeFileSync(join(stage, "NOTES.md"), "Private fixture material\n");
   writeFileSync(join(stage, "pkg/development.test.ts"), "throw new Error('test fixture');\n");
+  symlinkSync(join(repository, integration, "node_modules"), join(stage, "node_modules"), "junction");
   const manifest = JSON.parse(readFileSync(join(stage, "package.json"), "utf8"));
   if (updated) {
     manifest.version += "-update-fixture";
@@ -56,7 +57,12 @@ export function packInspector(updated = false) {
   run(["pnpm", "pack", "--pack-destination", directory], stage, env);
   const archive = join(directory, `zinn-dev-opencode-${manifest.version}.tgz`);
   const members = run(["tar", "-tzf", archive], stage, env).trim().split("\n").sort();
-  const expected = ["package/package.json", "package/README.md", "package/LICENSE", ...manifest.files.map((path: string) => `package/${path}`)].sort();
+  const expected = ["package/package.json", "package/README.md", "package/LICENSE", ...manifest.files.flatMap((path: string) => {
+    const absolute = join(stage, path);
+    return statSync(absolute).isDirectory()
+      ? readdirSync(absolute).map((entry) => `package/${path}/${entry}`)
+      : [`package/${path}`];
+  })].sort();
   assert.deepEqual(members, expected, "Package members differ from the source allowlist");
   const extracted = join(directory, "extracted");
   mkdirSync(extracted);

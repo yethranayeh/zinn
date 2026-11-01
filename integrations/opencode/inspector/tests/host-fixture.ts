@@ -80,6 +80,10 @@ export async function verifyHost(fixture: ReturnType<typeof packInspector>, cons
           assert.ok(diagnostics.includes('"rows":2'), "Package update lost configured options");
           assert.ok(diagnostics.includes('"zinn.chat"') && diagnostics.includes('"zinn.board"'), "Inspector commands were not registered");
           assert.ok(diagnostics.includes(root.id) && diagnostics.includes(child.id), "Host family did not include root and child");
+          await until(
+            () => ["3 tasks", "PKG-1", "PKG-2", "PKG-3"].every((text) => output.includes(text)),
+            () => `Sidebar rows did not render: ${output.slice(-2000)}`,
+          );
           await until(() => output.includes("⧗") && readFileSync(log, "utf8").includes("activity probes settled"), () => "Family activity glyph did not render");
           const settledLine = readFileSync(log, "utf8").split("\n").find((line) => line.includes("activity probes settled"))!;
           const matches = JSON.parse(settledLine.slice(settledLine.indexOf("{"))).matches as string[];
