@@ -28,6 +28,8 @@ export const taskSchema = z.strictObject({
   status: taskStatus,
   column: z.string().describe("Current column name."),
   column_id: z.string().describe("Current column ID."),
+  is_first: z.boolean().describe("Whether the task's column is the first column of its board."),
+  is_last: z.boolean().describe("Whether the task's column is the last column of its board."),
   title: z.string(),
   description: nullableText,
   priority: z
@@ -62,6 +64,8 @@ export const relationSchema = z.strictObject({
     project_id: true,
     column: true,
     column_id: true,
+    is_first: true,
+    is_last: true,
     title: true,
     status: true,
   }),
@@ -164,6 +168,8 @@ export const columnSchema = z.strictObject({
   project: z.string(),
   project_id: z.string().describe("Owning project ID."),
   name: z.string(),
+  is_first: z.boolean().describe("Whether this column is the first column of its board."),
+  is_last: z.boolean().describe("Whether this column is the last column of its board."),
 });
 export const columnChangeSchema = columnSchema.extend({
   changed: z.boolean().describe("Whether the column's name or position changed."),
@@ -171,6 +177,8 @@ export const columnChangeSchema = columnSchema.extend({
 export const columnTaskCountSchema = z.strictObject({
   id: columnSchema.shape.id,
   name: z.string(),
+  is_first: columnSchema.shape.is_first,
+  is_last: columnSchema.shape.is_last,
   taskCount: count,
 });
 export const projectViewSchema = projectSchema.extend({

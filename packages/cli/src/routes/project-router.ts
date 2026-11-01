@@ -1,10 +1,6 @@
 import type { RouteDef } from "../types.js";
 import type { CommandInput, InputConstraint } from "../input.js";
-import type {
-  PresentedProjectView,
-  PresentedProjectListEntry,
-  PresentedColumnTaskCount,
-} from "../result-schemas.js";
+import type { PresentedProjectView, PresentedProjectListEntry } from "../result-schemas.js";
 
 import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
@@ -46,7 +42,11 @@ import {
   textFileOption,
   textSourceConstraint,
 } from "../text-input.js";
-import { formatColumnList, presentColumn } from "../presentation/column-presentation.js";
+import {
+  formatColumnList,
+  presentColumn,
+  presentColumnTaskCounts,
+} from "../presentation/column-presentation.js";
 import { formatProjectList, presentProject } from "../presentation/project-presentation.js";
 import { formatSection } from "../presentation/section.js";
 import { currentActor } from "../actor.js";
@@ -314,11 +314,7 @@ Example: zinn project list`,
       const taskCounts = column.getTaskCountsByProjectKey(projectMatch.key);
       const presentedProject: PresentedProjectView = {
         ...presentProject(projectMatch),
-        columns: taskCounts.columns.map((columnCount) => ({
-          id: columnCount.column.id,
-          name: columnCount.column.name,
-          taskCount: columnCount.taskCount,
-        })),
+        columns: presentColumnTaskCounts(taskCounts),
         archivedTaskCount: taskCounts.archivedTaskCount,
       };
 
@@ -538,12 +534,7 @@ Example: zinn project column create MDR Boardlog`,
         validatePositionals(positionals, projectInputs.column_list.forms[0]);
 
         const projectKey = resolveProjectKey(positionals[0], { required: true })!;
-        const taskCounts = column.getTaskCountsByProjectKey(projectKey);
-        const columns: Array<PresentedColumnTaskCount> = taskCounts.columns.map((columnCount) => ({
-          id: columnCount.column.id,
-          name: columnCount.column.name,
-          taskCount: columnCount.taskCount,
-        }));
+        const columns = presentColumnTaskCounts(column.getTaskCountsByProjectKey(projectKey));
         output(columns, (presentedColumns) =>
           formatColumnList(presentedColumns, {
             showsTaskCounts: true,

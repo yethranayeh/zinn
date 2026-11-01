@@ -1161,11 +1161,11 @@ test("project create seeds the default columns", async () => {
 
     expect(listed.code).toBe(0);
     expect(JSON.parse(listed.stdout)).toEqual([
-      { id: expect.any(String), name: "Backlog", taskCount: 0 },
-      { id: expect.any(String), name: "TODO", taskCount: 0 },
-      { id: expect.any(String), name: "In Progress", taskCount: 0 },
-      { id: expect.any(String), name: "Review", taskCount: 0 },
-      { id: expect.any(String), name: "Done", taskCount: 0 },
+      { id: expect.any(String), name: "Backlog", is_first: true, is_last: false, taskCount: 0 },
+      { id: expect.any(String), name: "TODO", is_first: false, is_last: false, taskCount: 0 },
+      { id: expect.any(String), name: "In Progress", is_first: false, is_last: false, taskCount: 0 },
+      { id: expect.any(String), name: "Review", is_first: false, is_last: false, taskCount: 0 },
+      { id: expect.any(String), name: "Done", is_first: false, is_last: true, taskCount: 0 },
     ]);
   });
 });
@@ -1437,11 +1437,11 @@ test("project view JSON contains the project, per-column task counts in board or
     await run("project", "column", "order", "VIEW", "Review", "first");
 
     const expectedColumns = [
-      { id: expect.any(String), name: "Review", taskCount: 1 },
-      { id: expect.any(String), name: "Backlog", taskCount: 1 },
-      { id: expect.any(String), name: "TODO", taskCount: 0 },
-      { id: expect.any(String), name: "In Progress", taskCount: 0 },
-      { id: expect.any(String), name: "Done", taskCount: 0 },
+      { id: expect.any(String), name: "Review", is_first: true, is_last: false, taskCount: 1 },
+      { id: expect.any(String), name: "Backlog", is_first: false, is_last: false, taskCount: 1 },
+      { id: expect.any(String), name: "TODO", is_first: false, is_last: false, taskCount: 0 },
+      { id: expect.any(String), name: "In Progress", is_first: false, is_last: false, taskCount: 0 },
+      { id: expect.any(String), name: "Done", is_first: false, is_last: true, taskCount: 0 },
     ];
     const viewedProject = await run("project", "view", "VIEW", "--json");
 
@@ -2192,6 +2192,8 @@ test("task view prints the task row followed by Description, Relations, and Comm
       key: "MDR-1",
       status: "Active",
       column: "In Progress",
+      is_first: false,
+      is_last: false,
       title: "Refine the numbers",
       description,
       priority: "high",
@@ -2205,7 +2207,7 @@ test("task view prints the task row followed by Description, Relations, and Comm
           id: expect.any(String),
           type: "dependency",
           direction: "outgoing",
-          task: { id: expect.any(String), project_id: expect.any(String), column_id: expect.any(String), key: "MDR-2", column: "Backlog", title: "Check the totals", status: "Active" },
+          task: { id: expect.any(String), project_id: expect.any(String), column_id: expect.any(String), key: "MDR-2", column: "Backlog", is_first: true, is_last: false, title: "Check the totals", status: "Active" },
         },
       ],
       comments: [
@@ -3072,6 +3074,8 @@ test("task move prints the task row, while --json returns the full task", async 
       key: "BRIEF-1",
       status: "Active",
       column: "Review",
+      is_first: false,
+      is_last: false,
       title: "Detailed task",
       description: "Hidden from move output",
       priority: "high",
@@ -3306,6 +3310,8 @@ test("task write commands print JSON with the full task details, unchanged by th
       key: "ROW-1",
       status: "Active",
       column: "Backlog",
+      is_first: true,
+      is_last: false,
       title: "one",
       description: "Full text",
       priority: "high",
@@ -3324,6 +3330,8 @@ test("task write commands print JSON with the full task details, unchanged by th
       key: "ROW-1",
       status: "Active",
       column: "Backlog",
+      is_first: true,
+      is_last: false,
       title: "uno",
       description: "Full text",
       priority: "high",
@@ -3343,6 +3351,8 @@ test("task write commands print JSON with the full task details, unchanged by th
       key: "ROW-1",
       status: "Archived",
       column: "Backlog",
+      is_first: true,
+      is_last: false,
       title: "uno",
       description: "Full text",
       priority: "high",
@@ -4250,6 +4260,8 @@ test("--json prints the created entity on write commands, wherever the flag is p
       key: "WEB-1",
       status: "Active",
       column: "Backlog",
+      is_first: true,
+      is_last: false,
       title: "Ship it",
       description: null,
       priority: null,
@@ -4277,7 +4289,7 @@ test("--json combines a task and its relations into one document on task view", 
         id: expect.any(String),
         type: "dependency",
         direction: "outgoing",
-        task: { id: expect.any(String), project_id: expect.any(String), column_id: expect.any(String), key: "WEB-1", column: "Backlog", title: "API", status: "Active" },
+        task: { id: expect.any(String), project_id: expect.any(String), column_id: expect.any(String), key: "WEB-1", column: "Backlog", is_first: true, is_last: false, title: "API", status: "Active" },
       },
     ]);
   });
@@ -4496,6 +4508,8 @@ test("delete commands with --yes and --json print the deleted entity", async () 
       key: "WEB-1",
       status: "Active",
       column: "Backlog",
+      is_first: true,
+      is_last: false,
       title: "Ship it",
       description: null,
       priority: null,
@@ -4627,7 +4641,7 @@ test("relation commands show directional and symmetric links, including archived
     expect(viewed.relations).toContainEqual({
       id: expect.any(String),
       type: "subtask", direction: "outgoing",
-      task: { id: expect.any(String), project_id: expect.any(String), column_id: expect.any(String), key: "OTHER-1", column: "Backlog", title: "Original", status: "Archived" },
+      task: { id: expect.any(String), project_id: expect.any(String), column_id: expect.any(String), key: "OTHER-1", column: "Backlog", is_first: true, is_last: false, title: "Original", status: "Archived" },
     });
     expect((await run("task", "create", "APP", "--title", "Child", "--parent", "APP-1")).code).toBe(0);
     expect(errorDocumentSchema.parse(JSON.parse((await run("--json", "task", "relation", "create", "OTHER-1", "APP-2", "--type", "subtask")).stderr)).error).toMatchObject({ code: "conflict", details: { reason: "cycle" } });
@@ -4664,7 +4678,7 @@ test("relation list aligns and colors connected columns, and marks archived task
     const colored = (await runZinn(["task", "relation", "list", "APP-1"], dir, { FORCE_COLOR: "1" })).stdout;
     expect(colored).toContain("\x1b[32mDone        \x1b[39m");
     expect(colored).toContain("\x1b[90mBacklog     \x1b[39m");
-    expect(colored).toContain(`${DIM_SEPARATOR}Verification${DIM_SEPARATOR}`);
+    expect(colored).toContain(`${DIM_SEPARATOR}\x1b[32mVerification\x1b[39m${DIM_SEPARATOR}`);
     expect((await runZinn(["task", "relation", "list", "APP-1"], dir, { NO_COLOR: "1" })).stdout).toBe(listed);
     const json = JSON.parse((await run("task", "relation", "list", "APP-1", "--json")).stdout);
     expect(json.find((entry: { task: { key: string } }) => entry.task.key === "LONGER-1").task.column).toBe("Done");

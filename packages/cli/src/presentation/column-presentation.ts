@@ -1,14 +1,52 @@
 import type { RowCell } from "./row-layout.js";
-import type { PresentedColumn } from "../result-schemas.js";
+import type { PresentedColumn, PresentedColumnTaskCount } from "../result-schemas.js";
 
-import { project } from "@zinn-dev/core";
+import { column, project } from "@zinn-dev/core";
 
 import { formatRows } from "./row-layout.js";
 
-type ColumnRow = { name: string; project?: string; taskCount?: number };
+type ColumnRow = {
+  name: string;
+  project?: string;
+  taskCount?: number;
+  is_first?: boolean;
+  is_last?: boolean;
+};
 
 /** Archived tasks are off the board, so they share one row below the columns instead of a column of their own. */
 const ARCHIVED_ROW_LABEL = "Archived";
+
+/** A project's columns in board order. */
+export type ProjectColumns = ReturnType<typeof column.getAllByProjectKey>;
+
+/** Reads each project's columns once, so presenting many rows costs one read per project. */
+export type ColumnBoard = (projectId: string) => ProjectColumns;
+
+export function createColumnBoard(): ColumnBoard {
+  const projectColumnsByProjectId = new Map<string, ProjectColumns>();
+
+  return (projectId) => {
+    const cachedColumns = projectColumnsByProjectId.get(projectId);
+    if (cachedColumns != null) {
+      return cachedColumns;
+    }
+
+    const boardColumns = column.getAllByProjectKey(project.getById(projectId)!.key);
+    projectColumnsByProjectId.set(projectId, boardColumns);
+    return boardColumns;
+  };
+}
+
+/** A column off its board, such as a deleted one, has no placement and no color. */
+export function columnPlacement(projectColumns: ProjectColumns, columnId: string) {
+  const columnIndex = projectColumns.findIndex((boardColumn) => boardColumn.id === columnId);
+  const isOnBoard = columnIndex !== -1;
+
+  return {
+    is_first: isOnBoard && columnIndex === 0,
+    is_last: isOnBoard && columnIndex === projectColumns.length - 1,
+  };
+}
 
 export function presentColumn(columnMatch: {
   id: string;
@@ -16,22 +54,43 @@ export function presentColumn(columnMatch: {
   name: string;
 }): PresentedColumn {
   const columnProject = project.getById(columnMatch.project_id)!;
+  const placement = columnPlacement(column.getAllByProjectKey(columnProject.key), columnMatch.id);
 
   return {
     id: columnMatch.id,
     project: columnProject.key,
     project_id: columnMatch.project_id,
     name: columnMatch.name,
+    is_first: placement.is_first,
+    is_last: placement.is_last,
   };
 }
 
-export function columnNameCell(columnName: string): RowCell {
-  // TODO: Derive column colors from column roles once roles exist instead of relying on names.
-  if (columnName === "Backlog") {
+/** Shapes one board's column rows, in order, with the placement each name is colored by. */
+export function presentColumnTaskCounts(
+  taskCounts: ReturnType<typeof column.getTaskCountsByProjectKey>,
+): Array<PresentedColumnTaskCount> {
+  const lastColumnIndex = taskCounts.columns.length - 1;
+
+  return taskCounts.columns.map((columnCount, columnIndex) => ({
+    id: columnCount.column.id,
+    name: columnCount.column.name,
+    is_first: columnIndex === 0,
+    is_last: columnIndex === lastColumnIndex,
+    taskCount: columnCount.taskCount,
+  }));
+}
+
+export function columnNameCell(
+  columnName: string,
+  placement: Pick<ColumnRow, "is_first" | "is_last"> = {},
+): RowCell {
+  // A board's first column is gray and its last is green. A one-column board is both, and colors as first.
+  if (placement.is_first) {
     return { text: columnName, style: "gray" };
   }
 
-  if (columnName === "Done") {
+  if (placement.is_last) {
     return { text: columnName, style: "green" };
   }
 
@@ -54,7 +113,11 @@ export function formatColumnList(
         ? [{ text: String(presentedColumn.taskCount) }]
         : [];
 
-    return [...projectCells, columnNameCell(presentedColumn.name), ...taskCountCells];
+    return [
+      ...projectCells,
+      columnNameCell(presentedColumn.name, presentedColumn),
+      ...taskCountCells,
+    ];
   });
 
   if (options.archivedTaskCount != null && options.archivedTaskCount > 0) {

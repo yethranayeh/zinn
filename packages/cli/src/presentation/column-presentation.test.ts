@@ -37,24 +37,29 @@ test("column rows append a positive archived total and omit a zero total", () =>
   });
 });
 
-test("column rows pad names inside color codes and dim separators", () => {
+test("column rows color the first board column gray and the last green, whatever their names", () => {
   withEnvironment({ FORCE_COLOR: "1", NO_COLOR: undefined }, () => {
     const separator = "\x1b[2m | \x1b[22m";
     expect(formatColumnList([
-      { name: "Backlog", taskCount: 1 },
-      { name: "In Progress", taskCount: 0 },
-      { name: "Done", taskCount: 1 },
+      { name: "Triaged", is_first: true, taskCount: 1 },
+      { name: "Refining", taskCount: 0 },
+      { name: "Verified", is_last: true, taskCount: 1 },
     ], { showsTaskCounts: true, archivedTaskCount: 1 })).toBe([
-      `\x1b[90mBacklog    \x1b[39m${separator}1`,
-      `In Progress${separator}0`,
-      `\x1b[32mDone       \x1b[39m${separator}1`,
-      `Archived   ${separator}1`,
+      `\x1b[90mTriaged \x1b[39m${separator}1`,
+      `Refining${separator}0`,
+      `\x1b[32mVerified\x1b[39m${separator}1`,
+      `Archived${separator}1`,
     ].join("\n"));
-    expect(formatColumnList([{ project: "MDR", name: "Backlog" }], { showsProject: true }))
-      .toBe(`MDR${separator}\x1b[90mBacklog\x1b[39m`);
-    expect(formatColumnList([{ project: "MDR", name: "Done" }], { showsProject: true }))
-      .toBe(`MDR${separator}\x1b[32mDone\x1b[39m`);
+    expect(formatColumnList([{ project: "MDR", name: "Triaged", is_first: true }], { showsProject: true }))
+      .toBe(`MDR${separator}\x1b[90mTriaged\x1b[39m`);
+    expect(formatColumnList([{ project: "MDR", name: "Verified", is_last: true }], { showsProject: true }))
+      .toBe(`MDR${separator}\x1b[32mVerified\x1b[39m`);
     expect(formatColumnList([{ project: "MDR", name: "Waiting" }], { showsProject: true }))
       .toBe(`MDR${separator}Waiting`);
+    // A one-column board is both first and last, and colors as first.
+    expect(formatColumnList([{ name: "Only", is_first: true, is_last: true }])).toBe("\x1b[90mOnly\x1b[39m");
+    // Rows without placement flags, such as the archived row, stay uncolored.
+    expect(formatColumnList([{ name: "Backlog" }])).toBe("Backlog");
+    expect(formatColumnList([{ name: "Done" }])).toBe("Done");
   });
 });

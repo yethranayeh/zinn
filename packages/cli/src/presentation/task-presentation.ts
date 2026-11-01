@@ -1,10 +1,11 @@
 import type { TaskWithKey } from "@zinn-dev/core";
 import type { RowCell } from "./row-layout.js";
 import type { PresentedTask, PresentedTaskDetail } from "../result-schemas.js";
+import type { ColumnBoard } from "./column-presentation.js";
 
-import { column, label, task } from "@zinn-dev/core";
+import { label, task } from "@zinn-dev/core";
 
-import { columnNameCell } from "./column-presentation.js";
+import { columnNameCell, columnPlacement, createColumnBoard } from "./column-presentation.js";
 import { labelNameCell } from "./label-presentation.js";
 import { formatCell, formatCellSeparator, formatRows } from "./row-layout.js";
 import { formatLocalTime } from "./time.js";
@@ -32,15 +33,20 @@ function getLabelColorsByName() {
   return new Map(label.getAll().map((labelMatch) => [labelMatch.name, labelMatch.color]));
 }
 
-export function presentTask(taskMatch: TaskWithKey): PresentedTask {
+export function presentTask(taskMatch: TaskWithKey, board: ColumnBoard = createColumnBoard()): PresentedTask {
   const labels = task.label.getAll(taskMatch.key);
+  const projectColumns = board(taskMatch.project_id);
+  const columnMatch = projectColumns.find((boardColumn) => boardColumn.id === taskMatch.column_id)!;
+  const placement = columnPlacement(projectColumns, taskMatch.column_id);
   return {
     id: taskMatch.id,
     key: taskMatch.key,
     project_id: taskMatch.project_id,
     status: taskMatch.archived_at == null ? "Active" : "Archived",
-    column: column.getById(taskMatch.column_id)!.name,
+    column: columnMatch.name,
     column_id: taskMatch.column_id,
+    is_first: placement.is_first,
+    is_last: placement.is_last,
     title: taskMatch.title,
     description: taskMatch.description,
     priority: taskMatch.priority,
@@ -77,7 +83,7 @@ export function formatTaskList(
       return [
         { text: `${options.prefix ?? ""}${presentedTask.key}` },
         ...statusCells,
-        columnNameCell(presentedTask.column),
+        columnNameCell(presentedTask.column, presentedTask),
         taskPriorityCell(presentedTask.priority, options.showsFullPriority ?? false),
         { text: `${presentedTask.title}${deadline}${labels}` },
       ];

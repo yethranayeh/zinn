@@ -1,9 +1,10 @@
 import type { TaskWithKey } from "@zinn-dev/core";
 import type { PresentedRelation, PresentedRelationChange } from "../result-schemas.js";
+import type { ColumnBoard } from "./column-presentation.js";
 
-import { column, relation } from "@zinn-dev/core";
+import { relation } from "@zinn-dev/core";
 
-import { columnNameCell } from "./column-presentation.js";
+import { columnNameCell, columnPlacement, createColumnBoard } from "./column-presentation.js";
 import { formatCellSeparator, formatRows } from "./row-layout.js";
 
 export function presentRelationChange(
@@ -21,7 +22,10 @@ export function presentRelationChange(
   };
 }
 
-export function presentRelations(taskMatch: TaskWithKey): Array<PresentedRelation> {
+export function presentRelations(
+  taskMatch: TaskWithKey,
+  board: ColumnBoard = createColumnBoard(),
+): Array<PresentedRelation> {
   return relation.getAll(taskMatch.key, { include: { tasks: true } }).map((entry) => {
     const isSource = entry.source_task_id === taskMatch.id;
     const other = isSource ? entry.target : entry.source;
@@ -34,6 +38,10 @@ export function presentRelations(taskMatch: TaskWithKey): Array<PresentedRelatio
       direction = isSource ? "outgoing" : "incoming";
     }
 
+    const projectColumns = board(other.project_id);
+    const columnMatch = projectColumns.find((boardColumn) => boardColumn.id === other.column_id)!;
+    const placement = columnPlacement(projectColumns, other.column_id);
+
     return {
       id: entry.id,
       type: entry.relation_type,
@@ -42,8 +50,10 @@ export function presentRelations(taskMatch: TaskWithKey): Array<PresentedRelatio
         id: other.id,
         key: other.key,
         project_id: other.project_id,
-        column: column.getById(other.column_id)!.name,
+        column: columnMatch.name,
         column_id: other.column_id,
+        is_first: placement.is_first,
+        is_last: placement.is_last,
         title: other.title,
         status: other.archived_at == null ? "Active" : "Archived",
       },
@@ -80,7 +90,7 @@ export function formatRelationList(relations: Array<PresentedRelation>) {
       return [
         { text: label },
         { text: entry.task.key },
-        columnNameCell(entry.task.column),
+        columnNameCell(entry.task.column, entry.task),
         { text: `${entry.task.title}${archived}` },
       ];
     }),
