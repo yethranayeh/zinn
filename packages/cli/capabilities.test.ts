@@ -39,7 +39,7 @@ test("the emitted contract covers every route and finite result, including itsel
   const taskListInput = commands.get("task list")!.input;
   expect(taskListInput.options["starting-after"]).toMatchObject({
     type: "string",
-    value: { kind: "task-id", name: "id" },
+    value: { kind: "task-cursor", name: "cursor" },
   });
   const validator = capabilityValidator(actual);
   for (const route of parseRoutes(routes)) {

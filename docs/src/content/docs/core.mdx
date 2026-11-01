@@ -57,9 +57,11 @@ The client supplies its own `release` identity: `source` for development and `pu
 
 `task.getAll({ sort: "activity", limit: 10 })` returns the ten most recently active tasks. Last activity is the newest recorded task event, including comments and relations, or `updated_at` when no events exist. Filters apply before sorting, and the limit applies afterward. Equal times keep board order. Omitting `sort` preserves board order.
 
-`task.getAll` returns an array. `task.getPage` accepts the same task-list filters plus optional `startingAfter` and returns `{ tasks, hasMore }`. Use a task's `id` as the cursor. It accepts a canonical or compact UUID, case-insensitively, or a globally unambiguous left prefix with at least eight hexadecimal digits in either spelling.
+`task.getAll` returns an array. `task.getPage` accepts the same task-list filters plus optional `startingAfter` and returns `{ tasks, hasMore, nextCursor? }`. `nextCursor` is an opaque token, present only when `hasMore` is true. Pass it as `startingAfter` to continue.
 
-The cursor resolves against current tasks globally before list filters. The selected task must match every selection filter. The cursor is excluded, and the next page starts after its current position under the selected sort. Omit `limit` to return every remaining task with `hasMore: false`.
+Continuation survives edits, moves, archiving, relabelling, deadline changes and deletion of the last listed task. Filters may change while the sort stays the same. No snapshot is kept between calls, so other tasks changing in between can still cause repeats or skips. The order breaks remaining ties by task ID. Omit `limit` to return every remaining task with `hasMore: false`.
+
+A refused cursor throws a `CoreError` with kind `input` and `field: ["startingAfter"]`. The `reason` is `invalid_cursor` (malformed), `cursor_version` (made by another version), `different_sort` (made for another sort) or `task_id_cursor` (a task ID).
 
 ```ts title="Read the next task page"
 const firstPage = task.getPage({ projectKey: "APP", limit: 10 });
@@ -67,7 +69,7 @@ if (firstPage.hasMore) {
 	const nextPage = task.getPage({
 		projectKey: "APP",
 		limit: 10,
-		startingAfter: firstPage.tasks.at(-1)!.id
+		startingAfter: firstPage.nextCursor
 	});
 	console.log(nextPage.tasks);
 }
@@ -125,9 +127,9 @@ If the conflicting IDs changed before the write, core throws a `CoreError` with 
 
 ## Activity selection
 
-`activity.getAll` returns `{ events, hasMore }`. `events` contains full activity records, newest first by timestamp and then event ID. Without a project or task selector it reads across the database. `hasMore` is true only when another event matches after the returned page. Without `limit`, it is false.
+`activity.getAll` returns `{ events, hasMore, nextCursor? }`. `events` contains full activity records, newest first by timestamp and then event ID. Without a project or task selector it reads across the database. `hasMore` is true only when another event matches after the returned page. Without `limit`, it is false.
 
-Pass `startingAfter` with the last returned event's ID to continue toward older events, excluding that event. It accepts the same full IDs and unique prefixes as `activity.getById`. The cursor event need not match the supplied filters. Every filter applies before the page cap, including `changed`. Omitting `limit` returns every remaining match.
+`nextCursor` is the last returned event's ID and is present only when `hasMore` is true. Pass `startingAfter` with it to continue toward older events, excluding that event. It accepts the same full IDs and unique prefixes as `activity.getById`. The cursor event need not match the supplied filters. Every filter applies before the page cap, including `changed`. Omitting `limit` returns every remaining match.
 
 ```ts title="Read the next activity page"
 const firstPage = activity.getAll({ limit: 10 });

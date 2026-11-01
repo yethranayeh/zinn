@@ -56,14 +56,14 @@ assert.deepEqual(
 core.task.label.remove({ taskKey: task.key, labelNames: ["runtime"] }, actor);
 const removed = core.activity.getAll({ taskKey: task.key }).events[0];
 const page = core.activity.getAll({ taskKey: task.key, limit: 1 });
-assert.deepEqual(page, { events: [removed], hasMore: true });
+assert.deepEqual(page, { events: [removed], hasMore: true, nextCursor: removed.id });
 assert.deepEqual(
 	core.activity.getAll({
 		taskKey: task.key,
 		startingAfter: removed.id.toUpperCase().replaceAll("-", ""),
 		limit: 1
 	}),
-	{ events: [cleared], hasMore: true }
+	{ events: [cleared], hasMore: true, nextCursor: cleared.id }
 );
 assert.deepEqual(
 	core.activity.getAll({
@@ -207,17 +207,19 @@ assert.deepEqual(
 	[dueFirst.key]
 );
 getDb().query("UPDATE activity SET created_at = ? WHERE entity_type = 'task' AND entity_id = ?").run(400, dueFirst.id);
+const firstTaskPage = core.task.getPage({
+	projectKey: listProject.key,
+	sort: "activity",
+	labelNames: ["runtime"],
+	dueSince: 0,
+	dueUntil: 10,
+	limit: 1
+});
 assert.deepEqual(
-	core.task.getPage({
-		projectKey: listProject.key,
-		sort: "activity",
-		labelNames: ["runtime"],
-		dueSince: 0,
-		dueUntil: 10,
-		limit: 1
-	}),
-	{ tasks: [dueFirst], hasMore: true }
+	{ ...firstTaskPage, nextCursor: undefined },
+	{ tasks: [dueFirst], hasMore: true, nextCursor: undefined }
 );
+assert.equal(typeof firstTaskPage.nextCursor, "string");
 assert.deepEqual(
 	core.task.getPage({
 		projectKey: listProject.key,
@@ -226,7 +228,7 @@ assert.deepEqual(
 		dueSince: 0,
 		dueUntil: 10,
 		limit: 1,
-		startingAfter: dueFirst.id.toUpperCase().replaceAll("-", "")
+		startingAfter: firstTaskPage.nextCursor
 	}),
 	{ tasks: [boardFirst], hasMore: false }
 );

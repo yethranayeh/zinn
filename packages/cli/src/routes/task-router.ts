@@ -70,6 +70,7 @@ import { formatRelationList, presentRelations } from "../presentation/relation-p
 import { formatCommentList, presentComments } from "../presentation/comment-presentation.js";
 import { formatSection } from "../presentation/section.js";
 import { formatActivityList, presentActivities } from "../presentation/activity-presentation.js";
+import { createColumnBoard } from "../presentation/column-presentation.js";
 import {
   formatTaskList,
   formatTaskTimestamps,
@@ -195,10 +196,10 @@ const taskInputs = {
       "starting-after": {
         type: "string",
         value: {
-          kind: "task-id",
-          name: "id",
+          kind: "task-cursor",
+          name: "cursor",
           description:
-            "Task UUID or globally unambiguous left prefix with at least 8 hexadecimal digits. Canonical or compact, case-insensitive",
+            "Cursor from the continuation command that task list prints on stderr when more tasks remain",
         },
       },
     },
@@ -211,7 +212,7 @@ const taskInputs = {
     constraints: [archiveConstraint, projectScopeConstraint],
     notes: [
       projectScopeDescription,
-      "A --starting-after task must match every selection filter. Cursor resolution uses current task identities before list filtering.",
+      "A --starting-after cursor works only with the --sort it was made for. Filters may change between pages.",
     ],
   },
   search: {
@@ -501,11 +502,12 @@ Examples:
         startingAfter: values["starting-after"],
       });
 
-      output(page.tasks.map(presentTask), (presentedTasks) =>
+      const board = createColumnBoard();
+      output(page.tasks.map((taskMatch) => presentTask(taskMatch, board)), (presentedTasks) =>
         formatTaskList(presentedTasks, { showsStatus: values.all }),
       );
 
-      if (page.hasMore) {
+      if (page.nextCursor !== undefined) {
         const selectionTokens = tokens.filter(
           (token) => token.kind !== "option" || token.name !== "all-projects",
         );
@@ -517,7 +519,7 @@ Examples:
             projectScope,
             selectionTokens,
             "starting-after",
-            page.tasks.at(-1)!.id,
+            page.nextCursor,
           )}`,
         );
       }
@@ -535,10 +537,9 @@ Equal activity times keep board order. Without --sort, board order is preserved.
 --sort due lists earliest deadlines first, with undated tasks last. Equal deadlines keep board order. Task positions stay unchanged.
 ${deadlineFilterHelp}
 --limit <n>: ${listLimitDescription}
---starting-after <id>: Continue after a current matching task. Accepts a UUID, canonical or compact, case-insensitive.
-Use the task's id from --json output as the cursor.
-The task cursor must match all selection filters. Movement or edits can change current sort positions between commands.
 When additional matches remain after --limit, stderr gives a shell-quoted command to continue, including with --json.
+--starting-after <cursor>: Continue after the position a cursor records. Copy the cursor from that command.
+A cursor works only with the --sort it was made for. Changes to other tasks between commands can still cause repeats or skips.
 
 Use 'task view' to see a task's full details, including its description.
 
@@ -586,7 +587,8 @@ Example: zinn task list MDR --label cli`,
         labelNames: values.label,
       });
 
-      output(result.tasks.map(presentTask), (presentedTasks) =>
+      const board = createColumnBoard();
+      output(result.tasks.map((taskMatch) => presentTask(taskMatch, board)), (presentedTasks) =>
         formatTaskList(presentedTasks, { showsStatus: values.all }),
       );
 
@@ -632,9 +634,10 @@ Example: zinn task search 'refinement quota' MDR --limit 5`,
       validatePositionals(positionals, taskInputs.view.forms[0]);
 
       const taskMatch = task.getByKey(positionals[0]!);
+      const board = createColumnBoard();
       const detail = {
-        ...presentTask(taskMatch),
-        relations: presentRelations(taskMatch),
+        ...presentTask(taskMatch, board),
+        relations: presentRelations(taskMatch, board),
         comments: presentComments(taskMatch.key),
       };
       const viewedTask =
@@ -744,10 +747,11 @@ Examples:
       }
 
       const editedTask = task.edit({ ...fields, description }, currentActor());
+      const board = createColumnBoard();
 
       outputChanges(
         [editedTask],
-        (change) => presentTask(change.task),
+        (change) => presentTask(change.task, board),
         formatTaskList,
         (entry) => `${entry.key} was unchanged`,
       );
@@ -801,9 +805,10 @@ Examples:
       const taskKeys = positionals.slice(0, -1);
       const targetColumn = positionals.at(-1)!;
       const moves = task.moveMany({ taskKeys, targetColumn }, currentActor());
+      const board = createColumnBoard();
       outputChanges(
         moves,
-        (change) => presentTask(change.task),
+        (change) => presentTask(change.task, board),
         formatTaskList,
         (movedTask) => `${movedTask.key} was already in the ${movedTask.column} column`,
       );
@@ -850,9 +855,10 @@ Example: zinn task move MDR-1 MDR-2 'In Progress'`,
       } else {
         orders = task.orderMany({ taskKeys, direction: form.direction }, currentActor());
       }
+      const board = createColumnBoard();
       outputChanges(
         orders,
-        (change) => presentTask(change.task),
+        (change) => presentTask(change.task, board),
         formatTaskList,
         (entry) => `${entry.key} was already in that position`,
       );
@@ -878,9 +884,10 @@ Example: zinn task order MDR-2 before MDR-1`,
     run: (args: Array<string>) => {
       const taskKeys = parseTaskKeys(args);
       const archives = task.archiveMany(taskKeys, currentActor());
+      const board = createColumnBoard();
       outputChanges(
         archives,
-        (change) => presentTask(change.task),
+        (change) => presentTask(change.task, board),
         (entries) => formatTaskList(entries, { showsStatus: true }),
         (archivedTask) => `${archivedTask.key} was already archived`,
       );
@@ -905,9 +912,10 @@ Example: zinn task archive MDR-1 MDR-2`,
     run: (args: Array<string>) => {
       const taskKeys = parseTaskKeys(args);
       const unarchives = task.unarchiveMany(taskKeys, currentActor());
+      const board = createColumnBoard();
       outputChanges(
         unarchives,
-        (change) => presentTask(change.task),
+        (change) => presentTask(change.task, board),
         (entries) => formatTaskList(entries, { showsStatus: true }),
         (unarchivedTask) => `${unarchivedTask.key} was already active`,
       );
@@ -945,7 +953,8 @@ Example: zinn task unarchive MDR-1 MDR-2`,
 
       const taskKeys = taskDeleteManySchema.parse(positionals);
       const taskMatches = taskKeys.map((taskKey) => task.getByKey(taskKey));
-      const presented = taskMatches.map(presentTask);
+      const board = createColumnBoard();
+      const presented = taskMatches.map((taskMatch) => presentTask(taskMatch, board));
       const canDelete = await confirmAction(
         `Are you sure you want to delete ${taskMatches.map((match) => match.key).join(", ")}?`,
         values.yes === true,
@@ -982,9 +991,10 @@ Example: zinn task delete MDR-1 MDR-2`,
       results: [jsonResult("TaskChange")],
       run: (args) => {
         const props = parseTaskLabelArgs(args);
+        const board = createColumnBoard();
         outputChanges(
           [task.label.add(props, currentActor())],
-          (change) => presentTask(change.task),
+          (change) => presentTask(change.task, board),
           formatTaskList,
           (entry) => `${entry.key} already had those labels`,
         );
@@ -1003,9 +1013,10 @@ With --json, changed is false when all the labels were already attached.`,
       results: [jsonResult("TaskChange")],
       run: (args) => {
         const props = parseTaskLabelArgs(args);
+        const board = createColumnBoard();
         outputChanges(
           [task.label.remove(props, currentActor())],
-          (change) => presentTask(change.task),
+          (change) => presentTask(change.task, board),
           formatTaskList,
           (entry) => `${entry.key} had none of those labels`,
         );

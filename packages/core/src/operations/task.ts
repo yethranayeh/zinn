@@ -38,14 +38,13 @@ import {
 } from "../schemas/task.js";
 import { actorSchema } from "../schemas/actor.js";
 import { taskPageSchema } from "../schemas/task.js";
-import { normalizeUuidReference } from "../schemas/uuid-reference.js";
+import { decodeTaskCursor, encodeTaskCursor } from "../task-cursor.js";
 
 import { relation } from "./relation.js";
 import {
   getTaskByKey,
   findTaskByExactKey,
   attachTaskKey,
-  requireSingleIdMatch,
   resolveLabels,
   recordTaskActivity,
   updateTaskSearchRecord,
@@ -469,54 +468,33 @@ export const task = {
 
     return taskMatches.map(({ project_key, ...row }) => attachTaskKey(row, project_key));
   },
-  getPage: (input: TaskPageInput = {}) => {
+  getPage: (
+    input: TaskPageInput = {},
+  ): { tasks: Array<TaskWithKey>; hasMore: boolean; nextCursor?: string } => {
     const props = validateTaskInput(taskPageSchema, input);
+    const after =
+      props.startingAfter === undefined
+        ? undefined
+        : decodeTaskCursor(props.startingAfter, props.sort);
 
     return readTransaction(() => {
-      let cursorTaskId: string | undefined;
-      if (props.startingAfter !== undefined) {
-        const cursorPrefix = normalizeUuidReference(props.startingAfter);
-        cursorTaskId = requireSingleIdMatch(
-          "task",
-          props.startingAfter,
-          dbTask.getByIdPrefix(cursorPrefix),
-        ).id;
-      }
-
       const query = resolveTaskListSelection(props);
       const fetchLimit = props.limit === undefined ? undefined : props.limit + 1;
-      let taskMatches: Array<dbTask.TaskListRow>;
+      const rows = dbTask.getPage({ ...query, limit: fetchLimit, after });
+      const hasMore = props.limit !== undefined && rows.length > props.limit;
+      const selectedRows = hasMore ? rows.slice(0, props.limit) : rows;
+      const tasks = selectedRows.map(({ task: { project_key, ...row } }) =>
+        attachTaskKey(row, project_key),
+      );
 
-      if (cursorTaskId === undefined) {
-        taskMatches = dbTask.getList({ ...query, limit: fetchLimit });
-      } else {
-        const page = dbTask.getPageAfter({
-          ...query,
-          limit: fetchLimit,
-          afterTaskId: cursorTaskId,
-        });
-
-        if (!page.cursorInSelection) {
-          throw new CoreError(
-            `Task cursor "${props.startingAfter}" does not match the task list selection`,
-            "input",
-            {
-              entity: "task",
-              key: props.startingAfter,
-              field: ["startingAfter"],
-            },
-          );
-        }
-
-        taskMatches = page.tasks;
+      if (!hasMore) {
+        return { tasks, hasMore };
       }
 
-      const hasMore = props.limit !== undefined && taskMatches.length > props.limit;
-      const selectedTasks = hasMore ? taskMatches.slice(0, props.limit) : taskMatches;
-
       return {
-        tasks: selectedTasks.map(({ project_key, ...row }) => attachTaskKey(row, project_key)),
+        tasks,
         hasMore,
+        nextCursor: encodeTaskCursor(props.sort, selectedRows.at(-1)!.position),
       };
     });
   },

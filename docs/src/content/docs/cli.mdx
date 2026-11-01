@@ -240,9 +240,9 @@ zinn task view MDR-1 --history
 
 `task list`, `task search` and `activity list` accept `--limit <n>`, a decimal integer from `1` through `11871`. The cap applies after all filters and preserves the existing order. Omit it to return every match. With `--json`, each command returns an array.
 
-`task list --starting-after <id>` continues after a current task in the selected sort order and excludes that task. Use a task's `id` from `--json` output. The ID may be a canonical or compact UUID, or a globally unambiguous left prefix with at least eight hexadecimal digits in either spelling. Matching is case insensitive.
+`task list --starting-after <cursor>` continues after the last listed task in the selected sort order. The cursor is an opaque token. Copy it from the continuation command that `task list` prints on stderr when more tasks remain. A task ID is refused.
 
-The cursor must still exist and match every selection filter, including project, archive state, labels, column and deadline bounds. Use the same filters and sort to continue the original selection. Task positions are read live. Moving, reordering, editing, commenting on or changing relations for tasks can change positions between commands. Archiving, deleting or changing a filter value can make the cursor invalid. Position changes can cause repeats or skips.
+Continuation survives edits, moves, archiving, relabelling, deadline changes and deletion of the last listed task. Filters may change while `--sort` stays the same. A cursor made for another sort or another version is refused with a hint and a suggested `task list` command. No snapshot is kept between commands, so other tasks changing in between can cause repeats or skips. Ties in the order break by task ID.
 
 When more matching tasks remain after `--limit`, stderr gives a shell-quoted continuation command in text and JSON modes.
 

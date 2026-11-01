@@ -10,7 +10,6 @@ import { relationTypeSchema } from "./relation.js";
 import { projectKeyPattern } from "./project.js";
 import { positiveIntegerPattern, listLimitSchema } from "./integer.js";
 import { timestampSchema } from "./timestamp.js";
-import { uuidReferenceSchema } from "./uuid-reference.js";
 
 export { positiveIntegerPattern } from "./integer.js";
 export { listLimitMessage as searchLimitMessage } from "./integer.js";
@@ -155,7 +154,7 @@ export const taskListSchema = z
   .superRefine(validateDeadlineBounds);
 
 export const taskPageSchema = taskListSchema.safeExtend({
-  startingAfter: uuidReferenceSchema("Task").optional(),
+  startingAfter: z.string().optional(),
 });
 
 export const taskSearchSchema = z

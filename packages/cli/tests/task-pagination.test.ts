@@ -6,10 +6,6 @@ import { parsedRoutes } from "../src/routes/routes";
 import { CLI_PATH, runProcessAsync, runZinn, withIsolatedZinnDir, withTestDb } from "../test-helpers";
 import { TEST_ENVIRONMENT } from "../../../scripts/test-isolation.ts";
 
-// UUIDv7 IDs share their first 8 hex digits for about 65 seconds, so a few quick creations always yield a shared prefix.
-const MAX_SHARED_PREFIX_ATTEMPTS = 3;
-const SHARED_PREFIX_HEX_LENGTH = 8;
-
 function extractContinuation(stderr: string) {
   const commandStart = stderr.indexOf("zinn task list");
   expect(commandStart).toBeGreaterThanOrEqual(0);
@@ -21,24 +17,6 @@ function jsonError(stderr: string) {
     code: string;
     details?: Record<string, unknown>;
   };
-}
-
-function canonicalPrefix(id: string, hexLength: number) {
-  const hex = id.replaceAll("-", "").slice(0, hexLength);
-  const segments: Array<string> = [];
-  let offset = 0;
-
-  for (const segmentLength of [8, 4, 4, 4, 12]) {
-    const length = Math.min(segmentLength, hex.length - offset);
-    if (length <= 0) {
-      break;
-    }
-
-    segments.push(hex.slice(offset, offset + length));
-    offset += length;
-  }
-
-  return segments.join("-");
 }
 
 function executeContinuation(directory: string, command: string) {
@@ -214,7 +192,14 @@ test("task list continuation preserves filters, project scope, router flags and 
   });
 });
 
-test("task list cursor metadata, ID spellings, membership errors and final pages", async () => {
+function continuationCursor(stderr: string) {
+  const command = extractContinuation(stderr);
+  const cursor = command.match(/--starting-after (\S+)/)?.[1];
+  expect(cursor).toBeDefined();
+  return cursor!;
+}
+
+test("task list cursor metadata, final pages, changed anchors and cursor refusals", async () => {
   await withIsolatedZinnDir(async (directory) => {
     const run = async (...args: Array<string>) => runZinn(args, directory);
     const json = async (...args: Array<string>) => {
@@ -226,23 +211,17 @@ test("task list cursor metadata, ID spellings, membership errors and final pages
     const route = parsedRoutes.find(({ command }) => command === "task list")!;
     expect(route.input?.options?.["starting-after"]).toMatchObject({
       type: "string",
-      value: { kind: "task-id", name: "id" },
+      value: { kind: "task-cursor", name: "cursor" },
     });
     const help = await run("task", "list", "--help");
     expect(help.code, help.stderr).toBe(0);
-    expect(help.stdout).toContain("--starting-after");
+    expect(help.stdout).toContain("--starting-after <cursor>");
 
     await run("project", "create", "APP");
-    await run("project", "create", "OTHER");
-    await run("task", "create", "APP", "--title", "Zero", "--due=0");
-    await run("task", "create", "APP", "--title", "Ten", "--due=10");
-    await run("task", "create", "APP", "--title", "Twenty", "--due=20");
-    await run("task", "create", "APP", "--title", "Thirty", "--due=30");
-    await run("task", "create", "APP", "--title", "Outside bounds", "--due=40");
+    for (const [title, due] of [["Zero", "0"], ["Ten", "10"], ["Twenty", "20"], ["Thirty", "30"], ["Forty", "40"]]) {
+      await run("task", "create", "APP", "--title", title!, `--due=${due}`);
+    }
     await run("task", "create", "APP", "--title", "Undated");
-    const otherTaskResult = await run("task", "create", "OTHER", "--title", "Outside project", "--json");
-    expect(otherTaskResult.code, otherTaskResult.stderr).toBe(0);
-    const otherTask = JSON.parse(otherTaskResult.stdout) as { id: string; key: string };
     const snapshot = () =>
       withTestDb(directory, (db) => ({
         task: db.query("SELECT * FROM task ORDER BY id").all(),
@@ -252,206 +231,71 @@ test("task list cursor metadata, ID spellings, membership errors and final pages
     const all = await json("task", "list", "APP", "--sort", "due");
     const before = all.tasks;
     expect(all.result.stderr).toBe("");
-    expect(before.map(({ key }) => key)).toEqual([
-      "APP-1",
-      "APP-2",
-      "APP-3",
-      "APP-4",
-      "APP-5",
-      "APP-6",
-    ]);
 
-    const bounded = await json(
-      "task",
-      "list",
-      "APP",
-      "--sort",
-      "due",
-      "--due-since=0",
-      "--due-until=30",
-      "--limit=2",
-    );
+    const bounded = await json("task", "list", "APP", "--sort", "due", "--due-since=0", "--due-until=30", "--limit=2");
     expect(bounded.tasks.map(({ key }) => key)).toEqual(["APP-1", "APP-2"]);
-    expect(bounded.result.stderr).toContain("--starting-after");
-    const anchor = bounded.tasks[1]!;
+    const boundedCursor = continuationCursor(bounded.result.stderr);
+    expect(boundedCursor.startsWith("-")).toBe(false);
     const continued = await json(
-      "task",
-      "list",
-      "APP",
-      "--sort",
-      "due",
-      "--due-since=0",
-      "--due-until=30",
-      "--starting-after",
-      anchor.id,
-      "--limit=2",
+      "task", "list", "APP", "--sort", "due", "--due-since=0", "--due-until=30",
+      "--starting-after", boundedCursor, "--limit=2",
     );
     expect(continued.tasks.map(({ key }) => key)).toEqual(["APP-3", "APP-4"]);
     expect(continued.result.stderr).toBe("");
 
-    const replacedCursor = await run(
-      "task",
-      "list",
-      "APP",
-      "--starting-after",
-      before[0]!.id,
-      "--limit=1",
-      "--json",
-    );
+    const boardPage = await json("task", "list", "APP", "--limit=1");
+    const boardCursor = continuationCursor(boardPage.result.stderr);
+    const replacedCursor = await run("task", "list", "APP", "--starting-after", boardCursor, "--limit=1", "--json");
     expect(replacedCursor.code, replacedCursor.stderr).toBe(0);
     const replacementCommand = extractContinuation(replacedCursor.stderr);
     expect(replacementCommand.match(/--starting-after/g)).toHaveLength(1);
-    expect(replacementCommand).toContain(before[1]!.id);
-    expect(replacementCommand).not.toContain(before[0]!.id);
+    expect(replacementCommand).not.toContain(boardCursor);
 
-    const compactUpper = anchor.id.replaceAll("-", "").toUpperCase();
-    const compactCursor = await json("task", "list", "APP", "--starting-after", compactUpper, "--sort", "due");
-    expect(compactCursor.tasks.map(({ key }) => key)).toEqual(before.slice(2).map(({ key }) => key));
-    expect(compactCursor.result.stderr).toBe("");
-    const canonicalUpper = await json(
-      "task",
-      "list",
-      "APP",
-      "--starting-after",
-      anchor.id.toUpperCase(),
-      "--sort",
-      "due",
-    );
-    expect(canonicalUpper.tasks.map(({ key }) => key)).toEqual(compactCursor.tasks.map(({ key }) => key));
-    expect(canonicalUpper.result.stderr).toBe("");
-    const idHex = anchor.id.replaceAll("-", "");
-    let prefix: string | undefined;
-    for (let length = 8; length < idHex.length; length++) {
-      const candidate = idHex.slice(0, length);
-      const canonical = canonicalPrefix(anchor.id, length);
-      const matches = [...before, otherTask].filter(({ id }) => id.replaceAll("-", "").startsWith(candidate));
-      if (matches.length === 1) {
-        prefix = canonical;
-        break;
-      }
-    }
-    expect(prefix).toBeDefined();
-    const prefixCursor = await json("task", "list", "APP", "--starting-after", prefix!, "--sort", "due");
-    expect(prefixCursor.tasks.map(({ key }) => key)).toEqual(compactCursor.tasks.map(({ key }) => key));
-    expect(prefixCursor.result.stderr).toBe("");
-    const beyondFirstPage = await json(
-      "task",
-      "list",
-      "APP",
-      "--sort",
-      "due",
-      "--starting-after",
-      before[3]!.id,
-      "--limit=1",
-    );
-    expect(beyondFirstPage.tasks.map(({ key }) => key)).toEqual(["APP-5"]);
-    expect(beyondFirstPage.result.stderr).toContain("--starting-after");
-
-    const exactFinal = await json("task", "list", "APP", "--starting-after", before[4]!.id, "--limit=1");
+    const beforeLast = await json("task", "list", "APP", `--limit=${before.length - 1}`);
+    const lastCursor = continuationCursor(beforeLast.result.stderr);
+    const exactFinal = await json("task", "list", "APP", "--starting-after", lastCursor, "--limit=1");
     expect(exactFinal.tasks.map(({ key }) => key)).toEqual(["APP-6"]);
     expect(exactFinal.result.stderr).toBe("");
-    const shortFinal = await json("task", "list", "APP", "--starting-after", before[4]!.id, "--limit=2");
+    const shortFinal = await json("task", "list", "APP", "--starting-after", lastCursor, "--limit=2");
     expect(shortFinal.tasks.map(({ key }) => key)).toEqual(["APP-6"]);
     expect(shortFinal.result.stderr).toBe("");
-    const emptyFinal = await json("task", "list", "APP", "--starting-after", before[5]!.id, "--limit=1");
-    expect(emptyFinal.tasks).toEqual([]);
-    expect(emptyFinal.result.stderr).toBe("");
     const cappedAll = await json("task", "list", "APP", `--limit=${MAX_LIST_LIMIT}`);
     expect(cappedAll.tasks).toHaveLength(before.length);
     expect(cappedAll.result.stderr).toBe("");
 
-    const outOfSelection = await run(
-      "task",
-      "list",
-      "APP",
-      "--due-until=30",
-      "--starting-after",
-      before[4]!.id,
-      "--json",
-    );
-    expect(outOfSelection.code).toBe(1);
-    expect(outOfSelection.stdout).toBe("");
-    expect(jsonError(outOfSelection.stderr)).toMatchObject({
-      code: "invalid_input",
-      details: { field: ["startingAfter"] },
-    });
+    // A cursor stays valid under changed filters with the same sort.
+    const changedFilters = await json("task", "list", "APP", "--due-since=10", "--starting-after", boardCursor);
+    expect(changedFilters.tasks.map(({ key }) => key)).toEqual(["APP-2", "APP-3", "APP-4", "APP-5"]);
 
-    const taskKeyCursor = await run("task", "list", "APP", "--starting-after", "APP-1", "--json");
-    expect(taskKeyCursor.code).toBe(1);
-    expect(jsonError(taskKeyCursor.stderr).code).toBe("invalid_input");
-    const shortPrefix = await run("task", "list", "APP", "--starting-after", "abcdef1", "--json");
-    expect(shortPrefix.code).toBe(1);
-    expect(jsonError(shortPrefix.stderr)).toMatchObject({
-      code: "invalid_input",
-      details: { field: ["startingAfter"] },
-    });
-    const otherProjectCursor = await run(
-      "task",
-      "list",
-      "APP",
-      "--starting-after",
-      otherTask.id,
-      "--json",
-    );
-    expect(otherProjectCursor.code).toBe(1);
-    expect(jsonError(otherProjectCursor.stderr)).toMatchObject({
-      code: "invalid_input",
-      details: { field: ["startingAfter"] },
-    });
-    const missing = await run(
-      "task",
-      "list",
-      "APP",
-      "--starting-after",
-      "ffffffff-ffff-7fff-8fff-ffffffffffff",
-      "--json",
-    );
-    expect(missing.code).toBe(1);
-    expect(jsonError(missing.stderr)).toMatchObject({
-      code: "not_found",
-      details: { entity: "task" },
-    });
+    const refusals: Array<[string, Array<string>]> = [
+      ["invalid_cursor", ["--starting-after", "APP-1"]],
+      ["invalid_cursor", ["--starting-after", `${boardCursor}*`]],
+      ["cursor_version", ["--starting-after", boardCursor.replace(/^(\D+)\d+/, "$19")]],
+      ["different_sort", ["--sort", "activity", "--starting-after", boardCursor]],
+      ["task_id_cursor", ["--starting-after", before[0]!.id]],
+    ];
+    for (const [reason, args] of refusals) {
+      const result = await run("task", "list", "APP", ...args, "--json");
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      const error = jsonError(result.stderr) as { code: string; message: string; details?: Record<string, unknown> };
+      expect(error).toMatchObject({ code: "invalid_input", details: { field: ["startingAfter"], reason } });
+      expect(error.message).toContain("zinn task list");
+      const text = await run("task", "list", "APP", ...args);
+      expect(text.code).toBe(1);
+      expect(text.stdout).toBe("");
+      expect(text.stderr).toContain("zinn task list");
+    }
     expect(snapshot()).toEqual(beforeReads);
 
-    const deletedResult = await run("task", "create", "APP", "--title", "Deleted", "--json");
-    expect(deletedResult.code, deletedResult.stderr).toBe(0);
-    const deleted = JSON.parse(deletedResult.stdout) as { id: string; key: string };
-    const deleteTask = await run("task", "delete", deleted.key, "--yes");
+    // The anchor task can be deleted between pages.
+    const firstPage = await run("task", "list", "APP", "--limit=1");
+    expect(firstPage.code, firstPage.stderr).toBe(0);
+    const deleteTask = await run("task", "delete", "APP-1", "--yes");
     expect(deleteTask.code, deleteTask.stderr).toBe(0);
-    const deletedCursor = await run(
-      "task",
-      "list",
-      "APP",
-      "--starting-after",
-      deleted.id,
-      "--json",
-    );
-    expect(deletedCursor.code).toBe(1);
-    expect(jsonError(deletedCursor.stderr)).toMatchObject({
-      code: "not_found",
-      details: { entity: "task" },
-    });
-
-    const sharedPrefix = (id: string) => id.replaceAll("-", "").slice(0, SHARED_PREFIX_HEX_LENGTH);
-    const liveIds = [...before, otherTask].map(({ id }) => id);
-    let ambiguousPrefix: string | undefined;
-    for (let attempt = 0; attempt < MAX_SHARED_PREFIX_ATTEMPTS && ambiguousPrefix === undefined; attempt++) {
-      const probe = await run("task", "create", "OTHER", "--title", "Prefix probe", "--json");
-      expect(probe.code, probe.stderr).toBe(0);
-      const probeId = (JSON.parse(probe.stdout) as { id: string }).id;
-      if (liveIds.some((id) => sharedPrefix(id) === sharedPrefix(probeId))) {
-        ambiguousPrefix = sharedPrefix(probeId);
-      }
-      liveIds.push(probeId);
-    }
-    expect(ambiguousPrefix).toBeDefined();
-    const beforeAmbiguousRead = snapshot();
-    const ambiguous = await run("task", "list", "APP", "--starting-after", ambiguousPrefix!, "--json");
-    expect(ambiguous.code).toBe(1);
-    expect(jsonError(ambiguous.stderr)).toMatchObject({
-      code: "conflict",
-      details: { reason: "ambiguous_reference" },
-    });
-    expect(snapshot()).toEqual(beforeAmbiguousRead);
+    const afterDeleted = await executeContinuation(directory, extractContinuation(firstPage.stderr));
+    expect(afterDeleted.code, afterDeleted.stderr).toBe(0);
+    expect(afterDeleted.stdout).toContain("APP-2");
+    expect(afterDeleted.stdout).not.toContain("APP-1 ");
   });
 });

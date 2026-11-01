@@ -58,6 +58,10 @@ export const errorDetailsSchema = z.strictObject({
       "different_project",
       "different_column",
       "ambiguous_reference",
+      "invalid_cursor",
+      "cursor_version",
+      "different_sort",
+      "task_id_cursor",
       "text_match_count",
       "no_columns",
       "has_tasks",
@@ -122,6 +126,16 @@ export class CliError extends Error {
   }
 }
 
+const taskCursorRecovery: Partial<Record<NonNullable<ErrorDetails["reason"]>, string>> = {
+  invalid_cursor:
+    ". Copy the cursor from the continuation command that zinn task list prints, or list again without --starting-after.",
+  cursor_version: ". Run zinn task list again without --starting-after to get a current cursor.",
+  different_sort:
+    ". Keep the --sort of the zinn task list command that printed the cursor, or start again without --starting-after.",
+  task_id_cursor:
+    ". When more tasks remain, zinn task list prints a continuation command with the cursor on stderr. Run that command.",
+};
+
 /** Recovery text and its single suggested route, when one is identified. */
 export function recoveryHint(
   error: unknown,
@@ -157,6 +171,14 @@ export function recoveryHint(
       suffix:
         ". Use zinn task move or zinn task delete to clear the column. Archived tasks must be unarchived before moving.",
     };
+  }
+
+  const cursorRecovery =
+    error instanceof CoreError && error.facts.reason !== undefined
+      ? taskCursorRecovery[error.facts.reason]
+      : undefined;
+  if (cursorRecovery !== undefined) {
+    return { suffix: cursorRecovery, suggestedRoute: ["task", "list"] };
   }
 
   if (error instanceof Error && error.message === "no such table: task_search") {

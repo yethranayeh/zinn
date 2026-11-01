@@ -227,14 +227,14 @@ export const activityRouter = {
           }),
         ),
       );
-      if (page.hasMore) {
+      if (page.nextCursor !== undefined) {
         diagnostic(
           `More activity. Continue with: ${formatListContinuation(
             ["activity", "list"],
             [],
             tokens,
             "starting-after",
-            page.events.at(-1)!.id,
+            page.nextCursor,
           )}`,
         );
       }

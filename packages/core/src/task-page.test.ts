@@ -1,9 +1,9 @@
 import { expect, spyOn, test } from "bun:test";
+import { Buffer } from "node:buffer";
 
 import { column, label, project, task } from "../index.js";
 import type { TaskPageInput, TaskWithKey } from "../index.js";
 import { getDb } from "./db.js";
-import * as dbTask from "./db/task.js";
 import { MAX_LIST_LIMIT } from "./schemas/integer.js";
 import { Statement } from "./sqlite/database.js";
 import { withTestStore } from "./testing.js";
@@ -24,12 +24,13 @@ function walkPages(input: TaskPageInput, expected: Array<TaskWithKey>, limit = 2
     expect(page.tasks).toEqual(nextTasks);
     collected.push(...page.tasks);
     expect(page.hasMore).toBe(collected.length < expected.length);
+    expect(typeof page.nextCursor).toBe(page.hasMore ? "string" : "undefined");
 
     if (!page.hasMore) {
       break;
     }
 
-    startingAfter = page.tasks.at(-1)!.id;
+    startingAfter = page.nextCursor;
   } while (collected.length <= expected.length);
 
   expect(collected).toEqual(expected);
@@ -106,13 +107,13 @@ test("task pages match list order across board, due and activity keys including 
         hasMore: false,
       });
 
-      if (expected.length > 0) {
-        expect(
-          task.getPage({
-            ...input,
-            startingAfter: expected.at(-1)!.id.toUpperCase().replaceAll("-", ""),
-          }),
-        ).toEqual({ tasks: [], hasMore: false });
+      if (expected.length > 1) {
+        const beforeLast = task.getPage({ ...input, limit: expected.length - 1 });
+        expect(beforeLast.hasMore).toBe(true);
+        expect(task.getPage({ ...input, startingAfter: beforeLast.nextCursor })).toEqual({
+          tasks: expected.slice(-1),
+          hasMore: false,
+        });
       }
     }
 
@@ -146,131 +147,7 @@ test("task pages match list order across board, due and activity keys including 
   });
 });
 
-test("task cursors resolve globally and require membership in the current filters, not the first limit", () => {
-  withTestStore(() => {
-    const app = project.create({ key: "APP" }, actor);
-    const other = project.create({ key: "OTHER" }, actor);
-    label.create({ name: "selected" }, actor);
-
-    const first = task.create({ project_id: app.id, title: "First", due_at: 1, labelNames: ["selected"] }, actor);
-    const second = task.create({ project_id: app.id, title: "Second", due_at: 2, labelNames: ["selected"] }, actor);
-    const third = task.create({ project_id: app.id, title: "Third", due_at: 3, labelNames: ["selected"] }, actor);
-    const unselected = task.create({ project_id: app.id, title: "Unselected", due_at: 1 }, actor);
-    const differentProject = task.create({ project_id: other.id, title: "Other", due_at: 1 }, actor);
-    const archived = task.create({ project_id: app.id, title: "Archived", due_at: 1 }, actor);
-    task.archive(archived.key, actor);
-
-    const afterSecond = task.getPage({ projectKey: app.key, labelNames: ["selected"], limit: 1, startingAfter: second.id });
-    expect(afterSecond).toEqual({ tasks: [third], hasMore: false });
-
-    const allIds = [first.id, second.id, third.id, unselected.id, differentProject.id, archived.id];
-    const firstCompactId = first.id.replaceAll("-", "");
-    let firstUniquePrefixLength = 8;
-    while (
-      allIds.filter((id) => id.replaceAll("-", "").startsWith(firstCompactId.slice(0, firstUniquePrefixLength)))
-        .length > 1
-    ) {
-      firstUniquePrefixLength++;
-    }
-    const compactPrefix = firstCompactId.slice(0, firstUniquePrefixLength);
-    expect(task.getPage({ startingAfter: second.id.toUpperCase().replaceAll("-", "") }).tasks)
-      .toEqual(task.getAll().slice(2));
-    expect(task.getPage({ startingAfter: compactPrefix.toUpperCase() }).tasks.map(({ id }) => id))
-      .toEqual(task.getAll().slice(1).map(({ id }) => id));
-    expect(task.getPage({ startingAfter: second.id.toUpperCase() }).tasks.map(({ id }) => id))
-      .toEqual(task.getAll().slice(2).map(({ id }) => id));
-
-    const errors = [
-      { input: { projectKey: other.key }, cursor: first.id },
-      { input: { projectKey: app.key, labelNames: ["selected"] }, cursor: unselected.id },
-      { input: { projectKey: app.key, archive: "archived" as const }, cursor: first.id },
-      { input: { projectKey: app.key, dueSince: 2 }, cursor: first.id },
-      { input: { projectKey: app.key, dueUntil: 2 }, cursor: third.id },
-      { input: { projectKey: app.key, columnName: "Done" }, cursor: first.id },
-    ];
-    for (const { input, cursor } of errors) {
-      expect(() => task.getPage({ ...input, startingAfter: cursor })).toThrow(
-        expect.objectContaining({
-          kind: "input",
-          facts: expect.objectContaining({ entity: "task", field: ["startingAfter"] }),
-        }),
-      );
-    }
-
-    task.archive(first.key, actor);
-    expect(() => task.getPage({ projectKey: app.key, startingAfter: first.id })).toThrow(
-      expect.objectContaining({
-        kind: "input",
-        facts: expect.objectContaining({ entity: "task", field: ["startingAfter"] }),
-      }),
-    );
-    task.label.remove({ taskKey: second.key, labelNames: ["selected"] }, actor);
-    expect(() => task.getPage({ projectKey: app.key, labelNames: ["selected"], startingAfter: second.id }))
-      .toThrow(expect.objectContaining({
-        kind: "input",
-        facts: expect.objectContaining({ entity: "task", field: ["startingAfter"] }),
-      }));
-    task.edit({ taskKey: third.key, due_at: 10 }, actor);
-    expect(() => task.getPage({
-      projectKey: app.key,
-      labelNames: ["selected"],
-      dueSince: 0,
-      dueUntil: 3,
-      startingAfter: third.id,
-    })).toThrow(expect.objectContaining({
-      kind: "input",
-      facts: expect.objectContaining({ entity: "task", field: ["startingAfter"] }),
-    }));
-
-    expect(() => task.getPage({ startingAfter: "ffffffff-ffff-7fff-8fff-ffffffffffff" })).toThrow(
-      expect.objectContaining({
-        kind: "missing",
-        facts: expect.objectContaining({ entity: "task" }),
-      }),
-    );
-    expect(() => task.getPage({
-      projectKey: "MISSING",
-      labelNames: ["unavailable"],
-      startingAfter: "ffffffff-ffff-7fff-8fff-ffffffffffff",
-    })).toThrow(
-      expect.objectContaining({
-        kind: "missing",
-        facts: expect.objectContaining({ entity: "task" }),
-      }),
-    );
-    expect(() => task.getPage({ startingAfter: first.key })).toThrow(
-      expect.objectContaining({
-        kind: "input",
-        facts: expect.objectContaining({ field: ["startingAfter"] }),
-      }),
-    );
-
-    const ambiguousLookup = spyOn(dbTask, "getByIdPrefix").mockReturnValue([
-      { id: "12345678-0000-7000-8000-000000000001" },
-      { id: "12345678-0000-7000-8000-000000000002" },
-    ]);
-    try {
-      expect(() => task.getPage({ startingAfter: "12345678" })).toThrow(
-        expect.objectContaining({
-          kind: "conflict",
-          facts: expect.objectContaining({
-            entity: "task",
-            reason: "ambiguous_reference",
-            matchCount: 2,
-            candidateIds: [
-              "12345678-0000-7000-8000-000000000001",
-              "12345678-0000-7000-8000-000000000002",
-            ],
-          }),
-        }),
-      );
-    } finally {
-      ambiguousLookup.mockRestore();
-    }
-  });
-});
-
-test("task pages follow the cursor's live position and bound full rows under query_only", () => {
+test("task pages continue from the cursor position and bound full rows under query_only", () => {
   withTestStore(() => {
     const app = project.create({ key: "APP" }, actor);
     label.create({ name: "selected" }, actor);
@@ -334,10 +211,10 @@ test("task pages follow the cursor's live position and bound full rows under que
     try {
       getDb().exec("PRAGMA query_only = ON");
       firstPage = task.getPage(input);
-      expect(firstPage).toEqual({ tasks: [selected[2]!], hasMore: true });
-      secondPage = task.getPage({ ...input, startingAfter: firstPage.tasks[0]!.id });
-      expect(secondPage).toEqual({ tasks: [selected[1]!], hasMore: true });
-      const thirdPage = task.getPage({ ...input, startingAfter: secondPage.tasks[0]!.id });
+      expect(firstPage).toMatchObject({ tasks: [selected[2]!], hasMore: true });
+      secondPage = task.getPage({ ...input, startingAfter: firstPage.nextCursor });
+      expect(secondPage).toMatchObject({ tasks: [selected[1]!], hasMore: true });
+      const thirdPage = task.getPage({ ...input, startingAfter: secondPage.nextCursor });
       expect(thirdPage).toEqual({ tasks: [selected[0]!], hasMore: false });
     } finally {
       reader.mockRestore();
@@ -354,7 +231,7 @@ test("task pages follow the cursor's live position and bound full rows under que
     const liveContinuation = task.getPage({
       projectKey: app.key,
       limit: 1,
-      startingAfter: selectedFirstPage.tasks[0]!.id,
+      startingAfter: selectedFirstPage.nextCursor,
     });
     const continuationIds = liveContinuation.tasks.map(({ id }) => id);
     expect(continuationIds).not.toContain(selected[2]!.id);
@@ -362,7 +239,7 @@ test("task pages follow the cursor's live position and bound full rows under que
   });
 });
 
-test("activity cursors follow updated event times between page calls", () => {
+test("activity-sorted cursors keep their recorded time when event times change", () => {
   withTestStore(() => {
     const app = project.create({ key: "APP" }, actor);
     const earlier = task.create({ project_id: app.id, title: "Earlier" }, actor);
@@ -372,13 +249,149 @@ test("activity cursors follow updated event times between page calls", () => {
       .run(earlier.id, later.id, earlier.id, later.id);
 
     const firstPage = task.getPage({ sort: "activity", limit: 1 });
-    expect(firstPage).toEqual({ tasks: [later], hasMore: true });
+    expect(firstPage).toMatchObject({ tasks: [later], hasMore: true });
     getDb()
       .query("UPDATE activity SET created_at = 300 WHERE entity_type = 'task' AND entity_id = ?")
       .run(earlier.id);
-    expect(task.getPage({ sort: "activity", limit: 1, startingAfter: later.id })).toEqual({
+    expect(task.getPage({ sort: "activity", limit: 1, startingAfter: firstPage.nextCursor })).toEqual({
       tasks: [],
       hasMore: false,
     });
+  });
+});
+
+function keys(tasks: Array<TaskWithKey>) {
+  return tasks.map(({ key }) => key);
+}
+
+test("ZINN-464: cursors continue after the recorded position when the last task changes", () => {
+  withTestStore(() => {
+    const app = project.create({ key: "APP" }, actor);
+    label.create({ name: "selected" }, actor);
+    for (let index = 1; index <= 4; index++) {
+      task.create({ project_id: app.id, title: `Task ${index}`, due_at: index, labelNames: ["selected"] }, actor);
+    }
+    getDb()
+      .query("UPDATE activity SET created_at = 1000 - (SELECT number FROM task WHERE task.id = entity_id) * 100 WHERE entity_type = 'task'")
+      .run();
+
+    // Editing the last task under activity order moves it to the top without repeating tasks.
+    const activityPage = task.getPage({ projectKey: app.key, sort: "activity", limit: 2 });
+    expect(keys(activityPage.tasks)).toEqual(["APP-1", "APP-2"]);
+    task.edit({ taskKey: "APP-2", title: "Edited" }, actor);
+    expect(keys(task.getAll({ projectKey: app.key, sort: "activity" }))[0]).toBe("APP-2");
+    expect(keys(task.getPage({
+      projectKey: app.key,
+      sort: "activity",
+      startingAfter: activityPage.nextCursor,
+    }).tasks)).toEqual(["APP-3", "APP-4"]);
+
+    const continueAfterChange = (
+      selection: TaskPageInput,
+      change: (taskKey: string) => void,
+      expected: Array<string>,
+    ) => {
+      const page = task.getPage({ ...selection, limit: 1 });
+      expect(keys(page.tasks)).toEqual(["APP-1"]);
+      change("APP-1");
+      expect(keys(task.getPage({ ...selection, startingAfter: page.nextCursor }).tasks)).toEqual(expected);
+    };
+
+    const rest = ["APP-2", "APP-3", "APP-4"];
+    continueAfterChange(
+      { projectKey: app.key, columnName: "Backlog" },
+      (taskKey) => task.move({ taskKey, targetColumn: "Done" }, actor),
+      rest,
+    );
+    task.move({ taskKey: "APP-1", targetColumn: "Backlog" }, actor);
+    task.order({ taskKey: "APP-1", direction: "top" }, actor);
+    continueAfterChange(
+      { projectKey: app.key, labelNames: ["selected"] },
+      (taskKey) => task.label.remove({ taskKey, labelNames: ["selected"] }, actor),
+      rest,
+    );
+    continueAfterChange(
+      { projectKey: app.key, sort: "due", dueUntil: 10 },
+      (taskKey) => task.edit({ taskKey, due_at: 20 }, actor),
+      rest,
+    );
+    continueAfterChange(
+      { projectKey: app.key },
+      (taskKey) => task.archive(taskKey, actor),
+      rest,
+    );
+    task.unarchive("APP-1", actor);
+    task.order({ taskKey: "APP-1", direction: "top" }, actor);
+    continueAfterChange(
+      { projectKey: app.key },
+      (taskKey) => task.delete(taskKey, actor),
+      rest,
+    );
+  });
+});
+
+test("ZINN-464: tasks that tie on every board key keep one order across pages", () => {
+  withTestStore(() => {
+    const app = project.create({ key: "APP" }, actor);
+    const created = [1, 2, 3, 4].map((index) =>
+      task.create({ project_id: app.id, title: `Tie ${index}` }, actor),
+    );
+    getDb().query("UPDATE task SET number = 1, task_order = 'a0' WHERE project_id = ?").run(app.id);
+    getDb().query("UPDATE activity SET created_at = 100 WHERE entity_type = 'task'").run();
+
+    for (const sort of [undefined, "due", "activity"] as const) {
+      const expected = task.getAll({ sort });
+      expect(expected.map(({ id }) => id)).toEqual(created.map(({ id }) => id).sort());
+      walkPages({ sort }, expected, 1);
+      walkPages({ sort }, expected, 3);
+    }
+  });
+});
+
+test("ZINN-464: task cursors refuse malformed, other-version, other-sort and task-ID values", () => {
+  withTestStore(() => {
+    const app = project.create({ key: "APP" }, actor);
+    label.create({ name: "selected" }, actor);
+    const first = task.create({ project_id: app.id, title: "First", labelNames: ["selected"] }, actor);
+    task.create({ project_id: app.id, title: "Second", labelNames: ["selected"] }, actor);
+    task.create({ project_id: app.id, title: "Third" }, actor);
+    const boardCursor = task.getPage({ projectKey: app.key, limit: 1 }).nextCursor!;
+    const dueCursor = task.getPage({ projectKey: app.key, sort: "due", limit: 1 }).nextCursor!;
+    expect(boardCursor).toMatch(/^[^-]/);
+
+    // Filters may change under the same sort.
+    expect(keys(task.getPage({ labelNames: ["selected"], startingAfter: boardCursor }).tasks)).toEqual(["APP-2"]);
+
+    const [marker, payload] = boardCursor.split(".") as [string, string];
+    const version = marker.replace(/^\D+/, "");
+    const markerName = marker.slice(0, marker.length - version.length);
+    const encode = (value: unknown) => `${marker}.${Buffer.from(JSON.stringify(value)).toString("base64url")}`;
+    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Array<unknown>;
+    const refusals: Array<[string, TaskPageInput]> = [
+      ["invalid_cursor", { startingAfter: "" }],
+      ["invalid_cursor", { startingAfter: "APP-1" }],
+      ["invalid_cursor", { startingAfter: "abcdef1" }],
+      ["invalid_cursor", { startingAfter: `${marker}.not*base64` }],
+      ["invalid_cursor", { startingAfter: `${marker}.${Buffer.from("{").toString("base64url")}` }],
+      ["invalid_cursor", { startingAfter: encode(decoded.slice(0, -1)) }],
+      ["invalid_cursor", { startingAfter: encode([...decoded, "extra"]) }],
+      ["invalid_cursor", { startingAfter: encode(["unknown", ...decoded.slice(1)]) }],
+      ["invalid_cursor", { startingAfter: encode(decoded.map((value) => (typeof value === "number" ? String(value) : value))) }],
+      ["cursor_version", { startingAfter: `${markerName}${Number(version) + 1}.${payload}` }],
+      ["different_sort", { sort: "due", startingAfter: boardCursor }],
+      ["different_sort", { sort: "activity", startingAfter: boardCursor }],
+      ["different_sort", { startingAfter: dueCursor }],
+      ["task_id_cursor", { startingAfter: first.id }],
+      ["task_id_cursor", { startingAfter: first.id.replaceAll("-", "").toUpperCase() }],
+      ["task_id_cursor", { startingAfter: first.id.slice(0, 8) }],
+    ];
+    for (const [reason, input] of refusals) {
+      expect(() => task.getPage({ projectKey: app.key, ...input })).toThrow(
+        expect.objectContaining({
+          kind: "input",
+          facts: { field: ["startingAfter"], reason },
+        }),
+      );
+    }
   });
 });

@@ -190,13 +190,18 @@ test("task lists and pages reuse selected project keys without per-task project 
             check(() => task.getPage(selection), { tasks: expected, hasMore: false });
 
             let startingAfter: string | undefined;
-            for (let index = 0; index <= expected.length; index++) {
+            for (let index = 0; index < Math.max(expected.length, 1); index++) {
               const tasks: Array<TaskWithKey> = expected.slice(index, index + 1);
-              check(() => task.getPage({ ...selection, limit: 1, startingAfter }), {
+              let nextCursor: string | undefined;
+              check(() => {
+                const { nextCursor: cursor, ...page } = task.getPage({ ...selection, limit: 1, startingAfter });
+                nextCursor = cursor;
+                return page;
+              }, {
                 tasks,
                 hasMore: index + 1 < expected.length,
               });
-              startingAfter = tasks[0]?.id;
+              startingAfter = nextCursor;
             }
           }
         }

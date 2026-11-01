@@ -48,6 +48,7 @@ const TASK_ACTIVITY_CTE = `task_activity AS (
       GROUP BY entity_id
     )`;
 const TASK_LAST_ACTIVITY_TIME_SQL = "COALESCE(task_activity.created_at, task.updated_at)";
+// `task.id` comes last so tasks that tie on every other key still have one order
 const BOARD_ORDER_KEYS = [
   "project_key",
   "column_order_null_rank",
@@ -56,21 +57,18 @@ const BOARD_ORDER_KEYS = [
   "task_order_null_rank",
   "task_order",
   "number",
-];
+  "id",
+] as const;
+const DUE_ORDER_KEYS = ["due_null_rank", "due_value", ...BOARD_ORDER_KEYS] as const;
+const ACTIVITY_ORDER_KEYS = ["activity_time", ...BOARD_ORDER_KEYS] as const;
+const DESCENDING_SORT_KEY = "activity_time";
+
+export type TaskSortKey = (typeof DUE_ORDER_KEYS)[number] | (typeof ACTIVITY_ORDER_KEYS)[number];
+/** Sort-key values of one task, in getTaskSortKeys order. */
+export type TaskSortPosition = Array<string | number>;
 
 export function getById(taskId: string) {
   return getDb().query<Task, [string]>(`SELECT * FROM ${DB_TABLE.task} WHERE id = ?`).get(taskId);
-}
-
-/** Returns all live task IDs matching a normalized UUID prefix. */
-export function getByIdPrefix(hexPrefix: string) {
-  return getDb()
-    .query<{ id: string }, [string]>(
-      `SELECT id FROM ${DB_TABLE.task}
-      WHERE LOWER(REPLACE(id, '-', '')) LIKE ?
-      ORDER BY id ASC`,
-    )
-    .all(`${hexPrefix}%`);
 }
 
 // TODO: refined parameters, preferably of type SQLBindings
@@ -116,15 +114,9 @@ export type TaskListQuery = Pick<
   columnIds?: Array<string>;
 };
 
-export type TaskPageQuery = TaskListQuery & { afterTaskId: string };
-
+export type TaskPageQuery = TaskListQuery & { after?: TaskSortPosition };
 export type TaskListRow = Task & { project_key: string };
-
-type TaskPageRow = { cursor_in_selection: number } & {
-  [Key in keyof TaskListRow]: TaskListRow[Key] | null;
-};
-
-export type TaskPageMatches = { cursorInSelection: boolean; tasks: Array<TaskListRow> };
+export type TaskPageRow = { task: TaskListRow; position: TaskSortPosition };
 
 function buildTaskListFilters(input: TaskListQuery) {
   const predicates: Array<string> = [];
@@ -187,37 +179,41 @@ function getCandidateTasksCte(where: string) {
     )`;
 }
 
-/** Orders ordered_tasks rows for every task list, so the first page and later pages agree. */
-function getListOrder(sort: TaskListQuery["sort"], alias: string) {
-  const boardOrder = BOARD_ORDER_KEYS.map((key) => `${alias}.${key} ASC`).join(", ");
-
+/** The keys that order a task list under one sort, so list order, cursors and pages agree */
+export function getTaskSortKeys(sort: TaskListQuery["sort"]): ReadonlyArray<TaskSortKey> {
   if (sort === "due") {
-    return `${alias}.due_null_rank ASC, ${alias}.due_value ASC, ${boardOrder}`;
+    return DUE_ORDER_KEYS;
   }
 
   if (sort === "activity") {
-    return `${alias}.activity_time DESC, ${boardOrder}`;
+    return ACTIVITY_ORDER_KEYS;
   }
 
-  return boardOrder;
+  return BOARD_ORDER_KEYS;
 }
 
+/** Orders `ordered_tasks` rows for every task list, so the first page and later pages agree */
+function getListOrder(sort: TaskListQuery["sort"], alias: string) {
+  return getTaskSortKeys(sort)
+    .map((key) => `${alias}.${key} ${key === DESCENDING_SORT_KEY ? "DESC" : "ASC"}`)
+    .join(", ");
+}
+
+/** Selects rows after the $after_<key> position, matching getListOrder. */
 function getPageAfterCondition(sort: TaskListQuery["sort"]) {
   const boardCurrent = `(${BOARD_ORDER_KEYS.map((key) => `current.${key}`).join(", ")})`;
-  const boardAnchor = `(${BOARD_ORDER_KEYS.map((key) => `anchor.${key}`).join(", ")})`;
-
-  if (sort === "due") {
-    const current = `(current.due_null_rank, current.due_value, ${BOARD_ORDER_KEYS.map((key) => `current.${key}`).join(", ")})`;
-    const anchor = `(anchor.due_null_rank, anchor.due_value, ${BOARD_ORDER_KEYS.map((key) => `anchor.${key}`).join(", ")})`;
-    return `${current} > ${anchor}`;
-  }
+  const boardAfter = `(${BOARD_ORDER_KEYS.map((key) => `$after_${key}`).join(", ")})`;
 
   if (sort === "activity") {
-    return `current.activity_time < anchor.activity_time
-      OR (current.activity_time = anchor.activity_time AND ${boardCurrent} > ${boardAnchor})`;
+    return `current.activity_time < $after_activity_time
+      OR (current.activity_time = $after_activity_time AND ${boardCurrent} > ${boardAfter})`;
   }
 
-  return `${boardCurrent} > ${boardAnchor}`;
+  const keys = getTaskSortKeys(sort);
+  const current = `(${keys.map((key) => `current.${key}`).join(", ")})`;
+  const after = `(${keys.map((key) => `$after_${key}`).join(", ")})`;
+
+  return `${current} > ${after}`;
 }
 
 function getOrderedTasksCtes(sort: TaskListQuery["sort"], where: string) {
@@ -302,49 +298,48 @@ export function getAllByKeys(taskKeys: Array<string>) {
     .all({ $taskKeys: JSON.stringify(taskKeys) });
 }
 
-/** Returns one bounded task page and whether the live cursor matches the list filters. */
-export function getPageAfter(input: TaskPageQuery): TaskPageMatches {
+/** Returns one bounded task page, after a sort position when given, with each row's position */
+export function getPage(input: TaskPageQuery): Array<TaskPageRow> {
+  const keys = getTaskSortKeys(input.sort);
   const { where, limit, bindings } = buildTaskListFilters(input);
-  const pageOrder = getListOrder(input.sort, "page_ids");
-  const afterCondition = getPageAfterCondition(input.sort);
-  bindings.$afterTaskId = input.afterTaskId;
+  const after = input.after;
+  let afterClause = "";
+
+  if (after !== undefined) {
+    afterClause = `WHERE ${getPageAfterCondition(input.sort)}`;
+    keys.forEach((key, index) => {
+      bindings[`$after_${key}`] = after[index]!;
+    });
+  }
 
   const rows = getDb()
     .query<
-      TaskPageRow,
+      TaskListRow & Record<string, string | number | null>,
       Record<string, string | number>
-    >(`WITH ${getOrderedTasksCtes(input.sort, where)}, cursor_state AS (
-      SELECT EXISTS (
-        SELECT 1 FROM ordered_tasks WHERE id = $afterTaskId
-      ) AS cursor_in_selection
-    ), page_ids AS (
+    >(`WITH ${getOrderedTasksCtes(input.sort, where)}, page_ids AS (
       SELECT current.*
       FROM ordered_tasks AS current
-      INNER JOIN ordered_tasks AS anchor
-        ON anchor.id = $afterTaskId
-      WHERE ${afterCondition}
+      ${afterClause}
       ORDER BY ${getListOrder(input.sort, "current")}
       ${limit}
     )
-    SELECT cursor_state.cursor_in_selection, task.*, page_ids.project_key
-    FROM cursor_state
-    LEFT JOIN page_ids
-      ON 1 = 1
-    LEFT JOIN ${DB_TABLE.task}
+    SELECT task.*, page_ids.project_key, ${keys.map((key) => `page_ids.${key} AS cursor_${key}`).join(", ")}
+    FROM page_ids
+    INNER JOIN ${DB_TABLE.task}
       ON task.id = page_ids.id
-    ORDER BY ${pageOrder}`)
+    ORDER BY ${getListOrder(input.sort, "page_ids")}`)
     .all(bindings);
 
-  const cursorInSelection = rows[0]?.cursor_in_selection === 1;
-  const tasks: Array<TaskListRow> = [];
+  return rows.map((row) => {
+    const position = keys.map((key) => row[`cursor_${key}`] as string | number);
+    const taskRow: Record<string, unknown> = { ...row };
 
-  for (const { cursor_in_selection, ...taskRow } of rows) {
-    if (cursor_in_selection === 1 && taskRow.id !== null) {
-      tasks.push(taskRow as TaskListRow);
+    for (const key of keys) {
+      delete taskRow[`cursor_${key}`];
     }
-  }
 
-  return { cursorInSelection, tasks };
+    return { task: taskRow as TaskListRow, position };
+  });
 }
 
 export function getAllByColumnId(columnId: string, archive: TaskArchiveFilter = "active") {

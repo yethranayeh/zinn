@@ -35,11 +35,13 @@ const createdTask: TaskWithKey = task.create(
   actor,
 );
 const key: string = createdTask.key;
-const taskPageInput: TaskPageInput = { limit: 2, sort: "activity", startingAfter: createdTask.id };
+const taskPageInput: TaskPageInput = { limit: 2, sort: "activity" };
 const taskPage = task.getPage(taskPageInput);
 const pageTasks: TaskWithKey[] = taskPage.tasks;
 const pageHasMore: boolean = taskPage.hasMore;
-const parsedTaskPage = taskPageSchema.safeParse({ startingAfter: createdTask.id, limit: 1 });
+const nextTaskCursor: string | undefined = taskPage.nextCursor;
+task.getPage({ ...taskPageInput, startingAfter: nextTaskCursor });
+const parsedTaskPage = taskPageSchema.safeParse({ startingAfter: nextTaskCursor, limit: 1 });
 const relationRequest: RelationCreateInput = {
   sourceTaskKey: key,
   targetTaskKey: "TYPES-2",
@@ -64,7 +66,7 @@ const sqlite: Error = new SqliteError("Busy", 5, null);
 void pageTasks;
 void pageHasMore;
 void parsedTaskPage;
-const page: { events: Activity[]; hasMore: boolean } = activity.getAll({
+const page: { events: Activity[]; hasMore: boolean; nextCursor?: string } = activity.getAll({
   sessionId: "conversation",
   threadId: "child",
   actions: ["create", "edit"],
@@ -75,7 +77,9 @@ const page: { events: Activity[]; hasMore: boolean } = activity.getAll({
   ],
   limit: 1,
 });
+const nextEventCursor: string | undefined = page.nextCursor;
 const events: Activity[] = activity.getAll({ startingAfter: page.events[0]?.id }).events;
+void nextEventCursor;
 // @ts-expect-error only column, priority and labels support changed value filters.
 activity.getAll({ changed: [{ field: "comment", value: "text" }] });
 // @ts-expect-error column names cannot use null as a changed filter value.

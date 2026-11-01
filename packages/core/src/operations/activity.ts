@@ -259,7 +259,9 @@ function getRecordedValues(event: Activity): RecordedValues {
 }
 
 export const activity = {
-  getAll: (input: ActivityListInput = {}): { events: Array<Activity>; hasMore: boolean } => {
+  getAll: (
+    input: ActivityListInput = {},
+  ): { events: Array<Activity>; hasMore: boolean; nextCursor?: string } => {
     const props = validateTaskInput(activityListSchema, input);
     const query: dbActivity.ActivityQuery = {
       sessionId: props.sessionId,
@@ -338,10 +340,13 @@ export const activity = {
       query.before = candidates.at(-1)!;
     }
 
-    return {
-      events: matchingEvents.slice(0, props.limit),
-      hasMore: matchingEvents.length > props.limit,
-    };
+    const events = matchingEvents.slice(0, props.limit);
+    if (matchingEvents.length <= props.limit) {
+      return { events, hasMore: false };
+    }
+
+    // Events never change position, so the last event's ID continues the list
+    return { events, hasMore: true, nextCursor: events.at(-1)!.id };
   },
   getById: (id: string) => {
     const hexPrefix = validateTaskInput(activityIdSchema, id);

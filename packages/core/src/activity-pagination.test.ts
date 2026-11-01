@@ -15,10 +15,12 @@ function walk(input: ActivityListInput, expected: Array<Activity>, limit = 2) {
     expect(page.events).toEqual(expected.slice(collected.length, collected.length + limit));
     collected.push(...page.events);
     expect(page.hasMore).toBe(collected.length < expected.length);
+    expect(page.nextCursor).toBe(page.hasMore ? page.events.at(-1)!.id : undefined);
     if (!page.hasMore) {
+      expect(Object.keys(page)).not.toContain("nextCursor");
       break;
     }
-    startingAfter = page.events.at(-1)!.id;
+    startingAfter = page.nextCursor;
   } while (collected.length <= expected.length);
   expect(collected).toEqual(expected);
   if (collected.length > 0) {
