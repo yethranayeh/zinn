@@ -15,7 +15,7 @@ export function uuidReferenceSchema(entity: string) {
     if (!isHex || !hasCanonicalHyphens) {
       context.addIssue({
         code: "custom",
-        message: `Invalid ${entity} ID. Use a UUID or its left prefix, with canonical hyphens or hexadecimal digits`,
+        message: `Invalid ${entity.toLowerCase()} ID. Use a UUID or its left prefix, with canonical hyphens or hexadecimal digits`,
       });
     } else if (hex.length < minimumUuidReferenceLength) {
       context.addIssue({
