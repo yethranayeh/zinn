@@ -44,18 +44,18 @@ export const MINIMUM_CLI_VERSION = "0.43.0";
 export const HOOK_VERIFICATION_BUDGET_MS = 1500;
 
 function supportsVersion(text: string) {
-  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(text.trim());
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-dev)?$/.exec(text.trim());
   if (match === null) {
     return false;
   }
-  const version = match.slice(1).map(Number);
+  const version = match.slice(1, 4).map(Number);
   const minimum = MINIMUM_CLI_VERSION.split(".").map(Number);
   for (let index = 0; index < minimum.length; index++) {
     if (version[index] !== minimum[index]) {
       return version[index]! > minimum[index]!;
     }
   }
-  return true;
+  return match[4] === undefined;
 }
 
 /** Owns CLI children until they exit, including cancellation and backend shutdown. */
@@ -183,7 +183,7 @@ export function createCliReader(
         if (!supportsVersion(version.value)) {
           return {
             ok: false,
-            error: `Use an official Zinn CLI release ${MINIMUM_CLI_VERSION} or newer.`,
+            error: `Use Zinn CLI ${MINIMUM_CLI_VERSION} or newer, or a -dev build after that release.`,
           };
         }
         return await execute([...args, "--json"], true, signal);

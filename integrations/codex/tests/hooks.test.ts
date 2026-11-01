@@ -11,7 +11,7 @@ import { readRecent } from "../src/inspector/references";
 import { createCliReader } from "../src/shared/cli";
 import { loadSettings } from "../src/settings";
 import { argvKeys, keyCandidates } from "../src/shared/keys";
-import { fixture, inspectStore, seedOlderStore } from "./helpers";
+import { cliPath, fixture, inspectStore, seedOlderStore } from "./helpers";
 import { infoDatabaseStateSchema } from "../../../packages/core/src/operations/info";
 const context = fixture();
 const reader = createCliReader(context.settings);
@@ -125,7 +125,7 @@ test("uncertain directory changes do not attribute relative stores", () => {
     expect(readFeed(context.settings.dataDirectory, input.session_id, context.settings.store).references).toEqual([]);
 });
 test("observer refuses unsupported CLI versions before database verification", () => {
-    for (const [index, version] of ["0.42.0", "0.43.0-dev", "unknown"].entries()) {
+    for (const [index, version] of ["0.42.0", "0.42.0-dev", "0.43.0-dev", "0.44.0-rc.1", "00.44.0-dev", "unknown"].entries()) {
         const sentinel = join(context.directory, `unexpected-store-open-${index}`);
         const executable = join(context.directory, `old-cli-${index}.mjs`);
         writeFileSync(executable, `import {writeFileSync} from 'node:fs'; if (process.argv[2] === '--version') { console.log(${JSON.stringify(version)}); } else { writeFileSync(${JSON.stringify(sentinel)}, 'unexpected'); }`);
@@ -135,6 +135,24 @@ test("observer refuses unsupported CLI versions before database verification", (
         const feed = readFeed(context.settings.dataDirectory, session, context.settings.store);
         expect(feed.references).toEqual([]);
         expect(feed.replyFailures).toBe(1);
+    }
+});
+test("observer verifies references with stable releases and newer canonical development builds", () => {
+    for (const [index, version] of ["0.43.0", "0.43.1-dev", "0.44.0-dev", "1.0.0-dev"].entries()) {
+        const executable = join(context.directory, `supported-cli-${index}.mjs`);
+        writeFileSync(executable, `import {spawnSync} from 'node:child_process';
+if (process.argv[2] === '--version') { console.log(${JSON.stringify(version)}); }
+else {
+    const result = spawnSync(process.execPath, [${JSON.stringify(cliPath)}, ...process.argv.slice(2)], {env:process.env});
+    process.stdout.write(result.stdout);
+    process.stderr.write(result.stderr);
+    process.exit(result.status ?? 1);
+}`);
+        const session = `supported-observer-${index}`;
+        observe({ ...base, session_id: session, hook_event_name: "Stop", last_assistant_message: "APP-1" }, { ...context.settings, cli: ["node", executable] });
+        const feed = readFeed(context.settings.dataDirectory, session, context.settings.store);
+        expect(feed.references).toEqual([{ key: "APP-1", source: "completed-reply", store: context.settings.store }]);
+        expect(feed.replyFailures).toBe(0);
     }
 });
 test("optional verification skips older schemas without starting an upgrade", () => {
