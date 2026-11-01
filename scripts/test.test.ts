@@ -124,6 +124,107 @@ test("a bare --failed reruns the newest finished run, and a run without failures
   expect(readdirSync(join(directory, ".test-results"))).toHaveLength(1);
 }));
 
+test("--failed retries a setup failure's file and keeps other files filtered to their own failures", withDirectory((directory) => {
+  writeFileSync(join(directory, "setup.test.ts"), `
+    import { beforeAll, test } from "bun:test";
+    import { existsSync, writeFileSync } from "node:fs";
+    beforeAll(() => {
+      if (!existsSync("setup-ready")) { throw new Error("SETUP_FAILURE"); }
+    });
+    test("first setup-dependent case", () => { writeFileSync("setup-first-ran", ""); });
+    test("second setup-dependent case", () => { writeFileSync("setup-second-ran", ""); });
+  `);
+  writeFileSync(join(directory, "named-a.test.ts"), `
+    import { expect, test } from "bun:test";
+    import { existsSync, writeFileSync } from "node:fs";
+    test("(unnamed)", () => { expect(existsSync("tests-ready")).toBe(true); });
+    test("other failure", () => { writeFileSync("named-a-passed", ""); });
+  `);
+  writeFileSync(join(directory, "named-b.test.ts"), `
+    import { expect, test } from "bun:test";
+    import { existsSync, writeFileSync } from "node:fs";
+    test("other failure", () => { expect(existsSync("tests-ready")).toBe(true); });
+    test("(unnamed)", () => { writeFileSync("named-b-passed", ""); });
+  `);
+  const resultsDirectory = join(directory, ".test-results");
+  const runScript = (args: Array<string>) => {
+    const previousRuns = existsSync(resultsDirectory) ? readdirSync(resultsDirectory) : [];
+    const result = Bun.spawnSync([process.execPath, SCRIPT_PATH, ...args], {
+      cwd: directory,
+      env: TEST_ENVIRONMENT,
+    });
+    const run = readdirSync(resultsDirectory).find((entry) => !previousRuns.includes(entry))!;
+    const runDirectory = join(resultsDirectory, run);
+    const xml = readFileSync(join(runDirectory, "junit.xml"), "utf8");
+    for (const file of ["junit.xml", "output.log", "summary.txt"]) {
+      expect(existsSync(join(runDirectory, file))).toBe(true);
+    }
+    expect(result.stdout.toString()).toContain(readFileSync(join(runDirectory, "summary.txt"), "utf8"));
+    expect(xml.match(/<testsuites\b/g)).toHaveLength(1);
+    const root = /<testsuites\b([^>]*)>/.exec(xml)![1]!;
+    const suites = [...xml.matchAll(/<testsuite\b([^>]*)>/g)].map((match) => match[1]!);
+    for (const key of ["tests", "assertions", "failures", "skipped"]) {
+      const attribute = new RegExp(`\\b${key}="([^"]*)"`);
+      const total = suites.reduce((sum, suite) => sum + Number(attribute.exec(suite)![1]), 0);
+      expect(Number(attribute.exec(root)![1])).toBe(total);
+    }
+    return { run, exitCode: result.exitCode, results: readJunit(xml) };
+  };
+
+  const first = runScript(["./setup.test.ts", "./named-a.test.ts", "./named-b.test.ts"]);
+  expect(first.exitCode).toBe(1);
+  expect(first.results.passed).toBe(2);
+  expect(first.results.failed).toHaveLength(3);
+  expect(first.results.failed.find((test) => test.file === "setup.test.ts")?.line).toBeUndefined();
+  expect(first.results.failed.find((test) => test.file === "named-a.test.ts")).toMatchObject({ name: "(unnamed)", line: 4 });
+  rmSync(join(directory, "named-a-passed"));
+  rmSync(join(directory, "named-b-passed"));
+
+  const stillBroken = runScript([`--failed=${first.run}`]);
+  expect(stillBroken.exitCode).toBe(1);
+  expect(stillBroken.results.passed).toBe(0);
+  expect(stillBroken.results.failed.map((test) => test.file).sort()).toEqual(["named-a.test.ts", "named-b.test.ts", "setup.test.ts"]);
+
+  writeFileSync(join(directory, "tests-ready"), "");
+  const setupStillBroken = runScript([`--failed=${first.run}`]);
+  expect(setupStillBroken.exitCode).toBe(1);
+  expect(setupStillBroken.results.passed).toBe(2);
+  expect(setupStillBroken.results.failed.map((test) => test.file)).toEqual(["setup.test.ts"]);
+
+  writeFileSync(join(directory, "setup-ready"), "");
+  const fixed = runScript([`--failed=${first.run}`]);
+  expect(fixed.exitCode).toBe(0);
+  expect(fixed.results).toEqual({ passed: 4, failed: [] });
+  expect(existsSync(join(directory, "setup-first-ran"))).toBe(true);
+  expect(existsSync(join(directory, "setup-second-ran"))).toBe(true);
+  for (const marker of ["named-a-passed", "named-b-passed"]) {
+    expect(existsSync(join(directory, marker))).toBe(false);
+  }
+}));
+
+test("--failed reruns a file after its setup recovers", withDirectory((directory) => {
+  writeFileSync(join(directory, "setup.test.ts"), `
+    import { beforeAll, test } from "bun:test";
+    import { existsSync, writeFileSync } from "node:fs";
+    beforeAll(() => {
+      if (!existsSync("ready")) { throw new Error("SETUP_FAILURE"); }
+    });
+    test("runs after setup", () => { writeFileSync("test-ran", ""); });
+  `);
+  const runScript = (args: Array<string>) =>
+    Bun.spawnSync([process.execPath, SCRIPT_PATH, ...args], { cwd: directory, env: TEST_ENVIRONMENT });
+  expect(runScript(["./setup.test.ts"]).exitCode).toBe(1);
+  expect(existsSync(join(directory, "test-ran"))).toBe(false);
+  writeFileSync(join(directory, "ready"), "");
+
+  const rerun = runScript(["--failed"]);
+
+  expect(rerun.exitCode).toBe(0);
+  expect(existsSync(join(directory, "test-ran"))).toBe(true);
+  const newest = readdirSync(join(directory, ".test-results")).sort().at(-1)!;
+  expect(readJunit(readFileSync(join(directory, ".test-results", newest, "junit.xml"), "utf8"))).toEqual({ passed: 1, failed: [] });
+}));
+
 test("only the newest run directories are kept", () => {
   const runs = Array.from({ length: 12 }, (_, index) => `20261101-1000${String(index).padStart(2, "0")}-7`);
   const entries = [...runs].reverse().concat(["full-run.lock", "notes"]);

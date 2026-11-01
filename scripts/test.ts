@@ -48,13 +48,14 @@ const FLAGS_WITH_VALUES = new Set([
 
 export type FailedTest = {
   file: string;
-  line: number;
+  line?: number;
   name: string;
   seconds: number;
   timedOut: boolean;
 };
 export type RunResults = { passed: number; failed: Array<FailedTest> };
 type LockHolder = { pid: number; runId: string; startedAt: string; command: string };
+type TestSelection = { arguments: Array<string>; wholeFile?: string };
 
 /** Splits the script's own --failed option from the arguments passed on to bun test. */
 export function readArguments(args: ReadonlyArray<string>) {
@@ -136,7 +137,7 @@ export function readJunit(xml: string): RunResults {
     if (current.failed) {
       results.failed.push({
         file: current.attributes.file ?? "",
-        line: Number(current.attributes.line ?? 0),
+        line: current.attributes.line === undefined ? undefined : Number(current.attributes.line),
         name: current.attributes.name ?? "",
         seconds: Number(current.attributes.time ?? 0),
         timedOut: current.timedOut,
@@ -184,11 +185,41 @@ function escapeRegExp(text: string) {
   return text.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
 }
 
-/** bun test arguments that run exactly the given failed tests' files, filtered to their names. */
-export function failedTestArguments(failed: Array<FailedTest>) {
-  const files = [...new Set(failed.map((test) => `./${test.file}`))];
-  const names = [...new Set(failed.map((test) => escapeRegExp(test.name)))];
-  return [...files, "--test-name-pattern", names.join("|")];
+/** Selects failed tests within each file, or the whole file when a failure has no test location. */
+export function failedTestArguments(failed: Array<FailedTest>): Array<TestSelection> {
+  const files = new Map<string, Array<FailedTest>>();
+  for (const test of failed) {
+    const tests = files.get(test.file) ?? [];
+    tests.push(test);
+    files.set(test.file, tests);
+  }
+  return [...files].map(([file, tests]) => {
+    const wholeFile = tests.some((test) => !test.line || test.name === "");
+    const names = [...new Set(tests.map((test) => escapeRegExp(test.name)))];
+    return {
+      arguments: wholeFile ? [`./${file}`] : [`./${file}`, "--test-name-pattern", names.join("|")],
+      wholeFile: wholeFile ? file : undefined,
+    };
+  });
+}
+
+/** Combines Bun reports while preserving each suite's test cases and failure details. */
+export function mergeJunitReports(reports: Array<string>) {
+  const totals = { tests: 0, assertions: 0, failures: 0, skipped: 0, time: 0 };
+  const suites: Array<string> = [];
+  for (const report of reports) {
+    const root = /<testsuites\b((?:\s+[\w:-]+="[^"]*")*)\s*>([\s\S]*)<\/testsuites>/.exec(report);
+    if (root === null) {
+      throw new Error("Cannot combine a JUnit report without a testsuites root.");
+    }
+    const attributes = readAttributes(root[1]!);
+    for (const key of Object.keys(totals) as Array<keyof typeof totals>) {
+      totals[key] += Number(attributes[key] ?? 0);
+    }
+    suites.push(root[2]!.trim());
+  }
+  const attributes = Object.entries(totals).map(([key, value]) => `${key}="${value}"`).join(" ");
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites name="bun test" ${attributes}>\n${suites.join("\n")}\n</testsuites>\n`;
 }
 
 /** Run directories in .test-results/ beyond the newest `keep`, oldest first. */
@@ -298,6 +329,7 @@ type Summary = {
   loadAtStart: number;
   loadAtEnd: number;
   resultsPath: string;
+  wholeFileRetries?: Array<string>;
 };
 
 export function formatSummary(summary: Summary) {
@@ -320,7 +352,7 @@ export function formatSummary(summary: Summary) {
     for (const test of results.failed) {
       const outcome = test.timedOut ? "timed out" : "failed   ";
       lines.push(
-        `  ${outcome}  ${test.file}:${test.line}  ${test.name} (${test.seconds.toFixed(1)} s)`,
+        `  ${outcome}  ${test.file}${test.line ? `:${test.line}` : ""}  ${test.name} (${test.seconds.toFixed(1)} s)`,
       );
     }
     const timeouts = results.failed.filter((test) => test.timedOut).length;
@@ -340,6 +372,9 @@ export function formatSummary(summary: Summary) {
     lines.push(`Test run ${runId} passed: ${results.passed} tests.`);
   }
 
+  for (const file of summary.wholeFileRetries ?? []) {
+    lines.push(`Retried the whole file because a failure had no test name or source line: ${file}`);
+  }
   lines.push(`Command: ${summary.command}`);
   lines.push(
     `Bun ${Bun.version}, ${summary.seconds.toFixed(1)} s, load average ${summary.loadAtStart.toFixed(1)} at start and ${summary.loadAtEnd.toFixed(1)} at end, ${cpus} CPUs.`,
@@ -371,6 +406,7 @@ async function main() {
   mkdirSync(resultsDirectory, { recursive: true });
 
   const targetArguments: Array<string> = [];
+  let selections: Array<TestSelection>;
   if (rerunFailed) {
     const run = failedRun ?? newestFinishedRun(resultsDirectory);
     const junitPath = run === undefined ? undefined : join(resultsDirectory, run, "junit.xml");
@@ -386,9 +422,12 @@ async function main() {
       console.log(`Test run ${run} has no failed tests to rerun.`);
       return;
     }
-    targetArguments.push(...failedTestArguments(failed));
-  } else if (!hasTargets) {
-    targetArguments.push(...DEFAULT_TARGETS);
+    selections = failedTestArguments(failed);
+  } else {
+    if (!hasTargets) {
+      targetArguments.push(...DEFAULT_TARGETS);
+    }
+    selections = [{ arguments: targetArguments }];
   }
 
   const runId = createRunId(new Date(), process.pid);
@@ -418,44 +457,62 @@ async function main() {
   }
 
   const junitPath = join(runDirectory, "junit.xml");
-  const bunCommand = [
-    process.execPath,
-    "test",
-    `--timeout=${TEST_TIMEOUT_MS}`,
-    `--max-concurrency=${MAX_CONCURRENT_TESTS}`,
-    "--only-failures",
-    "--reporter=junit",
-    `--reporter-outfile=${junitPath}`,
-    ...bunArguments,
-    ...targetArguments,
-  ];
+  const junitPaths = selections.map((_, index) => selections.length === 1
+    ? junitPath
+    : join(runDirectory, `junit-${index + 1}.xml`));
   const logDescriptor = openSync(join(runDirectory, "output.log"), "w");
-  writeSync(logDescriptor, `$ ${bunCommand.map(quoteArgument).join(" ")}\n`);
 
   const loadAtStart = loadavg()[0]!;
   const startedAt = performance.now();
-  let exitCode = 1;
+  let exitCode = 0;
   let signal: string | null = null;
   try {
-    const child = Bun.spawn(bunCommand, {
-      cwd: repositoryDirectory,
-      env: { ...process.env, TMPDIR: tempRoot, ZINN_TEST_RUNNER: "1" },
-      stdin: "inherit",
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const forwardSignal = (received: NodeJS.Signals) => {
-      child.kill(received);
-    };
-    process.on("SIGINT", forwardSignal);
-    process.on("SIGTERM", forwardSignal);
-    await Promise.all([
-      copyStream(child.stdout, process.stdout, logDescriptor),
-      copyStream(child.stderr, process.stderr, logDescriptor),
-      child.exited,
-    ]);
-    signal = child.signalCode;
-    exitCode = child.exitCode ?? 128 + (constants.signals[signal as NodeJS.Signals] ?? 0);
+    for (const [index, selection] of selections.entries()) {
+      const bunCommand = [
+        process.execPath,
+        "test",
+        `--timeout=${TEST_TIMEOUT_MS}`,
+        `--max-concurrency=${MAX_CONCURRENT_TESTS}`,
+        "--only-failures",
+        "--reporter=junit",
+        `--reporter-outfile=${junitPaths[index]}`,
+        ...bunArguments,
+        ...selection.arguments,
+      ];
+      writeSync(logDescriptor, `$ ${bunCommand.map(quoteArgument).join(" ")}\n`);
+      const child = Bun.spawn(bunCommand, {
+        cwd: repositoryDirectory,
+        env: { ...process.env, TMPDIR: tempRoot, ZINN_TEST_RUNNER: "1" },
+        stdin: "inherit",
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const forwardSignal = (received: NodeJS.Signals) => {
+        child.kill(received);
+      };
+      process.on("SIGINT", forwardSignal);
+      process.on("SIGTERM", forwardSignal);
+      try {
+        await Promise.all([
+          copyStream(child.stdout, process.stdout, logDescriptor),
+          copyStream(child.stderr, process.stderr, logDescriptor),
+          child.exited,
+        ]);
+      } finally {
+        process.off("SIGINT", forwardSignal);
+        process.off("SIGTERM", forwardSignal);
+      }
+      signal = child.signalCode;
+      const childExitCode = child.exitCode ?? 128 + (constants.signals[signal as NodeJS.Signals] ?? 0);
+      if (signal !== null) {
+        exitCode = childExitCode;
+        break;
+      }
+      exitCode ||= childExitCode;
+    }
+    if (signal === null && selections.length > 1 && junitPaths.every((path) => existsSync(path))) {
+      writeFileSync(junitPath, mergeJunitReports(junitPaths.map((path) => readFileSync(path, "utf8"))));
+    }
   } finally {
     closeSync(logDescriptor);
     rmSync(tempRoot, { recursive: true, force: true });
@@ -474,6 +531,7 @@ async function main() {
     loadAtStart,
     loadAtEnd: loadavg()[0]!,
     resultsPath,
+    wholeFileRetries: selections.flatMap((selection) => selection.wholeFile ?? []),
   });
   writeFileSync(join(runDirectory, "summary.txt"), summaryText);
   process.stdout.write(`\n${summaryText}`);
