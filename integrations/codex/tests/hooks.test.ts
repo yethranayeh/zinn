@@ -195,8 +195,11 @@ test("references preserve chat and store isolation without retaining text", asyn
     expect(stored).not.toContain(secret);
     expect(stored).not.toContain("fixture-model");
     expect(stored).not.toContain("UNRELATED-999");
-    for (const file of readdirSync(directory)) {
-        expect(statSync(join(directory, file)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+        // Windows does not distinguish owner, group, and other mode bits: https://nodejs.org/download/release/v24.20.0/docs/api/fs.html#file-modes
+        for (const file of readdirSync(directory)) {
+            expect(statSync(join(directory, file)).mode & 0o777).toBe(0o600);
+        }
     }
 });
 test("uncertain directory changes do not attribute relative stores", () => {
