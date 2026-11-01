@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -9,6 +9,8 @@ import { packageIntegration } from "../package";
 import { INSPECTOR_VERSION } from "../src/runtime";
 import { EVENTS } from "../src/hooks/observe";
 import { persist, type Observation } from "../src/shared/feed";
+import { openDatabase } from "../../../packages/core/src/sqlite/bun.ts";
+import { latestVersion, MIGRATIONS } from "../../../packages/core/src/migrations/registry.ts";
 import { cliPath, fixture, inspectStore, seedOlderStore, waitFor } from "./helpers";
 const context = fixture();
 const buildDirectory = join(context.directory, "build");
@@ -280,6 +282,189 @@ else { writeFileSync(${JSON.stringify(started)}, 'started'); setTimeout(() => im
         expect(readdirSync(join(control, "backups"))).toHaveLength(1);
     } finally {
         await client.close();
+    }
+}, 30000);
+
+test("relocated Node artifact reads a compatible newer schema like the ordinary CLI", async () => {
+    const store = join(context.directory, "newer-schema-store");
+    mkdirSync(store);
+    context.cli(["project", "create", "APP"], store);
+    context.cli(["task", "create", "APP", "--title", "Compatible newer fixture"], store);
+    const supportedVersion = latestVersion(MIGRATIONS);
+    const databasePath = join(store, "data/zinn.sqlite");
+    const db = openDatabase(databasePath);
+    try {
+        db.exec(`PRAGMA user_version = ${supportedVersion + 1}`);
+    } finally {
+        db.close();
+    }
+    const before = inspectStore(store);
+    const ordinary = context.cli(["task", "view", "APP-1"], store);
+    const config = join(context.directory, "newer-schema-config.json");
+    writeFileSync(config, JSON.stringify({ ...context.settings, store }));
+    const client = await connect(config);
+    try {
+        const result = (await client.callTool({ name: "inspect_task", arguments: { key: "APP-1" } })).structuredContent as any;
+        expect(result).toMatchObject({ kind: "ready", task: ordinary });
+        expect(inspectStore(store)).toEqual(before);
+        expect(existsSync(join(store, "backups"))).toBe(false);
+    } finally {
+        await client.close();
+    }
+}, 30000);
+
+test("relocated Node artifact reports an incompatible newer schema without fallback or writes", async () => {
+    const store = join(context.directory, "incompatible-newer-schema-store");
+    mkdirSync(store);
+    context.cli(["project", "create", "APP"], store);
+    context.cli(["task", "create", "APP", "--title", "Incompatible newer fixture"], store);
+    const supportedVersion = latestVersion(MIGRATIONS);
+    const databasePath = join(store, "data/zinn.sqlite");
+    const db = openDatabase(databasePath);
+    try {
+        db.exec(`PRAGMA user_version = ${supportedVersion + 1}`);
+        db.exec("DROP TABLE task");
+    } finally {
+        db.close();
+    }
+    const before = inspectStore(store);
+    const calls = join(context.directory, "incompatible-newer-schema-calls.jsonl");
+    const cli = join(context.directory, "incompatible-newer-schema-cli.mjs");
+    writeFileSync(cli, `import {appendFileSync} from 'node:fs';
+const args = process.argv.slice(2); appendFileSync(${JSON.stringify(calls)}, JSON.stringify(args) + '\\n');
+await import(${JSON.stringify(pathToFileURL(cliPath).href)});`);
+    const config = join(context.directory, "incompatible-newer-schema-config.json");
+    writeFileSync(config, JSON.stringify({ ...context.settings, store, cli: ["node", cli] }));
+    const client = await connect(config);
+    try {
+        const result = (await client.callTool({ name: "inspect_task", arguments: { key: "APP-1" } })).structuredContent as any;
+        expect(result.kind).toBe("error");
+        expect(readFileSync(calls, "utf8").trim().split("\n").map(line => JSON.parse(line))).toEqual([
+            ["--version"], ["task", "view", "APP-1", "--json"],
+        ]);
+        expect(inspectStore(store)).toEqual(before);
+        expect(existsSync(join(store, "backups"))).toBe(false);
+    } finally {
+        await client.close();
+    }
+}, 30000);
+
+test("relocated Node artifact and ordinary CLI agree on unmarked-store acknowledgment", async () => {
+    const store = join(context.directory, "unmarked-store");
+    seedOlderStore(store);
+    const db = openDatabase(join(store, "data/zinn.sqlite"));
+    try {
+        db.exec("PRAGMA user_version = 0");
+    } finally {
+        db.close();
+    }
+    const before = inspectStore(store);
+    const ordinaryRefusal = Bun.spawnSync(["node", cliPath, "task", "view", "APP-1", "--json"], { env: { ...context.env, ZINN_DIR: store } });
+    expect(ordinaryRefusal.exitCode).not.toBe(0);
+    expect(inspectStore(store)).toEqual(before);
+
+    const refusalConfig = join(context.directory, "unmarked-refusal-config.json");
+    writeFileSync(refusalConfig, JSON.stringify({ ...context.settings, store }));
+    const refusedClient = await connect(refusalConfig);
+    try {
+        const result = (await refusedClient.callTool({ name: "inspect_task", arguments: { key: "APP-1" } })).structuredContent as any;
+        expect(result.kind).toBe("error");
+    } finally {
+        await refusedClient.close();
+    }
+    expect(inspectStore(store)).toEqual(before);
+
+    const acknowledged = Bun.spawnSync(["node", cliPath, "--allow-legacy-read", "task", "view", "APP-1", "--json"], { env: { ...context.env, ZINN_DIR: store } });
+    expect(acknowledged.exitCode).toBe(0);
+    const ordinaryTask = JSON.parse(acknowledged.stdout.toString());
+    const acknowledgedCli = join(context.directory, "unmarked-acknowledged-cli.mjs");
+    writeFileSync(acknowledgedCli, `import {pathToFileURL} from 'node:url';
+const args = process.argv.slice(2);
+if (args[0] !== '--version') { process.argv.splice(2, 0, '--allow-legacy-read'); }
+await import(${JSON.stringify(pathToFileURL(cliPath).href)});`);
+    const acknowledgedConfig = join(context.directory, "unmarked-acknowledged-config.json");
+    writeFileSync(acknowledgedConfig, JSON.stringify({ ...context.settings, store, cli: ["node", acknowledgedCli] }));
+    const acknowledgedClient = await connect(acknowledgedConfig);
+    try {
+        const result = (await acknowledgedClient.callTool({ name: "inspect_task", arguments: { key: "APP-1" } })).structuredContent as any;
+        expect(result).toMatchObject({ kind: "ready", task: ordinaryTask });
+    } finally {
+        await acknowledgedClient.close();
+    }
+    expect(inspectStore(store)).toEqual(before);
+    expect(existsSync(join(store, "backups"))).toBe(false);
+}, 30000);
+
+test("relocated panel reads the last commit while a writer lock is held and sees the next WAL commit", async () => {
+    const store = join(context.directory, "wal-store");
+    mkdirSync(store);
+    context.cli(["project", "create", "WAL"], store);
+    context.cli(["task", "create", "WAL", "--title", "Before concurrent edit"], store);
+    const databasePath = join(store, "data/zinn.sqlite");
+    const normalSidecarNames = readdirSync(join(store, "data"));
+    expect(normalSidecarNames).not.toContain("zinn.sqlite-wal");
+    expect(inspectStore(store).snapshot.version).toBe(latestVersion(MIGRATIONS));
+
+    const config = join(context.directory, "wal-panel-config.json");
+    writeFileSync(config, JSON.stringify({ ...context.settings, store }));
+    const holder = openDatabase(databasePath);
+    try {
+        holder.exec("PRAGMA journal_mode = WAL");
+        holder.exec("PRAGMA wal_autocheckpoint = 0");
+        const taskId = holder.query<{ id: string }>("SELECT id FROM task WHERE number = 1").get()!.id;
+        holder.exec("BEGIN IMMEDIATE");
+        holder.query("UPDATE task SET title = ? WHERE id = ?").run("Uncommitted title", taskId);
+        const client = await connect(config);
+        try {
+            const read = (await client.callTool({ name: "inspect_task", arguments: { key: "WAL-1" } })).structuredContent as any;
+            expect(read).toMatchObject({ kind: "ready", task: { key: "WAL-1", title: "Before concurrent edit" } });
+            expect(existsSync(`${databasePath}-wal`)).toBe(true);
+        } finally {
+            await client.close();
+        }
+        holder.exec("ROLLBACK");
+
+        const edit = context.cli(["task", "edit", "WAL-1", "--title", "Committed after panel read"], store);
+        expect(edit.title).toBe("Committed after panel read");
+        expect(existsSync(`${databasePath}-wal`)).toBe(true);
+
+        const walPanel = await connect(config);
+        try {
+            expect((await walPanel.callTool({ name: "inspect_task", arguments: { key: "WAL-1" } })).structuredContent).toMatchObject({
+                kind: "ready",
+                task: { title: "Committed after panel read" },
+            });
+        } finally {
+            await walPanel.close();
+        }
+        expect(context.cli(["task", "view", "WAL-1"], store).title).toBe("Committed after panel read");
+
+        const mainFileCopy = join(context.directory, "wal-store-main-only.sqlite");
+        copyFileSync(databasePath, mainFileCopy);
+        const mainOnly = openDatabase(mainFileCopy);
+        try {
+            expect(mainOnly.query<{ title: string }>("SELECT title FROM task WHERE id = ?").get(taskId)).toEqual({ title: "Before concurrent edit" });
+        } finally {
+            mainOnly.close();
+        }
+        expect(holder.query<{ title: string }>("SELECT title FROM task WHERE id = ?").get(taskId)).toEqual({ title: "Committed after panel read" });
+        expect(inspectStore(store).snapshot.version).toBe(latestVersion(MIGRATIONS));
+        const events = context.cli(["activity", "list", "--task", "WAL-1"], store);
+        expect(events).toHaveLength(2);
+        expect(events[0]).toMatchObject({ action: "edit", changes: { title: ["Before concurrent edit", "Committed after panel read"] } });
+    } finally {
+        if (holder.inTransaction) {
+            holder.exec("ROLLBACK");
+        }
+        holder.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+        holder.close();
+    }
+
+    const restarted = await connect(config);
+    try {
+        expect((await restarted.callTool({ name: "inspect_task", arguments: { key: "WAL-1" } })).structuredContent).toMatchObject({ kind: "ready", task: { title: "Committed after panel read" } });
+    } finally {
+        await restarted.close();
     }
 }, 30000);
 
