@@ -47,6 +47,29 @@ async function connect(config = context.config, overrides: NodeJS.ProcessEnv = {
     }
     return client;
 }
+test("relocated panel loads fixed-home options and preserves an explicit inspector store", async () => {
+    const home = join(context.directory, "canonical-options-home");
+    const unrelatedStore = join(context.directory, "canonical-options-unselected-store");
+    mkdirSync(join(home, ".zinn/integrations"), { recursive: true });
+    mkdirSync(join(home, ".config/zinn"), { recursive: true });
+    writeFileSync(join(home, ".zinn/integrations/codex.json"), JSON.stringify(context.settings));
+    const legacy = join(home, ".config/zinn/codex.json");
+    writeFileSync(legacy, "invalid json");
+    const client = await connect(context.config, {
+        HOME: home, USERPROFILE: home, ZINN_CODEX_CONFIG: undefined, ZINN_DIR: unrelatedStore,
+    }, artifact.plugin);
+    try {
+        const response = await client.callTool({ name: "inspect_task", arguments: { key: "APP-1" } });
+        expect(response.structuredContent).toMatchObject({
+            kind: "ready", store: context.settings.store, task: { key: "APP-1" },
+        });
+        expect(existsSync(unrelatedStore)).toBe(false);
+        expect(existsSync(join(home, ".zinn/data"))).toBe(false);
+        expect(readFileSync(legacy, "utf8")).toBe("invalid json");
+    } finally {
+        await client.close();
+    }
+});
 test.skipIf(process.platform === "win32")("configuration-free panel uses the Unix PATH and resolves stores independently of plugin cwd", async () => {
     const bin = join(context.directory, "bin");
     mkdirSync(bin);

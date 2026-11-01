@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { build } from "../build";
 import { rewrite } from "../src/hooks/identity";
@@ -338,13 +338,48 @@ test("key scanning accepts the CLI number range and excludes free-text arguments
     observe({ ...base, session_id: "redacted-arguments", hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command: "zinn task edit APP-1 --title APP-999 --description 'APP-777'" } }, context.settings);
     expect(readFeed(context.settings.dataDirectory, "redacted-arguments", context.settings.store).references.map(item => item.key)).toEqual(["APP-1"]);
 });
-test("implicit configuration is optional while existing legacy options remain supported", () => {
+test("optional configuration uses the fixed-home file before the legacy file", () => {
     const home = join(context.directory, "settings-home");
     mkdirSync(home);
     expect(loadSettings({}, home)).toMatchObject({ store: undefined, cli: ["zinn"], identity: true, observe: true });
+    expect(existsSync(join(home, ".zinn"))).toBe(false);
+    expect(existsSync(join(home, ".config"))).toBe(false);
+
     mkdirSync(join(home, ".config/zinn"), { recursive: true });
     writeFileSync(join(home, ".config/zinn/codex.json"), JSON.stringify(context.settings));
     expect(loadSettings({}, home)).toMatchObject(context.settings);
+
+    const customStore = join(home, "custom-store");
+    mkdirSync(join(home, ".zinn/integrations"), { recursive: true });
+    mkdirSync(join(customStore, "integrations"), { recursive: true });
+    writeFileSync(join(home, ".zinn/integrations/codex.json"), JSON.stringify({ observe: false }));
+    writeFileSync(join(customStore, "integrations/codex.json"), JSON.stringify({ identity: false, cli: ["store-cli"] }));
+    expect(loadSettings({ ZINN_DIR: customStore }, home)).toMatchObject({
+        store: undefined,
+        cli: ["zinn"],
+        identity: true,
+        observe: false,
+    });
+
+    const explicit = join(context.directory, "explicit-options.json");
+    writeFileSync(explicit, JSON.stringify({ identity: false, cli: ["explicit-cli"] }));
+    expect(loadSettings({ ZINN_DIR: customStore, ZINN_CODEX_CONFIG: explicit }, home)).toMatchObject({
+        store: undefined,
+        cli: ["explicit-cli"],
+        identity: false,
+        observe: true,
+    });
+
+    writeFileSync(join(home, ".zinn/integrations/codex.json"), "invalid json");
+    expect(() => loadSettings({ ZINN_DIR: customStore }, home)).toThrow();
+    expect(loadSettings({ ZINN_CODEX_CONFIG: explicit }, home).cli).toEqual(["explicit-cli"]);
+    expect(() => loadSettings({ ZINN_DIR: customStore, ZINN_CODEX_CONFIG: join(context.directory, "missing-options.json") }, home)).toThrow();
+    writeFileSync(explicit, "invalid json");
+    expect(() => loadSettings({ ZINN_DIR: customStore, ZINN_CODEX_CONFIG: explicit }, home)).toThrow();
+    rmSync(join(home, ".zinn/integrations/codex.json"));
+    mkdirSync(join(home, ".zinn/integrations/codex.json"));
+    expect(() => loadSettings({}, home)).toThrow();
+    expect(readFileSync(join(home, ".config/zinn/codex.json"), "utf8")).toBe(JSON.stringify(context.settings));
 });
 
 test("configuration-free identity works when the CLI is unavailable and observations fail neutrally", () => {

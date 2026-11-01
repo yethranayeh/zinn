@@ -30,7 +30,7 @@ The inspector keeps that selected directory until it restarts. It checks CLI com
 
 Agent commands use their own working directory, CLI settings and `ZINN_DIR`. Their selected database can differ from the inspector's. Set `ZINN_DIR` in Codex's environment when inspection should use a custom directory.
 
-For plugin-specific options, set `ZINN_CODEX_CONFIG` in Codex's environment to an absolute JSON-file path. An explicit `store` selects inspection and reference verification independently of agent commands:
+For plugin-specific options, create the optional `~/.zinn/integrations/codex.json`. This location stays in your home directory even when `ZINN_DIR` selects a different store. An explicit `store` selects inspection and reference verification independently of agent commands:
 
 ```json
 {
@@ -38,7 +38,9 @@ For plugin-specific options, set `ZINN_CODEX_CONFIG` in Codex's environment to a
 }
 ```
 
-An options file can omit `store` and use ordinary discovery. Existing `~/.config/zinn/codex.json` files are also read when present. A selected configuration file must be readable and valid.
+An options file can omit `store` and use ordinary discovery. To select another file, set `ZINN_CODEX_CONFIG` in Codex's environment to its absolute path. The plugin reads that file exclusively. Otherwise, it reads `~/.zinn/integrations/codex.json`, falling back to an existing `~/.config/zinn/codex.json` only when the new path is absent.
+
+Only one options file is read. Files are never merged or moved automatically. Missing implicit files use the defaults. An explicitly selected file must exist, and any selected file must be readable and valid. A configuration error stops loading without trying another file.
 
 If the desktop app cannot find `zinn`, use the executable's absolute path:
 

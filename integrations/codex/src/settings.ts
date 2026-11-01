@@ -37,23 +37,28 @@ function selectStore(options: SettingsOptions, path: string): Settings {
 }
 
 export function loadSettings(env = process.env, home = homedir()): SettingsOptions {
-  const configPath = env.ZINN_CODEX_CONFIG ?? join(home, ".config/zinn/codex.json");
-  if (!isAbsolute(configPath)) {
+  const explicitConfigPath = env.ZINN_CODEX_CONFIG;
+  if (explicitConfigPath !== undefined && !isAbsolute(explicitConfigPath)) {
     throw new Error("ZINN_CODEX_CONFIG must be an absolute path.");
   }
 
+  const configPaths =
+    explicitConfigPath === undefined
+      ? [join(home, ".zinn/integrations/codex.json"), join(home, ".config/zinn/codex.json")]
+      : [explicitConfigPath];
   let value;
-  try {
-    value = JSON.parse(readFileSync(configPath, "utf8"));
-  } catch (error) {
-    const missingDefault =
-      env.ZINN_CODEX_CONFIG === undefined && (error as NodeJS.ErrnoException).code === "ENOENT";
-
-    if (!missingDefault) {
-      throw error;
+  for (const configPath of configPaths) {
+    try {
+      value = JSON.parse(readFileSync(configPath, "utf8"));
+      break;
+    } catch (error) {
+      const missingImplicitConfig =
+        explicitConfigPath === undefined && (error as NodeJS.ErrnoException).code === "ENOENT";
+      if (!missingImplicitConfig) {
+        throw error;
+      }
+      value = {};
     }
-
-    value = {};
   }
 
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
