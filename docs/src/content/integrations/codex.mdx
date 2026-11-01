@@ -78,6 +78,8 @@ Enter a task key from your database, such as `APP-1`. Task descriptions and comm
 
 Observed references come from supported direct CLI calls, task keys in agent dispatches and completed replies. A reference is an observation, rather than a task assignment or proof that the task changed. References refresh every five seconds while the panel is visible, keeping the selected task open. Task details are re-read when opened or refreshed.
 
+References with a relative `ZINN_DIR` are recorded when the command's working directory can be established.
+
 Each request uses the host's current chat metadata. Manual lookup remains available when that metadata is absent or conflicting. Completed-reply keys are checked against the selected store. A missing key is retained as a warning when its project prefix is represented by tasks in that store.
 
 Panel reads can wait for another process or an automatic upgrade to finish. Cancelling a request or closing the backend stops its CLI child. Periodic refresh waits for the pending reference read to complete.

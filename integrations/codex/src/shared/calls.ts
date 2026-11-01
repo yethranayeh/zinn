@@ -1,4 +1,4 @@
-import { basename, resolve } from "node:path";
+import { basename, isAbsolute, resolve } from "node:path";
 
 import { segments, redactArgv } from "./shell";
 
@@ -10,7 +10,17 @@ export type Call = {
 };
 
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
-const WRAPPERS = new Set(["command", "exec", "time", "nohup", "env"]);
+const COMMAND_PREFIXES = new Set([
+  "command",
+  "exec",
+  "time",
+  "nohup",
+  "env",
+  "if",
+  "then",
+  "elif",
+  "else",
+]);
 
 // Parse direct shell calls without evaluating expansions or embedded programs.
 export function calls(
@@ -35,9 +45,6 @@ export function calls(
         if (word.startsWith("ZINN_DIR=")) {
           store = word.slice("ZINN_DIR=".length);
           storeKnown = !/[$`~]/.test(store);
-          if (storeKnown && effectiveCwd !== null && store !== "") {
-            store = resolve(effectiveCwd, store);
-          }
           if (store === "") {
             storeKnown = false;
           }
@@ -46,7 +53,7 @@ export function calls(
         continue;
       }
 
-      if (WRAPPERS.has(word)) {
+      if (COMMAND_PREFIXES.has(word)) {
         index++;
         continue;
       }
@@ -61,9 +68,11 @@ export function calls(
       continue;
     }
 
-    // Export and unset make later subprocess store selection uncertain.
+    // Environment changes make later subprocess store selection uncertain.
+    const changesEnvironment =
+      executable === "export" || executable === "unset" || executable === undefined;
     if (
-      (executable === "export" || executable === "unset") &&
+      changesEnvironment &&
       words.some((word) => word === "ZINN_DIR" || word.startsWith("ZINN_DIR="))
     ) {
       inheritedStoreKnown = false;
@@ -86,6 +95,14 @@ export function calls(
       });
 
     if (isZinn || isConfigured) {
+      if (storeKnown && store !== null && !isAbsolute(store)) {
+        if (effectiveCwd === null) {
+          storeKnown = false;
+        } else {
+          store = resolve(effectiveCwd, store);
+        }
+      }
+
       found.push({
         argv: redactArgv(words.slice(index + (isZinn ? 1 : cli.length))),
         store,

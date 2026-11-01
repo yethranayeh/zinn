@@ -124,6 +124,57 @@ test("uncertain directory changes do not attribute relative stores", () => {
     expect(result.exitCode).toBe(0);
     expect(readFeed(context.settings.dataDirectory, input.session_id, context.settings.store).references).toEqual([]);
 });
+test.skipIf(process.platform === "win32")("inherited relative stores stay unknown after directory changes and conditional effects", () => {
+    const origin = join(context.directory, "relative-origin");
+    const other = join(context.directory, "relative-other");
+    const firstStore = join(origin, "store");
+    const secondStore = join(other, "store");
+    const missing = join(context.directory, "missing-directory");
+    for (const [store, title] of [[firstStore, "Origin task"], [secondStore, "Other task"]] as const) {
+        mkdirSync(store, { recursive: true });
+        context.cli(["project", "create", "APP"], store);
+        context.cli(["task", "create", "APP", "--title", title], store);
+    }
+    const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
+    const view = [...context.settings.cli, "task", "view", "APP-1", "--json"].map(quote).join(" ");
+    const cases = [
+        { name: "unchanged", command: view, title: "Origin task", recorded: firstStore },
+        { name: "successful-cd", command: `cd ${quote(other)} && ${view}`, title: "Other task", recorded: null },
+        { name: "failed-cd", command: `cd ${quote(missing)}; ${view}`, title: "Origin task", recorded: null },
+        { name: "unreached-cd", command: `false && cd ${quote(other)}; ${view}`, title: "Origin task", recorded: null },
+        { name: "fallback-cd", command: `cd ${quote(missing)} || cd ${quote(other)}; ${view}`, title: "Other task", recorded: null },
+        { name: "conditional-cd", command: `if true; then cd ${quote(other)}; fi; ${view}`, title: "Other task", recorded: null },
+        { name: "conditional-cd-test", command: `if cd ${quote(other)}; then :; fi; ${view}`, title: "Other task", recorded: null },
+        { name: "conditional-cd-else", command: `if false; then :; elif false; then :; else cd ${quote(other)}; fi; ${view}`, title: "Other task", recorded: null },
+        { name: "subshell-cd", command: `(cd ${quote(other)}; ${view})`, title: "Other task", recorded: null },
+        { name: "after-subshell", command: `(cd ${quote(other)}); ${view}`, title: "Origin task", recorded: null },
+        { name: "inherited-absolute", command: `cd ${quote(other)} && ${view}`, inherited: firstStore, title: "Origin task", recorded: firstStore },
+        { name: "absolute-override", command: `cd ${quote(other)} && ZINN_DIR=${quote(firstStore)} ${view}`, title: "Origin task", recorded: firstStore },
+        { name: "relative-override", command: `ZINN_DIR=../relative-other/store ${view}`, title: "Other task", recorded: secondStore },
+        { name: "exported-store", command: `export ZINN_DIR=${quote(secondStore)}; ${view}`, title: "Other task", recorded: null },
+        { name: "conditional-export", command: `if true; then export ZINN_DIR=${quote(secondStore)}; fi; ${view}`, title: "Other task", recorded: null },
+        { name: "assigned-store", command: `ZINN_DIR=${quote(secondStore)}; ${view}`, title: "Other task", recorded: null },
+        { name: "conditional-assignment", command: `if true; then ZINN_DIR=${quote(secondStore)}; fi; ${view}`, title: "Other task", recorded: null },
+        { name: "unset-override", command: `unset ZINN_DIR; ZINN_DIR=${quote(secondStore)} ${view}`, title: "Other task", recorded: secondStore },
+        { name: "literal-cd-argument", command: `: cd; ${view}`, title: "Origin task", recorded: firstStore },
+    ];
+    for (const scenario of cases) {
+        const env = { ...context.env, ZINN_DIR: scenario.inherited ?? "./store" };
+        const executed = Bun.spawnSync(["/bin/sh", "-c", scenario.command], { cwd: origin, env });
+        expect(executed.exitCode).toBe(0);
+        expect(JSON.parse(executed.stdout.toString()).title).toBe(scenario.title);
+        const session = `inherited-relative-${scenario.name}`;
+        const payload = { ...base, cwd: origin, session_id: session, hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command: scenario.command } };
+        const result = Bun.spawnSync(["node", join(artifact.plugin, "hook.mjs")], { env, stdin: Buffer.from(JSON.stringify(payload)) });
+        expect(result.exitCode).toBe(0);
+        expect(result.stderr.byteLength).toBe(0);
+        if (scenario.recorded === null) {
+            expect(existsSync(sessionDirectory(context.settings.dataDirectory, session)), scenario.name).toBe(false);
+        } else {
+            expect(readFeed(context.settings.dataDirectory, session, scenario.recorded).references).toEqual([{ key: "APP-1", source: "argv", store: scenario.recorded }]);
+        }
+    }
+});
 test("observer refuses unsupported CLI versions before database verification", () => {
     for (const [index, version] of ["0.42.0", "0.42.0-dev", "0.43.0-dev", "0.44.0-rc.1", "00.44.0-dev", "unknown"].entries()) {
         const sentinel = join(context.directory, `unexpected-store-open-${index}`);

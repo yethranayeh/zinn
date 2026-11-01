@@ -47,14 +47,7 @@ export async function observe(
     payload.tool_name === "Bash" &&
     typeof payload.tool_input?.command === "string"
   ) {
-    const inherited = process.env.ZINN_DIR;
-    const inheritedStore = inherited
-      ? isAbsolute(inherited)
-        ? inherited
-        : payload.cwd
-          ? resolve(payload.cwd, inherited)
-          : null
-      : null;
+    const inheritedStore = process.env.ZINN_DIR || null;
     const storesByDirectory = new Map<string, string | null>();
 
     for (const call of calls(
