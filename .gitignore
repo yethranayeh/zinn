@@ -11,6 +11,9 @@ release-dist
 coverage
 *.lcov
 
+# test run results
+.test-results/
+
 # logs
 logs
 _.log

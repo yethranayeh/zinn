@@ -9,13 +9,14 @@ const REPOSITORY_DIRECTORY = fileURLToPath(new URL("..", import.meta.url));
 const packageNames = SOURCE_IDENTITY_MODULES.map((identity) => identity.name);
 const additionalPackage = "additional-client";
 const cases = [
-  { name: "a clean source checkout", published: [] },
-  ...packageNames.map((name) => ({ name: `published ${name} source`, published: [name] })),
-  { name: "all published sources", published: packageNames },
-  { name: "an additional published client", published: [additionalPackage] },
+  { name: "a clean source checkout", published: [], startedByScript: true },
+  ...packageNames.map((name) => ({ name: `published ${name} source`, published: [name], startedByScript: true })),
+  { name: "all published sources", published: packageNames, startedByScript: true },
+  { name: "an additional published client", published: [additionalPackage], startedByScript: true },
+  { name: "a run not started by bun run test", published: [], startedByScript: false },
 ];
 
-test.each(cases)("test preload with $name", ({ published }) => {
+test.each(cases)("test preload with $name", ({ published, startedByScript }) => {
   const directory = mkdtempSync(join(tmpdir(), "zinn-test-isolation-"));
 
   try {
@@ -63,16 +64,17 @@ test.each(cases)("test preload with $name", ({ published }) => {
         HOME: directory, TZ: "Pacific/Honolulu", LANG: "tr_TR.UTF-8", LC_ALL: "tr_TR.UTF-8",
         GIT_CONFIG_GLOBAL: join(directory, "foreign-gitconfig"), GIT_DIR: directory,
         XDG_CONFIG_HOME: directory, NO_COLOR: "1", FORCE_COLOR: "1", AI_AGENT: "inherited-agent",
+        ZINN_TEST_RUNNER: startedByScript ? "1" : undefined,
       },
     });
 
-    if (published.length === 0) {
+    if (published.length === 0 && startedByScript) {
       expect(result.exitCode).toBe(0);
       expect(existsSync(join(directory, "test-ran"))).toBe(true);
     } else {
       expect(result.exitCode).not.toBe(0);
       expect(existsSync(join(directory, "test-ran"))).toBe(false);
-      expect(result.stderr.toString()).toContain("release-identity.ts");
+      expect(result.stderr.toString()).toContain(startedByScript ? "release-identity.ts" : "bun run test");
     }
   } finally {
     rmSync(directory, { recursive: true, force: true });

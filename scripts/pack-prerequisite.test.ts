@@ -11,7 +11,7 @@ test("packing checks fail clearly when pnpm is unavailable", () => {
   try {
     const script = fileURLToPath(new URL("pack.test.ts", import.meta.url));
     const result = Bun.spawnSync([process.execPath, "test", script], {
-      env: { ...TEST_ENVIRONMENT, PATH: directory },
+      env: { ...TEST_ENVIRONMENT, PATH: directory, ZINN_TEST_RUNNER: "1" },
     });
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr.toString()).toContain("pnpm is required");

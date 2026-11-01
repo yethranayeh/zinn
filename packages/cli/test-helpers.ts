@@ -6,9 +6,7 @@ import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import { createSchema } from "../core/src/migrations/runner";
 import { openDatabase } from "../core/src/sqlite/bun";
 
-// Concurrent Bun startup stalls under macOS user temp directory
-const temporaryRoot = process.platform === "darwin" ? "/private/tmp" : tmpdir();
-const PREFIX = join(temporaryRoot, "zinntest-");
+const PREFIX = join(tmpdir(), "zinntest-");
 export const CLI_PATH = join(import.meta.dir, "index.ts");
 
 function removeIsolatedZinnDir(testDir: string) {

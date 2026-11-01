@@ -4,6 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+// scripts/test.ts sets the timeout and concurrency limit that keep CLI subprocess tests reliable.
+// Bun reads neither from bunfig.toml, so a run without the script would use Bun's defaults.
+if (process.env.ZINN_TEST_RUNNER !== "1") {
+  throw new Error(
+    "Run the tests with `bun run test`, optionally followed by test file paths and `-t <name>`. " +
+      "It sets the timeout and concurrency limit and keeps each run's results in .test-results/.",
+  );
+}
+
 // Conflicting inherited color flags make node:assert emit warnings in test subprocesses.
 delete process.env.NO_COLOR;
 delete process.env.FORCE_COLOR;
