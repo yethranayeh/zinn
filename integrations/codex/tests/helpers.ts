@@ -33,7 +33,12 @@ export function fixture() {
     ZINN_DIR: settings.store,
   };
   function cli(args: string[], store = settings.store) {
-    const result = Bun.spawnSync([...settings.cli, ...args, "--json"], {
+    const boundary = args.indexOf("--");
+    const commandArgs =
+      boundary < 0
+        ? [...args, "--json"]
+        : [...args.slice(0, boundary), "--json", ...args.slice(boundary)];
+    const result = Bun.spawnSync([...settings.cli, ...commandArgs], {
       env: { ...env, ZINN_DIR: store },
     });
     if (result.exitCode !== 0) {

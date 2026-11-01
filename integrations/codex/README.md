@@ -1,6 +1,6 @@
 # Zinn for Codex
 
-An Experimental local task inspector and optional task-reference and execution-identity hooks for Codex desktop.
+An Experimental local task inspector with column moves and optional task-reference and execution-identity hooks for Codex desktop.
 
 Requires Node.js 24.15.0 or newer and Zinn CLI 0.43.0 or newer on `PATH`. Default-store setup needs no plugin configuration file. The plugin uses the CLI's settings from your home directory, including inherited `ZINN_DIR` and global storage selection.
 

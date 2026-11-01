@@ -11,6 +11,7 @@ import { z } from "zod";
 import { loadSettings, resolveSettings } from "../settings";
 import { INSPECTOR_VERSION } from "../runtime";
 import { readTask } from "./task-reader";
+import { createHumanActionReader, moveTask, readTaskColumns } from "./task-actions";
 import { readRecent } from "./references";
 import { createCliReader } from "../shared/cli";
 
@@ -27,6 +28,7 @@ process.removeListener("SIGTERM", cancelStartup);
 process.removeListener("SIGINT", cancelStartup);
 
 const reader = createCliReader(settings);
+const humanActionReader = createHumanActionReader(settings);
 const resourceUri = `ui://zinn/inspector-${INSPECTOR_VERSION}.html`;
 const server = new McpServer({ name: "zinn", version: INSPECTOR_VERSION });
 registerAppTool(
@@ -57,6 +59,64 @@ registerAppTool(
         },
       ],
       structuredContent: { ...result },
+    };
+  },
+);
+
+registerAppTool(
+  server,
+  "task_columns",
+  {
+    title: "List task columns",
+    description: "Read the columns in the selected task's project.",
+    inputSchema: { key: z.string() },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    _meta: { ui: { visibility: ["app"] } },
+  },
+  async ({ key }, extra) => {
+    const result = await readTaskColumns(settings, key, reader, extra.signal);
+    return {
+      content: [
+        {
+          type: "text",
+          text: result.kind === "ready" ? `Read columns for ${result.key}.` : result.error!,
+        },
+      ],
+      structuredContent: result,
+    };
+  },
+);
+
+registerAppTool(
+  server,
+  "move_task",
+  {
+    title: "Move task",
+    description: "Move the selected task to a column in its project.",
+    inputSchema: { key: z.string(), column: z.string() },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    _meta: { ui: { visibility: ["app"] } },
+  },
+  async ({ key, column }, extra) => {
+    const result = await moveTask(settings, key, column, humanActionReader, extra.signal);
+    return {
+      content: [
+        {
+          type: "text",
+          text:
+            result.kind === "error"
+              ? result.error!
+              : result.changed
+                ? `Moved ${result.key}.`
+                : `${result.key} was already in the ${result.task!.column} column.`,
+        },
+      ],
+      structuredContent: result,
     };
   },
 );
@@ -96,6 +156,7 @@ async function shutdown() {
   }
   shuttingDown = true;
   await reader.close();
+  await humanActionReader.close();
   await server.close();
   process.stdin.pause();
 }

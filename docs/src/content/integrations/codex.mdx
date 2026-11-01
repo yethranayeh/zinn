@@ -5,7 +5,7 @@ description: Build and install the local Zinn task inspector and execution-ident
 
 # Zinn for Codex
 
-Inspect local Zinn tasks alongside a Codex desktop conversation. The plugin provides manual task lookup, full descriptions, comments, relation navigation and observed task references from the current chat. Optional hooks supply execution identity for direct Zinn commands.
+Inspect local Zinn tasks alongside a Codex desktop conversation and move reviewed tasks to another column. The plugin provides manual task lookup, full descriptions, comments, relation navigation and observed task references from the current chat. Optional hooks supply execution identity for direct Zinn commands.
 
 The source builds version **0.1.0** as a candidate in a self-contained local marketplace. The plugin includes its runtime JavaScript and inspector assets.
 
@@ -79,6 +79,10 @@ Keep the extracted directory available as the marketplace source. Codex manages 
 In a chat, open a new side tab, choose **More tools**, then **Plugins and MCPs**, and open **Zinn task inspector**. Launcher labels can vary by Codex version.
 
 Enter a task key from your database, such as `APP-1`. Task descriptions and comments are displayed as literal text, preserving line breaks. Select a relation to open the related task. **Refresh** reads the selected task and current-chat references again.
+
+For an active task, choose a destination and select **Move to…**. The initial destination is the project's last column, such as Done. The move uses the inspector's selected database and the task's own project. It follows ordinary `zinn task move` behavior and refreshes the task afterward. Moving to the current column leaves it unchanged. Archived tasks remain available for inspection.
+
+Panel moves record your normal CLI human identity, without inherited agent, model, effort or conversation declarations. Codex's tool permission settings apply. A move is submitted only by the explicit button action and is not automatically retried after a failure.
 
 Observed references come from supported direct CLI calls, task keys in agent dispatches and completed replies. A reference is an observation, rather than a task assignment or proof that the task changed. References refresh every five seconds while the panel is visible, keeping the selected task open. Task details are re-read when opened or refreshed.
 

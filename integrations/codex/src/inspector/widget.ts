@@ -1,5 +1,6 @@
 import type { RecentRead } from "./references";
 import type { TaskRead } from "./task-reader";
+import type { TaskColumnsRead, TaskMoveRead } from "./task-actions";
 import type { PresentedTaskDetail } from "../../../../packages/cli/src/result-schemas.js";
 
 import { App } from "@modelcontextprotocol/ext-apps";
@@ -23,6 +24,7 @@ let recentLoading = false;
 let recentPending = false;
 let recentVersion = 0;
 let referenceSignature = "";
+let moving = false;
 let polling: ReturnType<typeof setInterval> | undefined;
 
 function markSelection() {
@@ -165,6 +167,125 @@ function section(title: string, nodes: HTMLElement[]) {
   return block;
 }
 
+async function moveTask(key: string, column: string) {
+  if (moving || disposed) {
+    return;
+  }
+
+  moving = true;
+  for (const control of detail.querySelectorAll<HTMLButtonElement | HTMLSelectElement>(
+    ".move-controls button, .move-controls select",
+  )) {
+    control.disabled = true;
+  }
+  status.textContent = `Moving ${key} to ${column}…`;
+  let message: string;
+  try {
+    const response = await app.callServerTool({ name: "move_task", arguments: { key, column } });
+    if (response.isError || !response.structuredContent) {
+      throw new Error(
+        "The host did not confirm the move. Check the current task before trying again.",
+      );
+    }
+
+    const result = response.structuredContent as TaskMoveRead;
+    message =
+      result.kind === "ready"
+        ? result.changed
+          ? `Moved ${key} to ${column}.`
+          : `${key} is already in ${column}.`
+        : (result.error ?? `Could not move ${key}.`);
+  } catch (error) {
+    message = String(error);
+  } finally {
+    moving = false;
+  }
+
+  if (!disposed) {
+    const selectedAfterMove = selected;
+    await openTask(selectedAfterMove);
+    if (!disposed && selected === selectedAfterMove) {
+      status.textContent = message;
+      if (selected === key && document.activeElement === document.body) {
+        const heading = detail.querySelector<HTMLElement>("h1");
+        if (heading) {
+          heading.tabIndex = -1;
+          heading.focus();
+        }
+      }
+    }
+  }
+  void refreshRecent();
+}
+
+function renderMove(task: PresentedTaskDetail) {
+  if (task.status === "Archived") {
+    return;
+  }
+
+  const version = selectionVersion;
+  const form = document.createElement("form");
+  form.className = "move-controls";
+  const label = document.createElement("label");
+  label.textContent = "Destination";
+  const destination = document.createElement("select");
+  destination.setAttribute("aria-label", `Destination for ${task.key}`);
+  destination.disabled = true;
+  label.append(destination);
+  const button = text("button", "Move task") as HTMLButtonElement;
+  button.type = "submit";
+  button.disabled = true;
+  const feedback = text("p", "Loading columns…", "muted");
+  feedback.setAttribute("role", "status");
+  form.append(label, button, feedback);
+  detail.append(form);
+
+  function updateDestination() {
+    button.textContent = `Move to ${destination.value}`;
+    button.disabled = moving || destination.value === task.column;
+  }
+  destination.addEventListener("change", updateDestination);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!button.disabled) {
+      void moveTask(task.key, destination.value);
+    }
+  });
+
+  void (async () => {
+    try {
+      const response = await app.callServerTool({
+        name: "task_columns",
+        arguments: { key: task.key },
+      });
+      if (disposed || version !== selectionVersion || !form.isConnected) {
+        return;
+      }
+      if (response.isError || !response.structuredContent) {
+        throw new Error("Could not load destination columns. Refresh to try again.");
+      }
+      const result = response.structuredContent as TaskColumnsRead;
+      if (result.kind !== "ready" || !result.columns?.length) {
+        throw new Error(result.error ?? "No destination columns are available.");
+      }
+      for (const column of result.columns) {
+        const option = document.createElement("option");
+        option.value = column.name;
+        option.textContent = column.name;
+        destination.append(option);
+      }
+      destination.value = result.columns.find((column) => column.is_last)?.name ?? task.column;
+      destination.disabled = moving;
+      feedback.textContent = `Move ${task.key} within its project.`;
+      updateDestination();
+    } catch (error) {
+      if (!disposed && version === selectionVersion && form.isConnected) {
+        feedback.textContent = String(error);
+      }
+    }
+  })();
+}
+
 function renderTask(task: PresentedTaskDetail, fetchedAt: string) {
   const state = task.status === "Archived" ? "Archived" : `${task.column} · ${task.status}`;
   detail.replaceChildren(
@@ -177,6 +298,7 @@ function renderTask(task: PresentedTaskDetail, fetchedAt: string) {
     detail.append(text("p", `Labels: ${task.labels.join(", ")}`, "meta"));
   }
 
+  renderMove(task);
   const description = text("div", task.description ?? "No description.", "description");
   detail.append(description);
   if (task.relations?.length) {

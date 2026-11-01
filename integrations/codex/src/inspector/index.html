@@ -32,7 +32,8 @@
 				font-size: 12px;
 			}
 			button,
-			input {
+			input,
+			select {
 				font: inherit;
 				color: inherit;
 				background: transparent;
@@ -51,7 +52,8 @@
 				cursor: default;
 			}
 			button:focus-visible,
-			input:focus-visible {
+			input:focus-visible,
+			select:focus-visible {
 				outline: 2px solid #a08050;
 				outline-offset: 2px;
 			}
@@ -118,6 +120,31 @@
 			}
 			#status:empty {
 				display: none;
+			}
+			.move-controls {
+				padding: 0;
+				margin: 16px 0;
+				flex-wrap: wrap;
+				align-items: end;
+			}
+			.move-controls label {
+				display: grid;
+				gap: 4px;
+				flex: 1;
+				min-width: 0;
+				font-size: 14px;
+			}
+			.move-controls select {
+				width: 100%;
+				min-width: 0;
+			}
+			.move-controls button {
+				max-width: 100%;
+				overflow-wrap: anywhere;
+			}
+			.move-controls p {
+				flex-basis: 100%;
+				margin: 0;
 			}
 			.error {
 				color: #ce6550;

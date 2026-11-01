@@ -11,7 +11,7 @@ import { EVENTS } from "../src/hooks/observe";
 import { persist, type Observation } from "../src/shared/feed";
 import { openDatabase } from "../../../packages/core/src/sqlite/bun.ts";
 import { latestVersion, MIGRATIONS } from "../../../packages/core/src/migrations/registry.ts";
-import { cliPath, fixture, inspectStore, seedOlderStore, waitFor } from "./helpers";
+import { cliPath, fixture, inspectStore, repository, seedOlderStore, waitFor } from "./helpers";
 const context = fixture();
 const buildDirectory = join(context.directory, "build");
 const packaged = await packageIntegration(buildDirectory, join(context.directory, "release"));
@@ -34,6 +34,19 @@ const resource = `ui://zinn/inspector-${INSPECTOR_VERSION}.html`;
 function fingerprint() {
     const directory = join(context.settings.store, "data");
     return readdirSync(directory).sort().map(file => [file, createHash("sha256").update(readFileSync(join(directory, file))).digest("hex")]);
+}
+function actorEnvironmentNames() {
+    const source = readFileSync(join(repository, "packages/cli/src/actor.ts"), "utf8");
+    const markerBlock = source.match(/const AGENT_MARKERS[\s\S]*?= \[([\s\S]*?)\n\];/)?.[1];
+    const sessionBlock = source.match(/const SESSION_DECLARATIONS = \[([\s\S]*?)\] as const;/)?.[1];
+    const identityBlock = source.match(/function readExecutionIdentity[\s\S]*?\n\}/)?.[0];
+    expect(markerBlock).toBeDefined();
+    expect(sessionBlock).toBeDefined();
+    expect(identityBlock).toBeDefined();
+    const markers = [...markerBlock!.matchAll(/"([A-Z][A-Z0-9_]*)"/g)].map(match => match[1]!);
+    const declarations = [...sessionBlock!.matchAll(/"([A-Z][A-Z0-9_]*)"/g)].map(match => match[1]!);
+    const identity = [...identityBlock!.matchAll(/readDeclaration\(env, "([A-Z][A-Z0-9_]*)"\)/g)].map(match => match[1]!);
+    return [...new Set([...markers, ...declarations, ...identity])].sort();
 }
 async function connect(config = context.config, overrides: NodeJS.ProcessEnv = {}, cwd = context.directory) {
     const client = new Client({ name: "zinn-artifact-check", version: "1.0.0" });
@@ -222,11 +235,18 @@ test("relocated Node artifact reads selected tasks and isolates each chat", asyn
     expect(before.find(([file]) => file === "zinn.sqlite")).toEqual(initial.find(([file]) => file === "zinn.sqlite"));
     try {
         const tools = await client.listTools();
-        expect(tools.tools.map(tool => tool.name).sort()).toEqual(["inspect_task", "recent_tasks"]);
+        expect(tools.tools.map(tool => tool.name).sort()).toEqual(["inspect_task", "move_task", "recent_tasks", "task_columns"]);
         for (const tool of tools.tools) {
-            expect(tool.annotations?.readOnlyHint).toBe(true);
             expect((tool._meta?.ui as any).visibility).toEqual(["app"]);
         }
+        expect(tools.tools.find(tool => tool.name === "inspect_task")?.annotations?.readOnlyHint).toBe(true);
+        expect(tools.tools.find(tool => tool.name === "task_columns")?.annotations?.readOnlyHint).toBe(true);
+        expect(tools.tools.find(tool => tool.name === "move_task")?.annotations).toMatchObject({
+            readOnlyHint: false,
+            destructiveHint: false,
+            idempotentHint: true,
+            openWorldHint: false,
+        });
         const read = async (key: string) => (await client.callTool({ name: "inspect_task", arguments: { key } })).structuredContent as any;
         expect(await read("app-1")).toMatchObject({ kind: "ready", task: { key: "APP-1", description: "First line\n<script>literal text</script>" } });
         expect((await read("APP-1")).task.comments[0].text).toBe("Literal <img src=x> comment");
@@ -257,6 +277,86 @@ test("relocated Node artifact reads selected tasks and isolates each chat", asyn
         await restarted.close();
     }
 }, 30000);
+
+test("panel lists the selected task's columns and moves through the configured CLI as a human", async () => {
+    context.cli(["project", "column", "create", "APP", "--", "-Needs review"]);
+    context.cli(["project", "create", "ALT"]);
+    context.cli(["project", "column", "create", "ALT", "--", "-Alpha"]);
+    context.cli(["task", "create", "ALT", "--title", "Other project task"]);
+    context.cli(["task", "create", "APP", "--title", "Move fixture", "--description", "Keep this description"]);
+    context.cli(["task", "create", "APP", "--title", "Earlier destination task"]);
+    context.cli(["task", "move", "--", "APP-5", "-Needs review"]);
+
+    const wrongStore = join(context.directory, "inherited-wrong-store");
+    const log = join(context.directory, "human-action-env.jsonl");
+    const wrapper = join(context.directory, "logging-cli.mjs");
+    writeFileSync(wrapper, `import {appendFileSync} from 'node:fs';
+const cliPath = ${JSON.stringify(cliPath)};
+const args = process.argv.slice(2);
+if (!(args.length === 1 && args[0] === '--version')) {
+  appendFileSync(${JSON.stringify(log)}, JSON.stringify({args, actor: ${JSON.stringify(actorEnvironmentNames())}.map(name => [name, process.env[name] ?? null]), custom: process.env.ZINN_TEST_CUSTOM}) + '\\n');
+}
+process.argv.splice(1, 1, cliPath);
+await import(${JSON.stringify(pathToFileURL(cliPath).href)});
+`);
+    const config = join(context.directory, "human-actions-config.json");
+    writeFileSync(config, JSON.stringify({ ...context.settings, cli: ["node", wrapper] }));
+    const inheritedActorEnvironment = Object.fromEntries(
+        actorEnvironmentNames().map(name => [name, `synthetic-${name.toLowerCase()}`]),
+    );
+    const client = await connect(config, {
+        ...inheritedActorEnvironment,
+        ZINN_DIR: wrongStore,
+        ZINN_TEST_CUSTOM: "preserved-custom-value",
+    });
+    try {
+        const columns = (await client.callTool({ name: "task_columns", arguments: { key: "ALT-1" } })).structuredContent as any;
+        expect(columns.kind).toBe("ready");
+        expect(columns.store).toBe(context.settings.store);
+        expect(columns.key).toBe("ALT-1");
+        expect(columns.columns.map((column: any) => column.name)).toContain("-Alpha");
+        expect(columns.columns.map((column: any) => column.name)).not.toContain("-Needs review");
+        expect((await client.callTool({ name: "task_columns", arguments: { key: "ALT-999" } })).structuredContent).toMatchObject({ kind: "error", key: "ALT-999" });
+        expect((await client.callTool({ name: "task_columns", arguments: { key: "invalid" } })).structuredContent).toMatchObject({ kind: "error", key: "INVALID" });
+
+        const moved = (await client.callTool({ name: "move_task", arguments: { key: "APP-4", column: "-Needs review" } })).structuredContent as any;
+        expect(moved).toMatchObject({ kind: "ready", store: context.settings.store, key: "APP-4", changed: true, task: { key: "APP-4", column: "-Needs review", changed: true } });
+        const afterMove = context.cli(["activity", "list", "--task", "APP-4"]);
+        const moveEvents = afterMove.filter((event: any) => event.action === "move");
+        expect(moveEvents).toHaveLength(1);
+        expect(moveEvents[0]).toMatchObject({
+            actor_kind: "human",
+            actor_session_id: null,
+            actor_thread_id: null,
+            actor_agent: null,
+            actor_model: null,
+            actor_effort: null,
+            changes: { column: [{ name: expect.any(String) }, { name: "-Needs review" }] },
+        });
+        expect((await client.callTool({ name: "inspect_task", arguments: { key: "APP-4" } })).structuredContent).toMatchObject({
+            kind: "ready",
+            task: { key: "APP-4", title: "Move fixture", description: "Keep this description", column: "-Needs review" },
+        });
+        expect(context.cli(["task", "list", "APP", "--column=-Needs review"]).map((task: any) => task.key)).toEqual(["APP-5", "APP-4"]);
+        const unchanged = (await client.callTool({ name: "move_task", arguments: { key: "APP-4", column: "-Needs review" } })).structuredContent as any;
+        expect(unchanged).toMatchObject({ kind: "ready", changed: false, task: { changed: false } });
+        expect(context.cli(["activity", "list", "--task", "APP-4"]).filter((event: any) => event.action === "move")).toHaveLength(1);
+        expect((await client.callTool({ name: "move_task", arguments: { key: "APP-4", column: "Unavailable" } })).structuredContent).toMatchObject({ kind: "error", key: "APP-4" });
+        expect(context.cli(["activity", "list", "--task", "APP-4"]).filter((event: any) => event.action === "move")).toHaveLength(1);
+        expect((await client.callTool({ name: "move_task", arguments: { key: "APP-2", column: "Done" } })).structuredContent).toMatchObject({ kind: "error", key: "APP-2" });
+        expect((await client.callTool({ name: "move_task", arguments: { key: "APP-999", column: "Done" } })).structuredContent).toMatchObject({ kind: "error", key: "APP-999" });
+        expect((await client.callTool({ name: "move_task", arguments: { key: "invalid", column: "Done" } })).structuredContent).toMatchObject({ kind: "error", key: "INVALID" });
+
+        const childCalls = readFileSync(log, "utf8").trim().split("\n").map(line => JSON.parse(line));
+        const moveCall = childCalls.find((call: any) => call.args[0] === "task" && call.args[1] === "move");
+        expect(moveCall.args).toEqual(["task", "move", "--json", "--", "APP-4", "-Needs review"]);
+        expect(moveCall.custom).toBe("preserved-custom-value");
+        expect(moveCall.actor).toEqual(actorEnvironmentNames().map(name => [name, null]));
+        expect(existsSync(wrongStore)).toBe(false);
+    } finally {
+        await client.close();
+    }
+});
 test("relocated Node artifact reports an absent store without creating it", async () => {
     const absent = join(context.directory, "absent-store");
     const config = join(context.directory, "absent-config.json");
@@ -542,7 +642,7 @@ else { process.on('SIGTERM', () => {}); writeFileSync(${JSON.stringify(marker)},
         cancellation.abort();
         await pending;
         await waitFor(() => !alive(first));
-        expect((await client.listTools()).tools.length).toBe(2);
+        expect((await client.listTools()).tools.length).toBe(4);
         rmSync(marker);
         const closingRead = client.callTool({ name: "inspect_task", arguments: { key: "APP-2" } }).catch(() => undefined);
         await waitFor(() => existsSync(marker));

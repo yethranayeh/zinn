@@ -44,7 +44,11 @@ function supportsVersion(text: string) {
 /** Owns CLI children until they exit, including cancellation and backend shutdown. */
 export function createCliReader(
   settings: Pick<SettingsOptions, "store" | "cli">,
-  { deadline, cwd = process.cwd() }: { deadline?: number; cwd?: string } = {},
+  {
+    deadline,
+    cwd = process.cwd(),
+    env,
+  }: { deadline?: number; cwd?: string; env?: NodeJS.ProcessEnv } = {},
 ): CliReader {
   const active = new Set<{ stop(): void; done: Promise<CliResult> }>();
   let closed = false;
@@ -65,6 +69,7 @@ export function createCliReader(
       cwd: json ? (settings.store ?? cwd) : cwd,
       env: {
         ...process.env,
+        ...env,
         ZINN_DIR: settings.store ?? process.env.ZINN_DIR,
         ZINN_CODEX_CONFIG: undefined,
       },
@@ -157,7 +162,10 @@ export function createCliReader(
   }
 
   return {
-    async run<Value = unknown>(args: Array<string>, signal?: AbortSignal): Promise<CliResult<Value>> {
+    async run<Value = unknown>(
+      args: Array<string>,
+      signal?: AbortSignal,
+    ): Promise<CliResult<Value>> {
       try {
         const version = await execute(["--version"], false, signal);
         if (!version.ok) {
@@ -169,7 +177,12 @@ export function createCliReader(
             error: `Use Zinn CLI ${MINIMUM_CLI_VERSION} or newer, or a -dev build after that release.`,
           };
         }
-        return (await execute([...args, "--json"], true, signal)) as CliResult<Value>;
+        const boundary = args.indexOf("--");
+        const jsonArgs =
+          boundary < 0
+            ? [...args, "--json"]
+            : [...args.slice(0, boundary), "--json", ...args.slice(boundary)];
+        return (await execute(jsonArgs, true, signal)) as CliResult<Value>;
       } catch {
         return { ok: false, error: "The selected store or Zinn CLI is unavailable." };
       }
