@@ -92,7 +92,7 @@ test.skipIf(process.platform === "win32")("configuration-free panel uses the Uni
                 expect(existsSync(join(home, ".config/zinn/codex.json"))).toBe(false);
                 if (selection === "older") {
                     expect(result.task).toEqual(ordinaryTask);
-                    expect(inspectStore(store)).toEqual(ordinaryState);
+                    expect(inspectStore(store)).toEqual(ordinaryState!);
                     expect(existsSync(join(store, "backups"))).toBe(false);
                 }
                 if (selection === "absent") {
@@ -162,6 +162,7 @@ else { process.on('SIGTERM', () => {}); writeFileSync(${JSON.stringify(marker)},
 
 test("artifact contains only portable bundled assets and dependency notices", () => {
     expect(createHash("sha256").update(readFileSync(packaged.archive)).digest("hex")).toBe(packaged.sha256);
+    expect(existsSync(join(extracted, "zinn-codex/tests"))).toBe(false);
     expect(existsSync(join(artifact.plugin, "plugin.json"))).toBe(false);
     expect(existsSync(join(artifact.plugin, "mcp.json"))).toBe(false);
     const manifest = JSON.parse(readFileSync(join(artifact.plugin, ".codex-plugin/plugin.json"), "utf8"));
@@ -204,7 +205,7 @@ test("relocated Node artifact reads selected tasks and isolates each chat", asyn
         const read = async (key: string) => (await client.callTool({ name: "inspect_task", arguments: { key } })).structuredContent as any;
         expect(await read("app-1")).toMatchObject({ kind: "ready", task: { key: "APP-1", description: "First line\n<script>literal text</script>" } });
         expect((await read("APP-1")).task.comments[0].text).toBe("Literal <img src=x> comment");
-        expect((await read("APP-1")).task.relations).toContainEqual(expect.objectContaining({ type: "related", task: expect.objectContaining({ key: "APP-3", title: "Related fixture" }) }));
+        expect((await read("APP-1")).task.relations).toContainEqual(expect.objectContaining({ type: "related", direction: null, task: expect.objectContaining({ key: "APP-3", title: "Related fixture" }) }));
         expect(await read("APP-2")).toMatchObject({ kind: "ready", task: { status: "Archived" } });
         expect((await read("APP-999")).kind).toBe("missing");
         expect((await read("invalid")).kind).toBe("invalid");

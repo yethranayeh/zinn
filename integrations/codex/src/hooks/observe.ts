@@ -1,6 +1,7 @@
 import type { SettingsOptions } from "../settings";
 import type { HookPayload } from "./types";
 import type { Observation, Reference } from "../shared/feed";
+import type { PresentedInfo } from "../../../../packages/cli/src/result-schemas.js";
 
 import { isAbsolute, resolve } from "node:path";
 import { resolveSettings } from "../settings";
@@ -11,14 +12,10 @@ import { argvKeys, keyCandidates, projectOf } from "../shared/keys";
 import { persist } from "../shared/feed";
 
 export const EVENTS = [
-  "SessionStart",
   "PreToolUse",
   "PostToolUse",
-  "SubagentStart",
   "SubagentStop",
   "Stop",
-  "Interrupt",
-  "SessionEnd",
 ] as const;
 
 const MAX_TEXT_KEYS = 32;
@@ -107,7 +104,7 @@ export async function observe(
     let result;
 
     try {
-      const info = resolution.info ?? (await reader.run(["info"], signal));
+      const info = resolution.info ?? (await reader.run<PresentedInfo>(["info"], signal));
       const current =
         info.ok && info.value?.database?.state === "current" && info.value.database.error === null;
       result = current ? await readTaskList(reader, signal) : { ok: false as const };

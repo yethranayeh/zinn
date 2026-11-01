@@ -13,10 +13,13 @@ import { loadSettings } from "../src/settings";
 import { argvKeys, keyCandidates } from "../src/shared/keys";
 import { cliPath, fixture, inspectStore, seedOlderStore } from "./helpers";
 import { infoDatabaseStateSchema } from "../../../packages/core/src/operations/info";
+import { fromJSONSchema } from "zod/v4";
+import { EVENTS } from "../src/hooks/observe";
 const context = fixture();
 const reader = createCliReader(context.settings);
 afterAll(() => reader.close());
 const artifact = await build(join(context.directory, "artifact"));
+const codexHookSchemas = join(import.meta.dir, "fixtures/codex-hooks-0.166.0-alpha.5.1");
 const base = { session_id: "chat-one", cwd: context.directory, model: "fixture-model", agent_id: "child-one", agent_type: "reviewer", turn_id: "turn-one" };
 afterAll(context.cleanup);
 context.cli(["project", "create", "APP"]);
@@ -28,6 +31,87 @@ function observe(payload: HookPayload, settings: Settings) {
     expect(result.exitCode).toBe(0);
     expect(result.stderr.byteLength).toBe(0);
 }
+test("hook inputs and emitted responses match the pinned Codex schemas", () => {
+    const cases: Record<(typeof EVENTS)[number], { input: Record<string, unknown>; expectsResponse: boolean }> = {
+        PreToolUse: {
+            input: {
+                ...base,
+                hook_event_name: "PreToolUse",
+                permission_mode: "default",
+                tool_name: "Bash",
+                tool_use_id: "tool-one",
+                transcript_path: null,
+                tool_input: { command: "zinn info" },
+            },
+            expectsResponse: true,
+        },
+        PostToolUse: {
+            input: {
+                cwd: context.directory,
+                hook_event_name: "PostToolUse",
+                model: "fixture-model",
+                permission_mode: "default",
+                session_id: "chat-one",
+                tool_input: { command: "echo unrelated" },
+                tool_name: "Bash",
+                tool_response: {},
+                tool_use_id: "tool-one",
+                transcript_path: null,
+                turn_id: "turn-one",
+            },
+            expectsResponse: false,
+        },
+        Stop: {
+            input: {
+                cwd: context.directory,
+                hook_event_name: "Stop",
+                last_assistant_message: null,
+                model: "fixture-model",
+                permission_mode: "default",
+                session_id: "chat-one",
+                stop_hook_active: false,
+                transcript_path: null,
+                turn_id: "turn-one",
+            },
+            expectsResponse: true,
+        },
+        SubagentStop: {
+            input: {
+                agent_id: "child-one",
+                agent_transcript_path: null,
+                agent_type: "reviewer",
+                cwd: context.directory,
+                hook_event_name: "SubagentStop",
+                last_assistant_message: null,
+                model: "fixture-model",
+                permission_mode: "default",
+                session_id: "chat-one",
+                stop_hook_active: false,
+                transcript_path: null,
+                turn_id: "turn-one",
+            },
+            expectsResponse: true,
+        },
+    };
+
+    for (const event of EVENTS) {
+        const { input, expectsResponse } = cases[event];
+        const schemaName = event.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
+        const inputSchema = fromJSONSchema(JSON.parse(readFileSync(join(codexHookSchemas, `${schemaName}.command.input.schema.json`), "utf8")));
+        expect(inputSchema.safeParse(input).success).toBe(true);
+
+        const result = Bun.spawnSync(["node", join(artifact.plugin, "hook.mjs")], { env: context.env, stdin: Buffer.from(JSON.stringify(input)) });
+        expect(result.exitCode).toBe(0);
+        expect(result.stderr.byteLength).toBe(0);
+
+        if (expectsResponse) {
+            const outputSchema = fromJSONSchema(JSON.parse(readFileSync(join(codexHookSchemas, `${schemaName}.command.output.schema.json`), "utf8")));
+            expect(outputSchema.safeParse(JSON.parse(result.stdout.toString())).success).toBe(true);
+        } else {
+            expect(result.stdout.byteLength).toBe(0);
+        }
+    }
+});
 test.skipIf(process.platform === "win32")("hook supplies scoped identity through the supported Unix shell rewrite", () => {
     const payload = { ...base, hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "ZINN_MODEL=explicit zinn task view APP-1", timeout_ms: 1234 } };
     const result = Bun.spawnSync(["node", join(artifact.plugin, "hook.mjs")], { env: context.env, stdin: Buffer.from(JSON.stringify(payload)) });

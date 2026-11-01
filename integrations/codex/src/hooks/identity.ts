@@ -94,6 +94,7 @@ export function rewrite(
   const prefix = Object.entries(values)
     .map(([name, value]) => `${name}=${quote(value)}`)
     .join(" ");
+  // Codex requires permissionDecision: allow when changing updatedInput: https://learn.chatgpt.com/docs/hooks
   return {
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
