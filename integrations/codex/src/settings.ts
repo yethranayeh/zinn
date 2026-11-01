@@ -1,4 +1,5 @@
 import type { CliResult } from "./shared/cli";
+import type { PresentedInfo } from "../../../packages/cli/src/result-schemas.js";
 
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
@@ -103,14 +104,14 @@ export async function resolveSettings(
     signal,
     cwd = homedir(),
   }: { deadline?: number; signal?: AbortSignal; cwd?: string } = {},
-): Promise<{ settings: Settings; info?: CliResult }> {
+): Promise<{ settings: Settings; info?: CliResult<PresentedInfo> }> {
   if (options.store !== undefined) {
     return { settings: selectStore(options, options.store) };
   }
 
   const reader = createCliReader(options, { deadline, cwd });
   try {
-    const info = await reader.run(["info"], signal);
+    const info = await reader.run<PresentedInfo>(["info"], signal);
     signal?.throwIfAborted();
     if (!info.ok) {
       throw new Error(info.error);

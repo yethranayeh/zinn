@@ -1,5 +1,6 @@
 import type { Settings } from "../settings";
-import type { CliReader, Task } from "../shared/cli";
+import type { PresentedTaskDetail } from "../../../../packages/cli/src/result-schemas.js";
+import type { CliReader } from "../shared/cli";
 
 import { argvKeys } from "../shared/keys";
 
@@ -7,7 +8,7 @@ export type TaskRead = {
   kind: "idle" | "ready" | "invalid" | "missing" | "error";
   store: string;
   key?: string;
-  task?: Task;
+  task?: PresentedTaskDetail;
   error?: string;
   fetchedAt?: string;
 };
@@ -28,7 +29,7 @@ export async function readTask(
     return { kind: "invalid", store, key, error: "Enter a task key such as APP-1." };
   }
 
-  const result = await reader.run(["task", "view", key], signal);
+  const result = await reader.run<PresentedTaskDetail>(["task", "view", key], signal);
   if (result.ok) {
     if (result.value?.key !== key || typeof result.value.title !== "string") {
       return { kind: "error", store, key, error: "Unexpected task details from Zinn." };

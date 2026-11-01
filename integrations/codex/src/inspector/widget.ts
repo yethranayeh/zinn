@@ -1,6 +1,6 @@
 import type { RecentRead } from "./references";
 import type { TaskRead } from "./task-reader";
-import type { Task } from "../shared/cli";
+import type { PresentedTaskDetail } from "../../../../packages/cli/src/result-schemas.js";
 
 import { App } from "@modelcontextprotocol/ext-apps";
 import { INSPECTOR_VERSION, RECENT_POLL_MS } from "../runtime";
@@ -165,7 +165,7 @@ function section(title: string, nodes: HTMLElement[]) {
   return block;
 }
 
-function renderTask(task: Task, fetchedAt: string) {
+function renderTask(task: PresentedTaskDetail, fetchedAt: string) {
   const state = task.status === "Archived" ? "Archived" : `${task.column} · ${task.status}`;
   detail.replaceChildren(
     text("div", task.key, "meta"),

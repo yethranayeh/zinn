@@ -1,5 +1,6 @@
 import type { Settings } from "../settings";
-import type { CliReader, Task } from "../shared/cli";
+import type { PresentedTask } from "../../../../packages/cli/src/result-schemas.js";
+import type { CliReader } from "../shared/cli";
 
 import { readFeed } from "../shared/feed";
 import { readTaskList } from "../shared/cli";
@@ -7,7 +8,7 @@ import { readTaskList } from "../shared/cli";
 type ReadReference = {
   key: string;
   source: string | null;
-  task?: Pick<Task, "key" | "title" | "column" | "status">;
+  task?: Pick<PresentedTask, "key" | "title" | "column" | "status">;
 };
 export type RecentRead = {
   kind: "ready" | "absent_metadata" | "conflicting_metadata" | "no_feed" | "error";
@@ -79,7 +80,7 @@ export async function readRecent(
       };
     }
 
-    const byKey = new Map<string, Task>(tasks.value.map((task: Task) => [task.key, task]));
+    const byKey = new Map<string, PresentedTask>(tasks.value.map((task) => [task.key, task]));
     return {
       ...result,
       kind: "ready",

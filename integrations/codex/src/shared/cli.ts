@@ -1,29 +1,12 @@
 import type { SettingsOptions } from "../settings";
+import type { PresentedTask } from "../../../../packages/cli/src/result-schemas.js";
 
 import { spawn } from "node:child_process";
 
-export type Task = {
-  key: string;
-  title: string;
-  status: string;
-  column: string;
-  description: string | null;
-  priority: string | null;
-  labels: Array<string>;
-  relations?: {
-    type: string;
-    direction: string;
-    task: Pick<Task, "key" | "title" | "column" | "status">;
-  }[];
-  comments?: {
-    key: string;
-    text: string;
-  }[];
-};
-export type CliResult =
+export type CliResult<Value = unknown> =
   | {
       ok: true;
-      value: any;
+      value: Value;
     }
   | {
       ok: false;
@@ -32,7 +15,7 @@ export type CliResult =
       entity?: string;
     };
 export type CliReader = {
-  run(args: Array<string>, signal?: AbortSignal): Promise<CliResult>;
+  run<Value = unknown>(args: Array<string>, signal?: AbortSignal): Promise<CliResult<Value>>;
   close(): Promise<void>;
 };
 
@@ -103,7 +86,7 @@ export function createCliReader(
       killTimer = setTimeout(() => child.kill("SIGKILL"), TERMINATION_GRACE_MS);
       killTimer.unref();
     };
-    const done = new Promise<CliResult>((resolve) => {
+    const done = new Promise<CliResult<unknown>>((resolve) => {
       child.stdout.on("data", (chunk: Buffer) => {
         stdoutBytes += chunk.length;
         if (stdoutBytes > CLI_OUTPUT_BYTES) {
@@ -174,19 +157,19 @@ export function createCliReader(
   }
 
   return {
-    async run(args, signal) {
+    async run<Value = unknown>(args: Array<string>, signal?: AbortSignal): Promise<CliResult<Value>> {
       try {
         const version = await execute(["--version"], false, signal);
         if (!version.ok) {
           return version;
         }
-        if (!supportsVersion(version.value)) {
+        if (!supportsVersion(version.value as string)) {
           return {
             ok: false,
             error: `Use Zinn CLI ${MINIMUM_CLI_VERSION} or newer, or a -dev build after that release.`,
           };
         }
-        return await execute([...args, "--json"], true, signal);
+        return (await execute([...args, "--json"], true, signal)) as CliResult<Value>;
       } catch {
         return { ok: false, error: "The selected store or Zinn CLI is unavailable." };
       }
@@ -202,5 +185,5 @@ export function createCliReader(
 }
 
 export function readTaskList(reader: CliReader, signal?: AbortSignal) {
-  return reader.run(["task", "list", "--all"], signal);
+  return reader.run<Array<PresentedTask>>(["task", "list", "--all"], signal);
 }
