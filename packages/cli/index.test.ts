@@ -6484,36 +6484,31 @@ test("simultaneous backup commands create distinct valid snapshots", async () =>
   });
 });
 
-test("all CLI descriptions normalize blank input and preserve meaningful formatting", async () => {
+test.each([
+  { type: "project", create: ["EMPTY"], editKey: "EMPTY", read: ["project", "view", "EMPTY"], omitted: ["OMITTED"] },
+  { type: "task", create: ["APP", "--title", "Empty"], editKey: "APP-1", read: ["task", "view", "APP-1"], omitted: ["APP", "--title", "Omitted"] },
+  { type: "label", create: ["empty"], editKey: "empty", read: ["label", "list"], omitted: ["omitted"] },
+])("$type descriptions normalize blank input and preserve meaningful formatting", async (entity) => {
   await withIsolatedZinnDir(async (dir) => {
     const run = (...args: string[]) => runZinn(args, dir);
-    expect((await run("project", "create", "APP")).code).toBe(0);
-    const entities = [
-      { type: "project", create: ["EMPTY"], editKey: "EMPTY", read: ["project", "view", "EMPTY"] },
-      { type: "task", create: ["APP", "--title", "Empty"], editKey: "APP-1", read: ["task", "view", "APP-1"] },
-      { type: "label", create: ["empty"], editKey: "empty", read: ["label", "list"] },
-    ];
-
-    for (const entity of entities) {
-      const created = await run(entity.type, "create", ...entity.create, "--description", " \n\t ", "--json");
-      expect(created.code).toBe(0);
-      expect(JSON.parse(created.stdout).description).toBeNull();
-      for (const clearInput of ["", " \n\t "]) {
-        const description = "  Details\n\tIndented  \n";
-        const edited = await run(entity.type, "edit", entity.editKey, "--description", description, "--json");
-        expect(edited.code).toBe(0);
-        expect(JSON.parse(edited.stdout).description).toBe(description);
-        const cleared = await run(entity.type, "edit", entity.editKey, "--description", clearInput, "--json");
-        expect(cleared.code).toBe(0);
-        expect(JSON.parse(cleared.stdout).description).toBeNull();
-      }
-      const result = JSON.parse((await run(...entity.read, "--json")).stdout);
-      expect((Array.isArray(result) ? result[0] : result).description).toBeNull();
+    if (entity.type === "task") {
+      expect((await run("project", "create", "APP")).code).toBe(0);
     }
-
-    expect(JSON.parse((await run("project", "create", "OMITTED", "--json")).stdout).description).toBeNull();
-    expect(JSON.parse((await run("task", "create", "APP", "--title", "Omitted", "--json")).stdout).description).toBeNull();
-    expect(JSON.parse((await run("label", "create", "omitted", "--json")).stdout).description).toBeNull();
+    const created = await run(entity.type, "create", ...entity.create, "--description", " \n\t ", "--json");
+    expect(created.code).toBe(0);
+    expect(JSON.parse(created.stdout).description).toBeNull();
+    for (const clearInput of ["", " \n\t "]) {
+      const description = "  Details\n\tIndented  \n";
+      const edited = await run(entity.type, "edit", entity.editKey, "--description", description, "--json");
+      expect(edited.code).toBe(0);
+      expect(JSON.parse(edited.stdout).description).toBe(description);
+      const cleared = await run(entity.type, "edit", entity.editKey, "--description", clearInput, "--json");
+      expect(cleared.code).toBe(0);
+      expect(JSON.parse(cleared.stdout).description).toBeNull();
+    }
+    const result = JSON.parse((await run(...entity.read, "--json")).stdout);
+    expect((Array.isArray(result) ? result[0] : result).description).toBeNull();
+    expect(JSON.parse((await run(entity.type, "create", ...entity.omitted, "--json")).stdout).description).toBeNull();
   });
 });
 
