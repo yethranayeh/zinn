@@ -277,6 +277,31 @@ export function getList(input: TaskListQuery) {
     .all(bindings);
 }
 
+/** Returns the existing tasks, active and archived, with any of the given IDs. */
+export function getAllByIds(taskIds: Array<string>) {
+  return getDb()
+    .query<TaskListRow, { $taskIds: string }>(`SELECT task.*, project.key AS project_key
+    FROM ${DB_TABLE.task}
+    INNER JOIN ${DB_TABLE.project}
+      ON project.id = task.project_id
+    WHERE task.id IN (SELECT value FROM json_each($taskIds))
+    ORDER BY project.key ASC, task.number ASC`)
+    .all({ $taskIds: JSON.stringify(taskIds) });
+}
+
+/** Returns the existing tasks, active and archived, with any of the given `PROJECT-1` keys. */
+export function getAllByKeys(taskKeys: Array<string>) {
+  // One pass over task: no index covers (project_id, number), so a per-key join would rescan it.
+  return getDb()
+    .query<TaskListRow, { $taskKeys: string }>(`SELECT task.*, project.key AS project_key
+    FROM ${DB_TABLE.task}
+    INNER JOIN ${DB_TABLE.project}
+      ON project.id = task.project_id
+    WHERE project.key || '-' || task.number IN (SELECT value FROM json_each($taskKeys))
+    ORDER BY project.key ASC, task.number ASC`)
+    .all({ $taskKeys: JSON.stringify(taskKeys) });
+}
+
 /** Returns one bounded task page and whether the live cursor matches the list filters. */
 export function getPageAfter(input: TaskPageQuery): TaskPageMatches {
   const { where, limit, bindings } = buildTaskListFilters(input);

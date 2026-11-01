@@ -313,6 +313,48 @@ test("explicit current-task selection includes archived tasks and reports missin
   });
 });
 
+test("current task identities match IDs and keys of active and archived tasks without reading history", () => {
+  runActivityCheck(({ human, agent, app }) => {
+    const other = project.create({ key: "OPS" }, human);
+    const active = task.create({ project_id: app.id, title: "Active" }, human);
+    const archived = task.create({ project_id: app.id, title: "Archived" }, human);
+    const deleted = task.create({ project_id: app.id, title: "Deleted" }, human);
+    const elsewhere = task.create({ project_id: other.id, title: "Elsewhere" }, human);
+    task.archive(archived.key, agent);
+    task.delete(deleted.key, agent);
+    const identity = (item: typeof active, status: "active" | "archived") => ({ id: item.id, key: item.key, title: item.title, status });
+    const byId = (left: { id: string }, right: { id: string }) => left.id.localeCompare(right.id);
+    const historyReads = Object.keys(dbActivity).filter((name) => typeof dbActivity[name as keyof typeof dbActivity] === "function" && name.startsWith("get"))
+      .map((name) => spyOn(dbActivity, name as keyof typeof dbActivity));
+
+    try {
+      assert.deepEqual(activity.getCurrentTaskIdentities({ taskIds: [active.id.toUpperCase(), archived.id, deleted.id, crypto.randomUUID()] }).sort(byId),
+        [identity(active, "active"), identity(archived, "archived")].sort(byId));
+      assert.deepEqual(activity.getCurrentTaskIdentities({ taskKeys: ["app-2", elsewhere.key, deleted.key, "APP-99", "NONE-1"] }).sort(byId),
+        [identity(archived, "archived"), identity(elsewhere, "active")].sort(byId));
+      assert.deepEqual(activity.getCurrentTaskIdentities({ taskIds: [active.id], taskKeys: [active.key] }), [identity(active, "active")]);
+      assert.deepEqual(activity.getCurrentTaskIdentities({}), []);
+      assert.deepEqual(activity.getCurrentTaskIdentities({ taskIds: [], taskKeys: [] }), []);
+
+      // Task numbers are not unique in SQL, so a key returns every task that holds it.
+      getDb().query("UPDATE task SET number = ? WHERE id = ?").run(active.number, archived.id);
+      const sharedKey = activity.getCurrentTaskIdentities({ taskKeys: [active.key] });
+      assert.deepEqual(sharedKey.map((item) => item.id).sort(), [active.id, archived.id].sort());
+      assert.ok(sharedKey.every((item) => item.key === active.key));
+
+      for (const read of historyReads) {
+        assert.equal(read.mock.calls.length, 0);
+      }
+    } finally {
+      for (const read of historyReads) {
+        read.mockRestore();
+      }
+    }
+    assert.throws(() => activity.getCurrentTaskIdentities({ taskKeys: ["APP-0"] }), (error) => error instanceof CoreError && error.kind === "input");
+    assert.throws(() => activity.getCurrentTaskIdentities({ taskIds: ["not-a-uuid"] }), (error) => error instanceof CoreError && error.kind === "input");
+  });
+});
+
 test("explicit selectors separate reused task identities and preserve original project deletions", () => {
   runActivityCheck(({ human, agent, app }) => {
     const runActor = { ...agent, sessionId: "session/one", threadId: "thread/one" };

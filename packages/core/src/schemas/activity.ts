@@ -153,3 +153,12 @@ export const activityListSchema = z
   });
 
 export type ActivityListInput = z.input<typeof activityListSchema>;
+
+export const activityCurrentTaskIdentitiesSchema = z.strictObject({
+  taskIds: z.array(activityTaskIdSchema).optional(),
+  taskKeys: z.array(activityTaskKeySchema).optional(),
+});
+
+export type ActivityCurrentTaskIdentitiesInput = z.input<
+  typeof activityCurrentTaskIdentitiesSchema
+>;

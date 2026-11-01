@@ -1,9 +1,17 @@
-import { CoreError } from "../errors.js";
-import type { ActivityChangedField, ActivityListInput } from "../schemas/activity.js";
+import type {
+  ActivityChangedField,
+  ActivityCurrentTaskIdentitiesInput,
+  ActivityListInput,
+} from "../schemas/activity.js";
 import type { Activity } from "../types.js";
 
-import { activityIdSchema, activityListSchema } from "../schemas/activity.js";
-import { validateTaskInput } from "../schemas/task.js";
+import { CoreError } from "../errors.js";
+import {
+  activityCurrentTaskIdentitiesSchema,
+  activityIdSchema,
+  activityListSchema,
+} from "../schemas/activity.js";
+import { parseTaskKey, validateTaskInput } from "../schemas/task.js";
 import { timestampSchema } from "../schemas/timestamp.js";
 import { standardizeName, standardizeProjectKey } from "../lib.js";
 import { attachTaskKey, findTaskByExactKey, requireSingleIdMatch } from "./shared.js";
@@ -396,5 +404,33 @@ export const activity = {
     );
 
     return resolveTaskHistory(props).identities;
+  },
+  /** Existing tasks, active and archived, matching any given ID or key. Reads no history. */
+  getCurrentTaskIdentities: (
+    input: ActivityCurrentTaskIdentitiesInput,
+  ): Array<ActivityTaskIdentity> => {
+    const props = validateTaskInput(activityCurrentTaskIdentitiesSchema, input);
+    const taskIds = props.taskIds ?? [];
+    const keys = (props.taskKeys ?? []).map((key) => {
+      const { projectKey, taskNumber } = parseTaskKey(key)!;
+      return `${projectKey}-${taskNumber}`;
+    });
+    const rows = [
+      ...(taskIds.length === 0 ? [] : dbTask.getAllByIds(taskIds)),
+      ...(keys.length === 0 ? [] : dbTask.getAllByKeys(keys)),
+    ];
+    const identities = new Map<string, ActivityTaskIdentity>();
+
+    for (const { project_key, ...row } of rows) {
+      const item = attachTaskKey(row, project_key);
+      identities.set(item.id, {
+        id: item.id,
+        key: item.key,
+        title: item.title,
+        status: item.archived_at == null ? "active" : "archived",
+      });
+    }
+
+    return [...identities.values()];
   },
 };
