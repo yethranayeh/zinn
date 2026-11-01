@@ -174,8 +174,8 @@ function getTaskNavigation(
     return [];
   }
 
-  const snapshots: Array<ActivityTaskIdentity> = [];
-  function addSnapshot(id: unknown, key: unknown, title: unknown) {
+  /** A deleted task's recorded identity, when it is complete and holds a historical key. */
+  function toSnapshot(id: unknown, key: unknown, title: unknown): Array<ActivityTaskIdentity> {
     const parsedKey = activityTaskKeySchema.safeParse(key);
     const isMatchingSnapshot =
       typeof id === "string" &&
@@ -183,33 +183,34 @@ function getTaskNavigation(
       typeof title === "string" &&
       parsedKey.success &&
       historicalKeys.has(parsedKey.data);
-    if (isMatchingSnapshot) {
-      snapshots.push({ id, key, title, status: "deleted" });
-    }
+    return isMatchingSnapshot ? [{ id, key, title, status: "deleted" }] : [];
   }
 
-  if (historicalKeys.size > 0) {
-    for (const event of activity.getAll().events) {
-      if (event.action !== "delete") {
-        continue;
-      }
-      if (event.entity_type === "task") {
-        addSnapshot(event.entity_id, event.changes?.key, event.changes?.title);
-      } else if (event.entity_type === "project" && Array.isArray(event.changes?.tasks)) {
-        for (const snapshot of event.changes.tasks) {
-          if (isRecord(snapshot)) {
-            addSnapshot(snapshot.id, snapshot.key, snapshot.title);
-          }
-        }
-      }
+  const snapshots = navigationEvents.flatMap((event) => {
+    if (event.action !== "delete") {
+      return [];
     }
-  }
+
+    if (event.entity_type === "task") {
+      return toSnapshot(event.entity_id, event.changes?.key, event.changes?.title);
+    }
+
+    if (event.entity_type === "project" && Array.isArray(event.changes?.tasks)) {
+      return event.changes.tasks
+        .filter(isRecord)
+        .flatMap((snapshot) => toSnapshot(snapshot.id, snapshot.key, snapshot.title));
+    }
+
+    return [];
+  });
 
   // Current tasks the page names, removes or shares a deleted key with.
   const referencedIds = new Set<unknown>(snapshots.map((snapshot) => snapshot.id));
+  const pageTaskIds = new Set<string>();
   for (const event of pageEvents) {
     if (event.entity_type === "task") {
       referencedIds.add(event.entity_id);
+      pageTaskIds.add(event.entity_id);
     } else if (
       event.entity_type === "project" &&
       event.action === "delete" &&
@@ -221,25 +222,69 @@ function getTaskNavigation(
     }
   }
 
-  const taskIds = [...referencedIds].flatMap((id) => {
-    const parsed = activityTaskIdSchema.safeParse(id);
-    return parsed.success ? [parsed.data] : [];
-  });
-
+  // Current identities come first, recorded deletions fill the gaps
   const identities = new Map<string, ActivityTaskIdentity>();
-  for (const identity of activity.getCurrentTaskIdentities({
-    taskIds,
-    taskKeys: [...historicalKeys],
-  })) {
-    identities.set(identity.id, identity);
+  function addIdentities(items: Array<ActivityTaskIdentity>) {
+    for (const item of items) {
+      if (!identities.has(item.id)) {
+        identities.set(item.id, item);
+      }
+    }
   }
-  for (const snapshot of snapshots) {
-    if (!identities.has(snapshot.id)) {
-      identities.set(snapshot.id, snapshot);
+
+  function addDeletedIdentities(items: Array<ActivityTaskIdentity>) {
+    addIdentities(
+      items.flatMap((item) =>
+        item.status === "deleted" ? toSnapshot(item.id, item.key, item.title) : [],
+      ),
+    );
+  }
+
+  addIdentities(activity.getCurrentTaskIdentities({ taskIds: parseTaskIds(referencedIds) }));
+  addIdentities(snapshots);
+  if (historicalKeys.size === 0) {
+    return [...identities.values()];
+  }
+
+  // A page task deleted outside the navigation events can still hold a historical key.
+  for (const id of parseTaskIds(pageTaskIds)) {
+    if (!identities.has(id)) {
+      addDeletedIdentities(activity.getTaskIdentities({ taskId: id }));
+    }
+  }
+
+  // A historical key on the page needs every identity in the database that holds it
+  const pageKeys = new Set<string>();
+  for (const id of pageTaskIds) {
+    const parsedKey = activityTaskKeySchema.safeParse(identities.get(id)?.key);
+    if (parsedKey.success && historicalKeys.has(parsedKey.data)) {
+      pageKeys.add(parsedKey.data);
+    }
+  }
+  addIdentities(activity.getCurrentTaskIdentities({ taskKeys: [...pageKeys] }));
+
+  // Two identities already settle that a key is shared.
+  const identityCounts = new Map<string, number>();
+  for (const identity of identities.values()) {
+    identityCounts.set(identity.key, (identityCounts.get(identity.key) ?? 0) + 1);
+  }
+
+  for (const key of pageKeys) {
+    const isKnownShared = (identityCounts.get(key) ?? 0) > 1;
+    if (!isKnownShared) {
+      addDeletedIdentities(activity.getTaskIdentities({ taskKey: key, showDeleted: true }));
     }
   }
 
   return [...identities.values()];
+}
+
+/** The valid task IDs among the given values */
+function parseTaskIds(values: Iterable<unknown>) {
+  return [...values].flatMap((value) => {
+    const parsed = activityTaskIdSchema.safeParse(value);
+    return parsed.success ? [parsed.data] : [];
+  });
 }
 
 export function presentActivities(
@@ -261,11 +306,13 @@ export function presentActivities(
     ? new Map<string, string>()
     : abbreviateActivityIds(activity.getIds());
   const hasProjectSelector = options.projectKey !== undefined || options.projectId !== undefined;
+  // Recorded names and deleted task keys come only from create and delete snapshots
   const navigationEvents = hasProjectSelector
     ? activity.getAll({
         projectKey: options.projectKey,
         projectId: options.projectId,
         showDeleted: options.showDeleted,
+        actions: ["create", "delete"],
       }).events
     : events;
   const tasks = getTaskNavigation(navigationEvents, events, options.taskKey, options.taskId);

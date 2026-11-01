@@ -281,3 +281,52 @@ test("project navigation keeps evidence from outside the page and the filters on
     }
   });
 });
+
+// ZINN-413: a page reads only its selection and the identity evidence its events need.
+test("activity pages and their text navigation read no unrelated history", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    const result = await runProcessAsync([process.execPath, "--eval", `
+      import { strict as assert } from "node:assert";
+      import { spyOn } from "bun:test";
+      import { activity, project, task } from ${JSON.stringify(CORE_PATH)};
+      import * as dbActivity from ${JSON.stringify(join(import.meta.dir, "../../core/src/db/activity.ts"))};
+      import { presentActivities } from ${JSON.stringify(join(import.meta.dir, "../src/presentation/activity-presentation.ts"))};
+      const actor = { name: "Test", email: null, kind: "human" };
+      const create = (projectId, title) => task.create({ project_id: projectId, title }, actor);
+      const oldProject = project.create({ key: "APP" }, actor);
+      create(oldProject.id, "Old one");
+      create(oldProject.id, "Old two");
+      task.delete("APP-2", actor);
+      project.delete("APP", actor);
+      // Unrelated deletions outnumber every read the selections below need.
+      const unrelatedDeletions = 60;
+      const noise = project.create({ key: "NOISE" }, actor);
+      for (let index = 0; index < unrelatedDeletions; index++) {
+        task.delete(create(noise.id, "Noise " + index).key, actor);
+      }
+      const app = project.create({ key: "APP" }, actor);
+      const one = create(app.id, "One");
+      create(app.id, "Two");
+      task.delete("APP-2", actor);
+      task.edit({ taskKey: "APP-1", title: "One edited" }, actor);
+
+      const reads = Object.keys(dbActivity)
+        .filter((name) => name.startsWith("get") && name !== "getIds")
+        .map((name) => spyOn(dbActivity, name));
+      const selections = [{}, { actions: ["delete"] }, { projectKey: "APP" }, { projectKey: "APP", showDeleted: true },
+        { projectId: oldProject.id }, { taskKey: "APP-1" }, { taskKey: "APP-1", showDeleted: true }, { taskId: one.id }];
+      for (const selection of selections) {
+        for (const read of reads) {
+          read.mockClear();
+        }
+        const { actions, ...selector } = selection;
+        const page = activity.getAll({ ...selection, limit: 3 });
+        assert.ok(page.events.length > 0);
+        presentActivities(page.events, selector);
+        const rowsRead = reads.flatMap((read) => read.mock.results).reduce((total, { value }) => total + value.length, 0);
+        assert.ok(rowsRead < unrelatedDeletions, JSON.stringify(selection) + " read " + rowsRead + " rows");
+      }
+    `], { cwd: directory, env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory } });
+    expect(result.code, result.stderr).toBe(0);
+  });
+});

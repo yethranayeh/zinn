@@ -30,7 +30,12 @@ export type ActivityTaskIdentity = {
 type ActivityTaskSelector = Pick<ActivityListInput, "taskKey" | "taskId" | "showDeleted">;
 type ActivityProjectSelector = Pick<ActivityListInput, "projectKey" | "projectId" | "showDeleted">;
 
-function resolveProjectHistory({ projectKey, projectId, showDeleted }: ActivityProjectSelector) {
+/** Finds the projects, columns and tasks whose events form the selected project history */
+function resolveProjectMembers({
+  projectKey,
+  projectId,
+  showDeleted,
+}: ActivityProjectSelector): dbActivity.ActivityMembers {
   const projectIds = new Set<string>();
   if (projectId !== undefined) {
     projectIds.add(projectId);
@@ -47,19 +52,10 @@ function resolveProjectHistory({ projectKey, projectId, showDeleted }: ActivityP
     if (currentProject != null) {
       projectIds.add(currentProject.id);
     }
-  }
 
-  const events = dbActivity.getAll();
-  if (projectKey !== undefined && showDeleted === true) {
-    for (const event of events) {
-      const isProjectSnapshot =
-        event.entity_type === "project" && (event.action === "create" || event.action === "delete");
-      if (
-        isProjectSnapshot &&
-        typeof event.changes?.key === "string" &&
-        standardizeProjectKey(event.changes.key) === projectKey
-      ) {
-        projectIds.add(event.entity_id);
+    if (showDeleted === true) {
+      for (const id of dbActivity.getProjectIdsByRecordedKey(projectKey)) {
+        projectIds.add(id);
       }
     }
   }
@@ -77,70 +73,35 @@ function resolveProjectHistory({ projectKey, projectId, showDeleted }: ActivityP
     }
   }
 
-  for (const event of events) {
-    if (event.entity_type === "project" && projectIds.has(event.entity_id)) {
-      for (const [field, ids] of [
-        ["columns", columnIds],
-        ["tasks", taskIds],
-      ] as const) {
-        const snapshots = event.changes?.[field];
-        if (Array.isArray(snapshots)) {
-          for (const snapshot of snapshots) {
-            if (typeof snapshot?.id === "string") {
-              ids.add(snapshot.id);
-            }
+  const projectEvents = dbActivity.getAll({
+    members: { projectIds: [...projectIds], columnIds: [], taskIds: [] },
+  });
+  for (const event of projectEvents) {
+    for (const [field, ids] of [
+      ["columns", columnIds],
+      ["tasks", taskIds],
+    ] as const) {
+      const snapshots = event.changes?.[field];
+      if (Array.isArray(snapshots)) {
+        for (const snapshot of snapshots) {
+          if (typeof snapshot?.id === "string") {
+            ids.add(snapshot.id);
           }
         }
       }
     }
+  }
 
-    const recordedProject = event.changes?.project;
-    const recordedProjectId =
-      recordedProject != null && typeof recordedProject === "object" && "id" in recordedProject
-        ? recordedProject.id
-        : undefined;
-
-    if (
-      event.entity_type === "column" &&
-      event.action === "create" &&
-      typeof recordedProjectId === "string" &&
-      projectIds.has(recordedProjectId)
-    ) {
-      columnIds.add(event.entity_id);
-    }
+  for (const id of dbActivity.getColumnIdsCreatedInProjects([...projectIds])) {
+    columnIds.add(id);
   }
 
   // Column UUIDs establish ownership even when a task was deleted before its project.
-  for (const event of events) {
-    if (event.entity_type !== "task") {
-      continue;
-    }
-
-    const recordedColumn = event.changes?.column;
-    const columns =
-      event.action === "move" && Array.isArray(recordedColumn)
-        ? recordedColumn
-        : event.action === "create"
-          ? [recordedColumn]
-          : [];
-
-    if (columns.some((entry) => typeof entry?.id === "string" && columnIds.has(entry.id))) {
-      taskIds.add(event.entity_id);
-    }
+  for (const id of dbActivity.getTaskIdsRecordedInColumns([...columnIds])) {
+    taskIds.add(id);
   }
 
-  return events.filter((event) => {
-    switch (event.entity_type) {
-      case "project":
-        return projectIds.has(event.entity_id);
-      case "column":
-        return columnIds.has(event.entity_id);
-      case "task":
-        return taskIds.has(event.entity_id);
-      default:
-        return false;
-    }
-  });
+  return { projectIds: [...projectIds], columnIds: [...columnIds], taskIds: [...taskIds] };
 }
 
 function resolveTaskHistory({ taskKey, taskId, showDeleted }: ActivityTaskSelector) {
@@ -190,7 +151,10 @@ function resolveTaskHistory({ taskKey, taskId, showDeleted }: ActivityTaskSelect
     return true;
   }
 
-  for (const event of dbActivity.getTaskDeletionEvents()) {
+  const recordedDeletions = dbActivity.getTaskDeletionEvents(
+    taskId === undefined ? { taskKey } : { taskId },
+  );
+  for (const event of recordedDeletions) {
     if (event.entity_type === "task") {
       addSnapshot(event.entity_id, event.changes?.key, event.changes?.title);
     } else if (Array.isArray(event.changes?.tasks)) {
@@ -308,20 +272,7 @@ export const activity = {
     let fetchCandidates = (input: dbActivity.ActivityQuery) => dbActivity.getAll(input);
 
     if (props.projectKey !== undefined || props.projectId !== undefined) {
-      const projectEvents = resolveProjectHistory(props);
-      query.eventIds = projectEvents.map((event) => event.id);
-      const hasCandidateFilter = [
-        query.sessionId,
-        query.threadId,
-        query.since,
-        query.until,
-        query.actions,
-        query.before,
-        props.limit,
-      ].some((value) => value !== undefined);
-      if (!hasCandidateFilter) {
-        fetchCandidates = () => projectEvents;
-      }
+      query.members = resolveProjectMembers(props);
     } else if (props.taskKey !== undefined || props.taskId !== undefined) {
       const { identities, projectDeletionIds } = resolveTaskHistory(props);
       const taskIds =
