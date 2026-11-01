@@ -131,10 +131,12 @@ export function abbreviateActivityIds(ids: Array<string>) {
 }
 
 function getTaskNavigation(
-  navigationEvents: Array<Activity>,
   pageEvents: Array<Activity>,
-  taskKey?: string,
-  taskId?: string,
+  { navigationEvents, taskKey, taskId }: {
+    navigationEvents?: Array<Activity>;
+    taskKey?: string;
+    taskId?: string;
+  },
 ) {
   if (taskId !== undefined) {
     return activity.getTaskIdentities({ taskId });
@@ -144,15 +146,17 @@ function getTaskNavigation(
     return activity.getTaskIdentities({ taskKey, showDeleted: true });
   }
 
-  const historicalKeys = new Set<string>();
+  // A project selection counts only keys its own deletions recorded. Other pages check every key.
+  const selectionKeys = navigationEvents === undefined ? undefined : new Set<string>();
+  const deletionEvents = navigationEvents ?? pageEvents;
   function addKey(key: unknown) {
     const parsed = activityTaskKeySchema.safeParse(key);
     if (parsed.success) {
-      historicalKeys.add(parsed.data);
+      selectionKeys?.add(parsed.data);
     }
   }
 
-  for (const event of navigationEvents) {
+  for (const event of navigationEvents ?? []) {
     if (event.action !== "delete") {
       continue;
     }
@@ -168,8 +172,9 @@ function getTaskNavigation(
     }
   }
 
+  const isHistoricalKey = (key: string) => selectionKeys?.has(key) ?? true;
   const needsTaskIdentities =
-    historicalKeys.size > 0 || pageEvents.some((event) => event.entity_type === "task");
+    (selectionKeys?.size ?? 0) > 0 || pageEvents.some((event) => event.entity_type === "task");
   if (!needsTaskIdentities) {
     return [];
   }
@@ -182,11 +187,11 @@ function getTaskNavigation(
       typeof key === "string" &&
       typeof title === "string" &&
       parsedKey.success &&
-      historicalKeys.has(parsedKey.data);
+      isHistoricalKey(parsedKey.data);
     return isMatchingSnapshot ? [{ id, key, title, status: "deleted" }] : [];
   }
 
-  const snapshots = navigationEvents.flatMap((event) => {
+  const snapshots = deletionEvents.flatMap((event) => {
     if (event.action !== "delete") {
       return [];
     }
@@ -242,22 +247,22 @@ function getTaskNavigation(
 
   addIdentities(activity.getCurrentTaskIdentities({ taskIds: parseTaskIds(referencedIds) }));
   addIdentities(snapshots);
-  if (historicalKeys.size === 0) {
+  if (selectionKeys?.size === 0) {
     return [...identities.values()];
   }
 
-  // A page task deleted outside the navigation events can still hold a historical key.
-  for (const id of parseTaskIds(pageTaskIds)) {
-    if (!identities.has(id)) {
-      addDeletedIdentities(activity.getTaskIdentities({ taskId: id }));
-    }
-  }
+  // A page task deleted outside the deletion events above can still hold a historical key.
+  addDeletedIdentities(
+    activity.getDeletedTaskIdentities({
+      taskIds: parseTaskIds(pageTaskIds).filter((id) => !identities.has(id)),
+    }),
+  );
 
   // A historical key on the page needs every identity in the database that holds it
   const pageKeys = new Set<string>();
   for (const id of pageTaskIds) {
     const parsedKey = activityTaskKeySchema.safeParse(identities.get(id)?.key);
-    if (parsedKey.success && historicalKeys.has(parsedKey.data)) {
+    if (parsedKey.success && isHistoricalKey(parsedKey.data)) {
       pageKeys.add(parsedKey.data);
     }
   }
@@ -269,12 +274,11 @@ function getTaskNavigation(
     identityCounts.set(identity.key, (identityCounts.get(identity.key) ?? 0) + 1);
   }
 
-  for (const key of pageKeys) {
-    const isKnownShared = (identityCounts.get(key) ?? 0) > 1;
-    if (!isKnownShared) {
-      addDeletedIdentities(activity.getTaskIdentities({ taskKey: key, showDeleted: true }));
-    }
-  }
+  addDeletedIdentities(
+    activity.getDeletedTaskIdentities({
+      taskKeys: [...pageKeys].filter((key) => (identityCounts.get(key) ?? 0) < 2),
+    }),
+  );
 
   return [...identities.values()];
 }
@@ -296,6 +300,8 @@ export function presentActivities(
     taskKey?: string;
     taskId?: string;
     showsFullIds?: boolean;
+    /** Only deletions among the events mark a reused key, as in one current task's history */
+    keysFromEventsOnly?: boolean;
   } = {},
 ): Array<PresentedActivity> {
   if (events.length === 0) {
@@ -315,7 +321,11 @@ export function presentActivities(
         actions: ["create", "delete"],
       }).events
     : events;
-  const tasks = getTaskNavigation(navigationEvents, events, options.taskKey, options.taskId);
+  const tasks = getTaskNavigation(events, {
+    navigationEvents: hasProjectSelector || options.keysFromEventsOnly ? navigationEvents : undefined,
+    taskKey: options.taskKey,
+    taskId: options.taskId,
+  });
   const tasksById = new Map(tasks.map((identity) => [identity.id, identity]));
   const taskIdsByKey = new Map<string, number>();
 

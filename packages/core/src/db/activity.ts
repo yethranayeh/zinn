@@ -154,6 +154,22 @@ export function getAll(input: ActivityQuery = {}): Array<Activity> {
     .map(parseActivity);
 }
 
+/**
+ * A value that changes whenever this connection writes or another connection commits a write,
+ *  from SQLite's `total_changes()` and `PRAGMA data_version`
+ */
+export function getWriteMarker() {
+  const connection = getDb();
+  const { changes } = connection
+    .query<{ changes: number }, []>("SELECT total_changes() AS changes")
+    .get()!;
+  const { data_version } = connection
+    .query<{ data_version: number }, []>("PRAGMA data_version")
+    .get()!;
+
+  return `${changes}:${data_version}`;
+}
+
 export function getIds(): Array<string> {
   return getDb()
     .query<{ id: string }>(`SELECT id FROM ${DB_TABLE.activity}`)
@@ -173,25 +189,28 @@ export function getByIdPrefix(hexPrefix: string): Array<Activity> {
 }
 
 /**
- * Returns task deletions, and project deletions with a task snapshot, that recorded the task ID
- *  or the task key in any ASCII case, with newest being served first
+ * Returns task deletions, and project deletions with a task snapshot that recorded one of the
+ *  task IDs or one of the task keys in any ASCII case, with newest being served first
  */
-export function getTaskDeletionEvents(match: { taskId?: string; taskKey?: string }) {
+export type TaskDeletionMatch = { taskIds?: Array<string>; taskKeys?: Array<string> };
+
+export function getTaskDeletionEvents(match: Required<TaskDeletionMatch>) {
   return getDb()
-    .query<StoredActivity, { $taskId: string | null; $taskKey: string | null }>(
+    .query<StoredActivity, { $taskIds: string; $taskKeys: string }>(
       `SELECT * FROM ${DB_TABLE.activity}
     WHERE action = 'delete' AND (
       (entity_type = 'task'
-        AND (entity_id = $taskId OR UPPER(json_extract(changes, '$.key')) = $taskKey))
+        AND (entity_id IN (SELECT value FROM json_each($taskIds))
+          OR UPPER(json_extract(changes, '$.key')) IN (SELECT value FROM json_each($taskKeys))))
       OR (entity_type = 'project' AND EXISTS (
         SELECT 1 FROM json_each(changes, '$.tasks') AS snapshot
         WHERE CASE WHEN snapshot.type = 'object'
-          THEN json_extract(snapshot.value, '$.id') = $taskId
-            OR UPPER(json_extract(snapshot.value, '$.key')) = $taskKey
+          THEN json_extract(snapshot.value, '$.id') IN (SELECT value FROM json_each($taskIds))
+            OR UPPER(json_extract(snapshot.value, '$.key')) IN (SELECT value FROM json_each($taskKeys))
         END)))
     ORDER BY created_at DESC, id DESC`,
     )
-    .all({ $taskId: match.taskId ?? null, $taskKey: match.taskKey ?? null })
+    .all({ $taskIds: JSON.stringify(match.taskIds), $taskKeys: JSON.stringify(match.taskKeys) })
     .map(parseActivity);
 }
 

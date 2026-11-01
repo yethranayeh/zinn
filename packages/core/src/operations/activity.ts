@@ -1,20 +1,21 @@
 import type {
   ActivityChangedField,
-  ActivityCurrentTaskIdentitiesInput,
   ActivityListInput,
+  ActivityTaskIdentitiesInput,
 } from "../schemas/activity.js";
 import type { Activity } from "../types.js";
 
 import { CoreError } from "../errors.js";
 import {
-  activityCurrentTaskIdentitiesSchema,
   activityIdSchema,
   activityListSchema,
+  activityTaskIdentitiesSchema,
 } from "../schemas/activity.js";
 import { parseTaskKey, validateTaskInput } from "../schemas/task.js";
 import { timestampSchema } from "../schemas/timestamp.js";
 import { standardizeName, standardizeProjectKey } from "../lib.js";
 import { attachTaskKey, findTaskByExactKey, requireSingleIdMatch } from "./shared.js";
+import { getDb } from "../db.js";
 import * as dbActivity from "../db/activity.js";
 import * as dbTask from "../db/task.js";
 import * as dbProject from "../db/project.js";
@@ -29,6 +30,42 @@ export type ActivityTaskIdentity = {
 
 type ActivityTaskSelector = Pick<ActivityListInput, "taskKey" | "taskId" | "showDeleted">;
 type ActivityProjectSelector = Pick<ActivityListInput, "projectKey" | "projectId" | "showDeleted">;
+
+/** The last resolved project members, valid while the connection and its write marker stay the same */
+let lastProjectMembers:
+  | {
+      connection: ReturnType<typeof getDb>;
+      selector: string;
+      writeMarker: string;
+      members: dbActivity.ActivityMembers;
+    }
+  | undefined;
+
+/** Resolves project members once for repeated reads of the same selection, such as a page and its navigation */
+function getProjectMembers(selection: ActivityProjectSelector) {
+  const connection = getDb();
+  const selector = JSON.stringify([
+    selection.projectKey,
+    selection.projectId,
+    selection.showDeleted === true,
+  ]);
+  const writeMarker = dbActivity.getWriteMarker();
+  const isReusable =
+    lastProjectMembers?.connection === connection &&
+    lastProjectMembers.selector === selector &&
+    lastProjectMembers.writeMarker === writeMarker;
+
+  if (!isReusable) {
+    lastProjectMembers = {
+      connection,
+      selector,
+      writeMarker,
+      members: resolveProjectMembers(selection),
+    };
+  }
+
+  return lastProjectMembers!.members;
+}
 
 /** Finds the projects, columns and tasks whose events form the selected project history */
 function resolveProjectMembers({
@@ -104,6 +141,41 @@ function resolveProjectMembers({
   return { projectIds: [...projectIds], columnIds: [...columnIds], taskIds: [...taskIds] };
 }
 
+/** Deleted task snapshots recording one of the IDs or keys, newest first, with their deletion events */
+function getDeletedTaskSnapshots({ taskIds = [], taskKeys = [] }: dbActivity.TaskDeletionMatch) {
+  const ids = new Set(taskIds);
+  const keys = new Set(taskKeys);
+
+  return dbActivity.getTaskDeletionEvents({ taskIds, taskKeys }).flatMap((event) => {
+    const recorded: Array<Record<string, unknown>> =
+      event.entity_type === "task"
+        ? [{ id: event.entity_id, key: event.changes?.key, title: event.changes?.title }]
+        : Array.isArray(event.changes?.tasks)
+          ? event.changes.tasks.filter(isRecord)
+          : [];
+
+    return recorded.flatMap(({ id, key, title }) => {
+      const isMatchingSnapshot =
+        typeof id === "string" &&
+        typeof key === "string" &&
+        typeof title === "string" &&
+        (ids.has(id) || keys.has(standardizeProjectKey(key)));
+
+      return isMatchingSnapshot
+        ? [{ event, identity: { id, key, title, status: "deleted" as const } }]
+        : [];
+    });
+  });
+}
+
+/** Task keys in the stored form, such as APP-1 for app-1 */
+function toStoredTaskKeys(taskKeys: Array<string>) {
+  return taskKeys.map((key) => {
+    const { projectKey, taskNumber } = parseTaskKey(key)!;
+    return `${projectKey}-${taskNumber}`;
+  });
+}
+
 function resolveTaskHistory({ taskKey, taskId, showDeleted }: ActivityTaskSelector) {
   const identities = new Map<string, ActivityTaskIdentity>();
   const projectDeletionIds: Array<string> = [];
@@ -134,35 +206,15 @@ function resolveTaskHistory({ taskKey, taskId, showDeleted }: ActivityTaskSelect
     return { identities: [...identities.values()], projectDeletionIds };
   }
 
-  function addSnapshot(id: unknown, key: unknown, title: unknown) {
-    const isMatchingSnapshot =
-      typeof id === "string" &&
-      typeof key === "string" &&
-      typeof title === "string" &&
-      (taskId === undefined ? standardizeProjectKey(key) === taskKey : id === taskId);
-
-    if (!isMatchingSnapshot) {
-      return false;
-    }
-
-    if (!identities.has(id)) {
-      identities.set(id, { id, key, title, status: "deleted" });
-    }
-    return true;
-  }
-
-  const recordedDeletions = dbActivity.getTaskDeletionEvents(
-    taskId === undefined ? { taskKey } : { taskId },
+  const snapshots = getDeletedTaskSnapshots(
+    taskId === undefined ? { taskKeys: [taskKey!] } : { taskIds: [taskId] },
   );
-  for (const event of recordedDeletions) {
-    if (event.entity_type === "task") {
-      addSnapshot(event.entity_id, event.changes?.key, event.changes?.title);
-    } else if (Array.isArray(event.changes?.tasks)) {
-      for (const snapshot of event.changes.tasks) {
-        if (snapshot != null && addSnapshot(snapshot.id, snapshot.key, snapshot.title)) {
-          projectDeletionIds.push(event.id);
-        }
-      }
+  for (const { event, identity } of snapshots) {
+    if (!identities.has(identity.id)) {
+      identities.set(identity.id, identity);
+    }
+    if (event.entity_type === "project") {
+      projectDeletionIds.push(event.id);
     }
   }
 
@@ -274,7 +326,7 @@ export const activity = {
     let fetchCandidates = (input: dbActivity.ActivityQuery) => dbActivity.getAll(input);
 
     if (props.projectKey !== undefined || props.projectId !== undefined) {
-      query.members = resolveProjectMembers(props);
+      query.members = getProjectMembers(props);
     } else if (props.taskKey !== undefined || props.taskId !== undefined) {
       const { identities, projectDeletionIds } = resolveTaskHistory(props);
       const taskIds =
@@ -362,15 +414,10 @@ export const activity = {
     return resolveTaskHistory(props).identities;
   },
   /** Existing tasks, active and archived, matching any given ID or key. Reads no history. */
-  getCurrentTaskIdentities: (
-    input: ActivityCurrentTaskIdentitiesInput,
-  ): Array<ActivityTaskIdentity> => {
-    const props = validateTaskInput(activityCurrentTaskIdentitiesSchema, input);
+  getCurrentTaskIdentities: (input: ActivityTaskIdentitiesInput): Array<ActivityTaskIdentity> => {
+    const props = validateTaskInput(activityTaskIdentitiesSchema, input);
     const taskIds = props.taskIds ?? [];
-    const keys = (props.taskKeys ?? []).map((key) => {
-      const { projectKey, taskNumber } = parseTaskKey(key)!;
-      return `${projectKey}-${taskNumber}`;
-    });
+    const keys = toStoredTaskKeys(props.taskKeys ?? []);
     const rows = [
       ...(taskIds.length === 0 ? [] : dbTask.getAllByIds(taskIds)),
       ...(keys.length === 0 ? [] : dbTask.getAllByKeys(keys)),
@@ -385,6 +432,24 @@ export const activity = {
         title: item.title,
         status: item.archived_at == null ? "active" : "archived",
       });
+    }
+
+    return [...identities.values()];
+  },
+  /** Deleted tasks matching any given ID or key, each with its newest recorded snapshot. */
+  getDeletedTaskIdentities: (input: ActivityTaskIdentitiesInput): Array<ActivityTaskIdentity> => {
+    const props = validateTaskInput(activityTaskIdentitiesSchema, input);
+    const taskIds = props.taskIds ?? [];
+    const taskKeys = toStoredTaskKeys(props.taskKeys ?? []);
+    if (taskIds.length === 0 && taskKeys.length === 0) {
+      return [];
+    }
+
+    const identities = new Map<string, ActivityTaskIdentity>();
+    for (const { identity } of getDeletedTaskSnapshots({ taskIds, taskKeys })) {
+      if (!identities.has(identity.id)) {
+        identities.set(identity.id, identity);
+      }
     }
 
     return [...identities.values()];

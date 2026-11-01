@@ -355,6 +355,39 @@ test("current task identities match IDs and keys of active and archived tasks wi
   });
 });
 
+test("deleted task identities match IDs and keys of task and project deletions in one history read", () => {
+  runActivityCheck(({ human, app }) => {
+    const removed = task.create({ project_id: app.id, title: "Removed with project" }, human);
+    const deleted = task.create({ project_id: app.id, title: "Deleted" }, human);
+    task.edit({ taskKey: deleted.key, title: "Deleted renamed" }, human);
+    task.delete(deleted.key, human);
+    project.delete("APP", human);
+    const reused = project.create({ key: "APP" }, human);
+    const current = task.create({ project_id: reused.id, title: "Current" }, human);
+    const reusedDeleted = task.create({ project_id: reused.id, title: "Reused deleted" }, human);
+    task.delete(reusedDeleted.key, human);
+    const identity = (id: string, key: string, title: string) => ({ id, key, title, status: "deleted" });
+    const byId = (left: { id: string }, right: { id: string }) => left.id.localeCompare(right.id);
+    const deletionReads = spyOn(dbActivity, "getTaskDeletionEvents");
+
+    try {
+      assert.deepEqual(activity.getDeletedTaskIdentities({ taskIds: [removed.id, current.id], taskKeys: ["app-2", "NONE-1"] }).sort(byId),
+        [identity(removed.id, removed.key, removed.title), identity(deleted.id, deleted.key, "Deleted renamed"),
+          identity(reusedDeleted.id, reusedDeleted.key, reusedDeleted.title)].sort(byId));
+      assert.equal(deletionReads.mock.calls.length, 1);
+      assert.deepEqual(activity.getDeletedTaskIdentities({ taskKeys: [current.key] }), [identity(removed.id, removed.key, removed.title)]);
+      deletionReads.mockClear();
+      assert.deepEqual(activity.getDeletedTaskIdentities({}), []);
+      assert.deepEqual(activity.getDeletedTaskIdentities({ taskIds: [], taskKeys: [] }), []);
+      assert.equal(deletionReads.mock.calls.length, 0);
+    } finally {
+      deletionReads.mockRestore();
+    }
+    assert.throws(() => activity.getDeletedTaskIdentities({ taskKeys: ["APP-0"] }), (error) => error instanceof CoreError && error.kind === "input");
+    assert.throws(() => activity.getDeletedTaskIdentities({ taskIds: ["not-a-uuid"] }), (error) => error instanceof CoreError && error.kind === "input");
+  });
+});
+
 test("explicit selectors separate reused task identities and preserve original project deletions", () => {
   runActivityCheck(({ human, agent, app }) => {
     const runActor = { ...agent, sessionId: "session/one", threadId: "thread/one" };

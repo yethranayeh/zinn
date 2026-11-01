@@ -171,6 +171,8 @@ Several filters for the same field match any of them, including a value-free fil
 
 `activity.getCurrentTaskIdentities({ taskIds, taskKeys })` returns the same identity for each existing task, active or archived, that matches one of the given full task IDs or task keys. Both arrays are optional. IDs and keys that match no existing task, including those of deleted tasks, are omitted.
 
+`activity.getDeletedTaskIdentities({ taskIds, taskKeys })` returns the identity of each deleted task that matches one of the given full task IDs or task keys, read from task deletions and project deletions in one history read. The status is `deleted` and the key and title are those recorded at deletion. Both arrays are optional. Existing tasks are omitted.
+
 ## SQLite errors
 
 SQLite failures throw `SqliteError` on both Node.js and Bun. Its `code` is a symbolic name, `errcode` is the numeric extended result code, and `cause` retains the original driver error.

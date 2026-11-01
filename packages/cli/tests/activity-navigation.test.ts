@@ -145,7 +145,8 @@ test("project pages add the task ID line only for keys a deletion in the selecti
   });
 });
 
-test("global pages take reused-key and deleted-task evidence only from the page", async () => {
+// ZINN-478: global pages check reused keys and deleted tasks across the database, so --limit does not change a row.
+test("global pages take reused-key and deleted-task evidence from the whole database", async () => {
   await withNavigationFixture(async ({ ids, rows }) => {
     const all = await rows();
     for (const row of rowsFor(all, ids.new1)) {
@@ -159,12 +160,28 @@ test("global pages take reused-key and deleted-task evidence only from the page"
     expect(rest).toHaveLength(0);
     expect(newest!.event.entity_id).toBe(ids.new1);
     expect(newest!.identity).toContain("APP-1");
-    expect(showsTaskId(newest!)).toBe(false);
+    expect(showsTaskId(newest!)).toBe(true);
 
     const [deletedEdit] = await rows("--session", "deleted-edit");
     expect(deletedEdit!.event.entity_id).toBe(ids.new3);
-    expect(deletedEdit!.identity).not.toContain("APP-3");
+    expect(deletedEdit!.identity).toContain("APP-3");
     expect(isDeleted(deletedEdit!)).toBe(true);
+    expect(showsTaskId(deletedEdit!)).toBe(true);
+
+    // Every page of a global walk shows each event as the unlimited list does, apart from column padding.
+    const normalize = (row: Row) => [row.identity, ...row.continuation].map((line) => line.replace(/\s+/g, " ").trim());
+    const expected = new Map(all.map((row) => [row.event.id, normalize(row)]));
+    const walked: Array<string> = [];
+    let cursor: Array<string> = [];
+    do {
+      const page = await rows("--limit", "3", ...cursor);
+      for (const row of page) {
+        expect(normalize(row)).toEqual(expected.get(row.event.id)!);
+        walked.push(row.event.id);
+      }
+      cursor = page.length === 3 ? ["--starting-after", page.at(-1)!.event.id] : [];
+    } while (cursor.length > 0);
+    expect(walked).toEqual([...expected.keys()]);
   });
 });
 
@@ -261,7 +278,7 @@ test("project navigation keeps evidence from outside the page and the filters on
     expect(showsTaskId(continued!)).toBe(true);
     const [globalContinued] = await rows("--starting-after", deletion!.id, "--limit", "1");
     expect(globalContinued!.event.id).toBe(filtered!.event.id);
-    expect(globalContinued!.identity).not.toContain("APP-3");
+    expect(globalContinued!.identity).toContain("APP-3");
 
     // Every page of a project walk shows each event as the unlimited list does, apart from column padding.
     const normalize = (row: Row) => [row.identity, ...row.continuation].map((line) => line.replace(/\s+/g, " ").trim());
@@ -326,6 +343,68 @@ test("activity pages and their text navigation read no unrelated history", async
         const rowsRead = reads.flatMap((read) => read.mock.results).reduce((total, { value }) => total + value.length, 0);
         assert.ok(rowsRead < unrelatedDeletions, JSON.stringify(selection) + " read " + rowsRead + " rows");
       }
+    `], { cwd: directory, env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory } });
+    expect(result.code, result.stderr).toBe(0);
+  });
+});
+
+// ZINN-478: a page reads deleted task identities for all its keys at once.
+test("a global deletion page reads task deletions once for all its keys", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    const result = await runProcessAsync([process.execPath, "--eval", `
+      import { strict as assert } from "node:assert";
+      import { spyOn } from "bun:test";
+      import { activity, project, task } from ${JSON.stringify(CORE_PATH)};
+      import * as dbActivity from ${JSON.stringify(join(import.meta.dir, "../../core/src/db/activity.ts"))};
+      import { presentActivities } from ${JSON.stringify(join(import.meta.dir, "../src/presentation/activity-presentation.ts"))};
+      const actor = { name: "Test", email: null, kind: "human" };
+      const old = project.create({ key: "APP" }, actor);
+      task.create({ project_id: old.id, title: "Old one" }, actor);
+      project.delete("APP", actor);
+      const app = project.create({ key: "APP" }, actor);
+      const deletedTasks = 10;
+      for (let index = 0; index < deletedTasks; index++) {
+        task.delete(task.create({ project_id: app.id, title: "Deleted " + index }, actor).key, actor);
+      }
+
+      const deletionReads = spyOn(dbActivity, "getTaskDeletionEvents");
+      const page = activity.getAll({ actions: ["delete"], limit: deletedTasks }).events;
+      assert.equal(page.length, deletedTasks);
+      const presented = presentActivities(page);
+      assert.equal(deletionReads.mock.calls.length, 1);
+      assert.deepEqual(presented.filter((entry) => entry.navigation.distinguishesTaskId).map((entry) => entry.navigation.name), ["APP-1"]);
+    `], { cwd: directory, env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory } });
+    expect(result.code, result.stderr).toBe(0);
+  });
+});
+
+// ZINN-478: a project page and its navigation share one membership read until the database changes.
+test("a project page resolves membership once and again after any write", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    const result = await runProcessAsync([process.execPath, "--eval", `
+      import { strict as assert } from "node:assert";
+      import { execFileSync } from "node:child_process";
+      import { spyOn } from "bun:test";
+      import { activity, project, task } from ${JSON.stringify(CORE_PATH)};
+      import * as dbActivity from ${JSON.stringify(join(import.meta.dir, "../../core/src/db/activity.ts"))};
+      import { presentActivities } from ${JSON.stringify(join(import.meta.dir, "../src/presentation/activity-presentation.ts"))};
+      const actor = { name: "Test", email: null, kind: "human" };
+      const app = project.create({ key: "APP" }, actor);
+      task.create({ project_id: app.id, title: "One" }, actor);
+
+      const membershipReads = spyOn(dbActivity, "getTaskIdsRecordedInColumns");
+      const page = () => {
+        membershipReads.mockClear();
+        const events = activity.getAll({ projectKey: "APP", limit: 20 }).events;
+        presentActivities(events, { projectKey: "APP" });
+        assert.equal(membershipReads.mock.calls.length, 1);
+        return events;
+      };
+      page();
+      task.create({ project_id: app.id, title: "Two" }, actor);
+      assert.ok(page().some((event) => event.changes?.title === "Two"));
+      execFileSync(process.execPath, [${JSON.stringify(join(import.meta.dir, "../index.ts"))}, "task", "create", "APP", "--title", "Three"], { env: process.env });
+      assert.ok(page().some((event) => event.changes?.title === "Three"));
     `], { cwd: directory, env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory } });
     expect(result.code, result.stderr).toBe(0);
   });
