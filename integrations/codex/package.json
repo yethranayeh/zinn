@@ -11,7 +11,7 @@
 	"scripts": {
 		"build": "bun build.ts",
 		"package": "bun package.ts",
-		"test": "bun run --cwd ../../packages/cli build && bun test --timeout 30000 tests"
+		"test": "bun run --cwd ../../packages/cli build && bun run --cwd ../.. test ./integrations/codex/tests"
 	},
 	"devDependencies": {
 		"@modelcontextprotocol/sdk": "1.32.1",
