@@ -36,6 +36,8 @@ zinn task move DEMO-1 'In Progress'
 zinn task list DEMO --json
 \`\`\`
 
+Give a task a deadline with \`--due\`, then sort by it with \`task list --sort due\` or select a range with \`--due-since\` and \`--due-until\`. \`task move\`, \`task archive\` and \`task delete\` take several tasks at once. \`--description-file\` and \`--text-file\` read text from a file or stdin, and \`--limit\` with \`--starting-after\` continues a long list.
+
 ## Work alongside your agents
 
 Zinn doesn't stop at who changed a task. It takes you back into the conversation that made the change.

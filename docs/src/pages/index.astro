@@ -84,10 +84,18 @@ const workflowCommands = [
 		</Prose>
 		<Prose>
 			<TerminalCommands
-				class='workflow-sequence mb-0!'
+				class='workflow-sequence'
 				label='Project workflow commands, horizontally scrollable'
 				commands={workflowCommands}
 			/>
+			<p>
+				Give a task a deadline with <code>--due</code>, then sort by it with <code>task list --sort due</code> or select a
+				range with <code>--due-since</code> and <code>--due-until</code>. <code>task move</code>, <code
+					>task archive</code
+				> and <code>task delete</code> take several tasks at once. <code>--description-file</code> and <code
+					>--text-file</code
+				> read text from a file or stdin, and <code>--limit</code> with <code>--starting-after</code> continues a long list.
+			</p>
 		</Prose>
 	</ReadingSection>
 

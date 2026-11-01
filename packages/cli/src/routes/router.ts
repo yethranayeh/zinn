@@ -7,6 +7,7 @@ import { getCommandAliases } from "./aliases.js";
 import { classifyFailure, CliError } from "../errors.js";
 import { quotedColumnHint } from "../column-hint.js";
 import { formatCell } from "../presentation/row-layout.js";
+import { formatOverview } from "../overview.js";
 
 import {
   boundParserMessage,
@@ -118,6 +119,9 @@ Options:
 
 Commands:
 ${formatCommands(parsedRoutes, "")}
+
+What Zinn can do:
+${formatOverview()}
 
 Run zinn <namespace> --help or zinn <command> --help for more information.
 --help shows help for the command words before it and runs nothing. The rest of the line is ignored.
