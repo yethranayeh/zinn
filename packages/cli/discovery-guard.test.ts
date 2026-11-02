@@ -22,7 +22,7 @@ const timeoutMs = 5000;
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 for (const runtime of runtimes) {
-  test(`${runtime.name} discovery check rejects an injected named settings read`, () => {
+  test(`${runtime.name} discovery check rejects an injected named settings read`, async () => {
     const directory = join(root, runtime.name);
     const fixture = join(directory, "package");
     mkdirSync(fixture, { recursive: true });
@@ -33,13 +33,13 @@ for (const runtime of runtimes) {
       readFileSync(new URL("../zinn.local.json", import.meta.url), "utf8");
       console.log(${JSON.stringify(JSON.stringify(generateCapabilities()))});
     `);
-    expect(() => checkCapabilityDiscovery({
+    await expect(checkCapabilityDiscovery({
       runtime: runtime.path, entryPoint, packageDirectory: fixture,
       directory, env, timeoutMs,
-    })).toThrow("Forbidden discovery access");
+    })).rejects.toThrow("Forbidden discovery access");
   });
 
-  test(`${runtime.name} guard blocks SQLite, named reads, writes outside the store and child processes`, () => {
+  test(`${runtime.name} guard blocks SQLite, named reads, writes outside the store and child processes`, async () => {
     const directory = join(root, `${runtime.name}-apis`);
     const outsideStore = join(directory, "outside-store");
     mkdirSync(outsideStore, { recursive: true });
@@ -71,7 +71,7 @@ for (const runtime of runtimes) {
     const before = inventory(outsideStore);
     for (const operation of operations) {
       writeFileSync(fixture, operation);
-      const result = runCli([fixture], {
+      const result = await runCli([fixture], {
         runtime: runtime.path, cliPath: guard, cwd: directory,
         env: { ...env, ZINN_DIR: join(directory, "store") }, timeoutMs,
       });

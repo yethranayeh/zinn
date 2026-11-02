@@ -5,6 +5,9 @@ import { join } from "node:path";
 import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import { createSchema } from "../core/src/migrations/runner";
 import { openDatabase } from "../core/src/sqlite/bun";
+import { runProcessAsync } from "./testing";
+
+export { runProcessAsync } from "./testing";
 
 const PREFIX = join(tmpdir(), "zinntest-");
 export const CLI_PATH = join(import.meta.dir, "index.ts");
@@ -25,27 +28,6 @@ export async function withIsolatedZinnDir(run: (testDir: string) => Promise<void
   } finally {
     removeIsolatedZinnDir(testDir);
   }
-}
-
-export async function runProcessAsync(
-  command: Array<string>,
-  options: { env: Record<string, string | undefined>; cwd: string; stdin?: Uint8Array },
-) {
-  const proc = Bun.spawn(command, {
-    env: options.env,
-    cwd: options.cwd,
-    stdin: options.stdin,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
-  const [code, stdout, stderr] = await Promise.all([
-    proc.exited,
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-
-  return { stdout, stderr, code };
 }
 
 export function runZinn(

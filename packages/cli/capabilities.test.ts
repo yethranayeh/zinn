@@ -19,8 +19,8 @@ const manifest = generateCapabilities();
 const env = { ...TEST_ENVIRONMENT, ZINN_DEBUG: undefined, DEBUG: undefined, FORCE_COLOR: "0", BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0" };
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
-test("the emitted contract covers every route and finite result, including itself", () => {
-  const actual = checkCapabilityDiscovery({
+test("the emitted contract covers every route and finite result, including itself", async () => {
+  const actual = await checkCapabilityDiscovery({
     runtime: process.execPath, entryPoint, packageDirectory,
     directory: join(root, "discovery"), env, expected: manifest,
   });
@@ -66,7 +66,7 @@ test("the emitted contract covers every route and finite result, including itsel
   expect(validate(missing)).toBe(false);
 }, 15000);
 
-test("discovery is deterministic across settings, stores, cwd, locale and debug environments", () => {
+test("discovery is deterministic across settings, stores, cwd, locale and debug environments", async () => {
   const directory = join(root, "environments");
   const home = join(directory, "home");
   const codebase = join(directory, "codebase");
@@ -83,7 +83,7 @@ test("discovery is deterministic across settings, stores, cwd, locale and debug 
   try {
     const before = inventory(directory);
     for (const [index, store] of [undefined, join(directory, "missing"), invalidStore, blocked, "/dev/null/unavailable"].entries()) {
-      const result = runCli(["--json", "capabilities"], {
+      const result = await runCli(["--json", "capabilities"], {
         cwd: index % 2 === 0 ? codebase : home,
         env: { ...env, HOME: home, ZINN_DIR: store, LANG: index % 2 === 0 ? "tr_TR.UTF-8" : "C", LC_ALL: index % 2 === 0 ? "tr_TR.UTF-8" : "C", ZINN_DEBUG: "1", DEBUG: "1", AI_AGENT: `user-${index}`, FORCE_COLOR: "1" },
       });
@@ -128,38 +128,38 @@ test.each(parseRoutes(routes).filter((route) => route.effects.storage === "none"
   expect(JSON.parse(normalCommand.stderr.toString()).error.code).toBe("internal");
 });
 
-test("a manifest consumer constructs argv and validates list, history, cardinality and order forms", () => {
+test("a manifest consumer constructs argv and validates list, history, cardinality and order forms", async () => {
   const directory = join(root, "consumer");
   mkdirSync(directory);
   mkdirSync(join(directory, "store"));
-  const result = runCli(["capabilities", "--json"], { cwd: directory, env: { ...env, ZINN_DIR: join(directory, "store") } });
+  const result = await runCli(["capabilities", "--json"], { cwd: directory, env: { ...env, ZINN_DIR: join(directory, "store") } });
   expect(result.code, result.stderr).toBe(0);
-  checkCapabilityConsumer(JSON.parse(result.stdout), (args) => runCli(args, {
+  await checkCapabilityConsumer(JSON.parse(result.stdout), async (args) => await runCli(args, {
     cwd: directory, env: { ...env, ZINN_DIR: join(directory, "store") },
   }));
 }, 15000);
 
-test("text summary, help precedence and invalid invocations preserve the CLI contract", () => {
+test("text summary, help precedence and invalid invocations preserve the CLI contract", async () => {
   const directory = join(root, "invocations");
   mkdirSync(directory);
   const options = { cwd: directory, env: { ...env, ZINN_DIR: "/dev/null/unavailable" } };
-  const text = runCli(["capabilities"], options);
+  const text = await runCli(["capabilities"], options);
   expect(text.code, text.stderr).toBe(0);
   expect(text.stdout).toContain(manifest.cli.name);
   expect(text.stdout).toContain(manifest.cli.version);
   expect(text.stdout).toContain("zinn capabilities --json");
-  const debug = runCli(["capabilities", "--json"], {
+  const debug = await runCli(["capabilities", "--json"], {
     ...options, env: { ...options.env, ZINN_DEBUG: "1" },
   });
   expect(debug.code, debug.stderr).toBe(0);
   const parsedGroups = debug.stderr.split("\n").filter((line) => line.startsWith("::router.parseRoutes["));
   expect(parsedGroups.length).toBeGreaterThan(0);
   expect(new Set(parsedGroups).size).toBe(parsedGroups.length);
-  const help = runCli(["capabilities", "--help", "--json", "--unknown"], options);
+  const help = await runCli(["capabilities", "--help", "--json", "--unknown"], options);
   expect(help.code, help.stderr).toBe(0);
   expect(help.stdout).toContain("Usage:");
   for (const args of [["extra"], ["--unknown"], ["--json"], ["--", "--json"]]) {
-    const result = runCli(["capabilities", "--json", ...args], options);
+    const result = await runCli(["capabilities", "--json", ...args], options);
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
     expect(JSON.parse(result.stderr).error.code).toBe("invalid_input");

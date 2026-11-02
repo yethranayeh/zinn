@@ -19,16 +19,16 @@ test("the repository exposes only the bundled skill to installer discovery", () 
   expect(skills).toEqual(["packages/cli/skills/zinn/SKILL.md"]);
 });
 
-test("every shell example runs against an isolated project and completes its handoff", () => {
+test("every shell example runs against an isolated project and completes its handoff", async () => {
   const directory = mkdtempSync(join(tmpdir(), "zinn-skill-examples-"));
   try {
-    expect(() => checkSkillExamples({
+    await expect(checkSkillExamples({
       packageDirectory: import.meta.dir,
       runtime: process.execPath,
       entryPoint: join(import.meta.dir, "index.ts"),
       directory,
       env: TEST_ENVIRONMENT,
-    })).not.toThrow();
+    })).resolves.toBeUndefined();
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

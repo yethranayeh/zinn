@@ -2,7 +2,7 @@ import { TEST_ENVIRONMENT } from "../../../scripts/test-isolation.ts";
 import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { withDirectory } from "../../core/src/migrations/testing.js";
+import { withIsolatedZinnDir } from "../test-helpers.js";
 import { runCli } from "../testing.js";
 import { routes } from "./routes/routes.js";
 import { parseRoutes } from "./routes/router.js";
@@ -72,8 +72,8 @@ test("generated syntax keeps braces for literal words; a required choice of flag
   );
 });
 
-test("every declared singular option rejects repetition before storage access", () => {
-  withDirectory((directory) => {
+test("every declared singular option rejects repetition before storage access", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const env = { ...TEST_ENVIRONMENT, ZINN_DIR: directory };
     for (const command of commands) {
       for (const [name, option] of Object.entries(command.input.options)) {
@@ -81,7 +81,7 @@ test("every declared singular option rejects repetition before storage access", 
           continue;
         }
         const flag = option.type === "string" ? `--${name}=value` : `--${name}`;
-        const result = runCli([...command.command.split(" "), flag, flag, "--json"], { env });
+        const result = await runCli([...command.command.split(" "), flag, flag, "--json"], { env });
         expect(result.code, `${command.command}: ${name}`).toBe(1);
         expect(result.stdout).toBe("");
         expect(JSON.parse(result.stderr).error).toMatchObject({
@@ -94,8 +94,8 @@ test("every declared singular option rejects repetition before storage access", 
   });
 });
 
-test("every positional form rejects missing and excess words before storage access", () => {
-  withDirectory((directory) => {
+test("every positional form rejects missing and excess words before storage access", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const env = { ...TEST_ENVIRONMENT, ZINN_DIR: directory };
     for (const command of commands) {
       for (const form of command.input.forms) {
@@ -114,7 +114,7 @@ test("every positional form rejects missing and excess words before storage acce
           scenarios.push([...words, "excess"]);
         }
         for (const positionals of scenarios) {
-          const result = runCli([...command.command.split(" "), "--json", "--", ...positionals], {
+          const result = await runCli([...command.command.split(" "), "--json", "--", ...positionals], {
             env,
           });
           expect(result.code, `${command.command}: ${form.id}`).toBe(1);
@@ -183,50 +183,50 @@ function declaredArgv(
   return argv;
 }
 
-test("declared forms construct list, history, repeated-key move and both order invocations", () => {
-  withDirectory((directory) => {
+test("declared forms construct list, history, repeated-key move and both order invocations", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const env = { ...TEST_ENVIRONMENT, ZINN_DIR: directory };
-    const invoke = (
+    const invoke = async (
       path: string,
       positionals: SuppliedValues = {},
       options: SuppliedValues = {},
       form?: string,
     ) => {
-      const result = runCli(declaredArgv(path, positionals, options, form), { env });
+      const result = await runCli(declaredArgv(path, positionals, options, form), { env });
       expect(result.code, result.stderr).toBe(0);
       return JSON.parse(result.stdout);
     };
-    invoke("project create", { "project-key": "DECL" });
-    expect(invoke("task list", { "project-key": "DECL" })).toEqual([]);
-    const columns = invoke("project column list", { "project-key": "DECL" });
-    const first = invoke(
+    await invoke("project create", { "project-key": "DECL" });
+    expect(await invoke("task list", { "project-key": "DECL" })).toEqual([]);
+    const columns = await invoke("project column list", { "project-key": "DECL" });
+    const first = await invoke(
       "task create",
       { "project-key": "DECL" },
       { title: "--help", priority: "HIGH" },
     );
-    const second = invoke("task create", { "project-key": "DECL" }, { title: "Second task" });
+    const second = await invoke("task create", { "project-key": "DECL" }, { title: "Second task" });
     expect(first.title).toBe("--help");
     expect(first.priority).toBe("high");
-    expect(invoke("task list", { "project-key": "DECL" })).toHaveLength(2);
-    expect(invoke("task view", { "task-key": first.key })).not.toHaveProperty("activity");
+    expect(await invoke("task list", { "project-key": "DECL" })).toHaveLength(2);
+    expect(await invoke("task view", { "task-key": first.key })).not.toHaveProperty("activity");
     expect(
-      Array.isArray(invoke("task view", { "task-key": first.key }, { history: true }).activity),
+      Array.isArray((await invoke("task view", { "task-key": first.key }, { history: true })).activity),
     ).toBe(true);
-    const moved = invoke("task move", {
+    const moved = await invoke("task move", {
       "task-key": [first.key, first.key],
       "target-column": columns[1].name,
     });
     expect(moved).toHaveLength(2);
     expect(moved.map((entry: { key: string }) => entry.key)).toEqual([first.key, first.key]);
     expect(
-      invoke("task move", { "task-key": first.key, "target-column": columns[1].name }).changed,
+      (await invoke("task move", { "task-key": first.key, "target-column": columns[1].name })).changed,
     ).toBe(false);
-    invoke("task move", { "task-key": second.key, "target-column": columns[1].name });
+    await invoke("task move", { "task-key": second.key, "target-column": columns[1].name });
     const orderForms = routes.task.order.input.forms;
     const absolute = orderForms[0];
     const relative = orderForms[1];
     expect(
-      invoke(
+      (await invoke(
         "task order",
         {
           "task-key": first.key,
@@ -234,10 +234,10 @@ test("declared forms construct list, history, repeated-key move and both order i
         },
         {},
         absolute.id,
-      ).key,
+      )).key,
     ).toBe(first.key);
     expect(
-      invoke(
+      (await invoke(
         "task order",
         {
           "task-key": second.key,
@@ -246,19 +246,19 @@ test("declared forms construct list, history, repeated-key move and both order i
         },
         {},
         relative.id,
-      ).key,
+      )).key,
     ).toBe(second.key);
   });
 });
 
-test("project resolution and order errors retain their validation precedence", () => {
-  withDirectory((directory) => {
+test("project resolution and order errors retain their validation precedence", async () => {
+  await withIsolatedZinnDir(async (directory) => {
     const env = { ...TEST_ENVIRONMENT, ZINN_DIR: directory };
-    const project = runCli(["project", "edit", "--append", "--json"], { env });
+    const project = await runCli(["project", "edit", "--append", "--json"], { env });
     expect(JSON.parse(project.stderr).error.details.argument).toBe("project-key");
     for (const path of ["task order", "project column order"]) {
       const positionals = path === "task order" ? ["DECL-1"] : ["DECL", "TODO"];
-      const result = runCli([...path.split(" "), ...positionals, "sideways", "extra", "--json"], {
+      const result = await runCli([...path.split(" "), ...positionals, "sideways", "extra", "--json"], {
         env,
       });
       expect(result.code).toBe(1);

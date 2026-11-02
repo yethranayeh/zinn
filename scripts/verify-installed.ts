@@ -261,7 +261,7 @@ async function installPackedZinnPackages(root: string) {
   );
   console.log("PASS installed CLI and core share their declared Zod version");
 
-  const sourceContract = checkCapabilityDiscovery({
+  const sourceContract = await checkCapabilityDiscovery({
     runtime: process.execPath,
     entryPoint: join(repository, "packages/cli/index.ts"),
     packageDirectory: join(repository, "packages/cli"),
@@ -269,7 +269,7 @@ async function installPackedZinnPackages(root: string) {
     timeoutMs: COMMAND_TIMEOUT_MS,
     env: TOOL_ENVIRONMENT,
   });
-  checkCapabilityDiscovery({
+  await checkCapabilityDiscovery({
     runtime: process.execPath,
     entryPoint: join(repository, "packages/cli/dist/index.js"),
     packageDirectory: join(repository, "packages/cli/dist"),
@@ -311,7 +311,7 @@ async function checkRuntime(
       ? [bin]
       : [runtime.executable, join(installedCli, manifest.bin.zinn)];
   const cli = (args: string[]) => succeeds([...command, ...args], consumer, env);
-  const capabilities = checkCapabilityDiscovery({
+  const capabilities = await checkCapabilityDiscovery({
     runtime: runtime.executable,
     entryPoint: join(installedCli, manifest.bin.zinn),
     packageDirectory: installedCli,
@@ -320,14 +320,16 @@ async function checkRuntime(
     env,
     expected: sourceContract,
   });
-  checkCapabilityConsumer(capabilities, (args) =>
-    runCli(args, {
-      runtime: runtime.executable,
-      cliPath: join(installedCli, manifest.bin.zinn),
-      cwd: consumer,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      env: { ...env, ZINN_DIR: join(directory, "capability-consumer") },
-    }),
+  await checkCapabilityConsumer(
+    capabilities,
+    async (args) =>
+      await runCli(args, {
+        runtime: runtime.executable,
+        cliPath: join(installedCli, manifest.bin.zinn),
+        cwd: consumer,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        env: { ...env, ZINN_DIR: join(directory, "capability-consumer") },
+      }),
   );
   console.log(
     `${prefix} PASS CLI capabilities, source/build/installed contract, local schemas and manifest-driven consumer`,
@@ -345,7 +347,7 @@ async function checkRuntime(
   assert.equal(list[0].title, "Installed CLI");
   console.log(`${prefix} PASS installed bin version, project/task creation and JSON list`);
 
-  checkSkillExamples({
+  await checkSkillExamples({
     packageDirectory: installedCli,
     runtime: runtime.executable,
     entryPoint: join(installedCli, manifest.bin.zinn),

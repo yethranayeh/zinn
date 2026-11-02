@@ -52,7 +52,7 @@ export function readWorkflowSkill(packageDirectory: string) {
 }
 
 /** Runs the skill's shell examples with the selected CLI and an isolated store. */
-export function checkSkillExamples(options: {
+export async function checkSkillExamples(options: {
   packageDirectory: string;
   runtime: string;
   entryPoint: string;
@@ -71,8 +71,8 @@ export function checkSkillExamples(options: {
     ZINN_SKILL_TEST_RUNTIME: runtime,
     ZINN_SKILL_TEST_CLI: entryPoint,
   };
-  const cli = (args: string[]) => {
-    const result = runCli(args, {
+  const cli = async (args: Array<string>) => {
+    const result = await runCli(args, {
       runtime,
       cliPath: entryPoint,
       cwd: directory,
@@ -83,8 +83,8 @@ export function checkSkillExamples(options: {
     return result.stdout;
   };
 
-  cli(["project", "create", "APP"]);
-  cli(["task", "create", "APP", "--title", "Verify the examples"]);
+  await cli(["project", "create", "APP"]);
+  await cli(["task", "create", "APP", "--title", "Verify the examples"]);
 
   const examples = [...skill.matchAll(/```sh\n([\s\S]*?)```/g)].map((match) => match[1]!);
   assert.ok(examples.length > 0, "The skill has no shell examples to check");
@@ -100,7 +100,7 @@ export function checkSkillExamples(options: {
 
   assert.equal(result.exitCode, 0, result.stdout.toString() + result.stderr.toString());
 
-  const task = JSON.parse(cli(["task", "view", "APP-1", "--json"]));
+  const task = JSON.parse(await cli(["task", "view", "APP-1", "--json"]));
   assert.equal(task.column, "Review");
   assert.ok(task.comments.length > 0, "The examples did not record a handoff comment");
 }

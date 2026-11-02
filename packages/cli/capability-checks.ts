@@ -68,7 +68,7 @@ export function capabilityValidator(manifest: Capabilities) {
 }
 
 /** Checks source, built or installed discovery in a disposable directory. */
-export function checkCapabilityDiscovery(options: {
+export async function checkCapabilityDiscovery(options: {
   runtime: string;
   entryPoint: string;
   packageDirectory: string;
@@ -76,7 +76,7 @@ export function checkCapabilityDiscovery(options: {
   env: Record<string, string | undefined>;
   expected?: Capabilities;
   timeoutMs?: number;
-}): Capabilities {
+}): Promise<Capabilities> {
   const { directory } = options;
   const home = join(directory, "home");
   mkdirSync(join(home, ".zinn"), { recursive: true });
@@ -97,7 +97,7 @@ export function checkCapabilityDiscovery(options: {
     DEBUG: "1",
     BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0",
   };
-  const discovered = runCli(["capabilities", "--json"], {
+  const discovered = await runCli(["capabilities", "--json"], {
     runtime: options.runtime,
     cliPath: options.entryPoint,
     cwd: directory,
@@ -106,7 +106,7 @@ export function checkCapabilityDiscovery(options: {
   });
   assert.equal(discovered.code, 0, discovered.stderr);
   const manifest: Capabilities = JSON.parse(discovered.stdout);
-  const intercepted = runCli([options.entryPoint, "capabilities", "--json"], {
+  const intercepted = await runCli([options.entryPoint, "capabilities", "--json"], {
     runtime: options.runtime,
     cliPath: guard,
     cwd: directory,
@@ -125,21 +125,21 @@ export function checkCapabilityDiscovery(options: {
       continue;
     }
 
-    const invokeHelp = (command: string[]) =>
-      runCli([...command, "--help"], {
+    const invokeHelp = async (command: string[]) =>
+      await runCli([...command, "--help"], {
         runtime: options.runtime,
         cliPath: options.entryPoint,
         cwd: directory,
         env,
         timeoutMs: options.timeoutMs,
       });
-    const canonicalHelp = invokeHelp(path);
+    const canonicalHelp = await invokeHelp(path);
 
     assert.equal(canonicalHelp.code, 0, canonicalHelp.stderr);
 
     for (const alias of aliases) {
       assert.ok(!canonicalPaths.has(alias.join(" ")));
-      assert.deepEqual(invokeHelp(alias), canonicalHelp);
+      assert.deepEqual(await invokeHelp(alias), canonicalHelp);
       assert.ok(canonicalHelp.stdout.includes(`zinn ${alias.join(" ")}`));
     }
   }
@@ -158,7 +158,7 @@ export function capabilityConsumer(
   invoke: (args: string[]) => ReturnType<typeof runCli>,
 ) {
   const ajv = capabilityValidator(manifest);
-  return (
+  return async (
     path: string[],
     positionals: Record<string, string | string[]> = {},
     options: Record<string, string | string[] | boolean> = {},
@@ -220,7 +220,7 @@ export function capabilityConsumer(
       return count >= selector.min && (selector.max === null || count <= selector.max);
     });
     assert.equal(selected.length, 1);
-    const result = invoke(args);
+    const result = await invoke(args);
     assert.equal(result.code, 0, result.stderr);
     const value = JSON.parse(result.stdout);
     const validate = ajv.getSchema(`results#${selected[0]!.schemaRef.slice("#/schemas".length)}`)!;
@@ -229,30 +229,38 @@ export function capabilityConsumer(
   };
 }
 
-export function checkCapabilityConsumer(
+export async function checkCapabilityConsumer(
   manifest: Capabilities,
   invoke: (args: string[]) => ReturnType<typeof runCli>,
 ) {
   const consume = capabilityConsumer(manifest, invoke);
-  consume(["project", "create"], { "project-key": "CAP" });
-  assert.deepEqual(consume(["task", "list"], { "project-key": "CAP" }), []);
-  const first = consume(["task", "create"], { "project-key": "CAP" }, { title: "--literal title" });
-  const second = consume(["task", "create"], { "project-key": "CAP" }, { title: "Second task" });
-  assert.equal(consume(["task", "list"], { "project-key": "CAP" }).length, 2);
-  const detail = consume(["task", "view"], { "task-key": first.key });
+  await consume(["project", "create"], { "project-key": "CAP" });
+  assert.deepEqual(await consume(["task", "list"], { "project-key": "CAP" }), []);
+  const first = await consume(
+    ["task", "create"],
+    { "project-key": "CAP" },
+    { title: "--literal title" },
+  );
+  const second = await consume(
+    ["task", "create"],
+    { "project-key": "CAP" },
+    { title: "Second task" },
+  );
+  assert.equal((await consume(["task", "list"], { "project-key": "CAP" })).length, 2);
+  const detail = await consume(["task", "view"], { "task-key": first.key });
   assert.equal(Object.hasOwn(detail, "activity"), false);
-  const history = consume(["task", "view"], { "task-key": first.key }, { history: true });
+  const history = await consume(["task", "view"], { "task-key": first.key }, { history: true });
   assert.ok(history.activity.length > 0);
-  consume(["project", "column", "create"], {
+  await consume(["project", "column", "create"], {
     "project-key": "CAP",
     "column-name": "--destination",
   });
-  const single = consume(["task", "move"], {
+  const single = await consume(["task", "move"], {
     "task-key": first.key,
     "target-column": "--destination",
   });
   assert.equal(single.changed, true);
-  const bulk = consume(["task", "move"], {
+  const bulk = await consume(["task", "move"], {
     "task-key": [first.key, second.key],
     "target-column": "--destination",
   });
@@ -260,13 +268,13 @@ export function checkCapabilityConsumer(
     bulk.map((task: { changed: boolean }) => task.changed),
     [false, true],
   );
-  const duplicates = consume(["task", "move"], {
+  const duplicates = await consume(["task", "move"], {
     "task-key": [first.key, first.key],
     "target-column": "--destination",
   });
   assert.equal(duplicates.length, 2);
-  consume(["task", "order"], { "task-key": first.key, direction: "bottom" });
-  consume(["task", "order"], {
+  await consume(["task", "order"], { "task-key": first.key, direction: "bottom" });
+  await consume(["task", "order"], {
     "task-key": first.key,
     direction: "before",
     "target-task-key": second.key,

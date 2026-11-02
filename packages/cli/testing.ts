@@ -25,12 +25,34 @@ export function runCli(
   args: Array<string>,
   options: Pick<TerminalRunOptions, "env" | "cwd" | "runtime" | "cliPath"> & { timeoutMs?: number },
 ) {
-  const proc = Bun.spawnSync([options.runtime ?? "bun", options.cliPath ?? CLI_PATH, ...args], {
+  return runProcessAsync([options.runtime ?? "bun", options.cliPath ?? CLI_PATH, ...args], options);
+}
+
+export async function runProcessAsync(
+  command: Array<string>,
+  options: {
+    env: Record<string, string | undefined>;
+    cwd?: string;
+    stdin?: Uint8Array;
+    timeoutMs?: number;
+  },
+) {
+  const proc = Bun.spawn(command, {
     env: options.env,
     cwd: options.cwd,
+    stdin: options.stdin,
+    stdout: "pipe",
+    stderr: "pipe",
     timeout: options.timeoutMs,
   });
-  return { stdout: proc.stdout.toString(), stderr: proc.stderr.toString(), code: proc.exitCode };
+
+  const [code, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+
+  return { stdout, stderr, code };
 }
 
 /**

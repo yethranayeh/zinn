@@ -28,14 +28,14 @@ let backupPath: string;
 let commentKey: string;
 let eventId: string;
 
-function invoke(directory: string, args: string[]) {
-  return runCli([...args, "--json"], {
+async function invoke(directory: string, args: string[]) {
+  return await runCli([...args, "--json"], {
     cwd: root,
     env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory, AI_AGENT: "contract-test", FORCE_COLOR: "0", ZINN_DEBUG: undefined, DEBUG: undefined },
   });
 }
-function success(directory: string, args: string[]) {
-  const result = invoke(directory, args);
+async function success(directory: string, args: string[]) {
+  const result = await invoke(directory, args);
   expect(result.code, result.stderr).toBe(0);
   return JSON.parse(result.stdout);
 }
@@ -180,17 +180,17 @@ function expectEntityIds(schema: ResultSchemaName, value: any, rows: ReturnType<
   }
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   mkdirSync(seed);
-  success(seed, ["project", "create", "APP"]);
-  success(seed, ["label", "create", "bug", "--color", "red"]);
-  success(seed, ["task", "create", "APP", "--title", "Alpha", "--label", "bug"]);
-  success(seed, ["task", "create", "APP", "--title", "Beta", "--priority", "high", "--description", "Details"]);
-  commentKey = success(seed, ["task", "comment", "create", "APP-1", "--text", "A comment"]).key;
-  success(seed, ["task", "relation", "create", "APP-1", "APP-2", "--type", "dependency"]);
-  success(seed, ["task", "order", "APP-1", "bottom"]);
-  eventId = success(seed, ["activity", "list"])[0].id;
-  backupPath = success(seed, ["backup"]).path;
+  await success(seed, ["project", "create", "APP"]);
+  await success(seed, ["label", "create", "bug", "--color", "red"]);
+  await success(seed, ["task", "create", "APP", "--title", "Alpha", "--label", "bug"]);
+  await success(seed, ["task", "create", "APP", "--title", "Beta", "--priority", "high", "--description", "Details"]);
+  commentKey = (await success(seed, ["task", "comment", "create", "APP-1", "--text", "A comment"])).key;
+  await success(seed, ["task", "relation", "create", "APP-1", "APP-2", "--type", "dependency"]);
+  await success(seed, ["task", "order", "APP-1", "bottom"]);
+  eventId = (await success(seed, ["activity", "list"]))[0].id;
+  backupPath = (await success(seed, ["backup"])).path;
 }, 15000);
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
@@ -198,7 +198,7 @@ type Fixture = {
   schema: ResultSchemaName;
   args: string[];
   empty?: boolean;
-  prepare?: (directory: string) => void;
+  prepare?: (directory: string) => void | Promise<void>;
   check?: (value: any) => void;
 };
 
@@ -228,8 +228,8 @@ const fixtures: Record<string, Fixture[]> = {
   "task list": [
     { schema: "TaskList", args: ["APP"] },
     { schema: "TaskList", args: ["APP", "--column", "Absent"] },
-    { schema: "TaskList", args: ["APP", "--archived"], prepare: (dir) => { success(dir, ["task", "archive", "APP-1"]); } },
-    { schema: "TaskList", args: ["APP", "--all"], prepare: (dir) => { success(dir, ["task", "archive", "APP-1"]); } },
+    { schema: "TaskList", args: ["APP", "--archived"], prepare: async (dir) => { await success(dir, ["task", "archive", "APP-1"]); } },
+    { schema: "TaskList", args: ["APP", "--all"], prepare: async (dir) => { await success(dir, ["task", "archive", "APP-1"]); } },
   ],
   "task search": [{ schema: "TaskList", args: ["Alpha", "APP"] }, { schema: "TaskList", args: ["Unmatched"] }],
   "task view": [
@@ -252,17 +252,17 @@ const fixtures: Record<string, Fixture[]> = {
     { schema: "TaskChange", args: ["APP-1", "bottom"], check: (v) => expect(v.changed).toBe(false) },
     { schema: "TaskChange", args: ["APP-1", "before", "APP-2"] },
     { schema: "TaskChanges", args: ["APP-1", "APP-2", "top"] },
-    { schema: "TaskChanges", args: ["APP-1", "APP-2", "after", "APP-3"], prepare: (dir) => { success(dir, ["task", "create", "APP", "--title", "Third"]); } },
+    { schema: "TaskChanges", args: ["APP-1", "APP-2", "after", "APP-3"], prepare: async (dir) => { await success(dir, ["task", "create", "APP", "--title", "Third"]); } },
   ],
   "task archive": [
     { schema: "TaskChange", args: ["APP-1"] },
     { schema: "TaskChanges", args: ["APP-1", "APP-2"] },
     { schema: "TaskChanges", args: ["APP-1", "APP-1"] },
-    { schema: "TaskChange", args: ["APP-1"], prepare: (dir) => { success(dir, ["task", "archive", "APP-1"]); }, check: (v) => expect(v.changed).toBe(false) },
+    { schema: "TaskChange", args: ["APP-1"], prepare: async (dir) => { await success(dir, ["task", "archive", "APP-1"]); }, check: (v) => expect(v.changed).toBe(false) },
   ],
   "task unarchive": [
     { schema: "TaskChange", args: ["APP-1"], check: (v) => expect(v.changed).toBe(false) },
-    { schema: "TaskChange", args: ["APP-1"], prepare: (dir) => { success(dir, ["task", "archive", "APP-1"]); }, check: (v) => expect(v.changed).toBe(true) },
+    { schema: "TaskChange", args: ["APP-1"], prepare: async (dir) => { await success(dir, ["task", "archive", "APP-1"]); }, check: (v) => expect(v.changed).toBe(true) },
     { schema: "TaskChanges", args: ["APP-1", "APP-2"] },
     { schema: "TaskChanges", args: ["APP-1", "APP-1"] },
   ],
@@ -358,15 +358,15 @@ test("execution fixtures cover exactly every declared route and result variant",
 
 for (const route of commands) {
   for (const [index, fixture] of (fixtures[route.command] ?? []).entries()) {
-    test(`${route.command}: ${fixture.schema} wire result ${index + 1}`, () => {
+    test(`${route.command}: ${fixture.schema} wire result ${index + 1}`, async () => {
       const directory = fixtureDirectory(fixture.empty);
-      fixture.prepare?.(directory);
+      await fixture.prepare?.(directory);
       const replacements: Record<string, string> = { $comment: commentKey, $event: eventId, $backup: backupPath };
       const args = fixture.args.map((arg) => replacements[arg] ?? arg);
       const descriptor = selectResult(route, args);
       const hasEntities = ["project", "task", "label"].includes(route.command.split(" ")[0]!);
       const deletedRows = hasEntities && route.effects.domain === "delete" ? readEntityRows(directory) : undefined;
-      const result = invoke(directory, [...route.command.split(" "), ...args]);
+      const result = await invoke(directory, [...route.command.split(" "), ...args]);
       expect(result.code, result.stderr).toBe(0);
       const value = JSON.parse(result.stdout);
       const ref = descriptor.schemaRef.replace("#/schemas/", "results#/");
@@ -390,58 +390,58 @@ for (const route of commands) {
   }
 }
 
-test("entity identities survive renames and distinguish recreated handles", () => {
+test("entity identities survive renames and distinguish recreated handles", async () => {
   const directory = fixtureDirectory(true);
-  const project = success(directory, ["project", "create", "APP"]);
-  const alpha = success(directory, ["label", "create", "alpha"]);
-  const zeta = success(directory, ["label", "create", "zeta"]);
-  const task = success(directory, ["task", "create", "APP", "--title", "Identity", "--label", "zeta", "--label", "alpha"]);
-  const column = success(directory, ["project", "column", "list", "APP"])[0];
+  const project = await success(directory, ["project", "create", "APP"]);
+  const alpha = await success(directory, ["label", "create", "alpha"]);
+  const zeta = await success(directory, ["label", "create", "zeta"]);
+  const task = await success(directory, ["task", "create", "APP", "--title", "Identity", "--label", "zeta", "--label", "alpha"]);
+  const column = (await success(directory, ["project", "column", "list", "APP"]))[0];
   expect(task).toMatchObject({ project_id: project.id, column_id: column.id });
   expect(task.label_ids).toEqual(task.labels.map((name: string) => ({ alpha, zeta })[name as "alpha" | "zeta"].id));
 
-  expect(success(directory, ["project", "edit", "APP", "--name", "Renamed project"]).id).toBe(project.id);
-  expect(success(directory, ["project", "column", "edit", "APP", column.name, "--name", "Ideas"]).id).toBe(column.id);
-  expect(success(directory, ["label", "edit", "zeta", "--name", "renamed"]).id).toBe(zeta.id);
-  const viewed = success(directory, ["task", "view", task.key]);
+  expect((await success(directory, ["project", "edit", "APP", "--name", "Renamed project"])).id).toBe(project.id);
+  expect((await success(directory, ["project", "column", "edit", "APP", column.name, "--name", "Ideas"])).id).toBe(column.id);
+  expect((await success(directory, ["label", "edit", "zeta", "--name", "renamed"])).id).toBe(zeta.id);
+  const viewed = await success(directory, ["task", "view", task.key]);
   expect(viewed).toMatchObject({ id: task.id, project_id: project.id, column_id: column.id, column: "Ideas" });
   expect(viewed.labels).toContain("renamed");
   const labelsByName = new Map([["alpha", alpha.id], ["renamed", zeta.id]]);
   expect(viewed.label_ids).toEqual(viewed.labels.map((name: string) => labelsByName.get(name)));
   expectEntityIds("TaskDetail", viewed, readEntityRows(directory));
 
-  const comment = success(directory, ["task", "comment", "create", task.key, "--text", "Identity comment"]);
+  const comment = await success(directory, ["task", "comment", "create", task.key, "--text", "Identity comment"]);
   for (const args of [
     ["task", "comment", "view", comment.key],
     ["task", "comment", "edit", comment.key, "--text", "Edited comment"],
     ["task", "comment", "delete", comment.key, "--yes"],
   ]) {
-    expect(success(directory, args)).toMatchObject({ id: comment.id, task_id: task.id });
+    expect(await success(directory, args)).toMatchObject({ id: comment.id, task_id: task.id });
   }
-  const activity = success(directory, ["activity", "list", "--task-id", task.id]);
+  const activity = await success(directory, ["activity", "list", "--task-id", task.id]);
   expect(activity.length).toBeGreaterThan(0);
   expect(activity.every((event: any) => event.entity_id === task.id)).toBe(true);
 
-  expect(success(directory, ["label", "delete", "renamed", "--yes"]).id).toBe(zeta.id);
-  expect(success(directory, ["label", "create", "renamed"]).id).not.toBe(zeta.id);
-  expect(success(directory, ["project", "delete", "APP", "--yes"]).id).toBe(project.id);
-  const recreatedProject = success(directory, ["project", "create", "APP"]);
+  expect((await success(directory, ["label", "delete", "renamed", "--yes"])).id).toBe(zeta.id);
+  expect((await success(directory, ["label", "create", "renamed"])).id).not.toBe(zeta.id);
+  expect((await success(directory, ["project", "delete", "APP", "--yes"])).id).toBe(project.id);
+  const recreatedProject = await success(directory, ["project", "create", "APP"]);
   expect(recreatedProject.id).not.toBe(project.id);
-  const recreatedTask = success(directory, ["task", "create", "APP", "--title", "New identity"]);
+  const recreatedTask = await success(directory, ["task", "create", "APP", "--title", "New identity"]);
   expect(recreatedTask.key).toBe(task.key);
   expect(recreatedTask.id).not.toBe(task.id);
   expect(recreatedTask.column_id).not.toBe(column.id);
   expect(recreatedTask.project_id).toBe(recreatedProject.id);
 });
 
-test.each(relationTypeSchema.options)("%s relation identity is consistent from both ends and through deletion", (type) => {
+test.each(relationTypeSchema.options)("%s relation identity is consistent from both ends and through deletion", async (type) => {
   const directory = fixtureDirectory();
-  success(directory, ["project", "create", "OTHER"]);
-  const other = success(directory, ["task", "create", "OTHER", "--title", "Other project"]);
-  const app = success(directory, ["task", "view", "APP-2"]);
-  success(directory, ["task", "archive", other.key]);
+  await success(directory, ["project", "create", "OTHER"]);
+  const other = await success(directory, ["task", "create", "OTHER", "--title", "Other project"]);
+  const app = await success(directory, ["task", "view", "APP-2"]);
+  await success(directory, ["task", "archive", other.key]);
   const [source, target] = type === "related" ? [other, app] : [app, other];
-  const created = success(directory, ["task", "relation", "create", source.key, target.key, "--type", type]);
+  const created = await success(directory, ["task", "relation", "create", source.key, target.key, "--type", type]);
   expect(created).toMatchObject({ source: source.key, source_task_id: source.id, target: target.key, target_task_id: target.id });
   expectEntityIds("RelationChange", created, readEntityRows(directory));
   if (type === "related") {
@@ -451,50 +451,50 @@ test.each(relationTypeSchema.options)("%s relation identity is consistent from b
   }
 
   for (const [viewed, connected] of [[app, other], [other, app]]) {
-    const listed = success(directory, ["task", "relation", "list", viewed.key]).find((relation: any) => relation.id === created.id);
+    const listed = (await success(directory, ["task", "relation", "list", viewed.key])).find((relation: any) => relation.id === created.id);
     expect(listed).toMatchObject({ id: created.id, type, task: { id: connected.id, key: connected.key, project_id: connected.project_id, column_id: connected.column_id } });
-    expect(success(directory, ["task", "view", viewed.key]).relations).toContainEqual(listed);
+    expect((await success(directory, ["task", "view", viewed.key])).relations).toContainEqual(listed);
     expectEntityIds("Relation", listed, readEntityRows(directory));
   }
 
   const [deleteSource, deleteTarget] = type === "related" ? [target, source] : [source, target];
-  const deleted = success(directory, ["task", "relation", "delete", deleteSource.key, deleteTarget.key, "--type", type]);
+  const deleted = await success(directory, ["task", "relation", "delete", deleteSource.key, deleteTarget.key, "--type", type]);
   expect(deleted).toMatchObject({ id: created.id, source: deleteSource.key, source_task_id: deleteSource.id, target: deleteTarget.key, target_task_id: deleteTarget.id });
   expect(readEntityRows(directory).relations.some((relation) => relation.id === created.id)).toBe(false);
 });
 
 for (const route of commands) {
   for (const alias of route.aliases) {
-    test(`${alias.join(" ")}: canonical results, errors and confirmations`, () => {
+    test(`${alias.join(" ")}: canonical results, errors and confirmations`, async () => {
       const fixture = fixtures[route.command]![0]!;
       const directory = fixtureDirectory(fixture.empty);
-      fixture.prepare?.(directory);
+      await fixture.prepare?.(directory);
       const replacements: Record<string, string> = { $comment: commentKey, $event: eventId, $backup: backupPath };
       const args = fixture.args.map((arg) => replacements[arg] ?? arg);
       const canonicalPath = route.command.split(" ");
-      const invalid = invoke(directory, [...canonicalPath, "--unknown"]);
+      const invalid = await invoke(directory, [...canonicalPath, "--unknown"]);
       expect(invalid.code).toBe(1);
-      expect(invoke(directory, [...alias, "--unknown"])).toEqual(invalid);
+      expect(await invoke(directory, [...alias, "--unknown"])).toEqual(invalid);
 
       if (route.confirmation.kind !== "none") {
         const withoutYes = args.filter((arg) => arg !== "--yes");
         for (const flags of [[], ["--json"]]) {
           const options = { cwd: root, env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory, FORCE_COLOR: "0" } };
-          const canonicalRefusal = runCli([...canonicalPath, ...withoutYes, ...flags], options);
+          const canonicalRefusal = await runCli([...canonicalPath, ...withoutYes, ...flags], options);
           expect(canonicalRefusal.code).toBe(1);
-          expect(runCli([...alias, ...withoutYes, ...flags], options)).toEqual(canonicalRefusal);
+          expect(await runCli([...alias, ...withoutYes, ...flags], options)).toEqual(canonicalRefusal);
         }
       }
 
       if (route.effects.domain === "read") {
         const options = { cwd: root, env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory, FORCE_COLOR: "0" } };
-        const canonicalText = runCli([...canonicalPath, ...args], options);
+        const canonicalText = await runCli([...canonicalPath, ...args], options);
         expect(canonicalText.code, canonicalText.stderr).toBe(0);
-        expect(runCli([...alias, ...args], options)).toEqual(canonicalText);
-        expect(invoke(directory, [...alias, ...args])).toEqual(invoke(directory, [...canonicalPath, ...args]));
+        expect(await runCli([...alias, ...args], options)).toEqual(canonicalText);
+        expect(await invoke(directory, [...alias, ...args])).toEqual(await invoke(directory, [...canonicalPath, ...args]));
       }
 
-      const value = success(directory, [...alias, ...args]);
+      const value = await success(directory, [...alias, ...args]);
       const descriptor = selectResult(route, args);
       const validate = ajv.getSchema(descriptor.schemaRef.replace("#/schemas/", "results#/"))!;
       expect(validate(value), JSON.stringify(validate.errors)).toBe(true);
@@ -503,31 +503,31 @@ for (const route of commands) {
   }
 }
 
-test("alias words stay literal in project keys and task titles", () => {
+test("alias words stay literal in project keys and task titles", async () => {
   const directory = fixtureDirectory(true);
-  success(directory, ["project", "new", "rm"]);
-  const created = success(directory, ["task", "new", "rm", "--title", "show"]);
+  await success(directory, ["project", "new", "rm"]);
+  const created = await success(directory, ["task", "new", "rm", "--title", "show"]);
   expect(created.title).toBe("show");
-  const listed = invoke(directory, ["task", "list", "rm"]);
+  const listed = await invoke(directory, ["task", "list", "rm"]);
   expect(listed.code, listed.stderr).toBe(0);
   expect(JSON.parse(listed.stdout).map((task: { key: string }) => task.key)).toEqual([created.key]);
-  expect(invoke(directory, ["task", "ls", "rm"])).toEqual(listed);
+  expect(await invoke(directory, ["task", "ls", "rm"])).toEqual(listed);
 });
 
-test("unselected synonyms and aliases without a matching command stay unknown", () => {
+test("unselected synonyms and aliases without a matching command stay unknown", async () => {
   const directory = fixtureDirectory(true);
   for (const args of [
     ["show", "APP-1"], ["task", "read", "APP-1"], ["task", "mv", "APP-1", "Done"],
     ["task", "add", "APP"], ["task", "remove", "APP-1"], ["task", "label", "rm", "APP-1", "bug"],
   ]) {
-    const result = invoke(directory, args);
+    const result = await invoke(directory, args);
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
     expect(JSON.parse(result.stderr).error).toMatchObject({ code: "invalid_input", details: { argument: "command" } });
   }
 });
 
-test("unknown stored vocabularies satisfy generated output schemas", () => {
+test("unknown stored vocabularies satisfy generated output schemas", async () => {
   const directory = fixtureDirectory();
   editFixture(directory, `
     UPDATE task SET priority = 'future-priority';
@@ -545,14 +545,14 @@ test("unknown stored vocabularies satisfy generated output schemas", () => {
     } },
   ];
   for (const { args, schema, fields } of cases) {
-    const value = success(directory, args);
+    const value = await success(directory, args);
     const validate = ajv.getSchema(`results#/definitions/${schema}`)!;
     expect(validate(value), JSON.stringify(validate.errors)).toBe(true);
     expect(Array.isArray(value) ? value[0] : value).toMatchObject(fields);
   }
 });
 
-test("newer database activity columns stay out of list, view and task history", () => {
+test("newer database activity columns stay out of list, view and task history", async () => {
   const directory = fixtureDirectory();
   editFixture(directory, `
     ALTER TABLE activity ADD COLUMN future_column TEXT DEFAULT 'future';
@@ -564,7 +564,7 @@ test("newer database activity columns stay out of list, view and task history", 
     { args: ["task", "view", "APP-1", "--history"], schema: "TaskDetailHistory" },
   ];
   for (const { args, schema } of cases) {
-    const value = success(directory, args);
+    const value = await success(directory, args);
     const validate = ajv.getSchema(`results#/definitions/${schema}`)!;
     expect(validate(value), JSON.stringify(validate.errors)).toBe(true);
     const events = Array.isArray(value) ? value : value.activity ?? [value];
@@ -575,7 +575,7 @@ test("newer database activity columns stay out of list, view and task history", 
   }
 });
 
-test("confirmation refusals and representative failures use the shared error schema", () => {
+test("confirmation refusals and representative failures use the shared error schema", async () => {
   const directory = fixtureDirectory();
   writeFileSync(join(directory, "settings.json"), JSON.stringify({ defaultProject: "APP" }));
   for (const args of [
@@ -585,23 +585,23 @@ test("confirmation refusals and representative failures use the shared error sch
     ["task", "view", "APP-999"], ["task", "create", "APP", "--title", "X", "--priority", "wrong"],
     ["task", "view", "--unknown"], ["migrate", "extra"],
   ]) {
-    const result = invoke(directory, args);
+    const result = await invoke(directory, args);
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
     expect(ajv.getSchema("results#/definitions/ErrorEnvelope")!(JSON.parse(result.stderr))).toBe(true);
   }
-  expect(success(directory, ["task", "view", "APP-1"]).title).toBe("Alpha");
-  expect(success(directory, ["label", "list"])).toHaveLength(1);
+  expect((await success(directory, ["task", "view", "APP-1"])).title).toBe("Alpha");
+  expect(await success(directory, ["label", "list"])).toHaveLength(1);
 });
 
-test("info with unresolved storage still produces a valid successful report", () => {
+test("info with unresolved storage still produces a valid successful report", async () => {
   const directory = fixtureDirectory(true);
   const home = join(directory, "home");
   const cwd = join(directory, "repo");
   mkdirSync(home);
   mkdirSync(join(cwd, ".git"), { recursive: true });
   writeFileSync(join(cwd, "zinn.local.json"), "{");
-  const result = runCli(["info", "--json"], {
+  const result = await runCli(["info", "--json"], {
     cwd, env: { ...TEST_ENVIRONMENT, HOME: home, ZINN_DIR: undefined, ZINN_DEBUG: undefined, DEBUG: undefined },
   });
   expect(result.code).toBe(0);
@@ -618,5 +618,5 @@ test("a declined text confirmation succeeds and preserves the task", async () =>
     cwd: root, env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory }, input: "n\n", inputWhen: "[y/N]",
   });
   expect(result.code).toBe(0);
-  expect(success(directory, ["task", "view", "APP-1"]).key).toBe("APP-1");
+  expect((await success(directory, ["task", "view", "APP-1"])).key).toBe("APP-1");
 });

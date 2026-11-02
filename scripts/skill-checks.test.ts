@@ -73,20 +73,20 @@ test.each(["0.0.0", "999.0.0", undefined])("pnpm publish blocks an unmatched ski
   }
 });
 
-test("a failed skill example stops verification in an isolated store", () => {
+test("a failed skill example stops verification in an isolated store", async () => {
   const directory = mkdtempSync(join(tmpdir(), "zinn-skill-failure-"));
   try {
     const packageDirectory = writeSkillFixture(directory, releaseVersion, releaseVersion);
     const skillPath = join(packageDirectory, "skills/zinn/SKILL.md");
     writeFileSync(skillPath, readFileSync(skillPath, "utf8").replace(/```sh\n[\s\S]*?```/, "```sh\nzinn unknown-command\n```"));
     const inheritedStore = join(directory, "inherited-store");
-    expect(() => checkSkillExamples({
+    await expect(checkSkillExamples({
       packageDirectory,
       runtime: process.execPath,
       entryPoint: join(cliDirectory, "index.ts"),
       directory: join(directory, "examples"),
       env: { ...TEST_ENVIRONMENT, ZINN_DIR: inheritedStore },
-    })).toThrow();
+    })).rejects.toThrow();
     expect(existsSync(inheritedStore)).toBe(false);
   } finally {
     rmSync(directory, { recursive: true, force: true });

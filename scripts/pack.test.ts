@@ -23,7 +23,7 @@ function run(command: string[], cwd: string, env = TEST_ENVIRONMENT) {
   return result.stdout.toString();
 }
 
-test("pnpm packs fresh JS artifacts with independent identities and unchanged migration protection", () => {
+test("pnpm packs fresh JS artifacts with independent identities and unchanged migration protection", async () => {
   if (!Bun.which("pnpm")) {
     throw new Error("pnpm is required for packing checks. Install pnpm and rerun bun test.");
   }
@@ -126,30 +126,30 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
     }
     const packedCore = join(consumer, "core");
     const packedCli = join(consumer, "cli");
-    const sourceContract = checkCapabilityDiscovery({
+    const sourceContract = await checkCapabilityDiscovery({
       runtime: process.execPath,
       entryPoint: join(cliDirectory, "index.ts"),
       packageDirectory: cliDirectory,
       directory: join(root, "capabilities-source"), env: TEST_ENVIRONMENT,
     });
-    checkCapabilityDiscovery({
+    await checkCapabilityDiscovery({
       runtime: process.execPath,
       entryPoint: join(cliDirectory, "dist/index.js"),
       packageDirectory: join(cliDirectory, "dist"),
       directory: join(root, "capabilities-build"), env: TEST_ENVIRONMENT, expected: sourceContract,
     });
     for (const runtime of ["bun", "node"]) {
-      const contract = checkCapabilityDiscovery({
+      const contract = await checkCapabilityDiscovery({
         runtime: Bun.which(runtime)!, entryPoint: join(packedCli, "index.js"),
         packageDirectory: packedCli, directory: join(root, `capabilities-packed-${runtime}`),
         env: TEST_ENVIRONMENT, expected: sourceContract,
       });
       mkdirSync(join(root, `capabilities-consumer-${runtime}`));
-      checkCapabilityConsumer(contract, (args) => runCli(args, {
+      await checkCapabilityConsumer(contract, async (args) => await runCli(args, {
         runtime: Bun.which(runtime)!, cliPath: join(packedCli, "index.js"), cwd: root,
         env: { ...TEST_ENVIRONMENT, ZINN_DIR: join(root, `capabilities-consumer-${runtime}`), ZINN_DEBUG: undefined, DEBUG: undefined },
       }));
-      checkSkillExamples({
+      await checkSkillExamples({
         packageDirectory: packedCli,
         runtime: Bun.which(runtime)!,
         entryPoint: join(packedCli, "index.js"),
@@ -161,11 +161,11 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
         env: { ...TEST_ENVIRONMENT, ZINN_DIR: join(root, `activity-time-${runtime}`), TZ: "America/New_York" },
       };
       mkdirSync(timeOptions.env.ZINN_DIR);
-      const createdProject = runCli(["project", "create", "CLOCK", "--json"], timeOptions);
+      const createdProject = await runCli(["project", "create", "CLOCK", "--json"], timeOptions);
       expect(createdProject.code, createdProject.stderr).toBe(0);
-      const recorded = JSON.parse(runCli(["activity", "list", "--json"], timeOptions).stdout);
+      const recorded = JSON.parse((await runCli(["activity", "list", "--json"], timeOptions)).stdout);
       const timestamp = recorded[0].created_at;
-      const selected = runCli(["activity", "list", "--since", new Date(timestamp).toISOString(), "--until", String(timestamp), "--json"], timeOptions);
+      const selected = await runCli(["activity", "list", "--since", new Date(timestamp).toISOString(), "--until", String(timestamp), "--json"], timeOptions);
       expect(selected.code, selected.stderr).toBe(0);
       expect(JSON.parse(selected.stdout)).toEqual(recorded);
       const timeParserUrl = pathToFileURL(join(packedCli, "src/timestamp-input.js")).href;
