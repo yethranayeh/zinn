@@ -115,5 +115,14 @@ const homepageStructuredData = [website, softwareApplication];
 		<SiteFooter links={!noindex}>
 			<slot name='footer' />
 		</SiteFooter>
+
+		<script is:inline src='/console/consoleimg.min.js'></script>
+		<script is:inline>
+			if (navigator.userAgent.indexOf("Firefox") > 0) {
+				consoleimg.load("/console/spider-ff.gif", { size: 150 });
+			} else {
+				consoleimg.load("/console/spider.gif", { size: 150 });
+			}
+		</script>
 	</body>
 </html>
