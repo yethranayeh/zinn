@@ -1,7 +1,7 @@
-import { MAX_LIST_LIMIT, listLimitMessage, listLimitPattern } from "@zinn-dev/core";
+import { listLimitMessage, listLimitPattern } from "@zinn-dev/core";
 import { quit } from "./lib.js";
 
-export const listLimitDescription = `Return at most n results after all filters. Use an integer from 1 through ${MAX_LIST_LIMIT}.`;
+export const listLimitDescription = "Return at most n results after all filters.";
 export const listLimitOption = {
   type: "string",
   value: { kind: "positive-integer", name: "n", pattern: listLimitPattern },

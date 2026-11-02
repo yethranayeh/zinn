@@ -2,17 +2,17 @@ import { expect, test } from "bun:test";
 import { MAX_LIST_LIMIT, activity, project, label, task, comment, taskListSchema, taskSearchSchema, activityListSchema, parseTaskKey } from "../index";
 import { withTestStore } from "./testing";
 
-test("list schemas share limits from 1 through 11871 without widening readable keys", () => {
+test("list schemas share limits from 1 through the largest safe integer without widening readable keys", () => {
   const inputs = [
     { schema: taskListSchema, input: {} },
     { schema: taskSearchSchema, input: { query: "needle" } },
     { schema: activityListSchema, input: {} },
   ];
   for (const { schema, input } of inputs) {
-    for (const limit of [1, 10, 11_870, 11_871]) {
+    for (const limit of [1, 10, 11_872, Number.MAX_SAFE_INTEGER]) {
       expect(schema.safeParse({ ...input, limit }).success).toBe(true);
     }
-    for (const limit of [0, -1, 1.5, 11_872, Infinity, NaN, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER + 1, "2", null]) {
+    for (const limit of [0, -1, 1.5, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1, "2", null]) {
       expect(schema.safeParse({ ...input, limit }).error?.issues[0]?.path).toEqual(["limit"]);
     }
   }

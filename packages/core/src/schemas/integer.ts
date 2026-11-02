@@ -2,8 +2,8 @@ import { z } from "zod";
 
 export const positiveIntegerPattern = "[1-9]\\d{0,14}";
 export const listLimitPattern = "^" + positiveIntegerPattern + "\\d?$";
-/** Tin's approximate atomic weight */
-export const MAX_LIST_LIMIT = 11_871;
+/** Omitting a limit returns every match, so the bound is only where numbers lose precision */
+export const MAX_LIST_LIMIT = Number.MAX_SAFE_INTEGER;
 export const listLimitMessage = `Limit must be an integer from 1 through ${MAX_LIST_LIMIT}`;
 export const listLimitSchema = z
   .number({ error: listLimitMessage })

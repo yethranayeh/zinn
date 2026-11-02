@@ -7374,7 +7374,7 @@ test("activity JSON preserves full matching records, parsed payloads and determi
     expect(listed.code).toBe(0);
     expect(JSON.parse(listed.stdout)).toEqual([events[2], events[1], events[0]]);
     expect(JSON.parse((await runZinn(["activity", "list", "--limit", "1", "--json"], directory)).stdout)).toEqual([events[2]]);
-    expect(JSON.parse((await runZinn(["activity", "list", "--limit", "11871", "--json"], directory)).stdout)).toHaveLength(3);
+    expect(JSON.parse((await runZinn(["activity", "list", "--limit", String(Number.MAX_SAFE_INTEGER), "--json"], directory)).stdout)).toHaveLength(3);
     for (const event of events) {
       const viewed = await runZinn(["activity", "view", event.id, "--json"], directory);
       expect(viewed.code).toBe(0);
@@ -7781,7 +7781,6 @@ test("activity rejects unsupported, repeated and malformed command arguments wit
     for (const [limit, details] of [
       ...["0", "-1", "1.5", "1e2", "01", " 2", "Infinity", "99999999999999999"]
         .map((limit) => [limit, { argument: "--limit" }] as const),
-      ["11872", { field: ["limit"] }],
       ["9007199254740992", { field: ["limit"] }],
     ] as const) {
       const result = await runZinn(["activity", "list", `--limit=${limit}`, "--json"], directory);

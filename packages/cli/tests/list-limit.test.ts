@@ -4,7 +4,7 @@ import { runZinn, withIsolatedZinnDir, withTestDb } from "../test-helpers";
 
 const limitedRoutes = parsedRoutes.filter(route => route.input?.options?.limit !== undefined);
 
-test("every route with --limit accepts the same decimal spellings and limits from 1 through 11871", async () => {
+test("every route with --limit accepts the same decimal spellings and limits from 1 through the largest safe integer", async () => {
   await withIsolatedZinnDir(async directory => {
     const run = (...args: string[]) => runZinn([...args, "--json"], directory);
     expect((await run("project", "create", "APP")).code).toBe(0);
@@ -19,12 +19,12 @@ test("every route with --limit accepts the same decimal spellings and limits fro
       const all = await run(...args);
       expect(all.code).toBe(0);
       expect(Array.isArray(JSON.parse(all.stdout))).toBe(true);
-      for (const limit of ["1", "10", "11870", "11871"]) {
+      for (const limit of ["1", "10", "11872", "1000000000000000", String(Number.MAX_SAFE_INTEGER)]) {
         const result = await run(...args, `--limit=${limit}`);
         expect(result.code).toBe(0);
         expect(JSON.parse(result.stdout)).toEqual(JSON.parse(all.stdout).slice(0, Number(limit)));
       }
-      for (const limit of ["", "0", "-1", "1.5", "1e2", "+1", "01", " 2", "2 ", "Infinity", "NaN", "11872", "1000000000000000", String(Number.MAX_SAFE_INTEGER), "9007199254740992", "99999999999999999"]) {
+      for (const limit of ["", "0", "-1", "1.5", "1e2", "+1", "01", " 2", "2 ", "Infinity", "NaN", "9007199254740992", "99999999999999999"]) {
         const result = await run(...args, `--limit=${limit}`);
         expect(result.code).toBe(1);
         expect(result.stdout).toBe("");
