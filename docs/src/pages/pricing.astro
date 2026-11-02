@@ -1,0 +1,238 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import CopyButton from "../components/CopyButton.astro";
+
+import { installCommand, projectLinks } from "../config/site";
+import {
+	exactBytes,
+	largeListCost,
+	memoryLabel,
+	outputLabel,
+	pricingCommands,
+	pricingDiskRows,
+	pricingEnvironment,
+	pricingTotals,
+	sizeLabel,
+	typicalCommandMemoryBytes
+} from "../config/pricing";
+
+const microLabel = "font-mono text-[11px] leading-[1.4] tracking-[0.16em] text-muted-foreground uppercase";
+const toggleButton =
+	"px-3 py-1.5 aria-pressed:bg-soot aria-pressed:text-soot-foreground aria-[pressed=false]:hover:bg-soot/8 focus-visible:outline-offset-2";
+const defaultCommand = pricingCommands[0];
+const diskNote = `A task has a ${pricingEnvironment.titleChars}-character title and a ${pricingEnvironment.descriptionChars}-character description. A comment is ${pricingEnvironment.commentChars} characters.`;
+const largeListNote = `At 10,000 tasks, listing them all takes ${memoryLabel(largeListCost.memoryBytes)} and ${largeListCost.seconds.toFixed(1)} seconds.`;
+const measurementNote = `Measured ${pricingEnvironment.measured} with CLI ${pricingEnvironment.cli} and the packages it installs. Memory and time are medians of five runs on Node ${pricingEnvironment.node}, ${pricingEnvironment.platform}, against a database of ${pricingEnvironment.tasks} tasks and ${pricingEnvironment.comments} comments.`;
+---
+
+<BaseLayout
+	title='Pricing'
+	description='Zinn is free and MIT licensed. What the software costs in bytes, and what a command costs to run.'>
+	<section class='site-container flex-1 py-10 md:py-16' aria-labelledby='pricing-heading'>
+		<div class='grid max-w-[72rem] lg:grid-cols-2'>
+			<div class='min-w-0 lg:pr-10'>
+				<p class={microLabel}>Pricing</p>
+				<h1 id='pricing-heading' class='mt-3 max-w-[34rem] text-4xl leading-tighter tracking-tight md:text-5xl'>
+					Free, and that is the whole plan.
+				</h1>
+				<p class='mt-5 max-w-[34rem] text-lg leading-relaxed md:text-xl'>
+					Zinn is <a href={projectLinks.license}>MIT licensed</a>. There is one plan, with no account, no seats and
+					nothing to renew. Everything below is quoted in bytes, starting with the price.
+				</p>
+
+				<div class='mt-8'>
+					<div class='py-6 md:py-8 lg:border-t lg:border-soot/20'>
+						<p class={microLabel}>Spot price</p>
+						<p class='mt-3 font-mono text-[4rem] leading-[0.9] tracking-[-0.04em] md:text-[5.5rem]'>0 B</p>
+						<p class='mt-3 font-mono text-xs text-muted-foreground'>per install, per machine, per agent</p>
+					</div>
+
+					<div class='border-t border-soot/20 py-6 md:py-8'>
+						<div class='flex flex-wrap items-baseline justify-between gap-2'>
+							<span class={microLabel}>Shipping weight</span>
+							<div
+								class='inline-flex border border-soot font-mono text-[11px] tracking-[0.14em] uppercase'
+								role='group'
+								aria-label='Shipping weight'>
+								<button type='button' class={toggleButton} data-weight='net' aria-pressed='true'>Net</button>
+								<button
+									type='button'
+									class:list={[toggleButton, "border-l border-soot"]}
+									data-weight='gross'
+									aria-pressed='false'>Gross</button
+								>
+							</div>
+						</div>
+
+						<div class='mt-4' data-weight-state='net'>
+							<p class='font-mono text-[2.5rem] leading-none tracking-[-0.03em] tabular-nums md:text-[3rem]'>
+								{sizeLabel(pricingTotals.softwareDownload)}
+							</p>
+							<p class='mt-2 font-mono text-xs text-muted-foreground'>
+								{exactBytes(pricingTotals.softwareDownload)}
+								<span class='mx-1.5 text-soot/30' aria-hidden='true'>|</span>
+								the software alone
+							</p>
+						</div>
+						<div class='mt-4' data-weight-state='gross' hidden>
+							<p class='font-mono text-[2.5rem] leading-none tracking-[-0.03em] tabular-nums md:text-[3rem]'>
+								{sizeLabel(pricingTotals.download)}
+							</p>
+							<p class='mt-2 font-mono text-xs text-muted-foreground'>
+								{exactBytes(pricingTotals.download)}
+								<span class='mx-1.5 text-soot/30' aria-hidden='true'>|</span>
+								with its dependencies
+							</p>
+						</div>
+					</div>
+				</div>
+
+				<div
+					class='mt-7 flex items-center gap-3 bg-soot p-1 pl-4 font-mono text-xs text-soot-foreground scheme-dark selection:bg-limestone! selection:text-soot! sm:text-[13px]'>
+					<code class='min-w-0 flex-1 overflow-x-auto whitespace-nowrap'>
+						<span class='mr-1.5 text-bronze select-none sm:mr-2' aria-hidden='true'>$</span>{installCommand}
+					</code>
+					<CopyButton
+						variant='ghost-inverted'
+						size='icon'
+						class='shrink-0 focus-visible:outline-offset-2'
+						value={installCommand}
+						label='Copy installation command'
+						title='Copy install command'
+						success='Install command copied to clipboard.'
+					/>
+				</div>
+			</div>
+
+			<div class='mt-12 min-w-0 lg:mt-0 lg:border-l lg:border-soot/20 lg:pl-10'>
+				<h2 id='running-heading' class={microLabel}>Running costs</h2>
+				<p class='mt-2 max-w-[34rem] text-lg leading-normal md:text-xl'>
+					About {memoryLabel(typicalCommandMemoryBytes)} of memory and a tenth of a second per command. {largeListNote}
+				</p>
+
+				<dl class='mt-5'>
+					<div class='grid gap-1 border-t border-soot/20 py-2.5 sm:grid-cols-[7.5rem_minmax(0,1fr)] sm:gap-4'>
+						<dt class={microLabel}>Idle</dt>
+						<dd class='text-base leading-normal'>
+							Nothing. Zinn runs only when you call it. No background process, no memory, no writes.
+						</dd>
+					</div>
+					<div class='grid gap-1 border-t border-soot/20 py-2.5 sm:grid-cols-[7.5rem_minmax(0,1fr)] sm:gap-4'>
+						<dt class={microLabel}>Per command</dt>
+						<dd class='text-base leading-normal'>
+							{memoryLabel(pricingEnvironment.nodeMemoryBytes)} of that is Node itself.
+						</dd>
+					</div>
+				</dl>
+
+				<div class='mt-6'>
+					<div
+						class='grid grid-cols-1 gap-px border border-soot/20 bg-soot/20 sm:grid-cols-2'
+						role='group'
+						aria-label='Command measured'>
+						{
+							pricingCommands.map((entry, index) => (
+								<button
+									type='button'
+									class='bg-limestone px-3 py-2 text-left font-mono text-xs leading-snug aria-pressed:bg-soot aria-pressed:text-soot-foreground aria-[pressed=false]:hover:bg-soot/8 focus-visible:-outline-offset-2'
+									data-command
+									data-memory={memoryLabel(entry.memoryBytes)}
+									data-time={`${entry.seconds.toFixed(2)} s`}
+									data-output={outputLabel(entry.output)}
+									aria-pressed={index === 0 ? "true" : "false"}>
+									{entry.command}
+								</button>
+							))
+						}
+					</div>
+
+					<dl
+						class='mt-4 grid grid-cols-1 divide-y divide-soot/20 border-t border-soot/20 sm:grid-cols-3 sm:divide-x sm:divide-y-0'
+						aria-live='polite'>
+						<div class='py-3 sm:px-4 sm:first:pl-0'>
+							<dt class={microLabel}>Memory</dt>
+							<dd
+								class='mt-1.5 font-mono text-2xl leading-none tracking-[-0.02em] tabular-nums whitespace-nowrap md:text-[2rem]'
+								data-readout='memory'>
+								{memoryLabel(defaultCommand.memoryBytes)}
+							</dd>
+						</div>
+						<div class='py-3 sm:px-4'>
+							<dt class={microLabel}>Time</dt>
+							<dd
+								class='mt-1.5 font-mono text-2xl leading-none tracking-[-0.02em] tabular-nums whitespace-nowrap md:text-[2rem]'
+								data-readout='time'>
+								{defaultCommand.seconds.toFixed(2)} s
+							</dd>
+						</div>
+						<div class='py-3 sm:px-4'>
+							<dt class={microLabel}>Output</dt>
+							<dd
+								class='mt-1.5 font-mono text-2xl leading-none tracking-[-0.02em] tabular-nums whitespace-nowrap md:text-[2rem]'
+								data-readout='output'>
+								{outputLabel(defaultCommand.output)}
+							</dd>
+						</div>
+					</dl>
+					<p class='mt-1 font-mono text-[11px] leading-relaxed text-muted-foreground'>
+						Output is what the command prints, and what an agent reads.
+					</p>
+				</div>
+
+				<h2 class:list={[microLabel, "mt-9"]}>On disk</h2>
+				<dl class='mt-3'>
+					{
+						pricingDiskRows.map((row) => (
+							<div class='flex items-baseline justify-between gap-6 border-t border-soot/20 py-2'>
+								<dt class='text-base'>{row.label}</dt>
+								<dd class='shrink-0 font-mono text-sm whitespace-nowrap tabular-nums'>{sizeLabel(row.bytes)}</dd>
+							</div>
+						))
+					}
+				</dl>
+
+				<p class='mt-3.5 max-w-[40rem] font-mono text-[11px] leading-relaxed text-muted-foreground'>
+					{diskNote}
+				</p>
+			</div>
+		</div>
+
+		<p class='mt-12 max-w-[40rem] text-sm leading-relaxed text-muted-foreground'>
+			{measurementNote}
+		</p>
+	</section>
+</BaseLayout>
+
+<script>
+	const weightButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-weight]")];
+	const weightStates = [...document.querySelectorAll<HTMLElement>("[data-weight-state]")];
+	const commandButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-command]")];
+	const memoryOut = document.querySelector<HTMLElement>("[data-readout='memory']");
+	const timeOut = document.querySelector<HTMLElement>("[data-readout='time']");
+	const outputOut = document.querySelector<HTMLElement>("[data-readout='output']");
+
+	for (const button of weightButtons) {
+		button.addEventListener("click", () => {
+			for (const other of weightButtons) {
+				other.setAttribute("aria-pressed", String(other === button));
+			}
+			for (const state of weightStates) {
+				state.hidden = state.dataset.weightState !== button.dataset.weight;
+			}
+		});
+	}
+
+	for (const button of commandButtons) {
+		button.addEventListener("click", () => {
+			if (!memoryOut || !timeOut || !outputOut) {
+				return;
+			}
+			for (const other of commandButtons) {
+				other.setAttribute("aria-pressed", String(other === button));
+			}
+			memoryOut.textContent = button.dataset.memory ?? "";
+			timeOut.textContent = button.dataset.time ?? "";
+			outputOut.textContent = button.dataset.output ?? "";
+		});
+	}
+</script>

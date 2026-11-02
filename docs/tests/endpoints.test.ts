@@ -1,5 +1,16 @@
 import { opencodeInspector } from "../src/config/opencode-inspector";
 import { opencodeScenes, opencodeTheme } from "../src/config/opencode-theme";
+import {
+  exactBytes,
+  largeListCost,
+  memoryLabel,
+  outputLabel,
+  pricingCommands,
+  pricingDiskRows,
+  pricingPackages,
+  pricingTotals,
+  sizeLabel,
+} from "../src/config/pricing";
 import { integrationLines, type IntegrationLine } from "../src/config/release-lines";
 import { agentSetupPrompt, installCommand, minimumNodeVersion } from "../src/config/site";
 import { splitShellCommands } from "../src/markdown/shell-commands";
@@ -228,6 +239,43 @@ test("changelog and its Markdown twin list every release entry, newest first", a
   }
 });
 
+test("pricing page and its Markdown twin carry the same measured figures", async () => {
+  const response = await server.fetch("/pricing");
+  expect(response.status).toBe(200);
+  expect(response.headers.get("Content-Type")).toContain("text/html");
+  const html = await response.text();
+  expect(html.match(/<h1\b/g)).toHaveLength(1);
+  const markdownResponse = await server.fetch("/pricing.md");
+  expect(markdownResponse.status).toBe(200);
+  expect(markdownResponse.headers.get("Content-Type")).toContain("text/markdown");
+  const markdown = await markdownResponse.text();
+  const firstCommand = pricingCommands[0]!;
+  const facts = [
+    "Free, and that is the whole plan.",
+    sizeLabel(pricingTotals.softwareDownload),
+    exactBytes(pricingTotals.softwareDownload),
+    sizeLabel(pricingTotals.download),
+    exactBytes(pricingTotals.download),
+    memoryLabel(firstCommand.memoryBytes),
+    memoryLabel(largeListCost.memoryBytes),
+    `${firstCommand.seconds.toFixed(2)} s`,
+    outputLabel(firstCommand.output),
+    installCommand,
+    ...pricingCommands.map((command) => command.command),
+    ...pricingDiskRows.flatMap((row) => [row.label, sizeLabel(row.bytes)]),
+  ];
+  const pageText = visibleText(html);
+  for (const fact of facts) {
+    expect(pageText).toContain(fact);
+    expect(markdown).toContain(fact);
+  }
+  // The package is presented as a whole, so no dependency is named.
+  for (const dependency of pricingPackages.filter((entry) => !entry.zinn)) {
+    expect(pageText).not.toContain(dependency.name);
+    expect(markdown).not.toContain(dependency.name);
+  }
+});
+
 test.each(docsSources)(
   "docs page %s has a Markdown twin and breadcrumbs matching its structured data",
   async (source) => {
@@ -418,6 +466,7 @@ test("every generated public endpoint is served with its expected type", async (
     "https://zinn.sh/",
     ...[
       ...markdownPages,
+      "pricing",
       "integrations",
       opencodeTheme.path.slice(1),
       opencodeInspector.path.slice(1),
