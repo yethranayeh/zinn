@@ -222,3 +222,92 @@ export function ChangelogCard({ wordmark }: { wordmark: string }) {
     ],
   });
 }
+
+export function PricingCard({ wordmark }: { wordmark: string }) {
+  return jsx("div", {
+    style: {
+      width: "100%",
+      height: "100%",
+      display: "flex",
+      position: "relative",
+      backgroundColor: colors.limestone,
+      color: colors.soot,
+      fontFamily: "Alan Sans",
+    },
+    children: [
+      jsx("img", {
+        src: wordmark,
+        width: 240,
+        height: 77,
+        style: { position: "absolute", left: 68, top: 54 },
+      }),
+      jsx("div", {
+        style: {
+          position: "absolute",
+          left: 340,
+          top: 54,
+          width: 1,
+          height: 512,
+          backgroundColor: colors.pewter,
+        },
+      }),
+      jsx("div", {
+        style: {
+          position: "absolute",
+          left: 68,
+          top: 200,
+          fontFamily: "MonoMMM",
+          fontSize: 16,
+          letterSpacing: 2.6,
+          color: colors.pewter,
+        },
+        children: "PRICING",
+      }),
+      jsx("div", {
+        style: {
+          position: "absolute",
+          left: 404,
+          top: 106,
+          width: 728,
+          fontFamily: "MonoMMM",
+          fontSize: 228,
+          letterSpacing: -10,
+          lineHeight: 1,
+        },
+        children: "0 B",
+      }),
+      jsx("div", {
+        style: {
+          position: "absolute",
+          left: 406,
+          top: 366,
+          width: 72,
+          height: 4,
+          backgroundColor: colors.cinnabar,
+        },
+      }),
+      jsx("div", {
+        style: {
+          position: "absolute",
+          left: 404,
+          top: 400,
+          width: 728,
+          fontSize: 44,
+          lineHeight: 1.15,
+        },
+        children: "Free, and that is the whole plan.",
+      }),
+      jsx("div", {
+        style: {
+          position: "absolute",
+          left: 404,
+          top: 560,
+          fontFamily: "MonoMMM",
+          fontSize: 18,
+          color: colors.pewter,
+        },
+        children: "zinn.sh/pricing",
+      }),
+    ],
+  });
+}

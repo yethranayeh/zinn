@@ -447,6 +447,7 @@ test("every generated public endpoint is served with its expected type", async (
     ["/schemas/settings/v1.json", "application/json"],
     ["/social/zinn.png", "image/png"],
     ["/social/changelog.png", "image/png"],
+    ["/social/pricing.png", "image/png"],
   ]) {
     const response = await server.fetch(path!);
     expect(response.status).toBe(200);
@@ -547,6 +548,20 @@ test("changelog preview is a 1200 by 630 PNG linked by changelog metadata", asyn
   const homepageAlt = homepageHtml.match(/property="og:image:alt" content="([^"]+)"/)?.[1];
   expect(alt).not.toBe(homepageAlt);
   await expectSocialImage("/social/changelog.png");
+});
+
+test("pricing preview is a 1200 by 630 PNG linked by pricing metadata", async () => {
+  const html = await (await server.fetch("/pricing")).text();
+  const image = html.match(/property="og:image" content="([^"]+)"/)?.[1];
+  const twitterImage = html.match(/name="twitter:image" content="([^"]+)"/)?.[1];
+  expect(image).toBe("https://zinn.sh/social/pricing.png");
+  expect(twitterImage).toBe(image);
+  const alt = html.match(/property="og:image:alt" content="([^"]+)"/)?.[1];
+  const twitterAlt = html.match(/name="twitter:image:alt" content="([^"]+)"/)?.[1];
+  expect(alt).toContain("0 B");
+  expect(alt).toContain("zinn.sh/pricing");
+  expect(twitterAlt).toBe(alt);
+  await expectSocialImage("/social/pricing.png");
 });
 
 test("agent setup prompt uses the installation command and supported runtime", async () => {

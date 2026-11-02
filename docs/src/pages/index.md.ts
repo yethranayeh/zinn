@@ -56,6 +56,8 @@ Every project lives in one SQLite database, \`~/.zinn/data/zinn.sqlite\` by defa
 
 ## Take the next command
 
+Zinn is free and MIT licensed. See its [price in bytes and running costs](https://zinn.sh/pricing).
+
 Read the [quick start](https://zinn.sh/docs/quick-start) or [project reference](https://zinn.sh/docs/cli#start-a-project), browse the [Zinn source on GitHub](${projectLinks.github}) or find the [Zinn CLI package on npm](${projectLinks.npm}).
 
 Read [About Zinn](https://zinn.sh/about), [Contact](https://zinn.sh/contact) and [Privacy](https://zinn.sh/privacy).
