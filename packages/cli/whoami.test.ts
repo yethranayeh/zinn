@@ -1,3 +1,4 @@
+import packageJson from "./package.json";
 import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
@@ -49,7 +50,7 @@ test("whoami resolves agent markers and paired declarations without creating sto
     const actor = await identify(declarations);
     expect(actor).toEqual({
       actor_name: null, actor_email: null, actor_kind: "agent", actor_source: null,
-      actor_session_id: null, actor_thread_id: null, actor_agent: null, actor_model: null, actor_effort: null,
+      actor_session_id: null, actor_thread_id: null, actor_agent: null, actor_model: null, actor_effort: null, actor_client: `zinn-cli/${packageJson.version}`,
       ...fixture.actor,
     });
     const text = await run(["whoami"], declarations);
@@ -73,7 +74,7 @@ test("whoami resolves agent markers and paired declarations without creating sto
 test("whoami uses repository git identity from the current folder and falls back to the OS user", async () => {
   expect(await identify()).toEqual({
     actor_name: userInfo().username, actor_email: null, actor_kind: "human", actor_source: "os-user",
-    actor_session_id: null, actor_thread_id: null, actor_agent: null, actor_model: null, actor_effort: null,
+    actor_session_id: null, actor_thread_id: null, actor_agent: null, actor_model: null, actor_effort: null, actor_client: `zinn-cli/${packageJson.version}`,
   });
   const globalConfig = join(directory, "gitconfig");
   writeFileSync(globalConfig, "[user]\nname = Global Human\nemail = global@example.com\n");

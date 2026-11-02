@@ -104,6 +104,7 @@ export const activitySchema = z.strictObject({
   actor_agent: nullableText,
   actor_model: nullableText,
   actor_effort: nullableText,
+  actor_client: nullableText,
   entity_type: z
     .string()
     .describe(
@@ -133,6 +134,7 @@ export const actorSchema = activitySchema.pick({
   actor_agent: true,
   actor_model: true,
   actor_effort: true,
+  actor_client: true,
 });
 
 export const taskDetailSchema = taskSchema.extend({

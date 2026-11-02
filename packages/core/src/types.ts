@@ -103,6 +103,7 @@ export type Activity = {
   actor_agent: string | null;
   actor_model: string | null;
   actor_effort: string | null;
+  actor_client: string | null;
   entity_type: ActivityEntityType;
   entity_id: string;
   action: ActivityAction;

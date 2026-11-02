@@ -129,7 +129,7 @@ test("raw changes remain open while activity and administrative objects are clos
   const activity = {
     id: "event", created_at: 1, actor_name: null, actor_email: null, actor_kind: "agent",
     actor_source: null, actor_session_id: null, actor_thread_id: null, actor_agent: null,
-    actor_model: null, actor_effort: null, entity_type: "task", entity_id: "task-id", action: "order", changes: null,
+    actor_model: null, actor_effort: null, actor_client: null, entity_type: "task", entity_id: "task-id", action: "order", changes: null,
   };
   const validate = ajv.getSchema("results#/definitions/Activity")!;
   expect(validate(activity)).toBe(true);

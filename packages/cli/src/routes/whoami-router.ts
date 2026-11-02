@@ -27,7 +27,7 @@ export const whoamiCommand = {
   help: `${generateCommandUsage("whoami", noInput)}
 
 Show the actor a change would record in the current environment and folder.
-Includes name, email, kind, source, session, thread, agent, model and effort.
+Includes name, email, kind, source, session, thread, agent, model, effort and client.
 Git identity is read from the current folder.
 
 Works without reading settings or opening storage.

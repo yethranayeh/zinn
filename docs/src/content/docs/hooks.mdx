@@ -39,7 +39,7 @@ Zinn waits for the hook process to exit, so a hook can background slow work with
 
 ## Read the records
 
-Stdin has one JSON object per line, one for each activity record of the change, in the order recorded. Each object has the fields that `zinn activity list --json` prints for a record: `id`, `created_at`, `actor_name`, `actor_email`, `actor_kind`, `actor_source`, `actor_session_id`, `actor_thread_id`, `actor_agent`, `actor_model`, `actor_effort`, `entity_type`, `entity_id`, `action` and `changes`. It adds `task_key`: the task's key, such as `APP-1`, on task records, and `null` on project, column and label records.
+Stdin has one JSON object per line, one for each activity record of the change, in the order recorded. Each object has the fields that `zinn activity list --json` prints for a record: `id`, `created_at`, `actor_name`, `actor_email`, `actor_kind`, `actor_source`, `actor_session_id`, `actor_thread_id`, `actor_agent`, `actor_model`, `actor_effort`, `actor_client`, `entity_type`, `entity_id`, `action` and `changes`. It adds `task_key`: the task's key, such as `APP-1`, on task records, and `null` on project, column and label records.
 
 For example, moving a task records a line like this (formatted as wrapped for presentation here, but normally writtenas one line):
 
@@ -56,6 +56,7 @@ For example, moving a task records a line like this (formatted as wrapped for pr
 	"actor_agent": null,
 	"actor_model": null,
 	"actor_effort": null,
+	"actor_client": "zinn-cli/0.44.0",
 	"entity_type": "task",
 	"entity_id": "019abcdf-5678-7000-8000-123456abcdef",
 	"action": "move",

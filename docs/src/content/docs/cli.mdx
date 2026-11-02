@@ -533,6 +533,7 @@ zinn activity list --task MDR-1
 zinn activity list --task MDR-1 --show-deleted
 zinn activity list --task-id 019abcdf-1234-7000-8000-123456abcdef
 zinn activity list --session conversation-id
+zinn activity list --client zinn-opencode:panel
 zinn activity list --session conversation-id --thread child-thread-id
 zinn activity list --action comment_create --action comment_edit
 zinn activity list --action edit --changed description
@@ -567,6 +568,8 @@ Deleted history and exact ID selection include the original project-deletion eve
 
 `--session` and `--thread` match the complete stored IDs exactly, including case and whitespace. All supplied filters must match, and `--limit` applies after filtering. Rows without the requested identity do not match. No matches return empty output, or `[]` with `--json`, and exit successfully. Session activity records committed changes.
 
+`--client <name>` matches a client anywhere in the recorded chain, including case. Zinn splits the chain on whitespace and takes each token's name before its first `/`. A name matches exactly or when followed by `:`, so `--client zinn-opencode` selects `zinn-opencode/0.3.0` and `zinn-opencode:panel/0.3.0`. Use `--client zinn-opencode:panel` to select the panel. `--client zinn` does not match `zinn-opencode`. Other filters must also match before the limit applies.
+
 `--action <action>` matches the recorded action, such as `edit`, `move`, `comment_create`, `comment_edit` or `comment_delete`. Action names use the same spelling and case as activity JSON. Repeat `--action` to match any listed action. Action and field filters must match the same event.
 
 `--changed <field>` matches a change to a task's `column`, `priority`, `labels`, `title`, `description` or `due_at`. Labels match additions and removals. Initial task creation fields also match, including an unassigned priority or description and an unset deadline. Initial labels match when at least one label is recorded. Use `--action edit --changed description` to select description edits. `due_at` matches any deadline change and does not take a value.
@@ -583,7 +586,7 @@ Activity text uses local dates and times with a UTC offset. `activity list` uses
 
 `activity view` preserves full recorded text and line breaks, including unknown change fields.
 
-With `--json`, list returns an array and view returns one event object. Both include `id`, `created_at` (epoch milliseconds), `actor_name`, `actor_email`, `actor_kind`, `actor_source`, `actor_session_id`, `actor_thread_id`, `actor_agent`, `actor_model`, `actor_effort`, `entity_type`, `entity_id`, `action`, and `changes` (parsed JSON or `null`). `actor_name` can be `null` for an unnamed agent. The six additional actor fields are `null` when absent, including on events recorded before schema version 2. Payloads and IDs are preserved in full, including after deletion.
+With `--json`, list returns an array and view returns one event object. Both include `id`, `created_at` (epoch milliseconds), `actor_name`, `actor_email`, `actor_kind`, `actor_source`, `actor_session_id`, `actor_thread_id`, `actor_agent`, `actor_model`, `actor_effort`, `actor_client`, `entity_type`, `entity_id`, `action`, and `changes` (parsed JSON or `null`). `actor_name` can be `null` for an unnamed agent. Optional actor metadata is `null` when absent. `actor_client` is `null` on events recorded before schema version 4. Payloads and IDs are preserved in full, including after deletion.
 
 With `--show-deleted`, readable keys can include different identities after a project is deleted and recreated. Group JSON records by (`entity_type`, `entity_id`) to keep their histories distinct, or use `--task-id` or `--project-id` for one identity. The `id` identifies the activity event itself. Project deletion events keep the project's `entity_id`, with removed task IDs in `changes.tasks`.
 
@@ -598,9 +601,9 @@ zinn whoami
 zinn whoami --json
 ```
 
-For the human fallback, Git identity comes from the current folder. The command works without reading settings or opening storage, including when the store is missing or unusable. It shows the resolved name, email, kind, source, session, thread, agent, model and effort. An unnamed agent is shown as `unknown`.
+For the human fallback, Git identity comes from the current folder. The command works without reading settings or opening storage, including when the store is missing or unusable. It shows the resolved name, email, kind, source, session, thread, agent, model, effort and client. An unnamed agent is shown as `unknown`.
 
-`--json` returns one object with `actor_name`, `actor_email`, `actor_kind`, `actor_source`, `actor_session_id`, `actor_thread_id`, `actor_agent`, `actor_model` and `actor_effort`, matching the actor fields of an activity record. Missing values are `null`.
+`--json` returns one object with `actor_name`, `actor_email`, `actor_kind`, `actor_source`, `actor_session_id`, `actor_thread_id`, `actor_agent`, `actor_model`, `actor_effort` and `actor_client`, matching the actor fields of an activity record. Missing values are `null`.
 
 Each mutation records the actor identity supplied by the CLI. Zinn checks `AI_AGENT` and `AGENT` declarations before known tool markers for Claude Code, Codex, OpenCode, Gemini CLI, Cline, Cursor, Copilot's coding agent, and Crush. Set `AI_AGENT` to name another tool. Numeric-only and boolean-word values for `AI_AGENT` or `AGENT` are treated as flags, not names, and do not prevent a later marker from identifying the agent. If only a generic flag is set, the actor kind is `agent` and its name is `null`.
 
@@ -609,6 +612,24 @@ With no agent marker, Zinn uses your git `user.name` and `user.email`, then your
 Integrations can supply `ZINN_SESSION_ID` and `ZINN_THREAD_ID`. When either is set, Zinn uses that pair. Otherwise it uses the first available pair: `CLAUDE_CODE_SESSION_ID` with a `null` thread, `CODEX_SESSION_ID` with `CODEX_THREAD_ID`, or OpenCode's `OPENCODE_SESSION_ID` as the thread with a `null` session. If a member is missing, it stays `null`; Zinn does not combine values from different pairs.
 
 `ZINN_AGENT`, `ZINN_MODEL` and `ZINN_EFFORT` declare the host agent name, running model and effort for the execution making the change. Zinn trims surrounding whitespace, treats blank declarations as _unset_ and preserves other text. These values are declarations rather than authenticated identities. Activity JSON keeps these values with the event.
+
+### Client chains
+
+Every CLI write records `actor_client` as `zinn-cli/<package version>`. Set `ZINN_CLIENT` to declare the programs calling the CLI. Zinn trims its surrounding whitespace and appends the remaining text after its own token, separated by one space. An empty or whitespace-only declaration leaves only the CLI token. The declared text is preserved without validating its format.
+
+```sh title="Declare a calling client"
+ZINN_CLIENT='rex/0.9 zinn-opencode:panel/0.3.0' zinn whoami --json
+```
+
+For example, CLI version `0.44.0` records `zinn-cli/0.44.0 rex/0.9 zinn-opencode:panel/0.3.0` for that declaration. With no declaration, it records `zinn-cli/0.44.0`.
+
+Zinn's preferred convention for its own clients and integrations is:
+
+- Use space-separated `name/version` tokens, without parenthesized comments. Names use lowercase letters, digits and `-`. Versions contain no whitespace or `/`.
+- Name a part of a program as `program:part`, such as `zinn-opencode:panel/0.3.0`. The version belongs to the program.
+- An intermediary appends its own token to its inherited declaration, separated by one space and trimmed. The declared chain reads outermost caller first. The CLI places its own token before that declaration.
+
+Other programs may declare any text. The client filter uses whitespace-separated tokens for every chain, so words inside a caller's parenthesized comments can also match. Client declarations identify the calling programs and are not authenticated identities.
 
 ## Command aliases
 

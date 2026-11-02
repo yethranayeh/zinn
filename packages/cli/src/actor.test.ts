@@ -3,6 +3,7 @@ import type { Actor } from "@zinn-dev/core";
 import { expect, test } from "bun:test";
 
 import { detectAgent, resolveActor } from "./actor";
+import packageJson from "../package.json";
 
 type Env = Record<string, string | undefined>;
 
@@ -21,6 +22,7 @@ function agent(
     agent: null,
     model: null,
     effort: null,
+    client: `zinn-cli/${packageJson.version}`,
     ...identity,
   };
 }
@@ -224,4 +226,14 @@ test("human fallback keeps explicit null identity fields and accepts declared me
   expect(declared.agent).toBe("general");
   expect(declared.model).toBe("provider/model");
   expect(declared.effort).toBe("medium");
+});
+
+test("every CLI actor supplies its version and preserves the trimmed client declaration", () => {
+  const ownClient = `zinn-cli/${packageJson.version}`;
+  for (const env of [{}, { OPENCODE: "1" }, { AGENT: "1" }]) {
+    for (const declared of [undefined, "", " \n\t ", "  rex/0.9  zinn-opencode:panel/0.3.0\t(custom ui)  "]) {
+      const client = resolveActor({ ...env, ZINN_CLIENT: declared }).client;
+      expect(client).toBe(declared?.trim() ? `${ownClient} ${declared.trim()}` : ownClient);
+    }
+  }
 });

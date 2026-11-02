@@ -21,6 +21,7 @@ function parseActivity(row: StoredActivity): Activity {
     actor_agent: row.actor_agent ?? null,
     actor_model: row.actor_model ?? null,
     actor_effort: row.actor_effort ?? null,
+    actor_client: row.actor_client ?? null,
     entity_type: row.entity_type,
     entity_id: row.entity_id,
     action: row.action,
@@ -36,11 +37,11 @@ export function create(props: Omit<Activity, "id">): Activity {
     `INSERT INTO
     ${DB_TABLE.activity} (
       id, created_at, actor_name, actor_email, actor_kind,
-      actor_source, actor_session_id, actor_thread_id, actor_agent, actor_model, actor_effort,
+      actor_source, actor_session_id, actor_thread_id, actor_agent, actor_model, actor_effort, actor_client,
       entity_type, entity_id, action, changes
     ) VALUES (
       $id, $created_at, $actor_name, $actor_email, $actor_kind,
-      $actor_source, $actor_session_id, $actor_thread_id, $actor_agent, $actor_model, $actor_effort,
+      $actor_source, $actor_session_id, $actor_thread_id, $actor_agent, $actor_model, $actor_effort, $actor_client,
       $entity_type, $entity_id, $action, $changes
     );`,
   ).run({
@@ -55,6 +56,7 @@ export function create(props: Omit<Activity, "id">): Activity {
     $actor_agent: props.actor_agent,
     $actor_model: props.actor_model,
     $actor_effort: props.actor_effort,
+    $actor_client: props.actor_client,
     $entity_type: props.entity_type,
     $entity_id: props.entity_id,
     $action: props.action,

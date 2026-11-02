@@ -66,6 +66,7 @@ const ACTOR_DETAIL_FIELDS = [
   { key: "actor_agent", label: "Agent" },
   { key: "actor_model", label: "Model" },
   { key: "actor_effort", label: "Effort" },
+  { key: "actor_client", label: "Client" },
 ] as const;
 const ACTION_LABELS: Record<ActivityAction, string> = {
   create: "created",
@@ -132,7 +133,11 @@ export function abbreviateActivityIds(ids: Array<string>) {
 
 function getTaskNavigation(
   pageEvents: Array<Activity>,
-  { navigationEvents, taskKey, taskId }: {
+  {
+    navigationEvents,
+    taskKey,
+    taskId,
+  }: {
     navigationEvents?: Array<Activity>;
     taskKey?: string;
     taskId?: string;
@@ -322,7 +327,8 @@ export function presentActivities(
       }).events
     : events;
   const tasks = getTaskNavigation(events, {
-    navigationEvents: hasProjectSelector || options.keysFromEventsOnly ? navigationEvents : undefined,
+    navigationEvents:
+      hasProjectSelector || options.keysFromEventsOnly ? navigationEvents : undefined,
     taskKey: options.taskKey,
     taskId: options.taskId,
   });
@@ -659,6 +665,7 @@ export function presentActor(actor: Actor): PresentedActor {
     actor_agent: actor.agent ?? null,
     actor_model: actor.model ?? null,
     actor_effort: actor.effort ?? null,
+    actor_client: actor.client ?? null,
   };
 }
 
@@ -678,10 +685,13 @@ export function formatActivityList(
       { text: entry.displayId },
       { text: formatLocalTime(entry.event.created_at), style: "dim" as const },
       { text: `${entry.event.actor_name ?? UNKNOWN_ACTOR_NAME} (${entry.event.actor_kind})` },
+      { text: entry.event.actor_client ?? "null" },
     ];
+
     if (!options.showsDetails) {
       return [...metadata, { text: formatActivityContent(entry) }];
     }
+
     return [
       ...metadata,
       { text: formatNavigation(entry, { showsFullNames: true }) },

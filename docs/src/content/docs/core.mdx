@@ -49,6 +49,14 @@ By default it shares `~/.zinn/data/zinn.sqlite` with the CLI, but `ZINN_DIR` and
 
 The client supplies its own `release` identity: `source` for development and `published` for prepared release artifacts. Core identifies its own build independently. Core throws errors while the client handles output, prompts, and optional database-wait and legacy-read callbacks.
 
+## Actor clients
+
+Library callers may supply `Actor.client` as a string or `null`. Core preserves the supplied string exactly in `actor_client` on every recorded activity event. Omitting it stores `null`. Events recorded before schema version 4 also have a `null` client after migration.
+
+Clients can follow Zinn's [client chain convention](/docs/cli#client-chains) when constructing their value. Core supplies no client token of its own.
+
+`parseClientChain(client)` returns an array of `{ name, version }` objects in chain order. It splits on whitespace and separates each token at its first `/`. Tokens without `/` have a `null` version. Null or blank input returns an empty array. Names and versions preserve case and arbitrary text, including any further slashes in a version. Parsing does not validate tokens or change the stored string.
+
 ## Shared behavior
 
 `project.getAllWithTaskCounts()` returns project records with `taskCounts: { active, archived }`. Counts cover existing tasks in each project. Active tasks are unarchived tasks in any column, including Done. Both counts are always present, including zero.
@@ -129,7 +137,7 @@ If the conflicting IDs changed before the write, core throws a `CoreError` with 
 
 `activity.getAll` returns `{ events, hasMore, nextCursor? }`. `events` contains full activity records, newest first by timestamp and then event ID. Without a project or task selector it reads across the database. `hasMore` is true only when another event matches after the returned page. Without `limit`, it is false.
 
-`nextCursor` is the last returned event's ID and is present only when `hasMore` is true. Pass `startingAfter` with it to continue toward older events, excluding that event. It accepts the same full IDs and unique prefixes as `activity.getById`. The cursor event need not match the supplied filters. Every filter applies before the page cap, including `changed`. Omitting `limit` returns every remaining match.
+`nextCursor` is the last returned event's ID and is present only when `hasMore` is true. Pass `startingAfter` with it to continue toward older events, excluding that event. It accepts the same full IDs and unique prefixes as `activity.getById`. The cursor event need not match the supplied filters. Every filter applies before the page cap, including `changed` and `client`. Omitting `limit` returns every remaining match.
 
 ```ts title="Read the next activity page"
 const firstPage = activity.getAll({ limit: 10 });
@@ -156,6 +164,8 @@ Optional numeric `since` and `until` fields filter the stored `created_at`, incl
 Project selection includes task comments, label attachments, reorders, and original project-deletion snapshots. Global label-definition events are excluded. Cross-project relations include only the selected project's task event and within-project relations include both task events.
 
 Task selection includes original project-deletion events whose snapshots contain the selected task IDs. These events retain their project identity and full payloads. `sessionId` and `threadId` match complete, case-sensitive stored values; all supplied filters must match. `limit` applies after filtering.
+
+`client` selects a client name anywhere in the chain. It splits the stored string on whitespace, takes each token's text before the first `/` and matches that name exactly or with a following `:`. Matching is case-sensitive. For example, `{ client: "zinn-opencode" }` matches both `zinn-opencode/0.3.0` and `zinn-opencode:panel/0.3.0`. Other supplied filters must also match. Events with a null client do not match.
 
 `actions` accepts an array of recorded action names, such as `create`, `edit`, `move` or `comment_create`. An event matches any listed action. Action names are case-sensitive and use the `ActivityAction` vocabulary across entity types.
 

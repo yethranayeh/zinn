@@ -100,7 +100,7 @@ test("a version 2 upgrade has the same activity columns as a fresh schema", () =
   });
 
   withDatabase((db) => {
-    createSchema(db);
+    createSchema(db, [actorIdentityMigration]);
     freshColumns = expectedActivityColumns(db);
   });
 

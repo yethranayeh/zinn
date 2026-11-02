@@ -108,6 +108,7 @@ export const activityListSchema = z
     showDeleted: z.boolean().optional(),
     sessionId: z.string().min(1, "Session ID cannot be empty").optional(),
     threadId: z.string().min(1, "Thread ID cannot be empty").optional(),
+    client: z.string().min(1, "Client name cannot be empty").optional(),
     actions: z.array(activityActionSchema).optional(),
     changed: z.array(activityChangedSchema).optional(),
     since: activityTimestampSchema.optional(),

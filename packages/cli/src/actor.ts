@@ -2,6 +2,7 @@ import type { Actor } from "@zinn-dev/core";
 
 import { execFileSync } from "node:child_process";
 import { userInfo } from "node:os";
+import packageJson from "../package.json" with { type: "json" };
 
 type Env = Record<string, string | undefined>;
 type AgentMarker = { variables: Array<string>; name: string | null };
@@ -37,6 +38,8 @@ function readDeclaration(env: Env, variable: string | null): string | null {
 }
 
 function readExecutionIdentity(env: Env) {
+  const ownClient = `zinn-cli/${packageJson.version}`;
+  const declaredClient = readDeclaration(env, "ZINN_CLIENT");
   let sessionId: string | null = null;
   let threadId: string | null = null;
 
@@ -58,6 +61,7 @@ function readExecutionIdentity(env: Env) {
     agent: readDeclaration(env, "ZINN_AGENT"),
     model: readDeclaration(env, "ZINN_MODEL"),
     effort: readDeclaration(env, "ZINN_EFFORT"),
+    client: declaredClient === null ? ownClient : `${ownClient} ${declaredClient}`,
   };
 }
 

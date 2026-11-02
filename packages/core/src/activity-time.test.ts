@@ -13,7 +13,7 @@ test("time bounds include ties, preserve original payloads and combine before th
     const events = [99, 100, 101, 101, 102, 103].map((created_at, index) => dbActivity.create({
       created_at, actor_name: actor.name, actor_email: null, actor_kind: actor.kind,
       actor_source: null, actor_session_id: "Session", actor_thread_id: "Thread",
-      actor_agent: null, actor_model: null, actor_effort: null,
+      actor_agent: null, actor_model: null, actor_effort: null, actor_client: null,
       entity_type: index === 5 ? "label" : "task", entity_id: "historical", action: "edit",
       changes: { priority: [null, "high"], description: [null, `Full text ${index}\n`] },
     }));

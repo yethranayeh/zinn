@@ -13,7 +13,7 @@ test("action filters select every recorded action and combine before the limit",
     const events = activityActionSchema.options.map((action, index) => dbActivity.create({
       created_at: index, actor_name: actor.name, actor_email: null, actor_kind: actor.kind,
       actor_source: null, actor_session_id: "Session", actor_thread_id: "Thread",
-      actor_agent: null, actor_model: null, actor_effort: null,
+      actor_agent: null, actor_model: null, actor_effort: null, actor_client: null,
       entity_type: "task", entity_id: "historical", action,
       changes: action === "edit" ? { priority: [null, "high"] } : null,
     }));
@@ -194,7 +194,7 @@ test("changed filters ignore absent or unrelated payloads and preserve matching 
     const base = {
       created_at: 1, actor_name: null, actor_email: null, actor_kind: "agent" as const,
       actor_source: null, actor_session_id: null, actor_thread_id: null, actor_agent: null,
-      actor_model: null, actor_effort: null, entity_type: "task" as const, entity_id: "historical",
+      actor_model: null, actor_effort: null, actor_client: null, entity_type: "task" as const, entity_id: "historical",
     };
     const malformed = [null, {}, { priority: 1 }, { priority: [] }, { priority: ["high"] }, { column: null }, { labels: { added: null } }, { labels: { removed: ["bug"] } }];
     for (const changes of malformed) {

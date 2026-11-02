@@ -12,7 +12,7 @@ test("deadline migration preserves version 2 rows and foreign keys while adding 
     const columns = db.query<{ name: string }>("PRAGMA table_info(task)").all().map(row => row.name);
     const existingForeignKeys = Object.fromEntries(Object.keys(before.rows).map(table =>
       [table, db.query("SELECT * FROM pragma_foreign_key_list(?)").all(table)]));
-    upgradeSchema(db);
+    upgradeSchema(db, [actorIdentityMigration, taskDeadlineMigration]);
     expect(readSchemaVersion(db)).toBe(taskDeadlineMigration.version);
     const after = snapshot(db);
     expect(Object.fromEntries(Object.entries(after.rows).map(([table, rows]) => [table,
@@ -27,7 +27,7 @@ test("deadline migration preserves version 2 rows and foreign keys while adding 
     expect(db.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
     let freshSchema: typeof after.schema = [];
     withDatabase(fresh => {
-      createSchema(fresh);
+      createSchema(fresh, [actorIdentityMigration, taskDeadlineMigration]);
       freshSchema = snapshot(fresh).schema;
     });
     expect(after.schema).toEqual(freshSchema);

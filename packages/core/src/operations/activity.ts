@@ -12,6 +12,7 @@ import {
   activityTaskIdentitiesSchema,
 } from "../schemas/activity.js";
 import { parseTaskKey, validateTaskInput } from "../schemas/task.js";
+import { parseClientChain } from "../schemas/actor.js";
 import { timestampSchema } from "../schemas/timestamp.js";
 import { standardizeName, standardizeProjectKey } from "../lib.js";
 import { attachTaskKey, findTaskByExactKey, requireSingleIdMatch } from "./shared.js";
@@ -342,6 +343,16 @@ export const activity = {
     }
     const changedFields = [...changedValues];
 
+    const matchesClient = (event: Activity) => {
+      if (props.client === undefined) {
+        return true;
+      }
+
+      return parseClientChain(event.actor_client).some(
+        ({ name }) => name === props.client || name.startsWith(`${props.client}:`),
+      );
+    };
+
     const matchesChanges = (event: Activity) => {
       const recordedValues = getRecordedValues(event);
 
@@ -366,8 +377,10 @@ export const activity = {
       });
     };
 
+    const matchesFilters = (event: Activity) => matchesClient(event) && matchesChanges(event);
+
     if (props.limit === undefined) {
-      return { events: fetchCandidates(query).filter(matchesChanges), hasMore: false };
+      return { events: fetchCandidates(query).filter(matchesFilters), hasMore: false };
     }
 
     const matchingEvents: Array<Activity> = [];
@@ -378,7 +391,7 @@ export const activity = {
       const candidates = fetchCandidates(query);
 
       for (const event of candidates) {
-        if (matchesChanges(event)) {
+        if (matchesFilters(event)) {
           matchingEvents.push(event);
           if (matchingEvents.length === matchesNeeded) {
             break;

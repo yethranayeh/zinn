@@ -46,6 +46,14 @@ const activityInputs = {
       "show-deleted": { type: "boolean" },
       session: { type: "string", value: { kind: "text", name: "id" } },
       thread: { type: "string", value: { kind: "text", name: "id" } },
+      client: {
+        type: "string",
+        value: {
+          kind: "text",
+          name: "name",
+          description: "Match a client name or its colon-separated parts, including case.",
+        },
+      },
       since: {
         type: "string",
         value: {
@@ -159,6 +167,7 @@ export const activityRouter = {
           showDeleted: values["show-deleted"],
           sessionId: values.session,
           threadId: values.thread,
+          client: values.client,
           actions: values.action?.map((action) => {
             const parsed = activityActionSchema.safeParse(action);
             if (!parsed.success) {
@@ -253,6 +262,9 @@ Returns all matching events unless --limit is supplied.
                    Requires a full UUID.
 --session <id>     Match an exact session ID, including case.
 --thread <id>      Match an exact thread ID, including case.
+--client <name>    Match a client name or its colon-separated parts, including case.
+                   zinn-opencode matches zinn-opencode and zinn-opencode:panel.
+                   Versions are ignored. Names are taken from whitespace-separated tokens.
 --since <time>     Include events at or after this time.
 --until <time>     Include events at or before this time.
 --action <action>  Match a recorded action. Repeat to match any listed action.
@@ -286,6 +298,7 @@ With --json, return an array of full activity records.
 Examples:
   zinn activity list --limit 10
   zinn activity list --project APP
+  zinn activity list --client zinn-opencode:panel
   zinn activity list --since 2026-10-25T00:00:00Z --until 2026-10-25T12:00:00Z
   zinn activity list --action comment_create --action comment_edit
   zinn activity list --action edit --changed description

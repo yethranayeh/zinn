@@ -30,12 +30,12 @@ test("declared identity round-trips through mutations and every activity read", 
     const declaredActor = {
       name: null, email: null, kind: "agent" as const, source: " adapter/custom ",
       sessionId: " Conversation/1 ", threadId: " Child/2 ", agent: " Explore ",
-      model: " provider/model@revision ", effort: " 0.7 ",
+      model: " provider/model@revision ", effort: " 0.7 ", client: " custom/1  (panel ui)\tother/2 ",
     };
     const expected = {
       actor_name: null, actor_email: null, actor_kind: "agent" as const, actor_source: "adapter/custom",
       actor_session_id: "Conversation/1", actor_thread_id: "Child/2", actor_agent: "Explore",
-      actor_model: "provider/model@revision", actor_effort: "0.7",
+      actor_model: "provider/model@revision", actor_effort: "0.7", actor_client: declaredActor.client,
     };
     const assertIdentity = (event: ReturnType<typeof activity.getAll>["events"][number]) => {
       for (const [field, value] of Object.entries(expected)) {
@@ -77,11 +77,11 @@ test("omitted and explicit null identity declarations read as null", () => {
   runActivityCheck(({ human, agent, app }) => {
     const omitted = task.create({ project_id: app.id, title: "Omitted" }, human);
     const explicitNull = task.create({ project_id: app.id, title: "Null" }, {
-      ...agent, source: null, sessionId: null, threadId: null, agent: null, model: null, effort: null,
+      ...agent, source: null, sessionId: null, threadId: null, agent: null, model: null, effort: null, client: null,
     });
     for (const item of [omitted, explicitNull]) {
       const [event] = task.activity(item.key);
-      for (const field of ["actor_source", "actor_session_id", "actor_thread_id", "actor_agent", "actor_model", "actor_effort"]) {
+      for (const field of ["actor_source", "actor_session_id", "actor_thread_id", "actor_agent", "actor_model", "actor_effort", "actor_client"]) {
         assert.equal(event![field as keyof Activity], null, field);
       }
     }
@@ -558,7 +558,7 @@ test("activity preserves every action, relation pair, null and unknown payload f
     const event = activity.getById(unknownId);
     assert.deepEqual(event.changes, changes);
     assert.deepEqual(activity.getAll({ taskKey: first.key }).events.find((item) => item.id === unknownId), event);
-    assert.deepEqual(Object.keys(event).sort(), ["id", "created_at", "actor_name", "actor_email", "actor_kind", "actor_source", "actor_session_id", "actor_thread_id", "actor_agent", "actor_model", "actor_effort", "entity_type", "entity_id", "action", "changes"].sort());
+    assert.deepEqual(Object.keys(event).sort(), ["id", "created_at", "actor_name", "actor_email", "actor_kind", "actor_source", "actor_session_id", "actor_thread_id", "actor_agent", "actor_model", "actor_effort", "actor_client", "entity_type", "entity_id", "action", "changes"].sort());
     assert.equal(all.find((event) => event.entity_id === first.id && event.action === "create")!.changes!.description, "  First line\nSecond line  ");
   });
 });

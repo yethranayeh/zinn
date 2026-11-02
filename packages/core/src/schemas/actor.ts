@@ -3,6 +3,23 @@ import { z } from "zod";
 export const actorKindSchema = z.enum(["human", "agent"]);
 const actorDeclarationSchema = z.string().trim().min(1, "Actor declaration cannot be blank");
 
+/** Splits an opaque client chain into names and versions without validating its tokens */
+export function parseClientChain(
+  client: string | null,
+): Array<{ name: string; version: string | null }> {
+  return (client ?? "")
+    .split(/\s+/u)
+    .filter((token) => token.length > 0)
+    .map((token) => {
+      const separator = token.indexOf("/");
+      if (separator === -1) {
+        return { name: token, version: null };
+      }
+
+      return { name: token.slice(0, separator), version: token.slice(separator + 1) };
+    });
+}
+
 export const actorSchema = z
   .strictObject(
     {
@@ -21,6 +38,8 @@ export const actorSchema = z
       model: actorDeclarationSchema.nullish(),
       /** The effort this execution reports. */
       effort: actorDeclarationSchema.nullish(),
+      /** The client chain supplied by the caller, preserved as given. */
+      client: z.string().nullish(),
     },
     { error: "An actor is required" },
   )
