@@ -21,8 +21,8 @@ beforeEach(() => {
 
 afterEach(() => rmSync(directory, { recursive: true, force: true }));
 
-async function run(args: string[], declarations: Record<string, string> = {}, cwd = directory) {
-  return await runCli(args, { cwd, env: { ...env, ...declarations } });
+function run(args: string[], declarations: Record<string, string> = {}, cwd = directory) {
+  return runCli(args, { cwd, env: { ...env, ...declarations } });
 }
 
 async function identify(declarations: Record<string, string> = {}, cwd = directory): Promise<PresentedActor> {

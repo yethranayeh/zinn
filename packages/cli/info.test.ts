@@ -32,8 +32,8 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-async function run(args: Array<string>, directory?: string) {
-  return await runCli(args, {
+function run(args: Array<string>, directory?: string) {
+  return runCli(args, {
     runtime,
     cliPath,
     cwd,

@@ -21,8 +21,8 @@ const LARGER_THAN_PIPE_BUFFER = 200_000;
 // Well under the 10-second sleeps the hooks below start, so waiting on either fails the check.
 const HOOK_COMMAND_LIMIT_MS = 5_000;
 
-async function runBuilt(runtime: string, args: string[], directory: string, env: Record<string, string> = {}) {
-  return await runCli(args, { runtime, cliPath: CLI_PATH, env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory, ...env } });
+function runBuilt(runtime: string, args: string[], directory: string, env: Record<string, string> = {}) {
+  return runCli(args, { runtime, cliPath: CLI_PATH, env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory, ...env } });
 }
 
 beforeAll(() => {

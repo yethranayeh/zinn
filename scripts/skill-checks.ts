@@ -2,7 +2,7 @@ import { strict as assert } from "node:assert";
 import { mkdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
-import { runCli } from "../packages/cli/testing.ts";
+import { runCli, runProcessAsync } from "../packages/cli/testing.ts";
 
 const MAX_DESCRIPTION_CHARACTERS = 1024;
 const MAX_SKILL_LINES = 500;
@@ -92,13 +92,13 @@ export async function checkSkillExamples(options: {
   const script =
     'set -e\nzinn() { "$ZINN_SKILL_TEST_RUNTIME" "$ZINN_SKILL_TEST_CLI" "$@"; }\n' +
     examples.join("\n");
-  const result = Bun.spawnSync(["/bin/sh", "-c", script], {
+  const result = await runProcessAsync(["/bin/sh", "-c", script], {
     cwd: directory,
     env,
-    timeout: EXAMPLE_TIMEOUT_MS,
+    timeoutMs: EXAMPLE_TIMEOUT_MS,
   });
 
-  assert.equal(result.exitCode, 0, result.stdout.toString() + result.stderr.toString());
+  assert.equal(result.code, 0, result.stdout + result.stderr);
 
   const task = JSON.parse(await cli(["task", "view", "APP-1", "--json"]));
   assert.equal(task.column, "Review");

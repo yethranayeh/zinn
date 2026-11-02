@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { runCli, runCliInTerminal } from "../testing";
+import { runCli, runCliInTerminal, runProcessAsync } from "../testing";
 import { createEmptyDatabase } from "../test-helpers";
 import { errorDocumentSchema } from "./errors";
 
@@ -30,11 +30,11 @@ function removeTestDirectory(directory: string) {
   rmSync(directory, { recursive: true, force: true });
 }
 
-async function runZinn(args: Array<string>, zinnDirectory: string) {
-  return await runCli(args, { env: { ...TEST_ENVIRONMENT, ZINN_DIR: zinnDirectory } });
+function runZinn(args: Array<string>, zinnDirectory: string) {
+  return runCli(args, { env: { ...TEST_ENVIRONMENT, ZINN_DIR: zinnDirectory } });
 }
 
-async function runZinnFrom(
+function runZinnFrom(
   args: Array<string>,
   directory: string,
   cwd: string,
@@ -44,19 +44,18 @@ async function runZinnFrom(
   delete env.ZINN_DIR;
   Object.assign(env, additionalEnv);
 
-  return await runCli(args, { cwd, env });
+  return runCli(args, { cwd, env });
 }
 
 function runZinnWithPipedYes(args: Array<string>, directory: string, cwd: string) {
   const env: Record<string, string | undefined> = { ...TEST_ENVIRONMENT, HOME: join(directory, "home") };
   delete env.ZINN_DIR;
   const cliPath = join(import.meta.dir, "..", "index.ts");
-  const proc = Bun.spawnSync(
+
+  return runProcessAsync(
     ["/bin/sh", "-c", 'printf "y\\n" | exec bun "$@"', "zinn-confirm", cliPath, ...args],
     { cwd, env },
   );
-
-  return { stdout: proc.stdout.toString(), stderr: proc.stderr.toString(), code: proc.exitCode };
 }
 
 /** Runs the CLI attached to a pseudo-terminal and types the input; stdout and stderr arrive together. */
@@ -98,7 +97,7 @@ test("ZINN_DIR selects an empty or populated store without applying the reposito
     const { repository } = makeRepository(directory, { defaultProject: "DEF" });
     const emptyStore = join(directory, "empty-store");
     mkdirSync(emptyStore);
-    const emptyRun = async (...args: Array<string>) => await runZinnFrom(args, directory, repository, { ZINN_DIR: emptyStore });
+    const emptyRun = (...args: Array<string>) => runZinnFrom(args, directory, repository, { ZINN_DIR: emptyStore });
     createEmptyDatabase(emptyStore);
 
     for (const args of [["task", "list"], ["task", "search", "needle"]]) {
@@ -109,7 +108,7 @@ test("ZINN_DIR selects an empty or populated store without applying the reposito
 
     const populatedStore = join(directory, "populated-store");
     await seedProjects(directory, populatedStore);
-    const populatedRun = async (...args: Array<string>) => await runZinnFrom(args, directory, repository, { ZINN_DIR: populatedStore });
+    const populatedRun = (...args: Array<string>) => runZinnFrom(args, directory, repository, { ZINN_DIR: populatedStore });
     expect(JSON.parse((await populatedRun("task", "list", "--json")).stdout).map((task: { key: string }) => task.key).sort()).toEqual([
       "ALT-1",
       "DEF-1",
@@ -128,7 +127,7 @@ test("ZINN_DIR uses its own default and reports unknown defaults from its settin
     mkdirSync(store, { recursive: true });
     writeFileSync(join(store, "settings.json"), JSON.stringify({ defaultProject: "ALT" }));
     await seedProjects(directory, store);
-    const invoke = async (...args: Array<string>) => await runZinnFrom(args, directory, repository, { ZINN_DIR: store });
+    const invoke = (...args: Array<string>) => runZinnFrom(args, directory, repository, { ZINN_DIR: store });
 
     expect(JSON.parse((await invoke("task", "list", "--json")).stdout).map((task: { key: string }) => task.key)).toEqual(["ALT-1"]);
     expect(JSON.parse((await invoke("task", "search", "needle", "--json")).stdout).map((task: { key: string }) => task.key)).toEqual(["ALT-1"]);
@@ -152,7 +151,7 @@ test("ZINN_DIR ignores malformed repository and home settings but validates its 
     writeFileSync(localSettingsPath, "{");
     writeFileSync(globalSettingsPath, "{");
     mkdirSync(store);
-    const invoke = async (...args: Array<string>) => await runZinnFrom(args, directory, repository, { ZINN_DIR: store });
+    const invoke = (...args: Array<string>) => runZinnFrom(args, directory, repository, { ZINN_DIR: store });
     createEmptyDatabase(store);
 
     const ignoredMalformedFiles = await invoke("task", "list", "--json");
@@ -171,7 +170,7 @@ test("ZINN_DIR ignores malformed repository and home settings but validates its 
 });
 
 async function expectDefaultCommands(directory: string, repository: string, expectedKey: string, otherKey: string) {
-  const invoke = async (...args: Array<string>) => await runZinnFrom(args, directory, repository);
+  const invoke = (...args: Array<string>) => runZinnFrom(args, directory, repository);
   const list = await invoke("task", "list", "--json");
   const search = await invoke("task", "search", "needle", "--json");
   const created = await invoke("task", "create", "--title", "created by default", "--json");
@@ -240,7 +239,7 @@ test("commands without a default keep their existing project behavior, and task-
   await withTestDirectoryAsync(async (directory) => {
     const { repository } = makeRepository(directory);
     await seedProjects(directory);
-    const invoke = async (...args: Array<string>) => await runZinnFrom(args, directory, repository);
+    const invoke = (...args: Array<string>) => runZinnFrom(args, directory, repository);
 
     expect(JSON.parse((await invoke("task", "list", "--json")).stdout)).toHaveLength(2);
     expect(JSON.parse((await invoke("task", "search", "needle", "--json")).stdout)).toHaveLength(2);
@@ -259,7 +258,7 @@ test("all-projects bypasses an unknown default, conflicts with typed keys, and k
   await withTestDirectoryAsync(async (directory) => {
     const { repository } = makeRepository(directory, { defaultProject: "NOPE" });
     await seedProjects(directory);
-    const invoke = async (...args: Array<string>) => await runZinnFrom(args, directory, repository);
+    const invoke = (...args: Array<string>) => runZinnFrom(args, directory, repository);
 
     for (const args of [["task", "list"], ["task", "search", "needle"]]) {
       const allProjects = await invoke(...args, "--all-projects", "--json");
@@ -295,7 +294,7 @@ test("task-key search queries use the matching project instead of a default and 
   await withTestDirectoryAsync(async (directory) => {
     const { repository } = makeRepository(directory, { defaultProject: "DEF" });
     await seedProjects(directory);
-    const invoke = async (...args: Array<string>) => await runZinnFrom(args, directory, repository);
+    const invoke = (...args: Array<string>) => runZinnFrom(args, directory, repository);
 
     expect(JSON.parse((await invoke("task", "search", "needle", "--json")).stdout).map((task: { key: string }) => task.key)).toEqual(["DEF-1"]);
     expect(JSON.parse((await invoke("task", "search", "ALT-1", "--json")).stdout).map((task: { key: string }) => task.key)).toEqual(["ALT-1"]);
@@ -318,7 +317,7 @@ test("task search reports missing projects with query-first usage and preserves 
   await withTestDirectoryAsync(async (directory) => {
     const { repository, localSettingsPath } = makeRepository(directory);
     await seedProjects(directory);
-    const invoke = async (...args: Array<string>) => await runZinnFrom(args, directory, repository);
+    const invoke = (...args: Array<string>) => runZinnFrom(args, directory, repository);
 
     for (const settings of [{}, { defaultProject: "DEF" }]) {
       writeFileSync(localSettingsPath, JSON.stringify(settings));
@@ -371,7 +370,7 @@ test("task list and search report conflicting archive flags before resolving an 
   await withTestDirectoryAsync(async (directory) => {
     const { repository, localSettingsPath } = makeRepository(directory, { defaultProject: "NOPE" });
     await seedProjects(directory);
-    const invoke = async (...args: Array<string>) => await runZinnFrom(args, directory, repository);
+    const invoke = (...args: Array<string>) => runZinnFrom(args, directory, repository);
 
     for (const args of [["task", "list"], ["task", "search", "needle"]]) {
       const result = await invoke(...args, "--archived", "--all", "--json");
@@ -404,7 +403,7 @@ test("unknown defaults identify their key and settings file", async () => {
   await withTestDirectoryAsync(async (directory) => {
     const { repository, globalSettingsPath, localSettingsPath } = makeRepository(directory, { defaultProject: "NOPE" });
     await seedProjects(directory);
-    const invoke = async (...args: Array<string>) => await runZinnFrom(args, directory, repository);
+    const invoke = (...args: Array<string>) => runZinnFrom(args, directory, repository);
     const assertUnknownDefaultDoesNotMutate = async (settingsPath: string) => {
       for (const args of [
         ["project", "view", "--json"],
@@ -464,7 +463,7 @@ test("project delete with a default prompts despite --yes, and refuses without a
     expect(JSON.parse((await runZinnFrom(["project", "list", "--json"], directory, repository)).stdout)).toHaveLength(2);
 
     const noInput = await runZinnFrom(["project", "delete", "--yes"], directory, repository);
-    const pipedInput = runZinnWithPipedYes(["project", "delete", "--yes"], directory, repository);
+    const pipedInput = await runZinnWithPipedYes(["project", "delete", "--yes"], directory, repository);
     for (const result of [noInput, pipedInput]) {
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
@@ -513,7 +512,7 @@ test("column writes still require an explicit project key when a default is set"
   await withTestDirectoryAsync(async (directory) => {
     const { repository } = makeRepository(directory, { defaultProject: "DEF" });
     await seedProjects(directory);
-    const invoke = async (...args: Array<string>) => await runZinnFrom(args, directory, repository);
+    const invoke = (...args: Array<string>) => runZinnFrom(args, directory, repository);
 
     expect((await invoke("project", "column", "create", "Later", "--json")).code).toBe(1);
     expect((await invoke("project", "column", "edit", "Backlog", "--name", "Later", "--json")).code).toBe(1);

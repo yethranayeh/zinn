@@ -3,13 +3,18 @@ import { existsSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import { withIsolatedZinnDir } from "./test-helpers";
-import { runCli } from "./testing";
+import { runCli, runProcessAsync } from "./testing";
 
 const LARGER_THAN_PIPE_BUFFER = 200_000;
 const CHILD_EXIT_CODE = 7;
 const HANDSHAKE_TIMEOUT_MS = 3_000;
-const CHILD_TIMEOUT_MS = 1_000;
-const LONG_CHILD_DELAY_MS = 10_000;
+// Leaves a fresh runtime room to print its first line while other test files load the machine.
+const CHILD_TIMEOUT_MS = 4_000;
+const LONG_CHILD_DELAY_MS = 60_000;
+const DESCENDANT_TIMEOUT_MS = 500;
+const DESCENDANT_SLEEP_SECONDS = 30;
+// Far below the descendants' sleep, and above the timeout plus scheduling slack.
+const DESCENDANT_RETURN_LIMIT_MS = 10_000;
 const node = Bun.which("node");
 if (node === null) {
   throw new Error("Node is required to check the CLI test harness on both runtimes.");
@@ -81,3 +86,19 @@ test("the CLI process timeout terminates a child before it completes its work", 
     expect(existsSync(join(directory, "completed"))).toBe(false);
   });
 });
+
+test.skipIf(process.platform === "win32")(
+  "the process timeout also ends descendants that keep the output pipes open",
+  async () => {
+    await withIsolatedZinnDir(async (directory) => {
+      const startedAt = performance.now();
+      const result = await runProcessAsync(
+        ["/bin/sh", "-c", `sleep ${DESCENDANT_SLEEP_SECONDS} & sleep ${DESCENDANT_SLEEP_SECONDS}`],
+        { cwd: directory, env: TEST_ENVIRONMENT, timeoutMs: DESCENDANT_TIMEOUT_MS },
+      );
+
+      expect(performance.now() - startedAt).toBeLessThan(DESCENDANT_RETURN_LIMIT_MS);
+      expect(result.code).toBeNull();
+    });
+  },
+);

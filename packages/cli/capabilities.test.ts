@@ -134,7 +134,7 @@ test("a manifest consumer constructs argv and validates list, history, cardinali
   mkdirSync(join(directory, "store"));
   const result = await runCli(["capabilities", "--json"], { cwd: directory, env: { ...env, ZINN_DIR: join(directory, "store") } });
   expect(result.code, result.stderr).toBe(0);
-  await checkCapabilityConsumer(JSON.parse(result.stdout), async (args) => await runCli(args, {
+  await checkCapabilityConsumer(JSON.parse(result.stdout), (args) => runCli(args, {
     cwd: directory, env: { ...env, ZINN_DIR: join(directory, "store") },
   }));
 }, 15000);

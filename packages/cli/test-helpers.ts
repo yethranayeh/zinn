@@ -7,7 +7,7 @@ import { createSchema } from "../core/src/migrations/runner";
 import { openDatabase } from "../core/src/sqlite/bun";
 import { runProcessAsync } from "./testing";
 
-export { runProcessAsync } from "./testing";
+export { runProcessAsync };
 
 const PREFIX = join(tmpdir(), "zinntest-");
 export const CLI_PATH = join(import.meta.dir, "index.ts");

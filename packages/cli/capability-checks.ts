@@ -125,8 +125,8 @@ export async function checkCapabilityDiscovery(options: {
       continue;
     }
 
-    const invokeHelp = async (command: string[]) =>
-      await runCli([...command, "--help"], {
+    const invokeHelp = (command: string[]) =>
+      runCli([...command, "--help"], {
         runtime: options.runtime,
         cliPath: options.entryPoint,
         cwd: directory,

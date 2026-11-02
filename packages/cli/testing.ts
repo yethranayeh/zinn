@@ -28,6 +28,23 @@ export function runCli(
   return runProcessAsync([options.runtime ?? "bun", options.cliPath ?? CLI_PATH, ...args], options);
 }
 
+/** On Windows, `detached` opens a console window instead of starting a process group. */
+const RUNS_IN_OWN_GROUP = process.platform !== "win32";
+
+/** Ends every process in the group, including descendants that would keep the output pipes open. */
+function killGroup(pid: number) {
+  try {
+    // A negative pid signals the whole process group.
+    process.kill(-pid, "SIGKILL");
+  } catch (error) {
+    const groupAlreadyGone = (error as NodeJS.ErrnoException).code === "ESRCH";
+    if (!groupAlreadyGone) {
+      throw error;
+    }
+  }
+}
+
+/** Runs a command with separate stdout and stderr. The timeout ends the command and its descendants, and `code` is null when a signal ended the command. */
 export async function runProcessAsync(
   command: Array<string>,
   options: {
@@ -37,22 +54,30 @@ export async function runProcessAsync(
     timeoutMs?: number;
   },
 ) {
+  const killsGroupOnTimeout = options.timeoutMs !== undefined && RUNS_IN_OWN_GROUP;
   const proc = Bun.spawn(command, {
     env: options.env,
     cwd: options.cwd,
     stdin: options.stdin,
     stdout: "pipe",
     stderr: "pipe",
-    timeout: options.timeoutMs,
+    detached: killsGroupOnTimeout,
+    // Bun's own timeout only ends the direct child, so POSIX uses the group timer below.
+    timeout: killsGroupOnTimeout ? undefined : options.timeoutMs,
   });
+  const timer = killsGroupOnTimeout ? setTimeout(() => killGroup(proc.pid), options.timeoutMs) : undefined;
 
-  const [code, stdout, stderr] = await Promise.all([
-    proc.exited,
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
+  try {
+    const [, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
 
-  return { stdout, stderr, code };
+    return { stdout, stderr, code: proc.exitCode };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**

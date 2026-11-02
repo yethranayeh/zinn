@@ -28,8 +28,8 @@ let backupPath: string;
 let commentKey: string;
 let eventId: string;
 
-async function invoke(directory: string, args: string[]) {
-  return await runCli([...args, "--json"], {
+function invoke(directory: string, args: string[]) {
+  return runCli([...args, "--json"], {
     cwd: root,
     env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory, AI_AGENT: "contract-test", FORCE_COLOR: "0", ZINN_DEBUG: undefined, DEBUG: undefined },
   });

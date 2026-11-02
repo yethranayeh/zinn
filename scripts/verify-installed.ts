@@ -322,8 +322,8 @@ async function checkRuntime(
   });
   await checkCapabilityConsumer(
     capabilities,
-    async (args) =>
-      await runCli(args, {
+    (args) =>
+      runCli(args, {
         runtime: runtime.executable,
         cliPath: join(installedCli, manifest.bin.zinn),
         cwd: consumer,
