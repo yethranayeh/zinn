@@ -4,16 +4,16 @@ A theme for the Rex terminal in dark and light.
 
 ## Install
 
-The files are `zinn-dark` and `zinn-light`, both in this directory.
-
-Import each one with the Rex CLI:
+Download both files and import them with the Rex CLI:
 
 ```sh
-rex -C "My Mac" do client.theme.import path=/Users/you/Downloads/zinn-dark
-rex -C "My Mac" do client.theme.import path=/Users/you/Downloads/zinn-light
+curl -fsSL https://zinn.sh/integrations/rex/theme/zinn-dark -o zinn-dark
+curl -fsSL https://zinn.sh/integrations/rex/theme/zinn-light -o zinn-light
+rex do client.theme.import path="$PWD/zinn-dark"
+rex do client.theme.import path="$PWD/zinn-light"
 ```
 
-Replace `My Mac` with the client label that `rex client ls` shows, and each path with the full path where you saved the file.
+With one app client connected, `rex do` picks it automatically. If more than one is connected, add `-C` with the label from `rex client ls`.
 
 There is no Lua here. `client.theme.import` is the app's Import Theme File action and `path` is its only argument. The imported theme takes its name from the file name and applies immediately. Import both files to fill the dark and light sides of the theme pair.
 

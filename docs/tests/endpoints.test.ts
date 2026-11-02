@@ -1,5 +1,6 @@
 import { opencodeInspector } from "../src/config/opencode-inspector";
 import { opencodeScenes, opencodeTheme } from "../src/config/opencode-theme";
+import { rexTheme } from "../src/config/rex-theme";
 import {
   exactBytes,
   largeListCost,
@@ -470,6 +471,7 @@ test("every generated public endpoint is served with its expected type", async (
       "integrations",
       opencodeTheme.path.slice(1),
       opencodeInspector.path.slice(1),
+      rexTheme.path.slice(1),
     ]
       .sort()
       .map((page) => `https://zinn.sh/${page}/`),
@@ -573,6 +575,7 @@ test.each([
   "integrations",
   opencodeTheme.path.slice(1),
   opencodeInspector.path.slice(1),
+  rexTheme.path.slice(1),
 ])("%s offers its Markdown actions directly after the heading", async (page) => {
   const html = await (await server.fetch(`/${page}`)).text();
   expect(html).toMatch(new RegExp(`</h1>\\s*<div[^>]*>[\\s\\S]*?data-copy-url="/${page}\\.md"`));
@@ -625,6 +628,36 @@ test("integration routes expose the gallery, Markdown and canonical theme downlo
   expect(await download.text()).toBe(
     await Bun.file(join(docsDirectory, "../integrations/opencode/theme/zinn.json")).text(),
   );
+});
+
+test("Rex theme page and its Markdown twin offer both downloadable theme files", async () => {
+  const index = await server.fetch("/integrations");
+  expect(index.status).toBe(200);
+  expect(await index.text()).toContain(`href="${rexTheme.path}"`);
+
+  const response = await server.fetch(rexTheme.path);
+  expect(response.status).toBe(200);
+  const html = await response.text();
+  expect(html).toContain(`rel="canonical" href="https://zinn.sh${rexTheme.path}/"`);
+
+  const markdownResponse = await server.fetch(`${rexTheme.path}.md`);
+  expect(markdownResponse.status).toBe(200);
+  expect(markdownResponse.headers.get("Content-Type")).toContain("text/markdown");
+  const markdown = await markdownResponse.text();
+
+  for (const downloadPath of Object.values(rexTheme.downloads)) {
+    expect(html).toContain(`href="${downloadPath}"`);
+    expect(markdown).toContain(downloadPath);
+
+    const fileName = downloadPath.slice(downloadPath.lastIndexOf("/") + 1);
+    const download = await server.fetch(downloadPath);
+    expect(download.status).toBe(200);
+    expect(download.headers.get("Content-Type")).toContain("text/plain");
+    expect(download.headers.get("Content-Disposition")).toContain(`filename="${fileName}"`);
+    expect(await download.text()).toBe(
+      await Bun.file(join(docsDirectory, `../integrations/rex/theme/${fileName}`)).text(),
+    );
+  }
 });
 
 test("inspector integration page carries the setup guide and its Markdown twin", async () => {

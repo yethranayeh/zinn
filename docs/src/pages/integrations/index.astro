@@ -6,6 +6,7 @@ import MarkdownH1 from "../../components/MarkdownH1.astro";
 
 import { opencodeInspector } from "../../config/opencode-inspector";
 import { opencodeScenes, opencodeTheme } from "../../config/opencode-theme";
+import { rexTheme } from "../../config/rex-theme";
 import { cloudinaryImage } from "../../images/cloudinary";
 
 const preview = opencodeScenes.find((scene) => scene.id === "code")!;
@@ -36,6 +37,18 @@ const preview = opencodeScenes.find((scene) => scene.id === "code")!;
 				>View theme <Icon name='arrow-right' /></span
 			>
 		</div>
+	</a>
+	<a
+		class='group mt-7 block max-w-3xl border border-pewter p-5 no-underline hover:no-underline md:p-7'
+		href={rexTheme.path}>
+		<div class='flex flex-wrap items-center justify-between gap-3'>
+			<h2 class='text-2xl tracking-tight'>Zinn theme</h2>
+			<Chip>Rex</Chip>
+		</div>
+		<p class='mt-3 text-base leading-relaxed'>{rexTheme.introduction}</p>
+		<span class='mt-5 inline-flex min-h-11 items-center gap-2 font-mono text-xs group-hover:underline'
+			>View theme <Icon name='arrow-right' /></span
+		>
 	</a>
 	<a
 		class='group mt-7 block max-w-3xl border border-pewter p-5 no-underline hover:no-underline md:p-7'

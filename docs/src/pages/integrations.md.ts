@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { opencodeInspector } from "../config/opencode-inspector";
 import { opencodeTheme } from "../config/opencode-theme";
+import { rexTheme } from "../config/rex-theme";
 
 export const GET: APIRoute = () =>
   new Response(
@@ -15,6 +16,14 @@ ${opencodeTheme.introduction}
 Verified with OpenCode ${opencodeTheme.verifiedVersion}.
 
 [View theme](https://zinn.sh${opencodeTheme.path}) or [download zinn.json](https://zinn.sh${opencodeTheme.download}).
+
+## Rex theme
+
+The Zinn color palette for [Rex](${rexTheme.site}), with light and dark appearances.
+
+Verified with ${rexTheme.verifiedVersion}.
+
+[View theme](https://zinn.sh${rexTheme.path}) or [download zinn-dark](https://zinn.sh${rexTheme.downloads.dark}) and [zinn-light](https://zinn.sh${rexTheme.downloads.light}).
 
 ## OpenCode task inspector
 

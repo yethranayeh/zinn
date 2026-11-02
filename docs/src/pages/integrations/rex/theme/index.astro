@@ -1,0 +1,85 @@
+---
+import BaseLayout from "../../../../layouts/BaseLayout.astro";
+import Button from "../../../../components/ui/button/Button.astro";
+import Breadcrumbs from "../../../../components/Breadcrumbs.astro";
+import Icon from "../../../../components/ui/icon/Icon.astro";
+import MarkdownH1 from "../../../../components/MarkdownH1.astro";
+import PaletteStrip from "../../../../components/PaletteStrip.astro";
+import Prose from "../../../../components/Prose.astro";
+import TerminalCommands from "../../../../components/TerminalCommands.astro";
+
+import { rexTheme } from "../../../../config/rex-theme";
+import { projectLinks } from "../../../../config/site";
+---
+
+<BaseLayout title='Rex theme' description={rexTheme.description}>
+	<div class='site-container py-8 md:py-12'>
+		<Breadcrumbs />
+
+		<section class='pb-9 md:pb-12' aria-labelledby='theme-heading'>
+			<MarkdownH1 id='theme-heading'>{rexTheme.title}</MarkdownH1>
+			<div class='grid gap-7 md:grid-cols-[1.1fr_1fr] md:items-end md:gap-12'>
+				<div>
+					<p class='max-w-md text-lg leading-relaxed'>
+						The Zinn color palette for <a href={rexTheme.site}>Rex</a>, with light and dark appearances.
+					</p>
+					<div class='mt-6'><PaletteStrip /></div>
+				</div>
+				<div class='flex flex-wrap gap-3 md:justify-end'>
+					<Button href={rexTheme.downloads.dark} download='zinn-dark' variant='solid' size='large'
+						>Download zinn-dark <Icon name='download' /></Button
+					>
+					<Button href={rexTheme.downloads.light} download='zinn-light' variant='outline' size='large'
+						>Download zinn-light <Icon name='download' /></Button
+					>
+					<Button href='#installation' variant='outline' size='large'>Installation</Button>
+				</div>
+			</div>
+		</section>
+
+		<section
+			id='installation'
+			aria-labelledby='installation-heading'
+			class='grid gap-7 border-t border-pewter pt-8 pb-6 md:grid-cols-2 md:gap-12'>
+			<div>
+				<h2 id='installation-heading' class='max-w-sm text-3xl leading-tight tracking-tight md:text-4xl'>
+					Install the theme
+				</h2>
+
+				<p class='mt-5 max-w-sm text-lg leading-relaxed'>Download both files and import them with the Rex CLI.</p>
+			</div>
+			<div class='min-w-0'>
+				<Prose>
+					<ol class='space-y-4'>
+						<li>Download <code>zinn-dark</code> and <code>zinn-light</code>.</li>
+						<li>Import each file with <code>rex do client.theme.import</code>.</li>
+						<li>Import both files to fill the dark and light sides of the theme pair.</li>
+					</ol>
+
+					<p>
+						Rex uses the file name as the theme name and an import applies the theme immediately. With one app client
+						connected, <code>rex do</code> picks it automatically. With more than one, add <code>-C</code> with the label
+						from <code>rex client ls</code>. Switch the appearance mode to move between the two.
+					</p>
+
+					<p>Rex's <a href={rexTheme.importDocs}>settings reference</a> covers Import Theme and the theme sheet.</p>
+
+					<p>The files are in Ghostty's theme format, so they also work in Ghostty itself.</p>
+
+					<details class='mt-3'>
+						<summary class='min-h-11 cursor-pointer py-3 font-mono text-xs'>Show shell commands</summary>
+						<TerminalCommands label='Install the Rex theme' commands={rexTheme.commands} />
+					</details>
+				</Prose>
+			</div>
+		</section>
+
+		<div class='flex flex-wrap items-center justify-between gap-5 border-t border-pewter pt-6'>
+			<p class='font-mono text-xs'>Verified with {rexTheme.verifiedVersion}</p>
+			<a
+				class='inline-flex min-h-11 items-center gap-2 font-mono text-xs'
+				href={`${projectLinks.github}/tree/main/integrations/rex/theme`}>Theme source <Icon name='external-link' /></a
+			>
+		</div>
+	</div>
+</BaseLayout>

@@ -9,3 +9,11 @@
 
 /integrations/opencode/theme/zinn.json
   Content-Disposition: attachment; filename="zinn.json"
+
+/integrations/rex/theme/zinn-dark
+  Content-Type: text/plain; charset=utf-8
+  Content-Disposition: attachment; filename="zinn-dark"
+
+/integrations/rex/theme/zinn-light
+  Content-Type: text/plain; charset=utf-8
+  Content-Disposition: attachment; filename="zinn-light"
