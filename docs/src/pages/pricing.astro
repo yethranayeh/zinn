@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import CopyButton from "../components/CopyButton.astro";
+import Icon from "../components/ui/icon/Icon.astro";
 
 import { installCommand, projectLinks } from "../config/site";
 import {
@@ -18,7 +19,7 @@ import {
 
 const microLabel = "font-mono text-[11px] leading-[1.4] tracking-[0.16em] text-muted-foreground uppercase";
 const toggleButton =
-	"px-3 py-1.5 aria-pressed:bg-soot aria-pressed:text-soot-foreground aria-[pressed=false]:hover:bg-soot/8 focus-visible:outline-offset-2";
+	"px-3 py-1.5 aria-pressed:bg-soot aria-pressed:text-soot-foreground aria-[pressed=false]:hover:bg-soot/8 focus-visible:outline-soot focus-visible:outline-offset-2";
 const defaultCommand = pricingCommands[0];
 const diskNote = `A task has a ${pricingEnvironment.titleChars}-character title and a ${pricingEnvironment.descriptionChars}-character description. A comment is ${pricingEnvironment.commentChars} characters.`;
 const largeListNote = `At 10,000 tasks, listing them all takes ${memoryLabel(largeListCost.memoryBytes)} and ${largeListCost.seconds.toFixed(1)} seconds.`;
@@ -36,6 +37,9 @@ const measurementNote = `Measured ${pricingEnvironment.measured} with CLI ${pric
 					Free, and that is the whole plan.
 				</h1>
 				<p class='mt-5 max-w-[34rem] text-lg leading-relaxed md:text-xl'>
+					Zinn is an Experimental kanban CLI for you and your agents.
+				</p>
+				<p class='mt-3 max-w-[34rem] text-base leading-relaxed'>
 					Zinn is <a href={projectLinks.license}>MIT licensed</a>. There is one plan, with no account, no seats and
 					nothing to renew. Everything below is quoted in bytes, starting with the price.
 				</p>
@@ -43,7 +47,7 @@ const measurementNote = `Measured ${pricingEnvironment.measured} with CLI ${pric
 				<div class='mt-8'>
 					<div class='py-6 md:py-8 lg:border-t lg:border-soot/20'>
 						<p class={microLabel}>Spot price</p>
-						<p class='mt-3 font-mono text-[4rem] leading-[0.9] tracking-[-0.04em] md:text-[5.5rem]'>0 B</p>
+						<p class='mt-3 font-mono text-[5rem] leading-[0.9] tracking-[-0.04em] md:text-[6rem]'>0 B</p>
 						<p class='mt-3 font-mono text-xs text-muted-foreground'>per install, per machine, per agent</p>
 					</div>
 
@@ -64,25 +68,27 @@ const measurementNote = `Measured ${pricingEnvironment.measured} with CLI ${pric
 							</div>
 						</div>
 
-						<div class='mt-4' data-weight-state='net'>
-							<p class='font-mono text-[2.5rem] leading-none tracking-[-0.03em] tabular-nums md:text-[3rem]'>
-								{sizeLabel(pricingTotals.softwareDownload)}
-							</p>
-							<p class='mt-2 font-mono text-xs text-muted-foreground'>
-								{exactBytes(pricingTotals.softwareDownload)}
-								<span class='mx-1.5 text-soot/30' aria-hidden='true'>|</span>
-								the software alone
-							</p>
-						</div>
-						<div class='mt-4' data-weight-state='gross' hidden>
-							<p class='font-mono text-[2.5rem] leading-none tracking-[-0.03em] tabular-nums md:text-[3rem]'>
-								{sizeLabel(pricingTotals.download)}
-							</p>
-							<p class='mt-2 font-mono text-xs text-muted-foreground'>
-								{exactBytes(pricingTotals.download)}
-								<span class='mx-1.5 text-soot/30' aria-hidden='true'>|</span>
-								with its dependencies
-							</p>
+						<div class='mt-4' aria-live='polite' aria-atomic='true'>
+							<div data-weight-state='net'>
+								<p class='font-mono text-[2.5rem] leading-none tracking-[-0.03em] tabular-nums md:text-[3rem]'>
+									{sizeLabel(pricingTotals.softwareDownload)}
+								</p>
+								<p class='mt-2 font-mono text-xs text-muted-foreground'>
+									{exactBytes(pricingTotals.softwareDownload)}
+									<span class='mx-1.5 text-soot/30' aria-hidden='true'>|</span>
+									the software alone
+								</p>
+							</div>
+							<div data-weight-state='gross' hidden>
+								<p class='font-mono text-[2.5rem] leading-none tracking-[-0.03em] tabular-nums md:text-[3rem]'>
+									{sizeLabel(pricingTotals.download)}
+								</p>
+								<p class='mt-2 font-mono text-xs text-muted-foreground'>
+									{exactBytes(pricingTotals.download)}
+									<span class='mx-1.5 text-soot/30' aria-hidden='true'>|</span>
+									with its dependencies
+								</p>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -95,19 +101,37 @@ const measurementNote = `Measured ${pricingEnvironment.measured} with CLI ${pric
 					<CopyButton
 						variant='ghost-inverted'
 						size='icon'
-						class='shrink-0 focus-visible:outline-offset-2'
+						class='shrink-0 focus-visible:-outline-offset-4'
 						value={installCommand}
 						label='Copy installation command'
 						title='Copy install command'
 						success='Install command copied to clipboard.'
+						event='install-copy'
 					/>
 				</div>
+				<nav
+					class='mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-xs leading-normal'
+					aria-label='Zinn links'>
+					<a
+						class='inline-flex items-center gap-1'
+						href={projectLinks.github}
+						aria-label='Zinn source on GitHub'
+						data-site-event='github-click'>GitHub <Icon name='external-link' class='size-[1.5cap]' /></a
+					>
+					<a
+						class='inline-flex items-center gap-1'
+						href={projectLinks.npm}
+						aria-label='Zinn CLI package on npm'
+						data-site-event='npm-click'>npm <Icon name='external-link' class='size-[1.5cap]' /></a
+					>
+					<a href='/docs/installation'>Installation docs</a>
+				</nav>
 			</div>
 
 			<div class='mt-12 min-w-0 lg:mt-0 lg:border-l lg:border-soot/20 lg:pl-10'>
 				<h2 id='running-heading' class={microLabel}>Running costs</h2>
 				<p class='mt-2 max-w-[34rem] text-lg leading-normal md:text-xl'>
-					About {memoryLabel(typicalCommandMemoryBytes)} of memory and a tenth of a second per command. {largeListNote}
+					About {memoryLabel(typicalCommandMemoryBytes)} of memory and a tenth of a second per command.
 				</p>
 
 				<dl class='mt-5'>
@@ -148,7 +172,8 @@ const measurementNote = `Measured ${pricingEnvironment.measured} with CLI ${pric
 
 					<dl
 						class='mt-4 grid grid-cols-1 divide-y divide-soot/20 border-t border-soot/20 sm:grid-cols-3 sm:divide-x sm:divide-y-0'
-						aria-live='polite'>
+						aria-live='polite'
+						aria-atomic='true'>
 						<div class='py-3 sm:px-4 sm:first:pl-0'>
 							<dt class={microLabel}>Memory</dt>
 							<dd
@@ -177,6 +202,7 @@ const measurementNote = `Measured ${pricingEnvironment.measured} with CLI ${pric
 					<p class='mt-1 font-mono text-[11px] leading-relaxed text-muted-foreground'>
 						Output is what the command prints, and what an agent reads.
 					</p>
+					<p class='mt-4 max-w-[34rem] text-sm leading-relaxed text-muted-foreground'>{largeListNote}</p>
 				</div>
 
 				<h2 class:list={[microLabel, "mt-9"]}>On disk</h2>
@@ -204,6 +230,17 @@ const measurementNote = `Measured ${pricingEnvironment.measured} with CLI ${pric
 </BaseLayout>
 
 <script>
+	import { trackEvent } from "../scripts/analytics";
+
+	for (const link of document.querySelectorAll<HTMLAnchorElement>("[data-site-event]")) {
+		link.addEventListener("click", () => {
+			const event = link.dataset.siteEvent;
+			if (event === "github-click" || event === "npm-click") {
+				trackEvent(event);
+			}
+		});
+	}
+
 	const weightButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-weight]")];
 	const weightStates = [...document.querySelectorAll<HTMLElement>("[data-weight-state]")];
 	const commandButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-command]")];

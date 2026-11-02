@@ -29,6 +29,8 @@ export const GET: APIRoute = () =>
 
 Free, and that is the whole plan.
 
+Zinn is an Experimental kanban CLI for you and your agents.
+
 Zinn is [MIT licensed](${projectLinks.license}). There is one plan, with no account, no seats and nothing to renew. Everything below is quoted in bytes, starting with the price.
 
 ## Spot price
@@ -46,9 +48,11 @@ Zinn is [MIT licensed](${projectLinks.license}). There is one plan, with no acco
 ${installCommand}
 \`\`\`
 
+[GitHub](${projectLinks.github}) · [npm](${projectLinks.npm}) · [Installation docs](https://zinn.sh/docs/installation)
+
 ## Running costs
 
-About ${memoryLabel(typicalCommandMemoryBytes)} of memory and a tenth of a second per command. At 10,000 tasks, listing them all takes ${memoryLabel(largeListCost.memoryBytes)} and ${largeListCost.seconds.toFixed(1)} seconds.
+About ${memoryLabel(typicalCommandMemoryBytes)} of memory and a tenth of a second per command.
 
 - Idle: nothing. Zinn runs only when you call it. No background process, no memory, no writes.
 - Per command: ${memoryLabel(pricingEnvironment.nodeMemoryBytes)} of that is Node itself.
@@ -58,6 +62,8 @@ About ${memoryLabel(typicalCommandMemoryBytes)} of memory and a tenth of a secon
 ${commandRows}
 
 Output is what the command prints, and what an agent reads.
+
+At 10,000 tasks, listing them all takes ${memoryLabel(largeListCost.memoryBytes)} and ${largeListCost.seconds.toFixed(1)} seconds.
 
 ## On disk
 

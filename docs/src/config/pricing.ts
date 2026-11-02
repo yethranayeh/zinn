@@ -1,5 +1,5 @@
 /**
- * Measured 2026-11-01 from the packages published in CLI 0.43.0. Download
+ * Measured 2026-11-02 from the packages published in CLI 0.43.0. Download
  *  bytes are the registry tarballs, unpacked bytes are what npm writes to disk.
  *  The fixture is one project whose tasks each have a 40-character title, a
  *  200-character description and one 200-character comment. Memory is the
@@ -78,7 +78,7 @@ export const pricingTotals = {
 };
 
 export const pricingEnvironment = {
-  measured: "2026-11-01",
+  measured: "2026-11-02",
   cli: "0.43.0",
   node: "26.13.0",
   platform: "macOS arm64",
@@ -88,7 +88,7 @@ export const pricingEnvironment = {
   descriptionChars: 200,
   commentChars: 200,
   /** Peak memory of `node -e 0`, Node with no script loaded. */
-  nodeMemoryBytes: 39_288_832,
+  nodeMemoryBytes: 39_075_840,
 };
 
 export interface CommandCost {
@@ -102,17 +102,17 @@ export interface CommandCost {
 
 /** Against the fixture at 100 tasks with 100 comments. */
 export const pricingCommands: CommandCost[] = [
-  { command: "zinn task list", memoryBytes: 80_510_976, seconds: 0.11, output: 6_600 },
-  { command: "zinn task list --json", memoryBytes: 80_445_440, seconds: 0.11, output: 67_095 },
-  { command: "zinn task view", memoryBytes: 78_168_064, seconds: 0.12, output: 737 },
-  { command: "zinn task create", memoryBytes: 80_232_448, seconds: 0.15, output: 66 },
+  { command: "zinn task list", memoryBytes: 81_166_336, seconds: 0.12, output: 6_600 },
+  { command: "zinn task list --json", memoryBytes: 80_429_056, seconds: 0.12, output: 67_095 },
+  { command: "zinn task view", memoryBytes: 78_528_512, seconds: 0.11, output: 737 },
+  { command: "zinn task create", memoryBytes: 80_035_840, seconds: 0.16, output: 66 },
 ];
 
 /** `zinn task list` against the fixture at 10,000 tasks with 10,000 comments. */
 export const largeListCost: CommandCost = {
   command: "zinn task list",
-  memoryBytes: 166_346_752,
-  seconds: 3.54,
+  memoryBytes: 166_428_672,
+  seconds: 3.55,
   output: 680_000,
 };
 
