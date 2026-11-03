@@ -4,6 +4,7 @@ import { join, relative } from "node:path";
 
 import { backup, configureDatabase, info, project, reindex } from "../index";
 import type { DatabaseFacts } from "../index";
+import { resolveDatabasePath } from "./database-path";
 import { assertWritable, getDb } from "./db";
 import { CoreError } from "./errors";
 import { getStorage } from "./storage";
@@ -66,7 +67,7 @@ test("opening carries one captured target through preparation and legacy-read ca
         return connection;
       });
       try {
-        expect(getDb().databasePath).toBe(realpathSync(path));
+        expect<string | null>(getDb().databasePath).toBe(realpathSync(path));
         expect(facts).toHaveLength(1);
         expect(facts[0]!.databasePath).toBe(realpathSync(path));
         expect(getStorage().databasePath).not.toBe(realpathSync(path));
@@ -97,8 +98,8 @@ test("storage snapshots resolve a fresh destination while an existing connection
 
       expect(after).not.toBe(before);
       expect(after.directory).toBe(before.directory);
-      expect(before.databasePath).toBe(realpathSync(join(first, "data", "zinn.sqlite")));
-      expect(after.databasePath).toBe(realpathSync(join(second, "data", "zinn.sqlite")));
+      expect<string>(before.databasePath).toBe(realpathSync(join(first, "data", "zinn.sqlite")));
+      expect<string>(after.databasePath).toBe(realpathSync(join(second, "data", "zinn.sqlite")));
       expect(getDb()).toBe(connection);
       expect(project.getAll().map((entry) => entry.key)).toEqual(["FIRST"]);
       expect(reindex.run().databasePath).toBe(before.databasePath);
@@ -154,8 +155,8 @@ test("migration reports one destination for a relative alias on upgrade and repe
       readFreeSpace: () => PLENTY_OF_SPACE,
     };
     const requested = relative(process.cwd(), join(link, "zinn.sqlite"));
-    const upgraded = migrateDatabase(requested, options);
-    const unchanged = migrateDatabase(requested, options);
+    const upgraded = migrateDatabase(resolveDatabasePath(requested), options);
+    const unchanged = migrateDatabase(resolveDatabasePath(requested), options);
 
     expect(upgraded.databasePath).toBe(realpathSync(path));
     expect(unchanged.databasePath).toBe(upgraded.databasePath);

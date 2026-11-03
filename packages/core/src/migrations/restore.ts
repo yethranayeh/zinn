@@ -12,11 +12,11 @@ import type { FreeSpace } from "./space.js";
 import type { LockOptions } from "./upgrade.js";
 
 import { mkdirSync, statSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
 
-import { openDatabase } from "#sqlite";
+import { openDatabase, openResolvedDatabase } from "#sqlite";
 
-import { resolveDatabasePath } from "../database-path.js";
+import { resolveDatabasePath, type ResolvedPath } from "../database-path.js";
 import * as dbBackup from "../db/backup.js";
 import { applyConnectionSettings } from "../connection.js";
 import { attachSuppressed, isSqliteErrorFamily, type SqliteError } from "../sqlite/database.js";
@@ -55,7 +55,8 @@ export class RestoreRefusedError extends CoreError {
 }
 
 /** A backup file that passed `checkBackup`, and its schema version. */
-export type CheckedBackup = { path: string; version: number };
+/** `path` is the path as given, and `sourcePath` the file that was checked, which restore reads. */
+export type CheckedBackup = { path: string; sourcePath: ResolvedPath; version: number };
 
 export type RestoreOptions = LockOptions & {
   /** Where the backup of the replaced database goes, and the client named in its file name and in errors. */
@@ -261,7 +262,8 @@ export function checkBackup(
     });
   }
 
-  const source = openDatabase(path, { readonly: true });
+  const sourcePath = resolveDatabasePath(path);
+  const source = openResolvedDatabase(sourcePath, { readonly: true });
   let version: number;
 
   try {
@@ -291,7 +293,7 @@ export function checkBackup(
   }
 
   source.close();
-  return { path, version };
+  return { path, sourcePath, version };
 }
 
 /** Drops every trigger, view and table in main. Indexes and shadow tables go with their tables. */
@@ -458,7 +460,7 @@ export function restoreBackup(
 ): RestoreResult {
   const databasePath = requireDatabaseFile(db, "restore");
   const spacePaths = spacePathsFor(databasePath, backup.directory);
-  db.query(`ATTACH DATABASE $path AS ${SOURCE_SCHEMA}`).run({ $path: resolve(checked.path) });
+  db.query(`ATTACH DATABASE $path AS ${SOURCE_SCHEMA}`).run({ $path: checked.sourcePath });
 
   let result: RestoreResult;
 
@@ -477,7 +479,7 @@ export function restoreBackup(
 
         if (savesDatabase) {
           // db holds the write lock and has written nothing, so the backup is the database as it is.
-          backupPath = dbBackup.create(databasePath, backup.directory, backup, true).path;
+          backupPath = dbBackup.create(databasePath, backup.directory, backup).path;
           assertFreeSpace(spacePaths, requiredFree(db, sourceBytes, false), readFree);
         }
 
@@ -507,16 +509,14 @@ export function restoreBackup(
  *  so a database this build cannot write, or one without a schema version, can be restored too.
  */
 export function restoreDatabase(
-  databasePath: string,
+  databasePath: ResolvedPath,
   backupPath: string,
   options: RestoreOptions,
-  pathIsResolved = false,
 ): RestoreResult {
-  databasePath = pathIsResolved ? databasePath : resolveDatabasePath(databasePath);
   const checked = checkBackup(backupPath, options.migrations ?? MIGRATIONS, options.backup);
 
   mkdirSync(dirname(databasePath), { recursive: true });
-  const db = openDatabase(databasePath, { pathIsResolved: true });
+  const db = openResolvedDatabase(databasePath);
 
   try {
     applyConnectionSettings(db);

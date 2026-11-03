@@ -1,7 +1,8 @@
+import type { ResolvedPath } from "../database-path.ts";
 import type { OpenOptions, SqliteDriver } from "./database.ts";
 import { Database as BunDatabase } from "bun:sqlite";
 
-import { openWith, opensExistingOnly } from "./database.ts";
+import { openResolvedWith, openWith, opensExistingOnly } from "./database.ts";
 
 function openFlags(options: OpenOptions) {
   if (options.readonly) {
@@ -46,4 +47,8 @@ export const driver: SqliteDriver = {
 
 export function openDatabase(path: string, options?: OpenOptions) {
   return openWith(driver, path, options);
+}
+
+export function openResolvedDatabase(databasePath: ResolvedPath, options?: OpenOptions) {
+  return openResolvedWith(driver, databasePath, options);
 }

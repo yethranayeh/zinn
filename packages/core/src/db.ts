@@ -9,7 +9,7 @@ import type {
 } from "./migrations/open-policy.js";
 
 import { existsSync } from "node:fs";
-import { openDatabase } from "#sqlite";
+import { openResolvedDatabase } from "#sqlite";
 
 import { getStorage, resetStorageForTests } from "./storage.js";
 import { ensureDataDirectory } from "./config.js";
@@ -109,8 +109,7 @@ function prepare(
 
 function openConnection(access: DatabaseAccess, storage: Storage) {
   // Without the create flag, the open never creates a file
-  const connection = openDatabase(storage.databasePath, {
-    pathIsResolved: true,
+  const connection = openResolvedDatabase(storage.databasePath, {
     create: access.createsDatabase === true,
   });
 

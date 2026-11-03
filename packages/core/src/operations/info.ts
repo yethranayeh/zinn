@@ -98,7 +98,7 @@ export const info = {
       };
 
       try {
-        const directory = statSync(storage.directory);
+        const directory = statSync(resolve(inputs.cwd, storage.directory));
         report.storage.exists = directory.isDirectory();
         if (!directory.isDirectory()) {
           report.storage.error = `${storage.directory} is not a directory`;
@@ -116,7 +116,7 @@ export const info = {
         report.database.path = databasePath;
         report.database = {
           path: databasePath,
-          ...classifyDatabase(databasePath, undefined, true),
+          ...classifyDatabase(databasePath),
           error: null,
         };
       } catch (error) {

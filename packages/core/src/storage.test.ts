@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { strict as assert } from "node:assert";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -101,6 +101,30 @@ test("importing core resolves nothing, so a ZINN_DIR set after the import is the
       source: "env",
       sameOnReuse: false,
     });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("a snapshot keeps the first working folder and resolves links in its database and backup paths", () => {
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), "zinn-storage-anchor-")));
+  const store = join(directory, "store");
+  const elsewhere = join(directory, "elsewhere");
+  mkdirSync(store);
+  mkdirSync(elsewhere);
+  symlinkSync(store, join(directory, "link"), "dir");
+
+  try {
+    withEnvironment({ ZINN_DIR: "link" }, () => {
+      getStorage();
+      process.chdir(elsewhere);
+      const storage = getStorage();
+
+      expect(storage.directory).toBe(join(directory, "link"));
+      expect<string>(storage.databasePath).toBe(join(store, "data", "zinn.sqlite"));
+      expect(storage.dataDirectory).toBe(join(store, "data"));
+      expect<string>(storage.backupDirectory).toBe(join(store, "backups"));
+    }, directory);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

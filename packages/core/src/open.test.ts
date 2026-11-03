@@ -265,7 +265,7 @@ function projectKeys(mainDir: string) {
 test("a default-database fixture resolves inside the test's HOME, and ZINN_DIR still overrides it", () => {
   withHome((home) => {
     const defaultDir = join(home, ".zinn");
-    expect(withLocation({ home }, () => ({ DB_PATH: getStorage().databasePath, MAIN_DIR: getStorage().directory }))).toEqual({
+    expect<{ DB_PATH: string; MAIN_DIR: string }>(withLocation({ home }, () => ({ DB_PATH: getStorage().databasePath, MAIN_DIR: getStorage().directory }))).toEqual({
       DB_PATH: databasePath(defaultDir),
       MAIN_DIR: defaultDir,
     });

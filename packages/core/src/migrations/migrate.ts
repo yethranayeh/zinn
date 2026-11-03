@@ -1,9 +1,9 @@
 import type { BackupCreateInput } from "../db/backup.js";
 import type { UpgradeOptions } from "./upgrade.js";
 
-import { openDatabase } from "#sqlite";
+import { openResolvedDatabase } from "#sqlite";
 
-import { resolveDatabasePath } from "../database-path.js";
+import type { ResolvedPath } from "../database-path.js";
 import { applyConnectionSettings } from "../connection.js";
 import { attachSuppressed } from "../sqlite/database.js";
 import { classifyDatabase } from "./classify.js";
@@ -25,8 +25,6 @@ export type MigrateResult = {
 };
 
 export type MigrateOptions = Omit<UpgradeOptions, "backup"> & {
-  /** Reuses the destination captured by the calling operation. */
-  pathIsResolved?: boolean;
   /** Where snapshots go, and the client and version that name the running code. */
   backup: UpgradeOptions["backup"] & BackupCreateInput;
 };
@@ -56,11 +54,10 @@ function generateNewerDatabaseError(
  * A DB detected as *current* is left alone without a lock or backup.
  */
 export function migrateDatabase(
-  databasePath: string,
-  { backup, migrations, pathIsResolved = false, ...upgrade }: MigrateOptions,
+  databasePath: ResolvedPath,
+  { backup, migrations, ...upgrade }: MigrateOptions,
 ): MigrateResult {
-  databasePath = pathIsResolved ? databasePath : resolveDatabasePath(databasePath);
-  const { state, version, latestVersion } = classifyDatabase(databasePath, migrations, true);
+  const { state, version, latestVersion } = classifyDatabase(databasePath, migrations);
 
   switch (state) {
     case "absent":
@@ -96,7 +93,7 @@ export function migrateDatabase(
       break;
   }
 
-  const db = openDatabase(databasePath, { pathIsResolved: true });
+  const db = openResolvedDatabase(databasePath);
 
   try {
     applyConnectionSettings(db);

@@ -3,8 +3,13 @@ import { basename, dirname, join, resolve } from "node:path";
 
 import { CoreError } from "./errors.ts";
 
+declare const resolvedPathBrand: unique symbol;
+
+/** A path returned by `resolveDatabasePath`. Functions that take one use it as given and never resolve it again. */
+export type ResolvedPath = string & { readonly [resolvedPathBrand]: true };
+
 /** Resolves a database path through its nearest existing ancestor without creating anything */
-export function resolveDatabasePath(databasePath: string) {
+export function resolveDatabasePath(databasePath: string): ResolvedPath {
   let ancestor = resolve(databasePath);
   const missingSegments: Array<string> = [];
 
@@ -20,7 +25,7 @@ export function resolveDatabasePath(databasePath: string) {
       ancestor = parent;
     }
 
-    return join(realpathSync(ancestor), ...missingSegments);
+    return join(realpathSync(ancestor), ...missingSegments) as ResolvedPath;
   } catch (cause) {
     throw new CoreError(
       `Cannot resolve the database path ${databasePath}`,

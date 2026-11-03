@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import { closeSync, fsyncSync, mkdirSync, openSync, renameSync, rmSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
-import { openDatabase } from "#sqlite";
+import { openResolvedDatabase } from "#sqlite";
 
-import { resolveDatabasePath } from "../database-path.js";
+import type { ResolvedPath } from "../database-path.js";
 import { applyConnectionSettings } from "../connection.js";
 import { attachSuppressed } from "../sqlite/database.js";
 
@@ -93,8 +93,8 @@ function ensureDirectory(directory: string) {
  * Callers check that it exists.
  * @link https://www.sqlite.org/wal.html#readonly
  */
-function vacuumInto(databasePath: string, targetPath: string) {
-  const db = openDatabase(databasePath, { pathIsResolved: true });
+function vacuumInto(databasePath: ResolvedPath, targetPath: string) {
+  const db = openResolvedDatabase(databasePath);
 
   try {
     applyConnectionSettings(db);
@@ -116,13 +116,7 @@ function vacuumInto(databasePath: string, targetPath: string) {
  * Snapshots the database at `databasePath` into directory, named after the time, the client
  *  and its version, and returns the snapshot's path.
  */
-export function create(
-  databasePath: string,
-  directory: string,
-  { client, version }: BackupCreateInput,
-  pathIsResolved = false,
-) {
-  databasePath = pathIsResolved ? databasePath : resolveDatabasePath(databasePath);
+export function create(databasePath: ResolvedPath, directory: string, { client, version }: BackupCreateInput) {
   ensureDirectory(directory);
 
   /**

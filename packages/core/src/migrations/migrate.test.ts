@@ -7,6 +7,7 @@ import { join } from "node:path";
 
 import { openDatabase } from "#sqlite";
 
+import { resolveDatabasePath } from "../database-path";
 import { classifyDatabase } from "./classify";
 import { migrateDatabase, MigrationRefusedError } from "./migrate";
 import { rebuildTask, seedBaseline, snapshot, withDirectory } from "./testing";
@@ -34,7 +35,7 @@ function withDatabase(directory: string, prepare: (db: Database) => void) {
     db.close();
   }
 
-  return path;
+  return resolveDatabasePath(path);
 }
 
 function snapshotOf(path: string) {
@@ -56,7 +57,7 @@ function versionedAt(version: number) {
 
 test("classifies every state without creating anything", () => {
   withDirectory((directory) => {
-    const absent = join(directory, "absent.sqlite");
+    const absent = resolveDatabasePath(join(directory, "absent.sqlite"));
     expect(classifyDatabase(absent, [])).toEqual({ state: "absent", version: 0, latestVersion: 1 });
     expect(existsSync(absent)).toBe(false);
 
@@ -96,7 +97,7 @@ test("a path below a regular file or an inaccessible directory is refused", () =
   withDirectory((directory) => {
     const file = join(directory, "file");
     writeFileSync(file, "not a folder");
-    expect(() => classifyDatabase(join(file, "zinn.sqlite"), [])).toThrow(
+    expect(() => classifyDatabase(resolveDatabasePath(join(file, "zinn.sqlite")), [])).toThrow(
       expect.objectContaining({ kind: "storage", facts: { entity: "database", databasePath: join(file, "zinn.sqlite") }, cause: expect.objectContaining({ code: "ENOTDIR" }) }),
     );
 
@@ -104,7 +105,7 @@ test("a path below a regular file or an inaccessible directory is refused", () =
     mkdirSync(unsearchable);
     chmodSync(unsearchable, UNSEARCHABLE_DIRECTORY_MODE);
     try {
-      expect(() => classifyDatabase(join(unsearchable, "zinn.sqlite"), [])).toThrow();
+      expect(() => classifyDatabase(resolveDatabasePath(join(unsearchable, "zinn.sqlite")), [])).toThrow();
     } finally {
       chmodSync(unsearchable, WRITABLE_DIRECTORY_MODE);
     }
@@ -115,7 +116,7 @@ test("a path below a regular file or an inaccessible directory is refused", () =
 
 test("an absent database is refused and no file or directory is created", () => {
   withDirectory((directory) => {
-    const path = join(directory, "data", "zinn.sqlite");
+    const path = resolveDatabasePath(join(directory, "data", "zinn.sqlite"));
 
     expect(() => migrateDatabase(path, options(directory, []))).toThrow(MigrationRefusedError);
     expect(readdirSync(directory)).toEqual([]);

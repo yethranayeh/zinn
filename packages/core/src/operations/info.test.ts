@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { info } from "./info.js";
+import { resolveDatabasePath } from "../database-path.js";
 import { resolveSettings } from "../settings.js";
 import { openDatabase } from "../sqlite/bun.ts";
 import { withDatabaseInspection } from "../migrations/classify.js";
@@ -156,16 +157,18 @@ test("schema inspection preserves records and schema for unmarked, older, curren
 
 test("the shared inspection connection refuses writes and never creates a missing database", () => {
   const path = join(root, "sample.sqlite");
+  const resolvedPath = resolveDatabasePath(path);
   const db = openDatabase(path);
   db.exec("CREATE TABLE sample(value TEXT); INSERT INTO sample VALUES ('preserved')");
   db.close();
-  withDatabaseInspection(path, (inspected) => {
+  withDatabaseInspection(resolvedPath, (inspected) => {
     expect(inspected.query("SELECT * FROM sample").all()).toEqual([{ value: "preserved" }]);
     expect(() => inspected.exec("UPDATE sample SET value='changed'")).toThrow();
     expect(() => inspected.exec("CREATE TABLE unexpected(value TEXT)")).toThrow();
     expect(() => inspected.exec("PRAGMA user_version=99")).toThrow();
   });
   const missing = join(root, "absent.sqlite");
-  expect(() => withDatabaseInspection(missing, () => {})).toThrow();
+  const resolvedMissing = resolveDatabasePath(missing);
+  expect(() => withDatabaseInspection(resolvedMissing, () => {})).toThrow();
   expect(existsSync(missing)).toBe(false);
 });

@@ -11,12 +11,15 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 
 import { openDatabase } from "#sqlite";
 
+import { resolveDatabasePath } from "../database-path";
 import * as dbBackup from "../db/backup";
 import { driver as bunDriver } from "../sqlite/bun.ts";
 import { openWith } from "../sqlite/database";
@@ -75,7 +78,7 @@ function makeDatabase(path: string, prepare: (db: Database) => void) {
     db.close();
   }
 
-  return path;
+  return resolveDatabasePath(path);
 }
 
 function withOpen<T>(path: string, read: (db: Database) => T): T {
@@ -449,7 +452,7 @@ test("a backup that cannot be restored is refused, and the database and backups 
 test("restores onto a missing database by creating it, with no backup of a replaced database", () => {
   withDirectory((directory) => {
     const backupPath = backupOf(directory, seedSource);
-    const live = join(directory, "store", "data", "zinn.sqlite");
+    const live = resolveDatabasePath(join(directory, "store", "data", "zinn.sqlite"));
 
     const result = restoreDatabase(live, backupPath, options(directory));
 
@@ -467,7 +470,7 @@ test("restores onto a missing database by creating it, with no backup of a repla
 
 test("a refused restore onto a missing database creates nothing", () => {
   withDirectory((directory) => {
-    const live = join(directory, "store", "data", "zinn.sqlite");
+    const live = resolveDatabasePath(join(directory, "store", "data", "zinn.sqlite"));
 
     expect(() => restoreDatabase(live, join(directory, "missing.sqlite"), options(directory))).toThrow(
       RestoreRefusedError,
@@ -583,6 +586,24 @@ test("a backup with an empty child referencing a missing table rolls back before
     const backups = savedBackups(directory);
     expect(backups).toHaveLength(1);
     expect(readDatabaseState(join(directory, "backups", backups[0]!))).toEqual(before);
+  });
+});
+
+test("restore reads the backup file that was checked when its link changes afterwards", () => {
+  withDirectory((directory) => {
+    const live = makeDatabase(join(directory, "zinn.sqlite"), seedBaseline);
+    const checkedTarget = backupOf(directory, seedSource);
+    const laterTarget = backupOf(directory, seedLive);
+    const link = join(directory, "selected.sqlite");
+    symlinkSync(checkedTarget, link, "file");
+    const checked = checkBackup(link, [], BUILD);
+
+    unlinkSync(link);
+    symlinkSync(laterTarget, link, "file");
+    withOpen(live, (db) => {
+      restoreBackup(db, checked, options(directory));
+      expect(db.query("SELECT key FROM project").all()).toEqual([{ key: "SRC" }]);
+    });
   });
 });
 

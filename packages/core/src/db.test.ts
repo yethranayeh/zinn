@@ -8,7 +8,7 @@ import { assertWritable, configureDatabase, getDb, resetDatabaseForTests } from 
 import { MissingDatabaseError, ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./migrations/open-policy";
 import { createSchema } from "./migrations/runner";
 import type { OpenOptions } from "./sqlite/database";
-import { openWith, SqliteError } from "./sqlite/database";
+import { openResolvedWith, SqliteError } from "./sqlite/database";
 import { withTestStore } from "./testing";
 
 type ControlledFailure = { code: string; errno: number } | { apiError: true };
@@ -54,7 +54,7 @@ function runInitializationCheck(inputFailure: ControlledFailure, failures: numbe
       },
       resultCode: adapter.driver.resultCode,
     };
-    const mockedOpen = spyOn(adapter, "openDatabase").mockImplementation((path, options) => openWith(driver, path, options));
+    const mockedOpen = spyOn(adapter, "openResolvedDatabase").mockImplementation((path, options) => openResolvedWith(driver, path, options));
     const began = performance.now();
     try {
 

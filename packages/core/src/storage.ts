@@ -5,7 +5,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 
-import { resolveDatabasePath } from "./database-path.js";
+import { resolveDatabasePath, type ResolvedPath } from "./database-path.js";
 import { resolveSettings } from "./settings.js";
 import { CoreError, isMissingFileError } from "./errors.js";
 import { DB_FILE_NAME, MAIN_FOLDER_NAME } from "./constant.js";
@@ -25,17 +25,23 @@ export type StorageSource = z.infer<typeof storageSourceSchema>;
 type StoragePaths = {
   directory: string;
   dataDirectory: string;
-  /** Destination resolved by filesytme in a storage snapshot */
   databasePath: string;
   backupDirectory: string;
 };
 
-export type Storage = StoragePaths & {
+/** The store as configuration places it, before filesystem links are resolved. */
+export type ConfiguredStorage = StoragePaths & {
   source: StorageSource;
   /** The settings file whose `storage.directory` chose the folder, or `null` when `ZINN_DIR` or the default chose it. */
   settingsPath: string | null;
   /** The default folder in the home directory, which a folder from another source may also reach. */
   defaultDirectory: string;
+};
+
+/** A storage snapshot. The database and backup destinations are resolved through filesystem links, and the data folder is the resolved database's folder. */
+export type Storage = ConfiguredStorage & {
+  databasePath: ResolvedPath;
+  backupDirectory: ResolvedPath;
 };
 
 type StorageInputs = SettingsInputs;
@@ -48,7 +54,7 @@ type SettingsChoice = {
 };
 
 /** The paths inside a store's folder */
-function storagePaths(directory: string): StoragePaths {
+export function storagePaths(directory: string): StoragePaths {
   const dataDirectory = join(directory, "data");
 
   return {
@@ -144,7 +150,7 @@ function refuseOutsideTemporaryInTestRun(
 export function resolveStorage(
   inputs: StorageInputs,
   settings: Pick<ResolvedSettings, "global" | "local"> = resolveSettings(inputs),
-): Storage {
+): ConfiguredStorage {
   const { env, home } = inputs;
   const defaultDirectory = join(home, MAIN_FOLDER_NAME);
 
@@ -177,7 +183,7 @@ export function resolveStorage(
   };
 }
 
-let processStorage: Storage | null = null;
+let processStorage: ConfiguredStorage | null = null;
 let processSettings: ResolvedSettings | null = null;
 
 /** For internal tests, to be run after the database connection has closed. */
@@ -239,7 +245,7 @@ function assertStoreDirectory(directory: string, settingsPath: string | null) {
 
 /**
  * Captures a fresh database destination from the configuration selected on first use.
- * Settings and the selected directory stay cached. Filesystem links are resolved for each snapshot.
+ * Settings and the selected directory stay cached. The database and backup paths are resolved through filesystem links for each snapshot.
  * Keep the snapshot throughout an operation. An open connection retains its own opening target.
  */
 export function getStorage() {
@@ -253,8 +259,15 @@ export function getStorage() {
     if (storage.source === "local" || storage.source === "global") {
       assertStoreDirectory(storage.directory, storage.settingsPath);
     }
-    processStorage = { ...storage, databasePath: resolve(inputs.cwd, storage.databasePath) };
+    // Paths are anchored to the first working folder, so a later change of folder does not move the store.
+    processStorage = { ...storage, ...storagePaths(resolve(inputs.cwd, storage.directory)) };
   }
 
-  return { ...processStorage, databasePath: resolveDatabasePath(processStorage.databasePath) };
+  const databasePath = resolveDatabasePath(processStorage.databasePath);
+  return {
+    ...processStorage,
+    dataDirectory: dirname(databasePath),
+    databasePath,
+    backupDirectory: resolveDatabasePath(processStorage.backupDirectory),
+  };
 }

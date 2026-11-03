@@ -3,6 +3,7 @@ import { strict as assert } from "node:assert";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { column, project, task } from "../index";
+import { resolveDatabasePath } from "./database-path";
 import { resetDatabaseForTests } from "./db";
 import { withTestStore } from "./testing";
 import { openDatabase } from "./sqlite/bun";
@@ -17,7 +18,8 @@ test("column inspection reads names and requested task identities without initia
     task.create({ project_id: app.id, title: "First" }, actor);
     resetDatabaseForTests();
     const path = join(directory, "data", "zinn.sqlite");
-    const snapshot = () => withDatabaseInspection(path, db => ({
+    const resolvedPath = resolveDatabasePath(path);
+    const snapshot = () => withDatabaseInspection(resolvedPath, db => ({
       version: db.query("PRAGMA user_version").get(),
       schema: db.query("SELECT type, name, sql FROM sqlite_schema ORDER BY name").all(),
       projects: db.query("SELECT * FROM project ORDER BY id").all(),

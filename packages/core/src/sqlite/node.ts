@@ -1,9 +1,10 @@
 import type { SQLInputValue } from "node:sqlite";
+import type { ResolvedPath } from "../database-path.ts";
 import type { DriverArgs, OpenOptions, SqliteDriver, SqliteValue } from "./database.ts";
 
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
-import { isNamedBindings, openWith, opensExistingOnly } from "./database.ts";
+import { isNamedBindings, openResolvedWith, openWith, opensExistingOnly } from "./database.ts";
 
 /**
  * bun:sqlite binds a number as INTEGER when Number.isSafeInteger is true and it is not -0, and as REAL otherwise.
@@ -89,4 +90,8 @@ export const driver: SqliteDriver = {
 
 export function openDatabase(path: string, options?: OpenOptions) {
   return openWith(driver, path, options);
+}
+
+export function openResolvedDatabase(databasePath: ResolvedPath, options?: OpenOptions) {
+  return openResolvedWith(driver, databasePath, options);
 }

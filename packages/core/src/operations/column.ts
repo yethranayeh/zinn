@@ -75,7 +75,6 @@ export const column = {
           taskKeys: facts.tasks.map((entry) => `${entry.project_key}-${entry.number}`),
         };
       },
-      true,
     );
   },
   getById: dbColumn.getById,

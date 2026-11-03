@@ -230,7 +230,7 @@ export function upgradeDatabase(
       assertFreeSpace(spacePaths, before, readFree);
 
       // db holds the write lock and has written nothing, so the snapshot is the database as it is.
-      const { path: backupPath } = dbBackup.create(databasePath, backup.directory, backup, true);
+      const { path: backupPath } = dbBackup.create(databasePath, backup.directory, backup);
 
       const after = estimateRequiredFree(measureSpace(db, migrations), { includeBackup: false });
       assertFreeSpace(spacePaths, after, readFree);

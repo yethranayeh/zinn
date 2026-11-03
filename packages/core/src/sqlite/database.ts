@@ -2,7 +2,7 @@
  * Core reads and writes SQLite through the Database class below.
  * bun.ts and node.ts connect this class to one library each, and this class makes both behave the same.
  */
-import { resolveDatabasePath } from "../database-path.ts";
+import { resolveDatabasePath, type ResolvedPath } from "../database-path.ts";
 
 export type SqliteValue = string | number | bigint | Uint8Array | null;
 /** Named bindings keep the placeholder's `$` prefix in their keys, as in the SQL. */
@@ -12,8 +12,6 @@ export type SqliteParams = NamedBindings | Array<SqliteValue>;
 export type DriverArgs = Array<SqliteValue> | [NamedBindings];
 
 export type OpenOptions = {
-  /** Reuses a destination already captured by the operation */
-  pathIsResolved?: boolean;
   readonly?: boolean;
   /**
    * Whether a read-write open creates a missing file, as `SQLITE_OPEN_CREATE` does
@@ -524,7 +522,7 @@ type TransactionMode = "IMMEDIATE" | "DEFERRED";
 
 export class Database {
   /** The destination captured before opening and retained until this connection closes */
-  readonly databasePath: string | null;
+  readonly databasePath: ResolvedPath | null;
   private readonly driver: SqliteDriver;
   private readonly connection: DriverConnection;
   private readonly statements = new Map<string, Statement<unknown, Array<unknown>>>();
@@ -534,7 +532,7 @@ export class Database {
   /** The mode of the outermost running transaction() call, or null when none is running. */
   private outerTransactionMode: TransactionMode | null = null;
 
-  constructor(driver: SqliteDriver, connection: DriverConnection, databasePath: string | null) {
+  constructor(driver: SqliteDriver, connection: DriverConnection, databasePath: ResolvedPath | null) {
     this.databasePath = databasePath;
     this.driver = driver;
     this.connection = connection;
@@ -679,11 +677,19 @@ export class Database {
  */
 export function openWith(driver: SqliteDriver, path: string, options: OpenOptions = {}) {
   const hasFile = path !== ":memory:" && path !== "";
-  let databasePath: string | null = null;
-  if (hasFile) {
-    databasePath = options.pathIsResolved ? path : resolveDatabasePath(path);
+  if (!hasFile) {
+    return connectWith(driver, path, null, options);
   }
 
-  const connection = withSqliteErrors(driver, () => driver.connect(databasePath ?? path, options));
+  return openResolvedWith(driver, resolveDatabasePath(path), options);
+}
+
+/** Opens a destination the caller already resolved, as `openWith` does, without resolving it again. */
+export function openResolvedWith(driver: SqliteDriver, databasePath: ResolvedPath, options: OpenOptions = {}) {
+  return connectWith(driver, databasePath, databasePath, options);
+}
+
+function connectWith(driver: SqliteDriver, path: string, databasePath: ResolvedPath | null, options: OpenOptions) {
+  const connection = withSqliteErrors(driver, () => driver.connect(path, options));
   return new Database(driver, connection, databasePath);
 }

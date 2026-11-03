@@ -4,9 +4,9 @@ import type { Migration } from "./registry.js";
 import { statSync } from "node:fs";
 import { z } from "zod";
 
-import { openDatabase } from "#sqlite";
+import { openResolvedDatabase } from "#sqlite";
 
-import { resolveDatabasePath } from "../database-path.js";
+import type { ResolvedPath } from "../database-path.js";
 import { applyConnectionSettings } from "../connection.js";
 import { isMissingFileError } from "../errors.js";
 import { attachSuppressed } from "../sqlite/database.js";
@@ -71,12 +71,9 @@ export function classifyConnection(
  * A file that is not there is "absent", and nothing opens it.
  */
 export function classifyDatabase(
-  databasePath: string,
+  databasePath: ResolvedPath,
   migrations: ReadonlyArray<Migration> = MIGRATIONS,
-  pathIsResolved = false,
 ): DatabaseClassification {
-  databasePath = pathIsResolved ? databasePath : resolveDatabasePath(databasePath);
-
   try {
     statSync(databasePath);
   } catch (error) {
@@ -87,16 +84,12 @@ export function classifyDatabase(
     return { state: "absent", version: 0, latestVersion: latestVersion(migrations) };
   }
 
-  return withDatabaseInspection(databasePath, (db) => classifyConnection(db, migrations), true);
+  return withDatabaseInspection(databasePath, (db) => classifyConnection(db, migrations));
 }
 
 /** Inspects an existing database without application writes or schema initialization. */
-export function withDatabaseInspection<T>(
-  databasePath: string,
-  inspect: (db: Database) => T,
-  pathIsResolved = false,
-): T {
-  const db = openDatabase(databasePath, { create: false, pathIsResolved });
+export function withDatabaseInspection<T>(databasePath: ResolvedPath, inspect: (db: Database) => T): T {
+  const db = openResolvedDatabase(databasePath, { create: false });
   let result: T;
 
   try {

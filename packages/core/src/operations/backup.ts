@@ -24,7 +24,7 @@ export type { BackupCreateInput };
 export const backup = {
   create: (input: BackupCreateInput) => {
     const { databasePath, backupDirectory } = getStorage();
-    const { state } = classifyDatabase(databasePath, undefined, true);
+    const { state } = classifyDatabase(databasePath);
 
     if (state === "absent" || state === "empty") {
       throw new CoreError(`There is no Zinn database at ${databasePath} to back up`, "missing", {
@@ -33,7 +33,7 @@ export const backup = {
       });
     }
 
-    return dbBackup.create(databasePath, backupDirectory, input, true);
+    return dbBackup.create(databasePath, backupDirectory, input);
   },
   /**
    * Throws `RestoreRefusedError` for a backup that `restore` would refuse, without opening the database.
@@ -48,7 +48,6 @@ export const backup = {
       databasePath,
       resolve(path),
       { backup: { directory: backupDirectory, client, version }, onWait },
-      true,
     );
   },
 };
