@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { closeSync, fsyncSync, mkdirSync, openSync, renameSync, rmSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 import { openDatabase } from "#sqlite";
 
@@ -17,7 +17,7 @@ export type BackupCreateInput = {
 };
 
 /**
- * `VACUUM INTO` writes straight to its target and does not `fsync` it,
+ * `VACUUM INTO` writes straight to its target,
  *  so an interrupted backup can leave an **incomplete** file behind.
  * Under its final name, that file would look like a finished backup.
  * The backup is written under this suffix and renamed once it is complete and on disk.
@@ -31,14 +31,52 @@ const PARTIAL_BACKUP_SUFFIX = ".partial";
 const BACKUP_FILE_NAME =
   /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z-(?<client>.+?)-(?<version>\d.*)-[0-9a-f]{8}\.sqlite$/;
 
-function syncToDisk(path: string) {
-  // Read/write, because apparently Windows only flushes a file opened for writing.
-  const descriptor = openSync(path, "r+");
+function syncToDisk(path: string, flags: "r" | "r+" = "r+") {
+  // Windows file flushes need a writable descriptor.
+  const descriptor = openSync(path, flags);
 
   try {
     fsyncSync(descriptor);
-  } finally {
-    closeSync(descriptor);
+  } catch (error) {
+    try {
+      closeSync(descriptor);
+    } catch (closeError) {
+      attachSuppressed(error, closeError);
+    }
+
+    throw error;
+  }
+
+  closeSync(descriptor);
+}
+
+function syncDirectory(directory: string) {
+  // Windows has no directory fsync through node:fs.
+  if (process.platform !== "win32") {
+    syncToDisk(directory, "r");
+  }
+}
+
+/** Creates the backup directory and syncs the parent entries that make it reachable. */
+function ensureDirectory(directory: string) {
+  mkdirSync(directory, { recursive: true });
+
+  if (process.platform === "win32") {
+    return;
+  }
+
+  // Existing ancestors may have been created by a concurrent or failed attempt.
+  let parent = dirname(resolve(directory));
+
+  for (;;) {
+    syncDirectory(parent);
+    const ancestor = dirname(parent);
+
+    if (ancestor === parent) {
+      break;
+    }
+
+    parent = ancestor;
   }
 }
 
@@ -82,7 +120,7 @@ export function create(
   directory: string,
   { client, version }: BackupCreateInput,
 ) {
-  mkdirSync(directory, { recursive: true });
+  ensureDirectory(directory);
 
   /**
    * Transformed UTC: 2026-09-29T12-30-05Z
@@ -103,6 +141,8 @@ export function create(
 
   // A rename within one directory is atomic, so the final name only ever holds a complete backup.
   renameSync(partialPath, path);
+  // The name needs a directory sync too. https://man7.org/linux/man-pages/man2/fsync.2.html
+  syncDirectory(directory);
 
   return { path };
 }

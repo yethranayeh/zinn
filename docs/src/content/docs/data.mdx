@@ -27,6 +27,8 @@ zinn backup
 
 The snapshot includes committed changes and can be taken while Zinn is in use. It is saved to `backups/` in the selected Zinn directory, and an existing backup is never overwritten. With `--json`, the command returns `{ "path": "..." }`. It fails when there is no database yet.
 
+On macOS and Linux, saving a backup syncs its directory and parent directories as well as the file. A sync failure stops the operation. An upgrade or restore that needs the backup leaves the database unchanged, and a completed backup file is retained.
+
 Use `zinn backup` for a complete copy: committed changes may still be in `data/zinn.sqlite-wal`, so copying `data/zinn.sqlite` alone can omit them. To move the database to another machine, copy the generated snapshot and run `zinn restore <path>` there.
 
 ## Restore a database
