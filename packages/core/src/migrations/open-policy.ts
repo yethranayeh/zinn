@@ -8,7 +8,8 @@ import type { DatabaseState } from "./classify.js";
 import type { LockWait } from "./upgrade.js";
 
 import { realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { DB_FILE_NAME } from "../constant.js";
 import { CoreError, isMissingFileError } from "../errors.js";
 
 /** What a client tells core about itself before core opens the database. */
@@ -115,12 +116,15 @@ export function isDefaultDatabase(mainDir: string, defaultMainDir: string) {
  * Every store is protected, whether the default folder or chosen by a settings file, except a `ZINN_DIR` store
  *  that does not reach the default folder.
  */
-export function isProtectedStorage({ source, directory, defaultDirectory }: Storage) {
+export function isProtectedStorage({ source, directory, databasePath, defaultDirectory }: Storage) {
   if (source !== "env") {
     return true;
   }
 
-  return isDefaultDatabase(directory, defaultDirectory);
+  return (
+    isDefaultDatabase(directory, defaultDirectory) ||
+    isDefaultDatabase(databasePath, join(defaultDirectory, "data", DB_FILE_NAME))
+  );
 }
 
 export type DatabaseFacts = {

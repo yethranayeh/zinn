@@ -108,11 +108,7 @@ function readStructureBytes(db: Database, tables: ReadonlyArray<string>) {
 
 /** The file the connection's main database lives in, or null for an in-memory database. */
 export function readDatabaseFile(db: Database) {
-  const file = db
-    .query<{ file: string }>("SELECT file FROM pragma_database_list WHERE name = 'main'")
-    .get()?.file;
-
-  return file == null || file === "" ? null : file;
+  return db.databasePath;
 }
 
 /** The file the connection's main database lives in. Throws for a database with no file, such as an in-memory one. */

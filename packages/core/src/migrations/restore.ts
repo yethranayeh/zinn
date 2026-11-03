@@ -16,6 +16,7 @@ import { dirname, resolve } from "node:path";
 
 import { openDatabase } from "#sqlite";
 
+import { resolveDatabasePath } from "../database-path.js";
 import * as dbBackup from "../db/backup.js";
 import { applyConnectionSettings } from "../connection.js";
 import { attachSuppressed, isSqliteErrorFamily, type SqliteError } from "../sqlite/database.js";
@@ -476,7 +477,7 @@ export function restoreBackup(
 
         if (savesDatabase) {
           // db holds the write lock and has written nothing, so the backup is the database as it is.
-          backupPath = dbBackup.create(databasePath, backup.directory, backup).path;
+          backupPath = dbBackup.create(databasePath, backup.directory, backup, true).path;
           assertFreeSpace(spacePaths, requiredFree(db, sourceBytes, false), readFree);
         }
 
@@ -509,11 +510,13 @@ export function restoreDatabase(
   databasePath: string,
   backupPath: string,
   options: RestoreOptions,
+  pathIsResolved = false,
 ): RestoreResult {
+  databasePath = pathIsResolved ? databasePath : resolveDatabasePath(databasePath);
   const checked = checkBackup(backupPath, options.migrations ?? MIGRATIONS, options.backup);
 
   mkdirSync(dirname(databasePath), { recursive: true });
-  const db = openDatabase(databasePath);
+  const db = openDatabase(databasePath, { pathIsResolved: true });
 
   try {
     applyConnectionSettings(db);

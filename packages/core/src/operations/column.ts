@@ -50,29 +50,33 @@ export const column = {
   /** Inspects existing column names and task identities without initializing or upgrading storage. */
   inspect: (input: ColumnInspectionInput = {}) => {
     const props = validateTaskInput(columnInspectionSchema, input);
-    return withDatabaseInspection(getStorage().databasePath, (db) => {
-      const classification = classifyConnection(db);
-      const refusesLegacy = classification.state === "unmarked" && !props.allowsLegacyRead;
-      if (classification.state === "empty" || refusesLegacy) {
-        return null;
-      }
-      const requestedTasks = props.taskKeys.flatMap((key) => {
-        const parsed = parseTaskKey(key);
-        return parsed === null
-          ? []
-          : [{ ...parsed, projectKey: standardizeProjectKey(parsed.projectKey) }];
-      });
-      const facts = dbColumn.inspectContext(db, requestedTasks);
-      return {
-        projects: facts.projects.map(({ id, key }) => ({
-          key,
-          columns: facts.columns
-            .filter((entry) => entry.project_id === id)
-            .map((entry) => entry.name),
-        })),
-        taskKeys: facts.tasks.map((entry) => `${entry.project_key}-${entry.number}`),
-      };
-    });
+    return withDatabaseInspection(
+      getStorage().databasePath,
+      (db) => {
+        const classification = classifyConnection(db);
+        const refusesLegacy = classification.state === "unmarked" && !props.allowsLegacyRead;
+        if (classification.state === "empty" || refusesLegacy) {
+          return null;
+        }
+        const requestedTasks = props.taskKeys.flatMap((key) => {
+          const parsed = parseTaskKey(key);
+          return parsed === null
+            ? []
+            : [{ ...parsed, projectKey: standardizeProjectKey(parsed.projectKey) }];
+        });
+        const facts = dbColumn.inspectContext(db, requestedTasks);
+        return {
+          projects: facts.projects.map(({ id, key }) => ({
+            key,
+            columns: facts.columns
+              .filter((entry) => entry.project_id === id)
+              .map((entry) => entry.name),
+          })),
+          taskKeys: facts.tasks.map((entry) => `${entry.project_key}-${entry.number}`),
+        };
+      },
+      true,
+    );
   },
   getById: dbColumn.getById,
   getByName: (projectKey: string, columnName: string) => {

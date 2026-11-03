@@ -92,11 +92,13 @@ test("classifies every state without creating anything", () => {
   });
 });
 
-test("a path below a regular file is absent, and a path that cannot be checked throws", () => {
+test("a path below a regular file or an inaccessible directory is refused", () => {
   withDirectory((directory) => {
     const file = join(directory, "file");
     writeFileSync(file, "not a folder");
-    expect(classifyDatabase(join(file, "zinn.sqlite"), [])).toEqual({ state: "absent", version: 0, latestVersion: 1 });
+    expect(() => classifyDatabase(join(file, "zinn.sqlite"), [])).toThrow(
+      expect.objectContaining({ kind: "storage", facts: { entity: "database", databasePath: join(file, "zinn.sqlite") }, cause: expect.objectContaining({ code: "ENOTDIR" }) }),
+    );
 
     const unsearchable = join(directory, "unsearchable");
     mkdirSync(unsearchable);
@@ -166,7 +168,7 @@ test("a current database is a no-op with no backup", () => {
     const before = snapshotOf(path);
 
     expect(migrateDatabase(path, options(directory, []))).toEqual({
-      databasePath: path,
+      databasePath: realpathSync(path),
       previousVersion: 1,
       finalVersion: 1,
       changed: false,

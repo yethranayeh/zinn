@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from "node:path";
 
 import { openDatabase } from "#sqlite";
 
+import { resolveDatabasePath } from "../database-path.js";
 import { applyConnectionSettings } from "../connection.js";
 import { attachSuppressed } from "../sqlite/database.js";
 
@@ -93,7 +94,7 @@ function ensureDirectory(directory: string) {
  * @link https://www.sqlite.org/wal.html#readonly
  */
 function vacuumInto(databasePath: string, targetPath: string) {
-  const db = openDatabase(databasePath);
+  const db = openDatabase(databasePath, { pathIsResolved: true });
 
   try {
     applyConnectionSettings(db);
@@ -119,7 +120,9 @@ export function create(
   databasePath: string,
   directory: string,
   { client, version }: BackupCreateInput,
+  pathIsResolved = false,
 ) {
+  databasePath = pathIsResolved ? databasePath : resolveDatabasePath(databasePath);
   ensureDirectory(directory);
 
   /**

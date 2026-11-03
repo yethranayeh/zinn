@@ -1,9 +1,6 @@
 import type { LockWait } from "../migrations/upgrade.js";
 
-import { CoreError } from "../errors.js";
 import { assertWritable, getDb } from "../db.js";
-import { getStorage } from "../storage.js";
-import { classifyDatabase } from "../migrations/classify.js";
 import { reindexSearch } from "../migrations/reindex.js";
 
 export type ReindexRunInput = {
@@ -14,17 +11,6 @@ export type ReindexRunInput = {
 export const reindex = {
   /** Rebuilds the search index from the tasks and comments. Opens the database like any change does. */
   run: ({ onWait }: ReindexRunInput = {}) => {
-    // Checked before getDb, which would create the schema in an empty file.
-    const { databasePath } = getStorage();
-    const { state } = classifyDatabase(databasePath);
-
-    if (state === "absent" || state === "empty") {
-      throw new CoreError(`There is no Zinn database at ${databasePath} to reindex`, "missing", {
-        entity: "database",
-        databasePath,
-      });
-    }
-
     assertWritable();
     return reindexSearch(getDb(), { onWait });
   },

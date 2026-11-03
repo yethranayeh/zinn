@@ -32,12 +32,19 @@ test("emitted core works on both runtimes and its declarations need no Bun types
     const contract = new Bun.Transpiler({ loader: "ts" }).transformSync(contractSource);
     writeFileSync(join(directory, "contract.mjs"), contract);
 
+    const pathChecksSource = readFileSync(join(packageDirectory, "testing/database-path.ts"), "utf8")
+      .replaceAll('"../src/database-path.ts"', JSON.stringify(outputUrl("src/database-path.js")))
+      .replaceAll('"../src/errors.ts"', JSON.stringify(outputUrl("src/errors.js")));
+    const pathChecks = new Bun.Transpiler({ loader: "ts" }).transformSync(pathChecksSource);
+    writeFileSync(join(directory, "database-path-checks.mjs"), pathChecks);
+
     const runtimeCheck = join(directory, "runtime.test.mjs");
     writeFileSync(runtimeCheck, `
       import { test } from "node:test";
       import { strict as assert } from "node:assert";
       import { mkdirSync } from "node:fs";
       import { defineContractChecks } from "./contract.mjs";
+      import { defineDatabasePathChecks } from "./database-path-checks.mjs";
       import * as core from ${JSON.stringify(outputUrl("index.js"))};
       import { getDb } from ${JSON.stringify(outputUrl("src/db.js"))};
       import { readCoreReleaseMode } from ${JSON.stringify(outputUrl("src/release.js"))};
@@ -45,6 +52,7 @@ test("emitted core works on both runtimes and its declarations need no Bun types
       const adapterPath = typeof Bun === "undefined" ? "node" : "bun";
       const adapter = await import(${JSON.stringify(outputUrl("src/sqlite/"))} + adapterPath + ".js");
       defineContractChecks(test, adapter);
+      defineDatabasePathChecks(test);
 
       test("emitted migrations reject changed child targets and verify exact declared definitions", () => {
         const db = adapter.openDatabase(":memory:");

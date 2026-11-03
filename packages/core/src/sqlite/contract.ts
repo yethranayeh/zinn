@@ -6,7 +6,15 @@
 import type { Database, OpenOptions, SqliteDriver } from "./database.ts";
 
 import { strict as assert } from "node:assert";
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -85,6 +93,48 @@ function count(db: Database, table: string) {
 }
 
 export function defineContractChecks(test: DefineTest, adapter: Adapter) {
+  test("file-backed connections retain the destination resolved before opening", () => {
+    withDirectory((directory) => {
+      const first = join(directory, "first.sqlite");
+      const second = join(directory, "second.sqlite");
+      adapter.openDatabase(first).close();
+      adapter.openDatabase(second).close();
+      const alias = join(directory, "selected.sqlite");
+      symlinkSync(first, alias, "file");
+      const db = adapter.openDatabase(alias);
+      try {
+        unlinkSync(alias);
+        symlinkSync(second, alias, "file");
+        assert.equal(db.databasePath, realpathSync(first));
+        db.exec("CREATE TABLE bound_target (value TEXT)");
+        const other = adapter.openDatabase(alias);
+        try {
+          assert.equal(other.databasePath, realpathSync(second));
+          assert.equal(
+            other.query("SELECT name FROM sqlite_schema WHERE name = 'bound_target'").get(),
+            null,
+          );
+        } finally {
+          other.close();
+        }
+      } finally {
+        db.close();
+      }
+    });
+  });
+
+  test("memory and temporary connections have no database file path", () => {
+    for (const path of [":memory:", ""]) {
+      const db = adapter.openDatabase(path);
+      try {
+        assert.equal(db.databasePath, null);
+        db.exec("CREATE TABLE sample (value TEXT)");
+      } finally {
+        db.close();
+      }
+    }
+  });
+
   test("SQLite classification distinguishes exact result codes from their primary families", () => {
     const busy = new SqliteError("database is locked", 5, null);
     const snapshot = new SqliteError("stale snapshot", 517, null);

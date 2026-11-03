@@ -3,11 +3,13 @@ import type { StorageSource } from "../storage.js";
 
 import { statSync } from "node:fs";
 import { homedir } from "node:os";
+import { resolve } from "node:path";
 import { z } from "zod";
 
 import packageJson from "../../package.json" with { type: "json" };
 import { chooseDefaultProject, inspectSettings } from "../settings.js";
 import { resolveStorage } from "../storage.js";
+import { resolveDatabasePath } from "../database-path.js";
 import { errorMessage, isMissingFileError } from "../errors.js";
 import { classifyDatabase, databaseStateSchema } from "../migrations/classify.js";
 import { latestVersion, MIGRATIONS } from "../migrations/registry.js";
@@ -110,13 +112,15 @@ export const info = {
       }
 
       try {
+        const databasePath = resolveDatabasePath(resolve(inputs.cwd, storage.databasePath));
+        report.database.path = databasePath;
         report.database = {
-          path: storage.databasePath,
-          ...classifyDatabase(storage.databasePath),
+          path: databasePath,
+          ...classifyDatabase(databasePath, undefined, true),
           error: null,
         };
       } catch (error) {
-        report.database.path = storage.databasePath;
+        report.database.path ??= storage.databasePath;
         report.database.error = errorMessage(error);
       }
     } catch (error) {

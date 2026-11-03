@@ -54,14 +54,18 @@ export type FailureFacts = {
 
 export class CoreError extends Error {
   override name = "CoreError";
+  readonly kind: FailureKind;
+  readonly facts: FailureFacts;
 
   constructor(
     message: string,
-    readonly kind: FailureKind,
-    readonly facts: FailureFacts = {},
+    kind: FailureKind,
+    facts: FailureFacts = {},
     options?: ErrorOptions,
   ) {
     super(message, options);
+    this.kind = kind;
+    this.facts = facts;
   }
 }
 

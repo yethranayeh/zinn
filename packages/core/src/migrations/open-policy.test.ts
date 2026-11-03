@@ -3,7 +3,7 @@ import type { DatabaseState } from "./classify";
 import type { OpenDecision } from "./open-policy";
 
 import { expect, test } from "bun:test";
-import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, realpathSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { resolveStorage } from "../storage";
@@ -127,6 +127,24 @@ test("a ZINN_DIR below a regular file counts as missing, so it does not hold the
 test("a default store is protected, even before its folder exists", () => {
   withDirectory((home) => {
     expect(isProtectedStorage(resolveStorage({ cwd: home, env: {}, home }))).toBe(true);
+  });
+});
+
+test("a captured default database remains protected after its store alias changes", () => {
+  withDirectory((home) => {
+    const defaultDir = join(home, ".zinn");
+    const other = join(home, "other");
+    const link = join(home, "selected");
+    mkdirSync(join(defaultDir, "data"), { recursive: true });
+    mkdirSync(other);
+    writeFileSync(join(defaultDir, "data", "zinn.sqlite"), "");
+    symlinkSync(defaultDir, link, "dir");
+    const storage = resolveStorage({ cwd: home, env: { ZINN_DIR: link }, home });
+    storage.databasePath = realpathSync(storage.databasePath);
+    unlinkSync(link);
+    symlinkSync(other, link, "dir");
+
+    expect(isProtectedStorage(storage)).toBe(true);
   });
 });
 

@@ -99,7 +99,7 @@ test("importing core resolves nothing, so a ZINN_DIR set after the import is the
     expect(JSON.parse(result.stdout.toString())).toEqual({
       directory: later,
       source: "env",
-      sameOnReuse: true,
+      sameOnReuse: false,
     });
   } finally {
     rmSync(directory, { recursive: true, force: true });

@@ -15,6 +15,7 @@ export const migrate = {
     return migrateDatabase(databasePath, {
       backup: { directory: backupDirectory, client, version },
       onWait,
+      pathIsResolved: true,
     });
   },
 };

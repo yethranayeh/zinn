@@ -1,3 +1,4 @@
+import type { Storage } from "./storage.js";
 import type { Database } from "./sqlite/database.js";
 import type { DatabaseClassification } from "./migrations/classify.js";
 import type {
@@ -76,20 +77,24 @@ function isWritable(decision: OpenDecision) {
  *  until the decision allows them, so nothing can write before the state is known.
  * An empty database counts as missing unless the access creates one.
  */
-function prepare(connection: Database, { createsDatabase = false }: DatabaseAccess): Prepared {
+function prepare(
+  connection: Database,
+  { createsDatabase = false }: DatabaseAccess,
+  storage: Storage,
+): Prepared {
   connection.exec("PRAGMA query_only = ON");
 
   const classification = classifyConnection(connection, MIGRATIONS);
   const decision = decideOpen({
     state: classification.state,
-    isProtectedDatabase: () => isProtectedStorage(getStorage()),
+    isProtectedDatabase: () => isProtectedStorage(storage),
     coreRelease: readCoreReleaseMode(),
     clientRelease: policy.release,
     allowsLegacyRead: policy.allowsLegacyRead,
   });
 
   if (decision.action === "create" && !createsDatabase) {
-    throw new MissingDatabaseError(getStorage().databasePath);
+    throw new MissingDatabaseError(storage.databasePath);
   }
 
   if (isWritable(decision)) {
@@ -102,16 +107,17 @@ function prepare(connection: Database, { createsDatabase = false }: DatabaseAcce
   return { ...classification, decision };
 }
 
-function openConnection(access: DatabaseAccess) {
+function openConnection(access: DatabaseAccess, storage: Storage) {
   // Without the create flag, the open never creates a file
-  const connection = openDatabase(getStorage().databasePath, {
+  const connection = openDatabase(storage.databasePath, {
+    pathIsResolved: true,
     create: access.createsDatabase === true,
   });
 
   try {
     // Arm waiting before reading the state or switching to WAL can encounter another process.
     applyConnectionSettings(connection);
-    return { connection, ...prepare(connection, access) };
+    return { connection, ...prepare(connection, access, storage) };
   } catch (err) {
     try {
       connection.close();
@@ -124,12 +130,12 @@ function openConnection(access: DatabaseAccess) {
 }
 
 /** Opens the connection, retrying only the startup races that SQLite's busy handler does not cover. */
-function openWithRetries(access: DatabaseAccess) {
+function openWithRetries(access: DatabaseAccess, storage: Storage) {
   const began = performance.now();
 
   for (let attempt = 1; ; attempt++) {
     try {
-      return openConnection(access);
+      return openConnection(access, storage);
     } catch (err) {
       // Binding and API errors are not SqliteErrors, so they are never retried.
       const isTransientStartupError =
@@ -155,9 +161,9 @@ function openWithRetries(access: DatabaseAccess) {
  * Creation and upgrades run only once without retries, so as not to repeat failures.
  * Returns why the database refuses changes, or `null`.
  */
-function settle(connection: Database, prepared: Prepared): typeof readOnly {
+function settle(connection: Database, prepared: Prepared, storage: Storage): typeof readOnly {
   const facts: DatabaseFacts = {
-    databasePath: getStorage().databasePath,
+    databasePath: storage.databasePath,
     version: prepared.version,
     latestVersion: prepared.latestVersion,
   };
@@ -184,17 +190,17 @@ function settle(connection: Database, prepared: Prepared): typeof readOnly {
         }
 
         // Another process created the database first, so open it as it is now.
-        const reclassified = prepare(connection, { createsDatabase: true });
+        const reclassified = prepare(connection, { createsDatabase: true }, storage);
         if (reclassified.decision.action === "create") {
           throw error;
         }
 
-        return settle(connection, reclassified);
+        return settle(connection, reclassified, storage);
       }
     case "upgrade": {
       const { status, previousVersion } = upgradeDatabase(connection, {
         backup: {
-          directory: getStorage().backupDirectory,
+          directory: storage.backupDirectory,
           client: policy.client,
           version: policy.version,
         },
@@ -217,7 +223,8 @@ function settle(connection: Database, prepared: Prepared): typeof readOnly {
 export function getDb(access: DatabaseAccess = {}) {
   if (db == null) {
     // Resolved outside the try, so a refused folder is reported as it is, not as a problem initializing Zinn.
-    const { databasePath } = getStorage();
+    const storage = getStorage();
+    const { databasePath } = storage;
     let connection: Database | null = null;
 
     try {
@@ -229,12 +236,12 @@ export function getDb(access: DatabaseAccess = {}) {
 
       // The data directory is created only for a store that does not exist yet.
       if (isMissing) {
-        ensureDataDirectory();
+        ensureDataDirectory(storage);
       }
 
-      const opened = openWithRetries(access);
+      const opened = openWithRetries(access, storage);
       connection = opened.connection;
-      readOnly = settle(connection, opened);
+      readOnly = settle(connection, opened, storage);
       db = connection;
     } catch (err) {
       if (connection != null) {

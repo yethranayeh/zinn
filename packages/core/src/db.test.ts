@@ -157,7 +157,8 @@ test("reset closes connections and prepared statements before selecting another 
     const next = join(directory, "next");
     mkdirSync(next);
     process.env.ZINN_DIR = next;
-    expect(getStorage()).toBe(originalStorage);
+    expect(getStorage()).toEqual(originalStorage);
+    expect(getStorage()).not.toBe(originalStorage);
     expect(getDb()).toBe(original);
 
     resetDatabaseForTests();
@@ -209,7 +210,7 @@ test("a failed close leaves the connection and selected store available for clea
     try {
       expect(() => resetDatabaseForTests()).toThrow(failure);
       expect(getDb()).toBe(connection);
-      expect(getStorage()).toBe(storage);
+      expect(getStorage()).toEqual(storage);
       expect(() => configureDatabase({ client: "test", version: "1", executable: "/test/zinn", release: "source", allowsLegacyRead: false })).toThrow();
       expect(connection.query("SELECT 1 AS value").get()).toEqual({ value: 1 });
     } finally {

@@ -5,6 +5,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 
+import { resolveDatabasePath } from "./database-path.js";
 import { resolveSettings } from "./settings.js";
 import { CoreError, isMissingFileError } from "./errors.js";
 import { DB_FILE_NAME, MAIN_FOLDER_NAME } from "./constant.js";
@@ -24,6 +25,7 @@ export type StorageSource = z.infer<typeof storageSourceSchema>;
 type StoragePaths = {
   directory: string;
   dataDirectory: string;
+  /** Destination resolved by filesytme in a storage snapshot */
   databasePath: string;
   backupDirectory: string;
 };
@@ -235,7 +237,11 @@ function assertStoreDirectory(directory: string, settingsPath: string | null) {
   }
 }
 
-/** This process's store, resolved from its working folder, environment and home directory on first use, then kept. */
+/**
+ * Captures a fresh database destination from the configuration selected on first use.
+ * Settings and the selected directory stay cached. Filesystem links are resolved for each snapshot.
+ * Keep the snapshot throughout an operation. An open connection retains its own opening target.
+ */
 export function getStorage() {
   if (processStorage === null) {
     const inputs = processInputs();
@@ -247,8 +253,8 @@ export function getStorage() {
     if (storage.source === "local" || storage.source === "global") {
       assertStoreDirectory(storage.directory, storage.settingsPath);
     }
-    processStorage = storage;
+    processStorage = { ...storage, databasePath: resolve(inputs.cwd, storage.databasePath) };
   }
 
-  return processStorage;
+  return { ...processStorage, databasePath: resolveDatabasePath(processStorage.databasePath) };
 }

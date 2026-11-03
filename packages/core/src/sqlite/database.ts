@@ -2,6 +2,7 @@
  * Core reads and writes SQLite through the Database class below.
  * bun.ts and node.ts connect this class to one library each, and this class makes both behave the same.
  */
+import { resolveDatabasePath } from "../database-path.ts";
 
 export type SqliteValue = string | number | bigint | Uint8Array | null;
 /** Named bindings keep the placeholder's `$` prefix in their keys, as in the SQL. */
@@ -11,6 +12,8 @@ export type SqliteParams = NamedBindings | Array<SqliteValue>;
 export type DriverArgs = Array<SqliteValue> | [NamedBindings];
 
 export type OpenOptions = {
+  /** Reuses a destination already captured by the operation */
+  pathIsResolved?: boolean;
   readonly?: boolean;
   /**
    * Whether a read-write open creates a missing file, as `SQLITE_OPEN_CREATE` does
@@ -520,6 +523,8 @@ const NESTED_TRANSACTION_SAVEPOINT = "zinn_nested_transaction";
 type TransactionMode = "IMMEDIATE" | "DEFERRED";
 
 export class Database {
+  /** The destination captured before opening and retained until this connection closes */
+  readonly databasePath: string | null;
   private readonly driver: SqliteDriver;
   private readonly connection: DriverConnection;
   private readonly statements = new Map<string, Statement<unknown, Array<unknown>>>();
@@ -529,7 +534,8 @@ export class Database {
   /** The mode of the outermost running transaction() call, or null when none is running. */
   private outerTransactionMode: TransactionMode | null = null;
 
-  constructor(driver: SqliteDriver, connection: DriverConnection) {
+  constructor(driver: SqliteDriver, connection: DriverConnection, databasePath: string | null) {
+    this.databasePath = databasePath;
     this.driver = driver;
     this.connection = connection;
   }
@@ -672,6 +678,12 @@ export class Database {
  * A read-write open creates a missing database file unless `create` is false.
  */
 export function openWith(driver: SqliteDriver, path: string, options: OpenOptions = {}) {
-  const connection = withSqliteErrors(driver, () => driver.connect(path, options));
-  return new Database(driver, connection);
+  const hasFile = path !== ":memory:" && path !== "";
+  let databasePath: string | null = null;
+  if (hasFile) {
+    databasePath = options.pathIsResolved ? path : resolveDatabasePath(path);
+  }
+
+  const connection = withSqliteErrors(driver, () => driver.connect(databasePath ?? path, options));
+  return new Database(driver, connection, databasePath);
 }

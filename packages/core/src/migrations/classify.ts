@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { openDatabase } from "#sqlite";
 
+import { resolveDatabasePath } from "../database-path.js";
 import { applyConnectionSettings } from "../connection.js";
 import { isMissingFileError } from "../errors.js";
 import { attachSuppressed } from "../sqlite/database.js";
@@ -72,7 +73,10 @@ export function classifyConnection(
 export function classifyDatabase(
   databasePath: string,
   migrations: ReadonlyArray<Migration> = MIGRATIONS,
+  pathIsResolved = false,
 ): DatabaseClassification {
+  databasePath = pathIsResolved ? databasePath : resolveDatabasePath(databasePath);
+
   try {
     statSync(databasePath);
   } catch (error) {
@@ -83,12 +87,16 @@ export function classifyDatabase(
     return { state: "absent", version: 0, latestVersion: latestVersion(migrations) };
   }
 
-  return withDatabaseInspection(databasePath, (db) => classifyConnection(db, migrations));
+  return withDatabaseInspection(databasePath, (db) => classifyConnection(db, migrations), true);
 }
 
 /** Inspects an existing database without application writes or schema initialization. */
-export function withDatabaseInspection<T>(databasePath: string, inspect: (db: Database) => T): T {
-  const db = openDatabase(databasePath, { create: false });
+export function withDatabaseInspection<T>(
+  databasePath: string,
+  inspect: (db: Database) => T,
+  pathIsResolved = false,
+): T {
+  const db = openDatabase(databasePath, { create: false, pathIsResolved });
   let result: T;
 
   try {

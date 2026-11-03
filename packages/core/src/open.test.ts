@@ -319,9 +319,9 @@ function expectOlderReadOnly(location: Location, openCase: OpenCase) {
   expect(outcome.projects).toEqual(["APP"]);
   expect(outcome.writeError!.name).toBe("ReadOnlyDatabaseError");
   expect(outcome.writeError!.reason).toBe("older");
-  expect(outcome.writeError!.message).toContain(databasePath(mainDir));
+  expect(outcome.writeError!.message).toContain(realpathSync(databasePath(mainDir)));
   expect(outcome.writeError!.facts).toMatchObject({
-    databasePath: databasePath(mainDir), schemaVersion: 1, supportedSchemaVersion: TEST_MIGRATION_VERSION,
+    databasePath: realpathSync(databasePath(mainDir)), schemaVersion: 1, supportedSchemaVersion: TEST_MIGRATION_VERSION,
   });
   expect(readDatabase(mainDir)).toEqual(before);
   expect(backupsOf(mainDir)).toEqual([]);
@@ -528,7 +528,7 @@ test.each([
       expect(outcome.projects).toEqual(["APP"]);
       expect(outcome.writeError!.name).toBe("ReadOnlyDatabaseError");
       expect(outcome.writeError!.reason).toBe("newer");
-      expect(outcome.writeError!.message).toContain(databasePath(mainDir));
+      expect(outcome.writeError!.message).toContain(realpathSync(databasePath(mainDir)));
       expect(outcome.writeError!.facts).toMatchObject({ schemaVersion: NEWER_VERSION, supportedSchemaVersion: latestVersion(MIGRATIONS) });
       for (const fact of ["test", "1.0.0", "/test/zinn"]) {
         expect(outcome.writeError!.message).toContain(fact);

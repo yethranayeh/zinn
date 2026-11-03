@@ -9,6 +9,8 @@ import Aside from "../../components/ui/aside/Aside.astro";
 
 Zinn stores every project in one local SQLite database. The default database is `~/.zinn/data/zinn.sqlite`. The backups of the database are stored in `~/.zinn/backups/`. `ZINN_DIR` or a settings file can select another Zinn directory. See [Settings](/docs/settings) for directory selection and precedence.
 
+Reported database paths are **absolute** with existing <span class="group"><span class="group-hover:hidden">symbolic</span><span class="hidden sr-hidden group-hover:inline">absolute</span></span> links resolved. For a destination that does not exist yet, Zinn resolves its nearest existing ancestor and appends the missing path segments without creating them. Migration reports the same resolved destination whether it upgrades the database or finds it current. A path-resolution failure identifies the requested path.
+
 <Aside label='Keep the database on a local filesystem'>
 
 Keep the active Zinn directory outside network shares such as SMB and synchronized folders such as OneDrive or Dropbox. SQLite's [WAL mode](https://sqlite.org/wal.html) coordinates processes on the same machine through shared memory; file synchronization does not coordinate database transactions.

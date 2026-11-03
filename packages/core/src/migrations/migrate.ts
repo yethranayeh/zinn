@@ -3,6 +3,7 @@ import type { UpgradeOptions } from "./upgrade.js";
 
 import { openDatabase } from "#sqlite";
 
+import { resolveDatabasePath } from "../database-path.js";
 import { applyConnectionSettings } from "../connection.js";
 import { attachSuppressed } from "../sqlite/database.js";
 import { classifyDatabase } from "./classify.js";
@@ -24,6 +25,8 @@ export type MigrateResult = {
 };
 
 export type MigrateOptions = Omit<UpgradeOptions, "backup"> & {
+  /** Reuses the destination captured by the calling operation. */
+  pathIsResolved?: boolean;
   /** Where snapshots go, and the client and version that name the running code. */
   backup: UpgradeOptions["backup"] & BackupCreateInput;
 };
@@ -54,9 +57,10 @@ function generateNewerDatabaseError(
  */
 export function migrateDatabase(
   databasePath: string,
-  { backup, migrations, ...upgrade }: MigrateOptions,
+  { backup, migrations, pathIsResolved = false, ...upgrade }: MigrateOptions,
 ): MigrateResult {
-  const { state, version, latestVersion } = classifyDatabase(databasePath, migrations);
+  databasePath = pathIsResolved ? databasePath : resolveDatabasePath(databasePath);
+  const { state, version, latestVersion } = classifyDatabase(databasePath, migrations, true);
 
   switch (state) {
     case "absent":
@@ -92,7 +96,7 @@ export function migrateDatabase(
       break;
   }
 
-  const db = openDatabase(databasePath);
+  const db = openDatabase(databasePath, { pathIsResolved: true });
 
   try {
     applyConnectionSettings(db);

@@ -83,6 +83,8 @@ The report includes the selected store directory and source, settings files and 
 - `database` contains the database `path`, its `state`, its `version`, the `latestVersion` supported by this CLI, and an `error`. The version is `0` for `absent`, `empty`, and `unmarked` states.
 - `versions` contains `cli`, `core`, and `runtime` (`name` and `version`).
 
+`database.path` resolves existing <span class="group"><span class="group-hover:hidden">symbolic</span><span class="hidden sr-hidden group-hover:inline">absolute</span></span> links and relative paths to an absolute destination. `storage.directory` records the configured directory. If database-path resolution fails, the report keeps the requested database path with state `unavailable` and an `error`.
+
 For example, when settings and the database can be inspected, the report has this shape:
 
 ```json

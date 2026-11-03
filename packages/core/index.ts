@@ -61,6 +61,7 @@ export type { SettingsFileInspection, SettingsInspection } from "./src/settings.
 export type { StoreInfo } from "./src/operations/info.js";
 export type { FailureKind, FailureFacts, ValidationIssue } from "./src/errors.js";
 export type { SqliteCode, SqlitePrimaryCode } from "./src/sqlite/database.js";
+export type { Storage } from "./src/storage.js";
 
 export {
   labelCreateSchema,
