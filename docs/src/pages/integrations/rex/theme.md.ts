@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { rexTheme } from "../../../config/rex-theme";
+import { rexScenes, rexTheme } from "../../../config/rex-theme";
 import { projectLinks } from "../../../config/site";
 
 export const GET: APIRoute = () =>
@@ -9,6 +9,17 @@ export const GET: APIRoute = () =>
 The Zinn color palette for [Rex](${rexTheme.site}), with light and dark appearances.
 
 Verified with ${rexTheme.verifiedVersion}.
+
+## Gallery
+
+${rexScenes
+  .map(
+    (scene) =>
+      `### ${scene.label}\n\n${Object.entries(scene.images)
+        .map(([appearance, source]) => `![${scene.label}, ${appearance} mode](${source})`)
+        .join("\n\n")}`,
+  )
+  .join("\n\n")}
 
 ## Installation
 

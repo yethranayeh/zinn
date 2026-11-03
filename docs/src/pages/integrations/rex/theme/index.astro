@@ -6,9 +6,10 @@ import Icon from "../../../../components/ui/icon/Icon.astro";
 import MarkdownH1 from "../../../../components/MarkdownH1.astro";
 import PaletteStrip from "../../../../components/PaletteStrip.astro";
 import Prose from "../../../../components/Prose.astro";
+import ScreenshotGallery from "../../../../components/ScreenshotGallery.astro";
 import TerminalCommands from "../../../../components/TerminalCommands.astro";
 
-import { rexTheme } from "../../../../config/rex-theme";
+import { rexScenes, rexTheme } from "../../../../config/rex-theme";
 import { projectLinks } from "../../../../config/site";
 ---
 
@@ -36,6 +37,15 @@ import { projectLinks } from "../../../../config/site";
 				</div>
 			</div>
 		</section>
+
+		<ScreenshotGallery
+			id='rex'
+			scenes={rexScenes}
+			initialScene='shell'
+			label='Zinn theme in Rex'
+			caption={rexTheme.verifiedVersion}
+			aspect='3248 / 1900'
+		/>
 
 		<section
 			id='installation'

@@ -6,10 +6,11 @@ import MarkdownH1 from "../../components/MarkdownH1.astro";
 
 import { opencodeInspector } from "../../config/opencode-inspector";
 import { opencodeScenes, opencodeTheme } from "../../config/opencode-theme";
-import { rexTheme } from "../../config/rex-theme";
+import { rexScenes, rexTheme } from "../../config/rex-theme";
 import { cloudinaryImage } from "../../images/cloudinary";
 
-const preview = opencodeScenes.find((scene) => scene.id === "code")!;
+const opencodePreview = opencodeScenes.find((scene) => scene.id === "code")!;
+const rexPreview = rexScenes.find((scene) => scene.id === "shell")!;
 ---
 
 <PageLayout title='Integrations' description='Themes and integrations maintained by Zinn.'>
@@ -20,7 +21,7 @@ const preview = opencodeScenes.find((scene) => scene.id === "code")!;
 	<a class='group mt-10 block max-w-3xl border border-pewter no-underline hover:no-underline' href={opencodeTheme.path}>
 		<img
 			class='aspect-[2840/1640] h-auto w-full'
-			src={cloudinaryImage(preview.images.dark!, 1280)}
+			src={cloudinaryImage(opencodePreview.images.dark!, 1280)}
 			alt='The Zinn theme displaying code and tables in OpenCode'
 			width='2840'
 			height='1640'
@@ -38,17 +39,24 @@ const preview = opencodeScenes.find((scene) => scene.id === "code")!;
 			>
 		</div>
 	</a>
-	<a
-		class='group mt-7 block max-w-3xl border border-pewter p-5 no-underline hover:no-underline md:p-7'
-		href={rexTheme.path}>
-		<div class='flex flex-wrap items-center justify-between gap-3'>
-			<h2 class='text-2xl tracking-tight'>Zinn theme</h2>
-			<Chip>Rex</Chip>
+	<a class='group mt-7 block max-w-3xl border border-pewter no-underline hover:no-underline' href={rexTheme.path}>
+		<img
+			class='aspect-[3248/1900] h-auto w-full'
+			src={cloudinaryImage(rexPreview.images.dark!, 1280)}
+			alt='The Zinn theme showing a shell session in Rex'
+			width='3248'
+			height='1900'
+		/>
+		<div class='p-5 md:p-7'>
+			<div class='flex flex-wrap items-center justify-between gap-3'>
+				<h2 class='text-2xl tracking-tight'>Zinn theme</h2>
+				<Chip>Rex</Chip>
+			</div>
+			<p class='mt-3 text-base leading-relaxed'>{rexTheme.introduction}</p>
+			<span class='mt-5 inline-flex min-h-11 items-center gap-2 font-mono text-xs group-hover:underline'
+				>View theme <Icon name='arrow-right' /></span
+			>
 		</div>
-		<p class='mt-3 text-base leading-relaxed'>{rexTheme.introduction}</p>
-		<span class='mt-5 inline-flex min-h-11 items-center gap-2 font-mono text-xs group-hover:underline'
-			>View theme <Icon name='arrow-right' /></span
-		>
 	</a>
 	<a
 		class='group mt-7 block max-w-3xl border border-pewter p-5 no-underline hover:no-underline md:p-7'

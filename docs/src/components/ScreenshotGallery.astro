@@ -13,9 +13,10 @@ interface Props {
 	initialScene?: string;
 	label: string;
 	caption: string;
+	aspect?: string;
 }
 
-const { id, scenes, initialScene, label, caption } = Astro.props;
+const { id, scenes, initialScene, label, caption, aspect = "2840 / 1640" } = Astro.props;
 const firstScene = scenes.find((scene) => scene.id === initialScene) ?? scenes[0]!;
 const firstAppearance = Object.keys(firstScene.images)[0] as ScreenshotAppearance;
 const firstImage = firstScene.images[firstAppearance]!;
@@ -55,7 +56,8 @@ const lightboxId = `${id}-lightbox`;
 	</div>
 
 	<a
-		class='group/image relative block aspect-[2840/1640] cursor-zoom-in border border-pewter no-underline focus-visible:outline-offset-4'
+		class='group/image relative block cursor-zoom-in border border-pewter no-underline focus-visible:outline-offset-4'
+		style={`aspect-ratio: ${aspect}`}
 		href={firstImage}
 		target='_blank'
 		rel='noopener'
@@ -231,5 +233,29 @@ const lightboxId = `${id}-lightbox`;
 		}
 		revealThumbnail();
 		new ResizeObserver(revealThumbnail).observe(strip);
+
+		// Warm every capture once the first image is in, so switching scenes or modes paints without waiting.
+		const warmCaptures = () => {
+			const sizes = image.sizes;
+			for (const scene of Object.values(scenes)) {
+				for (const source of Object.values(scene.images)) {
+					const preview = new Image();
+					preview.sizes = sizes;
+					preview.srcset = cloudinarySources(source);
+					preview.src = cloudinaryImage(source, 1280);
+					preview.decode().catch(() => {});
+
+					const thumbnail = new Image();
+					thumbnail.src = cloudinaryImage(source, 280);
+					thumbnail.decode().catch(() => {});
+				}
+			}
+		};
+		if (image.complete && image.naturalWidth > 0) {
+			warmCaptures();
+		} else {
+			image.addEventListener("load", warmCaptures, { once: true });
+			image.addEventListener("error", warmCaptures, { once: true });
+		}
 	}
 </script>
