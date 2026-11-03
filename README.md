@@ -70,7 +70,7 @@ The [`@zinn-dev/opencode`](integrations/opencode/inspector/README.md) package ad
 
 ```json
 {
-	"plugins": [{ "package": "@zinn-dev/opencode@0.1.0" }]
+	"plugins": [{ "package": "@zinn-dev/opencode@0.3.1" }]
 }
 ```
 
