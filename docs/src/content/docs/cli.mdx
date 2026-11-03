@@ -277,6 +277,7 @@ zinn task search 'quarterly quota' MDR
 zinn task search MDR-1
 zinn task search auth --all --limit 5
 zinn task search auth MDR --label cli
+zinn task search auth MDR --column Review
 zinn task search refinement --due-until 2026-10-25T17:00:00+02:00
 ```
 
@@ -292,7 +293,7 @@ An exact task-key query overrides the configured default project. A project key 
 
 Search defaults to active tasks. `--archived` searches archived tasks and `--all` searches both. A note on stderr reports hidden archived matches. `--limit <n>` caps the results.
 
-`--label` works as it does for `task list`: repeat it to require every specified label. Label filtering happens before `--limit` and before archived matches are counted.
+`--label` works as it does for `task list`: repeat it to require every specified label. `--column` matches an exact column name, ignoring case, in the selected project or across projects. Label and column filtering happen before `--limit` and before archived matches are counted.
 
 With `--json`, search returns an array of tasks like `task list` does. A search with no results succeeds. A query that begins with a dash goes after `--` (see [Words and repeated flags](#words-and-repeated-flags)).
 

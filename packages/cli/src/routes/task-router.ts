@@ -223,6 +223,7 @@ const taskInputs = {
       "all-projects": { type: "boolean" },
       limit: listLimitOption,
       label: { type: "string", multiple: true, value: { kind: "label-name", name: "name" } },
+      column: { type: "string", value: { kind: "column-name", name: "name" } },
     },
     forms: [
       {
@@ -503,8 +504,9 @@ Examples:
       });
 
       const board = createColumnBoard();
-      output(page.tasks.map((taskMatch) => presentTask(taskMatch, board)), (presentedTasks) =>
-        formatTaskList(presentedTasks, { showsStatus: values.all }),
+      output(
+        page.tasks.map((taskMatch) => presentTask(taskMatch, board)),
+        (presentedTasks) => formatTaskList(presentedTasks, { showsStatus: values.all }),
       );
 
       if (page.nextCursor !== undefined) {
@@ -585,11 +587,13 @@ Example: zinn task list MDR --label cli`,
         archive,
         limit,
         labelNames: values.label,
+        columnName: values.column,
       });
 
       const board = createColumnBoard();
-      output(result.tasks.map((taskMatch) => presentTask(taskMatch, board)), (presentedTasks) =>
-        formatTaskList(presentedTasks, { showsStatus: values.all }),
+      output(
+        result.tasks.map((taskMatch) => presentTask(taskMatch, board)),
+        (presentedTasks) => formatTaskList(presentedTasks, { showsStatus: values.all }),
       );
 
       if (result.hiddenArchivedCount > 0) {
@@ -611,6 +615,7 @@ A task-key query overrides the configured default project; a typed project key s
 By default, only active tasks are searched. Use --archived to search archived tasks or --all to search both.
 --limit <n>: ${listLimitDescription}
 Repeat --label to require every specified label, ignoring case.
+--column matches an exact column name. Column and label matching ignore case.
 ${deadlineFilterHelp}
 
 Example: zinn task search 'refinement quota' MDR --limit 5`,

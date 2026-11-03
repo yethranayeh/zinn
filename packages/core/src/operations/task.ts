@@ -100,6 +100,19 @@ function getTaskListColumnIds(columnName: string | undefined, projectId: string 
   return [...matchingColumnIds];
 }
 
+function filterTasksByColumn<T extends Pick<Task, "column_id">>(
+  tasks: Array<T>,
+  columnName: string | undefined,
+  projectId: string | undefined,
+) {
+  if (columnName === undefined) {
+    return tasks;
+  }
+
+  const columnIds = new Set(getTaskListColumnIds(columnName, projectId));
+  return tasks.filter((taskMatch) => columnIds.has(taskMatch.column_id));
+}
+
 function resolveTaskListSelection(props: TaskListInput) {
   const taskProject = props.projectKey == null ? null : dbProject.getByKey(props.projectKey);
 
@@ -536,7 +549,11 @@ export const task = {
       .map(({ project_key, ...row }) => attachTaskKey(row, project_key));
 
     const matches = filterTasksByDeadline(
-      filterTasksByLabels([...pinnedTasks, ...textMatches], props.labelNames),
+      filterTasksByColumn(
+        filterTasksByLabels([...pinnedTasks, ...textMatches], props.labelNames),
+        props.columnName,
+        projectId,
+      ),
       props,
     );
     const hiddenArchivedCount =

@@ -185,6 +185,23 @@ test("label filters apply before archive counting and limits", () => {
   });
 });
 
+test("column filters match an exact column name across projects", () => {
+  runSearchCheck(({ human, app, create, keys }) => {
+    const other = project.create({ key: "OTHER" }, human);
+    create("Alpha checklist");
+    task.create({ project_id: app.id, title: "Beta checklist", columnName: "Review" }, human);
+    task.create({ project_id: app.id, title: "Gamma checklist", columnName: "Done" }, human);
+    task.create({ project_id: other.id, title: "Delta checklist", columnName: "done" }, human);
+
+    assert.deepEqual(keys("checklist", { columnName: "done" }).sort(), ["APP-3", "OTHER-1"]);
+    assert.deepEqual(keys("checklist", { columnName: "REVIEW" }), ["APP-2"]);
+    assert.deepEqual(keys("checklist", { columnName: "done", projectKey: "APP" }), ["APP-3"]);
+    assert.deepEqual(keys("checklist", { columnName: "done", projectKey: "OTHER" }), ["OTHER-1"]);
+    assert.deepEqual(keys("checklist", { columnName: "Nope" }), []);
+    assert.deepEqual(keys("checklist", { columnName: "Backlog", limit: 1 }), ["APP-1"]);
+  });
+});
+
 test("search input is validated", () => {
   runSearchCheck(({ create }) => {
     create("Anything", null);

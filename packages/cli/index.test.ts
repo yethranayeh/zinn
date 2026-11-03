@@ -4088,6 +4088,36 @@ test("task search finds a description-only match and prints its plain task row",
   });
 });
 
+test("task search filters by exact column name", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = (...args: Array<string>) => runZinn(args, dir);
+    await run("project", "create", "COLS");
+    await run("project", "create", "MORE");
+    await run("task", "create", "COLS", "--title", "Alpha checklist");
+    await run("task", "create", "COLS", "--title", "Beta checklist", "--column", "Done");
+    await run("task", "create", "COLS", "--title", "Gamma checklist", "--column", "Review");
+    await run("task", "create", "MORE", "--title", "Delta checklist", "--column", "done");
+
+    const scoped = JSON.parse(
+      (await run("task", "search", "checklist", "COLS", "--column", "done", "--json")).stdout,
+    );
+    expect(scoped.map((entry: { key: string }) => entry.key)).toEqual(["COLS-2"]);
+
+    const acrossProjects = JSON.parse(
+      (await run("task", "search", "checklist", "--column", "DONE", "--json")).stdout,
+    );
+    expect(acrossProjects.map((entry: { key: string }) => entry.key).sort()).toEqual([
+      "COLS-2",
+      "MORE-1",
+    ]);
+
+    expect((await run("task", "search", "checklist", "COLS", "--column", "Nope")).stdout).toBe("");
+    expect((await run("task", "search", "checklist", "COLS", "--column", "Review")).stdout).toContain(
+      "COLS-3",
+    );
+  });
+});
+
 test("task search with no matches exits zero without output", async () => {
   await withIsolatedZinnDir(async (dir) => {
     await runZinn(["project", "create", "EMPTY"], dir);

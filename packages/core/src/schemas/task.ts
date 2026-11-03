@@ -164,6 +164,7 @@ export const taskSearchSchema = z
       .string({ error: searchQueryMessage })
       .refine((value) => value.trim().length > 0, searchQueryMessage),
     projectKey: z.string().optional(),
+    columnName: columnNameSchema.optional(),
     archive: taskArchiveFilterSchema.optional(),
     labelNames: z.array(labelNameSchema).optional(),
     limit: listLimitSchema.optional(),
