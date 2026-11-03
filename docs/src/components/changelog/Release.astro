@@ -28,14 +28,14 @@ const { anchor, heading, name, date, packages, first = false } = Astro.props;
 					{ "frame-start": first }
 				]}>
 			</div>
-			<div class='px-[var(--plate-padding-inline)] py-10 md:py-14'>
-				<div class='rail-rule max-lg:hidden' aria-hidden='true'></div>
-				<div
-					class='grid grid-cols-1 items-start gap-x-[var(--rail-gap)] lg:grid-cols-[var(--rail-width)_minmax(0,1fr)]'>
-					<div
-						class='max-lg:mb-2 max-lg:pb-6 lg:sticky lg:top-[calc(var(--site-header-height)_+_1.5rem)] lg:pr-[var(--rail-meta-padding-right)]'>
-						<Prose>
-							<MarkdownH2 id={anchor} style='margin-top: 0; margin-bottom: 0.5rem'>
+
+			<div class='pt-2'>
+				<div class='rail-rule max-md:hidden' aria-hidden='true'></div>
+
+				<div class='grid grid-cols-1 items-start md:grid-cols-[var(--rail-width)_minmax(0,1fr)] px-0'>
+					<div class='md:sticky md:top-[var(--site-header-height)] lg:pr-[var(--rail-meta-padding-right)]'>
+						<Prose class='px-2'>
+							<MarkdownH2 id={anchor} class='m-0!'>
 								<span class='block'>{heading}</span>
 								{
 									name && (
@@ -48,16 +48,15 @@ const { anchor, heading, name, date, packages, first = false } = Astro.props;
 							<time class='block text-base leading-[1.7] font-normal text-muted-foreground' datetime={date}>
 								{formatReleaseDate(date)}
 							</time>
-							<PackageBand packages={packages} />
 						</Prose>
+						<PackageBand packages={packages} />
 					</div>
-					<div>
-						<Prose>
-							<div class='[&>h3:first-child]:mt-0'>
-								<slot />
-							</div>
-						</Prose>
-					</div>
+
+					<Prose class='px-4'>
+						<div class='[&>h3:first-child]:m-0! [&_ul]:m-0 [&_li]:m-0'>
+							<slot />
+						</div>
+					</Prose>
 				</div>
 			</div>
 		</div>
@@ -66,9 +65,8 @@ const { anchor, heading, name, date, packages, first = false } = Astro.props;
 
 <style>
 	.release-plate {
-		--plate-padding-inline: 2rem;
-		--rail-width: 14rem;
-		--rail-gap: 3rem;
+		--plate-padding-inline: 0px;
+		--rail-width: 200px;
 		--rail-meta-padding-right: 1.5rem;
 	}
 
