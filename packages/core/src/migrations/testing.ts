@@ -71,6 +71,18 @@ export function schemaObjects(db: Database) {
     .all();
 }
 
+/** The definitions Zinn declares without SQLite's internal objects or virtual-table shadow storage. */
+export function applicationSchema(db: Database) {
+  return db
+    .query<SchemaObject & { sql: string }>(`
+      SELECT type, name, tbl_name, sql FROM sqlite_schema
+      WHERE name NOT GLOB 'sqlite_*' AND sql IS NOT NULL
+        AND name NOT IN (SELECT name FROM pragma_table_list WHERE schema = 'main' AND type = 'shadow')
+      ORDER BY type, name
+    `)
+    .all();
+}
+
 export function count(db: Database, table: string) {
   return db.query<{ count: number }>(`SELECT COUNT(*) AS count FROM ${table}`).get()!.count;
 }

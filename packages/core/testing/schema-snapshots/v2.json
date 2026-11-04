@@ -1,7 +1,5 @@
 {
   "schemaVersion": 2,
-  "packageVersion": "0.30.0",
-  "sourceCommit": "e46a4aa085ce50c30ed8e530b2b2e6c607e76aa5",
   "objects": [
     {
       "type": "table",
