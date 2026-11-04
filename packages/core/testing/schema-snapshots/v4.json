@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 4,
+  "packageVersion": "0.33.0-dev",
+  "sourceCommit": "073950776c2968a8dd6b534769c44ce0f1c530f3",
+  "objects": [
+    {
+      "type": "table",
+      "name": "activity",
+      "tbl_name": "activity",
+      "sql": "CREATE TABLE \"activity\" (\n        id               TEXT PRIMARY KEY,\n        created_at       INTEGER NOT NULL,\n        actor_name       TEXT,\n        actor_email      TEXT,\n        actor_kind       TEXT NOT NULL,\n        actor_source     TEXT,\n        actor_session_id TEXT,\n        actor_thread_id  TEXT,\n        actor_agent      TEXT,\n        actor_model      TEXT,\n        actor_effort     TEXT,\n        entity_type      TEXT NOT NULL,\n        entity_id        TEXT NOT NULL,\n        action           TEXT NOT NULL,\n        changes          TEXT\n      , actor_client TEXT)"
+    },
+    {
+      "type": "table",
+      "name": "comment",
+      "tbl_name": "comment",
+      "sql": "CREATE TABLE comment (\n      id           TEXT PRIMARY KEY,\n      task_id      TEXT NOT NULL REFERENCES task(id) ON DELETE CASCADE,\n      number       INTEGER NOT NULL,\n      text         TEXT NOT NULL,\n      created_at   INTEGER NOT NULL,\n      updated_at   INTEGER NOT NULL,\n      UNIQUE (task_id, number)\n    )"
+    },
+    {
+      "type": "table",
+      "name": "label",
+      "tbl_name": "label",
+      "sql": "CREATE TABLE label (\n      id TEXT PRIMARY KEY,\n      name TEXT NOT NULL UNIQUE,\n      description TEXT,\n      color TEXT NOT NULL\n    )"
+    },
+    {
+      "type": "table",
+      "name": "project",
+      "tbl_name": "project",
+      "sql": "CREATE TABLE project (\n    id          TEXT PRIMARY KEY,\n    key         TEXT NOT NULL UNIQUE,\n    name        TEXT NOT NULL,\n    description TEXT,\n    task_count  INTEGER NOT NULL DEFAULT 0,\n    created_at  INTEGER NOT NULL,\n    updated_at  INTEGER NOT NULL,\n    archived_at INTEGER)"
+    },
+    {
+      "type": "table",
+      "name": "project_column",
+      "tbl_name": "project_column",
+      "sql": "CREATE TABLE project_column (\n    id            TEXT PRIMARY KEY,\n    project_id    TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,\n    name          TEXT NOT NULL,\n    column_order  TEXT)"
+    },
+    {
+      "type": "table",
+      "name": "task",
+      "tbl_name": "task",
+      "sql": "CREATE TABLE task (\n    id             TEXT PRIMARY KEY,\n    project_id     TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,\n    column_id      TEXT NOT NULL REFERENCES project_column(id),\n    number         INTEGER NOT NULL,\n    title          TEXT NOT NULL,\n    description    TEXT,\n    priority       TEXT,\n    task_order     TEXT,\n    comment_count  INTEGER NOT NULL DEFAULT 0,\n    created_at     INTEGER NOT NULL,\n    updated_at     INTEGER NOT NULL,\n    archived_at    INTEGER, due_at INTEGER)"
+    },
+    {
+      "type": "table",
+      "name": "task_label",
+      "tbl_name": "task_label",
+      "sql": "CREATE TABLE task_label (\n      task_id TEXT NOT NULL REFERENCES task(id) ON DELETE CASCADE,\n      label_id TEXT NOT NULL REFERENCES label(id) ON DELETE CASCADE,\n      PRIMARY KEY (task_id, label_id)\n    )"
+    },
+    {
+      "type": "table",
+      "name": "task_relations",
+      "tbl_name": "task_relations",
+      "sql": "CREATE TABLE task_relations (\n    id              TEXT PRIMARY KEY,\n    source_task_id  TEXT NOT NULL REFERENCES task(id) ON DELETE CASCADE,\n    target_task_id  TEXT NOT NULL REFERENCES task(id) ON DELETE CASCADE,\n    relation_type   TEXT NOT NULL,\n    created_at      INTEGER NOT NULL,\n\n    UNIQUE (source_task_id, target_task_id, relation_type),\n    CHECK (source_task_id <> target_task_id))"
+    },
+    {
+      "type": "table",
+      "name": "task_search",
+      "tbl_name": "task_search",
+      "sql": "CREATE VIRTUAL TABLE task_search USING fts5(\n      task_id UNINDEXED,\n      title,\n      description,\n      comments,\n      tokenize = 'unicode61 remove_diacritics 2'\n    )"
+    }
+  ]
+}

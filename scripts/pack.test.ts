@@ -80,6 +80,7 @@ test("pnpm packs fresh JS artifacts with independent identities and unchanged mi
       expect(members.some((path) => path.endsWith(".ts") && !path.endsWith(".d.ts"))).toBe(false);
       expect(members.some((path) => /node_modules|obsolete|release-stamp|AGENTS|NOTES|build\.test/.test(path))).toBe(false);
       if (name === "core") {
+        expect(members.some((path) => /testing\/|schema-pins|schema-snapshots|node\.check|sqlite\/contract\./.test(path))).toBe(false);
         expect(members).toContain("package/included.txt");
         expect(members).not.toContain("package/excluded.txt");
       } else {
