@@ -1,0 +1,396 @@
+---
+interface Props {
+	word?: string;
+}
+
+const { word = "terminal" } = Astro.props;
+---
+
+<h1 class='max-w-xl text-4xl leading-tighter tracking-tight md:text-5xl'>
+	A kanban workflow <br />in the <span
+		class='relative inline-block align-baseline text-cinnabar font-[family-name:Doto,var(--font-mono)] font-black tracking-normal max-[21rem]:text-[32px]'
+		data-lattice-word
+		>{word}<canvas class='pointer-events-none absolute inset-0 z-[2] block h-full w-full' aria-hidden='true'
+		></canvas></span
+	><span
+		class='inline-block h-[1cap] w-5 bg-bronze opacity-0 data-[visible]:opacity-100 data-[visible]:data-[blink]:animate-[hero-lattice-cursor-blink_1s_steps(1)_infinite] motion-reduce:opacity-100 motion-reduce:animate-none'
+		data-lattice-cursor
+		aria-hidden='true'></span>
+</h1>
+
+<style>
+	@font-face {
+		font-family: "Doto";
+		src: url("/fonts/Doto.woff2") format("woff2");
+		font-weight: 100 900;
+		font-display: swap;
+	}
+
+	@keyframes hero-lattice-cursor-blink {
+		0% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0;
+		}
+		100% {
+			opacity: 0;
+		}
+	}
+</style>
+
+<script>
+	const WORD_SELECTOR = "[data-lattice-word]";
+	const CURSOR_SELECTOR = "[data-lattice-cursor]";
+	const FONT = '900 48px "Doto"';
+	const FRAME_MS = 125;
+	const TINTS = [0.25, 0.5, 1];
+	const BAYER = [
+		[0, 8, 2, 10],
+		[12, 4, 14, 6],
+		[3, 11, 1, 9],
+		[15, 7, 13, 5]
+	];
+	const PITCH_EM = 0.1;
+	const SQUARE_HALF = 0.46;
+	const HOLE_HALF = 0.43;
+	const ORIGIN_EM = 0.05;
+	const ADVANCE_EM = 0.6;
+	const LENS_EM = 1.8;
+	const MAX_DPR = 3;
+
+	interface Dot {
+		x: number;
+		y: number;
+		glyph: number;
+		row: number;
+		col: number;
+	}
+
+	interface Scene {
+		width: number;
+		height: number;
+		fontSize: number;
+		pitch: number;
+		lastFrame: number;
+		sheetColor: string;
+		dpr: number;
+		dots: Dot[];
+	}
+
+	interface Pointer {
+		x: number;
+		y: number;
+	}
+
+	function buildScene(word: HTMLElement, text: string): Scene | null {
+		const rect = word.getBoundingClientRect();
+		if (rect.width < 1 || rect.height < 1) {
+			return null;
+		}
+
+		const style = getComputedStyle(word);
+		const fontSize = parseFloat(style.fontSize) || 48;
+		const width = Math.max(1, rect.width);
+		const height = Math.max(1, rect.height);
+		const pitch = fontSize * PITCH_EM;
+		const cols = Math.ceil(width / pitch);
+		const rows = Math.ceil(height / pitch);
+
+		const maskCanvas = document.createElement("canvas");
+		maskCanvas.width = Math.max(1, Math.round(width));
+		maskCanvas.height = Math.max(1, Math.round(height));
+		const mask = maskCanvas.getContext("2d", { willReadFrequently: true });
+		if (!mask) {
+			return null;
+		}
+
+		mask.font = [style.fontStyle, style.fontVariant, style.fontWeight, style.fontSize, style.fontFamily].join(" ");
+		mask.textBaseline = "alphabetic";
+		mask.fillStyle = "#ffffff";
+
+		/* A zero-size inline-block sits on the baseline, so its top is the exact
+		   y the glyphs are drawn from. */
+		const probe = document.createElement("span");
+		probe.className = "inline-block h-0 w-0 align-baseline";
+		word.appendChild(probe);
+		let baseline = probe.getBoundingClientRect().top - rect.top;
+		word.removeChild(probe);
+		if (!Number.isFinite(baseline) || baseline <= 0) {
+			baseline = height * 0.85;
+		}
+		mask.fillText(text, 0, baseline);
+
+		const image = mask.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+		const pixels = image.data;
+		const glyphWidth = fontSize * ADVANCE_EM;
+		const offsetX = fontSize * ORIGIN_EM;
+		const dots: Dot[] = [];
+
+		for (let row = 0; row < rows; row++) {
+			const cy = baseline - pitch * 0.5 - row * pitch;
+			if (cy < -pitch || cy > height + pitch) {
+				continue;
+			}
+			for (let col = 0; col < cols; col++) {
+				const cx = offsetX + col * pitch;
+				if (cx > width) {
+					continue;
+				}
+				const px = Math.round(cx);
+				const py = Math.round(cy);
+				let sum = 0;
+				let samples = 0;
+				for (let oy = -1; oy <= 1; oy++) {
+					const sampleY = py + oy;
+					if (sampleY < 0 || sampleY >= maskCanvas.height) {
+						continue;
+					}
+					for (let ox = -1; ox <= 1; ox++) {
+						const sampleX = px + ox;
+						if (sampleX < 0 || sampleX >= maskCanvas.width) {
+							continue;
+						}
+						sum += pixels[(sampleY * maskCanvas.width + sampleX) * 4 + 3]!;
+						samples++;
+					}
+				}
+				if (samples > 0 && sum / (samples * 255) >= 0.5) {
+					dots.push({
+						x: cx,
+						y: cy,
+						glyph: Math.min(text.length - 1, Math.floor(cx / glyphWidth)),
+						row,
+						col
+					});
+				}
+			}
+		}
+
+		if (!dots.length) {
+			return null;
+		}
+
+		return {
+			width,
+			height,
+			fontSize,
+			pitch,
+			lastFrame: text.length + 1,
+			sheetColor: getComputedStyle(word).getPropertyValue("--color-limestone").trim() || "#e8e0cc",
+			dpr: Math.min(window.devicePixelRatio || 1, MAX_DPR),
+			dots
+		};
+	}
+
+	function sizeCanvas(canvas: HTMLCanvasElement, scene: Scene) {
+		canvas.width = Math.round(scene.width * scene.dpr);
+		canvas.height = Math.round(scene.height * scene.dpr);
+	}
+
+	function initWord(word: HTMLElement) {
+		const canvas = word.querySelector<HTMLCanvasElement>("canvas");
+		const cursor = word.parentElement?.querySelector<HTMLElement>(CURSOR_SELECTOR);
+		const text = word.textContent?.trim() ?? "";
+		if (!canvas || !cursor || !text) {
+			return;
+		}
+
+		const cover = document.createElement("span");
+		cover.className = "pointer-events-none absolute inset-0 z-[3] block bg-limestone";
+		cover.setAttribute("aria-hidden", "true");
+		word.appendChild(cover);
+
+		const canvasEl = canvas;
+		const cursorEl = cursor;
+		const context = canvasEl.getContext("2d");
+		if (!context) {
+			cover.remove();
+			return;
+		}
+		const ctx = context;
+
+		let scene: Scene | null = null;
+		let raf = 0;
+		let startTime = 0;
+		let paintedFrame = -2;
+		let finished = false;
+		let pointer: Pointer | null = null;
+		let pointerRaf = 0;
+		let resizeTimer = 0;
+
+		function paint(frame: number) {
+			if (!scene) {
+				return;
+			}
+
+			ctx.setTransform(1, 0, 0, 1, 0, 0);
+			ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+			ctx.setTransform(scene.dpr, 0, 0, scene.dpr, 0, 0);
+
+			const radius = scene.pitch * HOLE_HALF;
+			const squareHalf = scene.pitch * SQUARE_HALF;
+			let pointerPos: Pointer | null = null;
+			let lens2 = 0;
+			if (pointer) {
+				const live = word.getBoundingClientRect();
+				pointerPos = { x: pointer.x - live.left, y: pointer.y - live.top };
+				lens2 = (scene.fontSize * LENS_EM) ** 2;
+			}
+
+			ctx.fillStyle = scene.sheetColor;
+			ctx.beginPath();
+			ctx.rect(0, 0, scene.width, scene.height);
+			if (frame >= 0) {
+				for (const dot of scene.dots) {
+					const stage = frame - dot.glyph;
+					if (stage < 0) {
+						continue;
+					}
+					const tint = TINTS[Math.min(stage, 2)]!;
+					if (tint < 1 && BAYER[dot.row & 3]![dot.col & 3]! / 16 >= tint) {
+						continue;
+					}
+
+					const dx = pointerPos ? dot.x - pointerPos.x : 0;
+					const dy = pointerPos ? dot.y - pointerPos.y : 0;
+					const isRound = pointerPos ? dx * dx + dy * dy <= lens2 : false;
+					if (isRound) {
+						ctx.moveTo(dot.x + radius, dot.y);
+						ctx.arc(dot.x, dot.y, radius, 0, Math.PI * 2);
+					} else {
+						ctx.rect(dot.x - squareHalf, dot.y - squareHalf, squareHalf * 2, squareHalf * 2);
+					}
+				}
+			}
+			ctx.fill("evenodd");
+			paintedFrame = frame;
+		}
+
+		function showCursor(blinking: boolean) {
+			cursorEl.dataset.visible = "";
+			if (blinking) {
+				cursorEl.dataset.blink = "";
+			}
+		}
+
+		function finish() {
+			if (!scene) {
+				return;
+			}
+			finished = true;
+			paint(scene.lastFrame);
+			showCursor(true);
+		}
+
+		function tick(now: number) {
+			raf = 0;
+			if (finished || !scene) {
+				return;
+			}
+			let frame = Math.floor((now - startTime) / FRAME_MS) - 1;
+			if (frame > scene.lastFrame) {
+				frame = scene.lastFrame;
+			}
+			if (frame >= 0 && frame !== paintedFrame) {
+				paint(frame);
+			}
+			if (frame >= scene.lastFrame) {
+				finish();
+				return;
+			}
+			raf = requestAnimationFrame(tick);
+		}
+
+		function requestPointerPaint() {
+			if (pointerRaf) {
+				return;
+			}
+			pointerRaf = requestAnimationFrame(() => {
+				pointerRaf = 0;
+				if (!scene) {
+					return;
+				}
+				paint(finished ? scene.lastFrame : paintedFrame < 0 ? -1 : paintedFrame);
+			});
+		}
+
+		function onPointerMove(event: PointerEvent) {
+			if (event.pointerType === "touch") {
+				return;
+			}
+			pointer = { x: event.clientX, y: event.clientY };
+			requestPointerPaint();
+		}
+
+		function onPointerLeave() {
+			pointer = null;
+			requestPointerPaint();
+		}
+
+		function onResize() {
+			clearTimeout(resizeTimer);
+			resizeTimer = window.setTimeout(() => {
+				if (!scene) {
+					return;
+				}
+				const next = buildScene(word, text);
+				if (!next) {
+					return;
+				}
+				scene = next;
+				sizeCanvas(canvasEl, scene);
+				finished = true;
+				if (raf) {
+					cancelAnimationFrame(raf);
+					raf = 0;
+				}
+				paint(scene.lastFrame);
+				showCursor(true);
+			}, 150);
+		}
+
+		async function start() {
+			try {
+				await document.fonts.load(FONT);
+				await document.fonts.ready;
+				if (!document.fonts.check(FONT)) {
+					cover.remove();
+					return;
+				}
+
+				scene = buildScene(word, text);
+				if (!scene) {
+					cover.remove();
+					return;
+				}
+				sizeCanvas(canvasEl, scene);
+
+				const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+				if (reduced) {
+					paint(scene.lastFrame);
+					cover.remove();
+					showCursor(false);
+					return;
+				}
+
+				paint(-1);
+				cover.remove();
+				window.addEventListener("pointermove", onPointerMove, { passive: true });
+				document.addEventListener("pointerleave", onPointerLeave);
+				window.addEventListener("blur", onPointerLeave);
+				window.addEventListener("resize", onResize);
+				startTime = performance.now();
+				raf = requestAnimationFrame(tick);
+			} catch {
+				cover.remove();
+			}
+		}
+
+		void start();
+	}
+
+	for (const word of document.querySelectorAll<HTMLElement>(WORD_SELECTOR)) {
+		initWord(word);
+	}
+</script>

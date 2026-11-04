@@ -93,6 +93,11 @@ const homepageStructuredData = [website, softwareApplication];
 		<link rel='preload' href='/fonts/AlanSans.ttf' as='font' type='font/ttf' crossorigin />
 		<link rel='preload' href='/fonts/monoMMM_5.ttf' as='font' type='font/ttf' crossorigin />
 		{
+			Astro.url.pathname === "/" && (
+				<link rel='preload' href='/fonts/Doto.woff2' as='font' type='font/woff2' crossorigin />
+			)
+		}
+		{
 			isProductionSite && (
 				<script
 					is:inline

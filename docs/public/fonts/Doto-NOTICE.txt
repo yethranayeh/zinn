@@ -1,0 +1,4 @@
+Doto
+Copyright 2024 The Doto Project Authors (https://github.com/oliverlalan/Doto)
+Licensed under the SIL Open Font License, Version 1.1. See OFL-Doto.txt.
+Source: Google Fonts, Doto v3, latin subset (Doto.woff2).

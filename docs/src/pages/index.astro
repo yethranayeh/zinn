@@ -3,6 +3,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 import Prose from "../components/Prose.astro";
 import AgentSetup from "../components/AgentSetup.astro";
 import InstallCommand from "../components/InstallCommand.astro";
+import HeroText from "../components/homepage/HeroText.astro";
 import ReadingSection from "../components/ReadingSection.astro";
 import TerminalCommands from "../components/TerminalCommands.astro";
 import ScrollCue from "../components/ScrollCue.astro";
@@ -24,9 +25,7 @@ const workflowCommands = [
 		class='site-container flex min-h-[calc(100svh_-_var(--site-header-height))] flex-col pb-6 md:pb-8'
 		aria-label='Install Zinn'>
 		<div class='my-auto w-full max-w-3xl pt-10 pb-14 md:pt-14 md:pb-16'>
-			<h1 class='max-w-xl text-4xl leading-tighter tracking-tight md:text-5xl'>
-				A kanban workflow<br />in the <span class='text-cinnabar'>terminal</span>.
-			</h1>
+			<HeroText />
 
 			<InstallCommand />
 
