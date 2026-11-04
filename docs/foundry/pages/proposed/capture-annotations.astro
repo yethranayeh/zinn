@@ -1,0 +1,78 @@
+---
+import ComponentHeading from "../../components/ComponentHeading.astro";
+import Specimen from "../../components/Specimen.astro";
+import FoundryLayout from "../../layouts/FoundryLayout.astro";
+import CaptureAnnotations from "../../proposed/capture-annotations/CaptureAnnotations.astro";
+
+const geometry = {
+	gutter: 48,
+	lineGap: 24,
+	run: 60,
+	inset: 8
+};
+const annotations = [
+	{ id: "shell", label: "Shell", x: 20, y: 8 },
+	{ id: "editor", label: "Editor", x: 50, y: 8 },
+	{ id: "agent", label: "Agent", x: 80, y: 8 }
+];
+const specimens = [
+	{ label: "First annotation active", activeId: "shell", activeIndex: 0 },
+	{ label: "Second annotation active", activeId: "editor", activeIndex: 1 }
+];
+---
+
+<FoundryLayout
+	title='CaptureAnnotations'
+	description='CaptureAnnotations connects points on a capture to labels in the gutter above it.'>
+	<ComponentHeading folder='capture-annotations'>
+		<p>
+			Leader lines that connect a point on a capture to a label in the gutter above it. Use it when the capture's own
+			interface is the control and the labels need to sit outside the image.
+		</p>
+	</ComponentHeading>
+
+	<div class='grid gap-4'>
+		{
+			specimens.map((specimen) => (
+				<Specimen label={specimen.label} block>
+					<div
+						class='relative pt-[var(--capture-annotation-gutter)] max-md:pt-0'
+						style={`--capture-annotation-gutter: ${geometry.gutter}px`}
+						data-capture-figure>
+						<div class='relative aspect-[16/9] overflow-hidden bg-soot text-soot-foreground' data-capture-surface>
+							<div class='absolute inset-x-0 top-[8%] h-[8%] border-b border-pewter/40'>
+								{annotations.map((annotation, index) => (
+									<span
+										class:list={[
+											"absolute top-0 -translate-x-1/2 border px-3 py-1 font-mono text-xs",
+											index === specimen.activeIndex ? "border-bronze bg-bronze/15" : "border-transparent text-pewter"
+										]}
+										style={`left: ${annotation.x}%`}>
+										{annotation.label}
+									</span>
+								))}
+							</div>
+							<p class='absolute inset-x-[12%] top-[28%] font-mono text-xs text-soot-muted-foreground'>
+								A capture surface with its own tabs.
+							</p>
+						</div>
+						<CaptureAnnotations annotations={annotations} activeId={specimen.activeId} geometry={geometry} />
+					</div>
+				</Specimen>
+			))
+		}
+	</div>
+</FoundryLayout>
+
+<script>
+	import { layoutCaptureAnnotations } from "../../proposed/capture-annotations/capture-annotations";
+
+	for (const figure of document.querySelectorAll<HTMLElement>("[data-capture-figure]")) {
+		const surface = figure.querySelector<HTMLElement>("[data-capture-surface]");
+		if (!surface) {
+			continue;
+		}
+		layoutCaptureAnnotations(figure);
+		new ResizeObserver(() => layoutCaptureAnnotations(figure)).observe(surface);
+	}
+</script>
