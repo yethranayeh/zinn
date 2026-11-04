@@ -10,7 +10,7 @@ The Zinn color palette for [Rex](${rexTheme.site}), with light and dark appearan
 
 Verified with ${rexTheme.verifiedVersion}.
 
-## Gallery
+## Screenshots
 
 ${rexScenes
   .map(

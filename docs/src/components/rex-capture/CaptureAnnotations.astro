@@ -1,0 +1,48 @@
+---
+import type { CaptureAnnotation, CaptureAnnotationGeometry } from "./capture-annotations";
+
+interface Props {
+	annotations: CaptureAnnotation[];
+	activeId: string;
+	geometry: CaptureAnnotationGeometry;
+}
+
+const { annotations, activeId, geometry } = Astro.props;
+---
+
+<div
+	class='pointer-events-none absolute inset-0 max-md:hidden'
+	data-capture-annotations
+	data-capture-annotation-gutter={geometry.gutter}
+	data-capture-annotation-line-gap={geometry.lineGap}
+	data-capture-annotation-run={geometry.run}
+	data-capture-annotation-inset={geometry.inset}
+	aria-hidden='true'>
+	<svg class='absolute inset-0 h-full w-full overflow-visible'>
+		{
+			annotations.map((annotation) => (
+				<polyline
+					class='fill-none stroke-pewter stroke-1 opacity-70 data-active:stroke-bronze data-active:stroke-[1.5] data-active:opacity-100'
+					data-capture-annotation-line={annotation.id}
+					data-capture-annotation-x={annotation.x}
+					data-capture-annotation-y={annotation.y}
+					data-active={annotation.id === activeId ? "" : undefined}
+					points=''
+				/>
+			))
+		}
+	</svg>
+
+	<div class='absolute inset-0'>
+		{
+			annotations.map((annotation) => (
+				<span
+					class='absolute top-1.5 font-mono text-xs leading-none whitespace-nowrap text-pewter data-active:text-soot'
+					data-capture-annotation-label={annotation.id}
+					data-active={annotation.id === activeId ? "" : undefined}>
+					{annotation.label}
+				</span>
+			))
+		}
+	</div>
+</div>

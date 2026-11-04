@@ -13,10 +13,9 @@ interface Props {
 	initialScene?: string;
 	label: string;
 	caption: string;
-	aspect?: string;
 }
 
-const { id, scenes, initialScene, label, caption, aspect = "2840 / 1640" } = Astro.props;
+const { id, scenes, initialScene, label, caption } = Astro.props;
 const firstScene = scenes.find((scene) => scene.id === initialScene) ?? scenes[0]!;
 const firstAppearance = Object.keys(firstScene.images)[0] as ScreenshotAppearance;
 const firstImage = firstScene.images[firstAppearance]!;
@@ -44,7 +43,7 @@ const lightboxId = `${id}-lightbox`;
 				(["dark", "light"] as const).map((appearance) => (
 					<Button
 						variant='ghost-inverted'
-						class='appearance min-w-16 disabled:cursor-default'
+						class='min-w-16 disabled:cursor-default aria-pressed:bg-limestone aria-pressed:text-soot'
 						data-gallery-mode={appearance}
 						aria-pressed={appearance === firstAppearance}
 						disabled={!firstScene.images[appearance]}>
@@ -56,8 +55,7 @@ const lightboxId = `${id}-lightbox`;
 	</div>
 
 	<a
-		class='group/image relative block cursor-zoom-in border border-pewter no-underline focus-visible:outline-offset-4'
-		style={`aspect-ratio: ${aspect}`}
+		class='group/image relative block aspect-[2840/1640] cursor-zoom-in border border-pewter no-underline focus-visible:outline-offset-4'
 		href={firstImage}
 		target='_blank'
 		rel='noopener'
@@ -95,13 +93,13 @@ const lightboxId = `${id}-lightbox`;
 				return (
 					<Button
 						variant='ghost-inverted'
-						class='thumbnail w-32 shrink-0 flex-col items-stretch gap-2 p-0 pb-2 text-[10px] md:w-36'
+						class='group w-32 shrink-0 flex-col items-stretch gap-2 p-0 pb-2 text-[10px] md:w-36'
 						data-gallery-scene={scene.id}
 						data-label={scene.label}
 						data-images={JSON.stringify(scene.images)}
 						aria-pressed={scene.id === firstScene.id}>
 						<img
-							class='block aspect-[2840/1640] h-auto w-full border border-pewter'
+							class='block aspect-[2840/1640] h-auto w-full border border-pewter group-aria-pressed:outline-2 group-aria-pressed:outline-offset-2 group-aria-pressed:outline-solid group-aria-pressed:outline-bronze'
 							src={cloudinaryImage(source, 280)}
 							alt=''
 							width='2840'
@@ -145,18 +143,6 @@ const lightboxId = `${id}-lightbox`;
 	</noscript>
 </section>
 <ImageLightbox id={lightboxId} />
-
-<style>
-	.appearance[aria-pressed="true"] {
-		background: var(--color-limestone);
-		color: var(--color-soot);
-	}
-
-	.thumbnail[aria-pressed="true"] img {
-		outline: 2px solid var(--color-bronze);
-		outline-offset: 2px;
-	}
-</style>
 
 <script>
 	import type { ScreenshotAppearance, ScreenshotScene } from "./screenshot-gallery";

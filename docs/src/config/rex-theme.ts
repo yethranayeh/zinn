@@ -21,6 +21,20 @@ export const rexTheme = {
   ],
 };
 
+/** Tab and annotation geometry measured from the 3248×1900 Rex captures. */
+export const rexCapture = {
+  width: 3248,
+  height: 1900,
+  tabStart: 20.6,
+  tabStep: 17.17,
+  tabTop: 4.84,
+  tabHeight: 3.32,
+  noteGutter: 48,
+  noteLineGap: 24,
+  noteRun: 60,
+  noteInset: 8,
+};
+
 export const rexScenes: ScreenshotScene[] = [
   {
     id: "shell",

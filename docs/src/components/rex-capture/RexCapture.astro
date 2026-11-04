@@ -1,0 +1,101 @@
+---
+import ImageLightbox from "../ImageLightbox.astro";
+import Button from "../ui/button/Button.astro";
+import CaptureAnnotations from "./CaptureAnnotations.astro";
+
+import { rexCapture, rexScenes } from "../../config/rex-theme";
+import { cloudinaryImage, cloudinarySources } from "../../images/cloudinary";
+
+interface Props {
+	id: string;
+}
+
+const { id } = Astro.props;
+const firstScene = rexScenes[0]!;
+const firstImage = firstScene.images.dark!;
+const annotations = rexScenes.map((scene, index) => ({
+	id: scene.id,
+	label: scene.label,
+	x: rexCapture.tabStart + index * rexCapture.tabStep,
+	y: rexCapture.tabTop
+}));
+const annotationGeometry = {
+	gutter: rexCapture.noteGutter,
+	lineGap: rexCapture.noteLineGap,
+	run: rexCapture.noteRun,
+	inset: rexCapture.noteInset
+};
+const previewSizes =
+	"(min-width: 90rem) 72rem, (min-width: 64rem) calc(100vw - 16rem), (min-width: 48rem) calc(100vw - 10rem), calc(100vw - 5rem)";
+---
+
+<div data-rex-figure>
+	<div
+		class='relative pt-[var(--capture-annotation-gutter)] max-md:pt-0'
+		style={`--capture-annotation-gutter: ${rexCapture.noteGutter}px`}>
+		<div class='relative' data-capture-surface>
+			<a
+				class='block cursor-zoom-in no-underline focus-visible:outline-offset-4'
+				href={firstImage}
+				data-lightbox={id}
+				data-lightbox-title={`Zinn theme in Rex · ${firstScene.label} · dark`}
+				data-rex-enlarge>
+				<img
+					class='block h-auto w-full'
+					src={cloudinaryImage(firstImage, 1280)}
+					srcset={cloudinarySources(firstImage)}
+					sizes={previewSizes}
+					alt={`The Zinn theme in Rex, ${firstScene.label} scene, dark mode`}
+					width={rexCapture.width}
+					height={rexCapture.height}
+					fetchpriority='high'
+					decoding='async'
+					data-rex-image
+				/>
+			</a>
+			<div class='absolute inset-0' role='tablist' aria-label='Tabs in the screenshot' data-rex-tablist>
+				{
+					rexScenes.map((scene, index) => (
+						<button
+							type='button'
+							class="absolute cursor-pointer border-0 bg-transparent p-0 before:absolute before:inset-x-0 before:-inset-y-[18px] before:content-[''] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-bronze"
+							role='tab'
+							aria-selected={index === 0 ? "true" : "false"}
+							tabindex={index === 0 ? 0 : -1}
+							aria-label={`Show the ${scene.label} scene`}
+							data-rex-tab={scene.id}
+							style={`left: ${(rexCapture.tabStart + index * rexCapture.tabStep).toFixed(2)}%; width: ${rexCapture.tabStep}%; top: ${rexCapture.tabTop}%; height: ${rexCapture.tabHeight}%`}
+						/>
+					))
+				}
+			</div>
+		</div>
+		<CaptureAnnotations annotations={annotations} activeId={firstScene.id} geometry={annotationGeometry} />
+	</div>
+
+	<div class='mt-3 flex justify-end'>
+		<div class='flex items-center gap-1' role='group' aria-label='Appearance'>
+			<Button
+				variant='ghost'
+				data-rex-mode='dark'
+				aria-pressed='true'
+				class='text-pewter aria-pressed:bg-soot/10 aria-pressed:text-soot'>
+				Dark
+			</Button>
+			<Button
+				variant='ghost'
+				data-rex-mode='light'
+				aria-pressed='false'
+				class='text-pewter aria-pressed:bg-soot/10 aria-pressed:text-soot'>
+				Light
+			</Button>
+		</div>
+	</div>
+</div>
+<ImageLightbox id={id} />
+
+<script>
+	import { initRexCaptures } from "./rex-capture";
+
+	initRexCaptures();
+</script>

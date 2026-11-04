@@ -654,11 +654,26 @@ test("Rex theme page and its Markdown twin offer both downloadable theme files",
   expect(response.status).toBe(200);
   const html = await response.text();
   expect(html).toContain(`rel="canonical" href="https://zinn.sh${rexTheme.path}/"`);
+  expect(html).toContain("data-rex-capture");
+  expect(html).toContain('data-rex-mode="dark"');
+  expect(html).toContain('data-rex-mode="light"');
+  for (const scene of rexScenes) {
+    expect(html).toContain(`data-rex-tab="${scene.id}"`);
+    expect(html).toContain(`data-rex-note="${scene.id}"`);
+    expect(html).toContain(`data-rex-note-line="${scene.id}"`);
+  }
+  expect(html).toContain(rexScenes[0]!.images.dark!);
 
   const markdownResponse = await server.fetch(`${rexTheme.path}.md`);
   expect(markdownResponse.status).toBe(200);
   expect(markdownResponse.headers.get("Content-Type")).toContain("text/markdown");
   const markdown = await markdownResponse.text();
+
+  for (const scene of rexScenes) {
+    for (const url of Object.values(scene.images)) {
+      expect(markdown).toContain(url!);
+    }
+  }
 
   for (const downloadPath of Object.values(rexTheme.downloads)) {
     expect(html).toContain(`href="${downloadPath}"`);
