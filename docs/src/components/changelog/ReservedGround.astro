@@ -1,0 +1,64 @@
+---
+type Texture = "hatch" | "hatch-reverse" | "ruled" | "lines" | "halftone" | "scatter";
+
+interface Props {
+	texture?: Texture;
+	class?: string;
+}
+
+const { texture = "hatch", class: className } = Astro.props;
+---
+
+<div class:list={["reserved-ground", className]} data-texture={texture} aria-hidden='true'></div>
+
+<style>
+	.reserved-ground[data-texture="hatch"] {
+		background-image: repeating-linear-gradient(
+			315deg,
+			color-mix(in srgb, var(--color-soot) 12%, transparent) 0 1px,
+			transparent 1px 8px
+		);
+	}
+
+	.reserved-ground[data-texture="hatch-reverse"] {
+		background-image: repeating-linear-gradient(
+			45deg,
+			color-mix(in srgb, var(--color-soot) 12%, transparent) 0 1px,
+			transparent 1px 8px
+		);
+	}
+
+	.reserved-ground[data-texture="ruled"] {
+		background-image: repeating-linear-gradient(
+			to bottom,
+			transparent 0 21.4px,
+			color-mix(in srgb, var(--color-pewter) 30%, transparent) 21.4px 22.4px
+		);
+	}
+
+	.reserved-ground[data-texture="lines"] {
+		background-image: repeating-linear-gradient(
+			to right,
+			color-mix(in srgb, var(--color-soot) 12%, transparent) 0 2px,
+			transparent 2px 12px
+		);
+	}
+
+	.reserved-ground[data-texture="halftone"] {
+		background-image: radial-gradient(
+			circle at 3px 3px,
+			color-mix(in srgb, var(--color-soot) 16%, transparent) 0 1.1px,
+			transparent 1.3px
+		);
+		background-size: 6px 6px;
+	}
+
+	.reserved-ground[data-texture="scatter"] {
+		--scatter-mask: url("data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20width=%2732%27%20height=%2732%27%3E%3Cpath%20d=%27M5,1h2v2h-2zM13,1h2v2h-2zM25,1h2v2h-2zM1,5h2v2h-2zM9,5h2v2h-2zM13,5h2v2h-2zM25,5h2v2h-2zM29,5h2v2h-2zM21,9h2v2h-2zM29,9h2v2h-2zM1,13h2v2h-2zM5,13h2v2h-2zM17,13h2v2h-2zM5,17h2v2h-2zM9,17h2v2h-2zM13,17h2v2h-2zM5,21h2v2h-2zM17,21h2v2h-2zM5,25h2v2h-2zM13,25h2v2h-2zM25,25h2v2h-2zM1,29h2v2h-2z%27%20fill=%27%23fff%27/%3E%3C/svg%3E");
+		background-color: color-mix(in srgb, var(--color-soot) 12%, transparent);
+		-webkit-mask-image: var(--scatter-mask);
+		mask-image: var(--scatter-mask);
+		-webkit-mask-size: 32px 32px;
+		mask-size: 32px 32px;
+	}
+</style>

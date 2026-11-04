@@ -3,6 +3,7 @@ import type { ReleasePackage } from "../../config/changelog";
 import MarkdownH2 from "../MarkdownH2.astro";
 import Prose from "../Prose.astro";
 import PackageBand from "./PackageBand.astro";
+import ReservedGround from "./ReservedGround.astro";
 
 import { formatReleaseDate } from "../../config/changelog";
 
@@ -24,41 +25,47 @@ const { anchor, heading, name, date, packages, first = false } = Astro.props;
 			<div
 				aria-hidden='true'
 				class:list={[
-					"reading-frame pointer-events-none absolute inset-0 border-x border-pewter",
+					"reading-frame pointer-events-none absolute inset-0 z-10 border-x border-pewter",
 					{ "frame-start": first }
 				]}>
 			</div>
 
-			<div class='pt-2'>
+			<div class='relative z-1'>
 				<div class='rail-rule max-md:hidden' aria-hidden='true'></div>
 
 				<div class='grid grid-cols-1 items-start md:grid-cols-[var(--rail-width)_minmax(0,1fr)] px-0'>
-					<div class='md:sticky md:top-[var(--site-header-height)] lg:pr-[var(--rail-meta-padding-right)]'>
-						<Prose class='px-2'>
-							<MarkdownH2 id={anchor} class='m-0!'>
-								<span class='block'>{heading}</span>
-								{
-									name && (
-										<span class='mt-1 block text-sm leading-normal font-normal tracking-[0.12em] text-muted-foreground uppercase'>
-											{name}
-										</span>
-									)
-								}
-							</MarkdownH2>
-							<time class='block text-base leading-[1.7] font-normal text-muted-foreground' datetime={date}>
-								{formatReleaseDate(date)}
-							</time>
-						</Prose>
-						<PackageBand packages={packages} />
+					<div class='flex flex-col self-stretch'>
+						<div
+							class='md:sticky md:top-[var(--site-header-height)] lg:pr-[var(--rail-meta-padding-right)] bg-limestone'>
+							<Prose class='px-2'>
+								<MarkdownH2 id={anchor} class='m-0!'>
+									<span class='block'>{heading}</span>
+									{
+										name && (
+											<span class='mt-1 block text-sm leading-normal font-normal tracking-[0.12em] text-muted-foreground uppercase'>
+												{name}
+											</span>
+										)
+									}
+								</MarkdownH2>
+								<time class='block text-base leading-[1.7] font-normal text-muted-foreground' datetime={date}>
+									{formatReleaseDate(date)}
+								</time>
+							</Prose>
+							<PackageBand packages={packages} />
+						</div>
 					</div>
 
-					<Prose class='px-4'>
+					<Prose class='px-4 bg-limestone h-full border-b'>
 						<div class='[&>h3:first-child]:m-0! [&_ul]:m-0 [&_li]:m-0'>
 							<slot />
 						</div>
 					</Prose>
 				</div>
+				<div class='h-8'></div>
 			</div>
+
+			<ReservedGround texture='hatch' class='hidden absolute left-0 top-0 right-0 bottom-0 flex-1 min-h-8 md:block' />
 		</div>
 	</div>
 </section>
@@ -77,6 +84,7 @@ const { anchor, heading, name, date, packages, first = false } = Astro.props;
 		left: calc(var(--plate-padding-inline) + var(--rail-width));
 		width: 1px;
 		background: var(--color-pewter);
+		z-index: 10;
 	}
 
 	@media (max-width: 48rem) {
