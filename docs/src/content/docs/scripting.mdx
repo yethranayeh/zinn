@@ -37,7 +37,7 @@ A task's `column` is its column name. `labels` contains label names, and `label_
 
 Task objects include `is_first` and `is_last`, marking whether the task's column is the first or last column of its board. Column results in project view and column list carry the same pair.
 
-Full task objects include required integer `created_at` and `updated_at` values in epoch milliseconds. This applies to list, search, view, create, edit, move, order, archive, unarchive, label attachment changes and delete results, including bulk results. Related task summaries include `id`, `key`, `project_id`, `column`, `column_id`, `is_first`, `is_last`, `title` and `status`.
+Full task objects include required integer `created_at` and `updated_at` values in epoch milliseconds. This applies to list, search, view, create, edit, move, order, archive, unarchive, label attachment changes and delete results, including bulk results. Related task summaries include `id`, `key`, `project_id`, `column`, `column_id`, `is_first`, `is_last`, `title` and `status`. The [`TaskBlame` result](/docs/core#task-blame-result) identifies related tasks by `id` and `key` only.
 
 Full task objects also include required `due_at`, an integer Unix epoch-millisecond deadline or `null` when unset. It is present in task list, search, view and task mutation results. New task creation activity snapshots record `changes.due_at` as a number or `null`. Deadline edits record the previous and new values as a pair. Use `activity list --changed due_at` to select any deadline change. Existing activity payloads keep their recorded shape.
 

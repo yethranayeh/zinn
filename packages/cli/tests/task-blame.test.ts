@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { taskAttributionSchema, resultSchemas } from "../src/result-schemas";
+import { abbreviateActivityIds } from "../src/presentation/activity-presentation";
 import { formatLocalTime } from "../src/presentation/time";
 import { runZinn, withIsolatedZinnDir, withTestDb } from "../test-helpers";
 
@@ -45,11 +46,17 @@ test("task blame exposes fields, line provenance, full identity and the read-onl
     expect(Object.keys(attribution).sort()).toEqual(Object.keys(taskAttributionSchema.shape).sort());
     expect(attribution).not.toHaveProperty("changes");
     const text = await run(["task", "blame", "APP-1"]);
-    for (const fact of ["Blamed task", "chosen", "APP-2", "first", "inserted", " last ", "agent",
+    for (const fact of ["Blamed task", "chosen", "APP-2", "agent", "Archived",
       ...Object.values(attribution).filter((value): value is string => typeof value === "string"),
       formatLocalTime(attribution.created_at, { includesSeconds: true }), formatLocalTime(result.fields.due_at.value!, { includesSeconds: true }),
     ]) {
       expect(text).toContain(fact);
+    }
+    const prefixes = abbreviateActivityIds(snapshot().activity.map(event => (event as { id: string }).id));
+    const rows = text.split("\n");
+    for (const line of result.description) {
+      const reference = prefixes.get(line.attribution!.id)!;
+      expect(rows.some(row => row.startsWith(`${line.line} `) && row.includes(reference) && row.endsWith(line.text))).toBe(true);
     }
     const capabilities = JSON.parse(await run(["capabilities", "--json"]));
     const command = capabilities.commands.find((entry: { path: string[] }) => entry.path.join(" ") === "task blame");
@@ -82,8 +89,32 @@ test("blame text renders priorities and relations through the same components as
     expect(relationRow).toContain("Archived");
     expect(blamedRow.startsWith(relationRow)).toBe(true);
     const { relations } = resultSchemas.TaskBlame.parse(JSON.parse(await run(["task", "blame", "APP-1", "--json"])));
-    expect(blamedRow).toContain(relations[0]!.attribution!.id);
+    const eventId = relations[0]!.attribution!.id;
+    const allIds = withTestDb(directory, db => db.query<{ id: string }, []>("SELECT id FROM activity").all().map(event => event.id));
+    expect(blamedRow).toContain(abbreviateActivityIds(allIds).get(eventId)!);
+    expect(text).toContain(eventId);
     expect(text).toContain("High");
+  });
+});
+
+test("blame keeps description text in one column across line numbers and unrecorded lines", async () => {
+  await withIsolatedZinnDir(async directory => {
+    const run = async (args: Array<string>) => {
+      const result = await runZinn(args, directory, first);
+      expect(result.code, result.stderr).toBe(0);
+      return result.stdout;
+    };
+    await run(["project", "create", "APP"]);
+    const lineTexts = Array.from({ length: 11 }, (_, index) => `body${index}`);
+    const created = JSON.parse(await run(["task", "create", "APP", "--title", "Long", "--description", lineTexts.slice(0, 10).join("\n"), "--json"]));
+    withTestDb(directory, db => db.query("DELETE FROM activity WHERE entity_id = ?").run(created.id));
+    await run(["task", "edit", created.key, "--description", lineTexts.join("\n")]);
+    const { description } = resultSchemas.TaskBlame.parse(JSON.parse(await run(["task", "blame", created.key, "--json"])));
+    expect(description[0]!.attribution).toBeNull();
+    expect(description[10]!.attribution).not.toBeNull();
+    const rows = (await run(["task", "blame", created.key])).split("\n");
+    const textColumns = lineTexts.map(lineText => rows.find(row => row.endsWith(lineText))!.indexOf(lineText));
+    expect(new Set(textColumns).size).toBe(1);
   });
 });
 

@@ -7,6 +7,7 @@ import type { CommandInput, InputConstraint } from "../input.js";
 import { jsonResult, taskDetailResults, taskChangeResults } from "../results.js";
 import { parseArgs } from "node:util";
 import {
+  activity,
   task,
   project,
   parseTaskKey,
@@ -69,7 +70,11 @@ import { commentRouter } from "./comment-router.js";
 import { formatRelationList, presentRelations } from "../presentation/relation-presentation.js";
 import { formatCommentList, presentComments } from "../presentation/comment-presentation.js";
 import { formatSection } from "../presentation/section.js";
-import { formatActivityList, presentActivities } from "../presentation/activity-presentation.js";
+import {
+  abbreviateActivityIds,
+  formatActivityList,
+  presentActivities,
+} from "../presentation/activity-presentation.js";
 import { formatTaskBlame } from "../presentation/task-blame-presentation.js";
 import { columnPlacement, createColumnBoard } from "../presentation/column-presentation.js";
 import {
@@ -740,6 +745,8 @@ Examples:
         return formatTaskBlame(blame, {
           relations: presentRelations(taskMatch, board),
           columnPlacement: columnPlacement(board(taskMatch.project_id), taskMatch.column_id),
+          isArchived: taskMatch.archived_at != null,
+          activityIdPrefixes: abbreviateActivityIds(activity.getIds()),
         });
       });
     },

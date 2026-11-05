@@ -3,7 +3,7 @@ import type { PresentedRelation, PresentedTaskBlame } from "../result-schemas.js
 import { formatActor } from "./activity-presentation.js";
 import { columnNameCell } from "./column-presentation.js";
 import { formatRelationList } from "./relation-presentation.js";
-import { formatCell } from "./row-layout.js";
+import { formatCell, formatCellSeparator, formatRows } from "./row-layout.js";
 import { formatSection } from "./section.js";
 import { formatLabelNames, taskPriorityCell } from "./task-presentation.js";
 import { formatLocalTime } from "./time.js";
@@ -15,6 +15,9 @@ export function formatTaskBlame(
   options: {
     relations: Array<PresentedRelation>;
     columnPlacement: { is_first: boolean; is_last: boolean };
+    isArchived: boolean;
+    /** Short forms of activity IDs, which `activity view` accepts as well as full IDs. */
+    activityIdPrefixes: Map<string, string>;
   },
 ) {
   const events = new Map<string, NonNullable<Attribution>>();
@@ -23,7 +26,7 @@ export function formatTaskBlame(
       return "unrecorded";
     }
     events.set(attribution.id, attribution);
-    return attribution.id;
+    return options.activityIdPrefixes.get(attribution.id) ?? attribution.id;
   }
 
   function field(name: string, value: string, attribution: Attribution) {
@@ -33,7 +36,7 @@ export function formatTaskBlame(
   const { fields } = blame;
   const labelNames = fields.labels.value.map((label) => label.name);
   const content = [
-    `${blame.task.key} (${blame.task.id})`,
+    `${blame.task.key} (${blame.task.id})${options.isArchived ? `${formatCellSeparator()}Archived` : ""}`,
     formatSection(
       "Fields",
       [
@@ -85,9 +88,13 @@ export function formatTaskBlame(
     content.push(
       formatSection(
         "Description",
-        blame.description
-          .map((line) => `${line.line} [${reference(line.attribution)}] ${line.text}`)
-          .join("\n"),
+        formatRows(
+          blame.description.map((line) => [
+            { text: String(line.line) },
+            { text: `[${reference(line.attribution)}]` },
+            { text: line.text },
+          ]),
+        ),
       ),
     );
   }

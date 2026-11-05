@@ -141,37 +141,6 @@ export const taskAttributionSchema = actorSchema.extend({
   id: activitySchema.shape.id,
   created_at: timestamp,
 });
-const blameTaskIdentity = taskSchema.pick({ id: true, key: true });
-function blamedValue<S extends z.ZodType>(value: S) {
-  return z.strictObject({ value, attribution: taskAttributionSchema.nullable() });
-}
-export const taskBlameSchema = z.strictObject({
-  task: blameTaskIdentity,
-  fields: z.strictObject({
-    title: blamedValue(z.string()),
-    column: blamedValue(z.strictObject({ id: z.string(), name: z.string() })),
-    priority: blamedValue(taskSchema.shape.priority),
-    due_at: blamedValue(taskSchema.shape.due_at),
-    labels: blamedValue(z.array(z.strictObject({ id: z.string(), name: z.string() }))),
-    parent: blamedValue(blameTaskIdentity.nullable()),
-  }),
-  relations: z.array(
-    z.strictObject({
-      id: relationSchema.shape.id,
-      type: relationSchema.shape.type,
-      direction: relationSchema.shape.direction,
-      task: blameTaskIdentity,
-      attribution: taskAttributionSchema.nullable(),
-    }),
-  ),
-  description: z.array(
-    z.strictObject({
-      line: z.number().int().positive(),
-      text: z.string(),
-      attribution: taskAttributionSchema.nullable(),
-    }),
-  ),
-});
 
 export const taskDetailSchema = taskSchema.extend({
   relations: z.array(relationSchema),
@@ -235,6 +204,38 @@ export const labelSchema = z.strictObject({
 });
 export const labelChangeSchema = labelSchema.extend({
   changed: z.boolean().describe("Whether the label's fields changed."),
+});
+const blameTaskIdentity = taskSchema.pick({ id: true, key: true });
+function blamedValue<S extends z.ZodType>(value: S) {
+  return z.strictObject({ value, attribution: taskAttributionSchema.nullable() });
+}
+
+export const taskBlameSchema = z.strictObject({
+  task: blameTaskIdentity,
+  fields: z.strictObject({
+    title: blamedValue(z.string()),
+    column: blamedValue(columnSchema.pick({ id: true, name: true })),
+    priority: blamedValue(taskSchema.shape.priority),
+    due_at: blamedValue(taskSchema.shape.due_at),
+    labels: blamedValue(z.array(labelSchema.pick({ id: true, name: true }))),
+    parent: blamedValue(blameTaskIdentity.nullable()),
+  }),
+  relations: z.array(
+    z.strictObject({
+      id: relationSchema.shape.id,
+      type: relationSchema.shape.type,
+      direction: relationSchema.shape.direction,
+      task: blameTaskIdentity,
+      attribution: taskAttributionSchema.nullable(),
+    }),
+  ),
+  description: z.array(
+    z.strictObject({
+      line: z.number().int().positive(),
+      text: z.string(),
+      attribution: taskAttributionSchema.nullable(),
+    }),
+  ),
 });
 export const commentChangeSchema = commentSchema.extend({
   changed: z.boolean().describe("Whether the comment's text changed."),
