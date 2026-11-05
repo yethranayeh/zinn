@@ -27,20 +27,16 @@ export const GET: APIRoute = () =>
   new Response(
     `# Pricing
 
-Free, and that is the whole plan.
+One plan. Priced in bytes.
 
 Zinn is an Experimental kanban CLI for you and your agents.
 
-Zinn is [MIT licensed](${projectLinks.license}). There is one plan, with no account, no seats and nothing to renew. Everything below is quoted in bytes, starting with the price.
+Zinn is [MIT licensed](${projectLinks.license}), so there is no monetary charge. You don't have to create an account, or find a seat for you and your team to sit on. The only renewal you need to worry about is updates. The figures below show download size, storage, memory, time and output.
 
-## Spot price
+## Download cost
 
-0 B per install, per machine, per agent.
-
-## Shipping weight
-
-- Net: ${sizeLabel(pricingTotals.softwareDownload)}, ${exactBytes(pricingTotals.softwareDownload)}, the software alone.
-- Gross: ${sizeLabel(pricingTotals.download)}, ${exactBytes(pricingTotals.download)}, with its dependencies.
+- Gross: ${sizeLabel(pricingTotals.download)}, ${exactBytes(pricingTotals.download)}, compressed packages, with dependencies.
+- Net: ${sizeLabel(pricingTotals.softwareDownload)}, ${exactBytes(pricingTotals.softwareDownload)}, compressed Zinn packages.
 
 ## Install
 

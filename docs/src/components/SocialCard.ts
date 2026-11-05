@@ -223,7 +223,7 @@ export function ChangelogCard({ wordmark }: { wordmark: string }) {
   });
 }
 
-export function PricingCard({ wordmark }: { wordmark: string }) {
+export function PricingCard({ wordmark, download }: { wordmark: string; download: string }) {
   return jsx("div", {
     style: {
       width: "100%",
@@ -270,11 +270,11 @@ export function PricingCard({ wordmark }: { wordmark: string }) {
           top: 106,
           width: 728,
           fontFamily: "MonoMMM",
-          fontSize: 228,
+          fontSize: 192,
           letterSpacing: -10,
           lineHeight: 1,
         },
-        children: "0 B",
+        children: download,
       }),
       jsx("div", {
         style: {
@@ -295,7 +295,7 @@ export function PricingCard({ wordmark }: { wordmark: string }) {
           fontSize: 44,
           lineHeight: 1.15,
         },
-        children: "Free, and that is the whole plan.",
+        children: "One plan. Priced in bytes.",
       }),
       jsx("div", {
         style: {

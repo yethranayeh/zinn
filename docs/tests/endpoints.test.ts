@@ -1,6 +1,6 @@
 import { opencodeInspector } from "../src/config/opencode-inspector";
 import { opencodeScenes, opencodeTheme } from "../src/config/opencode-theme";
-import { rexTheme } from "../src/config/rex-theme";
+import { rexScenes, rexTheme } from "../src/config/rex-theme";
 import {
   exactBytes,
   largeListCost,
@@ -252,7 +252,6 @@ test("pricing page and its Markdown twin carry the same measured figures", async
   const markdown = await markdownResponse.text();
   const firstCommand = pricingCommands[0]!;
   const facts = [
-    "Free, and that is the whole plan.",
     sizeLabel(pricingTotals.softwareDownload),
     exactBytes(pricingTotals.softwareDownload),
     sizeLabel(pricingTotals.download),
@@ -275,6 +274,15 @@ test("pricing page and its Markdown twin carry the same measured figures", async
     expect(pageText).not.toContain(dependency.name);
     expect(markdown).not.toContain(dependency.name);
   }
+  const grossButton = html.match(/<button\b[^>]*data-weight="gross"[^>]*>/)?.[0];
+  const netButton = html.match(/<button\b[^>]*data-weight="net"[^>]*>/)?.[0];
+  expect(grossButton).toContain('aria-pressed="true"');
+  expect(netButton).toContain('aria-pressed="false"');
+  const grossState = html.match(/<div\b[^>]*data-weight-state="gross"[^>]*>/)?.[0];
+  const netState = html.match(/<div\b[^>]*data-weight-state="net"[^>]*>/)?.[0];
+  expect(grossState).toBeDefined();
+  expect(grossState).not.toMatch(/\bhidden(?:\s|=|>)/);
+  expect(netState).toMatch(/\bhidden(?:\s|=|>)/);
 });
 
 test.each(docsSources)(
@@ -558,7 +566,7 @@ test("pricing preview is a 1200 by 630 PNG linked by pricing metadata", async ()
   expect(twitterImage).toBe(image);
   const alt = html.match(/property="og:image:alt" content="([^"]+)"/)?.[1];
   const twitterAlt = html.match(/name="twitter:image:alt" content="([^"]+)"/)?.[1];
-  expect(alt).toContain("0 B");
+  expect(alt).toContain(sizeLabel(pricingTotals.download));
   expect(alt).toContain("zinn.sh/pricing");
   expect(twitterAlt).toBe(alt);
   await expectSocialImage("/social/pricing.png");
@@ -654,13 +662,15 @@ test("Rex theme page and its Markdown twin offer both downloadable theme files",
   expect(response.status).toBe(200);
   const html = await response.text();
   expect(html).toContain(`rel="canonical" href="https://zinn.sh${rexTheme.path}/"`);
-  expect(html).toContain("data-rex-capture");
+  expect(html).toContain("data-rex-figure");
+  expect(html).toContain("data-capture-surface");
+  expect(html).toContain("data-capture-annotations");
   expect(html).toContain('data-rex-mode="dark"');
   expect(html).toContain('data-rex-mode="light"');
   for (const scene of rexScenes) {
     expect(html).toContain(`data-rex-tab="${scene.id}"`);
-    expect(html).toContain(`data-rex-note="${scene.id}"`);
-    expect(html).toContain(`data-rex-note-line="${scene.id}"`);
+    expect(html).toContain(`data-capture-annotation-line="${scene.id}"`);
+    expect(html).toContain(`data-capture-annotation-label="${scene.id}"`);
   }
   expect(html).toContain(rexScenes[0]!.images.dark!);
 
