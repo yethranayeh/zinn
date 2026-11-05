@@ -41,6 +41,7 @@ import { taskPageSchema } from "../schemas/task.js";
 import { decodeTaskCursor, encodeTaskCursor } from "../task-cursor.js";
 
 import { relation } from "./relation.js";
+import { blameTask } from "./task-blame.js";
 import {
   getTaskByKey,
   findTaskByExactKey,
@@ -512,6 +513,7 @@ export const task = {
     });
   },
   getByKey: getTaskByKey,
+  blame: blameTask,
   search: (input: TaskSearchInput) => {
     const props = validateTaskInput(taskSearchSchema, input);
     const archive = props.archive ?? "active";

@@ -97,11 +97,21 @@ test("emitted core works on both runtimes and its declarations need no Bun types
         core.configureDatabase({ client: "build check", version: "1.0.0", executable: "runtime.test.mjs", release: "published", allowsLegacyRead: false });
         const actor = { name: "build check", email: "build@example.test", kind: "agent" };
         const createdProject = core.project.create({ key: "BUILD" }, actor);
-        const createdTask = core.task.create({ project_id: createdProject.id, title: "Emitted JavaScript" }, actor);
+        const createdTask = core.task.create({ project_id: createdProject.id, title: "Emitted JavaScript", description: "first\\nsecond" }, actor);
         core.comment.create({ taskKey: createdTask.key, text: "searchable comment" }, actor);
         assert.equal(createdTask.key, "BUILD-1");
         assert.equal(core.task.search({ query: "searchable" }).tasks[0].id, createdTask.id);
         assert.equal(core.task.getByKey(createdTask.key).title, "Emitted JavaScript");
+        const createdEvent = core.task.activity(createdTask.key).find(event => event.action === "create");
+        core.task.edit({ taskKey: createdTask.key, description: "first\\nchanged" }, {
+          ...actor, sessionId: "blame-session",
+        });
+        const blamed = core.task.blame(createdTask.key);
+        assert.deepEqual(blamed.description.map(line => line.text), ["first", "changed"]);
+        assert.equal(blamed.description[0].attribution.id, createdEvent.id);
+        assert.equal(blamed.description[1].attribution.actor_session_id, "blame-session");
+        assert.equal(blamed.fields.title.attribution.id, createdEvent.id);
+
         assert.throws(
           () => core.task.create({ project_id: createdProject.id, title: "invalid", priority: "invalid" }, actor),
           (error) => error instanceof core.InputValidationError && error.kind === "input" && error.facts.field[0] === "priority",

@@ -109,3 +109,40 @@ export type Activity = {
   action: ActivityAction;
   changes: Record<string, unknown> | null;
 };
+
+export type TaskAttribution = Pick<
+  Activity,
+  | "id"
+  | "created_at"
+  | "actor_name"
+  | "actor_email"
+  | "actor_kind"
+  | "actor_source"
+  | "actor_session_id"
+  | "actor_thread_id"
+  | "actor_agent"
+  | "actor_model"
+  | "actor_effort"
+  | "actor_client"
+>;
+
+export type TaskBlamedValue<T> = { value: T; attribution: TaskAttribution | null };
+export type TaskBlame = {
+  task: Pick<TaskWithKey, "id" | "key">;
+  fields: {
+    title: TaskBlamedValue<string>;
+    column: TaskBlamedValue<Pick<Column, "id" | "name">>;
+    priority: TaskBlamedValue<TaskPriority | null>;
+    due_at: TaskBlamedValue<number | null>;
+    labels: TaskBlamedValue<Array<Pick<Label, "id" | "name">>>;
+    parent: TaskBlamedValue<Pick<TaskWithKey, "id" | "key"> | null>;
+  };
+  relations: Array<{
+    id: string;
+    type: TaskRelationType;
+    direction: "outgoing" | "incoming" | null;
+    task: Pick<TaskWithKey, "id" | "key">;
+    attribution: TaskAttribution | null;
+  }>;
+  description: Array<{ line: number; text: string; attribution: TaskAttribution | null }>;
+};

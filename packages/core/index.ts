@@ -17,6 +17,9 @@ export type {
 export type {
   TaskWithKey,
   TaskChange,
+  TaskAttribution,
+  TaskBlamedValue,
+  TaskBlame,
   ColumnChange,
   ProjectChange,
   LabelChange,

@@ -135,6 +135,29 @@ If the conflicting IDs changed before the write, core throws a `CoreError` with 
 
 `task.create` accepts `relations: [{ relation_type, targetTaskKey }]`. Identical type and resolved-target requests deduplicate. Different types for one target fail the whole creation without consuming a task number or recording activity.
 
+## Task blame
+
+`task.blame(taskKey)` returns a `TaskBlame` for the current active or archived task. It resolves the key once and reads the task, current memberships and ID-scoped history in one database snapshot. A reused key selects only the current task lifetime. Unknown and deleted keys throw the ordinary missing-task `CoreError`.
+
+```ts title="Read task attribution"
+import type { TaskBlame } from "@zinn-dev/core";
+
+const blame: TaskBlame = task.blame(createdTask.key);
+console.log(blame.fields.title.value);
+console.log(blame.fields.title.attribution?.actor_session_id ?? null);
+for (const line of blame.description) {
+	console.log(line.line, line.text, line.attribution?.id ?? null);
+}
+```
+
+The result contains `task: { id, key }`, blamed `fields`, current `relations`, and numbered `description` lines. Core exports `TaskBlame`, `TaskBlamedValue<T>` and `TaskAttribution`. The [CLI reference](/docs/cli#blame-json) specifies the complete shared result shape. Scalar values keep their core types, including nullable `TaskPriority` and millisecond `due_at`. Attribution projects the recorded event ID, time and actor fields exactly as stored. Use `activity.getById(attribution.id)` to inspect its full event.
+
+Creation can attribute initial values. Later scalar setters are attributable only when their latest recorded new value agrees with the current value. Labels are one membership collection, including removals and label deletion. Current column and label names accompany the original membership attribution. Parent assignment or removal follows outgoing `subtask` events. Every current relation also carries its creation attribution, including parents and children, in the existing relation order.
+
+Description replay uses exact-line longest-common-subsequence comparisons with linear workspace. It preserves a common prefix, then a common suffix, and prefers deletion before insertion for equal choices in the remaining comparison. Matching lines retain their attribution. Insertions and replacements receive the edit's attribution. Whitespace and internal blank lines are exact. A terminal newline creates no extra line, and changing only that newline preserves attribution. Null or empty descriptions return an empty array.
+
+The replay follows per-task activity ID order. Missing or unrecognized snapshots return `null` attribution. When an edit's recorded old description does not join the previous recorded version, unchanged old lines start unattributed while new lines receive that edit's attribution. A malformed setter invalidates carried line attribution. If the final recorded description disagrees with current text, all current lines are unattributed. The operation records no activity and does not mutate task data.
+
 ## Activity selection
 
 `activity.getAll` returns `{ events, hasMore, nextCursor? }`. `events` contains full activity records, newest first by timestamp and then event ID. Without a project or task selector it reads across the database. `hasMore` is true only when another event matches after the returned page. Without `limit`, it is false.
