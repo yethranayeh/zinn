@@ -1,5 +1,6 @@
 ---
 import Button from "./ui/button/Button.astro";
+import Dialog from "./ui/dialog/Dialog.astro";
 import Icon from "./ui/icon/Icon.astro";
 
 interface Props {
@@ -9,33 +10,18 @@ interface Props {
 const { id } = Astro.props;
 ---
 
-<dialog
-	id={id}
-	class='m-auto max-h-[94svh] w-[96vw] max-w-450 border border-pewter bg-limestone p-0 text-soot backdrop:bg-soot/90'
-	aria-labelledby={`${id}-title`}
-	data-image-lightbox>
-	<div class='flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-pewter px-3 py-2 md:px-5'>
-		<h2 id={`${id}-title`} class='mr-auto font-mono text-xs' data-lightbox-heading></h2>
-		<a
-			class='inline-flex min-h-11 items-center gap-2 font-mono text-xs'
-			data-lightbox-original
-			target='_blank'
-			rel='noopener'>
-			Open original <Icon name='external-link' />
-		</a>
-		<form method='dialog'>
-			<Button type='submit' size='icon' aria-label='Close enlarged screenshot'><Icon name='close' /></Button>
-		</form>
-	</div>
-	<div class='max-h-[calc(94svh_-_6.5rem)] overflow-auto md:max-h-[calc(94svh_-_4rem)]'>
-		<img class='block h-auto w-full' data-lightbox-image alt='' />
-	</div>
-</dialog>
+<Dialog id={id} title='Enlarged screenshot' class='max-h-[94svh] w-[96vw] max-w-450' data-image-lightbox>
+	<Button slot='header' class='shrink-0' href='' target='_blank' rel='noopener' data-lightbox-original>
+		<span class='max-sm:sr-only'>Open original</span>
+		<Icon name='external-link' />
+	</Button>
+	<img class='block h-auto w-full' alt='' decoding='async' data-lightbox-image />
+</Dialog>
 
 <script>
 	for (const dialog of document.querySelectorAll<HTMLDialogElement>("[data-image-lightbox]")) {
 		const image = dialog.querySelector<HTMLImageElement>("[data-lightbox-image]")!;
-		const heading = dialog.querySelector<HTMLElement>("[data-lightbox-heading]")!;
+		const title = dialog.querySelector<HTMLElement>("[data-dialog-title]")!;
 		const original = dialog.querySelector<HTMLAnchorElement>("[data-lightbox-original]")!;
 
 		for (const trigger of document.querySelectorAll<HTMLAnchorElement>(`[data-lightbox="${dialog.id}"]`)) {
@@ -45,25 +31,21 @@ const { id } = Astro.props;
 				}
 
 				event.preventDefault();
+				const preview = trigger.querySelector("img")!;
+				// The preview's dimensions reserve the image's space before it loads.
+				image.setAttribute("width", preview.getAttribute("width")!);
+				image.setAttribute("height", preview.getAttribute("height")!);
 				image.src = trigger.href;
-				image.alt = trigger.querySelector("img")?.alt ?? "";
-				heading.textContent = trigger.dataset.lightboxTitle ?? image.alt;
+				image.alt = preview.alt;
+				title.textContent = trigger.dataset.lightboxTitle ?? preview.alt;
 				original.href = trigger.href;
 				dialog.showModal();
 			});
 		}
 
-		dialog.addEventListener("click", (event) => {
-			const bounds = dialog.getBoundingClientRect();
-			const outside =
-				event.clientX < bounds.left ||
-				event.clientX > bounds.right ||
-				event.clientY < bounds.top ||
-				event.clientY > bounds.bottom;
-
-			if (event.target === dialog && outside) {
-				dialog.close();
-			}
+		// Otherwise the previous image shows until the next one loads.
+		dialog.addEventListener("close", () => {
+			image.removeAttribute("src");
 		});
 	}
 </script>

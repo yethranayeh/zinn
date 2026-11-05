@@ -1,0 +1,69 @@
+---
+import Button from "../../src/components/ui/button/Button.astro";
+import Dialog from "../../src/components/ui/dialog/Dialog.astro";
+import ComponentHeading from "../components/ComponentHeading.astro";
+import Specimen from "../components/Specimen.astro";
+import FoundryLayout from "../layouts/FoundryLayout.astro";
+
+const longContentParagraphs = Array.from({ length: 30 }, (_, index) => index + 1);
+---
+
+<FoundryLayout title='Dialog' description='Dialog shows content in a modal window over the page.'>
+	<ComponentHeading folder='dialog'>
+		<p>
+			A modal window over the page, for content that needs the visitor's full attention or more room than the page gives
+			it. It renders a native <code>dialog</code> element, so the browser moves focus in, keeps it there and returns it on
+			close.
+		</p>
+		<p>
+			Open it with <code>command='show-modal'</code> and <code>commandfor</code> on a Button, or call <code
+				>showModal()</code
+			> from a script. Escape, the close button and a click on the backdrop close it. The page behind it does not scroll.
+		</p>
+		<p>
+			Focus starts on the first focusable element, or on the one marked <code>autofocus</code>. Content scrolls under a
+			fixed header. A class passed to Dialog replaces any conflicting default, such as its width.
+		</p>
+	</ComponentHeading>
+
+	<div class='grid gap-4 md:grid-cols-2'>
+		<Specimen label='<Dialog id="example" title="Dialog title">'>
+			<Button variant='outline' command='show-modal' commandfor='dialog-example'>Open dialog</Button>
+			<Dialog id='dialog-example' title='Dialog title'>
+				<p class='p-3 md:p-5'>Content goes in the default slot, which has no padding of its own.</p>
+			</Dialog>
+		</Specimen>
+
+		<Specimen label='Long content'>
+			<Button variant='outline' command='show-modal' commandfor='dialog-long'>Open dialog</Button>
+			<Dialog id='dialog-long' title='Long content'>
+				<div class='flex flex-col gap-4 p-3 md:p-5'>
+					{longContentParagraphs.map((number) => <p>Paragraph {number} scrolls while the header stays in view.</p>)}
+				</div>
+			</Dialog>
+		</Specimen>
+
+		<Specimen label='<Button slot="header">'>
+			<Button variant='outline' command='show-modal' commandfor='dialog-header-action'>Open dialog</Button>
+			<Dialog id='dialog-header-action' title='Header action'>
+				<Button slot='header' href='/'>Foundry</Button>
+				<p class='p-3 md:p-5'>The header slot sits between the title and the close button.</p>
+			</Dialog>
+		</Specimen>
+
+		<Specimen label='<Dialog hideTitle> with a header slot and autofocus'>
+			<Button variant='outline' command='show-modal' commandfor='dialog-hidden-title'>Open dialog</Button>
+			<Dialog id='dialog-hidden-title' title='Find a component' hideTitle>
+				<input
+					slot='header'
+					class='min-h-11 min-w-0 flex-auto font-mono text-sm focus-visible:outline-none'
+					type='text'
+					aria-label='Component name'
+					placeholder='Component name'
+					autofocus
+				/>
+				<p class='p-3 md:p-5'>Screen readers still announce the title.</p>
+			</Dialog>
+		</Specimen>
+	</div>
+</FoundryLayout>
