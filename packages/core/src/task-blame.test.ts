@@ -1,5 +1,5 @@
 import { expect, spyOn, test } from "bun:test";
-import { column, label, project, relation, task, CoreError, type TaskAttribution } from "../index";
+import { column, comment, label, project, relation, task, CoreError, type TaskAttribution } from "../index";
 import { getDb } from "./db";
 import { withTestStore } from "./testing";
 import { attributeLines } from "./line-attribution";
@@ -184,6 +184,46 @@ test("a missing creation seeds edits with unknown provenance and ID ordering res
   });
 });
 
+test("label attribution needs recorded membership changes that add up to the current labels", () => {
+  withTestStore(() => {
+    const { entry } = seed();
+    label.create({ name: "bug" }, human);
+    label.create({ name: "docs" }, human);
+    task.label.add({ taskKey: entry.key, labelNames: ["bug"] }, agent);
+    const added = latest(entry.key);
+    expect(task.blame(entry.key).fields.labels.attribution?.id).toBe(added.id);
+    task.label.add({ taskKey: entry.key, labelNames: ["docs"] }, human);
+    getDb().query("DELETE FROM activity WHERE id = ?").run(latest(entry.key).id);
+    expect(task.blame(entry.key).fields.labels.attribution).toBeNull();
+    task.label.remove({ taskKey: entry.key, labelNames: ["docs"] }, human);
+    expect(task.blame(entry.key).fields.labels.attribution).toBeNull();
+  });
+});
+
+test("a create record without a label list leaves later membership changes unattributed", () => {
+  withTestStore(() => {
+    const { entry } = seed();
+    const creation = latest(entry.key);
+    label.create({ name: "bug" }, human);
+    task.label.add({ taskKey: entry.key, labelNames: ["bug"] }, agent);
+    const { labels, ...withoutLabels } = creation.changes!;
+    rewrite(creation.id, withoutLabels);
+    expect(task.blame(entry.key).fields.labels.attribution).toBeNull();
+  });
+});
+
+test("blame does not read comment events", () => {
+  withTestStore(() => {
+    const { entry } = seed();
+    const before = task.blame(entry.key);
+    comment.create({ taskKey: entry.key, text: "A comment" }, agent);
+    const commented = latest(entry.key);
+    expect(commented.action).toBe("comment_create");
+    getDb().query("UPDATE activity SET changes = ? WHERE id = ?").run("not stored JSON", commented.id);
+    expect(task.blame(entry.key)).toEqual(before);
+  });
+});
+
 test("deleted and reused keys select only the current task lifetime", () => {
   withTestStore(() => {
     const { app, entry } = seed();
@@ -231,6 +271,25 @@ test("small repeated-line inputs preserve a longest common subsequence", () => {
       expect(matches.every(([oldIndex, newIndex], index) => before[oldIndex!] === after[newIndex!] && (index === 0 || matches[index - 1]![0]! < oldIndex!))).toBe(true);
     }
   }
+});
+
+test("a heavily reordered edit past the search budget counts its unmatched lines as replaced", () => {
+  const lines = Array.from({ length: 28_000 }, (_, index) => `line ${index}`);
+  const owned = lines.map(() => original);
+  const reversed = attributeLines(lines, lines.toReversed(), owned, edited);
+  expect(reversed.every(owner => owner?.id === edited.id)).toBe(true);
+  const framed = ["first", ...lines.toReversed(), "last"];
+  const trimmed = attributeLines(["first", ...lines, "last"], framed, [original, ...owned, original], edited);
+  expect([trimmed[0]?.id, trimmed.at(-1)?.id]).toEqual([original.id, original.id]);
+  expect(trimmed.slice(1, -1).every(owner => owner?.id === edited.id)).toBe(true);
+});
+
+test("an edit changing thousands of lines stays within the search budget and keeps exact matches", () => {
+  const changedEvery = 10;
+  const before = Array.from({ length: 20_000 }, (_, index) => `line ${index}`);
+  const after = before.map((line, index) => index % changedEvery === 0 ? `changed ${index}` : line);
+  const result = attributeLines(before, after, before.map(() => original), edited);
+  expect(result.map(owner => owner?.id)).toEqual(after.map((_, index) => index % changedEvery === 0 ? edited.id : original.id));
 });
 
 test("near-cap text handles local edits, repeated lines and wholly changed descriptions", () => {

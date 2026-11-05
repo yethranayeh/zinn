@@ -64,6 +64,29 @@ test("task blame exposes fields, line provenance, full identity and the read-onl
   });
 });
 
+test("blame text renders priorities and relations through the same components as task view", async () => {
+  await withIsolatedZinnDir(async directory => {
+    const run = async (args: Array<string>) => {
+      const result = await runZinn(args, directory, first);
+      expect(result.code, result.stderr).toBe(0);
+      return result.stdout;
+    };
+    await run(["project", "create", "APP"]);
+    await run(["task", "create", "APP", "--title", "Blamed", "--priority", "high"]);
+    await run(["task", "create", "APP", "--title", "Archived dependency"]);
+    await run(["task", "relation", "create", "APP-1", "APP-2", "--type", "dependency"]);
+    await run(["task", "archive", "APP-2"]);
+    const relationRow = (await run(["task", "view", "APP-1"])).split("\n").find(line => line.includes("APP-2"))!;
+    const text = await run(["task", "blame", "APP-1"]);
+    const blamedRow = text.split("\n").find(line => line.includes("APP-2"))!;
+    expect(relationRow).toContain("Archived");
+    expect(blamedRow.startsWith(relationRow)).toBe(true);
+    const { relations } = resultSchemas.TaskBlame.parse(JSON.parse(await run(["task", "blame", "APP-1", "--json"])));
+    expect(blamedRow).toContain(relations[0]!.attribution!.id);
+    expect(text).toContain("High");
+  });
+});
+
 test("blame distinguishes absent provenance from absent actor identity and follows current key lifetimes", async () => {
   await withIsolatedZinnDir(async directory => {
     const run = async (args: string[]) => {

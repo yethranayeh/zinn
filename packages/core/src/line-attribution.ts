@@ -12,7 +12,14 @@ export function descriptionLines(text: string | null): Array<string> {
 }
 
 /**
- * Returns the middle split of a shortest edit path between the two line ranges.
+ * The search steps one edit may spend matching lines: roughly 0.1 seconds, and enough for about 2,500 replaced lines.
+ * Blame replays every stored edit on each read, so a heavily reordered description must not cost more.
+ */
+const MAX_SEARCH_STEPS = 16_000_000;
+
+/**
+ * Returns the middle split of a shortest edit path between the two line ranges,
+ * or null once the budget runs out.
  * Myers's linear-space search uses memory proportional to the line counts, not their product.
  */
 function middleSplit(
@@ -22,7 +29,8 @@ function middleSplit(
   endBefore: number,
   startAfter: number,
   endAfter: number,
-): [number, number] {
+  budget: { steps: number },
+): [number, number] | null {
   const oldLength = endBefore - startBefore;
   const newLength = endAfter - startAfter;
   const maxDistance = Math.ceil((oldLength + newLength) / 2);
@@ -37,7 +45,12 @@ function middleSplit(
   const oddDelta = delta % 2 !== 0;
 
   for (let distance = 0; distance <= maxDistance; distance++) {
+    if (budget.steps <= 0) {
+      return null;
+    }
+
     for (let diagonal = distance; diagonal >= -distance; diagonal -= 2) {
+      budget.steps--;
       const slot = offset + diagonal;
       const insertion =
         diagonal === -distance ||
@@ -48,6 +61,7 @@ function middleSplit(
       while (x < oldLength && y < newLength && before[startBefore + x] === after[startAfter + y]) {
         x++;
         y++;
+        budget.steps--;
       }
 
       forward[slot] = x;
@@ -65,6 +79,7 @@ function middleSplit(
     }
 
     for (let diagonal = -distance; diagonal <= distance; diagonal += 2) {
+      budget.steps--;
       const slot = offset + diagonal;
       const insertion =
         diagonal === -distance ||
@@ -79,6 +94,7 @@ function middleSplit(
       ) {
         x++;
         y++;
+        budget.steps--;
       }
 
       reverse[slot] = x;
@@ -101,6 +117,7 @@ function middleSplit(
 /**
  * Matches exact lines with Myers's algorithm.
  * When two moves are equally short, it takes the deletion first.
+ * Past the search budget, lines still unmatched count as replaced by this edit.
  */
 export function attributeLines(
   before: Array<string>,
@@ -110,6 +127,7 @@ export function attributeLines(
 ): Array<TaskAttribution | null> {
   const result: Array<TaskAttribution | null> = after.map(() => attribution);
   const pending: Array<[number, number, number, number]> = [[0, before.length, 0, after.length]];
+  const budget = { steps: MAX_SEARCH_STEPS };
 
   while (pending.length > 0) {
     let [startBefore, endBefore, startAfter, endAfter] = pending.pop()!;
@@ -129,7 +147,7 @@ export function attributeLines(
       result[--endAfter] = previous[--endBefore] ?? null;
     }
 
-    if (startBefore === endBefore || startAfter === endAfter) {
+    if (startBefore === endBefore || startAfter === endAfter || budget.steps <= 0) {
       continue;
     }
 
@@ -147,15 +165,13 @@ export function attributeLines(
       continue;
     }
 
-    const [splitBefore, splitAfter] = middleSplit(
-      before,
-      after,
-      startBefore,
-      endBefore,
-      startAfter,
-      endAfter,
-    );
+    const split = middleSplit(before, after, startBefore, endBefore, startAfter, endAfter, budget);
 
+    if (split === null) {
+      continue;
+    }
+
+    const [splitBefore, splitAfter] = split;
     pending.push(
       [splitBefore, endBefore, splitAfter, endAfter],
       [startBefore, splitBefore, startAfter, splitAfter],

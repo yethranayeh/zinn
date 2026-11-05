@@ -1,13 +1,22 @@
-import type { PresentedTaskBlame } from "../result-schemas.js";
+import type { PresentedRelation, PresentedTaskBlame } from "../result-schemas.js";
 
 import { formatActor } from "./activity-presentation.js";
-import { formatRelationLabel } from "./relation-presentation.js";
+import { columnNameCell } from "./column-presentation.js";
+import { formatRelationList } from "./relation-presentation.js";
+import { formatCell } from "./row-layout.js";
 import { formatSection } from "./section.js";
+import { formatLabelNames, taskPriorityCell } from "./task-presentation.js";
 import { formatLocalTime } from "./time.js";
 
 type Attribution = PresentedTaskBlame["fields"]["title"]["attribution"];
 
-export function formatTaskBlame(blame: PresentedTaskBlame) {
+export function formatTaskBlame(
+  blame: PresentedTaskBlame,
+  options: {
+    relations: Array<PresentedRelation>;
+    columnPlacement: { is_first: boolean; is_last: boolean };
+  },
+) {
   const events = new Map<string, NonNullable<Attribution>>();
   function reference(attribution: Attribution) {
     if (attribution === null) {
@@ -22,14 +31,23 @@ export function formatTaskBlame(blame: PresentedTaskBlame) {
   }
 
   const { fields } = blame;
+  const labelNames = fields.labels.value.map((label) => label.name);
   const content = [
     `${blame.task.key} (${blame.task.id})`,
     formatSection(
       "Fields",
       [
         field("Title", fields.title.value, fields.title.attribution),
-        field("Column", fields.column.value.name, fields.column.attribution),
-        field("Priority", fields.priority.value ?? "none", fields.priority.attribution),
+        field(
+          "Column",
+          formatCell(columnNameCell(fields.column.value.name, options.columnPlacement)),
+          fields.column.attribution,
+        ),
+        field(
+          "Priority",
+          formatCell(taskPriorityCell(fields.priority.value, true)),
+          fields.priority.attribution,
+        ),
         field(
           "Due",
           fields.due_at.value === null
@@ -39,7 +57,7 @@ export function formatTaskBlame(blame: PresentedTaskBlame) {
         ),
         field(
           "Labels",
-          fields.labels.value.map((label) => label.name).join(", ") || "none",
+          labelNames.length === 0 ? "none" : formatLabelNames(labelNames),
           fields.labels.attribution,
         ),
         field("Parent", fields.parent.value?.key ?? "none", fields.parent.attribution),
@@ -47,13 +65,18 @@ export function formatTaskBlame(blame: PresentedTaskBlame) {
     ),
   ];
 
-  if (blame.relations.length > 0) {
+  if (options.relations.length > 0) {
+    const relationAttributions = new Map(
+      blame.relations.map((entry) => [entry.id, entry.attribution]),
+    );
     content.push(
       formatSection(
         "Relations",
-        blame.relations
-          .map((entry) => field(formatRelationLabel(entry), entry.task.key, entry.attribution))
-          .join("\n"),
+        formatRelationList(options.relations, {
+          trailingCell: (entry) => ({
+            text: `[${reference(relationAttributions.get(entry.id) ?? null)}]`,
+          }),
+        }),
       ),
     );
   }

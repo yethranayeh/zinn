@@ -6,51 +6,42 @@ import * as dbColumn from "../db/column.js";
 import * as dbTask from "../db/task.js";
 import * as dbTaskLabel from "../db/task-label.js";
 import * as dbRelation from "../db/relation.js";
+import {
+  getChangedLabelNames,
+  getRecordedLabelNames,
+  getRecordedNewValue,
+  getRecordedNullableText,
+  isRecord,
+} from "./recorded-changes.js";
 import { attachTaskKey, getTaskByKey } from "./shared.js";
 import { attributeLines, descriptionLines } from "../line-attribution.js";
+
+/** The task events blame replays. Comment events can hold large text it would parse and ignore. */
+const REPLAYED_ACTIONS: Array<Activity["action"]> = [
+  "create",
+  "edit",
+  "move",
+  "relation_create",
+  "relation_delete",
+];
 
 function toAttribution(event: Activity): TaskAttribution {
   const { entity_type, entity_id, action, changes, ...attribution } = event;
   return attribution;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function isText(value: unknown): value is string | null {
-  return value === null || typeof value === "string";
-}
-
-/** The label names a create action records, recognized only as an array of names. */
-function isRecordedLabelNames(value: unknown): value is Array<string> {
-  return Array.isArray(value) && value.every((name) => typeof name === "string");
-}
-
-/** The label delta an edit action records, name arrays for added and removed and at least one entry. */
-function isRecordedLabelDelta(value: unknown): boolean {
-  if (!isRecord(value)) {
-    return false;
-  }
-  const added = value.added;
-  const removed = value.removed;
-  return (
-    isRecordedLabelNames(added) &&
-    isRecordedLabelNames(removed) &&
-    (added.length > 0 || removed.length > 0)
-  );
-}
-
 /** Who last set each field, the label set and the parent, plus per-line description provenance. */
 export function blameTask(taskKey: string): TaskBlame {
   return readTransaction(() => {
     const current = getTaskByKey(taskKey);
-    const history = dbActivity.getAllByEntity("task", current.id);
+    const history = dbActivity.getAllByEntity("task", current.id, REPLAYED_ACTIONS);
     const labels = dbTaskLabel.getAllByTaskId(current.id).map(({ id, name }) => ({ id, name }));
     const column = dbColumn.getById(current.column_id)!;
     const relations = dbRelation.getAllByTaskId(current.id);
     const setters = new Map<string, { value: unknown; attribution: TaskAttribution | null }>();
     let labelAttribution: TaskAttribution | null = null;
+    // Label names can be renamed, so the count is what recorded changes can check against the current set.
+    let recordedLabelCount: number | null = null;
     let parentSetter: { value: unknown; attribution: TaskAttribution | null } | undefined;
     const relationEvents = new Map<string, Activity>();
     let description: string | null | undefined;
@@ -59,63 +50,7 @@ export function blameTask(taskKey: string): TaskBlame {
     for (const event of history) {
       const changes = isRecord(event.changes) ? event.changes : null;
       const attribution = toAttribution(event);
-      const isCreation = event.action === "create";
-      if (isCreation || event.action === "edit" || event.action === "move") {
-        for (const field of ["title", "column", "priority", "due_at"] as const) {
-          if (isCreation || (changes !== null && Object.hasOwn(changes, field))) {
-            const snapshot = changes?.[field];
-            const value = isCreation
-              ? snapshot
-              : Array.isArray(snapshot) && snapshot.length === 2
-                ? snapshot[1]
-                : undefined;
-            const comparable =
-              field === "column" ? (isRecord(value) ? value.id : undefined) : value;
-            setters.set(field, {
-              value: comparable,
-              attribution: comparable === undefined ? null : attribution,
-            });
-          }
-        }
-        if (isCreation || (changes !== null && Object.hasOwn(changes, "labels"))) {
-          const snapshot = changes?.labels;
-          const valid = isCreation
-            ? isRecordedLabelNames(snapshot)
-            : isRecordedLabelDelta(snapshot);
-          labelAttribution = valid ? attribution : null;
-        }
-        if (isCreation || (changes !== null && Object.hasOwn(changes, "description"))) {
-          const snapshot = changes?.description;
-          if (isCreation) {
-            description = isText(snapshot) ? snapshot : undefined;
-            lineAttributions = descriptionLines(description ?? null).map(() => attribution);
-          } else if (
-            Array.isArray(snapshot) &&
-            snapshot.length === 2 &&
-            isText(snapshot[0]) &&
-            isText(snapshot[1])
-          ) {
-            const [oldText, newText] = snapshot;
-            const oldLines = descriptionLines(oldText);
-            if (description === undefined || description !== oldText) {
-              lineAttributions = oldLines.map(() => null);
-            }
-            lineAttributions = attributeLines(
-              oldLines,
-              descriptionLines(newText),
-              lineAttributions,
-              attribution,
-            );
-            description = newText;
-          } else {
-            description = undefined;
-            lineAttributions = [];
-          }
-        }
-      }
-      if (isCreation) {
-        parentSetter = { value: null, attribution };
-      }
+
       if (event.action === "relation_create" || event.action === "relation_delete") {
         const sourceChange = changes?.source;
         const targetChange = changes?.target;
@@ -133,6 +68,73 @@ export function blameTask(taskKey: string): TaskBlame {
         } else {
           parentSetter = undefined;
         }
+        continue;
+      }
+
+      const isCreation = event.action === "create";
+      const recordsField = (field: string) =>
+        isCreation || (changes !== null && Object.hasOwn(changes, field));
+
+      for (const field of ["title", "column", "priority", "due_at"] as const) {
+        if (recordsField(field)) {
+          const value = isCreation ? changes?.[field] : getRecordedNewValue(changes?.[field]);
+          const comparable = field === "column" ? (isRecord(value) ? value.id : undefined) : value;
+          setters.set(field, {
+            value: comparable,
+            attribution: comparable === undefined ? null : attribution,
+          });
+        }
+      }
+
+      if (recordsField("labels")) {
+        const snapshot = changes?.labels;
+        if (isCreation) {
+          recordedLabelCount = Array.isArray(snapshot)
+            ? getRecordedLabelNames(snapshot).length
+            : null;
+        } else {
+          const addedCount = getChangedLabelNames(snapshot, "added").length;
+          const removedCount = getChangedLabelNames(snapshot, "removed").length;
+          const isRecognizedChange = addedCount + removedCount > 0;
+          recordedLabelCount =
+            recordedLabelCount !== null && isRecognizedChange
+              ? recordedLabelCount + addedCount - removedCount
+              : null;
+        }
+        labelAttribution = recordedLabelCount === null ? null : attribution;
+      }
+
+      if (recordsField("description")) {
+        const snapshot = changes?.description;
+        const versions =
+          Array.isArray(snapshot) && snapshot.length === 2
+            ? snapshot.flatMap((version) => getRecordedNullableText(version))
+            : [];
+
+        if (isCreation) {
+          [description] = getRecordedNullableText(snapshot);
+          lineAttributions = descriptionLines(description ?? null).map(() => attribution);
+        } else if (versions.length === 2) {
+          const [oldText, newText] = versions as [string | null, string | null];
+          const oldLines = descriptionLines(oldText);
+          if (description === undefined || description !== oldText) {
+            lineAttributions = oldLines.map(() => null);
+          }
+          lineAttributions = attributeLines(
+            oldLines,
+            descriptionLines(newText),
+            lineAttributions,
+            attribution,
+          );
+          description = newText;
+        } else {
+          description = undefined;
+          lineAttributions = [];
+        }
+      }
+
+      if (isCreation) {
+        parentSetter = { value: null, attribution };
       }
     }
 
@@ -140,11 +142,16 @@ export function blameTask(taskKey: string): TaskBlame {
       const setter = setters.get(field);
       return setter !== undefined && setter.value === value ? setter.attribution : null;
     }
+
+    const otherTaskId = (entry: (typeof relations)[number]) =>
+      entry.source_task_id === current.id ? entry.target_task_id : entry.source_task_id;
+    const otherKeys = new Map(
+      dbTask
+        .getAllByIds(relations.map(otherTaskId))
+        .map((row) => [row.id, attachTaskKey(row, row.project_key).key]),
+    );
     const blamedRelations = relations.map((entry) => {
-      const outgoing = entry.source_task_id === current.id;
-      const other = attachTaskKey(
-        dbTask.getById(outgoing ? entry.target_task_id : entry.source_task_id)!,
-      );
+      const otherId = otherTaskId(entry);
       const event = relationEvents.get(
         JSON.stringify([entry.source_task_id, entry.target_task_id, entry.relation_type]),
       );
@@ -159,24 +166,21 @@ export function blameTask(taskKey: string): TaskBlame {
         direction:
           entry.relation_type === "related"
             ? null
-            : outgoing
+            : entry.source_task_id === current.id
               ? ("outgoing" as const)
               : ("incoming" as const),
-        task: { id: other.id, key: other.key },
+        task: { id: otherId, key: otherKeys.get(otherId)! },
         attribution: matchesCreation ? toAttribution(event) : null,
       };
     });
     const parent = blamedRelations.find(
       (entry) => entry.type === "subtask" && entry.direction === "outgoing",
     );
+    // The current link's own event names who set a parent, and the latest setter names who cleared one.
     const parentAttribution =
-      parent === undefined
-        ? parentSetter?.value === null
-          ? parentSetter.attribution
-          : null
-        : parentSetter?.value === parent.task.id
-          ? parent.attribution
-          : null;
+      parentSetter?.value === (parent?.task.id ?? null)
+        ? (parent ?? parentSetter).attribution
+        : null;
     const currentLines = descriptionLines(current.description);
     return {
       task: { id: current.id, key: current.key },
@@ -191,7 +195,10 @@ export function blameTask(taskKey: string): TaskBlame {
           attribution: attributionFor("priority", current.priority),
         },
         due_at: { value: current.due_at, attribution: attributionFor("due_at", current.due_at) },
-        labels: { value: labels, attribution: labelAttribution },
+        labels: {
+          value: labels,
+          attribution: recordedLabelCount === labels.length ? labelAttribution : null,
+        },
         parent: { value: parent?.task ?? null, attribution: parentAttribution },
       },
       relations: blamedRelations,

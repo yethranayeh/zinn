@@ -71,7 +71,7 @@ import { formatCommentList, presentComments } from "../presentation/comment-pres
 import { formatSection } from "../presentation/section.js";
 import { formatActivityList, presentActivities } from "../presentation/activity-presentation.js";
 import { formatTaskBlame } from "../presentation/task-blame-presentation.js";
-import { createColumnBoard } from "../presentation/column-presentation.js";
+import { columnPlacement, createColumnBoard } from "../presentation/column-presentation.js";
 import {
   formatTaskList,
   formatTaskTimestamps,
@@ -734,7 +734,14 @@ Examples:
         strict: true,
       });
       validatePositionals(positionals, taskInputs.blame.forms[0]);
-      output(task.blame(positionals[0]!), formatTaskBlame);
+      output(task.blame(positionals[0]!), (blame) => {
+        const taskMatch = task.getByKey(blame.task.key);
+        const board = createColumnBoard();
+        return formatTaskBlame(blame, {
+          relations: presentRelations(taskMatch, board),
+          columnPlacement: columnPlacement(board(taskMatch.project_id), taskMatch.column_id),
+        });
+      });
     },
     help: `${generateCommandUsage("task blame", taskInputs.blame)}
 

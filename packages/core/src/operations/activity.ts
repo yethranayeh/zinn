@@ -15,6 +15,13 @@ import { parseTaskKey, validateTaskInput } from "../schemas/task.js";
 import { parseClientChain } from "../schemas/actor.js";
 import { timestampSchema } from "../schemas/timestamp.js";
 import { standardizeName, standardizeProjectKey } from "../lib.js";
+import {
+  getChangedLabelNames,
+  getRecordedLabelNames,
+  getRecordedNewValue,
+  getRecordedNullableText,
+  isRecord,
+} from "./recorded-changes.js";
 import { attachTaskKey, findTaskByExactKey, requireSingleIdMatch } from "./shared.js";
 import { getDb } from "../db.js";
 import * as dbActivity from "../db/activity.js";
@@ -224,19 +231,6 @@ function resolveTaskHistory({ taskKey, taskId, showDeleted }: ActivityTaskSelect
 
 type RecordedValues = Partial<Record<ActivityChangedField, Array<string | number | null>>>;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-/** The new value in a `[before, after]` change. */
-function getRecordedNewValue(value: unknown): unknown {
-  if (!Array.isArray(value) || value.length !== 2) {
-    return undefined;
-  }
-
-  return value[1];
-}
-
 function getRecordedColumnNames(value: unknown): Array<string> {
   if (!isRecord(value) || typeof value.name !== "string") {
     return [];
@@ -245,33 +239,9 @@ function getRecordedColumnNames(value: unknown): Array<string> {
   return [value.name];
 }
 
-function getRecordedNullableText(value: unknown): Array<string | null> {
-  if (value !== null && typeof value !== "string") {
-    return [];
-  }
-
-  return [value];
-}
-
 function getRecordedDeadline(value: unknown): Array<number | null> {
   const parsed = timestampSchema.nullable().safeParse(value);
   return parsed.success ? [parsed.data] : [];
-}
-
-function getRecordedLabelNames(value: unknown): Array<string> {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.filter((name): name is string => typeof name === "string");
-}
-
-function getChangedLabelNames(value: unknown, change: "added" | "removed"): Array<string> {
-  if (!isRecord(value)) {
-    return [];
-  }
-
-  return getRecordedLabelNames(value[change]);
 }
 
 /**

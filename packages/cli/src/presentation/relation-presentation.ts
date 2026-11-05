@@ -1,6 +1,7 @@
 import type { TaskWithKey } from "@zinn-dev/core";
 import type { PresentedRelation, PresentedRelationChange } from "../result-schemas.js";
 import type { ColumnBoard } from "./column-presentation.js";
+import type { RowCell } from "./row-layout.js";
 
 import { relation } from "@zinn-dev/core";
 
@@ -61,7 +62,7 @@ export function presentRelations(
   });
 }
 
-export function formatRelationLabel(entry: Pick<PresentedRelation, "type" | "direction">) {
+function formatRelationLabel(entry: Pick<PresentedRelation, "type" | "direction">) {
   const isOutgoing = entry.direction === "outgoing";
 
   let label = entry.type;
@@ -87,7 +88,10 @@ export function formatRelationLabel(entry: Pick<PresentedRelation, "type" | "dir
   return label;
 }
 
-export function formatRelationList(relations: Array<PresentedRelation>) {
+export function formatRelationList(
+  relations: Array<PresentedRelation>,
+  options: { trailingCell?: (entry: PresentedRelation) => RowCell } = {},
+) {
   return formatRows(
     relations.map((entry) => {
       const label = formatRelationLabel(entry);
@@ -98,6 +102,7 @@ export function formatRelationList(relations: Array<PresentedRelation>) {
         { text: entry.task.key },
         columnNameCell(entry.task.column, entry.task),
         { text: `${entry.task.title}${archived}` },
+        ...(options.trailingCell === undefined ? [] : [options.trailingCell(entry)]),
       ];
     }),
   );

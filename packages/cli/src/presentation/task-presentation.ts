@@ -13,7 +13,7 @@ import { formatLocalTime } from "./time.js";
 const EMPTY_CELL_MARKER = "-";
 const LABEL_NAME_SEPARATOR = ", ";
 
-function taskPriorityCell(
+export function taskPriorityCell(
   priority: PresentedTask["priority"],
   showsFullPriority: boolean,
 ): RowCell {
@@ -33,7 +33,21 @@ function getLabelColorsByName() {
   return new Map(label.getAll().map((labelMatch) => [labelMatch.name, labelMatch.color]));
 }
 
-export function presentTask(taskMatch: TaskWithKey, board: ColumnBoard = createColumnBoard()): PresentedTask {
+function formatTaskLabelNames(labelNames: Array<string>, labelColorsByName: Map<string, string>) {
+  return labelNames
+    .map((labelName) => formatCell(labelNameCell(labelName, labelColorsByName.get(labelName)!)))
+    .join(LABEL_NAME_SEPARATOR);
+}
+
+/** A task's label names on their own, colored as in a task row. */
+export function formatLabelNames(labelNames: Array<string>) {
+  return formatTaskLabelNames(labelNames, getLabelColorsByName());
+}
+
+export function presentTask(
+  taskMatch: TaskWithKey,
+  board: ColumnBoard = createColumnBoard(),
+): PresentedTask {
   const labels = task.label.getAll(taskMatch.key);
   const projectColumns = board(taskMatch.project_id);
   const columnMatch = projectColumns.find((boardColumn) => boardColumn.id === taskMatch.column_id)!;
@@ -71,9 +85,7 @@ export function formatTaskList(
         : [];
       const hasLabels = presentedTask.labels.length > 0;
       // The last cell is never padded, so the color codes in its separator and label names do not affect column widths.
-      const labelNames = presentedTask.labels
-        .map((labelName) => formatCell(labelNameCell(labelName, labelColorsByName.get(labelName)!)))
-        .join(LABEL_NAME_SEPARATOR);
+      const labelNames = formatTaskLabelNames(presentedTask.labels, labelColorsByName);
       const labels = hasLabels ? `${formatCellSeparator()}${labelNames}` : "";
       const deadline =
         presentedTask.due_at == null

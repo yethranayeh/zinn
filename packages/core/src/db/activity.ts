@@ -66,16 +66,27 @@ export function create(props: Omit<Activity, "id">): Activity {
   return { id, ...props };
 }
 
-export function getAllByEntity(entityType: ActivityEntityType, entityId: string): Array<Activity> {
+export function getAllByEntity(
+  entityType: ActivityEntityType,
+  entityId: string,
+  actions?: Array<Activity["action"]>,
+): Array<Activity> {
   const db = getDb();
+  const bindings: Record<string, string> = { $entityType: entityType, $entityId: entityId };
+  let actionFilter = "";
+
+  if (actions !== undefined) {
+    actionFilter = "AND action IN (SELECT value FROM json_each($actions))";
+    bindings.$actions = JSON.stringify(actions);
+  }
 
   return db
-    .query<StoredActivity, Bind<{ entityType: ActivityEntityType; entityId: string }>>(
+    .query<StoredActivity, typeof bindings>(
       `SELECT * FROM ${DB_TABLE.activity}
-    WHERE entity_type = $entityType AND entity_id = $entityId
+    WHERE entity_type = $entityType AND entity_id = $entityId ${actionFilter}
     ORDER BY id ASC`,
     )
-    .all({ $entityType: entityType, $entityId: entityId })
+    .all(bindings)
     .map(parseActivity);
 }
 
