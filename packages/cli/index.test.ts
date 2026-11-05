@@ -131,7 +131,10 @@ test("root help supports -h and --help and lists commands", async () => {
     expect(longHelp.stdout).toContain("Usage: zinn <command>");
     expect(longHelp.stdout).toContain(`project column {${Object.keys(routes.project.column).join("|")}}`);
     expect(longHelp.stdout).toContain("project {create|list|view|edit|delete}");
-    expect(longHelp.stdout).toContain("task {create|list|search|view|edit|move|order|archive|unarchive|delete}");
+    const taskCommands = parseRoutes(routes)
+      .filter(route => route.command.startsWith("task ") && route.command.split(" ").length === 2)
+      .map(route => route.command.split(" ")[1]);
+    expect(longHelp.stdout).toContain(`task {${taskCommands.join("|")}}`);
     expect(longHelp.stdout).toContain("task comment {create|list|view|edit|delete}");
     for (const command of Object.keys(routes)) {
       expect(longHelp.stdout).toContain(command);
@@ -426,6 +429,7 @@ const commandWords: Record<string, CommandWords> = {
   "task list": { words: ["SHOP"], required: 0, repeatableFlags: ["label"] },
   "task search": { words: ["refine", "SHOP"], required: 1, repeatableFlags: ["label"] },
   "task view": { words: ["SHOP-1"], required: 1 },
+  "task blame": { words: ["SHOP-1"], required: 1 },
   "task edit": { words: ["SHOP-1"], required: 1, repeatableFlags: ["add-label", "remove-label"] },
   "task move": { words: ["SHOP-1", "Done"], required: 2, repeats: true },
   "task order": { words: ["SHOP-1", "top"], required: 2 },

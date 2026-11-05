@@ -88,6 +88,16 @@ function expectEntityIds(schema: ResultSchemaName, value: any, rows: ReturnType<
     return;
   }
 
+  if (schema === "TaskBlame") {
+    const stored = rows.tasks.find(task => task.id === value.task.id)!;
+    expect(value.task).toEqual({ id: stored.id, key: stored.key });
+    expect(value.fields.title.value).toBe(stored.title);
+    expect(value.fields.column.value.id).toBe(stored.column_id);
+    for (const entry of value.relations) {
+      expect(rows.relations.some(relation => relation.id === entry.id)).toBe(true);
+    }
+    return;
+  }
   expect(Object.keys(value)[0]).toBe("id");
   switch (schema) {
     case "Task":
@@ -237,6 +247,7 @@ const fixtures: Record<string, Fixture[]> = {
     { schema: "TaskDetailHistory", args: ["APP-1", "--history"], check: (value) => expect(value.activity.length).toBeGreaterThan(0) },
     { schema: "TaskDetailHistory", args: ["APP-1", "--history"], prepare: (dir) => editFixture(dir, "DELETE FROM activity"), check: (value) => expect(value.activity).toEqual([]) },
   ],
+  "task blame": [{ schema: "TaskBlame", args: ["APP-1"] }],
   "task edit": [
     { schema: "TaskChange", args: ["APP-1", "--title", "Edited"], check: (v) => expect(v.changed).toBe(true) },
     { schema: "TaskChange", args: ["APP-1", "--title", "Alpha"], check: (v) => expect(v.changed).toBe(false) },

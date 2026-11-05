@@ -61,30 +61,36 @@ export function presentRelations(
   });
 }
 
+export function formatRelationLabel(entry: Pick<PresentedRelation, "type" | "direction">) {
+  const isOutgoing = entry.direction === "outgoing";
+
+  let label = entry.type;
+  switch (entry.type) {
+    case "related": {
+      label = "Related to";
+      break;
+    }
+    case "dependency": {
+      label = isOutgoing ? "Depends on" : "Depended on by";
+      break;
+    }
+    case "subtask": {
+      label = isOutgoing ? "Parent" : "Subtask";
+      break;
+    }
+    case "duplicate": {
+      label = isOutgoing ? "Duplicate of" : "Duplicated by";
+      break;
+    }
+  }
+
+  return label;
+}
+
 export function formatRelationList(relations: Array<PresentedRelation>) {
   return formatRows(
     relations.map((entry) => {
-      const isOutgoing = entry.direction === "outgoing";
-
-      let label = entry.type;
-      switch (entry.type) {
-        case "related": {
-          label = "Related to";
-          break;
-        }
-        case "dependency": {
-          label = isOutgoing ? "Depends on" : "Depended on by";
-          break;
-        }
-        case "subtask": {
-          label = isOutgoing ? "Parent" : "Subtask";
-          break;
-        }
-        case "duplicate": {
-          label = isOutgoing ? "Duplicate of" : "Duplicated by";
-          break;
-        }
-      }
+      const label = formatRelationLabel(entry);
 
       const archived = entry.task.status === "Archived" ? `${formatCellSeparator()}Archived` : "";
       return [

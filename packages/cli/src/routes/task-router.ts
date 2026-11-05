@@ -70,6 +70,7 @@ import { formatRelationList, presentRelations } from "../presentation/relation-p
 import { formatCommentList, presentComments } from "../presentation/comment-presentation.js";
 import { formatSection } from "../presentation/section.js";
 import { formatActivityList, presentActivities } from "../presentation/activity-presentation.js";
+import { formatTaskBlame } from "../presentation/task-blame-presentation.js";
 import { createColumnBoard } from "../presentation/column-presentation.js";
 import {
   formatTaskList,
@@ -248,6 +249,11 @@ const taskInputs = {
         positionals: [taskKeyPositional],
       },
     ],
+    constraints: [],
+  },
+  blame: {
+    options: {},
+    forms: [{ id: "default", positionals: [taskKeyPositional] }],
     constraints: [],
   },
   edit: {
@@ -713,6 +719,34 @@ Without --history, JSON omits activity.
 Examples:
   zinn task view MDR-1
   zinn task view MDR-1 --history`,
+  },
+  blame: {
+    summary: "Show the recorded authors of a task's current fields and description lines.",
+    effects: { domain: "read", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: taskInputs.blame,
+    results: [jsonResult("TaskBlame")],
+    run: (args) => {
+      const { positionals } = parseArgs({
+        args,
+        options: taskInputs.blame.options,
+        allowPositionals: true,
+        strict: true,
+      });
+      validatePositionals(positionals, taskInputs.blame.forms[0]);
+      output(task.blame(positionals[0]!), formatTaskBlame);
+    },
+    help: `${generateCommandUsage("task blame", taskInputs.blame)}
+
+Show the recorded authors of a task's current fields, label membership, parent, relations and description lines.
+Active and archived tasks are readable. A reused key selects its current task only.
+Unchanged description lines keep their attribution through exact-line comparisons, including whitespace.
+A terminal newline does not add a line or change its attribution. Missing history is unrecorded.
+Recorded identities are kept as stored. Use activity view <activity-id> to inspect a recorded event.
+With --json, fields contain value and nullable attribution, relations contain their attribution,
+and description contains numbered text lines with nullable attribution.
+
+Example: zinn task blame MDR-1`,
   },
   edit: {
     summary: "Edit a task's title, description, priority, deadline, or label attachments.",

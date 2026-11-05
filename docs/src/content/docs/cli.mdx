@@ -15,6 +15,7 @@ Use this page for command behavior, shared input rules, and practical examples. 
   - [Changing tasks in bulk](#changing-tasks-in-bulk)
 - [Projects and columns](#start-a-project)
 - [Tasks](#create-and-read-tasks)
+  - [Task blame](#task-blame)
   - [Search tasks](#search-tasks)
   - [Edit tasks](#edit-tasks)
   - [Move and order tasks](#move-and-order-tasks)
@@ -203,7 +204,7 @@ Deletion asks for confirmation. Use `--yes` to skip the prompt, including with `
 
 New tasks enter the first column unless `--column` flag specifies a different column. A project may have no columns. Add one with `project column create` before creating tasks.
 
-`zinn project delete MDR` asks for confirmation, then permanently deletes the project and all of its columns and tasks. `--yes` skips confirmation when the project key is **typed**. With an _omitted_ key and [defaultProject](/docs/settings), it always asks: `--yes` is ignored with a warning, and without a terminal the command refuses with exit code 1. With `--json`, type the key and pass `--yes` (see [Confirmations](/docs/scripting#confirmations-in-scripts)).
+`zinn project delete MDR` asks for confirmation, then permanently deletes the project and all of its columns and tasks. `--yes` skips confirmation when the project key is **typed**. With an _omitted_ key and [defaultProject](/docs/settings), it always asks: `--yes` is ignored with a warning, and without a terminal the command refuses with exit code 1. With `--json`, type the key and pass `--yes` (see [Confirmations](/docs/scripting#confirmations-in-scripts)). Deleting a project releases its key for a future project. See [Task key reuse](#task-key-reuse).
 
 ## Create and read tasks
 
@@ -265,6 +266,71 @@ If a project is deleted and recreated with the same key, `task view --history` s
 Repeat `--label <name>` to require every specified label. Matching ignores case.
 
 Use `--column <name>` to filter by an exact column name, ignoring case, within one project or across projects. Column, label, and archive filters apply together. No matches is a successful empty result (`[]` with `--json`).
+
+## Task blame
+
+```sh title="Find the recorded authors of current task content"
+zinn task blame MDR-1
+zinn task blame MDR-1 --json
+```
+
+`task blame <task-key>` attributes the current title, column, priority, deadline, label membership, parent, relations and description lines to recorded activity. It reads active and archived tasks. A reused key selects its current task lifetime. Unknown and deleted keys produce the ordinary missing-task error.
+
+Creation records can supply the initial attribution, including unset values. Later edits, moves and membership changes replace it. Labels are one collection, attributed to the latest attachment or removal, including removal when a label is deleted. Column and label renames preserve membership attribution while returning the current names. Parent assignment and removal follow outgoing `subtask` relation events. Each current relation carries its own creation attribution, including incoming links and the parent link.
+
+Description comparison matches whole lines exactly, including whitespace. Unchanged lines carry their attribution, inserted or replaced lines belong to the introducing edit, and deleted lines disappear. Blank lines are preserved. A terminal newline ends the preceding line without adding another line, and changing only that newline preserves attribution. Null and empty descriptions have no lines. Matching keeps the shared lines at the start and the end in place, then matches the longest sequence of remaining lines that both versions share in the same order. When a comparison could be read more than one way, it treats a line as removed before treating it as added.
+
+Attribution is `null` when the required history is absent or unrecognized. Text calls it `unrecorded`. A scalar's latest recorded new value must agree with its current value. Description edits must join the previous recorded version before they can carry its attribution. A gap starts with unattributed old lines and attributes only inserted lines to the next edit. A later description record without both the old and new text discards the carried line attribution, so later edits cannot inherit it. If the final recorded description differs from the current text, all current lines are unattributed.
+
+Recorded events retain the stored actor name, kind and identity fields, with `null` for absent metadata. Missing actor identity is separate from missing event attribution. Event IDs open with `zinn activity view <activity-id>`. Blame reads task content and history without recording activity.
+
+### Blame JSON
+
+`--json` returns the following structure. `Attribution` contains only the listed recorded event fields, without a changes payload. Timestamps are integer Unix epoch milliseconds. Labels use the existing label name order. Relations use creation time ascending, then relation ID ascending.
+
+```ts title="Task blame result shape"
+type Attribution = {
+	id: string;
+	created_at: number;
+	actor_name: string | null;
+	actor_email: string | null;
+	actor_kind: string;
+	actor_source: string | null;
+	actor_session_id: string | null;
+	actor_thread_id: string | null;
+	actor_agent: string | null;
+	actor_model: string | null;
+	actor_effort: string | null;
+	actor_client: string | null;
+};
+type Identity = { id: string; key: string };
+type Blamed<T> = { value: T; attribution: Attribution | null };
+type TaskBlame = {
+	task: Identity;
+	fields: {
+		title: Blamed<string>;
+		column: Blamed<{ id: string; name: string }>;
+		priority: Blamed<string | null>;
+		due_at: Blamed<number | null>;
+		labels: Blamed<Array<{ id: string; name: string }>>;
+		parent: Blamed<Identity | null>;
+	};
+	relations: Array<{
+		id: string;
+		type: string;
+		direction: "outgoing" | "incoming" | null;
+		task: Identity;
+		attribution: Attribution | null;
+	}>;
+	description: Array<{
+		line: number;
+		text: string;
+		attribution: Attribution | null;
+	}>;
+};
+```
+
+`direction` is relative to the inspected task and is `null` for symmetric `related` links. Description line numbers start at one. See also the [core API](/docs/core#task-blame).
 
 ## Search tasks
 
@@ -481,7 +547,9 @@ Archive or unarchive multiple tasks by giving several keys. Unarchived tasks lan
 
 Delete tasks permanently with `zinn task delete MDR-1 MDR-2`. Active and archived tasks from any project can be deleted together. It asks for one confirmation before performing the action, unless `--yes` is used (see [Confirmations](/docs/scripting#confirmations-in-scripts)). See [Changing tasks in bulk](#changing-tasks-in-bulk) for validation and JSON results.
 
-Deleting a task does not make its number available again within that project. Deleting and recreating the project starts its task numbering again at 1.
+### Task key reuse
+
+Deleting a task does not make its number available again within that project. Deleting a project releases its key: a project created later with the same key starts task numbering again at 1, so the same task key can name a different task over time. The earlier task and its activity remain in history under their own IDs.
 
 ## Task priority
 

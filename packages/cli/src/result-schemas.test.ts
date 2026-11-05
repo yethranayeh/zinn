@@ -170,3 +170,36 @@ test("stored vocabularies accept unknown strings while input enums stay closed",
     expect(output.safeParse(1).success).toBe(false);
   }
 });
+
+test("blame requires nullable event projections and closes every nested result object", () => {
+  const attribution = {
+    id: "event", created_at: 0, actor_name: null, actor_email: null, actor_kind: "agent",
+    actor_source: null, actor_session_id: null, actor_thread_id: null, actor_agent: null,
+    actor_model: null, actor_effort: null, actor_client: null,
+  };
+  const blamed = <T>(value: T) => ({ value, attribution });
+  const result = {
+    task: { id: "task", key: "APP-1" },
+    fields: {
+      title: blamed("Title"), column: blamed({ id: "column", name: "Backlog" }),
+      priority: blamed(null), due_at: blamed(null), labels: blamed([{ id: "label", name: "chosen" }]),
+      parent: blamed(null),
+    },
+    relations: [{ id: "relation", type: "related", direction: null, task: { id: "other", key: "APP-2" }, attribution }],
+    description: [{ line: 1, text: "", attribution }],
+  };
+  const validate = ajv.getSchema("results#/definitions/TaskBlame")!;
+  expect(validate(result)).toBe(true);
+  expect(validate({ ...result, description: [{ line: 1, text: "", attribution: null }] })).toBe(true);
+  for (const field of Object.keys(attribution)) {
+    const incomplete = { ...attribution } as Record<string, unknown>;
+    delete incomplete[field];
+    expect(validate({ ...result, description: [{ line: 1, text: "", attribution: incomplete }] })).toBe(false);
+  }
+  for (const attribution of [{ ...result.description[0]!.attribution, changes: {} }, undefined]) {
+    expect(validate({ ...result, description: [{ line: 1, text: "", attribution }] })).toBe(false);
+  }
+  expect(validate({ ...result, fields: { ...result.fields, title: { value: "Title" } } })).toBe(false);
+  expect(validate({ ...result, task: { ...result.task, title: "extra" } })).toBe(false);
+  expect(validate({ ...result, description: [{ line: 0, text: "", attribution: null }] })).toBe(false);
+});

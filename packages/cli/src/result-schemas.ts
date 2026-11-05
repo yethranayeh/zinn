@@ -137,6 +137,42 @@ export const actorSchema = activitySchema.pick({
   actor_client: true,
 });
 
+export const taskAttributionSchema = actorSchema.extend({
+  id: activitySchema.shape.id,
+  created_at: timestamp,
+});
+const blameTaskIdentity = taskSchema.pick({ id: true, key: true });
+function blamedValue<S extends z.ZodType>(value: S) {
+  return z.strictObject({ value, attribution: taskAttributionSchema.nullable() });
+}
+export const taskBlameSchema = z.strictObject({
+  task: blameTaskIdentity,
+  fields: z.strictObject({
+    title: blamedValue(z.string()),
+    column: blamedValue(z.strictObject({ id: z.string(), name: z.string() })),
+    priority: blamedValue(taskSchema.shape.priority),
+    due_at: blamedValue(taskSchema.shape.due_at),
+    labels: blamedValue(z.array(z.strictObject({ id: z.string(), name: z.string() }))),
+    parent: blamedValue(blameTaskIdentity.nullable()),
+  }),
+  relations: z.array(
+    z.strictObject({
+      id: relationSchema.shape.id,
+      type: relationSchema.shape.type,
+      direction: relationSchema.shape.direction,
+      task: blameTaskIdentity,
+      attribution: taskAttributionSchema.nullable(),
+    }),
+  ),
+  description: z.array(
+    z.strictObject({
+      line: z.number().int().positive(),
+      text: z.string(),
+      attribution: taskAttributionSchema.nullable(),
+    }),
+  ),
+});
+
 export const taskDetailSchema = taskSchema.extend({
   relations: z.array(relationSchema),
   comments: z.array(commentSchema),
@@ -272,6 +308,7 @@ export const resultSchemas = {
   Task: taskSchema,
   TaskList: z.array(taskSchema),
   TaskDetail: taskDetailSchema,
+  TaskBlame: taskBlameSchema,
   TaskDetailHistory: taskDetailHistorySchema,
   TaskChange: taskChangeSchema,
   TaskChanges: z.array(taskChangeSchema).min(2),
@@ -306,6 +343,7 @@ export const resultSchemas = {
 };
 export type ResultSchemaName = keyof typeof resultSchemas;
 export type PresentedTask = z.infer<typeof taskSchema>;
+export type PresentedTaskBlame = z.infer<typeof taskBlameSchema>;
 export type PresentedTaskDetail = z.infer<typeof taskDetailSchema>;
 export type PresentedTaskDetailHistory = z.infer<typeof taskDetailHistorySchema>;
 export type PresentedTaskChange = z.infer<typeof taskChangeSchema>;
