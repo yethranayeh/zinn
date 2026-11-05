@@ -55,9 +55,19 @@ The client supplies its own `release` identity: `source` for development and `pu
 
 Library callers may supply `Actor.client` as a string or `null`. Core preserves the supplied string exactly in `actor_client` on every recorded activity event. Omitting it stores `null`. Events recorded before schema version 4 also have a `null` client after migration.
 
-Clients can follow Zinn's [client chain convention](/docs/cli#client-chains) when constructing their value. Core supplies no client token of its own.
+Clients can follow Zinn's [client chain convention](#client-chain-convention) when constructing their value. Core supplies no client token of its own.
 
 `parseClientChain(client)` returns an array of `{ name, version }` objects in chain order. It splits on whitespace and separates each token at its first `/`. Tokens without `/` have a `null` version. Null or blank input returns an empty array. Names and versions preserve case and arbitrary text, including any further slashes in a version. Parsing does not validate tokens or change the stored string.
+
+### Client chain convention
+
+Zinn's preferred convention for its own clients and integrations is:
+
+- Use space-separated `name/version` tokens, without parenthesized comments. Names use lowercase letters, digits and `-`. Versions contain no whitespace or `/`.
+- Name a part of a program as `program:part`, such as `zinn-opencode:panel/0.3.0`. The version belongs to the program.
+- An intermediary appends its own token to its inherited declaration, separated by one space and trimmed. The declared chain reads outermost caller first.
+
+Other programs may declare any text. The `client` activity filter uses whitespace-separated tokens for every chain, so words inside a caller's parenthesized comments can also match.
 
 ## Shared behavior
 
@@ -137,7 +147,7 @@ If the conflicting IDs changed before the write, core throws a `CoreError` with 
 
 ## Task blame
 
-`task.blame(taskKey)` returns a `TaskBlame` for the current active or archived task. It resolves the key once and reads the task, current memberships and ID-scoped history in one database snapshot. A reused key selects only the current task lifetime. Unknown and deleted keys throw the ordinary missing-task `CoreError`.
+`task.blame(taskKey)` returns a `TaskBlame` for the current active or archived task. It resolves the key once and reads the task, current memberships and ID-scoped history in one database snapshot. A [reused key](/docs/data#task-key-reuse) selects only the current task lifetime. Unknown and deleted keys throw the ordinary missing-task `CoreError`.
 
 ```ts title="Read task attribution"
 import type { TaskBlame } from "@zinn-dev/core";
@@ -150,13 +160,66 @@ for (const line of blame.description) {
 }
 ```
 
-The result contains `task: { id, key }`, blamed `fields`, current `relations`, and numbered `description` lines. Core exports `TaskBlame`, `TaskBlamedValue<T>` and `TaskAttribution`. The [CLI reference](/docs/cli#blame-json) specifies the complete shared result shape. Scalar values keep their core types, including nullable `TaskPriority` and millisecond `due_at`. Attribution projects the recorded event ID, time and actor fields exactly as stored. Use `activity.getById(attribution.id)` to inspect its full event.
+The result contains `task: { id, key }`, blamed `fields`, current `relations`, and numbered `description` lines. Core exports `TaskBlame`, `TaskBlamedValue<T>` and `TaskAttribution`. See [Task blame result](#task-blame-result) for the complete shape. Attribution projects the recorded event ID, time and actor fields exactly as stored. Use `activity.getById(attribution.id)` to inspect its full event.
 
-Creation can attribute initial values. Later scalar setters are attributable only when their latest recorded new value agrees with the current value. Labels are one membership collection, including removals and label deletion. Current column and label names accompany the original membership attribution. Parent assignment or removal follows outgoing `subtask` events. Every current relation also carries its creation attribution, including parents and children, in the existing relation order.
+Creation can attribute initial values. A scalar value recorded later is attributable only when its latest recorded new value matches the current value. Labels are one membership collection, including removals and label deletion. Current column and label names accompany the original membership attribution. Parent assignment or removal follows outgoing `subtask` events. Every current relation also carries its creation attribution, including parents and children, in the existing relation order.
 
-Description replay uses exact-line longest-common-subsequence comparisons with linear workspace. It preserves a common prefix, then a common suffix, and prefers deletion before insertion for equal choices in the remaining comparison. Matching lines retain their attribution. Insertions and replacements receive the edit's attribution. Whitespace and internal blank lines are exact. A terminal newline creates no extra line, and changing only that newline preserves attribution. Null or empty descriptions return an empty array.
+To attribute description lines, core compares each recorded description with the previous one, line by line. Lines that are unchanged keep the attribution they had. Lines that an edit inserts or replaces receive that edit's attribution, and deleted lines disappear. The comparison keeps the shared lines at the start and the end in place, then matches the longest sequence of remaining lines that both versions share in the same order. When an edit could be read more than one way, it treats a line as removed before treating it as added. Whitespace and internal blank lines are compared exactly. A terminal newline ends the last line without adding an empty one, and changing only that newline preserves attribution. Null or empty descriptions return an empty array.
 
-The replay follows per-task activity ID order. Missing or unrecognized snapshots return `null` attribution. When an edit's recorded old description does not join the previous recorded version, unchanged old lines start unattributed while new lines receive that edit's attribution. A malformed setter invalidates carried line attribution. If the final recorded description disagrees with current text, all current lines are unattributed. The operation records no activity and does not mutate task data.
+The replay follows per-task activity ID order. Missing or unrecognized history yields `null` attribution. When an edit's recorded old description does not match the description carried from earlier records, unchanged old lines start unattributed while the lines that edit introduces receive its attribution. A later description record that does not hold both the old and new text discards the carried line attribution, so later edits cannot inherit it. If the final recorded description disagrees with the current text, all current lines are unattributed. The operation records no activity and does not mutate task data.
+
+### Task blame result
+
+```ts title="Task blame result shape"
+type TaskAttribution = {
+	id: string;
+	created_at: number;
+	actor_name: string | null;
+	actor_email: string | null;
+	actor_kind: ActorKind;
+	actor_source: string | null;
+	actor_session_id: string | null;
+	actor_thread_id: string | null;
+	actor_agent: string | null;
+	actor_model: string | null;
+	actor_effort: string | null;
+	actor_client: string | null;
+};
+type TaskBlamedValue<T> = { value: T; attribution: TaskAttribution | null };
+type TaskBlame = {
+	task: { id: string; key: string };
+	fields: {
+		title: TaskBlamedValue<string>;
+		column: TaskBlamedValue<{ id: string; name: string }>;
+		priority: TaskBlamedValue<TaskPriority | null>;
+		due_at: TaskBlamedValue<number | null>;
+		labels: TaskBlamedValue<Array<{ id: string; name: string }>>;
+		parent: TaskBlamedValue<{ id: string; key: string } | null>;
+	};
+	relations: Array<{
+		id: string;
+		type: TaskRelationType;
+		direction: "outgoing" | "incoming" | null;
+		task: { id: string; key: string };
+		attribution: TaskAttribution | null;
+	}>;
+	description: Array<{
+		line: number;
+		text: string;
+		attribution: TaskAttribution | null;
+	}>;
+};
+```
+
+`TaskAttribution` contains only the listed recorded event fields, without a changes payload. Timestamps are integer Unix epoch milliseconds. Labels use the existing label name order. Relations use creation time ascending, then relation ID ascending. `direction` is relative to the inspected task and is `null` for symmetric `related` links. Description line numbers start at one.
+
+## Activity records
+
+Core exports the `Activity` type for a recorded event. Its fields are `id`, `created_at` (epoch milliseconds), `actor_name`, `actor_email`, `actor_kind`, `actor_source`, `actor_session_id`, `actor_thread_id`, `actor_agent`, `actor_model`, `actor_effort`, `actor_client`, `entity_type`, `entity_id`, `action`, and `changes` (parsed JSON or `null`).
+
+The `id` identifies the activity event itself. `actor_name` can be `null` for an unnamed agent. Optional actor metadata is `null` when absent. Payloads and IDs are preserved in full, including after deletion. Project deletion events keep the project's `entity_id`, with removed task IDs in `changes.tasks`.
+
+[Hooks](/docs/hooks) receive these same records, with the task's key added as `task_key`.
 
 ## Activity selection
 

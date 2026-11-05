@@ -45,6 +45,14 @@ Restore asks for confirmation unless `--yes` is used. It saves the current datab
 
 A backup with an older schema version is restored at that version, then Zinn upgrades it under the normal upgrade policy. Restore works regardless of the version of the destination database, so you can return to an older Zinn and restore a backup saved by an upgrade. Missing, damaged, unmarked, non-Zinn, or newer-schema backups are refused without changes. Any later failure rolls back the restore and retains the saved backup. If the destination database is damaged, restore leaves it unchanged and prints recovery steps.
 
+## Deleted projects and tasks
+
+Deleting a task removes it from its column. Deleting a project removes its columns and tasks. Their recorded activity remains in the database, and restoring a backup taken before the deletion brings the deleted records back.
+
+### Task key reuse
+
+Deleting a task does not make its number available again within that project. Deleting a project releases its key. A project created later with the same key starts task numbering again at 1, so a task key such as `MDR-1` can name a different task over time. The earlier task and its activity remain in history under their own IDs.
+
 ## Upgrade a database
 
 A newer Zinn upgrades an older database completely or not at all, saving a backup first. A published release upgrades an older database on first use. A source build upgrades only a separate database selected with `ZINN_DIR`; other older databases open read-only until explicitly migrated.

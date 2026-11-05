@@ -11,7 +11,10 @@ export function descriptionLines(text: string | null): Array<string> {
   return lines;
 }
 
-/** Finds a shortest edit path's middle crossing with linear workspace */
+/**
+ * Returns the middle split of a shortest edit path between the two line ranges.
+ * Myers's linear-space search uses memory proportional to the line counts, not their product.
+ */
 function middleSplit(
   before: Array<string>,
   after: Array<string>,
@@ -95,7 +98,10 @@ function middleSplit(
   throw new Error("No description edit path found");
 }
 
-/** Exact-line Myers matching. Equal frontier choices consume a deletion first. */
+/**
+ * Matches exact lines with Myers's algorithm.
+ * When two moves are equally short, it takes the deletion first.
+ */
 export function attributeLines(
   before: Array<string>,
   after: Array<string>,
