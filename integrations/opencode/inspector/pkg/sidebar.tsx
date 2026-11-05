@@ -19,24 +19,8 @@ import {
 
 import { clearPanel, publishPanel } from "./commands.ts";
 import { Overflow, RailLine, Row } from "./components.tsx";
-import {
-  BOARD_TTL_MS,
-  errorText,
-  flaggedFor,
-  loadKeyMap,
-  log,
-  refreshKeyMap,
-  shouldReadBoard,
-} from "./data.ts";
 import { openDetail, openPicker } from "./dialogs.tsx";
-import {
-  PRIORITY_COLUMNS,
-  RAIL_COLUMNS,
-  RUNNING_FRAMES,
-  RUNNING_INTERVAL,
-  SECTION_ROWS,
-  SLOT_COLUMNS,
-} from "./options.ts";
+
 import { columnGlyph, rowTone, stableRows, truncate } from "./rows.ts";
 import { mentionCounts, newestIdleID, scanSession } from "./scan.ts";
 import {
@@ -48,7 +32,24 @@ import {
   runPool,
   sessionRunning,
 } from "./session.ts";
+import {
+  PRIORITY_COLUMNS,
+  RAIL_COLUMNS,
+  RUNNING_FRAMES,
+  RUNNING_INTERVAL,
+  SECTION_ROWS,
+  SLOT_COLUMNS,
+} from "./options.ts";
 import { inspectorTheme } from "./theme.ts";
+import {
+  BOARD_TTL_MS,
+  errorText,
+  flaggedFor,
+  loadKeyMap,
+  log,
+  refreshKeyMap,
+  shouldReadBoard,
+} from "./data.ts";
 
 export function Sidebar(props: {
   ctx: Ctx;
@@ -68,6 +69,7 @@ export function Sidebar(props: {
   let lastIdleID: string | undefined;
   let lastBoardReadAt = 0;
   let lastBoardReadZinn = 0;
+
   const apply = (result: Loaded<Map<string, TaskSummary>>, reason: string) => {
     if (!alive) {
       return;
@@ -87,6 +89,7 @@ export function Sidebar(props: {
       lastBoardReadZinn = untrack(() => scan().zinnCommands);
     }
   };
+
   // Merge overlapping refresh requests into one read.
   let refreshInflight: Promise<void> | undefined;
   const refresh = (reason: string, showLoading: boolean, forceLabels = false): Promise<void> => {
@@ -146,9 +149,11 @@ export function Sidebar(props: {
     refreshInflight = run;
     return run;
   };
+
   const reload = () => {
     void refresh("header click", true, true);
   };
+
   onMount(() => {
     log(props.ctx, "sidebar mounted", { session: props.sessionID });
     onCleanup(() => {
@@ -204,6 +209,7 @@ export function Sidebar(props: {
     }, RUNNING_INTERVAL);
     onCleanup(() => clearInterval(timer));
   });
+
   const scanCache: ScanCache = { byID: new Map(), computes: 0 };
   const scan = createMemo<Scan>(() => {
     const loaded = map();
@@ -225,6 +231,7 @@ export function Sidebar(props: {
     }
     return result;
   });
+
   let lastScanSig = "";
   createEffect(() => {
     const result = scan();
@@ -244,6 +251,7 @@ export function Sidebar(props: {
       ms: result.ms,
     });
   });
+
   const createdKeys = createMemo<ReadonlySet<string>>(() => {
     const loaded = map();
     if (!loaded.ok) {
@@ -389,7 +397,7 @@ export function Sidebar(props: {
   });
   const mentionCountsByKey = createMemo(() => mentionCounts(scan().known));
   const open = (key: string, unknown: boolean) =>
-    openDetail(props.ctx, key, unknown, mentionCountsByKey().get(key));
+    openDetail(props.ctx, key, unknown, mentionCountsByKey(), props.sessionID);
   const visibleKnown = createMemo(() => knownRows().slice(0, SECTION_ROWS));
   const knownOverflow = createMemo(() => knownRows().length - visibleKnown().length);
   const visibleUnknown = createMemo(() => unknownRows().slice(0, SECTION_ROWS));
@@ -411,6 +419,7 @@ export function Sidebar(props: {
     published = {
       map: loaded.ok ? loaded.value : undefined,
       known: scan().known,
+      sessionID: props.sessionID,
     };
     publishPanel(published);
   });
@@ -444,6 +453,7 @@ export function Sidebar(props: {
       loaded.ok ? loaded.value : undefined,
       false,
       mentionCountsByKey(),
+      props.sessionID,
     );
   };
   const unknownPicker = () => {
@@ -455,6 +465,7 @@ export function Sidebar(props: {
       loaded.ok ? loaded.value : undefined,
       true,
       mentionCountsByKey(),
+      props.sessionID,
     );
   };
 

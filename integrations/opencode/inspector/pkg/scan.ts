@@ -1,5 +1,6 @@
-import type { Ctx, Mention, Scan, TaskSummary } from "./types.ts";
+import type { Ctx, Excerpt, Mention, Scan, TaskSummary } from "./types.ts";
 import { asString, isRecord, log } from "./data.ts";
+import { excerptAround } from "./rows.ts";
 
 const KEY_SHAPE = /\b[A-Z][A-Z0-9]{0,9}-\d{1,6}\b/g;
 
@@ -264,4 +265,81 @@ export function newestIdleID(
 
 export function mentionCounts(mentions: readonly Mention[]): ReadonlyMap<string, number> {
   return new Map(mentions.map((mention) => [mention.key, mention.count]));
+}
+/**
+ * The last occurence of a key in the session in 1 line.
+ * Cost is one scan of the tail starting from newest first,
+ *  not of the whole conversation.
+ * A key mentioned ten times still yields one row
+ */
+export function lastMentionExcerpt(ctx: Ctx, sessionID: string, key: string): Excerpt | undefined {
+  const messages = ctx.data.session.message.list(sessionID) as unknown as ScanMessage[];
+  let seenPlan = false;
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message === undefined) {
+      continue;
+    }
+
+    if (message.type === "user" && typeof message.text === "string") {
+      const excerpt = excerptAround(message.text, key);
+      if (excerpt !== undefined) {
+        return excerpt;
+      }
+    }
+    if (message.type !== "assistant" || message.time?.completed === undefined) {
+      continue;
+    }
+
+    const content = message.content ?? [];
+    for (let j = content.length - 1; j >= 0; j--) {
+      const raw = content[j];
+      if (!isRecord(raw)) {
+        continue;
+      }
+
+      if (raw["type"] === "text" && typeof raw["text"] === "string") {
+        const excerpt = excerptAround(raw["text"], key);
+        if (excerpt !== undefined) {
+          return excerpt;
+        }
+        continue;
+      }
+
+      if (raw["type"] !== "tool") {
+        continue;
+      }
+      const toolName = raw["name"] ?? raw["tool"];
+      /**
+       * `scanSession` counts keys only from the latest completed `todowrite` plan,
+       *  so an older plan must not produce an excerpt the count does not include.
+       */
+      if (toolName !== "todowrite" || seenPlan) {
+        continue;
+      }
+      const state = isRecord(raw["state"]) ? raw["state"] : undefined;
+      if (state?.["status"] !== "completed") {
+        continue;
+      }
+      const input = isRecord(state["input"]) ? state["input"] : undefined;
+      const todos = input?.["todos"];
+      if (!Array.isArray(todos)) {
+        continue;
+      }
+      seenPlan = true;
+      for (let k = todos.length - 1; k >= 0; k--) {
+        const item = todos[k];
+        if (!isRecord(item) || typeof item["content"] !== "string") {
+          continue;
+        }
+        const excerpt = excerptAround(item["content"], key);
+        if (excerpt !== undefined) {
+          return excerpt;
+        }
+      }
+    }
+  }
+
+  return undefined;
 }

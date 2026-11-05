@@ -6,6 +6,7 @@ import { mentionCounts } from "./scan.ts";
 export type PanelSnapshot = {
   map: Map<string, TaskSummary> | undefined;
   known: readonly Mention[];
+  sessionID: string;
 };
 
 export let activePanel: PanelSnapshot | undefined;
@@ -47,6 +48,7 @@ export function registerCommands(ctx: Ctx): void {
           panel.map,
           false,
           mentionCounts(panel.known),
+          panel.sessionID,
         );
       },
     },
@@ -80,6 +82,7 @@ export function registerCommands(ctx: Ctx): void {
           map,
           false,
           mentionCounts(panel.known),
+          panel.sessionID,
         );
       },
     },

@@ -1,3 +1,5 @@
+import type { Excerpt } from "./types.ts";
+
 export function flatten(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
@@ -11,6 +13,50 @@ export function truncate(text: string, max: number): string {
 export function firstParagraph(text: string): string {
   const block = text.split(/\n\s*\n/)[0] ?? "";
   return truncate(block, 500);
+}
+// Sized for the 86-column large dialog: "last: " + before + key + after.
+export const EXCERPT_BEFORE = 24;
+export const EXCERPT_AFTER = 40;
+const KEY_CHAR = /[A-Za-z0-9_-]/;
+/**
+ * The last key occurrence in a flattened text, clamped on both sides.
+ * One per unique mention
+ */
+export function excerptAround(
+  text: string,
+  key: string,
+  before = EXCERPT_BEFORE,
+  after = EXCERPT_AFTER,
+): Excerpt | undefined {
+  const flat = flatten(text);
+  const hay = flat.toLowerCase();
+  const needle = key.toLowerCase();
+  let at = -1;
+  let from = hay.length;
+
+  for (;;) {
+    at = hay.lastIndexOf(needle, from - 1);
+    if (at === -1) {
+      return undefined;
+    }
+    const left = at === 0 ? "" : (flat[at - 1] ?? "");
+    const right = flat[at + key.length] ?? "";
+    if (!KEY_CHAR.test(left) && !KEY_CHAR.test(right)) {
+      break;
+    }
+    if (at === 0) {
+      return undefined;
+    }
+    from = at;
+  }
+
+  const start = Math.max(0, at - before);
+  const end = Math.min(flat.length, at + key.length + after);
+  return {
+    before: `${start > 0 ? "…" : ""}${flat.slice(start, at)}`,
+    match: flat.slice(at, at + key.length),
+    after: `${flat.slice(at + key.length, end)}${end < flat.length ? "…" : ""}`,
+  };
 }
 export const COLUMN_GLYPH: Record<string, string | undefined> = {
   Done: "✔",

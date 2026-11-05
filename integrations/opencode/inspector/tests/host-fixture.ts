@@ -95,6 +95,10 @@ export async function verifyHost(fixture: ReturnType<typeof packInspector>, cons
           await until(() => readFileSync(log, "utf8").includes("picker opened"), () => `Task picker did not open: ${output.slice(-1000)}`);
           tui.terminal!.write("\r");
           await until(() => readFileSync(log, "utf8").includes('"kind":"ready"'), () => `Task detail did not settle: ${readFileSync(log, "utf8")}`);
+          await until(
+            () => readFileSync(log, "utf8").includes('"excerpt":true'),
+            () => `Task detail did not show the mention excerpt: ${readFileSync(log, "utf8")}`,
+          );
         }
         frames.push(output);
       } finally {

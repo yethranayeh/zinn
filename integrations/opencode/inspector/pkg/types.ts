@@ -29,6 +29,11 @@ export type TaskDetail = {
   comments: number;
   description: string;
 };
+export type Excerpt = {
+  before: string;
+  match: string;
+  after: string;
+};
 export type Loaded<T> =
   | {
       ok: true;
