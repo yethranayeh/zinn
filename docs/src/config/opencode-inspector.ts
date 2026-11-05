@@ -1,5 +1,7 @@
+import { latestReleaseVersion } from "./latest-release";
+
 const packageName = "@zinn-dev/opencode";
-const version = "0.3.1";
+const version = latestReleaseVersion("opencode");
 
 export const opencodeInspector = {
   title: "Zinn task inspector",

@@ -1,4 +1,5 @@
 import { opencodeInspector } from "../src/config/opencode-inspector";
+import { latestReleaseVersion } from "../src/config/latest-release";
 import { opencodeScenes, opencodeTheme } from "../src/config/opencode-theme";
 import { rexScenes, rexTheme } from "../src/config/rex-theme";
 import {
@@ -706,16 +707,17 @@ test("inspector integration page carries the setup guide and its Markdown twin",
   const response = await server.fetch(opencodeInspector.path);
   expect(response.status).toBe(200);
   const html = await response.text();
+  const releaseVersion = latestReleaseVersion("opencode");
   expect(html).toContain(`rel="canonical" href="https://zinn.sh${opencodeInspector.path}/"`);
   expect(html).toContain('rel="alternate" type="text/markdown"');
-  expect(html).toContain(opencodeInspector.package);
+  expect(html).toContain(`${opencodeInspector.packageName}@${releaseVersion}`);
   expect(html).toContain("cli.json");
   expect(html).toContain("ZINN_THREAD_ID");
   const markdown = await server.fetch(`${opencodeInspector.path}.md`);
   expect(markdown.status).toBe(200);
   expect(markdown.headers.get("Content-Type")).toContain("text/markdown");
   const text = await markdown.text();
-  expect(text).toContain(opencodeInspector.package);
+  expect(text).toContain(`${opencodeInspector.packageName}@${releaseVersion}`);
   expect(text).toContain(opencodeInspector.verifiedVersion);
   expect(text).toContain(opencodeInspector.minimumCliVersion);
   expect(text).toContain("cli.json");
