@@ -2,6 +2,7 @@
 import Button from "../ui/button/Button.astro";
 import Dialog from "../ui/dialog/Dialog.astro";
 import Icon from "../ui/icon/Icon.astro";
+import Input from "../ui/input/Input.astro";
 
 const resultLinkClass =
 	"block no-underline hover:bg-soot/8 hover:no-underline focus-visible:-outline-offset-3 [&_mark]:bg-bronze/40 [&_mark]:text-current";
@@ -23,9 +24,10 @@ const excerptClass = "mt-1 block text-sm text-muted-foreground";
 	hideTitle
 	class='mt-4 mb-auto max-w-2xl md:mt-[10svh] md:max-h-[80svh]'
 	data-search>
-	<input
+	<Input
 		slot='header'
-		class='min-h-11 min-w-0 flex-auto font-mono text-base focus-visible:outline-none md:text-sm'
+		variant='bare'
+		class='min-w-0 flex-auto focus-visible:outline-none'
 		type='text'
 		role='searchbox'
 		aria-label='Search zinn.sh'

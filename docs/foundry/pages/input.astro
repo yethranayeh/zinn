@@ -1,0 +1,77 @@
+---
+import type { InputVariant } from "../../src/components/ui/input/variants";
+
+import FoundryLayout from "../layouts/FoundryLayout.astro";
+import ComponentHeading from "../components/ComponentHeading.astro";
+import Specimen from "../components/Specimen.astro";
+import Button from "../../src/components/ui/button/Button.astro";
+import Dialog from "../../src/components/ui/dialog/Dialog.astro";
+import Input from "../../src/components/ui/input/Input.astro";
+
+import { inputVariants } from "../../src/components/ui/input/variants";
+
+const variants = Object.keys(inputVariants.variants.variant) as InputVariant[];
+---
+
+<FoundryLayout title='Input' description='Input is a single-line text field.'>
+	<ComponentHeading folder='input'>
+		<p>A single-line text field in the mono face, at least 44px tall. Use it wherever a visitor types a short value.</p>
+		<p>
+			It renders a native <code>input</code> element. Other attributes, such as <code>type</code> or <code
+				>autofocus</code
+			>, pass through to it. Give it a visible label or an <code>aria-label</code>.
+		</p>
+		<p>
+			Outline suits a field on an open surface. Bare has no border or padding, and suits a field that fills a row of its
+			own, as in the search dialog's header. A class passed to Input replaces any conflicting default. Focus shows the
+			site's outline unless a class changes it.
+		</p>
+	</ComponentHeading>
+
+	<section class='flex flex-col gap-4' aria-labelledby='variants'>
+		<h2 id='variants' class='text-xl font-semibold'>Variants</h2>
+		<div class='grid gap-4 md:grid-cols-2'>
+			{
+				variants.map((variant) => (
+					<Specimen label={`<Input variant="${variant}" />`} block>
+						<Input variant={variant} class='w-full' aria-label='Name' placeholder='Name' />
+					</Specimen>
+				))
+			}
+		</div>
+	</section>
+
+	<section class='flex flex-col gap-4' aria-labelledby='in-context'>
+		<h2 id='in-context' class='text-xl font-semibold'>In context</h2>
+		<div class='grid gap-4 md:grid-cols-2'>
+			<Specimen label='Visible label' block>
+				<label class='flex flex-col gap-1 font-mono text-xs'>
+					Project key
+					<Input class='w-full' value='ZSH' />
+				</label>
+			</Specimen>
+
+			<Specimen label='Next to an outline Button' block>
+				<form class='flex gap-2'>
+					<Input class='min-w-0 flex-auto' aria-label='Email' type='email' placeholder='you@example.com' />
+					<Button variant='outline' type='button'>Subscribe</Button>
+				</form>
+			</Specimen>
+
+			<Specimen label='Bare in a Dialog header, with focus-visible:outline-none from the caller'>
+				<Button variant='outline' command='show-modal' commandfor='input-in-dialog'>Open dialog</Button>
+				<Dialog id='input-in-dialog' title='Find a component' hideTitle>
+					<Input
+						slot='header'
+						variant='bare'
+						class='min-w-0 flex-auto focus-visible:outline-none'
+						aria-label='Component name'
+						placeholder='Component name'
+						autofocus
+					/>
+					<p class='p-3 md:p-5'>The header row around the field is the Dialog's.</p>
+				</Dialog>
+			</Specimen>
+		</div>
+	</section>
+</FoundryLayout>

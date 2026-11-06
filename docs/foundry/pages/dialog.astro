@@ -1,9 +1,10 @@
 ---
-import Button from "../../src/components/ui/button/Button.astro";
-import Dialog from "../../src/components/ui/dialog/Dialog.astro";
+import FoundryLayout from "../layouts/FoundryLayout.astro";
 import ComponentHeading from "../components/ComponentHeading.astro";
 import Specimen from "../components/Specimen.astro";
-import FoundryLayout from "../layouts/FoundryLayout.astro";
+import Button from "../../src/components/ui/button/Button.astro";
+import Dialog from "../../src/components/ui/dialog/Dialog.astro";
+import Input from "../../src/components/ui/input/Input.astro";
 
 const longContentParagraphs = Array.from({ length: 30 }, (_, index) => index + 1);
 ---
@@ -54,9 +55,10 @@ const longContentParagraphs = Array.from({ length: 30 }, (_, index) => index + 1
 		<Specimen label='<Dialog hideTitle> with a header slot and autofocus'>
 			<Button variant='outline' command='show-modal' commandfor='dialog-hidden-title'>Open dialog</Button>
 			<Dialog id='dialog-hidden-title' title='Find a component' hideTitle>
-				<input
+				<Input
 					slot='header'
-					class='min-h-11 min-w-0 flex-auto font-mono text-sm focus-visible:outline-none'
+					variant='bare'
+					class='min-w-0 flex-auto focus-visible:outline-none'
 					type='text'
 					aria-label='Component name'
 					placeholder='Component name'

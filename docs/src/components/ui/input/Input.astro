@@ -1,0 +1,15 @@
+---
+import type { HTMLAttributes } from "astro/types";
+import type { InputVariant } from "./variants";
+
+import { twMerge } from "tailwind-merge";
+import { inputVariants } from "./variants";
+
+type Props = HTMLAttributes<"input"> & { variant?: InputVariant };
+
+const { variant = inputVariants.defaultVariants.variant, class: className, ...attributes } = Astro.props;
+
+const classes = twMerge(inputVariants.base, inputVariants.variants.variant[variant], className);
+---
+
+<input class={classes} {...attributes} />
