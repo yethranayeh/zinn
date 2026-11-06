@@ -11,6 +11,8 @@ import {
   settingsSchema,
   storageSourceSchema,
   taskPrioritySchema,
+  telemetryModeSchema,
+  telemetrySourceSchema,
 } from "@zinn-dev/core";
 
 import { errorDocumentSchema } from "./errors.js";
@@ -269,6 +271,16 @@ export const infoSchema = z.strictObject({
   defaultProject: z.strictObject({
     key: nullableText,
     settingsPath: nullableText,
+    error: nullableText,
+  }),
+  telemetry: z.strictObject({
+    mode: telemetryModeSchema.nullable(),
+    source: telemetrySourceSchema.nullable(),
+    settingsPath: nullableText,
+    maxMegabytes: z.number().int().positive().nullable(),
+    directory: nullableText,
+    exists: z.boolean().nullable(),
+    sizeBytes: count.nullable(),
     error: nullableText,
   }),
   database: z.strictObject({

@@ -10,6 +10,7 @@ export function presentInfo(report: StoreInfo): PresentedInfo {
     settingsFiles: report.settingsFiles,
     storage: report.storage,
     defaultProject: report.defaultProject,
+    telemetry: report.telemetry,
     database: report.database,
     versions: {
       cli: packageJson.version,
@@ -39,6 +40,20 @@ function folderState(storage: PresentedInfo["storage"]): string {
   return storage.exists ? "found" : "missing";
 }
 
+function telemetrySource(telemetry: PresentedInfo["telemetry"]): string {
+  return telemetry.settingsPath ?? telemetry.source ?? "unavailable";
+}
+
+function telemetryFolderState(telemetry: PresentedInfo["telemetry"]): string {
+  if (telemetry.exists === null) {
+    return "unavailable";
+  }
+  if (!telemetry.exists) {
+    return telemetry.sizeBytes === null ? "not a directory" : "missing";
+  }
+  return telemetry.sizeBytes === null ? "cannot be read" : `${telemetry.sizeBytes} bytes`;
+}
+
 function databaseState(database: PresentedInfo["database"]): string {
   if (database.error !== null) {
     return database.error;
@@ -47,7 +62,7 @@ function databaseState(database: PresentedInfo["database"]): string {
 }
 
 export function formatInfo(report: PresentedInfo): string {
-  const { storage, database, defaultProject, versions } = report;
+  const { storage, database, defaultProject, telemetry, versions } = report;
   const storeIsUnavailable = storage.directory === null;
 
   //
@@ -72,12 +87,26 @@ export function formatInfo(report: PresentedInfo): string {
       : `unavailable (${unavailableReason(defaultProject.error)})`;
   const defaultProjectSuffix =
     defaultProject.settingsPath === null ? "" : ` (${defaultProject.settingsPath})`;
+  const telemetryReason =
+    telemetry.error === null ? "" : ` (${unavailableReason(telemetry.error)})`;
+  const telemetryText =
+    telemetry.mode === null
+      ? `unavailable${telemetryReason}`
+      : `${telemetry.mode} (${telemetrySource(telemetry)})`;
+  const telemetryLimit =
+    telemetry.maxMegabytes === null ? "" : `, limit ${telemetry.maxMegabytes} MB`;
+  const telemetryFolderText =
+    telemetry.directory === null
+      ? `unavailable${telemetryReason}`
+      : `${telemetry.directory} (${telemetryFolderState(telemetry)})`;
   const lines = [
     `Store: ${storeHeader}`,
     `Store folder: ${storeIsUnavailable ? "unavailable" : folderState(storage)}`,
     `Database: ${database.path ?? "unavailable"}`,
     `Database state: ${storeIsUnavailable ? "unavailable" : databaseState(database)}`,
     `Default project: ${defaultProjectText}${defaultProjectSuffix}`,
+    `Telemetry: ${telemetryText}${telemetryLimit}`,
+    `Telemetry folder: ${telemetryFolderText}`,
     "",
     "Settings:",
   ];
@@ -108,6 +137,12 @@ export function formatInfo(report: PresentedInfo): string {
       }
       if (file.settings.defaultProject !== undefined) {
         lines.push(`  defaultProject: ${file.settings.defaultProject}`);
+      }
+      if (file.settings.telemetry?.mode !== undefined) {
+        lines.push(`  telemetry.mode: ${file.settings.telemetry.mode}`);
+      }
+      if (file.settings.telemetry?.maxMegabytes !== undefined) {
+        lines.push(`  telemetry.maxMegabytes: ${file.settings.telemetry.maxMegabytes}`);
       }
     }
   }

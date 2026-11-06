@@ -9,6 +9,13 @@ import { projectCreateSchema } from "./project.js";
  */
 export const SETTINGS_VERSION = 1;
 
+/**
+ * - off: collect nothing
+ * - local: collect on this machine and send nothing
+ */
+export const telemetryModeSchema = z.enum(["off", "local"]);
+export type TelemetryMode = z.infer<typeof telemetryModeSchema>;
+
 /** The content of a settings file, global or per codebase. Descriptions show in editors through the published JSON Schema. */
 export const settingsSchema = z
   .strictObject({
@@ -28,6 +35,24 @@ export const settingsSchema = z
       })
       .optional()
       .describe("Where Zinn keeps its data."),
+    telemetry: z
+      .strictObject({
+        mode: telemetryModeSchema
+          .optional()
+          .describe(
+            "off collects nothing. local records command usage in the telemetry folder of the Zinn directory and sends nothing off this machine. Defaults to local, or to off when the DO_NOT_TRACK environment variable is 1. A value here overrides DO_NOT_TRACK.",
+          ),
+        maxMegabytes: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe(
+            "The most disk space, in whole megabytes of 1,048,576 bytes, that the telemetry folder may use. Defaults to 1024.",
+          ),
+      })
+      .optional()
+      .describe("Whether Zinn records local usage measurements, and how much space they may use."),
     hooks: z
       .record(
         z.string().min(1),

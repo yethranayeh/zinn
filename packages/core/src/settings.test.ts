@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { chooseDefaultProject, inspectSettings, resolveSettings } from "./settings";
+import { BYTES_PER_MEGABYTE, chooseDefaultProject, DEFAULT_TELEMETRY_MAX_MEGABYTES, inspectSettings, resolveSettings, resolveTelemetry } from "./settings";
 
 // ? ZINN-56: settings discovery, parsing and merging, with temporary folders only.
 let root: string;
@@ -339,4 +339,88 @@ test("a ZINN_DIR that is a file has no global settings file, so the store's own 
   writeFileSync(zinnDirectory, "not a folder");
 
   expect(resolveSettings({ cwd: root, env: { ZINN_DIR: zinnDirectory }, home }).global).toBeNull();
+});
+
+// ? ZINN-347: the telemetry setting and its resolution with DO_NOT_TRACK.
+function telemetryProject() {
+  const cwd = join(root, "project");
+  mkdirSync(join(cwd, ".git"), { recursive: true });
+  return { cwd, localPath: join(cwd, "zinn.local.json"), globalPath: join(home, ".zinn", "settings.json") };
+}
+
+function telemetryFor(cwd: string, env: Record<string, string | undefined> = {}) {
+  return resolveTelemetry(resolveSettings({ cwd, env, home }), env);
+}
+
+test("a megabyte is 1,048,576 bytes and the cap defaults to 1024 of them", () => {
+  expect(BYTES_PER_MEGABYTE).toBe(1024 * 1024);
+  expect(DEFAULT_TELEMETRY_MAX_MEGABYTES).toBe(1024);
+});
+
+test("without settings telemetry is local, and only DO_NOT_TRACK=1 turns it off", () => {
+  const { cwd } = telemetryProject();
+  const local = { mode: "local", source: "default", settingsPath: null, maxMegabytes: 1024 } as const;
+
+  expect(telemetryFor(cwd)).toEqual(local);
+  for (const value of ["true", "0", "", "yes", " 1", "1 "]) {
+    expect(telemetryFor(cwd, { DO_NOT_TRACK: value })).toEqual(local);
+  }
+  expect(telemetryFor(cwd, { DO_NOT_TRACK: "1" })).toEqual({ mode: "off", source: "DO_NOT_TRACK", settingsPath: null, maxMegabytes: 1024 });
+});
+
+test("a telemetry.mode in a settings file wins over DO_NOT_TRACK in both directions", () => {
+  const { cwd, globalPath } = telemetryProject();
+
+  globalFile({ telemetry: { mode: "off" } });
+  expect(telemetryFor(cwd)).toEqual({ mode: "off", source: "settings", settingsPath: globalPath, maxMegabytes: 1024 });
+
+  globalFile({ telemetry: { mode: "local" } });
+  expect(telemetryFor(cwd, { DO_NOT_TRACK: "1" })).toEqual({ mode: "local", source: "settings", settingsPath: globalPath, maxMegabytes: 1024 });
+});
+
+test("zinn.local.json decides the mode over the global file, and a file that sets only the cap leaves it alone", () => {
+  const { cwd, localPath, globalPath } = telemetryProject();
+  globalFile({ telemetry: { mode: "off" } });
+  writeJson(localPath, { telemetry: { mode: "local" } });
+
+  expect(telemetryFor(cwd, { DO_NOT_TRACK: "1" })).toMatchObject({ mode: "local", source: "settings", settingsPath: localPath });
+
+  writeJson(localPath, { telemetry: { maxMegabytes: 5 } });
+
+  expect(telemetryFor(cwd)).toEqual({ mode: "off", source: "settings", settingsPath: globalPath, maxMegabytes: 5 });
+
+  globalFile({});
+
+  expect(telemetryFor(cwd, { DO_NOT_TRACK: "1" })).toEqual({ mode: "off", source: "DO_NOT_TRACK", settingsPath: null, maxMegabytes: 5 });
+  expect(telemetryFor(cwd)).toEqual({ mode: "local", source: "default", settingsPath: null, maxMegabytes: 5 });
+});
+
+test("each file may set one telemetry field and the merged settings carry both", () => {
+  const { cwd, localPath, globalPath } = telemetryProject();
+  globalFile({ telemetry: { mode: "off" } });
+  writeJson(localPath, { telemetry: { maxMegabytes: 7 } });
+
+  expect(resolveSettings({ cwd, env: {}, home }).merged).toEqual({ telemetry: { mode: "off", maxMegabytes: 7 } });
+  expect(telemetryFor(cwd)).toEqual({ mode: "off", source: "settings", settingsPath: globalPath, maxMegabytes: 7 });
+});
+
+test("with ZINN_DIR only that directory's settings.json sets telemetry", () => {
+  const { cwd, localPath } = telemetryProject();
+  const zinnDirectory = join(root, "selected");
+  globalFile({ telemetry: { mode: "off" } });
+  writeJson(localPath, { telemetry: { mode: "off" } });
+  writeJson(join(zinnDirectory, "settings.json"), { telemetry: { maxMegabytes: 3 } });
+
+  expect(telemetryFor(cwd, { ZINN_DIR: zinnDirectory })).toEqual({ mode: "local", source: "default", settingsPath: null, maxMegabytes: 3 });
+});
+
+test("a telemetry value Zinn does not accept is a settings error naming the file", () => {
+  const { cwd, localPath } = telemetryProject();
+  const rejected = [{ maxMegabytes: "1G" }, { maxMegabytes: 0 }, { maxMegabytes: -1 }, { maxMegabytes: 1.5 }, { maxMegabytes: null }, { mode: "on" }, { mode: "Local" }, { enabled: true }];
+
+  for (const telemetry of rejected) {
+    writeJson(localPath, { telemetry });
+
+    expect(() => resolveSettings({ cwd, env: {}, home })).toThrow(expect.objectContaining({ message: expect.stringContaining(localPath), kind: "input" }));
+  }
 });

@@ -1,4 +1,4 @@
-import type { Settings } from "./schemas/settings.js";
+import type { Settings, TelemetryMode } from "./schemas/settings.js";
 import type { FailureFacts, FailureKind } from "./errors.js";
 
 import { existsSync, readFileSync } from "node:fs";
@@ -12,6 +12,12 @@ import { CoreError, errorMessage, InputValidationError, isMissingFileError } fro
 export const GLOBAL_SETTINGS_FILE_NAME = "settings.json";
 export const LOCAL_SETTINGS_FILE_NAME = "zinn.local.json";
 const GIT_ENTRY_NAME = ".git";
+
+/** One megabyte, as `telemetry.maxMegabytes` counts it. */
+export const BYTES_PER_MEGABYTE = 1_048_576;
+export const DEFAULT_TELEMETRY_MODE: TelemetryMode = "local";
+export const DEFAULT_TELEMETRY_MAX_MEGABYTES = 1024;
+const DO_NOT_TRACK_VARIABLE = "DO_NOT_TRACK";
 
 export type SettingsFile = {
   path: string;
@@ -33,6 +39,18 @@ export type ResolvedSettings = {
   local: SettingsFile | null;
   /** The local file merged over the global file. */
   merged: Omit<Settings, "$schema" | "hooks">;
+};
+
+/** Where the telemetry mode came from */
+export const telemetrySourceSchema = z.enum(["default", "DO_NOT_TRACK", "settings"]);
+export type TelemetrySource = z.infer<typeof telemetrySourceSchema>;
+
+export type ResolvedTelemetry = {
+  mode: TelemetryMode;
+  source: TelemetrySource;
+  /** The settings file whose `telemetry.mode` chose the mode, or `null` when the default or `DO_NOT_TRACK` did. */
+  settingsPath: string | null;
+  maxMegabytes: number;
 };
 
 export const settingsFileSourceSchema = z.enum(["env", "global", "local"]);
@@ -167,10 +185,15 @@ function mergeSettings(
 ): ResolvedSettings["merged"] {
   const storage =
     local?.storage === undefined ? global?.storage : { ...global?.storage, ...local.storage };
+  const telemetry =
+    local?.telemetry === undefined
+      ? global?.telemetry
+      : { ...global?.telemetry, ...local.telemetry };
   const defaultProject = local?.defaultProject ?? global?.defaultProject;
 
   return {
     ...(storage === undefined ? {} : { storage }),
+    ...(telemetry === undefined ? {} : { telemetry }),
     ...(defaultProject === undefined ? {} : { defaultProject }),
   };
 }
@@ -189,6 +212,62 @@ export function chooseDefaultProject({
   }
 
   return null;
+}
+
+/**
+ * Whether the `DO_NOT_TRACK` variable asks for no tracking.
+ * Following https://donottrack.sh/, only the value `1` counts.
+ */
+function isDoNotTrackSet(env: SettingsInputs["env"]) {
+  return env[DO_NOT_TRACK_VARIABLE] === "1";
+}
+
+/** A `telemetry` field decided by the codebase file first, the global file after, or `null` when neither sets it. */
+function chooseTelemetryField<Field extends "mode" | "maxMegabytes">(
+  { local, global }: Pick<ResolvedSettings, "global" | "local">,
+  field: Field,
+): { value: NonNullable<NonNullable<Settings["telemetry"]>[Field]>; settingsPath: string } | null {
+  for (const file of [local, global]) {
+    const value = file?.settings.telemetry?.[field];
+
+    if (file !== null && value !== undefined) {
+      return { value, settingsPath: file.path };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * The telemetry mode and size cap.
+ * The mode is the nearest `telemetry.mode` in a settings file (the codebase file before the global one),
+ *  else off when `DO_NOT_TRACK` is 1, else local.
+ * A settings file overrides `DO_NOT_TRACK`.
+ * The cap comes from the same files, else the default.
+ */
+export function resolveTelemetry(
+  { local, global }: Pick<ResolvedSettings, "global" | "local">,
+  env: SettingsInputs["env"],
+): ResolvedTelemetry {
+  const modeChoice = chooseTelemetryField({ local, global }, "mode");
+  const maxMegabytes =
+    chooseTelemetryField({ local, global }, "maxMegabytes")?.value ??
+    DEFAULT_TELEMETRY_MAX_MEGABYTES;
+
+  if (modeChoice !== null) {
+    return {
+      mode: modeChoice.value,
+      source: "settings",
+      settingsPath: modeChoice.settingsPath,
+      maxMegabytes,
+    };
+  }
+
+  if (isDoNotTrackSet(env)) {
+    return { mode: "off", source: "DO_NOT_TRACK", settingsPath: null, maxMegabytes };
+  }
+
+  return { mode: DEFAULT_TELEMETRY_MODE, source: "default", settingsPath: null, maxMegabytes };
 }
 
 /**

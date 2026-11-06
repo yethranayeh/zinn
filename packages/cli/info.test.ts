@@ -32,12 +32,12 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-function run(args: Array<string>, directory?: string) {
+function run(args: Array<string>, directory?: string, extraEnv: Record<string, string | undefined> = {}) {
   return runCli(args, {
     runtime,
     cliPath,
     cwd,
-    env: { ...TEST_ENVIRONMENT, HOME: home, NODE_ENV: "test", ZINN_DIR: directory, ZINN_DEBUG: undefined, DEBUG: undefined, FORCE_COLOR: "0" },
+    env: { ...TEST_ENVIRONMENT, HOME: home, NODE_ENV: "test", ZINN_DIR: directory, ZINN_DEBUG: undefined, DEBUG: undefined, DO_NOT_TRACK: undefined, FORCE_COLOR: "0", ...extraEnv },
   });
 }
 
@@ -228,4 +228,51 @@ test("info rejects unexpected arguments and flags through the normal CLI error p
     expect(result.stdout).toBe("");
     expect(JSON.parse(result.stderr).error).toBeObject();
   }
+});
+
+// ? ZINN-347
+test("ZINN-347: telemetry state is reported in JSON and text from settings and DO_NOT_TRACK", async () => {
+  const directory = join(root, "store");
+  mkdirSync(join(directory, "telemetry"), { recursive: true });
+  writeFileSync(join(directory, "telemetry", "2026-11-06.jsonl"), "x".repeat(10));
+  const fallback = await report(directory);
+  expect(fallback.telemetry).toEqual({ mode: "local", source: "default", settingsPath: null, maxMegabytes: 1024, directory: join(directory, "telemetry"), exists: true, sizeBytes: 10, error: null });
+
+  const tracked = await run(["info", "--json"], directory, { DO_NOT_TRACK: "1" });
+  expect(JSON.parse(tracked.stdout).telemetry).toMatchObject({ mode: "off", source: "DO_NOT_TRACK", settingsPath: null });
+  const ignored = await run(["info", "--json"], directory, { DO_NOT_TRACK: "true" });
+  expect(JSON.parse(ignored.stdout).telemetry).toMatchObject({ mode: "local", source: "default" });
+
+  const path = join(directory, "settings.json");
+  settings(path, { telemetry: { mode: "local", maxMegabytes: 2 } });
+  const overridden = await run(["info", "--json"], directory, { DO_NOT_TRACK: "1" });
+  expect(JSON.parse(overridden.stdout).telemetry).toMatchObject({ mode: "local", source: "settings", settingsPath: path, maxMegabytes: 2 });
+  const text = await run(["info"], directory, { DO_NOT_TRACK: "1" });
+  expect(text.code).toBe(0);
+  expect(text.stderr).toBe("");
+  for (const fact of ["local", path, "2", join(directory, "telemetry"), "10"]) {
+    expect(text.stdout).toContain(fact);
+  }
+});
+
+test("ZINN-347: a rejected telemetry cap leaves info working and ordinary commands refused with the file named", async () => {
+  const directory = join(root, "store");
+  const path = join(directory, "settings.json");
+  for (const maxMegabytes of ["1G", 0, 1.5]) {
+    settings(path, { telemetry: { maxMegabytes } });
+    const found = await report(directory);
+    expect(found.telemetry).toMatchObject({ mode: null, maxMegabytes: null });
+    expect(found.telemetry.error).toContain(path);
+    const ordinary = await run(["project", "list", "--json"], directory);
+    expect(ordinary.code).toBe(1);
+    expect(JSON.parse(ordinary.stderr).error.message).toContain(path);
+  }
+});
+
+test("ZINN-347: info never creates the telemetry folder", async () => {
+  const directory = join(root, "store");
+  mkdirSync(directory);
+  await report(directory);
+  await run(["info"], directory);
+  expect(readdirSync(directory)).toEqual([]);
 });

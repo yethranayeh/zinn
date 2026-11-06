@@ -1,5 +1,6 @@
 export const MAIN_FOLDER_NAME = ".zinn";
 export const DB_FILE_NAME = "zinn.sqlite";
+export const TELEMETRY_FOLDER_NAME = "telemetry";
 
 export const DB_TABLE = {
   project: "project",

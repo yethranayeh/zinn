@@ -58,8 +58,14 @@ export type { ReindexResult } from "./src/migrations/reindex.js";
 export type { LockWait } from "./src/migrations/upgrade.js";
 export type { DatabaseFacts, OpenPolicy, ReadOnlyReason } from "./src/migrations/open-policy.js";
 export type { ReleaseMode } from "./src/release.js";
-export type { Settings } from "./src/schemas/settings.js";
-export type { ResolvedSettings, SettingsFile, SettingsInputs } from "./src/settings.js";
+export type { Settings, TelemetryMode } from "./src/schemas/settings.js";
+export type {
+  ResolvedSettings,
+  ResolvedTelemetry,
+  SettingsFile,
+  SettingsInputs,
+  TelemetrySource,
+} from "./src/settings.js";
 export type { SettingsFileInspection, SettingsInspection } from "./src/settings.js";
 export type { StoreInfo } from "./src/operations/info.js";
 export type { FailureKind, FailureFacts, ValidationIssue } from "./src/errors.js";
@@ -124,12 +130,15 @@ export {
   commentDeleteSchema,
   commentEditSchema,
 } from "./src/schemas/comment.js";
-export { SETTINGS_VERSION, settingsSchema } from "./src/schemas/settings.js";
+export { SETTINGS_VERSION, settingsSchema, telemetryModeSchema } from "./src/schemas/settings.js";
 export {
+  BYTES_PER_MEGABYTE,
   chooseDefaultProject,
   resolveSettings,
+  resolveTelemetry,
   settingsFileSourceSchema,
   settingsFileStateSchema,
+  telemetrySourceSchema,
 } from "./src/settings.js";
 export { project } from "./src/operations/project.js";
 export { column } from "./src/operations/column.js";

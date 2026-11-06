@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -171,4 +171,101 @@ test("the shared inspection connection refuses writes and never creates a missin
   const resolvedMissing = resolveDatabasePath(missing);
   expect(() => withDatabaseInspection(resolvedMissing, () => {})).toThrow();
   expect(existsSync(missing)).toBe(false);
+});
+
+// ? ZINN-347: the telemetry section of the report.
+test("ZINN-347: a default store reports local telemetry and a missing folder without creating it", () => {
+  const before = readdirSync(root, { recursive: true });
+  const report = info.get({ home, cwd, env: {} });
+  expect(report.telemetry).toEqual({
+    mode: "local",
+    source: "default",
+    settingsPath: null,
+    maxMegabytes: 1024,
+    directory: join(home, ".zinn", "telemetry"),
+    exists: false,
+    sizeBytes: 0,
+    error: null,
+  });
+  expect(readdirSync(root, { recursive: true })).toEqual(before);
+});
+
+test("ZINN-347: DO_NOT_TRACK=1 turns telemetry off and any other value is ignored", () => {
+  expect(info.get({ home, cwd, env: { DO_NOT_TRACK: "1" } }).telemetry).toMatchObject({ mode: "off", source: "DO_NOT_TRACK", settingsPath: null });
+  expect(info.get({ home, cwd, env: { DO_NOT_TRACK: "true" } }).telemetry).toMatchObject({ mode: "local", source: "default" });
+});
+
+test("ZINN-347: settings choose the mode over DO_NOT_TRACK, and a file that sets only the cap keeps the source", () => {
+  const global = join(home, ".zinn", "settings.json");
+  const local = join(root, "repo", "zinn.local.json");
+  settings(global, { telemetry: { mode: "local" } });
+  expect(info.get({ home, cwd, env: { DO_NOT_TRACK: "1" } }).telemetry).toMatchObject({ mode: "local", source: "settings", settingsPath: global, maxMegabytes: 1024 });
+  settings(local, { telemetry: { mode: "off", maxMegabytes: 8 } });
+  expect(info.get({ home, cwd, env: {} }).telemetry).toMatchObject({ mode: "off", source: "settings", settingsPath: local, maxMegabytes: 8 });
+  settings(local, { telemetry: { maxMegabytes: 9 } });
+  expect(info.get({ home, cwd, env: {} }).telemetry).toMatchObject({ mode: "local", source: "settings", settingsPath: global, maxMegabytes: 9 });
+  settings(global, {});
+  expect(info.get({ home, cwd, env: {} }).telemetry).toMatchObject({ mode: "local", source: "default", settingsPath: null, maxMegabytes: 9 });
+});
+
+test("ZINN-347: the folder size sums the files directly inside it and skips nested folders", () => {
+  const directory = join(root, "selected");
+  mkdirSync(join(directory, "telemetry", "nested"), { recursive: true });
+  writeFileSync(join(directory, "telemetry", "2026-11-05.jsonl"), "12345");
+  writeFileSync(join(directory, "telemetry", "2026-11-06.jsonl"), "678");
+  writeFileSync(join(directory, "telemetry", "nested", "ignored.jsonl"), "not counted");
+  expect(info.get({ home, cwd, env: { ZINN_DIR: directory } }).telemetry).toMatchObject({ directory: join(directory, "telemetry"), exists: true, sizeBytes: 8, error: null });
+});
+
+test("ZINN-347: a telemetry path that is not a folder is reported like the storage folder", () => {
+  const directory = join(root, "selected");
+  mkdirSync(directory);
+  writeFileSync(join(directory, "telemetry"), "a file");
+  expect(info.get({ home, cwd, env: { ZINN_DIR: directory } }).telemetry).toMatchObject({ directory: join(directory, "telemetry"), exists: false, sizeBytes: null, error: `${join(directory, "telemetry")} is not a directory` });
+});
+
+test.skipIf(process.getuid?.() === 0 || process.platform === "win32")("ZINN-347: a folder that cannot be read gives no size and an error", () => {
+  const directory = join(root, "selected");
+  const telemetry = join(directory, "telemetry");
+  mkdirSync(telemetry, { recursive: true });
+  chmodSync(telemetry, 0o000);
+  try {
+    expect(info.get({ home, cwd, env: { ZINN_DIR: directory } }).telemetry).toMatchObject({ exists: true, sizeBytes: null, error: expect.any(String) });
+  } finally {
+    chmodSync(telemetry, 0o700);
+  }
+});
+
+test("ZINN-347: an unusable selected settings file leaves the setting unknown but the folder known", () => {
+  const directory = join(root, "selected");
+  const path = join(directory, "settings.json");
+  settings(path, { telemetry: { maxMegabytes: "1G" } });
+  const report = info.get({ home, cwd, env: { ZINN_DIR: directory, DO_NOT_TRACK: "1" } });
+  expect(report.telemetry).toMatchObject({ mode: null, source: null, settingsPath: null, maxMegabytes: null, directory: join(directory, "telemetry"), exists: false, sizeBytes: 0 });
+  expect(report.telemetry.error).toBe(report.storage.error ?? report.defaultProject.error);
+  expect(report.telemetry.error).toContain(path);
+});
+
+test("ZINN-347: a broken nearest local file makes every telemetry fact unavailable", () => {
+  settings(join(home, ".zinn", "settings.json"), { telemetry: { mode: "off", maxMegabytes: 4 } });
+  settings(join(cwd, "zinn.local.json"), "{");
+  const report = info.get({ home, cwd, env: {} });
+  expect(report.telemetry).toEqual({ mode: null, source: null, settingsPath: null, maxMegabytes: null, directory: null, exists: null, sizeBytes: null, error: report.storage.error });
+  expect(report.telemetry.error).toContain(join(cwd, "zinn.local.json"));
+});
+
+test("ZINN-347: a field the unusable global file could have set is unknown while the local file's fields stay known", () => {
+  const globalPath = join(home, ".zinn", "settings.json");
+  settings(globalPath, "{");
+  settings(join(cwd, "zinn.local.json"), { storage: { directory: "store" }, telemetry: { mode: "off" } });
+  const report = info.get({ home, cwd, env: {} });
+  expect(report.telemetry).toMatchObject({ mode: "off", source: "settings", maxMegabytes: null, directory: join(cwd, "store", "telemetry") });
+  expect(report.telemetry.error).toContain(globalPath);
+});
+
+test("ZINN-347: a storage directory that cannot be resolved leaves the folder unknown and the setting resolved", () => {
+  settings(join(home, ".zinn", "settings.json"), { storage: { directory: join(tmpdir(), "..", "zinn-outside-temporary") }, telemetry: { mode: "off", maxMegabytes: 2 } });
+  const report = info.get({ home, cwd, env: { NODE_ENV: "test" } });
+  expect(report.storage.error).toBeString();
+  expect(report.telemetry).toMatchObject({ mode: "off", source: "settings", maxMegabytes: 2, directory: null, exists: null, sizeBytes: null, error: report.storage.error });
 });

@@ -329,6 +329,8 @@ const fixtures: Record<string, Fixture[]> = {
     { schema: "Info", args: [], empty: true },
     { schema: "Info", args: [], prepare: (dir) => writeFileSync(join(dir, "settings.json"), "{"), check: (v) => expect(v.settingsFiles.some((file: any) => file.state === "error")).toBe(true) },
     { schema: "Info", args: [], prepare: (dir) => writeFileSync(join(dir, "settings.json"), JSON.stringify({ defaultProject: "APP", storage: { directory: "unused" } })) },
+    { schema: "Info", args: [], prepare: (dir) => writeFileSync(join(dir, "settings.json"), JSON.stringify({ telemetry: { mode: "off", maxMegabytes: 5 } })), check: (v) => expect(v.telemetry).toMatchObject({ mode: "off", source: "settings", maxMegabytes: 5 }) },
+    { schema: "Info", args: [], prepare: (dir) => writeFileSync(join(dir, "settings.json"), JSON.stringify({ telemetry: { maxMegabytes: 0 } })), check: (v) => expect(v.telemetry).toMatchObject({ mode: null, maxMegabytes: null }) },
     { schema: "Info", args: [], prepare: (dir) => writeFileSync(join(dir, "data", "zinn.sqlite"), "not a database"), check: (v) => expect(v.database.error).not.toBeNull() },
   ],
 };
