@@ -7,6 +7,7 @@ export const iconNames = [
   "arrow-right",
   "download",
   "close",
+  "search",
 ] as const;
 
 export type IconName = (typeof iconNames)[number];

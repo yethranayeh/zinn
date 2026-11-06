@@ -10,7 +10,12 @@ interface Props {
 const { id } = Astro.props;
 ---
 
-<Dialog id={id} title='Enlarged screenshot' class='max-h-[94svh] w-[96vw] max-w-450' data-image-lightbox>
+<Dialog
+	id={id}
+	title='Enlarged screenshot'
+	class='max-h-[94svh] w-[96vw] max-w-450'
+	data-image-lightbox
+	data-pagefind-ignore>
 	<Button slot='header' class='shrink-0' href='' target='_blank' rel='noopener' data-lightbox-original>
 		<span class='max-sm:sr-only'>Open original</span>
 		<Icon name='external-link' />

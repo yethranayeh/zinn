@@ -1,0 +1,5 @@
+site: dist
+# The CLI reference's table of contents repeats every heading, so it would outrank the sections it lists
+exclude_selectors:
+  - "#contents"
+  - "#contents + ul"

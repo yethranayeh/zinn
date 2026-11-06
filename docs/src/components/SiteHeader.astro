@@ -1,6 +1,7 @@
 ---
 import Branding from "./Branding.astro";
 import NavLink from "./NavLink.astro";
+import Search from "./search/Search.astro";
 
 const links = [
 	{ name: "Docs", path: "/docs" },
@@ -14,17 +15,21 @@ const links = [
 	<div class='site-container flex min-h-[var(--site-brand-height)] items-end justify-between gap-x-4'>
 		<Branding />
 
-		<nav
-			class='grid h-11 min-w-0 flex-auto grid-cols-[1fr_2fr] grid-rows-[22px_22px] self-stretch font-mono text-xs leading-normal min-[375px]:flex min-[375px]:flex-nowrap min-[375px]:items-stretch min-[375px]:justify-end min-[375px]:gap-0 sm:h-6 sm:flex-none sm:self-end'
-			aria-label='Zinn documentation'>
-			{
-				links.map((link) => (
-					<NavLink variant='header' href={link.path}>
-						{link.name}
-					</NavLink>
-				))
-			}
-		</nav>
+		<div class='flex min-w-0 flex-auto items-end justify-end self-stretch sm:flex-none sm:self-end'>
+			<Search />
+
+			<nav
+				class='grid h-11 min-w-0 flex-auto grid-cols-[1fr_2fr] grid-rows-[22px_22px] font-mono text-xs leading-normal min-[420px]:flex min-[420px]:flex-nowrap min-[420px]:items-stretch min-[420px]:flex-none min-[420px]:justify-end min-[420px]:gap-0 sm:h-6'
+				aria-label='Zinn documentation'>
+				{
+					links.map((link) => (
+						<NavLink variant='header' href={link.path}>
+							{link.name}
+						</NavLink>
+					))
+				}
+			</nav>
+		</div>
 	</div>
 </header>
 

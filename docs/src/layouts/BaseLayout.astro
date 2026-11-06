@@ -113,7 +113,7 @@ const homepageStructuredData = [website, softwareApplication];
 	<body class='flex min-h-svh flex-col selection:bg-soot selection:text-limestone'>
 		<SiteHeader />
 
-		<main class='flex min-w-0 flex-1 flex-col'>
+		<main class='flex min-w-0 flex-1 flex-col' data-pagefind-body={noindex ? undefined : ""}>
 			<slot />
 		</main>
 

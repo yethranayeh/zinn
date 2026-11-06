@@ -9,7 +9,8 @@ const markdownUrl = `${Astro.url.pathname.replace(/\/$/, "")}.md`;
 <div
 	class='inline-flex max-w-full items-stretch border border-soot/20 font-mono text-xs/normal'
 	role='group'
-	aria-label='Markdown actions'>
+	aria-label='Markdown actions'
+	data-pagefind-ignore>
 	<span class='inline-flex shrink-0 items-center px-3.5'>Markdown</span>
 	<Tooltip text='Copy as Markdown' class='border-l border-soot/20'>
 		<CopyButton

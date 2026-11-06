@@ -1,0 +1,172 @@
+---
+import Button from "../ui/button/Button.astro";
+import Dialog from "../ui/dialog/Dialog.astro";
+import Icon from "../ui/icon/Icon.astro";
+
+const resultLinkClass =
+	"block no-underline hover:bg-soot/8 hover:no-underline focus-visible:-outline-offset-3 [&_mark]:bg-bronze/40 [&_mark]:text-current";
+const excerptClass = "mt-1 block text-sm text-muted-foreground";
+---
+
+<Button
+	class='h-11 w-9 shrink-0 border-l border-soot/22 p-0 hover:bg-bone focus-visible:outline-2 focus-visible:outline-offset-[-3px] max-[420px]:w-11 sm:-mr-px sm:h-6 sm:min-h-0 sm:w-auto sm:border sm:border-b-0 sm:px-3 sm:focus-visible:outline-offset-[6px] [@media(scripting:none)]:hidden'
+	aria-haspopup='dialog'
+	aria-keyshortcuts='Control+K Meta+K'
+	data-search-open>
+	<Icon name='search' class='size-4 sm:size-3.5' />
+	<span class='max-sm:sr-only'>Search</span>
+</Button>
+
+<Dialog
+	id='site-search'
+	title='Search'
+	hideTitle
+	class='mt-4 mb-auto max-w-2xl md:mt-[10svh] md:max-h-[80svh]'
+	data-search>
+	<input
+		slot='header'
+		class='min-h-11 min-w-0 flex-auto font-mono text-base focus-visible:outline-none md:text-sm'
+		type='text'
+		role='searchbox'
+		aria-label='Search zinn.sh'
+		placeholder='Search'
+		autocomplete='off'
+		spellcheck='false'
+		enterkeyhint='search'
+		autofocus
+		data-search-input
+	/>
+	<p class='p-3 text-sm empty:hidden md:px-5' role='status' data-search-status></p>
+	<ol data-search-results></ol>
+
+	<template data-search-page>
+		<li class='border-t border-pewter/40 first:border-t-0'>
+			<a class:list={[resultLinkClass, "p-3 md:px-5"]} data-search-link>
+				<span class='block font-mono text-xs' data-search-title></span>
+				<span class={excerptClass} data-search-excerpt></span>
+			</a>
+			<ul data-search-sections></ul>
+		</li>
+	</template>
+
+	<template data-search-section>
+		<li>
+			<a class:list={[resultLinkClass, "py-2 pr-3 pl-6 md:pr-5 md:pl-8"]} data-search-link>
+				<span class='block font-mono text-xs' data-search-title></span>
+				<span class={excerptClass} data-search-excerpt></span>
+			</a>
+		</li>
+	</template>
+</Dialog>
+
+<script is:inline>
+	window.importPagefind = () => import("/pagefind/pagefind.js");
+</script>
+
+<script>
+	import { loadPagefind, sectionsToShow, type PagefindResult } from "./pagefind";
+
+	const dialog = document.querySelector<HTMLDialogElement>("[data-search]")!;
+	const openButton = document.querySelector<HTMLButtonElement>("[data-search-open]")!;
+	const input = dialog.querySelector<HTMLInputElement>("[data-search-input]")!;
+	const status = dialog.querySelector<HTMLElement>("[data-search-status]")!;
+	const results = dialog.querySelector<HTMLOListElement>("[data-search-results]")!;
+	const pageTemplate = dialog.querySelector<HTMLTemplateElement>("[data-search-page]")!;
+	const sectionTemplate = dialog.querySelector<HTMLTemplateElement>("[data-search-section]")!;
+
+	function fillLink(template: HTMLTemplateElement, url: string, title: string, excerpt: string) {
+		const item = template.content.cloneNode(true) as DocumentFragment;
+		item.querySelector<HTMLAnchorElement>("[data-search-link]")!.href = url;
+		item.querySelector<HTMLElement>("[data-search-title]")!.textContent = title;
+		const excerptElement = item.querySelector<HTMLElement>("[data-search-excerpt]")!;
+
+		if (excerpt) {
+			// Pagefind escapes the page text and adds only mark elements
+			excerptElement.innerHTML = excerpt;
+		} else {
+			excerptElement.remove();
+		}
+
+		return item;
+	}
+
+	function renderPage(page: PagefindResult) {
+		const sections = sectionsToShow(page);
+		const item = fillLink(pageTemplate, page.url, page.meta.title, sections.length > 0 ? "" : page.excerpt);
+		const list = item.querySelector<HTMLUListElement>("[data-search-sections]")!;
+
+		for (const section of sections) {
+			list.append(fillLink(sectionTemplate, section.url, section.title, section.excerpt));
+		}
+
+		return item;
+	}
+
+	function show(message: string, pages: PagefindResult[] = []) {
+		status.textContent = message;
+		results.replaceChildren(...pages.map(renderPage));
+	}
+
+	// Identifies the newest query, so a slower earlier one cannot replace its results
+	let latestQuery = 0;
+
+	async function runSearch(query: string) {
+		const thisQuery = ++latestQuery;
+
+		if (!query) {
+			show("");
+			return;
+		}
+
+		try {
+			const pagefind = await loadPagefind();
+			const search = await pagefind.debouncedSearch(query);
+
+			// Pagefind returns null for a query that a newer one replaced during its debounce.
+			if (!search) {
+				return;
+			}
+
+			const pages = await Promise.all(search.results.map((result) => result.data()));
+
+			if (thisQuery === latestQuery) {
+				show(pages.length > 0 ? "" : `No results for “${query}”.`, pages);
+			}
+		} catch {
+			if (thisQuery === latestQuery) {
+				show("Search is unavailable.");
+			}
+		}
+	}
+
+	function openSearch() {
+		if (!dialog.open) {
+			dialog.showModal();
+			loadPagefind().catch(() => show("Search is unavailable."));
+		}
+
+		input.select();
+	}
+
+	openButton.addEventListener("click", openSearch);
+
+	input.addEventListener("input", () => {
+		void runSearch(input.value.trim());
+	});
+
+	document.addEventListener("keydown", (event) => {
+		if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "k") {
+			event.preventDefault();
+			openSearch();
+		}
+	});
+
+	// A link to a section of the current page does not reload it, so the dialog has to close itself.
+	results.addEventListener("click", (event) => {
+		const openedHere = !(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey);
+
+		if (openedHere && (event.target as Element).closest("a")) {
+			dialog.close();
+		}
+	});
+</script>

@@ -4,7 +4,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "bun --bun astro dev --host 127.0.0.1",
-		"build": "bun --bun astro build",
+		"build": "bun --bun astro build && bunx pagefind",
 		"check": "bun --bun astro check",
 		"test": "PUBLIC_SITE_ENV=production bun run build && bun run foundry:build && bun tests/run.ts",
 		"deploy": "bun run test && bunx wrangler deploy",
@@ -25,6 +25,7 @@
 		"@astrojs/check": "^0.9.10",
 		"@resvg/resvg-js": "2.6.2",
 		"@tailwindcss/vite": "^4.3.3",
+		"pagefind": "1.6.0",
 		"satori": "0.60.0",
 		"typescript": "^5",
 		"wrangler": "4.147.0"
