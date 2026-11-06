@@ -1,13 +1,15 @@
 ---
 title: Data and backups
-description: Learn where Zinn stores data and how database backups, restores, and schema upgrades work.
+description: Learn where Zinn stores data and how database backups, restores, schema upgrades, and failure logs work.
 ---
 
 import Aside from "../../components/ui/aside/Aside.astro";
 
 # Data and backups
 
-Zinn stores every project in one local SQLite database. The default database is `~/.zinn/data/zinn.sqlite`. The backups of the database are stored in `~/.zinn/backups/`. `ZINN_DIR` or a settings file can select another Zinn directory. See [Settings](/docs/settings) for directory selection and precedence.
+Zinn stores every project in one local SQLite database. The default database is `~/.zinn/data/zinn.sqlite`. The backups of the database are stored in `~/.zinn/backups/`, and [failure logs](#failure-logs) in `~/.zinn/logs/`.
+
+`ZINN_DIR` or a settings file can select another Zinn directory. See [Settings](/docs/settings) for directory selection and precedence.
 
 Reported database paths, and the paths of backups Zinn saves, are **absolute** with existing <span class="group"><span class="group-hover:hidden">symbolic</span><span class="hidden sr-hidden group-hover:inline">absolute</span></span> links resolved. For a destination that does not exist yet, Zinn resolves its nearest existing ancestor and appends the missing path segments without creating them. Migration reports the same resolved destination whether it upgrades the database or finds it current. A path-resolution failure identifies the requested path.
 
@@ -43,7 +45,7 @@ zinn restore ~/.zinn/backups/2026-09-29T12-30-05Z-cli-0.32.0-b38178c0.sqlite
 
 Restore asks for confirmation unless `--yes` is used. It saves the current database first, then applies the restore completely or not at all. Restoring to a missing database creates it. With `--json`, it returns `databasePath`, `previousVersion`, `restoredVersion`, and `backupPath`; `backupPath` is `null` if the destination database was missing or empty. See [Scripting and JSON output](/docs/scripting) for confirmation behavior in unattended commands.
 
-A backup with an older schema version is restored at that version, then Zinn upgrades it under the normal upgrade policy. Restore works regardless of the version of the destination database, so you can return to an older Zinn and restore a backup saved by an upgrade. Missing, damaged, unmarked, non-Zinn, or newer-schema backups are refused without changes. Any later failure rolls back the restore and retains the saved backup. If the destination database is damaged, restore leaves it unchanged and prints recovery steps.
+A backup with an older schema version is restored at that version, then Zinn upgrades it under the normal upgrade policy. Restore works regardless of the version of the destination database, so you can return to an older Zinn and restore a backup saved by an upgrade. Missing, damaged, unmarked, non-Zinn, or newer-schema backups are **refused** without changing the database. Any later failure rolls back the restore and retains the saved backup. If the destination database is damaged, restore leaves it unchanged and prints recovery steps.
 
 ## Deleted projects and tasks
 
@@ -76,6 +78,16 @@ zinn task list MDR --allow-legacy-read
 ```
 
 Reads may fail or omit data. Anything can go wrong, really. Zinn warns on **stderr** once per command. The flag never permits a command to change the database. It can appear anywhere except after `--`, where it is treated as a regular argument. `zinn backup` works on an unmarked database without the flag.
+
+## Failure logs
+
+A CLI command that fails with a `storage` or `internal` error writes one log file to `logs/` in the selected Zinn directory and names the file in its error. Other errors and successful commands write no log. A log's name follows the same pattern as a backup's, such as `2026-09-29T12-30-05Z-cli-0.32.0-b38178c0.log`.
+
+A log holds the stack trace with its causes, the process id, the Zinn and runtime versions, the operating system, the store and database paths, the schema version, the arguments as typed, timings, and the notices printed before the failure. With `ZINN_DEBUG=1`, the notices include the debug output. The text is for humanoids, and its layout can change.
+
+Arguments keep their values, so a log can contain private work such as a task's title or description. **Read** a log before sharing it.
+
+Writing a log keeps the newest 10 logs and removes older ones. Other files in `logs/` stay. Zinn writes logs only inside an existing Zinn directory. When a log cannot be written, the command reports its error without a path.
 
 ## Core library compatibility
 

@@ -22,7 +22,7 @@ If a `ZINN_DIR` is provided, Zinn reads only `settings.json` inside that directo
 
 Without `ZINN_DIR`, Zinn looks for `zinn.local.json` from the current directory up to the Git root. Outside a Git repository, it checks only the current directory. It reads the global `~/.zinn/settings.json` too, then merges the local file over it field by field. A local setting overrides the same global setting. You can omit fields in the local setting to inherit global values. The local settings file is not meant to be committed, as it can cause unexpected behavior on others' Zinn setups who install the same repo with the tracked local setting.
 
-`storage.directory` is relative to the folder containing the file that sets it. A leading `~` or `~/` expands to your home directory. It names the Zinn directory, which contains `data/zinn.sqlite` and `backups/`.
+`storage.directory` is relative to the folder containing the file that sets it. A leading `~` or `~/` expands to your home directory. It names the Zinn directory, which contains `data/zinn.sqlite`, `backups/`, and `logs/`.
 
 The selected directory holds one database shared by all its projects. Choose a local directory outside network shares and synchronized folders. See [safe storage and backups](/docs/data).
 
