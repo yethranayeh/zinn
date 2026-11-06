@@ -250,11 +250,11 @@ function assertStoreDirectory(directory: string, settingsPath: string | null) {
 }
 
 /**
- * Captures a fresh database destination from the configuration selected on first use.
- * Settings and the selected directory stay cached. The database and backup paths are resolved through filesystem links for each snapshot.
- * Keep the snapshot throughout an operation. An open connection retains its own opening target.
+ * The store's folder and the paths inside it, selected on first use and then kept, without following links.
+ * A problem inside the folder, such as a broken link, does not refuse these,
+ *  so failure reports can still find the folder.
  */
-export function getStorage() {
+export function getConfiguredStorage(): ConfiguredStorage {
   if (processStorage === null) {
     const inputs = processInputs();
     if (inputs.env.ZINN_DIR !== undefined) {
@@ -269,11 +269,23 @@ export function getStorage() {
     processStorage = { ...storage, ...storagePaths(resolve(inputs.cwd, storage.directory)) };
   }
 
-  const databasePath = resolveDatabasePath(processStorage.databasePath);
+  return processStorage;
+}
+
+/**
+ * Captures a fresh database destination from the configuration selected on first use.
+ * Settings and the selected directory stay cached. The database and backup paths are resolved
+ *  through filesystem links for each snapshot.
+ * Keep the snapshot throughout an operation. An open connection retains its own opening target.
+ */
+export function getStorage() {
+  const configured = getConfiguredStorage();
+  const databasePath = resolveDatabasePath(configured.databasePath);
+
   return {
-    ...processStorage,
+    ...configured,
     dataDirectory: dirname(databasePath),
     databasePath,
-    backupDirectory: resolveDatabasePath(processStorage.backupDirectory),
+    backupDirectory: resolveDatabasePath(configured.backupDirectory),
   };
 }

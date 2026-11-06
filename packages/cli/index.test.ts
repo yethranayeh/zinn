@@ -5840,8 +5840,9 @@ test("restore explains recovery from damaged task and comment pages without chan
       const json = await runZinn(["restore", path, "--yes", "--json"], dir);
       expect(json.code).toBe(1);
       expect(json.stdout).toBe("");
-      expect(errorDocumentSchema.parse(JSON.parse(json.stderr)).error)
-        .toMatchObject({ code: "storage", details: { reason: "corrupt" } });
+      const corrupt = errorDocumentSchema.parse(JSON.parse(json.stderr)).error;
+      expect(corrupt).toMatchObject({ code: "storage", details: { reason: "corrupt" } });
+      expect(existsSync(corrupt.details!.logPath!)).toBe(true);
       expect(result.stderr).toContain(`${databasePath}-wal`);
       expect(result.stderr).toContain(`${databasePath}-shm`);
       expect(result.stderr).toContain("zinn restore");
@@ -5976,7 +5977,7 @@ test("restore refuses a file that is not a backup it can restore, printing why a
   });
 });
 
-test("a refused restore onto a store with no database creates nothing", async () => {
+test("a refused restore onto a store with no database creates only its failure log", async () => {
   await withIsolatedZinnDir(async (dir) => {
     await withIsolatedZinnDir(async (otherDir) => {
       const textFile = join(otherDir, "notes.sqlite");
@@ -5984,7 +5985,7 @@ test("a refused restore onto a store with no database creates nothing", async ()
 
       expect((await runZinn(["restore", textFile, "--yes"], dir)).code).toBe(1);
       expect((await runZinn(["restore", textFile], dir)).code).toBe(1);
-      expect(readdirSync(dir)).toEqual([]);
+      expect(readdirSync(dir)).toEqual(["logs"]);
     });
   });
 });
@@ -6758,7 +6759,9 @@ test.serial("persistent contention times out without a partial CLI mutation", as
       const result = await runZinn(["task", "create", "LOCK", "--title", "must not persist", "--json"], dir, { AI_AGENT: "concurrency-test" });
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
-      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "storage", details: { reason: "busy", cause: { code: "SQLITE_BUSY" } } });
+      const busy = errorDocumentSchema.parse(JSON.parse(result.stderr)).error;
+      expect(busy).toMatchObject({ code: "storage", details: { reason: "busy", cause: { code: "SQLITE_BUSY" } } });
+      expect(readFileSync(busy.details!.logPath!, "utf8")).toContain(busy.details!.cause!.code!);
       expect(performance.now() - began).toBeGreaterThanOrEqual(29_000);
       expect(performance.now() - began).toBeLessThan(40_000);
       expect(db.query("SELECT COUNT(*) AS count FROM task").get()).toEqual({ count: 0 });

@@ -88,6 +88,7 @@ export const errorDetailsSchema = z.strictObject({
   backupPath: z.string().optional(),
   schemaVersion: z.number().int().nonnegative().optional(),
   supportedSchemaVersion: z.number().int().nonnegative().optional(),
+  logPath: z.string().optional(),
   cause: z
     .strictObject({
       code: z.string().optional(),

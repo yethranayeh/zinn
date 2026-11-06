@@ -1,6 +1,6 @@
 import type { ParseArgsOptionsConfig } from "node:util";
 import type { InputForm, InputOptions, InputOption } from "./input.js";
-import type { ErrorDetails } from "./errors.js";
+import type { ErrorCode, ErrorDetails } from "./errors.js";
 
 import { parseArgs } from "node:util";
 import { createInterface } from "node:readline/promises";
@@ -8,6 +8,7 @@ import { z } from "zod";
 import { assertWritable, InputValidationError } from "@zinn-dev/core";
 
 import { CliError, classifyFailure, recoveryHint } from "./errors.js";
+import { writeFailureLog } from "./failure-log.js";
 import { helpSpellings, routerOptionNames, positionalWords } from "./input.js";
 import { formatParserReasonPreview } from "./presentation/description-presentation.js";
 
@@ -17,6 +18,10 @@ type OutputMode = "text" | "json";
 let outputMode: OutputMode = "text";
 let legacyReadAllowed = false;
 const diagnostics: Array<string> = [];
+/** Every notice of this run in order, kept for the failure log */
+const runNotices: Array<string> = [];
+/** Failures that write a log, because the error alone does not say what went wrong */
+const LOGGED_ERROR_CODES: ReadonlyArray<ErrorCode> = ["storage", "internal"];
 const DOUBLE_DASH = "--";
 const MAX_PARSER_MESSAGE_LENGTH = 1024;
 
@@ -55,6 +60,8 @@ export function prepareOutput(args: Array<string>) {
 
 /** Keeps JSON failures parseable while text-mode notices remain immediate. */
 export function diagnostic(message: string) {
+  runNotices.push(message);
+
   if (outputMode === "json") {
     diagnostics.push(message);
   } else {
@@ -225,18 +232,21 @@ export function renderFailure(reason: unknown): void {
     message: failureMessage(reason, "Something went wrong"),
   };
   const pendingDiagnostics = diagnostics.splice(0);
+  const logPath = LOGGED_ERROR_CODES.includes(failure.code)
+    ? writeFailureLog(reason, runNotices)
+    : undefined;
 
   if (outputMode === "json") {
-    const details =
-      failure.details === undefined
-        ? undefined
-        : Object.fromEntries(
-            Object.entries(failure.details).filter(([, value]) => value !== undefined),
-          );
+    const details = {
+      ...Object.fromEntries(
+        Object.entries(failure.details ?? {}).filter(([, value]) => value !== undefined),
+      ),
+      ...(logPath === undefined ? {} : { logPath }),
+    };
 
     const error = {
       ...failure,
-      details: details !== undefined && Object.keys(details).length > 0 ? details : undefined,
+      details: Object.keys(details).length > 0 ? details : undefined,
       diagnostics: pendingDiagnostics.length > 0 ? pendingDiagnostics : undefined,
     };
 
@@ -247,6 +257,10 @@ export function renderFailure(reason: unknown): void {
     }
 
     console.error(failure.help == null ? failure.message : `${failure.message}\n\n${failure.help}`);
+
+    if (logPath !== undefined) {
+      console.error(`Full log: ${logPath}`);
+    }
   }
 
   // Let piped stderr finish writing before Node exits

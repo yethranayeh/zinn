@@ -2,8 +2,9 @@ import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import { beforeAll, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { readOutputFileName } from "@zinn-dev/core";
 
 import packageJson from "./package.json";
 import { runCli, runCliInTerminal } from "./testing";
@@ -304,6 +305,31 @@ for (const runtime of ["node", "bun"]) {
     const failure = errorDocumentSchema.parse(JSON.parse(result.stderr.toString())).error;
     expect(failure.code).toBe("internal");
     expect(failure.diagnostics).toHaveLength(DIAGNOSTIC_COUNT);
+  });
+
+  test(`${runtime}: built storage failures write a log and name it`, async () => {
+    await withIsolatedZinnDir(async (directory) => {
+      mkdirSync(join(directory, "data"));
+      writeFileSync(join(directory, "data", "zinn.sqlite"), "not a SQLite database");
+      const logs = join(directory, "logs");
+
+      const json = await runBuilt(runtime, ["project", "list", "--json"], directory);
+      expect(json.code).toBe(1);
+      expect(json.stdout).toBe("");
+      const logPath = errorDocumentSchema.parse(JSON.parse(json.stderr)).error.details!.logPath!;
+      expect(dirname(logPath)).toBe(logs);
+      expect(readOutputFileName(logPath, ".log")).toEqual({ client: "cli", version: packageJson.version });
+      const log = readFileSync(logPath, "utf8");
+      expect(log).toContain(packageJson.version);
+      expect(log).toContain(runtime === "node" ? "Node" : "Bun");
+
+      const text = await runBuilt(runtime, ["project", "list"], directory);
+      expect(text.code).toBe(1);
+      expect(text.stdout).toBe("");
+      const textPath = readdirSync(logs).map((name) => join(logs, name)).find((path) => path !== logPath);
+      expect(textPath).toBeDefined();
+      expect(text.stderr.trimEnd().split("\n").at(-1)).toContain(textPath!);
+    });
   });
 
   test(`${runtime}: built version/help and JSON task operations use isolated stores`, async () => {

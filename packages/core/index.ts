@@ -64,7 +64,7 @@ export type { SettingsFileInspection, SettingsInspection } from "./src/settings.
 export type { StoreInfo } from "./src/operations/info.js";
 export type { FailureKind, FailureFacts, ValidationIssue } from "./src/errors.js";
 export type { SqliteCode, SqlitePrimaryCode } from "./src/sqlite/database.js";
-export type { Storage } from "./src/storage.js";
+export type { ConfiguredStorage, Storage } from "./src/storage.js";
 
 export {
   labelCreateSchema,
@@ -146,7 +146,7 @@ export { MigrationRefusedError } from "./src/migrations/migrate.js";
 export { RestoreRefusedError } from "./src/migrations/restore.js";
 export { assertWritable, configureDatabase } from "./src/db.js";
 export { ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./src/migrations/open-policy.js";
-export { getStorage, storageSourceSchema } from "./src/storage.js";
+export { getConfiguredStorage, getStorage, storageSourceSchema } from "./src/storage.js";
 export { createOutputFileName, readOutputFileName } from "./src/output-file-name.js";
 export { databaseStateSchema, readSchemaVersionWithoutWaiting } from "./src/migrations/classify.js";
 export { info, infoDatabaseStateSchema } from "./src/operations/info.js";

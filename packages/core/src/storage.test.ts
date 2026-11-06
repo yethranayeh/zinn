@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, 
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { getStorage, resolveStorage } from "./storage";
+import { getConfiguredStorage, getStorage, resolveStorage } from "./storage";
 import { CoreError } from "./errors";
 import { withEnvironment } from "./testing";
 
@@ -147,6 +147,11 @@ test("logDirectory sits in the store and is not created, and a broken link there
       symlinkSync(join(directory, "missing"), logDirectory, "dir");
 
       expect(getStorage().logDirectory).toBe(logDirectory);
+
+      // The configured paths survive a store whose database path cannot be resolved.
+      writeFileSync(join(store, "data"), "not a folder");
+
+      expect(getConfiguredStorage().logDirectory).toBe(logDirectory);
     });
   } finally {
     rmSync(directory, { recursive: true, force: true });
