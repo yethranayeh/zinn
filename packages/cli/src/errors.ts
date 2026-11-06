@@ -111,7 +111,7 @@ export const errorDocumentSchema = z.strictObject({
 export type ErrorCode = z.infer<typeof errorCodeSchema>;
 export type ErrorDetails = z.infer<typeof errorDetailsSchema>;
 export type CliFailure = z.infer<typeof errorDocumentSchema>["error"];
-type ClassifiedFailure = Omit<CliFailure, "message"> & { suggestedRoute?: Array<string> };
+export type ClassifiedFailure = Omit<CliFailure, "message"> & { suggestedRoute?: Array<string> };
 
 /** A CLI failure with public facts and an internal recovery route. */
 export class CliError extends Error {

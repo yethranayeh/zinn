@@ -2,10 +2,9 @@ import type { StoreInfo } from "@zinn-dev/core";
 import type { PresentedInfo } from "../result-schemas.js";
 
 import packageJson from "../../package.json" with { type: "json" };
+import { currentRuntime } from "../run-facts.js";
 
 export function presentInfo(report: StoreInfo): PresentedInfo {
-  const bunVersion = process.versions.bun;
-
   return {
     settingsFiles: report.settingsFiles,
     storage: report.storage,
@@ -15,10 +14,7 @@ export function presentInfo(report: StoreInfo): PresentedInfo {
     versions: {
       cli: packageJson.version,
       core: report.coreVersion,
-      runtime: {
-        name: bunVersion === undefined ? "Node" : "Bun",
-        version: bunVersion ?? process.versions.node,
-      },
+      runtime: currentRuntime(),
     },
   };
 }

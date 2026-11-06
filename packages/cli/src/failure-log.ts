@@ -12,11 +12,11 @@ import {
 } from "@zinn-dev/core";
 
 import packageJson from "../package.json" with { type: "json" };
+import { currentRuntime, readRunClock } from "./run-facts.js";
 
 const LOG_EXTENSION = ".log";
 /** Logs kept in the folder. Including ones written by a failing run */
 const MAX_LOG_FILES = 10;
-const MS_PER_SECOND = 1000;
 
 /** One thrown value as text. An error keeps its stack, and its code and `errcode` when it has them */
 function describeValue(value: unknown) {
@@ -69,8 +69,8 @@ function describeErrors(error: unknown) {
 }
 
 function describeRuntime() {
-  const { bun, node } = process.versions;
-  return bun === undefined ? `Node ${node}` : `Bun ${bun}`;
+  const { name, version } = currentRuntime();
+  return `${name} ${version}`;
 }
 
 function section(title: string, lines: Array<string>) {
@@ -89,9 +89,7 @@ function readDatabaseFacts(configuredPath: string) {
 
 function formatLog(error: unknown, notices: ReadonlyArray<string>, storage: ConfiguredStorage) {
   const { databasePath, schemaVersion } = readDatabaseFacts(storage.databasePath);
-  const elapsedMs = Math.round(process.uptime() * MS_PER_SECOND);
-  const failedAt = new Date();
-  const startedAt = new Date(failedAt.getTime() - elapsedMs);
+  const { now: failedAt, elapsedMs, startedAt } = readRunClock();
 
   const sections = [
     section("Error", [describeErrors(error)]),
@@ -121,10 +119,10 @@ function formatLog(error: unknown, notices: ReadonlyArray<string>, storage: Conf
   return `${sections.join("\n\n")}\n`;
 }
 
-/** Creates the log folder if its store exists. It never creates the store, which **read** commands avoid */
-function ensureLogDirectory(logDirectory: string) {
+/** Creates a folder if its store exists. It never creates the store, which **read** commands avoid */
+export function ensureFolderInStore(folder: string) {
   try {
-    mkdirSync(logDirectory);
+    mkdirSync(folder);
   } catch (error) {
     const alreadyExists = (error as NodeJS.ErrnoException).code === "EEXIST";
     if (!alreadyExists) {
@@ -190,7 +188,7 @@ export function writeFailureLog(
     const path = join(storage.logDirectory, name);
     const text = formatLog(error, notices, storage);
 
-    ensureLogDirectory(storage.logDirectory);
+    ensureFolderInStore(storage.logDirectory);
     createFile(path, text);
     removeOldLogs(storage.logDirectory, name);
 

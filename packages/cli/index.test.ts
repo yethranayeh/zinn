@@ -7,7 +7,7 @@ import { basename, dirname, join } from "node:path";
 
 import packageJson from "./package.json";
 import { runCliInTerminal } from "./testing";
-import { CLI_PATH, createEmptyDatabase, runProcessAsync, runZinn, withIsolatedZinnDir, withTestDb } from "./test-helpers";
+import { CLI_PATH, createEmptyDatabase, runProcessAsync, runZinn, withIsolatedZinnDir, withoutTelemetry, withTestDb } from "./test-helpers";
 import { parseRoutes } from "./src/routes/router";
 import { routes } from "./src/routes/routes";
 import { errorDocumentSchema } from "./src/errors";
@@ -688,7 +688,7 @@ for (const command of relationSuggestionCommands) {
         const { error } = errorDocumentSchema.parse(JSON.parse(refused.stderr));
         expect(error.code).toBe("invalid_input");
         expect(error.message).not.toContain("zinn task relation");
-        expect(readdirSync(dir)).toEqual([]);
+        expect(withoutTelemetry(readdirSync(dir))).toEqual([]);
       }
       const help = await runZinn([...words, "--help"], dir);
       expect(help.code).toBe(0);
@@ -934,7 +934,7 @@ test("long parser and routing errors bound both output modes without changing er
         expect(error.message).not.toMatch(/zinn (?:task|project)/);
       }
     }
-    expect(readdirSync(directory)).toEqual([]);
+    expect(withoutTelemetry(readdirSync(directory))).toEqual([]);
   });
 });
 
@@ -5977,7 +5977,7 @@ test("restore refuses a file that is not a backup it can restore, printing why a
   });
 });
 
-test("a refused restore onto a store with no database creates only its failure log", async () => {
+test("a refused restore onto a store with no database creates only its failure log and telemetry", async () => {
   await withIsolatedZinnDir(async (dir) => {
     await withIsolatedZinnDir(async (otherDir) => {
       const textFile = join(otherDir, "notes.sqlite");
@@ -5985,7 +5985,7 @@ test("a refused restore onto a store with no database creates only its failure l
 
       expect((await runZinn(["restore", textFile, "--yes"], dir)).code).toBe(1);
       expect((await runZinn(["restore", textFile], dir)).code).toBe(1);
-      expect(readdirSync(dir)).toEqual(["logs"]);
+      expect(withoutTelemetry(readdirSync(dir))).toEqual(["logs"]);
     });
   });
 });
@@ -6033,7 +6033,7 @@ test("restore needs exactly one backup path", async () => {
 
     expect(result.code).toBe(1);
     expect(result.stderr).toContain("Usage: zinn restore");
-    expect(readdirSync(dir)).toEqual([]);
+    expect(withoutTelemetry(readdirSync(dir))).toEqual([]);
   });
 });
 
@@ -6056,13 +6056,13 @@ async function createDatabase(dir: string, version: number) {
 }
 
 function storeSnapshot(dir: string) {
-  return readdirSync(dir, { recursive: true, encoding: "utf8" }).sort().map((entry) => {
+  return withoutTelemetry(readdirSync(dir, { recursive: true, encoding: "utf8" })).sort().map((entry) => {
     const path = join(dir, entry);
     return { entry, size: statSync(path).isFile() ? statSync(path).size : null };
   });
 }
 
-test("ZINN-458: reads and writes that need records report a missing or empty database and leave the store as it was", async () => {
+test("ZINN-458: reads and writes that need records report a missing or empty database and leave the store as it was apart from telemetry", async () => {
   await withIsolatedZinnDir(async (dir) => {
     const emptyFolder = join(dir, "empty-folder");
     mkdirSync(emptyFolder);
@@ -6115,11 +6115,11 @@ test("ZINN-458: refusals of a missing database name the command that creates one
       expect(result.code, args.join(" ")).toBe(1);
       expect(result.stderr).toContain("zinn project create");
     }
-    expect(readdirSync(dir)).toEqual([]);
+    expect(withoutTelemetry(readdirSync(dir))).toEqual([]);
   });
 });
 
-test("migrate refuses when there is no database and creates no files", async () => {
+test("migrate refuses when there is no database and creates only telemetry", async () => {
   await withIsolatedZinnDir(async (dir) => {
     const result = await runZinn(["--json", "migrate"], dir);
 
@@ -6127,7 +6127,7 @@ test("migrate refuses when there is no database and creates no files", async () 
     expect(result.stdout).toBe("");
     expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "database" } });
     expect(result.stderr).not.toContain("[y/N]");
-    expect(readdirSync(dir)).toEqual([]);
+    expect(withoutTelemetry(readdirSync(dir))).toEqual([]);
   });
 });
 
@@ -6271,14 +6271,14 @@ test("a missing table other than the search index gets no reindex hint", async (
   });
 });
 
-test("reindex refuses when there is no database and creates no files", async () => {
+test("reindex refuses when there is no database and creates only telemetry", async () => {
   await withIsolatedZinnDir(async (dir) => {
     const result = await runZinn(["--json", "reindex"], dir);
 
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
     expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "database", databasePath: join(dir, "data", "zinn.sqlite") } });
-    expect(readdirSync(dir)).toEqual([]);
+    expect(withoutTelemetry(readdirSync(dir))).toEqual([]);
   });
 });
 
@@ -6482,7 +6482,7 @@ test("help and --version open no database, not even one that core refuses", asyn
     for (const args of commands) {
       expect((await runZinn(args, dir)).code).toBe(0);
     }
-    expect(readdirSync(dir)).toEqual([]);
+    expect(withoutTelemetry(readdirSync(dir))).toEqual([]);
 
     await createDatabase(dir, 0);
     const before = databaseSnapshot(dir);
@@ -6599,7 +6599,7 @@ test("concurrent fresh initialization supports readers and project creators", as
         expect(result.code).toBe(1);
         expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "database" } });
       }
-      expect(readdirSync(store)).toEqual([]);
+      expect(withoutTelemetry(readdirSync(store))).toEqual([]);
     }
 
     for (let round = 0; round < 3; round++) {

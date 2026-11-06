@@ -9,8 +9,7 @@ const isVersionRequest = args.length === 1 && versionSpellings.includes(args[0]!
 if (isVersionRequest) {
   console.info(packageJson.version);
 } else {
-  const { isHelpFlag, prepareOutput, flushDiagnostics, renderFailure } =
-    await import("./src/lib.js");
+  const { isHelpFlag, prepareOutput, finishRun, renderFailure } = await import("./src/lib.js");
 
   prepareOutput(args);
 
@@ -28,7 +27,7 @@ if (isVersionRequest) {
 
     if (args.length === 0 || isHelpFlag(args[0]!)) {
       console.info(router.help);
-      flushDiagnostics();
+      finishRun();
     } else {
       await router.route(args);
     }

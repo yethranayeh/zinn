@@ -37,7 +37,7 @@ function readDeclaration(env: Env, variable: string | null): string | null {
   return value == null || value.length === 0 ? null : value;
 }
 
-function readExecutionIdentity(env: Env) {
+export function readExecutionIdentity(env: Env) {
   const ownClient = `zinn-cli/${packageJson.version}`;
   const declaredClient = readDeclaration(env, "ZINN_CLIENT");
   let sessionId: string | null = null;

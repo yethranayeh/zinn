@@ -2,6 +2,7 @@ import type { ParseArgsOptionsConfig } from "node:util";
 import type { InputForm, InputOptions, InputOption } from "./input.js";
 import type { ErrorCode, ErrorDetails } from "./errors.js";
 
+import { basename } from "node:path";
 import { parseArgs } from "node:util";
 import { createInterface } from "node:readline/promises";
 import { z } from "zod";
@@ -11,6 +12,7 @@ import { CliError, classifyFailure, recoveryHint } from "./errors.js";
 import { writeFailureLog } from "./failure-log.js";
 import { helpSpellings, routerOptionNames, positionalWords } from "./input.js";
 import { formatParserReasonPreview } from "./presentation/description-presentation.js";
+import { writeRunRecord } from "./telemetry.js";
 
 type ParsedTokens = NonNullable<ReturnType<typeof parseArgs>["tokens"]>;
 type OutputMode = "text" | "json";
@@ -73,6 +75,28 @@ export function flushDiagnostics() {
   for (const message of diagnostics.splice(0)) {
     console.error(message);
   }
+}
+
+// ZINN_DEBUG=1 prints routing detail on stderr, so stdout and `--json` results stay unchanged.
+export function isDebugOutputEnabled() {
+  return process.env.ZINN_DEBUG === "1";
+}
+
+function recordRun(outcome: Parameters<typeof writeRunRecord>[0]) {
+  const problem = writeRunRecord(outcome);
+
+  if (problem !== undefined && isDebugOutputEnabled()) {
+    diagnostic(`::telemetry could not write a record: ${problem}`);
+  }
+}
+
+/**
+ * Ends a successful run after its output, recording telemetry then releasing notices held back in JSON mode.
+ * Telemetry goes first so its own debug notice is released with the rest.
+ */
+export function finishRun() {
+  recordRun({});
+  flushDiagnostics();
 }
 
 export function isJsonFlag(flag: string) {
@@ -231,10 +255,16 @@ export function renderFailure(reason: unknown): void {
     help: classified.help,
     message: failureMessage(reason, "Something went wrong"),
   };
-  const pendingDiagnostics = diagnostics.splice(0);
   const logPath = LOGGED_ERROR_CODES.includes(failure.code)
     ? writeFailureLog(reason, runNotices)
     : undefined;
+
+  recordRun({
+    failure: classified,
+    ...(logPath === undefined ? {} : { logFileName: basename(logPath) }),
+  });
+
+  const pendingDiagnostics = diagnostics.splice(0);
 
   if (outputMode === "json") {
     const details = {
@@ -585,6 +615,11 @@ function unknownOptionMessage(
   };
 }
 
+export function isParseArgsError(error: any) {
+  const code = error?.code;
+  return typeof code === "string" && code.startsWith("ERR_PARSE_ARGS_");
+}
+
 /**
  * An argument failure from parseArgs, rewritten where parseArgs' own advice misleads.
  * parseArgs names the flag only in its message text, which Node and Bun word the same.
@@ -596,12 +631,11 @@ export function parseArgsFailure(
   suggestFor: SuggestFor,
   route: Array<string>,
 ) {
-  const code = error?.code;
-  const isParseArgsError = typeof code === "string" && code.startsWith("ERR_PARSE_ARGS_");
-  if (!isParseArgsError) {
+  if (!isParseArgsError(error)) {
     return null;
   }
 
+  const code = error.code;
   const argument = /(?:Unknown option|Option) '(-[^' ]+)/.exec(error.message)?.[1];
   if (code === "ERR_PARSE_ARGS_UNKNOWN_OPTION") {
     const hint = unknownOptionMessage(error.message, args, suggestFor, route);

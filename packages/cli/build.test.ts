@@ -8,7 +8,7 @@ import { readOutputFileName } from "@zinn-dev/core";
 
 import packageJson from "./package.json";
 import { runCli, runCliInTerminal } from "./testing";
-import { withIsolatedZinnDir } from "./test-helpers";
+import { withIsolatedZinnDir, withoutTelemetry } from "./test-helpers";
 import { errorDocumentSchema } from "./src/errors";
 import { readNodeMinimum } from "../../scripts/package-fixture.ts";
 
@@ -265,7 +265,7 @@ for (const runtime of ["node", "bun"]) {
       const listed = await runBuilt(runtime, ["project", "list", "--json"], empty);
       expect(listed.code).toBe(1);
       expect(JSON.parse(listed.stderr).error).toMatchObject({ code: "not_found", details: { entity: "database" } });
-      expect(readdirSync(empty)).toEqual([]);
+      expect(withoutTelemetry(readdirSync(empty))).toEqual([]);
       expect((await runBuilt(runtime, ["project", "create", "RESTORED"], empty)).code).toBe(0);
       expect(existsSync(join(empty, "data", "zinn.sqlite"))).toBe(true);
       const saved = await runBuilt(runtime, ["backup", "--json"], empty);

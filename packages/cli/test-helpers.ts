@@ -1,7 +1,8 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
+import { TELEMETRY_FOLDER_NAME } from "../core/src/constant";
 import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import { createSchema } from "../core/src/migrations/runner";
 import { openDatabase } from "../core/src/sqlite/bun";
@@ -28,6 +29,11 @@ export async function withIsolatedZinnDir(run: (testDir: string) => Promise<void
   } finally {
     removeIsolatedZinnDir(testDir);
   }
+}
+
+/** Drops the telemetry folder, and everything under it, from a store folder listing read top-level or recursively */
+export function withoutTelemetry(entries: Array<string>) {
+  return entries.filter((entry) => entry.split(sep)[0] !== TELEMETRY_FOLDER_NAME);
 }
 
 export function runZinn(

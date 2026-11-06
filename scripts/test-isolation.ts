@@ -18,6 +18,8 @@ delete process.env.NO_COLOR;
 delete process.env.FORCE_COLOR;
 // Tests that run core in this process expect hooks to be eneabled
 delete process.env.ZINN_HOOKS;
+// A developer's DO_NOT_TRACK would turn telemetry off for tests that keep it at its default
+delete process.env.DO_NOT_TRACK;
 
 const packagesDirectory = fileURLToPath(new URL("../packages", import.meta.url));
 export const SOURCE_IDENTITY_MODULES = readdirSync(packagesDirectory, { withFileTypes: true })

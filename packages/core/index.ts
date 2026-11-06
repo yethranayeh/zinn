@@ -155,7 +155,13 @@ export { MigrationRefusedError } from "./src/migrations/migrate.js";
 export { RestoreRefusedError } from "./src/migrations/restore.js";
 export { assertWritable, configureDatabase } from "./src/db.js";
 export { ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./src/migrations/open-policy.js";
-export { getConfiguredStorage, getStorage, storageSourceSchema } from "./src/storage.js";
+export {
+  getConfiguredStorage,
+  getProcessSettings,
+  getStorage,
+  storageSourceSchema,
+} from "./src/storage.js";
+export { TELEMETRY_FOLDER_NAME } from "./src/constant.js";
 export { createOutputFileName, readOutputFileName } from "./src/output-file-name.js";
 export { databaseStateSchema, readSchemaVersionWithoutWaiting } from "./src/migrations/classify.js";
 export { info, infoDatabaseStateSchema } from "./src/operations/info.js";

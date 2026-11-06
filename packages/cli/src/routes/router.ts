@@ -14,9 +14,11 @@ import {
   dashValueHelp,
   diagnostic,
   failureMessage,
-  flushDiagnostics,
+  finishRun,
   isAllowLegacyReadFlag,
+  isDebugOutputEnabled,
   isHelpFlag,
+  isParseArgsError,
   isRouterFlag,
   parseArgsFailure,
   prepareOutput,
@@ -26,11 +28,7 @@ import {
   UsageError,
   validateUniqueOptions,
 } from "../lib.js";
-
-// ZINN_DEBUG=1 prints routing detail on stderr, so stdout and `--json` results stay unchanged.
-function isDebugOutputEnabled() {
-  return process.env.ZINN_DEBUG === "1";
-}
+import { noteMatchedRun, noteParseArgsThrew, noteUnmatchedRun } from "../telemetry.js";
 
 function getIsRunnable(obj: any): obj is Command {
   return Object.hasOwn(obj, "run");
@@ -163,6 +161,12 @@ function routeToNamespace(
   const unknownWord = words[wordCount];
   const commandName = namespace === "" ? "zinn" : `zinn ${namespace}`;
 
+  noteUnmatchedRun({
+    namespace,
+    help: isHelpRequest,
+    ...(unknownWord == null ? {} : { unmatchedWord: unknownWord }),
+  });
+
   if (unknownWord == null && isHelpRequest) {
     console.info(help);
     return;
@@ -273,6 +277,14 @@ async function route(
     return;
   }
 
+  const commandArgs = args.slice(nestingLevel);
+  noteMatchedRun({
+    match,
+    typedRoute: toCommand(args.slice(0, nestingLevel)),
+    commandArgs,
+    help: isHelpRequest,
+  });
+
   if (isHelpRequest) {
     console.info(match.help);
     return;
@@ -280,12 +292,14 @@ async function route(
 
   validateRouterFlags(routableArgs);
 
-  const commandArgs = args.slice(nestingLevel);
-
   try {
     await beforeRun?.(match);
     await match.run(commandArgs);
   } catch (err: any) {
+    if (isParseArgsError(err)) {
+      noteParseArgsThrew();
+    }
+
     if (err instanceof UsageError) {
       err.help = getUsage(match.help);
     }
@@ -361,7 +375,7 @@ export function createRouter(
     route: async (args: Array<string>) => {
       try {
         await route(parsedRoutes, args, beforeRun);
-        flushDiagnostics();
+        finishRun();
       } catch (error) {
         renderFailure(error);
       }
