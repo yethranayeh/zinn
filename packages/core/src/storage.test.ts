@@ -55,6 +55,7 @@ test("ZINN_DIR gives an env store in that folder, with its paths inside it", () 
     dataDirectory: join(directory, "data"),
     databasePath: join(directory, "data", "zinn.sqlite"),
     backupDirectory: join(directory, "backups"),
+    logDirectory: join(directory, "logs"),
     defaultDirectory: join(home, ".zinn"),
   });
 });
@@ -70,6 +71,7 @@ test("without ZINN_DIR the store is the default folder in the given home", () =>
     dataDirectory: join(defaultDirectory, "data"),
     databasePath: join(defaultDirectory, "data", "zinn.sqlite"),
     backupDirectory: join(defaultDirectory, "backups"),
+    logDirectory: join(defaultDirectory, "logs"),
     defaultDirectory,
   });
 });
@@ -125,6 +127,27 @@ test("a snapshot keeps the first working folder and resolves links in its databa
       expect(storage.dataDirectory).toBe(join(store, "data"));
       expect<string>(storage.backupDirectory).toBe(join(store, "backups"));
     }, directory);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("logDirectory sits in the store and is not created, and a broken link there does not refuse the store", () => {
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), "zinn-storage-logs-")));
+  const store = join(directory, "store");
+  mkdirSync(store);
+
+  try {
+    withEnvironment({ ZINN_DIR: store }, () => {
+      const { logDirectory } = getStorage();
+
+      expect(logDirectory).toBe(join(store, "logs"));
+      expect(existsSync(logDirectory)).toBe(false);
+
+      symlinkSync(join(directory, "missing"), logDirectory, "dir");
+
+      expect(getStorage().logDirectory).toBe(logDirectory);
+    });
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -219,6 +242,7 @@ test("the per-codebase file wins over the global file, and the global file over 
       dataDirectory: join(home, ".zinn", "global-store", "data"),
       databasePath: join(home, ".zinn", "global-store", "data", "zinn.sqlite"),
       backupDirectory: join(home, ".zinn", "global-store", "backups"),
+      logDirectory: join(home, ".zinn", "global-store", "logs"),
       defaultDirectory: join(home, ".zinn"),
     });
 

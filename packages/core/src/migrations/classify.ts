@@ -87,8 +87,37 @@ export function classifyDatabase(
   return withDatabaseInspection(databasePath, (db) => classifyConnection(db, migrations));
 }
 
+/**
+ * Reads the schema version for a failure report. It's `null` when it cannot be read for any reason.
+ * This runs while something is already wrong, so it does not wait on a lock and never throws.
+ * `classifyDatabase` does not fit: its busy timeout would wait again on a busy database,
+ *  and closing its read-write connection can checkpoint the WAL into the main file, whatever `query_only` says.
+ * A read-only connection does neither. It cannot always open a WAL database, which gives `null` too.
+ * @link https://www.sqlite.org/wal.html#readonly
+ */
+export function readSchemaVersionWithoutWaiting(databasePath: ResolvedPath): number | null {
+  let db: Database | null = null;
+
+  try {
+    db = openResolvedDatabase(databasePath, { readonly: true });
+    db.exec("PRAGMA busy_timeout = 0");
+    return readSchemaVersion(db);
+  } catch {
+    return null;
+  } finally {
+    try {
+      db?.close();
+    } catch {
+      // The version is already read or given up on, and a failure report must not raise.
+    }
+  }
+}
+
 /** Inspects an existing database without application writes or schema initialization. */
-export function withDatabaseInspection<T>(databasePath: ResolvedPath, inspect: (db: Database) => T): T {
+export function withDatabaseInspection<T>(
+  databasePath: ResolvedPath,
+  inspect: (db: Database) => T,
+): T {
   const db = openResolvedDatabase(databasePath, { create: false });
   let result: T;
 

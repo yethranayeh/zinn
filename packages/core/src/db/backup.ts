@@ -1,11 +1,12 @@
-import { randomUUID } from "node:crypto";
+import type { ResolvedPath } from "../database-path.js";
+
 import { closeSync, fsyncSync, mkdirSync, openSync, renameSync, rmSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { openResolvedDatabase } from "#sqlite";
 
-import type { ResolvedPath } from "../database-path.js";
 import { applyConnectionSettings } from "../connection.js";
+import { createOutputFileName, readOutputFileName } from "../output-file-name.js";
 import { attachSuppressed } from "../sqlite/database.js";
 
 export type BackupCreateInput = {
@@ -25,12 +26,7 @@ export type BackupCreateInput = {
  * @link https://www.sqlite.org/lang_vacuum.html#vacuuminto
  */
 const PARTIAL_BACKUP_SUFFIX = ".partial";
-/**
- * The file name `create` gives a backup: `<time>Z-<client>-<version>-<suffix>.sqlite`.
- * The client ends before the first hyphen followed by a digit, where the version starts.
- */
-const BACKUP_FILE_NAME =
-  /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z-(?<client>.+?)-(?<version>\d.*)-[0-9a-f]{8}\.sqlite$/;
+const BACKUP_FILE_EXTENSION = ".sqlite";
 
 function syncToDisk(path: string, flags: "r" | "r+" = "r+") {
   // Windows file flushes need a writable descriptor.
@@ -116,16 +112,13 @@ function vacuumInto(databasePath: ResolvedPath, targetPath: string) {
  * Snapshots the database at `databasePath` into directory, named after the time, the client
  *  and its version, and returns the snapshot's path.
  */
-export function create(databasePath: ResolvedPath, directory: string, { client, version }: BackupCreateInput) {
+export function create(
+  databasePath: ResolvedPath,
+  directory: string,
+  { client, version }: BackupCreateInput,
+) {
   ensureDirectory(directory);
-
-  /**
-   * Transformed UTC: 2026-09-29T12-30-05Z
-   * Colons (:) are replaced to avoid illegal naming issues in filesystems
-   */
-  const timestamp = new Date().toISOString().slice(0, 19).replaceAll(":", "-");
-  const suffix = randomUUID().split("-")[0];
-  const path = join(directory, `${timestamp}Z-${client}-${version}-${suffix}.sqlite`);
+  const path = join(directory, createOutputFileName({ client, version }, BACKUP_FILE_EXTENSION));
   const partialPath = `${path}${PARTIAL_BACKUP_SUFFIX}`;
 
   try {
@@ -146,11 +139,5 @@ export function create(databasePath: ResolvedPath, directory: string, { client, 
 
 /** The client and version named in a backup's file name, or null when `create` did not name the file. */
 export function readBackupFileName(path: string): BackupCreateInput | null {
-  const match = BACKUP_FILE_NAME.exec(basename(path))?.groups;
-
-  if (match?.client == null || match.version == null) {
-    return null;
-  }
-
-  return { client: match.client, version: match.version };
+  return readOutputFileName(path, BACKUP_FILE_EXTENSION);
 }

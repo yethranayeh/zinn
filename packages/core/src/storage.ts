@@ -27,6 +27,7 @@ type StoragePaths = {
   dataDirectory: string;
   databasePath: string;
   backupDirectory: string;
+  logDirectory: string;
 };
 
 /** The store as configuration places it, before filesystem links are resolved. */
@@ -38,7 +39,11 @@ export type ConfiguredStorage = StoragePaths & {
   defaultDirectory: string;
 };
 
-/** A storage snapshot. The database and backup destinations are resolved through filesystem links, and the data folder is the resolved database's folder. */
+/**
+ * A storage snapshot. The database and backup destinations are resolved through filesystem links,
+ *  and the data folder is the resolved database's folder.
+ * The log folder is left unresolved, so a broken link there fails only the log write and not every command.
+ */
 export type Storage = ConfiguredStorage & {
   databasePath: ResolvedPath;
   backupDirectory: ResolvedPath;
@@ -62,6 +67,7 @@ export function storagePaths(directory: string): StoragePaths {
     dataDirectory,
     databasePath: join(dataDirectory, DB_FILE_NAME),
     backupDirectory: join(directory, "backups"),
+    logDirectory: join(directory, "logs"),
   };
 }
 

@@ -7,13 +7,17 @@ import type { Database, OpenOptions, SqliteDriver } from "./database.ts";
 
 import { strict as assert } from "node:assert";
 import {
+  copyFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
   unlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -828,6 +832,98 @@ export function defineContractChecks(test: DefineTest, adapter: Adapter) {
         );
       } finally {
         reader.close();
+      }
+    });
+  });
+
+  test("a read-only open on a missing path throws SQLITE_CANTOPEN and creates nothing", () => {
+    withDirectory((directory) => {
+      assert.throws(
+        () => adapter.openDatabase(join(directory, "missing.sqlite"), { readonly: true }),
+        (error) => assertSqliteError(error, "SQLITE_CANTOPEN", 14),
+      );
+      assert.deepEqual(readdirSync(directory), []);
+    });
+  });
+
+  test("a read-only connection on a file that is not a database throws SQLITE_NOTADB", () => {
+    withDirectory((directory) => {
+      const path = join(directory, "garbage.sqlite");
+      writeFileSync(path, "not a database ".repeat(500));
+      const reader = adapter.openDatabase(path, { readonly: true });
+
+      try {
+        assert.throws(
+          () => reader.query("PRAGMA user_version").get(),
+          (error) => assertSqliteError(error, "SQLITE_NOTADB", 26),
+        );
+      } finally {
+        reader.close();
+      }
+    });
+  });
+
+  test("a read-only connection sees a version in the WAL, and its close changes neither the WAL nor the main file", () => {
+    withDirectory((directory) => {
+      const path = join(directory, "live.sqlite");
+      const writer = adapter.openDatabase(path);
+      const crashedDirectory = join(directory, "crashed");
+      const crashedPath = join(crashedDirectory, "live.sqlite");
+      mkdirSync(crashedDirectory);
+
+      const expectUntouchedRead = (readPath: string) => {
+        const main = readFileSync(readPath);
+        const wal = readFileSync(`${readPath}-wal`);
+        const reader = adapter.openDatabase(readPath, { readonly: true });
+
+        try {
+          assert.deepEqual(reader.query("PRAGMA user_version").get(), { user_version: 7 });
+        } finally {
+          reader.close();
+        }
+
+        assert.ok(wal.length > 0);
+        assert.deepEqual(readFileSync(readPath), main);
+        assert.deepEqual(readFileSync(`${readPath}-wal`), wal);
+      };
+
+      try {
+        writer.exec(`PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0;
+          CREATE TABLE item (value INTEGER); PRAGMA wal_checkpoint(TRUNCATE);
+          PRAGMA user_version = 7;`);
+        expectUntouchedRead(path);
+
+        // A copy of the files has no other connection, as after a crash, so the reader closes last.
+        copyFileSync(path, crashedPath);
+        copyFileSync(`${path}-wal`, `${crashedPath}-wal`);
+        expectUntouchedRead(crashedPath);
+      } finally {
+        writer.close();
+      }
+    });
+  });
+
+  test("a read-only connection with no busy timeout gets SQLITE_BUSY from an exclusive lock", () => {
+    withDirectory((directory) => {
+      const path = join(directory, "contract.sqlite");
+      const holder = adapter.openDatabase(path);
+      let reader: Database | null = null;
+
+      try {
+        holder.exec("PRAGMA user_version = 7");
+        holder.exec("BEGIN EXCLUSIVE");
+        reader = adapter.openDatabase(path, { readonly: true });
+        reader.exec("PRAGMA busy_timeout = 0");
+        const lockedReader = reader;
+        assert.throws(
+          () => lockedReader.query("PRAGMA user_version").get(),
+          (error) => assertSqliteError(error, "SQLITE_BUSY", 5),
+        );
+        holder.exec("ROLLBACK");
+        assert.deepEqual(reader.query("PRAGMA user_version").get(), { user_version: 7 });
+      } finally {
+        reader?.close();
+        holder.close();
       }
     });
   });
