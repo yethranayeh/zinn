@@ -1,6 +1,6 @@
 # @zinn-dev/core
 
-The shared operations and SQLite storage for [Zinn](https://github.com/yethranayeh/zinn).
+The shared operations and SQLite storage for [Zinn](https://zinn.sh).
 
 > [!IMPORTANT]
 > **Experimental.** The API and database schema may change between releases. Save a backup before upgrading.

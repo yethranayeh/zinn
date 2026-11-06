@@ -17,6 +17,11 @@
 		"url": "git+https://github.com/yethranayeh/zinn.git",
 		"directory": "packages/core"
 	},
+	"keywords": [
+		"kanban",
+		"task-management",
+		"sqlite"
+	],
 	"private": false,
 	"type": "module",
 	"engines": {

@@ -20,7 +20,10 @@
 	"keywords": [
 		"kanban",
 		"cli",
-		"terminal"
+		"terminal",
+		"task-management",
+		"task-tracker",
+		"coding-agents"
 	],
 	"module": "index.ts",
 	"exports": {

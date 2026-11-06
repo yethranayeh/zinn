@@ -1,6 +1,6 @@
 # @zinn-dev/cli
 
-The `zinn` command-line interface for Zinn.
+The command-line interface for [Zinn](https://zinn.sh), local kanban and task management for developers and coding agents.
 
 > [!IMPORTANT]
 > **Experimental.** Commands, output, and the database schema may change between releases. Save a backup with `zinn backup` before upgrading.
