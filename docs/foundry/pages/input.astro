@@ -22,9 +22,13 @@ const variants = Object.keys(inputVariants.variants.variant) as InputVariant[];
 			>, pass through to it. Give it a visible label or an <code>aria-label</code>.
 		</p>
 		<p>
-			Outline suits a field on an open surface. Bare has no border or padding, and suits a field that fills a row of its
-			own, as in the search dialog's header. A class passed to Input replaces any conflicting default. Focus shows the
-			site's outline unless a class changes it.
+			Recessed suits a field on an open surface. Bare has no fill, border or padding, and suits a field that fills a row
+			of its own, as in the search dialog's header. A class passed to Input replaces any conflicting default. Focus
+			shows the site's outline unless a class changes it.
+		</p>
+		<p>
+			The caret is a bronze block, and turns cinnabar while text is being deleted. The block shows in Chrome and Edge
+			144 and later. Other browsers show a thin bar in the same colors. The browser controls the blink.
 		</p>
 	</ComponentHeading>
 

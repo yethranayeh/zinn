@@ -12,4 +12,30 @@ const { variant = inputVariants.defaultVariants.variant, class: className, ...at
 const classes = twMerge(inputVariants.base, inputVariants.variants.variant[variant], className);
 ---
 
-<input class={classes} {...attributes} />
+<input class={classes} data-input {...attributes} />
+
+<script>
+	// Long enough for the deleting color to register and to outlast the gap before a held key repeats
+	const DELETING_HOLD_MS = 750;
+
+	for (const input of document.querySelectorAll<HTMLInputElement>("[data-input]")) {
+		let holdTimer: ReturnType<typeof setTimeout>;
+
+		function stopDeleting() {
+			clearTimeout(holdTimer);
+			delete input.dataset.deleting;
+		}
+
+		// The input event also reports deletions from phone keyboards, where key events are unreliable
+		input.addEventListener("input", (event) => {
+			stopDeleting();
+
+			if ((event as InputEvent).inputType.startsWith("delete")) {
+				input.dataset.deleting = "";
+				holdTimer = setTimeout(stopDeleting, DELETING_HOLD_MS);
+			}
+		});
+
+		input.addEventListener("blur", stopDeleting);
+	}
+</script>
