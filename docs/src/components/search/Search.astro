@@ -66,7 +66,8 @@ const excerptClass = "mt-1 block text-sm text-muted-foreground";
 </script>
 
 <script>
-	import { loadPagefind, sectionsToShow, type PagefindResult } from "./pagefind";
+	import type { PagefindResult } from "./pagefind";
+	import { loadPagefind, orderResults, sectionsToShow } from "./pagefind";
 
 	const dialog = document.querySelector<HTMLDialogElement>("[data-search]")!;
 	const openButton = document.querySelector<HTMLButtonElement>("[data-search-open]")!;
@@ -92,8 +93,8 @@ const excerptClass = "mt-1 block text-sm text-muted-foreground";
 		return item;
 	}
 
-	function renderPage(page: PagefindResult) {
-		const sections = sectionsToShow(page);
+	function renderPage(page: PagefindResult, query: string) {
+		const sections = sectionsToShow(page, query);
 		const item = fillLink(pageTemplate, page.url, page.meta.title, sections.length > 0 ? "" : page.excerpt);
 		const list = item.querySelector<HTMLUListElement>("[data-search-sections]")!;
 
@@ -104,9 +105,9 @@ const excerptClass = "mt-1 block text-sm text-muted-foreground";
 		return item;
 	}
 
-	function show(message: string, pages: PagefindResult[] = []) {
+	function show(message: string, query: string, pages: Array<PagefindResult> = []) {
 		status.textContent = message;
-		results.replaceChildren(...pages.map(renderPage));
+		results.replaceChildren(...pages.map((page) => renderPage(page, query)));
 	}
 
 	// Identifies the newest query, so a slower earlier one cannot replace its results
@@ -116,7 +117,7 @@ const excerptClass = "mt-1 block text-sm text-muted-foreground";
 		const thisQuery = ++latestQuery;
 
 		if (!query) {
-			show("");
+			show("", "");
 			return;
 		}
 
@@ -132,11 +133,11 @@ const excerptClass = "mt-1 block text-sm text-muted-foreground";
 			const pages = await Promise.all(search.results.map((result) => result.data()));
 
 			if (thisQuery === latestQuery) {
-				show(pages.length > 0 ? "" : `No results for “${query}”.`, pages);
+				show(pages.length > 0 ? "" : `No results for “${query}”.`, query, orderResults(query, pages));
 			}
 		} catch {
 			if (thisQuery === latestQuery) {
-				show("Search is unavailable.");
+				show("Search is unavailable.", "");
 			}
 		}
 	}
@@ -144,7 +145,7 @@ const excerptClass = "mt-1 block text-sm text-muted-foreground";
 	function openSearch() {
 		if (!dialog.open) {
 			dialog.showModal();
-			loadPagefind().catch(() => show("Search is unavailable."));
+			loadPagefind().catch(() => show("Search is unavailable.", ""));
 		}
 
 		input.select();

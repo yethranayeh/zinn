@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { join, resolve } from "node:path";
 
+import { orderResults } from "../src/components/search/pagefind";
+
 const docsDirectory = resolve(import.meta.dir, "..");
 const baseUrl = process.env.SITE_TEST_URL;
 if (!baseUrl) {
@@ -10,7 +12,8 @@ if (!baseUrl) {
 interface SearchPage {
   url: string;
   content: string;
-  sub_results: { url: string }[];
+  meta: { title: string };
+  sub_results: { url: string; title: string }[];
 }
 
 const pagefind = await import(join(docsDirectory, "dist/pagefind/pagefind.js"));
@@ -25,7 +28,7 @@ async function search(query: string | null): Promise<SearchPage[]> {
   return pages.map((page) => ({
     ...page,
     url: pathOf(page.url),
-    sub_results: page.sub_results.map((section) => ({ url: pathOf(section.url) })),
+    sub_results: page.sub_results.map((section) => ({ url: pathOf(section.url), title: section.title })),
   }));
 }
 
@@ -47,13 +50,20 @@ test.each([
   ["hooks", "/docs/hooks/"],
   ["--json", "/docs/scripting/"],
 ])("searching %s ranks %s first", async (query, url) => {
-  const [first] = await search(query);
+  const [first] = orderResults(query, await search(query));
   expect(first?.url).toBe(url);
 });
 
 test("a result links to the heading that matched", async () => {
   const [first] = await search("blame");
   expect(first?.sub_results.map((section) => section.url)).toContain("/docs/core/#task-blame");
+});
+
+// The query names a section heading on /docs/data, which Pagefind ranks second for it behind Settings.
+test("a query naming a section heading leads with that page", async () => {
+  const [first, second] = orderResults("telemetry", await search("telemetry"));
+  expect(first?.url).toBe("/docs/data/");
+  expect(second?.url).toBe("/docs/settings/");
 });
 
 test("the index holds public HTML pages only", async () => {
