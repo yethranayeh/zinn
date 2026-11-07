@@ -1,0 +1,71 @@
+---
+import Section from "./Section.astro";
+import Readouts from "./Readouts.astro";
+import Readout from "./Readout.astro";
+import PricingNote from "./PricingNote.astro";
+---
+
+<Section id='zp-meter' label='Usage to date' title="This page isn't free either.">
+	<Readouts class='grid-cols-2 sm:grid-cols-3' data-meter>
+		<Readout label='This page, so far' data-meter-bytes>Reading</Readout>
+		<Readout label='Time on this page' data-meter-time>00:00</Readout>
+		<Readout label='Zinn in that time'>Nothing</Readout>
+	</Readouts>
+	<PricingNote
+		>Read from your browser, on your machine, and sent nowhere. Includes only what this page has loaded.</PricingNote
+	>
+</Section>
+
+<script>
+	import { sizeLabel } from "../../config/pricing-labels";
+
+	function setupMeter() {
+		const bytesOut = document.querySelector<HTMLElement>("[data-meter-bytes]");
+		const timeOut = document.querySelector<HTMLElement>("[data-meter-time]");
+		const chipBytes = document.querySelector<HTMLElement>("[data-chip-bytes]");
+		const chipTime = document.querySelector<HTMLElement>("[data-chip-time]");
+		let total = 0;
+		const seen = new Set<string>();
+
+		// transferSize is 0 for cached responses, so those count by their encoded size.
+		const weigh = (entry: PerformanceResourceTiming) => entry.transferSize || entry.encodedBodySize || 0;
+		function add(entries: PerformanceEntry[]) {
+			for (const entry of entries as PerformanceResourceTiming[]) {
+				const key = `${entry.name}@${entry.startTime}`;
+				if (!seen.has(key)) {
+					seen.add(key);
+					total += weigh(entry);
+				}
+			}
+			const label = sizeLabel(total);
+			if (bytesOut) {
+				bytesOut.textContent = label;
+			}
+			if (chipBytes) {
+				chipBytes.textContent = label;
+			}
+		}
+		add(performance.getEntriesByType("navigation"));
+		add(performance.getEntriesByType("resource"));
+		new PerformanceObserver((list) => add(list.getEntries())).observe({
+			type: "resource",
+			buffered: true
+		});
+
+		const started = performance.now();
+		const tick = () => {
+			const seconds = Math.floor((performance.now() - started) / 1000);
+			const label = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+			if (timeOut) {
+				timeOut.textContent = label;
+			}
+			if (chipTime) {
+				chipTime.textContent = label;
+			}
+		};
+		tick();
+		window.setInterval(tick, 1000);
+	}
+
+	setupMeter();
+</script>

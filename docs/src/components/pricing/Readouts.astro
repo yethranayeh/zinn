@@ -1,0 +1,11 @@
+---
+interface Props {
+	class?: string;
+	[key: string]: unknown;
+}
+
+const { class: className, ...attributes } = Astro.props;
+const base = "grid gap-x-6 gap-y-5 mt-4 border-t border-soot/20 pt-4";
+---
+
+<dl class:list={[base, className]} {...attributes}><slot /></dl>

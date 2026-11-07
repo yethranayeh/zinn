@@ -1,7 +1,19 @@
 import type { APIRoute } from "astro";
 import {
+  calculatorStops,
+  cliIntegrity,
+  comparison,
+  energyLabel,
+  energyMethodNote,
+  measurementNote,
+  netShare,
+  nodeEnergyLabel,
+  questions,
+  storySteps,
+} from "../components/pricing/figures";
+import {
   exactBytes,
-  largeListCost,
+  groupedNumber,
   memoryLabel,
   outputLabel,
   pricingCommands,
@@ -9,19 +21,33 @@ import {
   pricingEnvironment,
   pricingTotals,
   sizeLabel,
-  typicalCommandMemoryBytes,
 } from "../config/pricing";
 import { installCommand, projectLinks } from "../config/site";
 
+const storyRows = storySteps
+  .map(({ name, figure, text }, index) => `${index + 1}. ${name}: ${figure}. ${text}`)
+  .join("\n");
+const stopRows = calculatorStops
+  .map(
+    ({ tasks, databaseBytes, seconds, memoryBytes, outputBytes, jsonOutputBytes }) =>
+      `| ${groupedNumber(tasks)} | ${sizeLabel(databaseBytes)} | ${seconds.toFixed(2)} s | ${memoryLabel(memoryBytes)} | ${outputLabel(outputBytes)} | ${outputLabel(jsonOutputBytes)} |`,
+  )
+  .join("\n");
 const commandRows = pricingCommands
   .map(
     ({ command, memoryBytes, seconds, output }) =>
-      `| \`${command}\` | ${memoryLabel(memoryBytes)} | ${seconds.toFixed(2)} s | ${outputLabel(output)} |`,
+      `| \`${command}\` | ${outputLabel(output)} | ${memoryLabel(memoryBytes)} | ${seconds.toFixed(2)} s | ${energyLabel(command)} |`,
   )
   .join("\n");
+const comparisonRows = comparison.map(([feature, value]) => `| ${feature} | ${value} |`).join("\n");
 const diskRows = pricingDiskRows
   .map(({ label, bytes }) => `| ${label} | ${sizeLabel(bytes)} |`)
   .join("\n");
+const questionRows = questions
+  .map(({ q, a, code, after }) =>
+    [`### ${q}`, a, code && `\`\`\`sh\n${code}\n\`\`\``, after].filter(Boolean).join("\n\n"),
+  )
+  .join("\n\n");
 
 export const GET: APIRoute = () =>
   new Response(
@@ -31,14 +57,7 @@ One plan. Priced in bytes.
 
 Zinn is an Experimental kanban CLI for you and your agents.
 
-Zinn is [MIT licensed](${projectLinks.license}), so there is no monetary charge. You don't have to create an account, or find a seat for you and your team to sit on. The only renewal you need to worry about is updates. The figures below show download size, storage, memory, time and output.
-
-## Download cost
-
-- Gross: ${sizeLabel(pricingTotals.download)}, ${exactBytes(pricingTotals.download)}, compressed packages, with dependencies.
-- Net: ${sizeLabel(pricingTotals.softwareDownload)}, ${exactBytes(pricingTotals.softwareDownload)}, compressed Zinn packages.
-
-## Install
+Zinn is [MIT licensed](${projectLinks.license}), so there is no monetary charge. You don't have to create an account, or find a seat for you and your team to sit on. You still pay, the way you pay for all free software: in download, disk, memory, time, output, electricity and your internet bill. This page is the bill.
 
 \`\`\`sh
 ${installCommand}
@@ -46,30 +65,69 @@ ${installCommand}
 
 [GitHub](${projectLinks.github}) · [npm](${projectLinks.npm}) · [Installation docs](https://zinn.sh/docs/installation)
 
+## Billed by download
+
+- Gross: ${sizeLabel(pricingTotals.download)}, ${exactBytes(pricingTotals.download)}, compressed packages, with dependencies.
+- Net: ${sizeLabel(pricingTotals.softwareDownload)}, ${exactBytes(pricingTotals.softwareDownload)}, compressed Zinn packages, ${(netShare * 100).toFixed(1)}% of the download.
+
+## What you pay, in order
+
+${storyRows}
+
+## Usage calculator
+
+What a project of your size costs, at the sizes we measured. Each task has one comment. The list figures are for \`zinn task list\`.
+
+| Tasks | Database | List time | List memory | List output | As JSON |
+| --- | --- | --- | --- | --- | --- |
+${stopRows}
+
 ## Running costs
 
-About ${memoryLabel(typicalCommandMemoryBytes)} of memory and a tenth of a second per command.
+What an agent has to read, against a database of ${pricingEnvironment.tasks} tasks and ${pricingEnvironment.comments} comments. Output is what the command prints.
 
-- Idle: nothing. Zinn runs only when you call it. No background process, no memory, no writes.
-- Per command: ${memoryLabel(pricingEnvironment.nodeMemoryBytes)} of that is Node itself.
-
-| Command | Memory | Time | Output |
-| --- | --- | --- | --- |
+| Command | Output | Memory | Time | Electricity |
+| --- | --- | --- | --- | --- |
 ${commandRows}
 
-Output is what the command prints, and what an agent reads.
+${memoryLabel(pricingEnvironment.nodeMemoryBytes)} of that memory and ${nodeEnergyLabel} of that electricity is Node itself. ${energyMethodNote}
 
-At 10,000 tasks, listing them all takes ${memoryLabel(largeListCost.memoryBytes)} and ${largeListCost.seconds.toFixed(1)} seconds.
+## Compare plans
 
-## On disk
+All one of them.
+
+| Feature | Zinn |
+| --- | --- |
+${comparisonRows}
+
+## Your bill
+
+Itemised. Already paid, by you, to other people.
+
+- Your internet bill: ${sizeLabel(pricingTotals.download)} of download, once per update.
+- Your electricity bill and your machine: the running costs above, per command.
+- Between commands: nothing. No processes, no memory, no writes.
+- Monetary charge: none.
+
+Your disk:
 
 | Item | Size |
 | --- | --- |
 ${diskRows}
 
-A task has a ${pricingEnvironment.titleChars}-character title and a ${pricingEnvironment.descriptionChars}-character description. A comment is ${pricingEnvironment.commentChars} characters.
+Payable to your internet provider and your electricity company. Zinn receives nothing.
 
-Measured ${pricingEnvironment.measured} with CLI ${pricingEnvironment.cli} and the packages it installs. Memory and time are medians of five runs on Node ${pricingEnvironment.node}, ${pricingEnvironment.platform}, against a database of ${pricingEnvironment.tasks} tasks and ${pricingEnvironment.comments} comments.
+CLI ${pricingEnvironment.cli} checksum \`${cliIntegrity}\`, from \`npm view @zinn-dev/cli@${pricingEnvironment.cli} dist.integrity\`.
+
+## Frequently asked questions
+
+${questionRows}
+
+## Enterprise
+
+Same plan. Same bytes. [Contact sales](https://zinn.sh/contact).
+
+${measurementNote}
 `,
     { headers: { "Content-Type": "text/markdown; charset=utf-8" } },
   );

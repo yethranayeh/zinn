@@ -1,0 +1,38 @@
+---
+import Table from "../ui/table/Table.astro";
+import TableCell from "../ui/table/TableCell.astro";
+import TableHead from "../ui/table/TableHead.astro";
+import TableRow from "../ui/table/TableRow.astro";
+import Section from "./Section.astro";
+
+import { comparison } from "./figures";
+---
+
+<Section id='zp-compare' label='Compare plans' title='All one of them.'>
+	<div class='max-w-[38rem]'>
+		<Table>
+			<thead>
+				<TableRow>
+					<TableHead><span class='sr-only'>Feature</span></TableHead>
+					<TableHead>
+						<span
+							class='block w-fit mb-1.5 px-1.5 py-[0.1875rem] bg-bronze text-soot font-mono text-[10px]/[1.2] font-normal tracking-[0.1em] uppercase'
+							>Most popular</span
+						>
+						<span class='text-[1.125rem]'>Zinn</span>
+					</TableHead>
+				</TableRow>
+			</thead>
+			<tbody>
+				{
+					comparison.map(([feature, value]) => (
+						<TableRow>
+							<TableCell>{feature}</TableCell>
+							<TableCell>{value}</TableCell>
+						</TableRow>
+					))
+				}
+			</tbody>
+		</Table>
+	</div>
+</Section>

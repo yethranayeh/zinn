@@ -1,0 +1,97 @@
+---
+import Section from "./Section.astro";
+import PricingNote from "./PricingNote.astro";
+import Readouts from "./Readouts.astro";
+import Readout from "./Readout.astro";
+
+import { groupedNumber, memoryLabel, outputLabel, sizeLabel } from "../../config/pricing-labels";
+import { calculatorStops, defaultStop } from "./figures";
+
+const stop = calculatorStops[defaultStop];
+---
+
+<Section id='zp-calc' label='Usage calculator' title='What a project of your size costs.'>
+	<div class='grid gap-8' data-calc>
+		<div>
+			<div class='flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2'>
+				<label for='zp-tasks' class='text-[1rem]'>Tasks, each with one comment</label>
+				<output for='zp-tasks' class='font-mono text-[1.25rem] leading-none tabular-nums' data-calc-tasks
+					>{groupedNumber(stop.tasks)}</output
+				>
+			</div>
+			<div class='relative h-11 mt-3'>
+				<canvas class='block absolute inset-x-0 top-[0.375rem] w-full h-8 pointer-events-none' aria-hidden='true'
+				></canvas>
+				<input
+					id='zp-tasks'
+					class='absolute inset-0 w-full h-11 m-0 appearance-none bg-transparent cursor-ew-resize touch-pan-y [&::-webkit-slider-runnable-track]:h-11 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-0 [&::-webkit-slider-thumb]:h-11 [&::-webkit-slider-thumb]:border-0 [&::-webkit-slider-thumb]:bg-transparent [&::-moz-range-track]:h-11 [&::-moz-range-track]:bg-transparent [&::-moz-range-thumb]:w-0 [&::-moz-range-thumb]:h-11 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:rounded-none [&::-moz-range-thumb]:bg-transparent'
+					type='range'
+					min='0'
+					max={calculatorStops.length - 1}
+					step='1'
+					value={defaultStop}
+					aria-valuetext={`${groupedNumber(stop.tasks)} tasks`}
+				/>
+			</div>
+			<div class='flex justify-between font-mono text-[11px]/[1.4] text-muted-foreground' aria-hidden='true'>
+				{calculatorStops.map((entry) => <span>{groupedNumber(entry.tasks)}</span>)}
+			</div>
+			<PricingNote>The slider stops only at the sizes we measured.</PricingNote>
+		</div>
+		<Readouts class='grid-cols-2 sm:grid-cols-5' aria-live='polite' aria-atomic='true'>
+			<Readout label='Database' data-calc-out='db'>{sizeLabel(stop.databaseBytes)}</Readout>
+			<Readout label='List time' data-calc-out='seconds'>{stop.seconds.toFixed(2)} s</Readout>
+			<Readout label='List memory' data-calc-out='memory'>{memoryLabel(stop.memoryBytes)}</Readout>
+			<Readout label='List output' data-calc-out='output'>{outputLabel(stop.outputBytes)}</Readout>
+			<Readout label='As JSON' data-calc-out='json'>{outputLabel(stop.jsonOutputBytes)}</Readout>
+		</Readouts>
+	</div>
+</Section>
+
+<script>
+	import { groupedNumber, memoryLabel, outputLabel, sizeLabel } from "../../config/pricing-labels";
+	import { drawRules, onResize, print } from "./canvas";
+	import { figures } from "./page-figures";
+
+	function setupCalculator() {
+		const container = document.querySelector<HTMLElement>("[data-calc]");
+		const input = container?.querySelector("input");
+		const canvas = container?.querySelector<HTMLCanvasElement>("canvas");
+		if (!container || !input || !canvas) {
+			return;
+		}
+		const out = (name: string) => container.querySelector<HTMLElement>(`[data-calc-out='${name}']`);
+		const tasks = container.querySelector<HTMLElement>("[data-calc-tasks]");
+		const billTasks = document.querySelector<HTMLElement>("[data-bill-tasks]");
+		const billDatabase = document.querySelector<HTMLElement>("[data-bill-db]");
+		const lastStop = figures.stops.length - 1;
+		const edge = () => Number(input.value) / lastStop;
+
+		function update() {
+			const stop = figures.stops[Number(input!.value)];
+			const taskCount = groupedNumber(stop.tasks);
+			input!.setAttribute("aria-valuetext", `${taskCount} tasks`);
+			drawRules(canvas!, edge());
+			const values: Array<[HTMLElement | null, string]> = [
+				[tasks, taskCount],
+				[out("db"), sizeLabel(stop.databaseBytes)],
+				[out("seconds"), `${stop.seconds.toFixed(2)} s`],
+				[out("memory"), memoryLabel(stop.memoryBytes)],
+				[out("output"), outputLabel(stop.outputBytes)],
+				[out("json"), outputLabel(stop.jsonOutputBytes)],
+				[billTasks, taskCount],
+				[billDatabase, sizeLabel(stop.databaseBytes)]
+			];
+			for (const [element, value] of values) {
+				if (element && element.textContent !== value) {
+					print(element, value);
+				}
+			}
+		}
+
+		input.addEventListener("input", update);
+		onResize(canvas, () => drawRules(canvas, edge()));
+	}
+
+	setupCalculator();
+</script>

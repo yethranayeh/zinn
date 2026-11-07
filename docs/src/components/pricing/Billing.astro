@@ -1,0 +1,179 @@
+---
+import CopyButton from "../CopyButton.astro";
+import Icon from "../ui/icon/Icon.astro";
+import PricingLabel from "./PricingLabel.astro";
+import PricingBody from "./PricingBody.astro";
+import PricingNote from "./PricingNote.astro";
+import PricingBar from "./PricingBar.astro";
+
+import { exactBytes, pricingTotals, sizeLabel } from "../../config/pricing";
+import { installCommand, projectLinks } from "../../config/site";
+import { netShare } from "./figures";
+---
+
+<section class='grid max-w-[76rem] gap-12 lg:grid-cols-2' aria-labelledby='zp-heading'>
+	<div>
+		<PricingLabel>Pricing</PricingLabel>
+		<h1 id='zp-heading' class='mt-3 text-[clamp(2.25rem,5vw,3rem)] leading-[1.1] tracking-[-0.02em]'>
+			One plan. Priced in bytes.
+		</h1>
+		<p class='mt-5 text-[clamp(1.125rem,2vw,1.25rem)] leading-[1.6]'>
+			Zinn is an Experimental kanban CLI for you and your agents.
+		</p>
+		<PricingBody>
+			It is <a href={projectLinks.license}>MIT licensed</a>, so there is no monetary charge. You don't have to create an
+			account, or find a seat for you and your team to sit on. You still pay, the way you pay for all free software: in
+			download, disk, memory, time, output, electricity and your internet bill. This page is the bill.
+		</PricingBody>
+		<div
+			class='flex items-center gap-3 mt-7 py-1 pl-4 pr-1 bg-soot text-soot-foreground font-mono text-[13px]/[1.4] scheme-dark'>
+			<code class='flex-1 min-w-0 overflow-x-auto whitespace-nowrap'
+				><span class='mr-2 text-bronze select-none' aria-hidden='true'>$</span>{installCommand}</code
+			>
+			<CopyButton
+				variant='ghost-inverted'
+				size='icon'
+				value={installCommand}
+				label='Copy installation command'
+				title='Copy install command'
+				success='Install command copied to clipboard.'
+				event='install-copy'
+			/>
+		</div>
+		<nav class='flex flex-wrap gap-x-5 gap-y-2 mt-3 font-mono text-[12px]/[1.5]' aria-label='Zinn links'>
+			<a
+				class='inline-flex items-center gap-1'
+				href={projectLinks.github}
+				aria-label='Zinn source on GitHub'
+				data-site-event='github-click'>GitHub <Icon name='external-link' class='size-[1.5cap]' /></a
+			>
+			<a
+				class='inline-flex items-center gap-1'
+				href={projectLinks.npm}
+				aria-label='Zinn CLI package on npm'
+				data-site-event='npm-click'>npm <Icon name='external-link' class='size-[1.5cap]' /></a
+			>
+			<a class='inline-flex items-center gap-1' href='/docs/installation'>Installation docs</a>
+		</nav>
+	</div>
+
+	<div class='lg:pl-10 lg:border-l lg:border-soot/20'>
+		<div class='flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2'>
+			<PricingLabel as='h2'>Billed by download</PricingLabel>
+			<div
+				class='inline-flex border border-soot font-mono text-[11px]/[1] tracking-[0.14em] uppercase'
+				role='group'
+				aria-label='Download cost'>
+				<button
+					type='button'
+					class='px-3 py-2 aria-pressed:bg-soot aria-pressed:text-soot-foreground hover:aria-[pressed=false]:bg-soot/8'
+					data-weight='net'
+					aria-pressed='false'>Net</button
+				>
+				<button
+					type='button'
+					class='px-3 py-2 aria-pressed:bg-soot aria-pressed:text-soot-foreground hover:aria-[pressed=false]:bg-soot/8 border-l border-soot'
+					data-weight='gross'
+					aria-pressed='true'>Gross</button
+				>
+			</div>
+		</div>
+		<p
+			class='mt-4 min-h-[5.25rem] font-mono text-[clamp(3.75rem,9vw,6rem)] leading-[0.9] tracking-[-0.04em] [&>canvas]:block [&>canvas]:w-full'
+			data-dotnum
+			data-size-net={sizeLabel(pricingTotals.softwareDownload)}
+			data-size-gross={sizeLabel(pricingTotals.download)}>
+			<span data-dotnum-text>{sizeLabel(pricingTotals.download)}</span>
+		</p>
+		<div aria-live='polite'>
+			<div data-weight-state='net' hidden>
+				<PricingNote>{exactBytes(pricingTotals.softwareDownload)} | compressed Zinn packages</PricingNote>
+			</div>
+			<div data-weight-state='gross'>
+				<PricingNote>{exactBytes(pricingTotals.download)} | compressed packages, with dependencies</PricingNote>
+			</div>
+		</div>
+		<PricingBar data-share-bar />
+		<div class='flex flex-wrap justify-between gap-x-4 gap-y-1 mt-2 font-mono text-[12px]/[1.4] text-muted-foreground'>
+			<span>{sizeLabel(pricingTotals.softwareDownload)} is Zinn</span>
+			<span>{(netShare * 100).toFixed(1)}% of the download</span>
+		</div>
+		<button
+			type='button'
+			class='block w-full h-[15rem] mt-6 cursor-pointer touch-pan-y'
+			data-drops
+			aria-pressed='false'
+			aria-label='Separate the packages, click again to run them back together'>
+			<canvas class='block w-full h-full' aria-hidden='true'></canvas>
+		</button>
+		<PricingNote>
+			Packages, to scale. A drop's area is its bytes. Click to separate them, click again to run them back together.
+		</PricingNote>
+	</div>
+</section>
+
+<script>
+	import { trackEvent } from "../../scripts/analytics";
+	import { drawScatter, onResize, print, stepper } from "./canvas";
+	import { setupDotNumeral } from "./dot-numeral";
+	import { setupDrops } from "./molten-drops";
+	import { figures } from "./page-figures";
+
+	function setupBilling() {
+		const numeral = setupDotNumeral();
+		const drops = setupDrops("gross");
+		const bar = document.querySelector<HTMLCanvasElement>("[data-share-bar]");
+		// Both notes are in the page's HTML. Their text is kept here because print rewrites it.
+		const notes = [...document.querySelectorAll<HTMLElement>("[data-weight-state]")].map((state) => ({
+			state,
+			line: state.querySelector("p"),
+			text: state.textContent?.trim() ?? ""
+		}));
+		const buttons = [...document.querySelectorAll<HTMLButtonElement>("[data-weight]")];
+		const holder = document.querySelector<HTMLElement>("[data-dotnum]");
+		const run = stepper();
+		const densityFor = (weight: string) => (weight === "gross" ? 1 : 0.22);
+		let density = densityFor("gross");
+
+		if (bar) {
+			onResize(bar, () => drawScatter(bar, figures.netShare, density));
+		}
+		for (const button of buttons) {
+			button.addEventListener("click", () => {
+				const weight = button.dataset.weight as "net" | "gross";
+				for (const other of buttons) {
+					other.setAttribute("aria-pressed", String(other === button));
+				}
+				numeral.show((weight === "net" ? holder?.dataset.sizeNet : holder?.dataset.sizeGross) ?? "");
+				for (const { state, line, text } of notes) {
+					const showing = state.dataset.weightState === weight;
+					state.hidden = !showing;
+					if (showing && line) {
+						print(line, text);
+					}
+				}
+				drops.setMode(weight);
+				const from = density;
+				const to = densityFor(weight);
+				const frames = 5;
+				run(frames, (frame) => {
+					density = from + (to - from) * ((frame + 1) / frames);
+					if (bar) {
+						drawScatter(bar, figures.netShare, density);
+					}
+				});
+			});
+		}
+	}
+
+	setupBilling();
+
+	for (const link of document.querySelectorAll<HTMLAnchorElement>("[data-site-event]")) {
+		link.addEventListener("click", () => {
+			const event = link.dataset.siteEvent;
+			if (event === "github-click" || event === "npm-click") {
+				trackEvent(event);
+			}
+		});
+	}
+</script>

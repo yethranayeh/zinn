@@ -1,0 +1,92 @@
+---
+import Section from "./Section.astro";
+import PricingNote from "./PricingNote.astro";
+import PricingBody from "./PricingBody.astro";
+import PricingAction from "./PricingAction.astro";
+import PricingBar from "./PricingBar.astro";
+
+import { storySteps } from "./figures";
+---
+
+<Section id='zp-story' label='What you pay, in order' title='From install to doing nothing.'>
+	<div data-story>
+		<ol
+			class='grid gap-px border border-soot/20 bg-soot/20 font-mono text-[12px]/[1.35] grid-cols-2 list-none sm:grid-cols-4'>
+			{
+				storySteps.map((step, index) => (
+					<li>
+						<button
+							type='button'
+							class='group w-full h-full px-3 py-2.5 bg-limestone text-left aria-pressed:bg-soot aria-pressed:text-soot-foreground hover:aria-[pressed=false]:bg-soot/8'
+							data-story-step={index}
+							aria-pressed={index === 0 ? "true" : "false"}>
+							<span class='mr-2 text-muted-foreground group-aria-pressed:text-bronze'>{index + 1}</span>
+							{step.name}
+						</button>
+					</li>
+				))
+			}
+		</ol>
+		<PricingBar data-story-bar />
+		<div class='min-h-[9rem] mt-5' aria-live='polite' aria-atomic='true'>
+			<p
+				class='font-mono text-[clamp(2rem,6vw,3.5rem)] leading-none tracking-[-0.03em] whitespace-nowrap'
+				data-story-figure>
+				{storySteps[0].figure}
+			</p>
+			<PricingBody data-story-text>{storySteps[0].text}</PricingBody>
+		</div>
+		<div class='flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2'>
+			<PricingNote data-story-count>Step 1 of {storySteps.length}</PricingNote>
+			<PricingAction data-story-next>Next step</PricingAction>
+		</div>
+	</div>
+</Section>
+
+<script>
+	import { drawScatter, onResize, print, stepper } from "./canvas";
+	import { figures } from "./page-figures";
+
+	function setupStory() {
+		const bar = document.querySelector<HTMLCanvasElement>("[data-story-bar]");
+		const figure = document.querySelector<HTMLElement>("[data-story-figure]");
+		const text = document.querySelector<HTMLElement>("[data-story-text]");
+		const count = document.querySelector<HTMLElement>("[data-story-count]");
+		const next = document.querySelector<HTMLButtonElement>("[data-story-next]");
+		const steps = [...document.querySelectorAll<HTMLButtonElement>("[data-story-step]")];
+		if (!bar || !figure || !text || !count || !next) {
+			return;
+		}
+		const run = stepper();
+		let current = 0;
+		let fill = figures.story[0].fill;
+
+		function go(index: number) {
+			current = index;
+			const step = figures.story[index];
+			for (const button of steps) {
+				button.setAttribute("aria-pressed", String(Number(button.dataset.storyStep) === index));
+			}
+			print(figure!, step.figure);
+			text!.textContent = step.text;
+			count!.textContent = `Step ${index + 1} of ${figures.story.length}`;
+			next!.textContent = index === figures.story.length - 1 ? "Start over" : "Next step";
+			const from = fill;
+			const to = step.fill;
+			// The whole bar takes 12 frames, and any move takes at least 2.
+			const frames = Math.max(2, Math.ceil(Math.abs(to - from) * 12));
+			run(frames, (frame) => {
+				fill = from + (to - from) * ((frame + 1) / frames);
+				drawScatter(bar!, fill, fill === 0 ? 0 : 1);
+			});
+		}
+
+		onResize(bar, () => drawScatter(bar, fill, fill === 0 ? 0 : 1));
+		next.addEventListener("click", () => go((current + 1) % figures.story.length));
+		for (const button of steps) {
+			button.addEventListener("click", () => go(Number(button.dataset.storyStep)));
+		}
+	}
+
+	setupStory();
+</script>

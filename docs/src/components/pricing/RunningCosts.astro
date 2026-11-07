@@ -1,0 +1,134 @@
+---
+import Section from "./Section.astro";
+import PricingNote from "./PricingNote.astro";
+import Readouts from "./Readouts.astro";
+import Readout from "./Readout.astro";
+
+import { memoryLabel, outputLabel, pricingCommands, pricingEnvironment } from "../../config/pricing";
+import { energyLabel, energyMethodNote, nodeEnergyLabel } from "./figures";
+
+const firstCommand = pricingCommands[0];
+---
+
+<Section id='zp-dots' label='Running costs' title='What an agent has to read.'>
+	<div data-dots>
+		<div
+			class='grid gap-px border border-soot/20 bg-soot/20 font-mono text-[12px]/[1.35] grid-cols-1 sm:grid-cols-2'
+			role='group'
+			aria-label='Command measured'>
+			{
+				pricingCommands.map((entry, index) => (
+					<button
+						type='button'
+						class='px-3 py-2 bg-limestone text-left aria-pressed:bg-soot aria-pressed:text-soot-foreground hover:aria-[pressed=false]:bg-soot/8'
+						data-command={index}
+						aria-pressed={index === 0 ? "true" : "false"}
+						data-memory={memoryLabel(entry.memoryBytes)}
+						data-time={`${entry.seconds.toFixed(2)} s`}
+						data-output={outputLabel(entry.output)}
+						data-energy={energyLabel(entry.command)}>
+						{entry.command}
+					</button>
+				))
+			}
+		</div>
+
+		<div class='mt-5'>
+			<canvas class='block w-full' aria-hidden='true'></canvas>
+		</div>
+
+		<PricingNote data-dots-caption aria-live='polite'>One dot is 66 B, the output of task create.</PricingNote>
+
+		<Readouts class='grid-cols-2 sm:grid-cols-4' aria-live='polite' aria-atomic='true'>
+			<Readout label='Output' data-out='output'>{outputLabel(firstCommand.output)}</Readout>
+			<Readout label='Memory' data-out='memory'>{memoryLabel(firstCommand.memoryBytes)}</Readout>
+			<Readout label='Time' data-out='time'>{firstCommand.seconds.toFixed(2)} s</Readout>
+			<Readout label='Electricity' data-out='energy'>{energyLabel(firstCommand.command)}</Readout>
+		</Readouts>
+
+		<PricingNote>
+			{memoryLabel(pricingEnvironment.nodeMemoryBytes)} of that memory and {nodeEnergyLabel} of that electricity is Node itself.{
+				" "
+			}
+			{energyMethodNote}
+		</PricingNote>
+	</div>
+</Section>
+
+<script>
+	import { groupedNumber } from "../../config/pricing-labels";
+	import { fit, ink, onResize, print, stepper } from "./canvas";
+	import { figures } from "./page-figures";
+
+	const dotBytes = 66;
+	const dotSpacing = 9;
+
+	function setupDots() {
+		const container = document.querySelector<HTMLElement>("[data-dots]");
+		const canvas = container?.querySelector<HTMLCanvasElement>("canvas");
+		const caption = container?.querySelector<HTMLElement>("[data-dots-caption]");
+		const buttons = [...document.querySelectorAll<HTMLButtonElement>("[data-command]")];
+		if (!container || !canvas || !caption) {
+			return;
+		}
+		const largest = Math.max(...figures.commands.map((entry) => entry.output));
+		const totalDots = Math.ceil(largest / dotBytes);
+		const run = stepper();
+		let shownDots = figures.commands[0].output / dotBytes;
+
+		function draw(dots: number) {
+			const available = canvas!.parentElement!.getBoundingClientRect().width;
+			const columns = Math.floor(available / dotSpacing);
+			const rows = Math.ceil(totalDots / columns);
+			const { context, width, height } = fit(canvas!, rows * dotSpacing);
+			context.clearRect(0, 0, width, height);
+			for (let index = 0; index < totalDots; index++) {
+				const x = (index % columns) * dotSpacing + dotSpacing / 2;
+				const y = Math.floor(index / columns) * dotSpacing + dotSpacing / 2;
+				// The last dot is drawn partly filled, so fractions stay true.
+				const fraction = Math.max(0, Math.min(1, dots - index));
+				context.fillStyle = ink.bone;
+				context.beginPath();
+				context.arc(x, y, 1.6, 0, Math.PI * 2);
+				context.fill();
+				if (fraction > 0) {
+					context.fillStyle = ink.soot;
+					context.beginPath();
+					context.arc(x, y, 3.4 * Math.sqrt(fraction), 0, Math.PI * 2);
+					context.fill();
+				}
+			}
+		}
+
+		function select(index: number) {
+			const button = buttons[index];
+			for (const other of buttons) {
+				other.setAttribute("aria-pressed", String(other === button));
+			}
+			const set = (name: string, value?: string) => {
+				const element = container!.querySelector<HTMLElement>(`[data-out='${name}']`);
+				if (element && value !== undefined) {
+					print(element, value);
+				}
+			};
+			set("output", button.dataset.output);
+			set("memory", button.dataset.memory);
+			set("time", button.dataset.time);
+			set("energy", button.dataset.energy);
+			const target = figures.commands[index].output / dotBytes;
+			const roundedDots = target < 100 ? target.toFixed(1) : groupedNumber(Math.round(target));
+			caption!.textContent = `${figures.commands[index].command}: ${roundedDots} dots. One dot is ${dotBytes} B, the output of task create.`;
+			const from = shownDots;
+			const frames = 7;
+			run(frames, (frame) => {
+				shownDots = from + (target - from) * ((frame + 1) / frames);
+				draw(shownDots);
+			});
+		}
+
+		onResize(canvas.parentElement!, () => draw(shownDots));
+		buttons.forEach((button, index) => button.addEventListener("click", () => select(index)));
+	}
+
+	setupDots();
+</script>

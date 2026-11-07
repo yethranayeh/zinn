@@ -1,0 +1,20 @@
+---
+interface Props {
+	label: string;
+	total?: boolean;
+	[key: string]: unknown;
+}
+
+const { label, total = false, ...attributes } = Astro.props;
+const lineClass = total
+	? "flex items-baseline gap-2 mt-5 pt-3 overflow-hidden border-t border-soot border-dashed text-[1.125rem]"
+	: "flex items-baseline gap-2 mt-1 overflow-hidden";
+const dotLeader =
+	"after:tracking-[0.1em] after:text-muted-foreground after:content-['_................................................................................................................']";
+---
+
+<p class={lineClass}>
+	<span class:list={["relative flex-1 min-w-0 overflow-hidden whitespace-nowrap", dotLeader]}>{label}</span><span
+		class='shrink-0 tabular-nums'
+		{...attributes}><slot /></span>
+</p>

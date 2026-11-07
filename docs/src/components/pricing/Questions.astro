@@ -1,0 +1,24 @@
+---
+import { questions } from "./figures";
+import Section from "./Section.astro";
+import PricingBody from "./PricingBody.astro";
+---
+
+<Section id='zp-faq' label='Frequently asked questions'>
+	<div class='max-w-[44rem]'>
+		{
+			questions.map(({ q, a, code, after }) => (
+				<details class='py-3 border-b border-soot/20'>
+					<summary class='text-[1.0625rem] cursor-pointer'>{q}</summary>
+					<PricingBody>{a}</PricingBody>
+					{code && (
+						<code class='block w-fit max-w-full mt-2 px-2.5 py-1.5 overflow-x-auto bg-soot text-soot-foreground font-mono text-[12px]/[1.4] whitespace-nowrap'>
+							{code}
+						</code>
+					)}
+					{after && <PricingBody>{after}</PricingBody>}
+				</details>
+			))
+		}
+	</div>
+</Section>

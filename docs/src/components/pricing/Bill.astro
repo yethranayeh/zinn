@@ -1,0 +1,62 @@
+---
+import Section from "./Section.astro";
+import BillLine from "./BillLine.astro";
+import BillHeading from "./BillHeading.astro";
+
+import {
+	groupedNumber,
+	memoryLabel,
+	pricingCommands,
+	pricingDiskRows,
+	pricingEnvironment,
+	pricingTotals,
+	sizeLabel
+} from "../../config/pricing";
+import { calculatorStops, cliIntegrity, defaultStop, energyLabel, energyMethodNote } from "./figures";
+
+const stop = calculatorStops[defaultStop];
+const firstCommand = pricingCommands[0];
+/** The installed size has its own line, so the bill lists the other storage figures after the live database. */
+const storageRows = pricingDiskRows.filter((row) => row.label !== "Installed");
+---
+
+<Section id='zp-bill' label='Your bill' title='Itemised. Already paid, by you, to other people.'>
+	<div
+		class='relative max-w-[38rem] px-6 py-8 bg-bone font-mono text-[13px]/[1.5] before:absolute before:inset-x-0 before:top-0 before:h-2.5 before:bg-size-[20px_10px] before:bg-repeat-x before:bg-[linear-gradient(135deg,var(--color-limestone)_50%,transparent_50%),linear-gradient(225deg,var(--color-limestone)_50%,transparent_50%)] after:absolute after:inset-x-0 after:bottom-0 after:h-2.5 after:bg-size-[20px_10px] after:bg-repeat-x after:bg-[linear-gradient(45deg,var(--color-limestone)_50%,transparent_50%),linear-gradient(315deg,var(--color-limestone)_50%,transparent_50%)]'>
+		<p class='text-[1.125rem] text-center'>Statement of resources</p>
+		<p class='flex flex-wrap justify-between gap-x-4 gap-y-1 mt-4 py-2 border-y border-soot border-dashed text-[12px]'>
+			<span>Bill to: your machine</span><span
+				>Project size: <span data-bill-tasks>{groupedNumber(stop.tasks)}</span> tasks</span
+			>
+		</p>
+
+		<BillHeading>Your internet bill</BillHeading>
+		<BillLine label='Download, once per update'>{sizeLabel(pricingTotals.download)}</BillLine>
+
+		<BillHeading>Your disk</BillHeading>
+		<BillLine label='Installed packages'>{sizeLabel(pricingTotals.unpacked)}</BillLine>
+		<BillLine label='Database' data-bill-db>{sizeLabel(stop.databaseBytes)}</BillLine>
+		{storageRows.map((row) => <BillLine label={row.label}>{sizeLabel(row.bytes)}</BillLine>)}
+
+		<BillHeading>Your electricity bill, per command</BillHeading>
+		<BillLine label='Processor energy, task list'>{energyLabel("zinn task list")}</BillLine>
+		<BillLine label='Processor energy, task create'>{energyLabel("zinn task create")}</BillLine>
+
+		<BillHeading>Your machine, per command</BillHeading>
+		<BillLine label='Memory, until it exits'>{memoryLabel(firstCommand.memoryBytes)}</BillLine>
+		<BillLine label='Time'>{firstCommand.seconds.toFixed(2)} s</BillLine>
+
+		<BillHeading>Between commands</BillHeading>
+		<BillLine label='Processes, memory, writes'>Nothing</BillLine>
+
+		<BillLine label='Monetary charge' total>None</BillLine>
+		<p class='mt-3 text-[12px]'>
+			Payable to your internet provider and your electricity company. Zinn receives nothing.
+		</p>
+		<p class='mt-3 text-[12px]'>{energyMethodNote}</p>
+		<p class='grid gap-1 mt-5 pt-3 border-t border-soot border-dashed text-[11px] text-muted-foreground wrap-anywhere'>
+			<span>CLI {pricingEnvironment.cli} checksum {cliIntegrity}</span>
+			<code>npm view @zinn-dev/cli@{pricingEnvironment.cli} dist.integrity</code>
+		</p>
+	</div>
+</Section>

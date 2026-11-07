@@ -1,0 +1,160 @@
+import {
+  exactBytes,
+  groupedNumber,
+  largeListCost,
+  memoryLabel,
+  pricingCommands,
+  pricingEnvironment,
+  pricingTotals,
+  sizeLabel,
+} from "../../config/pricing";
+
+/**
+ * Calculator stops, one comment per task, same fixture as the pricing config.
+ * 100 and 10,000 are the published figures. 1, 10 and 1,000 are medians of five on CLI 0.43.0,
+ * measured 07.11.2026
+ */
+export const calculatorStops = [
+  {
+    tasks: 1,
+    databaseBytes: 122_880,
+    seconds: 0.1,
+    memoryBytes: 78_381_056,
+    outputBytes: 64,
+    jsonOutputBytes: 673,
+  },
+  {
+    tasks: 10,
+    databaseBytes: 147_456,
+    seconds: 0.11,
+    memoryBytes: 77_791_232,
+    outputBytes: 650,
+    jsonOutputBytes: 6_704,
+  },
+  {
+    tasks: 100,
+    databaseBytes: 471_040,
+    seconds: 0.12,
+    memoryBytes: 81_166_336,
+    outputBytes: 6_600,
+    jsonOutputBytes: 67_095,
+  },
+  {
+    tasks: 1_000,
+    databaseBytes: 3_072_000,
+    seconds: 0.15,
+    memoryBytes: 85_377_024,
+    outputBytes: 67_000,
+    jsonOutputBytes: 671_896,
+  },
+  {
+    tasks: 10_000,
+    databaseBytes: 29_044_736,
+    seconds: largeListCost.seconds,
+    memoryBytes: largeListCost.memoryBytes,
+    outputBytes: largeListCost.output,
+    jsonOutputBytes: 6_728_897,
+  },
+];
+
+export const defaultStop = 2;
+
+/** Zinn's own packages as a share of the whole download */
+export const netShare = pricingTotals.softwareDownload / pricingTotals.download;
+
+/** From the registry metadata of the published package */
+export const cliIntegrity =
+  "sha512-JGp577cR8YOfrBg9oV7Uhb1UWxE8rMxfE5KVJ9uk+yKJOogentMZfX2N2Lh4QqknI5trcIA5Lh0aw4k6b5g8lg==";
+
+/**
+ * Estimated processor energy above idle, 100-task fixture, CLI 0.43.0, M4 MacBook Pro on AC.
+ * Median of five 20-second blocks per command, measured 2026-11-07 with `powermetrics`
+ */
+export const energyPerCommand: Record<string, string> = {
+  "zinn task list": "0.21 mWh",
+  "zinn task list --json": "0.20 mWh",
+  "zinn task view": "0.20 mWh",
+  "zinn task create": "0.24 mWh",
+};
+
+/** `node -e 0`, measured the same way. */
+export const nodeEnergyLabel = "0.06 mWh";
+
+export const energyMethodNote = "Estimated processor energy above idle, on an M4 MacBook Pro.";
+
+export const energyLabel = (command: string) => energyPerCommand[command] ?? "Measuring";
+
+export const comparison = [
+  ["Monetary charge", "None"],
+  ["License", "MIT"],
+  ["Accounts", "None to create"],
+  ["Seats", "None to find"],
+  ["Agents", "Included, same bytes"],
+  ["Renewal", "Updates, when you want them"],
+  ["Annual discount", "Nothing to discount"],
+  ["Your data", "On your machine"],
+];
+
+const largestStop = calculatorStops[calculatorStops.length - 1];
+
+export const questions: Array<{ q: string; a: string; code?: string; after?: string }> = [
+  {
+    q: "Can I cancel anytime?",
+    a: "Yes.",
+    code: "npm uninstall -g @zinn-dev/cli",
+    after: "Uninstalling leaves your data in place, in the Zinn directory.",
+  },
+  {
+    q: "Is there a free trial?",
+    a: "You are free to try, and encouraged to keep using it.",
+  },
+  {
+    q: "Do you offer annual billing?",
+    a: "Billing happens when you update, and you choose when.",
+    code: "npm i -g @zinn-dev/cli@latest",
+  },
+  {
+    q: "What are the overage charges?",
+    a: `Commands cost more as a project grows. Listing ${groupedNumber(largestStop.tasks)} tasks takes ${largestStop.seconds.toFixed(2)} seconds and ${memoryLabel(largestStop.memoryBytes)}. The calculator above has the other sizes.`,
+  },
+  {
+    q: "Do you offer refunds?",
+    a: "You can uninstall and your lost disk bytes come back. Memory already comes back every time a command exits. The electricity does not come back.",
+  },
+  {
+    q: "Does it cost anything when I am not using it?",
+    a: "No. Zinn runs only when you call it. No background process, no memory, no writes.",
+  },
+];
+
+export const measurementNote = `Measured with CLI ${pricingEnvironment.cli} and the packages it installs. Memory and time are medians of five runs on Node ${pricingEnvironment.node}, ${pricingEnvironment.platform}. Each task has a ${pricingEnvironment.titleChars}-character title, a ${pricingEnvironment.descriptionChars}-character description and one ${pricingEnvironment.commentChars}-character comment.`;
+
+const firstCommand = pricingCommands[0];
+
+/** fill is how much of the step's bar is drawn, from 0 to 1 */
+export const storySteps = [
+  {
+    name: "Download",
+    figure: sizeLabel(pricingTotals.download),
+    text: `Over your connection, once per update. ${exactBytes(pricingTotals.download)} of compressed packages.`,
+    fill: 1 / 3,
+  },
+  {
+    name: "Unpack",
+    figure: sizeLabel(pricingTotals.unpacked),
+    text: `On your disk, in ${groupedNumber(pricingTotals.files)} files.`,
+    fill: 2 / 3,
+  },
+  {
+    name: "First command",
+    figure: `${memoryLabel(firstCommand.memoryBytes)}, ${firstCommand.seconds.toFixed(2)} s`,
+    text: "Memory and time for one task list. Memory comes back when it exits.",
+    fill: 1,
+  },
+  {
+    name: "Idle",
+    figure: "Nothing",
+    text: "The command has exited. No background process, no memory, and no writes until you call it again.",
+    fill: 0,
+  },
+];
