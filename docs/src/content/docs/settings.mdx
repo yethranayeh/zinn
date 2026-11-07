@@ -1,11 +1,11 @@
 ---
 title: Settings
-description: Choose Zinn's data directory and default project, run hooks after changes, and inspect the selected store.
+description: Choose Zinn's data directory and default project, run hooks after changes, control local telemetry, and inspect the selected store.
 ---
 
 # Settings
 
-Without `ZINN_DIR`, Zinn reads the global `~/.zinn/settings.json` and the nearest optional `zinn.local.json` in a codebase. They can choose the data directory and a default project; the global file can also configure hooks. With `ZINN_DIR`, Zinn reads only `settings.json` inside that selected directory. Note that `storage.directory` does not cause settings from its target directory to be read.
+Without `ZINN_DIR`, Zinn reads the global `~/.zinn/settings.json` and the nearest optional `zinn.local.json` in a codebase. They can choose the data directory, a default project and the telemetry settings. The global file can also configure hooks. With `ZINN_DIR`, Zinn reads only `settings.json` inside that selected directory. Note that `storage.directory` does not cause settings from its target directory to be read.
 
 For the files and paths that make up a store, see [Data and backups](/docs/data).
 
@@ -22,11 +22,11 @@ If a `ZINN_DIR` is provided, Zinn reads only `settings.json` inside that directo
 
 Without `ZINN_DIR`, Zinn looks for `zinn.local.json` from the current directory up to the Git root. Outside a Git repository, it checks only the current directory. It reads the global `~/.zinn/settings.json` too, then merges the local file over it field by field. A local setting overrides the same global setting. You can omit fields in the local setting to inherit global values. The local settings file is not meant to be committed, as it can cause unexpected behavior on others' Zinn setups who install the same repo with the tracked local setting.
 
-`storage.directory` is relative to the folder containing the file that sets it. A leading `~` or `~/` expands to your home directory. It names the Zinn directory, which contains `data/zinn.sqlite`, `backups/`, and `logs/`.
+`storage.directory` is relative to the folder containing the file that sets it. A leading `~` or `~/` expands to your home directory. It names the Zinn directory, which contains `data/zinn.sqlite`, `backups/`, `logs/`, and `telemetry/`.
 
 The selected directory holds one database shared by all its projects. Choose a local directory outside network shares and synchronized folders. See [safe storage and backups](/docs/data).
 
-A folder selected through `ZINN_DIR` or `storage.directory` must already exist. Create it with `mkdir -p <path>` before using it. Creating the first project or label creates the database inside an existing empty folder. With no explicit location, it also creates the default `~/.zinn` folder. Until then, other commands fail with code `not_found` and entity `database` and create nothing. An empty `ZINN_DIR` is refused. Help, version requests, and `zinn info` work with a missing folder.
+A folder selected through `ZINN_DIR` or `storage.directory` must already exist. Create it with `mkdir -p <path>` before using it. Creating the first project or label creates the database inside an existing empty folder. With no explicit location, it also creates the default `~/.zinn` folder. Until then, other commands fail with code `not_found` and entity `database` and create no database. In an existing folder, the failed run is still recorded in `telemetry/` unless [telemetry is off](#control-local-telemetry). An empty `ZINN_DIR` is refused. Help, version requests, and `zinn info` work with a missing folder.
 
 For example, this `zinn.local.json` selects a shared data directory and its default project:
 
@@ -64,6 +64,24 @@ The `defaultProject` setting applies only to commands that support an omitted ke
 
 A `hooks` key in `zinn.local.json` is a settings error like any other invalid setting. Therefore, hooks never run from the local settings file. See [Hooks](/docs/hooks) for what a hook receives and how failures are handled.
 
+## Control local telemetry
+
+Zinn records local usage by default and sends nothing off the machine. See [Telemetry](/docs/data#telemetry) for the records and their limits. The `telemetry` key has two fields, and a settings file can set either one:
+
+```json
+{
+	"telemetry": {
+		"mode": "off",
+		"maxMegabytes": 50
+	}
+}
+```
+
+- `mode` is `local` or `off`. `off` writes no new records and keeps existing files. Without a setting, `mode` is `local`, or `off` when the `DO_NOT_TRACK` environment variable is `1`, following [donottrack.sh](https://donottrack.sh/). Only the value `1` counts. A `telemetry.mode` in a settings file overrides `DO_NOT_TRACK`, whichever way it is set.
+- `maxMegabytes` is a positive whole number of megabytes, each 1,048,576 bytes. It limits the total size of the day files and defaults to `100`.
+
+`zinn.local.json` can set `telemetry`. The nearest `zinn.local.json` overrides the global file field by field, and with `ZINN_DIR` only that directory's `settings.json` is read.
+
 ## Inspect the selected store
 
 Use `zinn info` to inspect the selected store and settings without initializing or upgrading the database:
@@ -73,13 +91,14 @@ zinn info
 zinn info --json
 ```
 
-The report includes the selected store directory and source, settings files and their state, default project, database path and schema state, and CLI, core, and runtime versions. Settings states are `found`, `missing`, `error`, or `not-read` when `ZINN_DIR` selects a different settings file. Database state is `absent`, `empty`, `unmarked`, `current`, `older`, `newer`, or `unavailable`.
+The report includes the selected store directory and source, settings files and their state, default project, telemetry mode and folder, database path and schema state, and CLI, core, and runtime versions. Settings states are `found`, `missing`, `error`, or `not-read` when `ZINN_DIR` selects a different settings file. Database state is `absent`, `empty`, `unmarked`, `current`, `older`, `newer`, or `unavailable`.
 
 `zinn info --json` returns one object with stable top-level keys:
 
 - `settingsFiles` lists each inspected settings file with its `path`, `source` (`env`, `global`, or `local`), `state`, and either its parsed `settings` or an `error`. Unread home and codebase files with `ZINN_DIR` have state `not-read` and reason `ZINN_DIR`.
 - `storage` contains the selected `directory`, its `source` (`env`, `local`, `global`, or `default`), the `settingsPath` that chose it (or `null` for `env` and `default`), whether it exists, and an `error`.
 - `defaultProject` contains its `key`, the `settingsPath` that supplied it, and an `error`; the key and path are `null` when there is no configured default.
+- `telemetry` contains the resolved `mode` (`off` or `local`), its `source` (`default`, `DO_NOT_TRACK`, or `settings`), the `settingsPath` of the file that set the mode (`null` unless `source` is `settings`), `maxMegabytes`, the `directory` of the telemetry folder, whether it `exists`, the `sizeBytes` of the files directly inside it, and an `error`. A file that sets only `maxMegabytes` does not change `source`. The size is `0` when the folder is missing, because `info` never creates it. A path that is not a folder is reported with `exists` false, `sizeBytes` `null` and an `error`.
 - `database` contains the database `path`, its `state`, its `version`, the `latestVersion` supported by this CLI, and an `error`. The version is `0` for `absent`, `empty`, and `unmarked` states.
 - `versions` contains `cli`, `core`, and `runtime` (`name` and `version`).
 
@@ -106,6 +125,16 @@ For example, when settings and the database can be inspected, the report has thi
 		"error": null
 	},
 	"defaultProject": { "key": "DEMO", "settingsPath": "/home/me/.zinn/settings.json", "error": null },
+	"telemetry": {
+		"mode": "local",
+		"source": "default",
+		"settingsPath": null,
+		"maxMegabytes": 100,
+		"directory": "/home/me/.zinn/telemetry",
+		"exists": true,
+		"sizeBytes": 21345,
+		"error": null
+	},
 	"database": {
 		"path": "/home/me/.zinn/data/zinn.sqlite",
 		"state": "current",
@@ -121,4 +150,4 @@ For example, when settings and the database can be inspected, the report has thi
 }
 ```
 
-When settings are unusable or a database cannot be inspected, `info` reports the errors and exits with code 0. `unavailable` means settings left the store undecided (`path` and `version` are `null`), or the selected file could not be read as a database (`path` is set, `version` is `null`, and `error` explains why). Every `error` is `null` when there is no problem. A settings error is carried on `storage`, `defaultProject`, and `database` as well as its `settingsFiles` entry, so the same string can appear several times. With `ZINN_DIR`, an unusable selected `settings.json` sets only `defaultProject.error`, since the store is already chosen. SQLite may perform normal file housekeeping and crash recovery while `info` inspects a database.
+When settings are unusable or a database cannot be inspected, `info` reports the errors and exits with code 0. `unavailable` means settings left the store undecided (`path` and `version` are `null`), or the selected file could not be read as a database (`path` is set, `version` is `null`, and `error` explains why). Every `error` is `null` when there is no problem. A settings error is carried on `storage`, `defaultProject`, `telemetry`, and `database` as well as its `settingsFiles` entry, so the same string can appear several times. The fields a settings file could have set are `null`. With `ZINN_DIR`, an unusable selected `settings.json` sets only `defaultProject.error` and `telemetry.error`, since the store is already chosen. SQLite may perform normal file housekeeping and crash recovery while `info` inspects a database.

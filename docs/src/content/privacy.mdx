@@ -1,7 +1,7 @@
 ---
 title: Privacy
-description: How zinn.sh uses Cloudflare and Umami, how Do Not Track affects analytics, and where the Zinn CLI stores projects and tasks.
-lastUpdated: "06.11.2026"
+description: How zinn.sh uses Cloudflare and Umami, how Do Not Track affects analytics, and what the Zinn CLI stores locally, including usage records.
+lastUpdated: "07.11.2026"
 ---
 
 # Privacy
@@ -25,5 +25,9 @@ The tracker respects your browser's **Do Not Track** setting. Custom events also
 ## Local CLI data
 
 Zinn stores projects, tasks, comments and activity in a local SQLite database. The default path is `~/.zinn/data/zinn.sqlite`. Storage settings or `ZINN_DIR` can select another directory. Installing the CLI involves your package manager and the package registry.
+
+Zinn also keeps local usage records. They are on by default, they stay in `telemetry/` in the Zinn directory, and Zinn sends them nowhere. A record holds the command that ran with its option names, the number of positional words, the exit code and error code, the start time and duration, the CLI and runtime versions, the platform, whether stdin and stdout were terminals, the parent process id and the actor facts the environment declares, such as an agent's name, model and client. It never holds option values, positional words, task, project or column keys or names, messages, paths, the working directory or the hostname. The one typed word it can keep is the first word that matched no command.
+
+Turn the records off with `telemetry.mode` in a settings file or by setting `DO_NOT_TRACK` to `1`. Delete the `telemetry/` folder at any time. Zinn deletes records after 90 days. See [Telemetry](/docs/data#telemetry) for every field and [Settings](/docs/settings#control-local-telemetry) for the options.
 
 Database files, backups and failure logs can contain **private** work. Choose what you share when asking for support, and remove sensitive content from public issue reports. Read [Contact](/contact) for the reporting channel and [Data and backups](/docs/data) for storage and backup details.
