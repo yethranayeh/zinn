@@ -1,0 +1,17 @@
+---
+import type { HTMLAttributes } from "astro/types";
+import { twMerge } from "tailwind-merge";
+
+type Props = HTMLAttributes<"div">;
+
+const { class: className, ...attributes } = Astro.props;
+---
+
+<div
+	aria-hidden='true'
+	class={twMerge(
+		"flex-1 min-h-8 bg-[image:repeating-linear-gradient(315deg,color-mix(in_srgb,var(--color-soot)_12%,transparent)_0_1px,transparent_1px_8px)]",
+		className
+	)}
+	{...attributes}>
+</div>

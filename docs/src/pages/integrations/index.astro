@@ -1,5 +1,12 @@
 ---
 import PageLayout from "../../layouts/PageLayout.astro";
+import Card from "../../components/ui/card/Card.astro";
+import CardAction from "../../components/ui/card/CardAction.astro";
+import CardContent from "../../components/ui/card/CardContent.astro";
+import CardFooter from "../../components/ui/card/CardFooter.astro";
+import CardHeader from "../../components/ui/card/CardHeader.astro";
+import CardMedia from "../../components/ui/card/CardMedia.astro";
+import CardTitle from "../../components/ui/card/CardTitle.astro";
 import Chip from "../../components/ui/chip/Chip.astro";
 import Icon from "../../components/ui/icon/Icon.astro";
 import MarkdownH1 from "../../components/MarkdownH1.astro";
@@ -11,6 +18,58 @@ import { cloudinaryImage } from "../../images/cloudinary";
 
 const opencodePreview = opencodeScenes.find((scene) => scene.id === "code")!;
 const rexPreview = rexScenes.find((scene) => scene.id === "shell")!;
+
+type IntegrationEntry = {
+	title: string;
+	host: string;
+	description: string;
+	path: string;
+	action: string;
+	image?: { src: string; alt: string; width: number; height: number };
+};
+
+const entries: IntegrationEntry[] = [
+	{
+		title: "Zinn theme",
+		host: "OpenCode",
+		description: opencodeTheme.introduction,
+		path: opencodeTheme.path,
+		action: "View theme",
+		image: {
+			src: cloudinaryImage(opencodePreview.images.dark!, 1280),
+			alt: "The Zinn theme displaying code and tables in OpenCode",
+			width: 2840,
+			height: 1640
+		}
+	},
+	{
+		title: "Zinn theme",
+		host: "Rex",
+		description: rexTheme.introduction,
+		path: rexTheme.path,
+		action: "View theme",
+		image: {
+			src: cloudinaryImage(rexPreview.images.dark!, 1280),
+			alt: "The Zinn theme showing a shell session in Rex",
+			width: 3248,
+			height: 1900
+		}
+	},
+	{
+		title: opencodeInspector.title,
+		host: "OpenCode",
+		description: opencodeInspector.description,
+		path: opencodeInspector.path,
+		action: "View inspector"
+	},
+	{
+		title: "Zinn for Codex",
+		host: "Codex",
+		description: "Local task inspection and optional execution-identity hooks alongside a Codex desktop chat.",
+		path: "/integrations/codex",
+		action: "View setup"
+	}
+];
 ---
 
 <PageLayout title='Integrations' description='Themes and integrations maintained by Zinn.'>
@@ -18,70 +77,37 @@ const rexPreview = rexScenes.find((scene) => scene.id === "shell")!;
 
 	<p class='max-w-xl text-lg leading-relaxed'>Themes and integrations maintained by Zinn.</p>
 
-	<a class='group mt-10 block max-w-3xl border border-pewter no-underline hover:no-underline' href={opencodeTheme.path}>
-		<img
-			class='aspect-[2840/1640] h-auto w-full'
-			src={cloudinaryImage(opencodePreview.images.dark!, 1280)}
-			alt='The Zinn theme displaying code and tables in OpenCode'
-			width='2840'
-			height='1640'
-		/>
-		<div class='p-5 md:p-7'>
-			<div class='flex flex-wrap items-center justify-between gap-3'>
-				<h2 class='text-2xl tracking-tight'>Zinn theme</h2>
-				<Chip>OpenCode</Chip>
-			</div>
-			<p class='mt-3 text-base leading-relaxed'>
-				{opencodeTheme.introduction}
-			</p>
-			<span class='mt-5 inline-flex min-h-11 items-center gap-2 font-mono text-xs group-hover:underline'
-				>View theme <Icon name='arrow-right' /></span
-			>
-		</div>
-	</a>
-	<a class='group mt-7 block max-w-3xl border border-pewter no-underline hover:no-underline' href={rexTheme.path}>
-		<img
-			class='aspect-[3248/1900] h-auto w-full'
-			src={cloudinaryImage(rexPreview.images.dark!, 1280)}
-			alt='The Zinn theme showing a shell session in Rex'
-			width='3248'
-			height='1900'
-		/>
-		<div class='p-5 md:p-7'>
-			<div class='flex flex-wrap items-center justify-between gap-3'>
-				<h2 class='text-2xl tracking-tight'>Zinn theme</h2>
-				<Chip>Rex</Chip>
-			</div>
-			<p class='mt-3 text-base leading-relaxed'>{rexTheme.introduction}</p>
-			<span class='mt-5 inline-flex min-h-11 items-center gap-2 font-mono text-xs group-hover:underline'
-				>View theme <Icon name='arrow-right' /></span
-			>
-		</div>
-	</a>
-	<a
-		class='group mt-7 block max-w-3xl border border-pewter p-5 no-underline hover:no-underline md:p-7'
-		href={opencodeInspector.path}>
-		<div class='flex flex-wrap items-center justify-between gap-3'>
-			<h2 class='text-2xl tracking-tight'>{opencodeInspector.title}</h2>
-			<Chip>OpenCode</Chip>
-		</div>
-		<p class='mt-3 text-base leading-relaxed'>{opencodeInspector.description}</p>
-		<span class='mt-5 inline-flex min-h-11 items-center gap-2 font-mono text-xs group-hover:underline'
-			>View inspector <Icon name='arrow-right' /></span
-		>
-	</a>
-	<a
-		class='group mt-7 block max-w-3xl border border-pewter p-5 no-underline hover:no-underline md:p-7'
-		href='/integrations/codex'>
-		<div class='flex flex-wrap items-center justify-between gap-3'>
-			<h2 class='text-2xl tracking-tight'>Zinn for Codex</h2>
-			<Chip>Codex</Chip>
-		</div>
-		<p class='mt-3 text-base leading-relaxed'>
-			Local task inspection and optional execution-identity hooks alongside a Codex desktop chat.
-		</p>
-		<span class='mt-5 inline-flex min-h-11 items-center gap-2 font-mono text-xs group-hover:underline'
-			>View setup <Icon name='arrow-right' /></span
-		>
-	</a>
+	<div class='mt-10 grid gap-5 md:grid-cols-2'>
+		{
+			entries.map((entry) => (
+				<a class='group block no-underline hover:no-underline' href={entry.path}>
+					<Card class='h-full'>
+						{entry.image && (
+							<CardMedia>
+								<img
+									src={entry.image.src}
+									alt={entry.image.alt}
+									width={entry.image.width}
+									height={entry.image.height}
+								/>
+							</CardMedia>
+						)}
+						<CardContent>
+							<CardHeader>
+								<CardTitle>{entry.title}</CardTitle>
+								<Chip>{entry.host}</Chip>
+							</CardHeader>
+							<p class='text-base leading-relaxed'>{entry.description}</p>
+						</CardContent>
+						<CardFooter>
+							<CardAction>
+								{entry.action}
+								<Icon name='arrow-right' />
+							</CardAction>
+						</CardFooter>
+					</Card>
+				</a>
+			))
+		}
+	</div>
 </PageLayout>

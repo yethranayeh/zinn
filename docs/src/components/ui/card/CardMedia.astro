@@ -1,0 +1,17 @@
+---
+import type { HTMLAttributes } from "astro/types";
+import { twMerge } from "tailwind-merge";
+
+type Props = HTMLAttributes<"div">;
+
+const { class: className, ...attributes } = Astro.props;
+---
+
+<div
+	class={twMerge(
+		"aspect-[16/10] overflow-hidden bg-bone [&_img]:block [&_img]:h-full [&_img]:w-full [&_img]:object-cover",
+		className
+	)}
+	{...attributes}>
+	<slot />
+</div>

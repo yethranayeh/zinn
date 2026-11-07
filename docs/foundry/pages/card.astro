@@ -1,0 +1,104 @@
+---
+import Card from "../../src/components/ui/card/Card.astro";
+import CardAction from "../../src/components/ui/card/CardAction.astro";
+import CardContent from "../../src/components/ui/card/CardContent.astro";
+import CardFooter from "../../src/components/ui/card/CardFooter.astro";
+import CardHeader from "../../src/components/ui/card/CardHeader.astro";
+import CardMedia from "../../src/components/ui/card/CardMedia.astro";
+import CardTitle from "../../src/components/ui/card/CardTitle.astro";
+import Chip from "../../src/components/ui/chip/Chip.astro";
+import Icon from "../../src/components/ui/icon/Icon.astro";
+import ComponentHeading from "../components/ComponentHeading.astro";
+import Specimen from "../components/Specimen.astro";
+import FoundryLayout from "../layouts/FoundryLayout.astro";
+---
+
+<FoundryLayout title='Card' description='Card composes a linked entry with media, content and an action.'>
+	<ComponentHeading folder='card'>
+		<p>
+			Card is a bordered box for a linked entry, and it lays <code>ReservedGround</code> behind its parts. Pages compose the
+			parts: <code>CardMedia</code> holds a full-bleed image, <code>CardContent</code> holds <code>CardHeader</code> with
+			<code>CardTitle</code>, and <code>CardFooter</code> holds the mono <code>CardAction</code>.
+		</p>
+		<p>
+			Use Card to list entries that link onward, as the integrations page does. Wrap the card in an anchor with the
+			<code>group</code> class and the action underlines on hover. The ground shows in a band under the media and between
+			the content and the footer, where it absorbs the height a card row allots its tallest entry, so every card ends its
+			action at the floor.
+		</p>
+	</ComponentHeading>
+
+	<div class='grid gap-4'>
+		<Specimen label='<Card> with media, in a group anchor' block>
+			<a class='group block max-w-md no-underline hover:no-underline' href='/'>
+				<Card>
+					<CardMedia>
+						<img
+							src='https://res.cloudinary.com/drwbqceye/image/upload/f_auto,q_auto,w_1280/v1793041081/06-code-and-tables-dark_vjskv7.png'
+							alt='The Zinn theme displaying code and tables in OpenCode'
+							width='2840'
+							height='1640'
+						/>
+					</CardMedia>
+					<CardContent>
+						<CardHeader>
+							<CardTitle>Zinn theme</CardTitle>
+							<Chip>OpenCode</Chip>
+						</CardHeader>
+						<p class='text-base leading-relaxed'>Themes and integrations maintained by Zinn.</p>
+					</CardContent>
+					<CardFooter>
+						<CardAction>View theme <Icon name='arrow-right' /></CardAction>
+					</CardFooter>
+				</Card>
+			</a>
+		</Specimen>
+		<Specimen label='<Card> without media' block>
+			<Card class='max-w-md'>
+				<CardContent>
+					<CardHeader>
+						<CardTitle>Zinn task inspector</CardTitle>
+						<Chip>OpenCode</Chip>
+					</CardHeader>
+					<p class='text-base leading-relaxed'>
+						Inspect Zinn tasks mentioned in an OpenCode conversation without leaving the terminal.
+					</p>
+				</CardContent>
+				<CardFooter>
+					<CardAction>View inspector <Icon name='arrow-right' /></CardAction>
+				</CardFooter>
+			</Card>
+		</Specimen>
+		<Specimen label='<Card> rows share their height' block>
+			<div class='grid gap-5 md:grid-cols-2'>
+				<Card class='h-full'>
+					<CardContent>
+						<CardHeader>
+							<CardTitle>Zinn theme</CardTitle>
+							<Chip>Rex</Chip>
+						</CardHeader>
+						<p class='text-base leading-relaxed'>The Zinn color palette for Rex, with light and dark appearances.</p>
+					</CardContent>
+					<CardFooter>
+						<CardAction>View theme <Icon name='arrow-right' /></CardAction>
+					</CardFooter>
+				</Card>
+				<Card class='h-full'>
+					<CardContent>
+						<CardHeader>
+							<CardTitle>Zinn task inspector</CardTitle>
+							<Chip>OpenCode</Chip>
+						</CardHeader>
+						<p class='text-base leading-relaxed'>
+							Inspect Zinn tasks mentioned in an OpenCode conversation without leaving the terminal. The inspector reads
+							the live database, lists the tasks a conversation touched and opens each one beside the terminal.
+						</p>
+					</CardContent>
+					<CardFooter>
+						<CardAction>View inspector <Icon name='arrow-right' /></CardAction>
+					</CardFooter>
+				</Card>
+			</div>
+		</Specimen>
+	</div>
+</FoundryLayout>
