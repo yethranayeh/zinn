@@ -6,17 +6,20 @@ import Readout from "./Readout.astro";
 
 import { groupedNumber, memoryLabel, outputLabel, sizeLabel } from "../../config/pricing-labels";
 import { calculatorStops, defaultStop } from "./figures";
+import { lastPosition, positionOf } from "./calculator-scale";
 
 const stop = calculatorStops[defaultStop];
 ---
 
 <Section id='zp-calc' label='Usage calculator' title='What a project of your size costs.'>
-	<div class='grid gap-8' data-calc>
+	<div class='@container grid gap-8' data-calc>
 		<div>
 			<div class='flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2'>
 				<label for='zp-tasks' class='text-[1rem]'>Tasks, each with one comment</label>
-				<output for='zp-tasks' class='font-mono text-[1.25rem] leading-none tabular-nums' data-calc-tasks
-					>{groupedNumber(stop.tasks)}</output
+				<output
+					for='zp-tasks'
+					class='ml-auto min-w-[6ch] text-right font-mono text-[1.25rem] leading-none tabular-nums'
+					data-calc-tasks>{groupedNumber(stop.tasks)}</output
 				>
 			</div>
 			<div class='relative h-11 mt-3'>
@@ -27,18 +30,34 @@ const stop = calculatorStops[defaultStop];
 					class='absolute inset-0 w-full h-11 m-0 appearance-none bg-transparent cursor-ew-resize touch-pan-y [&::-webkit-slider-runnable-track]:h-11 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-0 [&::-webkit-slider-thumb]:h-11 [&::-webkit-slider-thumb]:border-0 [&::-webkit-slider-thumb]:bg-transparent [&::-moz-range-track]:h-11 [&::-moz-range-track]:bg-transparent [&::-moz-range-thumb]:w-0 [&::-moz-range-thumb]:h-11 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:rounded-none [&::-moz-range-thumb]:bg-transparent'
 					type='range'
 					min='0'
-					max={calculatorStops.length - 1}
+					max={lastPosition}
 					step='1'
-					value={defaultStop}
+					value={positionOf(stop.tasks)}
 					aria-valuetext={`${groupedNumber(stop.tasks)} tasks`}
 				/>
 			</div>
-			<div class='flex justify-between font-mono text-[11px]/[1.4] text-muted-foreground' aria-hidden='true'>
-				{calculatorStops.map((entry) => <span>{groupedNumber(entry.tasks)}</span>)}
+
+			<div class='relative h-[1.4em] font-mono text-[11px]/[1.4] text-muted-foreground'>
+				{
+					calculatorStops.map((entry) => {
+						const position = positionOf(entry.tasks);
+						return (
+							<button
+								type='button'
+								class='absolute top-0 -my-2 py-2 -translate-x-1/2 first:translate-x-0 last:-translate-x-full hover:text-soot'
+								style={`left: ${(position / lastPosition) * 100}%`}
+								data-calc-mark={position}
+								aria-label={`Set to ${groupedNumber(entry.tasks)} tasks`}>
+								{groupedNumber(entry.tasks)}
+							</button>
+						);
+					})
+				}
 			</div>
-			<PricingNote>The slider stops only at the sizes we measured.</PricingNote>
+			<PricingNote>Marks are measured. Figures between them are interpolated.</PricingNote>
 		</div>
-		<Readouts class='grid-cols-2 sm:grid-cols-5' aria-live='polite' aria-atomic='true'>
+
+		<Readouts class='grid-cols-2 @lg:grid-cols-3 @2xl:grid-cols-5 [&_dd]:text-[clamp(1.25rem,3cqw,2rem)]'>
 			<Readout label='Database' data-calc-out='db'>{sizeLabel(stop.databaseBytes)}</Readout>
 			<Readout label='List time' data-calc-out='seconds'>{stop.seconds.toFixed(2)} s</Readout>
 			<Readout label='List memory' data-calc-out='memory'>{memoryLabel(stop.memoryBytes)}</Readout>
@@ -50,8 +69,9 @@ const stop = calculatorStops[defaultStop];
 
 <script>
 	import { groupedNumber, memoryLabel, outputLabel, sizeLabel } from "../../config/pricing-labels";
-	import { drawRules, onResize, print } from "./canvas";
+	import { drawRules, onResize } from "./canvas";
 	import { figures } from "./page-figures";
+	import { figuresAt, lastPosition, tasksAt } from "./calculator-scale";
 
 	function setupCalculator() {
 		const container = document.querySelector<HTMLElement>("[data-calc]");
@@ -64,29 +84,48 @@ const stop = calculatorStops[defaultStop];
 		const tasks = container.querySelector<HTMLElement>("[data-calc-tasks]");
 		const billTasks = document.querySelector<HTMLElement>("[data-bill-tasks]");
 		const billDatabase = document.querySelector<HTMLElement>("[data-bill-db]");
-		const lastStop = figures.stops.length - 1;
-		const edge = () => Number(input.value) / lastStop;
+		const edge = () => Number(input.value) / lastPosition;
 
 		function update() {
-			const stop = figures.stops[Number(input!.value)];
-			const taskCount = groupedNumber(stop.tasks);
+			const count = tasksAt(Number(input!.value));
+			const stop = figuresAt(figures.stops, count);
+			const taskCount = groupedNumber(count);
+			const shown = (value: string) => (stop.exact ? value : `≈${value}`);
 			input!.setAttribute("aria-valuetext", `${taskCount} tasks`);
 			drawRules(canvas!, edge());
-			const values: Array<[HTMLElement | null, string]> = [
-				[tasks, taskCount],
+			const readouts: Array<[HTMLElement | null, string]> = [
 				[out("db"), sizeLabel(stop.databaseBytes)],
 				[out("seconds"), `${stop.seconds.toFixed(2)} s`],
 				[out("memory"), memoryLabel(stop.memoryBytes)],
 				[out("output"), outputLabel(stop.outputBytes)],
-				[out("json"), outputLabel(stop.jsonOutputBytes)],
-				[billTasks, taskCount],
-				[billDatabase, sizeLabel(stop.databaseBytes)]
+				[out("json"), outputLabel(stop.jsonOutputBytes)]
 			];
-			for (const [element, value] of values) {
-				if (element && element.textContent !== value) {
-					print(element, value);
+			for (const [element, value] of readouts) {
+				if (element) {
+					element.textContent = value;
+					element.toggleAttribute("data-approximate", !stop.exact);
 				}
 			}
+			const values: Array<[HTMLElement | null, string]> = [
+				[tasks, taskCount],
+				[billTasks, taskCount],
+				[billDatabase, shown(sizeLabel(stop.databaseBytes))]
+			];
+			for (const [element, value] of values) {
+				if (element) {
+					element.textContent = value;
+				}
+			}
+		}
+
+		for (const mark of container.querySelectorAll<HTMLButtonElement>("[data-calc-mark]")) {
+			mark.addEventListener("click", () => {
+				const position = mark.dataset.calcMark;
+				if (position) {
+					input.value = position;
+					update();
+				}
+			});
 		}
 
 		input.addEventListener("input", update);

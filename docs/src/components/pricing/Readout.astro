@@ -11,7 +11,7 @@ const { label, ...attributes } = Astro.props;
 
 <div>
 	<PricingLabel as='dt'>{label}</PricingLabel><dd
-		class='mt-1.5 min-h-[1em] font-mono text-[clamp(1.25rem,3vw,2rem)] leading-none tracking-[-0.02em] tabular-nums whitespace-nowrap'
+		class="relative mt-1.5 min-h-[1em] font-mono text-[clamp(1.25rem,3vw,2rem)] leading-none tracking-[-0.02em] tabular-nums whitespace-nowrap data-approximate:before:absolute data-approximate:before:right-full data-approximate:before:content-['≈']"
 		{...attributes}>
 		<slot />
 	</dd>
