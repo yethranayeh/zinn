@@ -1,0 +1,19 @@
+---
+interface Props {
+	subClass?: string;
+}
+
+const { subClass } = Astro.props;
+const hasSub = Astro.slots.has("sub");
+---
+
+<div class='mt-2.5 text-[clamp(1.6rem,5.4cqw,2.4rem)] leading-none tracking-[-0.02em]'>
+	<slot />
+</div>
+{
+	hasSub && (
+		<div data-sub class:list={["mt-2 text-[10.5px]/[1.45] text-muted-foreground", subClass]}>
+			<slot name='sub' />
+		</div>
+	)
+}

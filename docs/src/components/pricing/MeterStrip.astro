@@ -1,0 +1,9 @@
+---
+interface Props {
+	strip: string;
+}
+
+const { strip } = Astro.props;
+---
+
+<canvas class='mt-[11px] block h-[26px] w-full' data-strip={strip} aria-hidden='true'></canvas>

@@ -1,0 +1,16 @@
+---
+import MeterValue from "./MeterValue.astro";
+
+interface Props {
+	label: string;
+	kind: string;
+}
+
+const { label, kind } = Astro.props;
+---
+
+<li class='grid grid-cols-[4.1rem_minmax(0,1fr)_auto] items-center gap-2 text-[10px] text-muted-foreground' data-row>
+	<span class='truncate'>{label}</span>
+	<span class='h-[5px] overflow-hidden bg-soot/10'><i class='block h-full w-0 bg-soot' data-share={kind}></i></span>
+	<MeterValue field={`kind-${kind}`}>0 B</MeterValue>
+</li>

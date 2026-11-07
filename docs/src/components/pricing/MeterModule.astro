@@ -1,0 +1,19 @@
+---
+interface Props {
+	label: string;
+	meta?: string;
+	class?: string;
+	[key: string]: unknown;
+}
+
+const { label, meta = "", class: className, ...attributes } = Astro.props;
+---
+
+<section class:list={["min-w-0 bg-bone px-3.5 py-3", className]} {...attributes}>
+	<header
+		class='flex justify-between gap-2.5 text-[9.5px]/[1.4] tracking-[0.14em] text-muted-foreground uppercase @max-[640px]:text-[9px] @max-[640px]:tracking-[0.1em]'>
+		<span data-module-label>{label}</span>
+		<span class='text-right' data-module-meta><slot name='meta'>{meta}</slot></span>
+	</header>
+	<slot />
+</section>

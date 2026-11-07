@@ -1,6 +1,13 @@
 export const FRAME_MS = 125;
 export const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+let frames = 0;
+
+/** Frames drawn on the page, one per fit call */
+export function framesDrawn() {
+  return frames;
+}
+
 const styles = getComputedStyle(document.documentElement);
 const token = (name: string) => styles.getPropertyValue(name).trim();
 export const ink = {
@@ -58,6 +65,7 @@ export function print(element: HTMLElement, text: string) {
 
 /** Sizes a canvas backing store to its CSS box and returns a context in CSS pixels */
 export function fit(canvas: HTMLCanvasElement, height?: number) {
+  frames += 1;
   const context = canvas.getContext("2d");
   if (!context) {
     throw new Error("no 2d context");

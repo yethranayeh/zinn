@@ -1,71 +1,135 @@
 ---
 import Section from "./Section.astro";
-import Readouts from "./Readouts.astro";
-import Readout from "./Readout.astro";
 import PricingNote from "./PricingNote.astro";
+import MeterModule from "./MeterModule.astro";
+import MeterFigure from "./MeterFigure.astro";
+import MeterStrip from "./MeterStrip.astro";
+import MeterKindRow from "./MeterKindRow.astro";
+import MeterValue from "./MeterValue.astro";
+
+const kinds = [
+	{ kind: "document", label: "Document" },
+	{ kind: "scripts", label: "Scripts" },
+	{ kind: "styles", label: "Styles" },
+	{ kind: "fonts", label: "Fonts" },
+	{ kind: "images", label: "Images" },
+	{ kind: "other", label: "Other" }
+];
 ---
 
 <Section id='zp-meter' label='Usage to date' title="This page isn't free either.">
-	<Readouts class='grid-cols-2 sm:grid-cols-3' data-meter>
-		<Readout label='This page, so far' data-meter-bytes>Reading</Readout>
-		<Readout label='Time on this page' data-meter-time>00:00</Readout>
-		<Readout label='Zinn in that time'>Nothing</Readout>
-	</Readouts>
+	<div class='@container min-w-0 font-mono leading-[1.4] text-soot tabular-nums' data-meter>
+		<div class='border border-soot/25 bg-bone'>
+			<div
+				class='flex flex-wrap items-center justify-between gap-x-[18px] gap-y-1 border-b border-soot/[0.22] px-3.5 py-[9px] text-[9.5px]/[1.4] tracking-[0.14em] text-muted-foreground uppercase'>
+				<span class='flex items-center gap-[7px] text-soot'>
+					<i class='block size-1.5 bg-soot'></i>Usage to date · live
+				</span>
+				<span>1 s tick · read in the browser</span>
+			</div>
+			<div class='grid grid-cols-3 gap-px bg-soot/[0.18] @max-[640px]:grid-cols-1'>
+				<MeterModule class='col-span-2 @max-[640px]:col-span-1' label='Transferred' data-module>
+					<Fragment slot='meta'><MeterValue field='requests'>0</MeterValue> requests</Fragment>
+					<MeterFigure>
+						<span data-f='total'>0 B</span>
+						<Fragment slot='sub'>
+							from cache <MeterValue field='cached'>0 B</MeterValue> at full size · unpacked <MeterValue field='decoded'
+								>0 B</MeterValue
+							>
+						</Fragment>
+					</MeterFigure>
+					<MeterStrip strip='bytes' />
+				</MeterModule>
+
+				<MeterModule label='By kind' meta='bytes' data-module>
+					<ul class='mt-[11px] grid gap-1.5'>
+						{kinds.map((entry) => <MeterKindRow label={entry.label} kind={entry.kind} />)}
+					</ul>
+					<div class='mt-[9px] text-[10.5px]/[1.45] text-muted-foreground'>
+						sum <MeterValue field='kind-sum'>0 B</MeterValue>
+					</div>
+				</MeterModule>
+
+				<MeterModule label='Canvas work' meta='frames' data-module>
+					<MeterFigure>
+						<span data-f='canvas'>0</span>
+						<Fragment slot='sub'>
+							elements <MeterValue field='elements'>0</MeterValue> · canvases <MeterValue field='canvases'>0</MeterValue
+							> · frames drawn on this page
+						</Fragment>
+					</MeterFigure>
+					<MeterStrip strip='canvas' />
+				</MeterModule>
+
+				<MeterModule
+					class='col-span-2 @max-[640px]:col-span-1'
+					label='Time on this page'
+					meta='open / visible'
+					data-module>
+					<MeterFigure>
+						<span data-f='open'>00:00</span><span class='text-[0.62em] text-muted-foreground'>
+							/ <span data-f='visible'>00:00</span></span
+						>
+						<Fragment slot='sub'>visible counts only while the tab is in front</Fragment>
+					</MeterFigure>
+				</MeterModule>
+
+				<MeterModule
+					class='col-span-full @min-[640px]:[&:has(+[data-memory])]:col-span-1'
+					label='Main thread'
+					meta='blocked'
+					data-module
+					data-paint>
+					<MeterFigure subClass='flex flex-wrap items-center gap-x-2 gap-y-0.5'>
+						<span data-paint-big>0 ms</span>
+						<Fragment slot='sub'>
+							<span data-paint-option='lcp'>LCP <MeterValue field='lcp'>reading</MeterValue></span>
+							<span data-paint-separator aria-hidden='true'>·</span>
+							<span data-paint-option='cls'>CLS <MeterValue field='cls'>reading</MeterValue></span>
+						</Fragment>
+					</MeterFigure>
+				</MeterModule>
+
+				<MeterModule
+					class='col-span-full @min-[640px]:[[data-paint]+&]:col-span-2'
+					label='Memory'
+					meta='browser reading'
+					data-module
+					data-memory>
+					<MeterFigure subClass='flex flex-wrap items-center gap-x-2 gap-y-0.5'>
+						<span data-f='heap'>reading</span>
+						<Fragment slot='sub'>
+							<span data-option='cpu' hidden>CPU <MeterValue field='cpu'>reading</MeterValue></span>
+							<span data-separator aria-hidden='true' hidden>·</span>
+							<span data-option='connection' hidden>Connection <MeterValue field='connection'>reading</MeterValue></span
+							>
+						</Fragment>
+					</MeterFigure>
+					<MeterStrip strip='heap' />
+				</MeterModule>
+
+				<MeterModule class='col-span-full' label='Requests' meta='waterfall' data-module>
+					<div class='mt-2'>
+						<div class='flex justify-between text-[9px] tracking-[0.12em] text-muted-foreground uppercase'>
+							<span>0 ms</span><span data-trace-end>0 ms</span>
+						</div>
+						<ol class='mt-1.5 border-t border-soot/[0.14]' data-rows></ol>
+						<p class='mt-2 text-[10px] text-muted-foreground' data-more hidden></p>
+					</div>
+				</MeterModule>
+			</div>
+		</div>
+	</div>
 	<PricingNote
 		>Read from your browser, on your machine, and sent nowhere. Includes only what this page has loaded.</PricingNote
 	>
 </Section>
 
 <script>
-	import { sizeLabel } from "../../config/pricing-labels";
+	import { mountMonitor } from "./meter-view";
 
-	function setupMeter() {
-		const bytesOut = document.querySelector<HTMLElement>("[data-meter-bytes]");
-		const timeOut = document.querySelector<HTMLElement>("[data-meter-time]");
-		const chipBytes = document.querySelector<HTMLElement>("[data-chip-bytes]");
-		const chipTime = document.querySelector<HTMLElement>("[data-chip-time]");
-		let total = 0;
-		const seen = new Set<string>();
-
-		// transferSize is 0 for cached responses, so those count by their encoded size.
-		const weigh = (entry: PerformanceResourceTiming) => entry.transferSize || entry.encodedBodySize || 0;
-		function add(entries: PerformanceEntry[]) {
-			for (const entry of entries as PerformanceResourceTiming[]) {
-				const key = `${entry.name}@${entry.startTime}`;
-				if (!seen.has(key)) {
-					seen.add(key);
-					total += weigh(entry);
-				}
-			}
-			const label = sizeLabel(total);
-			if (bytesOut) {
-				bytesOut.textContent = label;
-			}
-			if (chipBytes) {
-				chipBytes.textContent = label;
-			}
-		}
-		add(performance.getEntriesByType("navigation"));
-		add(performance.getEntriesByType("resource"));
-		new PerformanceObserver((list) => add(list.getEntries())).observe({
-			type: "resource",
-			buffered: true
-		});
-
-		const started = performance.now();
-		const tick = () => {
-			const seconds = Math.floor((performance.now() - started) / 1000);
-			const label = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-			if (timeOut) {
-				timeOut.textContent = label;
-			}
-			if (chipTime) {
-				chipTime.textContent = label;
-			}
-		};
-		tick();
-		window.setInterval(tick, 1000);
+	const root = document.querySelector<HTMLElement>("[data-meter]");
+	if (root) {
+		mountMonitor(root);
 	}
-
-	setupMeter();
 </script>

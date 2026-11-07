@@ -1,0 +1,9 @@
+---
+interface Props {
+	field: string;
+}
+
+const { field } = Astro.props;
+---
+
+<b class='font-normal whitespace-nowrap text-soot' data-f={field}><slot /></b>
