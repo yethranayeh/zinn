@@ -44,7 +44,7 @@ import { storySteps } from "./figures";
 </Section>
 
 <script>
-	import { drawScatter, onResize, print, stepper } from "./canvas";
+	import { drawFillMove, drawScatter, onResize, print, stepper } from "./canvas";
 	import { figures } from "./page-figures";
 
 	function setupStory() {
@@ -73,15 +73,22 @@ import { storySteps } from "./figures";
 			next!.textContent = index === figures.story.length - 1 ? "Start over" : "Next step";
 			const from = fill;
 			const to = step.fill;
+			fill = step.fill;
+			if (from === to) {
+				return;
+			}
 			// The whole bar takes 12 frames, and any move takes at least 2.
 			const frames = Math.max(2, Math.ceil(Math.abs(to - from) * 12));
 			run(frames, (frame) => {
-				fill = from + (to - from) * ((frame + 1) / frames);
-				drawScatter(bar!, fill, fill === 0 ? 0 : 1);
+				if (frame === frames - 1) {
+					drawScatter(bar!, to, 1);
+				} else {
+					drawFillMove(bar!, from, to, (frame + 1) / frames, frame + 1);
+				}
 			});
 		}
 
-		onResize(bar, () => drawScatter(bar, fill, fill === 0 ? 0 : 1));
+		onResize(bar, () => drawScatter(bar, fill, 1));
 		next.addEventListener("click", () => go((current + 1) % figures.story.length));
 		for (const button of steps) {
 			button.addEventListener("click", () => go(Number(button.dataset.storyStep)));
