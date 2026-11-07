@@ -5,7 +5,7 @@ import Readouts from "./Readouts.astro";
 import Readout from "./Readout.astro";
 
 import { groupedNumber, memoryLabel, outputLabel, sizeLabel } from "../../config/pricing-labels";
-import { calculatorStops, defaultStop } from "./figures";
+import { calculatorStops, defaultStop, storageNote } from "./figures";
 import { lastPosition, positionOf } from "./calculator-scale";
 
 const stop = calculatorStops[defaultStop];
@@ -54,7 +54,7 @@ const stop = calculatorStops[defaultStop];
 					})
 				}
 			</div>
-			<PricingNote>Marks are measured. Figures between them are interpolated.</PricingNote>
+			<PricingNote>Marks are measured. Figures between them are interpolated. {storageNote}</PricingNote>
 		</div>
 
 		<Readouts class='grid-cols-2 @lg:grid-cols-3 @2xl:grid-cols-5 [&_dd]:text-[clamp(1.25rem,3cqw,2rem)]'>
@@ -82,15 +82,12 @@ const stop = calculatorStops[defaultStop];
 		}
 		const out = (name: string) => container.querySelector<HTMLElement>(`[data-calc-out='${name}']`);
 		const tasks = container.querySelector<HTMLElement>("[data-calc-tasks]");
-		const billTasks = document.querySelector<HTMLElement>("[data-bill-tasks]");
-		const billDatabase = document.querySelector<HTMLElement>("[data-bill-db]");
 		const edge = () => Number(input.value) / lastPosition;
 
 		function update() {
 			const count = tasksAt(Number(input!.value));
 			const stop = figuresAt(figures.stops, count);
 			const taskCount = groupedNumber(count);
-			const shown = (value: string) => (stop.exact ? value : `≈${value}`);
 			input!.setAttribute("aria-valuetext", `${taskCount} tasks`);
 			drawRules(canvas!, edge());
 			const readouts: Array<[HTMLElement | null, string]> = [
@@ -106,15 +103,8 @@ const stop = calculatorStops[defaultStop];
 					element.toggleAttribute("data-approximate", !stop.exact);
 				}
 			}
-			const values: Array<[HTMLElement | null, string]> = [
-				[tasks, taskCount],
-				[billTasks, taskCount],
-				[billDatabase, shown(sizeLabel(stop.databaseBytes))]
-			];
-			for (const [element, value] of values) {
-				if (element) {
-					element.textContent = value;
-				}
+			if (tasks) {
+				tasks.textContent = taskCount;
 			}
 		}
 

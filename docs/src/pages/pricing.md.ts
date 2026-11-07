@@ -9,6 +9,7 @@ import {
   netShare,
   nodeEnergyLabel,
   questions,
+  storageNote,
   storySteps,
 } from "../components/pricing/figures";
 import {
@@ -17,7 +18,6 @@ import {
   memoryLabel,
   outputLabel,
   pricingCommands,
-  pricingDiskRows,
   pricingEnvironment,
   pricingTotals,
   sizeLabel,
@@ -40,9 +40,6 @@ const commandRows = pricingCommands
   )
   .join("\n");
 const comparisonRows = comparison.map(([feature, value]) => `| ${feature} | ${value} |`).join("\n");
-const diskRows = pricingDiskRows
-  .map(({ label, bytes }) => `| ${label} | ${sizeLabel(bytes)} |`)
-  .join("\n");
 const questionRows = questions
   .map(({ q, a, code, after }) =>
     [`### ${q}`, a, code && `\`\`\`sh\n${code}\n\`\`\``, after].filter(Boolean).join("\n\n"),
@@ -82,6 +79,8 @@ What a project of your size costs, at the sizes we measured. Each task has one c
 | --- | --- | --- | --- | --- | --- |
 ${stopRows}
 
+${storageNote}
+
 ## Running costs
 
 What an agent has to read, against a database of ${pricingEnvironment.tasks} tasks and ${pricingEnvironment.comments} comments. Output is what the command prints.
@@ -100,25 +99,6 @@ All one of them.
 | --- | --- |
 ${comparisonRows}
 
-## Your bill
-
-Itemised. Already paid, by you, to other people.
-
-- Your internet bill: ${sizeLabel(pricingTotals.download)} of download, once per update.
-- Your electricity bill and your machine: the running costs above, per command.
-- Between commands: nothing. No processes, no memory, no writes.
-- Monetary charge: none.
-
-Your disk:
-
-| Item | Size |
-| --- | --- |
-${diskRows}
-
-Payable to your internet provider and your electricity company. Zinn receives nothing.
-
-CLI ${pricingEnvironment.cli} checksum \`${cliIntegrity}\`, from \`npm view @zinn-dev/cli@${pricingEnvironment.cli} dist.integrity\`.
-
 ## Frequently asked questions
 
 ${questionRows}
@@ -128,6 +108,8 @@ ${questionRows}
 Same plan. Same bytes. [Contact sales](https://zinn.sh/contact).
 
 ${measurementNote}
+
+CLI ${pricingEnvironment.cli} checksum \`${cliIntegrity}\`, from \`npm view @zinn-dev/cli@${pricingEnvironment.cli} dist.integrity\`.
 `,
     { headers: { "Content-Type": "text/markdown; charset=utf-8" } },
   );

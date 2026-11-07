@@ -108,7 +108,7 @@ export const pricingCommands: CommandCost[] = [
   { command: "zinn task create", memoryBytes: 80_035_840, seconds: 0.16, output: 66 },
 ];
 
-/** `zinn task list` against the fixture at 10,000 tasks with 10,000 comments. */
+/** `zinn task list` against the fixture at 10_000 tasks with 10_000 comments. */
 export const largeListCost: CommandCost = {
   command: "zinn task list",
   memoryBytes: 166_428_672,
@@ -120,16 +120,13 @@ export const largeListCost: CommandCost = {
 export const typicalCommandMemoryBytes =
   pricingCommands.reduce((total, entry) => total + entry.memoryBytes, 0) / pricingCommands.length;
 
-export const pricingDiskRows = [
-  { label: "Installed", bytes: pricingTotals.unpacked },
-  /** The database file once the schema and one project exist. */
-  { label: "Empty database", bytes: 122_880 },
-  /** Growth per task from 1,000 to 10,000 tasks without comments. */
-  { label: "A task", bytes: 1_561 },
-  /** Growth per comment, 10,000 tasks with their comments against 10,000 without. */
-  { label: "A comment", bytes: 1_324 },
-  { label: "100 tasks with 100 comments", bytes: 471_040 },
-  { label: "10,000 tasks with 10,000 comments", bytes: 29_044_736 },
-];
+export const databaseSizes = {
+  /** The database file once the schema and one project exist */
+  empty: 122_880,
+  /** Growth per task from 1_000 to 10_000 tasks without comments */
+  task: 1_561,
+  /** Growth per comment, 10_000 tasks with their comments against 10_000 without */
+  comment: 1_324,
+};
 
 export { exactBytes, groupedNumber, memoryLabel, outputLabel, sizeLabel } from "./pricing-labels";

@@ -1,4 +1,5 @@
 import {
+  databaseSizes,
   exactBytes,
   groupedNumber,
   largeListCost,
@@ -11,7 +12,7 @@ import {
 
 /**
  * Calculator stops, one comment per task, same fixture as the pricing config.
- * 100 and 10,000 are the published figures. 1, 10 and 1,000 are medians of five on CLI 0.43.0,
+ * 100 and 10_000 are the published figures. 1, 10 and 1_000 are medians of five on CLI 0.43.0,
  * measured 07.11.2026
  */
 export const calculatorStops = [
@@ -128,6 +129,8 @@ export const questions: Array<{ q: string; a: string; code?: string; after?: str
 ];
 
 export const measurementNote = `Measured with CLI ${pricingEnvironment.cli} and the packages it installs. Memory and time are medians of five runs on Node ${pricingEnvironment.node}, ${pricingEnvironment.platform}. Each task has a ${pricingEnvironment.titleChars}-character title, a ${pricingEnvironment.descriptionChars}-character description and one ${pricingEnvironment.commentChars}-character comment.`;
+
+export const storageNote = `An empty database is ${sizeLabel(databaseSizes.empty)}. In large projects, a task adds about ${sizeLabel(databaseSizes.task)} and a comment about ${sizeLabel(databaseSizes.comment)}.`;
 
 const firstCommand = pricingCommands[0];
 

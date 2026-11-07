@@ -5,14 +5,13 @@ import Story from "../components/pricing/Story.astro";
 import Calculator from "../components/pricing/Calculator.astro";
 import RunningCosts from "../components/pricing/RunningCosts.astro";
 import ComparePlans from "../components/pricing/ComparePlans.astro";
-import Bill from "../components/pricing/Bill.astro";
 import UsageMeter from "../components/pricing/UsageMeter.astro";
 import Questions from "../components/pricing/Questions.astro";
 import Enterprise from "../components/pricing/Enterprise.astro";
 import MeterChip from "../components/pricing/MeterChip.astro";
 
-import { pricingCommands, pricingPackages, pricingTotals, sizeLabel } from "../config/pricing";
-import { calculatorStops, measurementNote, netShare, storySteps } from "../components/pricing/figures";
+import { pricingCommands, pricingEnvironment, pricingPackages, pricingTotals, sizeLabel } from "../config/pricing";
+import { calculatorStops, cliIntegrity, measurementNote, netShare, storySteps } from "../components/pricing/figures";
 
 const figures = {
 	packages: pricingPackages.map(({ download, zinn }) => ({ download, zinn })),
@@ -36,12 +35,15 @@ const figures = {
 		<Calculator />
 		<RunningCosts />
 		<ComparePlans />
-		<Bill />
 		<UsageMeter />
 		<Questions />
 		<Enterprise />
 
 		<p class='mt-16 max-w-[44rem] font-mono text-[12px]/[1.6] text-muted-foreground'>{measurementNote}</p>
+		<p class='grid gap-1 mt-2 max-w-[44rem] font-mono text-[12px]/[1.6] text-muted-foreground wrap-anywhere'>
+			<span>CLI {pricingEnvironment.cli} checksum {cliIntegrity}</span>
+			<code>npm view @zinn-dev/cli@{pricingEnvironment.cli} dist.integrity</code>
+		</p>
 	</div>
 
 	<MeterChip />

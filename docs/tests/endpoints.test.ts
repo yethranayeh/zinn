@@ -6,6 +6,7 @@ import {
   measurementNote,
   nodeEnergyLabel,
   questions,
+  storageNote,
 } from "../src/components/pricing/figures";
 import { opencodeInspector } from "../src/config/opencode-inspector";
 import { latestReleaseVersion } from "../src/config/latest-release";
@@ -17,7 +18,6 @@ import {
   memoryLabel,
   outputLabel,
   pricingCommands,
-  pricingDiskRows,
   pricingPackages,
   pricingTotals,
   sizeLabel,
@@ -272,14 +272,16 @@ test("pricing page and its Markdown twin carry the same measured figures", async
     outputLabel(firstCommand.output),
     installCommand,
     ...pricingCommands.map((command) => command.command),
-    ...pricingDiskRows.flatMap((row) => [row.label, sizeLabel(row.bytes)]),
+    storageNote,
     energyLabel(firstCommand.command),
     energyMethodNote,
     nodeEnergyLabel,
     cliIntegrity,
     measurementNote,
     ...comparison.flat(),
-    ...questions.flatMap(({ q, a, code, after }) => [q, a, code, after].filter((text) => text !== undefined)),
+    ...questions.flatMap(({ q, a, code, after }) =>
+      [q, a, code, after].filter((text) => text !== undefined),
+    ),
   ];
   const pageText = visibleText(html);
   for (const fact of facts) {
