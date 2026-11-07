@@ -1,0 +1,81 @@
+name: Bug report
+description: Report a problem with the Zinn CLI, core library, integrations or website.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep the report short and concrete. Remove secrets, private task text, file paths and database content before posting.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of Zinn is affected?
+      options:
+        - CLI
+        - Core library
+        - TUI
+        - Website
+        - OpenCode integration
+        - Rex integration
+        - Codex integration
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened, and what did you expect?
+      description: Describe the behavior you saw and the behavior you expected. Include the command you ran if there is one.
+      placeholder: I ran a command and got this result, but I expected something else.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: A short list is fine. Use a separate ZINN_DIR if the reproduction needs writes.
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Zinn version
+      description: The output of `zinn --version`. Leave blank for website problems.
+      placeholder: 0.44.0
+    validations:
+      required: false
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: The operating system and version.
+      placeholder: macOS 26.1, Ubuntu 24.04, Windows 11
+    validations:
+      required: false
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Output and exit code
+      description: Paste the relevant output and the exit code, if you have them.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshots or recordings
+      description: Drag files here if they help explain the problem.
+    validations:
+      required: false

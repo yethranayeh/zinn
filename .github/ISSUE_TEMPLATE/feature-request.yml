@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest a change or addition to Zinn.
+labels: ["enhancement"]
+body:
+  - type: checkboxes
+    id: searched
+    attributes:
+      label: Existing request
+      description: Search the existing issues first so related requests can stay together.
+      options:
+        - label: I searched the existing issues and did not find this request.
+          required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of Zinn would this change?
+      options:
+        - CLI
+        - Core library
+        - TUI
+        - Website
+        - OpenCode integration
+        - Rex integration
+        - Codex integration
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: request
+    attributes:
+      label: Describe the change
+      description: What do you want to change or add, and what problem would it solve?
+      placeholder: I want this change because it would solve this problem.
+    validations:
+      required: true
