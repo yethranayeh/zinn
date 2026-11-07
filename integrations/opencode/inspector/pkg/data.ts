@@ -2,8 +2,11 @@ import type { Ctx, DetailState, Loaded, Relation, TaskDetail, TaskSummary } from
 
 import { appendFileSync } from "node:fs";
 import { createSignal } from "solid-js";
+import packageJson from "../package.json" with { type: "json" };
 
 type BunProc = Bun.Subprocess<"ignore", "pipe", "pipe">;
+
+const INSPECTOR_CLIENT = `zinn-opencode:inspector/${packageJson.version}`;
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -76,10 +79,18 @@ export function zinnErrorMessage(stderr: string): string | undefined {
 }
 export async function runZinn(args: string[]): Promise<Loaded<string>> {
   const cmd = ["zinn", ...args];
+  const inheritedClient = process.env["ZINN_CLIENT"]?.trim() ?? "";
+  const client =
+    inheritedClient.length === 0 ? INSPECTOR_CLIENT : `${inheritedClient} ${INSPECTOR_CLIENT}`;
   let proc: BunProc;
 
   try {
-    proc = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe", stdin: "ignore" });
+    proc = Bun.spawn(cmd, {
+      stdout: "pipe",
+      stderr: "pipe",
+      stdin: "ignore",
+      env: { ...process.env, ZINN_CLIENT: client },
+    });
   } catch (error) {
     return { ok: false, error: `cannot run zinn: ${errorText(error)}` };
   }
