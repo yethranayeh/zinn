@@ -2,7 +2,16 @@ import type { Command, ParsedRoute, RouteDef } from "../types.js";
 
 import { parseArgs } from "node:util";
 
-import { routerOptions, helpSpellings, versionSpellings, usageLabel } from "../input.js";
+import {
+  routerOptions,
+  helpSpellings,
+  versionSpellings,
+  usageLabel,
+  isAllowLegacyReadFlag,
+  isHelpFlag,
+  isRouterFlag,
+  splitAtOptionSeparator,
+} from "../input.js";
 import { getCommandAliases } from "./aliases.js";
 import { classifyFailure, CliError } from "../errors.js";
 import { quotedColumnHint } from "../column-hint.js";
@@ -15,11 +24,8 @@ import {
   diagnostic,
   failureMessage,
   finishRun,
-  isAllowLegacyReadFlag,
   isDebugOutputEnabled,
-  isHelpFlag,
   isParseArgsError,
-  isRouterFlag,
   parseArgsFailure,
   prepareOutput,
   quit,
@@ -247,9 +253,8 @@ async function route(
 ) {
   prepareOutput(rawArgs);
   // Anything after "--" belongs to the command, so "--json" there is search text, not a flag.
-  const separatorIndex = rawArgs.indexOf("--");
-  const routableArgs = separatorIndex === -1 ? rawArgs : rawArgs.slice(0, separatorIndex);
-  const passthroughArgs = separatorIndex === -1 ? [] : rawArgs.slice(separatorIndex);
+  const { optionWords: routableArgs, passthroughWords: passthroughArgs } =
+    splitAtOptionSeparator(rawArgs);
   const filteredRoutableArgs = routableArgs.filter((arg) => !isRouterFlag(arg));
 
   if (routableArgs.some(isAllowLegacyReadFlag)) {

@@ -84,11 +84,41 @@ export const routerOptions = {
 } as const;
 export const helpSpellings: readonly string[] = ["-h", "--help"];
 export const versionSpellings: readonly string[] = ["-v", "--version"];
+export const OPTION_SEPARATOR = "--";
+
+export function isJsonFlag(flag: string) {
+  return flag === `--${routerOptionNames.json}`;
+}
+
+export function isAllowLegacyReadFlag(flag: string) {
+  return flag === `--${routerOptionNames.legacyRead}`;
+}
+
+/** A flag the router reads wherever it appears before --, for every command. */
+export function isRouterFlag(flag: string) {
+  return isJsonFlag(flag) || isAllowLegacyReadFlag(flag);
+}
+
+export function isHelpFlag(flag: string) {
+  return helpSpellings.includes(flag);
+}
+
+/** The words before the first `--`, and the rest starting with that `--` */
+export function splitAtOptionSeparator(words: Array<string>) {
+  const separatorIndex = words.indexOf(OPTION_SEPARATOR);
+
+  return separatorIndex === -1
+    ? { optionWords: words, passthroughWords: [] }
+    : {
+        optionWords: words.slice(0, separatorIndex),
+        passthroughWords: words.slice(separatorIndex),
+      };
+}
 
 export const invocation = {
   routerOptions,
   routerOptionPlacement: "exact-tokens-anywhere-before-separator",
-  optionSeparator: "--",
+  optionSeparator: OPTION_SEPARATOR,
   literalOptionValue: "equals",
   singularOptions: "reject-repetition",
   jsonFailure: "one-stderr-document-with-buffered-diagnostics",

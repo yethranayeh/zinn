@@ -48,7 +48,7 @@ export const settingsSchema = z
           .positive()
           .optional()
           .describe(
-            "The most disk space, in whole megabytes of 1,048,576 bytes, that the telemetry folder may use. Defaults to 100.",
+            "The total size of telemetry record files, in whole megabytes of 1,048,576 bytes. A run that starts a new file deletes the oldest ones to bring the total under this limit. Defaults to 100.",
           ),
         maxAgeDays: z
           .number()

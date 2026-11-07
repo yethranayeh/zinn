@@ -1,6 +1,6 @@
 import type { ConfiguredStorage } from "@zinn-dev/core";
 
-import { closeSync, mkdirSync, openSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, openSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { arch, platform, release } from "node:os";
 import { join } from "node:path";
 import {
@@ -13,6 +13,7 @@ import {
 
 import packageJson from "../package.json" with { type: "json" };
 import { currentRuntime, readRunClock } from "./run-facts.js";
+import { ensureFolderInStore } from "./store-folder.js";
 
 const LOG_EXTENSION = ".log";
 /** Logs kept in the folder. Including ones written by a failing run */
@@ -119,18 +120,6 @@ function formatLog(error: unknown, notices: ReadonlyArray<string>, storage: Conf
   return `${sections.join("\n\n")}\n`;
 }
 
-/** Creates a folder if its store exists. It never creates the store, which **read** commands avoid */
-export function ensureFolderInStore(folder: string) {
-  try {
-    mkdirSync(folder);
-  } catch (error) {
-    const alreadyExists = (error as NodeJS.ErrnoException).code === "EEXIST";
-    if (!alreadyExists) {
-      throw error;
-    }
-  }
-}
-
 /** Creates a file that does not exist yet, and removes it again when its text cannot be written */
 function createFile(path: string, text: string) {
   const descriptor = openSync(path, "wx");
@@ -150,12 +139,26 @@ function createFile(path: string, text: string) {
   }
 }
 
+/** Other runs' logs, oldest first by modification time, then by name */
+function listOtherLogs(logDirectory: string, ownName: string) {
+  return readdirSync(logDirectory)
+    .filter((name) => name !== ownName && readOutputFileName(name, LOG_EXTENSION) !== null)
+    .flatMap((name) => {
+      try {
+        return [{ name, modifiedMs: statSync(join(logDirectory, name)).mtimeMs }];
+      } catch {
+        // Another run may have removed it since the listing
+        return [];
+      }
+    })
+    .sort((a, b) => a.modifiedMs - b.modifiedMs || a.name.localeCompare(b.name))
+    .map(({ name }) => name);
+}
+
 /** Removes the oldest logs so that at most `MAX_LOG_FILES` remain. Other files stay */
 function removeOldLogs(logDirectory: string, ownName: string) {
   try {
-    const others = readdirSync(logDirectory)
-      .filter((name) => name !== ownName && readOutputFileName(name, LOG_EXTENSION) !== null)
-      .sort();
+    const others = listOtherLogs(logDirectory, ownName);
     const excess = others.length - (MAX_LOG_FILES - 1);
 
     for (const name of others.slice(0, Math.max(excess, 0))) {

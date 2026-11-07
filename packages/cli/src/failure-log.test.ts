@@ -11,6 +11,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,6 +28,8 @@ const LOG_EXTENSION = ".log";
 const KEPT_LOG_COUNT = 10;
 const CONCURRENT_FAILURES = 6;
 const OLD_LOG_COUNT = 12;
+const OVERFLOWING_FAILURES = 16;
+const NEWEST_LOG_TIME_SECONDS = 1_600_000_000;
 const CURRENT_SCHEMA_VERSION = latestVersion(MIGRATIONS);
 
 const stores: Array<string> = [];
@@ -330,6 +333,54 @@ test("a failing run keeps the newest ten logs and leaves other files alone", () 
   }
 });
 
+test("logs written in the same second are kept by modification time, not by name", () => {
+  const store = corruptStore();
+  const logs = join(store, "logs");
+  mkdirSync(logs);
+  const oldNames = Array.from({ length: OLD_LOG_COUNT }, (_, index) => {
+    const suffix = String(index).padStart(8, "0");
+    return `2020-01-01T00-00-00Z-cli-0.1.0-${suffix}${LOG_EXTENSION}`;
+  });
+  // The names sort opposite to their times, so the first name is the newest log.
+  for (const [index, name] of oldNames.entries()) {
+    const path = join(logs, name);
+    const seconds = NEWEST_LOG_TIME_SECONDS - index;
+    writeFileSync(path, "old log");
+    utimesSync(path, seconds, seconds);
+  }
+
+  const error = parseFailure(run(store, ["project", "list", "--json"]));
+  const newestOld = oldNames.slice(0, KEPT_LOG_COUNT - 1);
+
+  expect(logNames(store).filter((name) => oldNames.includes(name))).toEqual(newestOld);
+  expect(logPaths(store)).toContain(error.details!.logPath!);
+  expect(logNames(store)).toHaveLength(KEPT_LOG_COUNT);
+});
+
+test("more failures at once than the limit leave at most ten complete logs", async () => {
+  const store = corruptStore();
+  const results = await Promise.all(
+    Array.from({ length: OVERFLOWING_FAILURES }, () =>
+      runProcessAsync([process.execPath, CLI_PATH, "project", "list", "--json"], {
+        env: runEnvironment(store),
+        cwd: store,
+      }),
+    ),
+  );
+
+  for (const result of results) {
+    expect(result.code, result.stderr).toBe(1);
+  }
+  const paths = logPaths(store);
+  expect(paths.length).toBeGreaterThan(0);
+  expect(paths.length).toBeLessThanOrEqual(KEPT_LOG_COUNT);
+  for (const path of paths) {
+    const log = readFileSync(path, "utf8");
+    expect(log.startsWith("Error\n"), path).toBe(true);
+    expect(log.endsWith("\n"), path).toBe(true);
+  }
+});
+
 /** The stderr lines of a failure whose log was written, without the line that names the log. */
 function textFailureWithoutLogLine() {
   const text = run(corruptStore(), ["project", "list"]);
@@ -371,6 +422,20 @@ test.skipIf(!canRestrictFolders)("a read-only logs folder leaves the original er
   } finally {
     chmodSync(logs, 0o755);
   }
+});
+
+test.skipIf(!canRestrictFolders)("a text file that cannot be read keeps its cause in the log", () => {
+  const store = healthyStore();
+  const path = join(store, "unreadable.md");
+  writeFileSync(path, "text");
+  chmodSync(path, 0o000);
+
+  const error = parseFailure(
+    run(store, ["task", "create", "APP", "--title", "Title", "--description-file", path, "--json"]),
+  );
+
+  expect(error.details?.cause?.code).toBe("EACCES");
+  expect(readFileSync(error.details!.logPath!, "utf8")).toContain("EACCES");
 });
 
 test.skipIf(process.platform === "win32")("a dangling logs link leaves the original error, and healthy commands succeed", () => {

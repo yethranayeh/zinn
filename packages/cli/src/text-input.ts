@@ -193,11 +193,15 @@ export async function resolveTextInput(
 
     const failure = classifyFailure(error);
     const code = isMissingFileError(error) ? "not_found" : failure.code;
-    throw new CliError(`Cannot read ${fileFlag} ${JSON.stringify(path)}.`, code, {
-      ...failure.details,
-      argument: fileFlag,
-      path,
-    });
+
+    throw new CliError(
+      `Cannot read ${fileFlag} ${JSON.stringify(path)}.`,
+      code,
+      { ...failure.details, argument: fileFlag, path },
+      undefined,
+      undefined,
+      error,
+    );
   }
 
   let decoded: string;

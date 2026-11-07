@@ -5,14 +5,15 @@ import { parseArgs } from "node:util";
 import { column, columnCreateSchema, parseTaskKey } from "@zinn-dev/core";
 
 import { classifyFailure } from "./errors.js";
-import { routerOptions, getOptionInputs, violatesConstraint } from "./input.js";
 import {
-  formatCommand,
+  routerOptions,
+  getOptionInputs,
   isAllowLegacyReadFlag,
   isRouterFlag,
-  UsageError,
-  validateUniqueOptions,
-} from "./lib.js";
+  splitAtOptionSeparator,
+  violatesConstraint,
+} from "./input.js";
+import { formatCommand, UsageError, validateUniqueOptions } from "./lib.js";
 import { chooseProjectKey } from "./project.js";
 
 type Word = { value: string; index: number };
@@ -114,8 +115,7 @@ export function quotedColumnHint(
       }
     }
     const args = rawArgs.slice(argumentStart);
-    const separatorIndex = rawArgs.indexOf("--");
-    const optionArgs = separatorIndex === -1 ? rawArgs : rawArgs.slice(0, separatorIndex);
+    const { optionWords: optionArgs } = splitAtOptionSeparator(rawArgs);
     const options: InputOptions = { ...route.input.options, ...routerOptions };
     const { tokens, values } = parseArgs({
       args,

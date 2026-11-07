@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import packageJson from "./package.json" with { type: "json" };
-import { versionSpellings } from "./src/input.js";
+import { isHelpFlag, versionSpellings } from "./src/input.js";
 
 const args = process.argv.slice(2);
 const isVersionRequest = args.length === 1 && versionSpellings.includes(args[0]!);
@@ -9,7 +9,7 @@ const isVersionRequest = args.length === 1 && versionSpellings.includes(args[0]!
 if (isVersionRequest) {
   console.info(packageJson.version);
 } else {
-  const { isHelpFlag, prepareOutput, finishRun, renderFailure } = await import("./src/lib.js");
+  const { prepareOutput, finishRun, renderFailure } = await import("./src/lib.js");
 
   prepareOutput(args);
 

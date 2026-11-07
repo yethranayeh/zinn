@@ -15,6 +15,8 @@ import { BYTES_PER_MEGABYTE } from "@zinn-dev/core";
 
 import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import packageJson from "./package.json" with { type: "json" };
+import { parsedRoutes } from "./src/routes/routes";
+import { UNRECORDED_STORAGE_EFFECTS } from "./src/telemetry";
 import { CLI_PATH, runProcessAsync, runZinn, withIsolatedZinnDir } from "./test-helpers";
 
 type Run = { code: number | null; stdout: string; stderr: string };
@@ -23,6 +25,10 @@ const SECRET_TITLE = "secret-title-value";
 const SECRET_KEY = "SECRETKEY-1";
 const RECORD_FILE_NAME = /^\d{4}-\d{2}-\d{2}-\d{4}\.jsonl$/;
 const MILLISECONDS_PER_DAY = 86_400_000;
+/** Commands whose successful run leaves no record, as words to run */
+const UNRECORDED_ROUTES = parsedRoutes
+  .filter(({ effects }) => UNRECORDED_STORAGE_EFFECTS.includes(effects.storage))
+  .map(({ command }) => command.split(" "));
 /** Folder modes do not bind for root or on Windows */
 const doFolderModesBind = process.platform !== "win32" && process.getuid?.() !== 0;
 
@@ -173,6 +179,52 @@ describe("telemetry record", () => {
     });
   });
 
+  test("a string option never takes a router or help flag as its value", async () => {
+    const cases = [
+      { flag: "--json", code: "invalid_input", help: false },
+      { flag: "--allow-legacy-read", code: "invalid_input", help: false },
+      { flag: "--help", code: undefined, help: true },
+      { flag: "-h", code: undefined, help: true },
+    ];
+
+    await withIsolatedZinnDir(async (store) => {
+      await createProject(store);
+
+      for (const { flag, code, help } of cases) {
+        await runZinn(["task", "create", "APP", "--title", flag], store);
+
+        const record = lastRecord(store);
+        expect(record.options, flag).toEqual([{ name: "--title" }, { name: flag, valueForm: "none" }]);
+        expect(record.command.help, flag).toBe(help);
+        expect(record.error?.code, flag).toBe(code);
+      }
+    });
+  });
+
+  test("a router flag between a string option and its value leaves that value in place", async () => {
+    await withIsolatedZinnDir(async (store) => {
+      await createProject(store);
+      expect((await runZinn(["task", "create", "APP", "--title", "--json", "Kept"], store)).code).toBe(0);
+
+      expect(lastRecord(store).options).toEqual([
+        { name: "--title", valueForm: "next" },
+        { name: "--json", valueForm: "none" },
+      ]);
+    });
+  });
+
+  test("options after a help flag stay recorded and a string option there takes its value", async () => {
+    await withIsolatedZinnDir(async (store) => {
+      await runZinn(["task", "create", "--help", "--title", "Ignored", "--json"], store);
+
+      expect(lastRecord(store).options).toEqual([
+        { name: "--help", valueForm: "none" },
+        { name: "--title", valueForm: "next" },
+        { name: "--json", valueForm: "none" },
+      ]);
+    });
+  });
+
   test("a refusal after parsing keeps the positional count, including words after --", async () => {
     await withIsolatedZinnDir(async (store) => {
       await createProject(store);
@@ -203,6 +255,14 @@ describe("telemetry record", () => {
 
       await runZinn(["frobnicate"], store);
       expect(lastRecord(store).command).toEqual({ namespace: "", unmatchedWord: "frobnicate", help: false });
+    });
+  });
+
+  test("an unknown command at the root has no suggested route", async () => {
+    await withIsolatedZinnDir(async (store) => {
+      await runZinn(["frobnicate"], store);
+
+      expect(Object.keys(lastRecord(store).error)).not.toContain("suggestedRoute");
     });
   });
 
@@ -288,24 +348,29 @@ describe("telemetry and the failure log", () => {
 });
 
 describe("runs that write no record", () => {
-  test("--version, -v and successful whoami, capabilities and info leave an existing store alone", async () => {
+  test("--version, -v and successful commands that only read or report leave an existing store alone", async () => {
+    expect(UNRECORDED_ROUTES.length).toBeGreaterThan(0);
+
     await withIsolatedZinnDir(async (store) => {
-      for (const args of [["--version"], ["-v"], ["whoami"], ["capabilities"], ["info"], ["info", "--json"]]) {
+      for (const args of [["--version"], ["-v"], ...UNRECORDED_ROUTES, ["info", "--json"]]) {
         expect((await runZinn(args, store)).code, args.join(" ")).toBe(0);
         expect(readdirSync(store), args.join(" ")).toEqual([]);
       }
     });
   });
 
-  test("whoami, capabilities and info are recorded when they fail or print help", async () => {
+  test("commands that only read or report are recorded when they fail or print help", async () => {
+    expect(UNRECORDED_ROUTES.length).toBeGreaterThan(0);
+
     await withIsolatedZinnDir(async (store) => {
-      for (const route of ["whoami", "capabilities", "info"]) {
+      for (const words of UNRECORDED_ROUTES) {
+        const route = words.join(" ");
         const before = readRecords(store).length;
-        const failed = await runZinn([route, "extra"], store);
+        const failed = await runZinn([...words, "extra"], store);
         expect(failed.code, route).toBe(1);
         expect(expectOneMore(store, before)).toMatchObject({ exitCode: 1, command: { route, help: false } });
 
-        expect((await runZinn([route, "--help"], store)).code, route).toBe(0);
+        expect((await runZinn([...words, "--help"], store)).code, route).toBe(0);
         expect(expectOneMore(store, before + 1)).toMatchObject({ exitCode: 0, command: { route, help: true } });
       }
     });
@@ -752,6 +817,40 @@ describe("telemetry contents", () => {
       for (const fragment of [SECRET_TITLE, SECRET_KEY, secretWord, store]) {
         expect(text).not.toContain(fragment);
       }
+    });
+  });
+
+  test("a word without an option's shape gets no entry and leaves none of its text", async () => {
+    const privateWord = "private";
+    const cases: Array<{ args: Array<string>; options: Array<object> }> = [
+      { args: ["task", "search", "--my private query words"], options: [] },
+      { args: ["task", "search", "--- private notes"], options: [] },
+      { args: ["task", "search", "--name private=value"], options: [] },
+      { args: ["task", "search", "- private notes"], options: [] },
+      { args: ["task", "edit", "APP-1", "--bad", "--my private query words"], options: [{ name: "--bad" }] },
+      { args: ["--my private query words"], options: [] },
+    ];
+
+    await withIsolatedZinnDir(async (store) => {
+      await createProject(store);
+
+      for (const { args, options } of cases) {
+        const before = readRecords(store).length;
+        await runZinn(args, store);
+
+        const record = expectOneMore(store, before);
+        expect(record.options, args.join(" ")).toEqual(options);
+        expect(JSON.stringify(record), args.join(" ")).not.toContain(privateWord);
+      }
+    });
+  });
+
+  test("a one-word value that starts with a dash is recorded as an option name", async () => {
+    await withIsolatedZinnDir(async (store) => {
+      await createProject(store);
+      await runZinn(["task", "search", "--sk-abc123"], store);
+
+      expect(lastRecord(store).options).toEqual([{ name: "--sk-abc123" }]);
     });
   });
 });

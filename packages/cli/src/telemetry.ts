@@ -17,12 +17,13 @@ import {
 
 import packageJson from "../package.json" with { type: "json" };
 import { detectAgent, readExecutionIdentity } from "./actor.js";
-import { ensureFolderInStore } from "./failure-log.js";
-import { helpSpellings, routerOptions } from "./input.js";
+import { isHelpFlag, isRouterFlag, routerOptions, splitAtOptionSeparator } from "./input.js";
 import { currentRuntime, readRunClock } from "./run-facts.js";
+import { ensureFolderInStore } from "./store-folder.js";
 
 type RunOutcome = { failure?: ClassifiedFailure; logFileName?: string };
 type ValueForm = "next" | "joined" | "none";
+type DescribedOption = { name: string; valueForm?: ValueForm };
 type RecordLimits = { capBytes: number; maxAgeDays: number };
 type UnmatchedRun = { namespace: string; unmatchedWord?: string; help: boolean };
 type MatchedRun = {
@@ -34,7 +35,6 @@ type MatchedRun = {
 
 const RECORD_VERSION = 1;
 const RECORD_EXTENSION = ".jsonl";
-const DOUBLE_DASH = "--";
 const STDIN_DESCRIPTOR = 0;
 const STDOUT_DESCRIPTOR = 1;
 const ISO_DATE_LENGTH = "YYYY-MM-DD".length;
@@ -44,8 +44,10 @@ const FIRST_SEQUENCE = 1;
 /** A file takes records up to this share of the cap, so the cap removes records a slice at a time */
 const FILES_PER_CAP = 10;
 const MILLISECONDS_PER_DAY = 86_400_000;
+/** parseArgs reads any word starting with `--` as an option up to its first `=`, spaces included */
+const OPTION_NAME_SHAPE = /^--?[A-Za-z0-9][\w-]*$/;
 /** A successful run of a command that declares one of these only reads or reports, and leaves no record */
-const UNRECORDED_STORAGE_EFFECTS: ReadonlyArray<ParsedRoute["effects"]["storage"]> = [
+export const UNRECORDED_STORAGE_EFFECTS: ReadonlyArray<ParsedRoute["effects"]["storage"]> = [
   "none",
   "inspect",
 ];
@@ -93,7 +95,7 @@ function readValueForm(
     return "joined";
   }
 
-  if (helpSpellings.includes(token.rawName)) {
+  if (isHelpFlag(token.rawName)) {
     return "none";
   }
 
@@ -106,27 +108,54 @@ function readValueForm(
 }
 
 /**
- * Every option written before `--`, by name.
+ * Every option written before `--`, by name, in the order written.
  * A single-dash word such as `-later` counts once, under its first letter,
  *  since the letters after it may be a value.
+ * A word without an option's shape gets no entry, since it may be free text.
+ * The router takes its own flags out first and reads nothing after a help flag,
+ *  so neither kind of flag is ever a string option's value.
  */
 function describeOptions(words: Array<string>, known: ParseArgsOptionsConfig) {
-  const separatorIndex = words.indexOf(DOUBLE_DASH);
-  const optionWords = separatorIndex === -1 ? words : words.slice(0, separatorIndex);
+  const { optionWords } = splitAtOptionSeparator(words);
   const options = { ...known, ...routerOptions };
-  const describedWords = new Set<number>();
-  const described: Array<{ name: string; valueForm?: ValueForm }> = [];
+  const describedByWord = new Map<number, DescribedOption>();
 
-  for (const token of readTokens(optionWords, options)) {
-    if (token.kind !== "option" || describedWords.has(token.index)) {
+  const describeGroup = (wordIndexes: Array<number>) => {
+    const readWords = new Set<number>();
+    const groupWords = wordIndexes.map((index) => optionWords[index]!);
+
+    for (const token of readTokens(groupWords, options)) {
+      if (token.kind !== "option" || readWords.has(token.index)) {
+        continue;
+      }
+
+      readWords.add(token.index);
+      if (OPTION_NAME_SHAPE.test(token.rawName)) {
+        describedByWord.set(wordIndexes[token.index]!, {
+          name: token.rawName,
+          valueForm: readValueForm(token, options),
+        });
+      }
+    }
+  };
+
+  let group: Array<number> = [];
+  for (const [index, word] of optionWords.entries()) {
+    if (isRouterFlag(word)) {
+      describedByWord.set(index, { name: word, valueForm: "none" });
       continue;
     }
 
-    describedWords.add(token.index);
-    described.push({ name: token.rawName, valueForm: readValueForm(token, options) });
-  }
+    if (isHelpFlag(word)) {
+      describeGroup(group);
+      group = [];
+    }
 
-  return described;
+    group.push(index);
+  }
+  describeGroup(group);
+
+  return optionWords.flatMap((_, index) => describedByWord.get(index) ?? []);
 }
 
 /** The facts the environment gives. Git is never read, so this spawns nothing */
@@ -162,7 +191,7 @@ function describeCommand(words: Array<string>) {
   return (
     unmatchedRun ?? {
       namespace: "",
-      help: words.some((word) => helpSpellings.includes(word)),
+      help: words.some(isHelpFlag),
     }
   );
 }
@@ -184,11 +213,13 @@ function describeFailure({ failure, logFileName }: RunOutcome) {
     return undefined;
   }
 
+  const suggestedRoute = failure.suggestedRoute?.join(" ");
+
   return {
     code: failure.code,
     reason: failure.details?.reason,
     argument: failure.details?.argument,
-    suggestedRoute: failure.suggestedRoute?.join(" "),
+    suggestedRoute: suggestedRoute === "" ? undefined : suggestedRoute,
     logFileName,
   };
 }

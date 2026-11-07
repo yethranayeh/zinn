@@ -10,7 +10,13 @@ import { assertWritable, InputValidationError } from "@zinn-dev/core";
 
 import { CliError, classifyFailure, recoveryHint } from "./errors.js";
 import { writeFailureLog } from "./failure-log.js";
-import { helpSpellings, routerOptionNames, positionalWords } from "./input.js";
+import {
+  isJsonFlag,
+  isRouterFlag,
+  OPTION_SEPARATOR,
+  positionalWords,
+  splitAtOptionSeparator,
+} from "./input.js";
 import { formatParserReasonPreview } from "./presentation/description-presentation.js";
 import { writeRunRecord } from "./telemetry.js";
 
@@ -24,7 +30,6 @@ const diagnostics: Array<string> = [];
 const runNotices: Array<string> = [];
 /** Failures that write a log, because the error alone does not say what went wrong */
 const LOGGED_ERROR_CODES: ReadonlyArray<ErrorCode> = ["storage", "internal"];
-const DOUBLE_DASH = "--";
 const MAX_PARSER_MESSAGE_LENGTH = 1024;
 
 /** Keeps recovery guidance outside the shortened reason and never clips a repair command. */
@@ -55,9 +60,8 @@ export function getOutputMode(): OutputMode {
 
 /** Selects output before routing, without treating words after `--` as flags. */
 export function prepareOutput(args: Array<string>) {
-  const separatorIndex = args.indexOf(DOUBLE_DASH);
-  const options = separatorIndex === -1 ? args : args.slice(0, separatorIndex);
-  setOutputMode(options.some(isJsonFlag) ? "json" : "text");
+  const { optionWords } = splitAtOptionSeparator(args);
+  setOutputMode(optionWords.some(isJsonFlag) ? "json" : "text");
 }
 
 /** Keeps JSON failures parseable while text-mode notices remain immediate. */
@@ -97,19 +101,6 @@ function recordRun(outcome: Parameters<typeof writeRunRecord>[0]) {
 export function finishRun() {
   recordRun({});
   flushDiagnostics();
-}
-
-export function isJsonFlag(flag: string) {
-  return flag === `--${routerOptionNames.json}`;
-}
-
-export function isAllowLegacyReadFlag(flag: string) {
-  return flag === `--${routerOptionNames.legacyRead}`;
-}
-
-/** A flag the router reads wherever it appears before --, for every command. */
-export function isRouterFlag(flag: string) {
-  return isJsonFlag(flag) || isAllowLegacyReadFlag(flag);
 }
 
 export function setLegacyReadAllowed(allowed: boolean) {
@@ -434,10 +425,6 @@ export function requireStringOption(
   return value;
 }
 
-export function isHelpFlag(flag: string) {
-  return helpSpellings.includes(flag);
-}
-
 /**
  * Help sentence for a flag whose value may begin with a dash, such as a Markdown bullet.
  * `parseArgs` refuses `--flag -value`, since a value that looks like an option may mean the value
@@ -555,13 +542,8 @@ function unknownOptionMessage(
       return { message: boundParserMessage(reason) };
     }
 
-    const separatorIndex = suggestion.args.indexOf(DOUBLE_DASH);
-    const optionEnd = separatorIndex === -1 ? suggestion.args.length : separatorIndex;
-    const correctedArgs = [
-      ...suggestion.args.slice(0, optionEnd),
-      ...args.filter(isRouterFlag),
-      ...suggestion.args.slice(optionEnd),
-    ];
+    const { optionWords, passthroughWords } = splitAtOptionSeparator(suggestion.args);
+    const correctedArgs = [...optionWords, ...args.filter(isRouterFlag), ...passthroughWords];
     return {
       message: boundParserMessage(`${reason}. Did you mean: ${formatCommand(correctedArgs)}`, {
         reason,
@@ -572,9 +554,8 @@ function unknownOptionMessage(
   }
 
   // Commands define no short options, so `parseArgs` refused the first single-dash word before `--`.
-  const separatorIndex = args.indexOf(DOUBLE_DASH);
-  const optionArgs = separatorIndex === -1 ? args : args.slice(0, separatorIndex);
-  const wordIndex = optionArgs.findIndex((arg) => SHORT_OPTION_WORD_PATTERN.test(arg));
+  const { optionWords } = splitAtOptionSeparator(args);
+  const wordIndex = optionWords.findIndex((arg) => SHORT_OPTION_WORD_PATTERN.test(arg));
   if (wordIndex === -1) {
     return { message: boundParserMessage(message) };
   }
@@ -604,7 +585,7 @@ function unknownOptionMessage(
   const fixedCommand = formatCommand([
     ...args.slice(0, wordIndex),
     ...routerFlagsAfter,
-    DOUBLE_DASH,
+    OPTION_SEPARATOR,
     word,
     ...plainWordsAfter,
   ]);

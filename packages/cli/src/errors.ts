@@ -121,8 +121,9 @@ export class CliError extends Error {
     readonly details?: ErrorDetails,
     public help?: string,
     readonly suggestedRoute?: Array<string>,
+    cause?: unknown,
   ) {
-    super(message);
+    super(message, cause === undefined ? undefined : { cause });
     this.name = "CliError";
   }
 }
