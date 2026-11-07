@@ -8,7 +8,7 @@ import type { HookPayload } from "../src/hooks/types";
 import type { Settings } from "../src/settings";
 import { readFeed, sessionDirectory, MAX_EVENTS, MAX_EVENT_BYTES, MAX_RECENT_KEYS, persist, type Observation } from "../src/shared/feed";
 import { readRecent } from "../src/inspector/references";
-import { createCliReader } from "../src/shared/cli";
+import { CODEX_CLIENT, createCliReader } from "../src/shared/cli";
 import { loadSettings } from "../src/settings";
 import { argvKeys, keyCandidates } from "../src/shared/keys";
 import { cliPath, fixture, inspectStore, seedOlderStore } from "./helpers";
@@ -145,6 +145,30 @@ test.skipIf(process.platform === "win32")("identity skips compound shells and sa
     expect(result.exitCode).toBe(0);
     expect(result.stdout.toString()).toBe(model);
     expect(existsSync(sentinel)).toBe(false);
+});
+test("CLI children declare the Codex client after any inherited chain", async () => {
+    const log = join(context.directory, "client-chain.json");
+    const script = join(context.directory, "client-chain.mjs");
+    writeFileSync(script, `import {writeFileSync} from 'node:fs';
+const args = process.argv.slice(2);
+if (args[0] === '--version') { console.log('0.43.0'); }
+else { writeFileSync(${JSON.stringify(log)}, process.env.ZINN_CLIENT ?? 'unset'); console.log('[]'); }`);
+    const cases: Array<[NodeJS.ProcessEnv, string]> = [
+        [{ ZINN_CLIENT: undefined }, CODEX_CLIENT],
+        [{ ZINN_CLIENT: "rex/0.9" }, `rex/0.9 ${CODEX_CLIENT}`],
+        [{ ZINN_CLIENT: " \t " }, CODEX_CLIENT],
+        [{ ZINN_CLIENT: "  rex/0.9  " }, `rex/0.9 ${CODEX_CLIENT}`],
+    ];
+    for (const [environment, expected] of cases) {
+        rmSync(log, { force: true });
+        const client = createCliReader({ store: context.settings.store, cli: ["node", script] }, { env: environment });
+        try {
+            expect((await client.run(["task", "list"])).ok).toBe(true);
+        } finally {
+            await client.close();
+        }
+        expect(readFileSync(log, "utf8")).toBe(expected);
+    }
 });
 test("hook input preserves Unicode across byte-stream boundaries", async () => {
     const command = "zinn task edit APP-1 --title '彩色🧡'";

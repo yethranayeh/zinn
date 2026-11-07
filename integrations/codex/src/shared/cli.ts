@@ -3,6 +3,8 @@ import type { PresentedTask } from "../../../../packages/cli/src/result-schemas.
 
 import { spawn } from "node:child_process";
 
+import { INSPECTOR_VERSION } from "../runtime";
+
 export type CliResult<Value = unknown> =
   | {
       ok: true;
@@ -25,6 +27,7 @@ const TERMINATION_GRACE_MS = 250;
 
 export const MINIMUM_CLI_VERSION = "0.43.0";
 export const HOOK_VERIFICATION_BUDGET_MS = 1500;
+export const CODEX_CLIENT = `zinn-codex/${INSPECTOR_VERSION}`;
 
 function supportsVersion(text: string) {
   const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-dev)?$/.exec(text.trim());
@@ -65,13 +68,16 @@ export function createCliReader(
     if (remaining !== undefined && remaining <= 0) {
       return { ok: false, error: "The Zinn verification deadline was reached." };
     }
+    const inherited = { ...process.env, ...env };
+    const declaredClient = inherited.ZINN_CLIENT?.trim() ?? "";
     const child = spawn(settings.cli[0]!, [...settings.cli.slice(1), ...args], {
       cwd: json ? (settings.store ?? cwd) : cwd,
       env: {
-        ...process.env,
-        ...env,
+        ...inherited,
         ZINN_DIR: settings.store ?? process.env.ZINN_DIR,
         ZINN_CODEX_CONFIG: undefined,
+        ZINN_CLIENT:
+          declaredClient.length === 0 ? CODEX_CLIENT : `${declaredClient} ${CODEX_CLIENT}`,
       },
       stdio: ["ignore", "pipe", "pipe"],
     });

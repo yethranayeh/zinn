@@ -82,7 +82,7 @@ Enter a task key from your database, such as `APP-1`. Task descriptions and comm
 
 For an active task, choose a destination and select **Move to…**. The initial destination is the project's last column, such as Done. The move uses the inspector's selected database and the task's own project. It follows ordinary `zinn task move` behavior and refreshes the task afterward. Moving to the current column leaves it unchanged. Archived tasks remain available for inspection.
 
-Panel moves record your normal CLI human identity, without inherited agent, model, effort, client or conversation declarations. Codex's tool permission settings apply. A move is submitted only by the explicit button action and is not automatically retried after a failure.
+Panel moves record your normal CLI human identity, without inherited agent, model, effort, client or conversation declarations. The plugin declares `zinn-codex/0.1.0` after any inherited [client chain](/docs/cli#client-chains) on CLI runs it starts, so a panel move records that token in `actor_client` and `zinn activity list --client zinn-codex` selects it. Codex's tool permission settings apply. A move is submitted only by the explicit button action and is not automatically retried after a failure.
 
 Observed references come from supported direct CLI calls, task keys in agent dispatches and completed replies. A reference is an observation, rather than a task assignment or proof that the task changed. References refresh every five seconds while the panel is visible, keeping the selected task open. Task details are re-read when opened or refreshed.
 

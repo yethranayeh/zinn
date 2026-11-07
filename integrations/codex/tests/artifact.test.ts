@@ -8,6 +8,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { packageIntegration } from "../package";
 import { INSPECTOR_VERSION } from "../src/runtime";
 import { EVENTS } from "../src/hooks/observe";
+import { CODEX_CLIENT } from "../src/shared/cli";
 import { persist, type Observation } from "../src/shared/feed";
 import { openDatabase } from "../../../packages/core/src/sqlite/bun.ts";
 import { latestVersion, MIGRATIONS } from "../../../packages/core/src/migrations/registry.ts";
@@ -333,6 +334,8 @@ await import(${JSON.stringify(pathToFileURL(cliPath).href)});
             actor_effort: null,
             changes: { column: [{ name: expect.any(String) }, { name: "-Needs review" }] },
         });
+        expect(moveEvents[0].actor_client).toEndWith(` ${CODEX_CLIENT}`);
+        expect(moveEvents[0].actor_client).not.toContain("synthetic-zinn_client");
         expect((await client.callTool({ name: "inspect_task", arguments: { key: "APP-4" } })).structuredContent).toMatchObject({
             kind: "ready",
             task: { key: "APP-4", title: "Move fixture", description: "Keep this description", column: "-Needs review" },
@@ -351,7 +354,9 @@ await import(${JSON.stringify(pathToFileURL(cliPath).href)});
         const moveCall = childCalls.find((call: any) => call.args[0] === "task" && call.args[1] === "move");
         expect(moveCall.args).toEqual(["task", "move", "--json", "--", "APP-4", "-Needs review"]);
         expect(moveCall.custom).toBe("preserved-custom-value");
-        expect(moveCall.actor).toEqual(actorEnvironmentNames().map(name => [name, null]));
+        expect(moveCall.actor).toEqual(
+            actorEnvironmentNames().map(name => [name, name === "ZINN_CLIENT" ? CODEX_CLIENT : null]),
+        );
         expect(existsSync(wrongStore)).toBe(false);
     } finally {
         await client.close();
