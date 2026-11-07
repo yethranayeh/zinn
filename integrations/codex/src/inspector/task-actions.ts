@@ -29,6 +29,7 @@ const HUMAN_ACTOR_ENVIRONMENT: NodeJS.ProcessEnv = {
   ZINN_AGENT: undefined,
   ZINN_MODEL: undefined,
   ZINN_EFFORT: undefined,
+  ZINN_CLIENT: undefined,
 };
 
 export type TaskColumnsRead = {
