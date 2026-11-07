@@ -34,6 +34,7 @@ export type StoreInfo = {
     source: TelemetrySource | null;
     settingsPath: string | null;
     maxMegabytes: number | null;
+    maxAgeDays: number | null;
     directory: string | null;
     exists: boolean | null;
     sizeBytes: number | null;
@@ -118,6 +119,7 @@ export const info = {
     const maxMegabytesIsKnown = isKnown(
       settings.local?.settings.telemetry?.maxMegabytes !== undefined,
     );
+    const maxAgeDaysIsKnown = isKnown(settings.local?.settings.telemetry?.maxAgeDays !== undefined);
     const telemetryChoice = resolveTelemetry(settings, inputs.env);
     const projectChoice = chooseDefaultProject(settings);
     const report: StoreInfo = {
@@ -140,10 +142,14 @@ export const info = {
         source: modeIsKnown ? telemetryChoice.source : null,
         settingsPath: modeIsKnown ? telemetryChoice.settingsPath : null,
         maxMegabytes: maxMegabytesIsKnown ? telemetryChoice.maxMegabytes : null,
+        maxAgeDays: maxAgeDaysIsKnown ? telemetryChoice.maxAgeDays : null,
         directory: null,
         exists: null,
         sizeBytes: null,
-        error: modeIsKnown && maxMegabytesIsKnown && storageIsKnown ? null : unresolvedError,
+        error:
+          modeIsKnown && maxMegabytesIsKnown && maxAgeDaysIsKnown && storageIsKnown
+            ? null
+            : unresolvedError,
       },
       database: {
         path: null,

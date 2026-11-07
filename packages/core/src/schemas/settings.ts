@@ -50,9 +50,17 @@ export const settingsSchema = z
           .describe(
             "The most disk space, in whole megabytes of 1,048,576 bytes, that the telemetry folder may use. Defaults to 100.",
           ),
+        maxAgeDays: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("How many days Zinn keeps telemetry records. Defaults to 90."),
       })
       .optional()
-      .describe("Whether Zinn records local usage measurements, and how much space they may use."),
+      .describe(
+        "Whether Zinn records local usage measurements, how much space they may use and how long they are kept.",
+      ),
     hooks: z
       .record(
         z.string().min(1),

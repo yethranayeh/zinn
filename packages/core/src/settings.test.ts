@@ -359,23 +359,23 @@ test("a megabyte is 1,048,576 bytes and the cap defaults to 100 of them", () => 
 
 test("without settings telemetry is local, and only DO_NOT_TRACK=1 turns it off", () => {
   const { cwd } = telemetryProject();
-  const local = { mode: "local", source: "default", settingsPath: null, maxMegabytes: 100 } as const;
+  const local = { mode: "local", source: "default", settingsPath: null, maxMegabytes: 100, maxAgeDays: 90 } as const;
 
   expect(telemetryFor(cwd)).toEqual(local);
   for (const value of ["true", "0", "", "yes", " 1", "1 "]) {
     expect(telemetryFor(cwd, { DO_NOT_TRACK: value })).toEqual(local);
   }
-  expect(telemetryFor(cwd, { DO_NOT_TRACK: "1" })).toEqual({ mode: "off", source: "DO_NOT_TRACK", settingsPath: null, maxMegabytes: 100 });
+  expect(telemetryFor(cwd, { DO_NOT_TRACK: "1" })).toEqual({ mode: "off", source: "DO_NOT_TRACK", settingsPath: null, maxMegabytes: 100, maxAgeDays: 90 });
 });
 
 test("a telemetry.mode in a settings file wins over DO_NOT_TRACK in both directions", () => {
   const { cwd, globalPath } = telemetryProject();
 
   globalFile({ telemetry: { mode: "off" } });
-  expect(telemetryFor(cwd)).toEqual({ mode: "off", source: "settings", settingsPath: globalPath, maxMegabytes: 100 });
+  expect(telemetryFor(cwd)).toEqual({ mode: "off", source: "settings", settingsPath: globalPath, maxMegabytes: 100, maxAgeDays: 90 });
 
   globalFile({ telemetry: { mode: "local" } });
-  expect(telemetryFor(cwd, { DO_NOT_TRACK: "1" })).toEqual({ mode: "local", source: "settings", settingsPath: globalPath, maxMegabytes: 100 });
+  expect(telemetryFor(cwd, { DO_NOT_TRACK: "1" })).toEqual({ mode: "local", source: "settings", settingsPath: globalPath, maxMegabytes: 100, maxAgeDays: 90 });
 });
 
 test("zinn.local.json decides the mode over the global file, and a file that sets only the cap leaves it alone", () => {
@@ -387,12 +387,12 @@ test("zinn.local.json decides the mode over the global file, and a file that set
 
   writeJson(localPath, { telemetry: { maxMegabytes: 5 } });
 
-  expect(telemetryFor(cwd)).toEqual({ mode: "off", source: "settings", settingsPath: globalPath, maxMegabytes: 5 });
+  expect(telemetryFor(cwd)).toEqual({ mode: "off", source: "settings", settingsPath: globalPath, maxMegabytes: 5, maxAgeDays: 90 });
 
   globalFile({});
 
-  expect(telemetryFor(cwd, { DO_NOT_TRACK: "1" })).toEqual({ mode: "off", source: "DO_NOT_TRACK", settingsPath: null, maxMegabytes: 5 });
-  expect(telemetryFor(cwd)).toEqual({ mode: "local", source: "default", settingsPath: null, maxMegabytes: 5 });
+  expect(telemetryFor(cwd, { DO_NOT_TRACK: "1" })).toEqual({ mode: "off", source: "DO_NOT_TRACK", settingsPath: null, maxMegabytes: 5, maxAgeDays: 90 });
+  expect(telemetryFor(cwd)).toEqual({ mode: "local", source: "default", settingsPath: null, maxMegabytes: 5, maxAgeDays: 90 });
 });
 
 test("each file may set one telemetry field and the merged settings carry both", () => {
@@ -401,7 +401,7 @@ test("each file may set one telemetry field and the merged settings carry both",
   writeJson(localPath, { telemetry: { maxMegabytes: 7 } });
 
   expect(resolveSettings({ cwd, env: {}, home }).merged).toEqual({ telemetry: { mode: "off", maxMegabytes: 7 } });
-  expect(telemetryFor(cwd)).toEqual({ mode: "off", source: "settings", settingsPath: globalPath, maxMegabytes: 7 });
+  expect(telemetryFor(cwd)).toEqual({ mode: "off", source: "settings", settingsPath: globalPath, maxMegabytes: 7, maxAgeDays: 90 });
 });
 
 test("with ZINN_DIR only that directory's settings.json sets telemetry", () => {
@@ -411,7 +411,7 @@ test("with ZINN_DIR only that directory's settings.json sets telemetry", () => {
   writeJson(localPath, { telemetry: { mode: "off" } });
   writeJson(join(zinnDirectory, "settings.json"), { telemetry: { maxMegabytes: 3 } });
 
-  expect(telemetryFor(cwd, { ZINN_DIR: zinnDirectory })).toEqual({ mode: "local", source: "default", settingsPath: null, maxMegabytes: 3 });
+  expect(telemetryFor(cwd, { ZINN_DIR: zinnDirectory })).toEqual({ mode: "local", source: "default", settingsPath: null, maxMegabytes: 3, maxAgeDays: 90 });
 });
 
 test("a telemetry value Zinn does not accept is a settings error naming the file", () => {

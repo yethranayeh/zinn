@@ -24,7 +24,7 @@
 			"additionalProperties": false
 		},
 		"telemetry": {
-			"description": "Whether Zinn records local usage measurements, and how much space they may use.",
+			"description": "Whether Zinn records local usage measurements, how much space they may use and how long they are kept.",
 			"type": "object",
 			"properties": {
 				"mode": {
@@ -34,6 +34,12 @@
 				},
 				"maxMegabytes": {
 					"description": "The most disk space, in whole megabytes of 1,048,576 bytes, that the telemetry folder may use. Defaults to 100.",
+					"type": "integer",
+					"exclusiveMinimum": 0,
+					"maximum": 9007199254740991
+				},
+				"maxAgeDays": {
+					"description": "How many days Zinn keeps telemetry records. Defaults to 90.",
 					"type": "integer",
 					"exclusiveMinimum": 0,
 					"maximum": 9007199254740991

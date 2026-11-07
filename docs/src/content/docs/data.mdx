@@ -91,7 +91,7 @@ Writing a log keeps the newest 10 logs and removes older ones. Other files in `l
 
 ## Telemetry
 
-Zinn keeps local usage records. They are **on** by default, but nothing leaves your machine. Each recorded run appends one line of JSON to `telemetry/YYYY-MM-DD.jsonl` in the selected Zinn directory, named for the UTC date on which the run started. Zinn creates `telemetry/` inside a Zinn directory that exists and never creates the Zinn directory for a record.
+Zinn keeps local usage records. They are **on** by default, but nothing leaves your machine. Each recorded run appends one line of JSON to a record file in `telemetry/` in the selected Zinn directory. A record file is named `YYYY-MM-DD-NNNN.jsonl`, for the UTC date on which the run started and a sequence number, such as `2026-11-07-0001.jsonl`. Zinn creates `telemetry/` inside a Zinn directory that exists and never creates the Zinn directory for a record.
 
 While telemetry is on, Zinn records every run, whether it succeeds or fails, including help requests and a bare `zinn`. Two kinds of run leave no record:
 
@@ -156,15 +156,13 @@ Records never hold option values, positional words, task, project or column keys
 
 ### Retention
 
-Day files older than 90 days are deleted, and the 90 days are not a setting. `telemetry.maxMegabytes` limits the day files' total size and defaults to 100, with one megabyte being 1,048,576 bytes. See [Settings](/docs/settings#control-local-telemetry).
+`telemetry.maxAgeDays` sets how many days records are kept and defaults to 90. `telemetry.maxMegabytes` limits the record files' total size and defaults to 100, with one megabyte being 1,048,576 bytes. See [Settings](/docs/settings#control-local-telemetry).
 
-A run that starts a new day file first deletes the files older than 90 days, then the oldest remaining files until the rest total less than the limit. Only that run deletes anything, so the folder can briefly hold older files. A day file's age comes from its name, and only regular files named like `2026-11-07.jsonl` are counted or deleted. Other files in the folder stay.
-
-A day file that reaches the limit on its own takes no more records that day, and the `ZINN_DEBUG=1` output names the file.
+A record file takes records up to a tenth of the size limit, and the next run then starts a new one. A run that starts a new file first deletes the files older than `telemetry.maxAgeDays`, then the oldest remaining files until the rest total less than the limit. Only that run deletes anything, so the folder can briefly hold older files. A file's age comes from its name, and only regular files named like `2026-11-07-0001.jsonl` are counted or deleted. Other files in the folder stay.
 
 ### Clear or turn off records
 
-Delete a day file or the whole `telemetry/` folder at any time. Zinn creates the folder again when it writes the next record. `zinn backup` copies only the database, and `zinn restore` replaces only the database, so both leave `telemetry/` alone.
+Delete a record file or the whole `telemetry/` folder at any time. Zinn creates the folder again when it writes the next record. `zinn backup` copies only the database, and `zinn restore` replaces only the database, so both leave `telemetry/` alone.
 
 Setting `telemetry.mode` to `off`, or `DO_NOT_TRACK` to `1`, stops new records and keeps existing files. See [Settings](/docs/settings#control-local-telemetry).
 

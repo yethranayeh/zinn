@@ -21,7 +21,7 @@ type Run = { code: number | null; stdout: string; stderr: string };
 
 const SECRET_TITLE = "secret-title-value";
 const SECRET_KEY = "SECRETKEY-1";
-const DAY_FILE_NAME = /^\d{4}-\d{2}-\d{2}\.jsonl$/;
+const RECORD_FILE_NAME = /^\d{4}-\d{2}-\d{2}-\d{4}\.jsonl$/;
 const MILLISECONDS_PER_DAY = 86_400_000;
 /** Folder modes do not bind for root or on Windows */
 const doFolderModesBind = process.platform !== "win32" && process.getuid?.() !== 0;
@@ -38,7 +38,7 @@ function readRecords(store: string): Array<any> {
   }
 
   return readdirSync(folder, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && DAY_FILE_NAME.test(entry.name))
+    .filter((entry) => entry.isFile() && RECORD_FILE_NAME.test(entry.name))
     .map((entry) => entry.name)
     .sort()
     .flatMap((name) => readFileSync(join(folder, name), "utf8").split("\n").filter(Boolean))
@@ -76,7 +76,7 @@ describe("telemetry record", () => {
       const created = lastRecord(store);
       const startedOn = created.startedAt.slice(0, 10);
 
-      expect(readdirSync(telemetryFolder(store))).toEqual([`${startedOn}.jsonl`]);
+      expect(readdirSync(telemetryFolder(store))).toEqual([`${startedOn}-0001.jsonl`]);
       expect(created).toMatchObject({
         v: 1,
         exitCode: 0,
@@ -416,26 +416,32 @@ describe("telemetry failures", () => {
   });
 });
 
-/** A file name for the UTC date this many days before today */
-function dayFileName(daysAgo: number) {
+/** A record file name for the UTC date this many days before today */
+function recordFileName(daysAgo: number, sequence = 1) {
   const date = new Date(Date.now() - daysAgo * MILLISECONDS_PER_DAY);
-  return `${date.toISOString().slice(0, 10)}.jsonl`;
+  return `${date.toISOString().slice(0, 10)}-${String(sequence).padStart(4, "0")}.jsonl`;
 }
 
-/** Creates a day file of this many bytes, sparse so a large one stays fast */
-function prepareDayFile(store: string, name: string, bytes = 0) {
+/** Creates a record file of this many bytes, sparse so a large one stays fast */
+function prepareRecordFile(store: string, name: string, bytes = 0) {
   mkdirSync(telemetryFolder(store), { recursive: true });
   writeFileSync(join(telemetryFolder(store), name), "");
   truncateSync(join(telemetryFolder(store), name), bytes);
   return name;
 }
 
-function setCap(store: string, maxMegabytes: number) {
-  writeFileSync(join(store, "settings.json"), JSON.stringify({ telemetry: { maxMegabytes } }));
+function setTelemetry(store: string, telemetry: object) {
+  writeFileSync(join(store, "settings.json"), JSON.stringify({ telemetry }));
 }
 
 function listTelemetry(store: string) {
   return readdirSync(telemetryFolder(store)).sort();
+}
+
+/** The records in one file. For a store whose other files are sparse, which hold no records */
+function readFileRecords(store: string, name: string): Array<any> {
+  const text = readFileSync(join(telemetryFolder(store), name), "utf8");
+  return text.replaceAll("\0", "").split("\n").filter(Boolean).map((line) => JSON.parse(line));
 }
 
 function telemetryLines(run: Run) {
@@ -458,107 +464,157 @@ async function runWithFolderMode(
 }
 
 describe("telemetry retention", () => {
-  test("a new day deletes files older than 90 days and keeps one exactly 90 days old", async () => {
+  const rotationBytes = Math.floor(BYTES_PER_MEGABYTE / 10);
+
+  test("a new file deletes files older than 90 days and keeps one exactly 90 days old", async () => {
     await withIsolatedZinnDir(async (store) => {
-      prepareDayFile(store, dayFileName(400));
-      prepareDayFile(store, dayFileName(91));
-      const exactly90 = prepareDayFile(store, dayFileName(90));
-      const recent = prepareDayFile(store, dayFileName(1));
+      prepareRecordFile(store, recordFileName(400));
+      prepareRecordFile(store, recordFileName(91));
+      const exactly90 = prepareRecordFile(store, recordFileName(90));
+      const recent = prepareRecordFile(store, recordFileName(1));
 
       expect((await runZinn(["--help"], store)).code).toBe(0);
 
-      expect(listTelemetry(store)).toEqual([exactly90, recent, dayFileName(0)].sort());
+      expect(listTelemetry(store)).toEqual([exactly90, recent, recordFileName(0)].sort());
       expect(readRecords(store)).toHaveLength(1);
+    });
+  });
+
+  test("telemetry.maxAgeDays sets how long files are kept", async () => {
+    await withIsolatedZinnDir(async (store) => {
+      setTelemetry(store, { maxAgeDays: 365 });
+      prepareRecordFile(store, recordFileName(366));
+      const kept = prepareRecordFile(store, recordFileName(200));
+
+      await runZinn(["--help"], store);
+
+      expect(listTelemetry(store)).toEqual([kept, recordFileName(0)].sort());
+    });
+  });
+
+  test("a telemetry.maxAgeDays too large for a date keeps old files and cleans up without a failure", async () => {
+    await withIsolatedZinnDir(async (store) => {
+      setTelemetry(store, { maxAgeDays: Number.MAX_SAFE_INTEGER });
+      const old = prepareRecordFile(store, "2001-01-01-0001.jsonl");
+
+      const result = await runZinn(["--help"], store, { ZINN_DEBUG: "1" });
+
+      expect(telemetryLines(result)).toEqual([]);
+      expect(listTelemetry(store)).toEqual([old, recordFileName(0)].sort());
     });
   });
 
   test("a name's digits are matched without checking the calendar", async () => {
     await withIsolatedZinnDir(async (store) => {
-      prepareDayFile(store, "2000-99-99.jsonl");
+      prepareRecordFile(store, "2000-99-99-0001.jsonl");
 
       await runZinn(["--help"], store);
 
-      expect(listTelemetry(store)).toEqual([dayFileName(0)]);
+      expect(listTelemetry(store)).toEqual([recordFileName(0)]);
     });
   });
 
   test("a small cap deletes oldest first until the total is under it, including a total exactly at it", async () => {
     await withIsolatedZinnDir(async (store) => {
-      setCap(store, 1);
+      setTelemetry(store, { maxMegabytes: 1 });
       const half = BYTES_PER_MEGABYTE / 2;
-      prepareDayFile(store, dayFileName(5), half);
-      prepareDayFile(store, dayFileName(4), half);
-      const newest = prepareDayFile(store, dayFileName(3), half);
+      prepareRecordFile(store, recordFileName(5), half);
+      prepareRecordFile(store, recordFileName(4), half);
+      const newest = prepareRecordFile(store, recordFileName(3), half);
 
       await runZinn(["--help"], store);
 
-      expect(listTelemetry(store)).toEqual([newest, dayFileName(0)].sort());
+      expect(listTelemetry(store)).toEqual([newest, recordFileName(0)].sort());
     });
   });
 
   test("a total just under the cap deletes nothing", async () => {
     await withIsolatedZinnDir(async (store) => {
-      setCap(store, 1);
+      setTelemetry(store, { maxMegabytes: 1 });
       const half = BYTES_PER_MEGABYTE / 2;
-      const older = prepareDayFile(store, dayFileName(5), half);
-      const newer = prepareDayFile(store, dayFileName(4), half - 1);
+      const older = prepareRecordFile(store, recordFileName(5), half);
+      const newer = prepareRecordFile(store, recordFileName(4), half - 1);
 
       await runZinn(["--help"], store);
 
-      expect(listTelemetry(store)).toEqual([older, newer, dayFileName(0)].sort());
+      expect(listTelemetry(store)).toEqual([older, newer, recordFileName(0)].sort());
     });
   });
 
-  test("an existing day file below the cap appends and deletes nothing, even with expired files", async () => {
+  test("a current file below a tenth of the cap appends and deletes nothing, even with expired files", async () => {
     await withIsolatedZinnDir(async (store) => {
-      setCap(store, 1);
-      const expired = prepareDayFile(store, dayFileName(200));
-      const today = prepareDayFile(store, dayFileName(0), BYTES_PER_MEGABYTE - 1);
+      setTelemetry(store, { maxMegabytes: 1 });
+      const expired = prepareRecordFile(store, recordFileName(200));
+      const today = prepareRecordFile(store, recordFileName(0), rotationBytes - 1);
 
       await runZinn(["--help"], store);
 
       expect(listTelemetry(store)).toEqual([expired, today].sort());
-      expect(statSync(join(telemetryFolder(store), today)).size).toBeGreaterThan(BYTES_PER_MEGABYTE - 1);
+      expect(statSync(join(telemetryFolder(store), today)).size).toBeGreaterThan(rotationBytes - 1);
     });
   });
 
-  test("a day file at the cap drops new records, stays unchanged and is named under ZINN_DEBUG=1", async () => {
+  test("a current file at a tenth of the cap starts the next file and keeps the record", async () => {
     await withIsolatedZinnDir(async (store) => {
-      setCap(store, 1);
-      const expired = prepareDayFile(store, dayFileName(200));
-      const today = prepareDayFile(store, dayFileName(0), BYTES_PER_MEGABYTE);
-      const todayPath = join(telemetryFolder(store), today);
+      setTelemetry(store, { maxMegabytes: 1 });
+      prepareRecordFile(store, recordFileName(200));
+      const full = prepareRecordFile(store, recordFileName(0), rotationBytes);
 
-      const quiet = await runZinn(["--help"], store);
-      expect(quiet.code).toBe(0);
-      expect(telemetryLines(quiet)).toEqual([]);
+      const result = await runZinn(["--help"], store, { ZINN_DEBUG: "1" });
 
-      const debugged = await runZinn(["--help"], store, { ZINN_DEBUG: "1" });
-      expect(debugged.code).toBe(0);
-      const lines = telemetryLines(debugged);
-      expect(lines).toHaveLength(1);
-      expect(lines[0]).toContain(todayPath);
-
-      expect(statSync(todayPath).size).toBe(BYTES_PER_MEGABYTE);
-      expect(listTelemetry(store)).toEqual([expired, today].sort());
+      expect(result.code).toBe(0);
+      expect(telemetryLines(result)).toEqual([]);
+      expect(listTelemetry(store)).toEqual([full, recordFileName(0, 2)]);
+      expect(statSync(join(telemetryFolder(store), full)).size).toBe(rotationBytes);
+      expect(readFileRecords(store, recordFileName(0, 2))).toHaveLength(1);
     });
   });
 
-  test("other files and a folder with a day-file name stay and do not count", async () => {
+  test("a sequence continues from the highest of today's files", async () => {
     await withIsolatedZinnDir(async (store) => {
-      setCap(store, 1);
+      setTelemetry(store, { maxMegabytes: 1 });
+      const first = prepareRecordFile(store, recordFileName(0, 1), rotationBytes);
+      const tenth = prepareRecordFile(store, recordFileName(0, 10), rotationBytes - 1);
+
+      await runZinn(["--help"], store);
+
+      expect(listTelemetry(store)).toEqual([first, tenth]);
+      expect(readFileRecords(store, tenth)).toHaveLength(1);
+    });
+  });
+
+  test("a cap filled by one day removes only as much older history as it needs", async () => {
+    await withIsolatedZinnDir(async (store) => {
+      setTelemetry(store, { maxMegabytes: 1 });
+      prepareRecordFile(store, recordFileName(3), 100);
+      const yesterday = prepareRecordFile(store, recordFileName(1), 1);
+      const today = Array.from({ length: 10 }, (_, index) =>
+        prepareRecordFile(store, recordFileName(0, index + 1), rotationBytes),
+      );
+
+      expect((await runZinn(["--help"], store)).code).toBe(0);
+
+      // The ten full files stay just under the cap, so the older files take it over and the oldest goes first
+      expect(listTelemetry(store)).toEqual([yesterday, ...today, recordFileName(0, 11)].sort());
+      expect(readFileRecords(store, recordFileName(0, 11))).toHaveLength(1);
+    });
+  });
+
+  test("other files and a folder with a record-file name stay and do not count", async () => {
+    await withIsolatedZinnDir(async (store) => {
+      setTelemetry(store, { maxMegabytes: 1 });
       const folder = telemetryFolder(store);
-      const others = ["notes.txt", "2000-01-01.jsonl.bak", "2000-1-1.jsonl"];
+      const others = ["notes.txt", "2000-01-01.jsonl", "2000-01-01-0001.jsonl.bak", "2000-1-1-0001.jsonl"];
       for (const name of others) {
-        prepareDayFile(store, name, 2 * BYTES_PER_MEGABYTE);
+        prepareRecordFile(store, name, 2 * BYTES_PER_MEGABYTE);
       }
-      const namedFolder = "2000-01-01.jsonl";
+      const namedFolder = "2000-01-02-0001.jsonl";
       mkdirSync(join(folder, namedFolder));
-      const recent = prepareDayFile(store, dayFileName(1), BYTES_PER_MEGABYTE / 2);
+      const recent = prepareRecordFile(store, recordFileName(1), BYTES_PER_MEGABYTE / 2);
 
       await runZinn(["--help"], store);
 
-      expect(listTelemetry(store)).toEqual([...others, namedFolder, recent, dayFileName(0)].sort());
+      expect(listTelemetry(store)).toEqual([...others, namedFolder, recent, recordFileName(0)].sort());
     });
   });
 
@@ -573,8 +629,8 @@ describe("telemetry retention", () => {
     for (const { args, env, settings } of cases) {
       await withIsolatedZinnDir(async (store) => {
         writeFileSync(join(store, "settings.json"), JSON.stringify(settings));
-        prepareDayFile(store, dayFileName(200));
-        prepareDayFile(store, dayFileName(1), 2 * BYTES_PER_MEGABYTE);
+        prepareRecordFile(store, recordFileName(200));
+        prepareRecordFile(store, recordFileName(1), 2 * BYTES_PER_MEGABYTE);
         const before = listTelemetry(store);
 
         expect((await runZinn(args, store, env)).code, args.join(" ")).toBe(0);
@@ -591,12 +647,12 @@ describe("telemetry retention", () => {
       const expected = await runZinn(args, control);
 
       await withIsolatedZinnDir(async (store) => {
-        prepareDayFile(store, dayFileName(200));
+        prepareRecordFile(store, recordFileName(200));
         expectSameResult(await runWithFolderMode(store, 0o300, args), expected);
       });
 
       await withIsolatedZinnDir(async (store) => {
-        const expired = prepareDayFile(store, dayFileName(200));
+        const expired = prepareRecordFile(store, recordFileName(200));
         const debugged = await runWithFolderMode(store, 0o300, args, { ZINN_DEBUG: "1" });
 
         expect(debugged.code).toBe(expected.code);
@@ -605,7 +661,7 @@ describe("telemetry retention", () => {
         expect(lines).toHaveLength(1);
         expect(lines[0]).toContain(telemetryFolder(store));
         expect(lines[0]).not.toContain("could not write");
-        expect(listTelemetry(store)).toEqual([expired, dayFileName(0)].sort());
+        expect(listTelemetry(store)).toEqual([expired, recordFileName(0)].sort());
         expect(readRecords(store)).toHaveLength(1);
       });
     });
@@ -618,28 +674,28 @@ describe("telemetry retention", () => {
       const expected = await runZinn(args, control);
 
       await withIsolatedZinnDir(async (store) => {
-        prepareDayFile(store, dayFileName(200));
+        prepareRecordFile(store, recordFileName(200));
         expectSameResult(await runWithFolderMode(store, 0o555, args), expected);
       });
 
       await withIsolatedZinnDir(async (store) => {
-        const expired = prepareDayFile(store, dayFileName(200));
+        const expired = prepareRecordFile(store, recordFileName(200));
         const debugged = await runWithFolderMode(store, 0o555, args, { ZINN_DEBUG: "1" });
 
         expect(debugged.code).toBe(expected.code);
         expect(debugged.stdout).toBe(expected.stdout);
         const lines = telemetryLines(debugged);
         expect(lines).toHaveLength(1);
-        expect(lines[0]).toContain(join(telemetryFolder(store), dayFileName(0)));
+        expect(lines[0]).toContain(join(telemetryFolder(store), recordFileName(0)));
         expect(listTelemetry(store)).toEqual([expired]);
       });
     });
   });
 
-  test("parallel runs starting a new day file exit normally and leave only whole lines", async () => {
+  test("parallel runs starting a new file exit normally and leave only whole lines", async () => {
     await withIsolatedZinnDir(async (store) => {
       for (let daysAgo = 100; daysAgo < 140; daysAgo += 1) {
-        prepareDayFile(store, dayFileName(daysAgo));
+        prepareRecordFile(store, recordFileName(daysAgo));
       }
       const runs = 30;
 
@@ -651,7 +707,7 @@ describe("telemetry retention", () => {
         expect(result.code).toBe(0);
         expect(telemetryLines(result)).toEqual([]);
       }
-      expect(listTelemetry(store)).toEqual([dayFileName(0)]);
+      expect(listTelemetry(store)).toEqual([recordFileName(0)]);
       expect(readRecords(store)).toHaveLength(runs);
     });
   });

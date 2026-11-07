@@ -23,6 +23,7 @@ import { currentRuntime, readRunClock } from "./run-facts.js";
 
 type RunOutcome = { failure?: ClassifiedFailure; logFileName?: string };
 type ValueForm = "next" | "joined" | "none";
+type RecordLimits = { capBytes: number; maxAgeDays: number };
 type UnmatchedRun = { namespace: string; unmatchedWord?: string; help: boolean };
 type MatchedRun = {
   match: ParsedRoute;
@@ -37,8 +38,11 @@ const DOUBLE_DASH = "--";
 const STDIN_DESCRIPTOR = 0;
 const STDOUT_DESCRIPTOR = 1;
 const ISO_DATE_LENGTH = "YYYY-MM-DD".length;
-const DAY_FILE_NAME = /^\d{4}-\d{2}-\d{2}\.jsonl$/;
-const RETENTION_DAYS = 90;
+const RECORD_FILE_NAME = /^(\d{4}-\d{2}-\d{2})-(\d{4})\.jsonl$/;
+const SEQUENCE_DIGITS = 4;
+const FIRST_SEQUENCE = 1;
+/** A file takes records up to this share of the cap, so the cap removes records a slice at a time */
+const FILES_PER_CAP = 10;
 const MILLISECONDS_PER_DAY = 86_400_000;
 /** A successful run of a command that declares one of these only reads or reports, and leaves no record */
 const UNRECORDED_STORAGE_EFFECTS: ReadonlyArray<ParsedRoute["effects"]["storage"]> = [
@@ -252,17 +256,32 @@ function firstLineOf(error: unknown) {
   return message.split("\n")[0];
 }
 
-/**
- * Deletes expired day files, then the oldest others until the rest total under the cap.
- * A file another run already removed is not a failure. Any other failure throws and ends the cleanup.
- */
-function deleteOldDayFiles(folder: string, startedAt: Date, capBytes: number) {
-  const oldestKeptMs = startedAt.getTime() - RETENTION_DAYS * MILLISECONDS_PER_DAY;
-  const oldestKeptDate = new Date(oldestKeptMs).toISOString().slice(0, ISO_DATE_LENGTH);
-  const names = readdirSync(folder, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && DAY_FILE_NAME.test(entry.name))
+/** The store's record files, oldest first. Other entries in the folder are left out */
+function listRecordFiles(folder: string) {
+  return readdirSync(folder, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && RECORD_FILE_NAME.test(entry.name))
     .map((entry) => entry.name)
     .sort();
+}
+
+function createRecordFileName(date: string, sequence: number) {
+  const digits = String(sequence).padStart(SEQUENCE_DIGITS, "0");
+  return `${date}-${digits}${RECORD_EXTENSION}`;
+}
+
+/**
+ * Deletes expired record files, then the oldest others until the rest total under the cap.
+ * A file another run already removed is not a failure. Any other failure throws and ends the cleanup.
+ */
+function deleteOldRecordFiles(
+  folder: string,
+  names: Array<string>,
+  startedAt: Date,
+  { capBytes, maxAgeDays }: RecordLimits,
+) {
+  // A setting too large for a date keeps everything by age
+  const oldestKeptMs = Math.max(startedAt.getTime() - maxAgeDays * MILLISECONDS_PER_DAY, 0);
+  const oldestKeptDate = new Date(oldestKeptMs).toISOString().slice(0, ISO_DATE_LENGTH);
   const kept: Array<string> = [];
 
   for (const name of names) {
@@ -291,47 +310,73 @@ function deleteOldDayFiles(folder: string, startedAt: Date, capBytes: number) {
 }
 
 /**
- * Appends this run's record to the day's file in the store's `telemetry` folder.
- * A run that starts a new day file first deletes old ones. A day file at the size cap takes no more records.
- * It never throws, so recording cannot change a run's result.
- * Returns one sentence saying what went wrong, or `undefined` when nothing did or no record was due.
+ * The file this run appends to, and what went wrong with the cleanup when it starts a new file.
+ * Today's file with the highest sequence takes records until it reaches a tenth of the cap.
  */
-export function writeRunRecord(outcome: RunOutcome) {
+function chooseRecordFile(folder: string, startedAt: Date, limits: RecordLimits) {
+  const date = startedAt.toISOString().slice(0, ISO_DATE_LENGTH);
+  let names: Array<string>;
+
+  try {
+    names = listRecordFiles(folder);
+  } catch (error) {
+    // Without a listing the current file is unknown, so the record goes to the day's first
+    return {
+      name: createRecordFileName(date, FIRST_SEQUENCE),
+      cleanupProblem: `wrote the record but could not list old record files: ${firstLineOf(error)}`,
+    };
+  }
+
+  const current = names.filter((name) => name.startsWith(`${date}-`)).at(-1);
+  const rotationBytes = Math.floor(limits.capBytes / FILES_PER_CAP);
+  if (current !== undefined && (readFileSize(join(folder, current)) ?? 0) < rotationBytes) {
+    return { name: current };
+  }
+
+  const currentSequence = current === undefined ? 0 : Number(current.match(RECORD_FILE_NAME)![2]);
+  const name = createRecordFileName(date, currentSequence + 1);
+
+  try {
+    deleteOldRecordFiles(folder, names, startedAt, limits);
+  } catch (error) {
+    return {
+      name,
+      cleanupProblem: `wrote the record but could not delete old record files: ${firstLineOf(error)}`,
+    };
+  }
+
+  return { name };
+}
+
+/**
+ * Appends this run's record to the current record file in the store's `telemetry` folder.
+ * A run that starts a new file first deletes old ones, so the newest records are the ones kept.
+ * It never throws, so recording cannot change a run's result.
+ * Returns one sentence saying what went wrong, or undefined when nothing did or no record was due.
+ */
+export function writeRunRecord(outcome: RunOutcome): string | undefined {
   try {
     if (isUnrecordedRun(outcome)) {
       return undefined;
     }
 
     const storage = getConfiguredStorage();
-    const { mode, maxMegabytes } = resolveTelemetry(getProcessSettings(), process.env);
+    const { mode, maxMegabytes, maxAgeDays } = resolveTelemetry(getProcessSettings(), process.env);
     if (mode !== "local") {
       return undefined;
     }
 
     const { startedAt, elapsedMs } = readRunClock();
     const folder = join(storage.directory, TELEMETRY_FOLDER_NAME);
-    const name = `${startedAt.toISOString().slice(0, ISO_DATE_LENGTH)}${RECORD_EXTENSION}`;
-    const path = join(folder, name);
     const line = `${JSON.stringify(createRecord(outcome, startedAt, elapsedMs))}\n`;
-    const capBytes = maxMegabytes * BYTES_PER_MEGABYTE;
 
     ensureFolderInStore(folder);
 
-    const daySize = readFileSize(path);
-    if (daySize !== undefined && daySize >= capBytes) {
-      return `dropped a record because ${path} has reached the ${maxMegabytes} MB cap`;
-    }
-
-    let cleanupProblem: string | undefined;
-    if (daySize === undefined) {
-      try {
-        deleteOldDayFiles(folder, startedAt, capBytes);
-      } catch (error) {
-        cleanupProblem = `wrote the record but could not delete old day files: ${firstLineOf(error)}`;
-      }
-    }
-
-    appendLine(path, line);
+    const { name, cleanupProblem } = chooseRecordFile(folder, startedAt, {
+      capBytes: maxMegabytes * BYTES_PER_MEGABYTE,
+      maxAgeDays,
+    });
+    appendLine(join(folder, name), line);
 
     return cleanupProblem;
   } catch (error) {

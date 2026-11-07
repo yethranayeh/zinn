@@ -278,6 +278,7 @@ export const infoSchema = z.strictObject({
     source: telemetrySourceSchema.nullable(),
     settingsPath: nullableText,
     maxMegabytes: z.number().int().positive().nullable(),
+    maxAgeDays: z.number().int().positive().nullable(),
     directory: nullableText,
     exists: z.boolean().nullable(),
     sizeBytes: count.nullable(),

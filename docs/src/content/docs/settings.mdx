@@ -66,19 +66,21 @@ A `hooks` key in `zinn.local.json` is a settings error like any other invalid se
 
 ## Control local telemetry
 
-Zinn records local usage by default and sends nothing off the machine. See [Telemetry](/docs/data#telemetry) for the records and their limits. The `telemetry` key has two fields, and a settings file can set either one:
+Zinn records local usage by default and sends nothing off the machine. See [Telemetry](/docs/data#telemetry) for the records and their limits. The `telemetry` key has three fields, and a settings file can set any of them:
 
 ```json
 {
 	"telemetry": {
 		"mode": "off",
-		"maxMegabytes": 50
+		"maxMegabytes": 50,
+		"maxAgeDays": 365
 	}
 }
 ```
 
 - `mode` is `local` or `off`. `off` writes no new records and keeps existing files. Without a setting, `mode` is `local`, or `off` when the `DO_NOT_TRACK` environment variable is `1`, following [donottrack.sh](https://donottrack.sh/). Only the value `1` counts. A `telemetry.mode` in a settings file overrides `DO_NOT_TRACK`, whichever way it is set.
-- `maxMegabytes` is a positive whole number of megabytes, each 1,048,576 bytes. It limits the total size of the day files and defaults to `100`.
+- `maxMegabytes` is a positive whole number of megabytes, each 1,048,576 bytes. It limits the total size of the record files and defaults to `100`.
+- `maxAgeDays` is a positive whole number of days to keep records. It defaults to `90`.
 
 `zinn.local.json` can set `telemetry`. The nearest `zinn.local.json` overrides the global file field by field, and with `ZINN_DIR` only that directory's `settings.json` is read.
 
@@ -98,7 +100,7 @@ The report includes the selected store directory and source, settings files and 
 - `settingsFiles` lists each inspected settings file with its `path`, `source` (`env`, `global`, or `local`), `state`, and either its parsed `settings` or an `error`. Unread home and codebase files with `ZINN_DIR` have state `not-read` and reason `ZINN_DIR`.
 - `storage` contains the selected `directory`, its `source` (`env`, `local`, `global`, or `default`), the `settingsPath` that chose it (or `null` for `env` and `default`), whether it exists, and an `error`.
 - `defaultProject` contains its `key`, the `settingsPath` that supplied it, and an `error`; the key and path are `null` when there is no configured default.
-- `telemetry` contains the resolved `mode` (`off` or `local`), its `source` (`default`, `DO_NOT_TRACK`, or `settings`), the `settingsPath` of the file that set the mode (`null` unless `source` is `settings`), `maxMegabytes`, the `directory` of the telemetry folder, whether it `exists`, the `sizeBytes` of the files directly inside it, and an `error`. A file that sets only `maxMegabytes` does not change `source`. The size is `0` when the folder is missing, because `info` never creates it. A path that is not a folder is reported with `exists` false, `sizeBytes` `null` and an `error`.
+- `telemetry` contains the resolved `mode` (`off` or `local`), its `source` (`default`, `DO_NOT_TRACK`, or `settings`), the `settingsPath` of the file that set the mode (`null` unless `source` is `settings`), `maxMegabytes`, `maxAgeDays`, the `directory` of the telemetry folder, whether it `exists`, the `sizeBytes` of the files directly inside it, and an `error`. A file that sets only `maxMegabytes` or `maxAgeDays` does not change `source`. The size is `0` when the folder is missing, because `info` never creates it. A path that is not a folder is reported with `exists` false, `sizeBytes` `null` and an `error`.
 - `database` contains the database `path`, its `state`, its `version`, the `latestVersion` supported by this CLI, and an `error`. The version is `0` for `absent`, `empty`, and `unmarked` states.
 - `versions` contains `cli`, `core`, and `runtime` (`name` and `version`).
 
@@ -130,6 +132,7 @@ For example, when settings and the database can be inspected, the report has thi
 		"source": "default",
 		"settingsPath": null,
 		"maxMegabytes": 100,
+		"maxAgeDays": 90,
 		"directory": "/home/me/.zinn/telemetry",
 		"exists": true,
 		"sizeBytes": 21345,

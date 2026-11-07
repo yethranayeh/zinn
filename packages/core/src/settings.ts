@@ -17,6 +17,7 @@ const GIT_ENTRY_NAME = ".git";
 export const BYTES_PER_MEGABYTE = 1_048_576;
 export const DEFAULT_TELEMETRY_MODE: TelemetryMode = "local";
 export const DEFAULT_TELEMETRY_MAX_MEGABYTES = 100;
+export const DEFAULT_TELEMETRY_MAX_AGE_DAYS = 90;
 const DO_NOT_TRACK_VARIABLE = "DO_NOT_TRACK";
 
 export type SettingsFile = {
@@ -51,6 +52,7 @@ export type ResolvedTelemetry = {
   /** The settings file whose `telemetry.mode` chose the mode, or `null` when the default or `DO_NOT_TRACK` did. */
   settingsPath: string | null;
   maxMegabytes: number;
+  maxAgeDays: number;
 };
 
 export const settingsFileSourceSchema = z.enum(["env", "global", "local"]);
@@ -223,7 +225,7 @@ function isDoNotTrackSet(env: SettingsInputs["env"]) {
 }
 
 /** A `telemetry` field decided by the codebase file first, the global file after, or `null` when neither sets it. */
-function chooseTelemetryField<Field extends "mode" | "maxMegabytes">(
+function chooseTelemetryField<Field extends "mode" | "maxMegabytes" | "maxAgeDays">(
   { local, global }: Pick<ResolvedSettings, "global" | "local">,
   field: Field,
 ): { value: NonNullable<NonNullable<Settings["telemetry"]>[Field]>; settingsPath: string } | null {
@@ -239,11 +241,11 @@ function chooseTelemetryField<Field extends "mode" | "maxMegabytes">(
 }
 
 /**
- * The telemetry mode and size cap.
+ * The telemetry mode and its limits.
  * The mode is the nearest `telemetry.mode` in a settings file (the codebase file before the global one),
  *  else off when `DO_NOT_TRACK` is 1, else local.
  * A settings file overrides `DO_NOT_TRACK`.
- * The cap comes from the same files, else the default.
+ * The limits come from the same files, else their defaults.
  */
 export function resolveTelemetry(
   { local, global }: Pick<ResolvedSettings, "global" | "local">,
@@ -253,6 +255,8 @@ export function resolveTelemetry(
   const maxMegabytes =
     chooseTelemetryField({ local, global }, "maxMegabytes")?.value ??
     DEFAULT_TELEMETRY_MAX_MEGABYTES;
+  const maxAgeDays =
+    chooseTelemetryField({ local, global }, "maxAgeDays")?.value ?? DEFAULT_TELEMETRY_MAX_AGE_DAYS;
 
   if (modeChoice !== null) {
     return {
@@ -260,14 +264,21 @@ export function resolveTelemetry(
       source: "settings",
       settingsPath: modeChoice.settingsPath,
       maxMegabytes,
+      maxAgeDays,
     };
   }
 
   if (isDoNotTrackSet(env)) {
-    return { mode: "off", source: "DO_NOT_TRACK", settingsPath: null, maxMegabytes };
+    return { mode: "off", source: "DO_NOT_TRACK", settingsPath: null, maxMegabytes, maxAgeDays };
   }
 
-  return { mode: DEFAULT_TELEMETRY_MODE, source: "default", settingsPath: null, maxMegabytes };
+  return {
+    mode: DEFAULT_TELEMETRY_MODE,
+    source: "default",
+    settingsPath: null,
+    maxMegabytes,
+    maxAgeDays,
+  };
 }
 
 /**

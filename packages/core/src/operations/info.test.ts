@@ -182,6 +182,7 @@ test("ZINN-347: a default store reports local telemetry and a missing folder wit
     source: "default",
     settingsPath: null,
     maxMegabytes: 100,
+    maxAgeDays: 90,
     directory: join(home, ".zinn", "telemetry"),
     exists: false,
     sizeBytes: 0,
@@ -250,7 +251,7 @@ test("ZINN-347: a broken nearest local file makes every telemetry fact unavailab
   settings(join(home, ".zinn", "settings.json"), { telemetry: { mode: "off", maxMegabytes: 4 } });
   settings(join(cwd, "zinn.local.json"), "{");
   const report = info.get({ home, cwd, env: {} });
-  expect(report.telemetry).toEqual({ mode: null, source: null, settingsPath: null, maxMegabytes: null, directory: null, exists: null, sizeBytes: null, error: report.storage.error });
+  expect(report.telemetry).toEqual({ mode: null, source: null, settingsPath: null, maxMegabytes: null, maxAgeDays: null, directory: null, exists: null, sizeBytes: null, error: report.storage.error });
   expect(report.telemetry.error).toContain(join(cwd, "zinn.local.json"));
 });
 

@@ -91,6 +91,7 @@ export function formatInfo(report: PresentedInfo): string {
       : `${telemetry.mode} (${telemetrySource(telemetry)})`;
   const telemetryLimit =
     telemetry.maxMegabytes === null ? "" : `, limit ${telemetry.maxMegabytes} MB`;
+  const telemetryAge = telemetry.maxAgeDays === null ? "" : `, kept ${telemetry.maxAgeDays} days`;
   const telemetryFolderText =
     telemetry.directory === null
       ? `unavailable${telemetryReason}`
@@ -101,7 +102,7 @@ export function formatInfo(report: PresentedInfo): string {
     `Database: ${database.path ?? "unavailable"}`,
     `Database state: ${storeIsUnavailable ? "unavailable" : databaseState(database)}`,
     `Default project: ${defaultProjectText}${defaultProjectSuffix}`,
-    `Telemetry: ${telemetryText}${telemetryLimit}`,
+    `Telemetry: ${telemetryText}${telemetryLimit}${telemetryAge}`,
     `Telemetry folder: ${telemetryFolderText}`,
     "",
     "Settings:",
@@ -139,6 +140,9 @@ export function formatInfo(report: PresentedInfo): string {
       }
       if (file.settings.telemetry?.maxMegabytes !== undefined) {
         lines.push(`  telemetry.maxMegabytes: ${file.settings.telemetry.maxMegabytes}`);
+      }
+      if (file.settings.telemetry?.maxAgeDays !== undefined) {
+        lines.push(`  telemetry.maxAgeDays: ${file.settings.telemetry.maxAgeDays}`);
       }
     }
   }
