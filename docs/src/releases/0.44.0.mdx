@@ -1,0 +1,37 @@
+---
+version: 0.44.0
+date: "2026-11-07"
+cli: 0.44.0
+core: 0.33.0
+---
+
+### Added
+
+- Telemetry: Zinn now records local usage by default. Each run appends a line to a record file in `telemetry/` in the Zinn directory. Records never leave the machine. See [Data and backups](/docs/data) and [Settings](/docs/settings#control-local-telemetry).
+- `task blame <task-key>` and core's `task.blame(taskKey)` attribute current fields, label membership, parent, relations and description lines to recorded activity, including actor and session identity. Unchanged lines keep their attribution through exact-line comparisons. Incomplete history is shown as unrecorded. See [CLI](/docs/cli#task-blame) and [core](/docs/core#task-blame).
+- Activity records include `actor_client`, which is intended as a record of the chain of programs making a change. The CLI records its version and any `ZINN_CLIENT` declaration. `whoami`, activity text and JSON expose the client, and `activity list --client <name>` filters by program or part. Library callers can supply `Actor.client` and read chains with `parseClientChain`. See [Client chains](/docs/cli#client-chains).
+  - Schema version 4 adds the nullable field. Existing events keep a null client. A published release upgrades the database to schema 4 on first use, after saving a backup. An older Zinn can read the upgraded database but refuses changes to it.
+- `activity.getCurrentTaskIdentities({ taskIds, taskKeys })` returns the ID, key, title and status of existing active and archived tasks matching the given IDs or keys, without reading history. See [Core](/docs/core).
+- `activity.getDeletedTaskIdentities({ taskIds, taskKeys })` returns the ID, key, title and `deleted` status of deleted tasks matching the given IDs or keys, read from task and project deletions at once. See [Core](/docs/core).
+- A command that fails with a `storage` or `internal` error writes a log under `logs/` in the Zinn directory, with the stack, the cause chain, the run, the store and the arguments as typed. `error.details.logPath` in the `--json` error and the last stderr line name the file, and the newest 10 logs are kept. See [Scripting](/docs/scripting).
+- `zinn --help` lists what Zinn can do and the command or flag for each: deadlines, several tasks per command, text from a file or stdin, search, continuing long lists and activity. See [CLI](/docs/cli).
+- `task search` now accepts `--column <name>` and filters by an exact column name, ignoring case, together with the text query, labels, deadlines and archive filters. See [CLI](/docs/cli).
+
+### Changed
+
+- **Breaking CLI:** `task list --starting-after` takes the cursor printed by the continuation command instead of a task ID. A script that passes a task ID must switch to that cursor.
+  - Continuation survives changes to the last listed task. `task.getPage` and `activity.getAll` return `nextCursor` when more results remain. See [Core](/docs/core) and [CLI](/docs/cli).
+- Column names are now colored by board position instead of by name in CLI. A board's first column is gray and its last column is green, whatever they are called, so renaming a column keeps its color. A column appended after `Done` takes over the green, and a board with a single column colors it gray. Task rows, relation rows and `project column list` show the same colors. `--json` task, relation and column results add `is_first` and `is_last` for the column's board placement. See [CLI](/docs/cli) and [Scripting](/docs/scripting).
+- `activity list` reads only the history and tasks a page needs instead of every event. On a database with 50,000 events, `--project` and `--project-id` pages list in under a third of the time and global pages in under half. Project and task selections in `activity.getAll` gain the same way.
+- `activity list` without `--project` or `--task` checks reused task keys and deleted tasks across the whole database. `--limit`, `--starting-after` and filters no longer change whether a row names a deleted task or adds its task ID. Each row shows as it does in the full list.
+- `--limit` on `task list`, `task search` and `activity list` accepts any integer from `1` through `9007199254740991`, and the core `limit` option accepts up to `Number.MAX_SAFE_INTEGER`. Values above `11871` are no longer refused. Omitting `--limit` still returns every match. See [CLI](/docs/cli).
+
+### Fixed
+
+- **Breaking core API:** database paths and backup folders use the same filesystem resolution for migration results, backups, storage inspection and diagnostics.
+  - `getStorage()` returns a fresh snapshot from the cached configuration on each call and resolves the database destination. Keep the snapshot for an operation instead of relying on object identity between calls. `getBackupStorage()` resolves the backup folder for an operation that writes a backup, so a dangling `backups` link fails only `zinn backup`, `zinn migrate`, `zinn restore` or an automatic upgrade, with an error that names the folder, and other commands keep working. `backup.restore` accepts an optional `BackupStorage` snapshot to retain a previously selected destination. See [Core](/docs/core) and [Data and backups](/docs/data).
+- Backups on macOS and Linux sync their directory entries before reporting success. A sync failure stops an upgrade or restore before it changes the database. See [Data and backups](/docs/data).
+
+### Security
+
+- `@zinn-dev/core` and `@zinn-dev/cli` now depend on `zod` 4.6.7, outside the affected range of [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5).
