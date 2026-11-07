@@ -1,0 +1,19 @@
+---
+import type { ReservedGroundTexture } from "./variants";
+
+import { twMerge } from "tailwind-merge";
+import { reservedGroundVariants } from "./variants";
+
+interface Props {
+	texture?: ReservedGroundTexture;
+	class?: string;
+}
+
+const { texture = reservedGroundVariants.defaultVariants.texture, class: className } = Astro.props;
+---
+
+<div
+	aria-hidden='true'
+	data-texture={texture}
+	class={twMerge(reservedGroundVariants.variants.texture[texture], className)}>
+</div>
