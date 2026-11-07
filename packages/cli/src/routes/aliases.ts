@@ -3,6 +3,7 @@ export const commandAliases: Record<string, readonly string[]> = {
   list: ["ls"],
   delete: ["rm"],
   create: ["new"],
+  edit: ["update"],
 };
 
 export function getCommandAliases(command: string): Array<Array<string>> {

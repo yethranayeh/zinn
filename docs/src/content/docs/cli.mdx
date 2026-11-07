@@ -648,12 +648,13 @@ To format a declaration, see the [client chain convention](/docs/core#client-cha
 
 These aliases work in every namespace that has the primary command, with the same arguments, options and confirmations:
 
-| Primary command | Alias  |
-| --------------- | ------ |
-| `view`          | `show` |
-| `list`          | `ls`   |
-| `delete`        | `rm`   |
-| `create`        | `new`  |
+| Primary command | Alias    |
+| --------------- | -------- |
+| `view`          | `show`   |
+| `list`          | `ls`     |
+| `delete`        | `rm`     |
+| `create`        | `new`    |
+| `edit`          | `update` |
 
 For example, `zinn task show APP-1` runs `zinn task view APP-1`, and `zinn task comment new APP-1 --text 'Verified'` creates a comment. Alias words used as values stay values: `zinn task list rm` lists tasks in project `rm`.
 

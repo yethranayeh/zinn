@@ -28,7 +28,7 @@ test("every declared alias dispatches the canonical route and leaves argument wo
       const run = mock(() => {});
       const beforeRun = mock((_command: ParsedRoute) => {});
       const router = createRouter([{ ...route, run }], beforeRun);
-      const args = ["rm", "show", "new", "ls", "--", "--help", "--json"];
+      const args = ["rm", "show", "new", "ls", "update", "--", "--help", "--json"];
       await router.route([...words, alias, "--json", ...args]);
       expect(run).toHaveBeenCalledTimes(1);
       expect(run).toHaveBeenCalledWith(args);
