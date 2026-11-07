@@ -1,7 +1,7 @@
 import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import { test, expect } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 
@@ -5795,6 +5795,47 @@ test("backup refuses a database header with no tables without creating backups",
     expect(readdirSync(dirname(databasePath))).toEqual(["zinn.sqlite"]);
     expect(readFileSync(databasePath)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
+  });
+});
+
+test("a dangling backups link leaves reads and writes working, and fails only backup and migrate naming the folder", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "LNK"], dir);
+    await runZinn(["task", "create", "LNK", "--title", "Kept"], dir);
+    const backupDirectory = join(dir, "backups");
+    symlinkSync(join(dir, "missing"), backupDirectory, "dir");
+
+    expect((await runZinn(["task", "list", "--json"], dir)).code).toBe(0);
+    expect((await runZinn(["task", "create", "LNK", "--title", "Also kept"], dir)).code).toBe(0);
+
+    for (const args of [["backup", "--json"], ["migrate", "--json"]]) {
+      const result = await runZinn(args, dir);
+      expect(result.code, args.join(" ")).toBe(1);
+      const error = errorDocumentSchema.parse(JSON.parse(result.stderr)).error;
+      expect(error.code).toBe("storage");
+      expect(error.message).toContain(backupDirectory);
+      expect(error.message).not.toContain("Cannot resolve the database path");
+      expect(error.details).toMatchObject({ entity: "backup", backupDirectory });
+      expect(error.details?.databasePath).toBeUndefined();
+      expect(error.diagnostics?.some((entry) => entry.includes("Backups taken")) ?? false).toBe(false);
+    }
+    expect(existsSync(join(dir, "missing"))).toBe(false);
+  });
+});
+
+test("backup follows a working backups link and reports the resolved path", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const target = join(dir, "backup-target");
+    mkdirSync(target);
+    symlinkSync(target, join(dir, "backups"), "dir");
+    await runZinn(["project", "create", "LNK"], dir);
+
+    const result = await runZinn(["backup", "--json"], dir);
+
+    expect(result.code).toBe(0);
+    const { path } = JSON.parse(result.stdout) as { path: string };
+    expect(dirname(path)).toBe(realpathSync(target));
+    expect(readdirSync(target)).toEqual([basename(path)]);
   });
 });
 

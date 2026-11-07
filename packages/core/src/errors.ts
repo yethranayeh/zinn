@@ -47,6 +47,7 @@ export type FailureFacts = {
   settingsPath?: string;
   path?: string;
   databasePath?: string;
+  backupDirectory?: string;
   backupPath?: string;
   schemaVersion?: number;
   supportedSchemaVersion?: number;

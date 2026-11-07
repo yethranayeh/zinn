@@ -7,7 +7,7 @@ import type { DatabaseFacts } from "../index";
 import { resolveDatabasePath } from "./database-path";
 import { assertWritable, getDb } from "./db";
 import { CoreError } from "./errors";
-import { getStorage } from "./storage";
+import { getBackupStorage, getStorage } from "./storage";
 import { withEnvironment, withStore, withTestStore } from "./testing";
 import { driver } from "./sqlite/bun";
 import { openDatabase } from "#sqlite";
@@ -183,7 +183,7 @@ test("restore uses an explicit destination snapshot after retargeting and captur
     symlinkSync(first, link, "dir");
 
     withStore(link, () => {
-      const storage = getStorage();
+      const storage = getBackupStorage();
       retarget(link, second);
       const invalid = join(root, "invalid.sqlite");
       writeFileSync(invalid, "not a backup");

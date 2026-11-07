@@ -15,7 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 
-import { resolveDatabasePath } from "../src/database-path.ts";
+import { resolveBackupDirectory, resolveDatabasePath } from "../src/database-path.ts";
 import { CoreError } from "../src/errors.ts";
 
 type DefineTest = (name: string, check: () => void) => unknown;
@@ -40,6 +40,21 @@ function assertResolutionError(path: string, code: string) {
       assert.ok(error instanceof CoreError);
       assert.equal(error.kind, "storage");
       assert.deepEqual(error.facts, { entity: "database", databasePath: path });
+      assert.ok(error.cause instanceof Error);
+      assert.equal((error.cause as NodeJS.ErrnoException).code, code);
+      return true;
+    },
+  );
+}
+
+function assertBackupResolutionError(path: string, code: string) {
+  assert.throws(
+    () => resolveBackupDirectory(path),
+    (error: unknown) => {
+      assert.ok(error instanceof CoreError);
+      assert.equal(error.kind, "storage");
+      assert.deepEqual(error.facts, { entity: "backup", backupDirectory: path });
+      assert.equal(error.message, `Cannot resolve the backup folder ${path}`);
       assert.ok(error.cause instanceof Error);
       assert.equal((error.cause as NodeJS.ErrnoException).code, code);
       return true;
@@ -157,6 +172,39 @@ export function defineDatabasePathChecks(test: DefineTest) {
       assertResolutionError(join(path, "data", "zinn.sqlite"), "ENOTDIR");
       assert.equal(readFileSync(path, "utf8"), "kept");
       assert.deepEqual(readdirSync(directory), ["file"]);
+    });
+  });
+
+  test("backup folders resolve links and missing folders without creating anything", () => {
+    withDirectory((directory) => {
+      const store = join(directory, "store");
+      mkdirSync(store);
+      const link = join(directory, "alias");
+      symlinkSync("store", link, "dir");
+      const suffix = ["nested", "backups"];
+
+      assert.equal(
+        resolveBackupDirectory(join(link, ...suffix)),
+        join(realpathSync(store), ...suffix),
+      );
+      assert.equal(
+        resolveBackupDirectory(join(store, ...suffix)),
+        join(realpathSync(store), ...suffix),
+      );
+      assert.deepEqual(readdirSync(store), []);
+      assert.deepEqual(readdirSync(directory).sort(), ["alias", "store"]);
+    });
+  });
+
+  test("backup folder resolution refuses a dangling link and names the folder", () => {
+    withDirectory((directory) => {
+      const link = join(directory, "dangling");
+      symlinkSync("missing", link, "file");
+
+      assertBackupResolutionError(link, "ENOENT");
+      assertBackupResolutionError(join(link, "nested"), "ENOENT");
+      assert.equal(lstatSync(link).isSymbolicLink(), true);
+      assert.deepEqual(readdirSync(directory), ["dangling"]);
     });
   });
 

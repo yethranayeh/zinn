@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, 
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { getConfiguredStorage, getStorage, resolveStorage } from "./storage";
+import { getBackupStorage, getConfiguredStorage, getStorage, resolveStorage } from "./storage";
 import { CoreError } from "./errors";
 import { withEnvironment } from "./testing";
 
@@ -108,7 +108,7 @@ test("importing core resolves nothing, so a ZINN_DIR set after the import is the
   }
 });
 
-test("a snapshot keeps the first working folder and resolves links in its database and backup paths", () => {
+test("a snapshot keeps the first working folder, resolves its database path and leaves the backup folder configured", () => {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "zinn-storage-anchor-")));
   const store = join(directory, "store");
   const elsewhere = join(directory, "elsewhere");
@@ -125,8 +125,30 @@ test("a snapshot keeps the first working folder and resolves links in its databa
       expect(storage.directory).toBe(join(directory, "link"));
       expect<string>(storage.databasePath).toBe(join(store, "data", "zinn.sqlite"));
       expect(storage.dataDirectory).toBe(join(store, "data"));
-      expect<string>(storage.backupDirectory).toBe(join(store, "backups"));
+      expect(storage.backupDirectory).toBe(join(directory, "link", "backups"));
+      expect<string>(getBackupStorage(storage).backupDirectory).toBe(join(store, "backups"));
     }, directory);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("a dangling backups link does not refuse the store, and resolving the folder names it", () => {
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), "zinn-storage-backups-")));
+  const store = join(directory, "store");
+  mkdirSync(store);
+
+  try {
+    withEnvironment({ ZINN_DIR: store }, () => {
+      symlinkSync(join(directory, "missing"), join(store, "backups"), "dir");
+
+      expect(getStorage().backupDirectory).toBe(join(store, "backups"));
+      expect<string>(getStorage().databasePath).toBe(join(store, "data", "zinn.sqlite"));
+      expect(() => getBackupStorage()).toThrow(expect.objectContaining({
+        kind: "storage",
+        facts: { entity: "backup", backupDirectory: join(store, "backups") },
+      }));
+    });
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

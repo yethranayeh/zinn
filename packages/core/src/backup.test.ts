@@ -1,9 +1,9 @@
 import { Database } from "bun:sqlite";
 import { setSystemTime, test } from "bun:test";
 import { strict as assert } from "node:assert";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
-import { backup, comment, project, RestoreRefusedError, task } from "../index";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { backup, comment, CoreError, project, RestoreRefusedError, task } from "../index";
 import { getStorage } from "./storage";
 import { getDb } from "./db";
 import { latestVersion, MIGRATIONS } from "./migrations/registry";
@@ -55,6 +55,46 @@ test("same-time backups preserve earlier snapshots and include uncheckpointed WA
     });
   } finally { setSystemTime(); }
 });
+
+test("backup refuses a dangling backups link, naming the folder and creating nothing", () => {
+  withTestStore((directory) => {
+    const human = { name: "Test Human", email: "human@example.com", kind: "human" as const };
+    project.create({ key: "APP" }, human);
+    symlinkSync(join(directory, "missing"), join(directory, "backups"), "dir");
+
+    assert.throws(
+      () => backup.create({ client: "test", version: "1.2.3" }),
+      (error: unknown) => {
+        assert.ok(error instanceof CoreError);
+        assert.equal(error.kind, "storage");
+        assert.deepEqual(error.facts, {
+          entity: "backup",
+          backupDirectory: join(directory, "backups"),
+        });
+        assert.match(error.message, /backup folder/);
+        return true;
+      },
+    );
+    assert.equal(existsSync(join(directory, "missing")), false);
+    assert.deepEqual(project.getAll().map((entry) => entry.key), ["APP"]);
+  });
+});
+
+test("backup follows a working backups link", () => {
+  withTestStore((directory) => {
+    const human = { name: "Test Human", email: "human@example.com", kind: "human" as const };
+    const target = join(directory, "backup-target");
+    mkdirSync(target);
+    project.create({ key: "APP" }, human);
+    symlinkSync(target, join(directory, "backups"), "dir");
+
+    const { path } = backup.create({ client: "test", version: "1.2.3" });
+
+    assert.equal(dirname(path), realpathSync(target));
+    assert.deepEqual(readdirSync(target), [basename(path)]);
+  });
+});
+
 test("restore puts a backup's database back through the public operations, and its own backup undoes it", () => {
   withTestStore(() => {
 

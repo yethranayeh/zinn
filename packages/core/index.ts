@@ -70,7 +70,7 @@ export type { SettingsFileInspection, SettingsInspection } from "./src/settings.
 export type { StoreInfo } from "./src/operations/info.js";
 export type { FailureKind, FailureFacts, ValidationIssue } from "./src/errors.js";
 export type { SqliteCode, SqlitePrimaryCode } from "./src/sqlite/database.js";
-export type { ConfiguredStorage, Storage } from "./src/storage.js";
+export type { BackupStorage, ConfiguredStorage, Storage } from "./src/storage.js";
 
 export {
   labelCreateSchema,
@@ -156,6 +156,7 @@ export { RestoreRefusedError } from "./src/migrations/restore.js";
 export { assertWritable, configureDatabase } from "./src/db.js";
 export { ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./src/migrations/open-policy.js";
 export {
+  getBackupStorage,
   getConfiguredStorage,
   getProcessSettings,
   getStorage,

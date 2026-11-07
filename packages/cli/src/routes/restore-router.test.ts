@@ -1,5 +1,5 @@
 import { expect, spyOn, test } from "bun:test";
-import { backup, RestoreRefusedError, getStorage, SqliteError } from "@zinn-dev/core";
+import { backup, RestoreRefusedError, getBackupStorage, SqliteError } from "@zinn-dev/core";
 
 import { restoreCommand } from "./restore-router";
 
@@ -16,7 +16,7 @@ test("restore keeps the general hint for damaged search index internals and reth
     await expect(restoreCommand.run(["backup.sqlite", "--yes"])).rejects.toThrow(failure);
     expect(stderr.mock.calls).toEqual([
       [
-        `The database is unchanged. Backups taken before each restore attempt are kept in ${getStorage().backupDirectory}.`,
+        `The database is unchanged. Backups taken before each restore attempt are kept in ${getBackupStorage().backupDirectory}.`,
       ],
     ]);
   } finally {
@@ -54,7 +54,7 @@ test.each([11, 779, (100 << 8) | 11])("restore gives recovery guidance for corru
     await expect(restoreCommand.run(["backup.sqlite", "--yes"])).rejects.toBe(failure);
     expect(stderr.mock.calls).toHaveLength(1);
     const diagnostic = stderr.mock.calls.flat().join("\n");
-    const { databasePath } = getStorage();
+    const { databasePath } = getBackupStorage();
     for (const fact of [databasePath, `${databasePath}-wal`, `${databasePath}-shm`, "zinn restore"]) {
       expect(diagnostic).toContain(fact);
     }
@@ -79,7 +79,7 @@ test.each([
     await expect(restoreCommand.run(["backup.sqlite", "--yes"])).rejects.toBe(failure);
     expect(stderr.mock.calls).toHaveLength(1);
     const diagnostic = stderr.mock.calls.flat().join("\n");
-    expect(diagnostic).toContain(getStorage().backupDirectory);
+    expect(diagnostic).toContain(getBackupStorage().backupDirectory);
     expect(diagnostic).not.toContain("-wal");
     expect(diagnostic).not.toContain("zinn restore");
   } finally {

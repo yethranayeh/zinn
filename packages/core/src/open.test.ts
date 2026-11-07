@@ -378,6 +378,38 @@ test("an older isolated database upgrades by itself on a source build, keeping i
   });
 });
 
+test("an older isolated database with a dangling backups link fails before changing, naming the folder", () => {
+  withHome((home) => {
+    const location = { home, zinnDir: join(home, "isolated") };
+    createDatabase(location.zinnDir, 1);
+    const backupDirectory = join(location.zinnDir, "backups");
+    symlinkSync(join(home, "missing"), backupDirectory, "dir");
+    const before = readDatabase(location.zinnDir);
+
+    const outcome = runOpen(location, { migration: "adds a table" });
+
+    expect(outcome.readError?.message).toContain(`Cannot resolve the backup folder ${backupDirectory}`);
+    expect(outcome.readError?.message).not.toContain("Cannot resolve the database path");
+    expect(readDatabase(location.zinnDir)).toEqual(before);
+    expect(backupsOf(location.zinnDir)).toEqual([]);
+    expect(existsSync(join(home, "missing"))).toBe(false);
+  });
+});
+
+test("an older isolated database follows a working backups link for its upgrade backup", () => {
+  withHome((home) => {
+    const location = { home, zinnDir: join(home, "isolated") };
+    createDatabase(location.zinnDir, 1);
+    const target = join(home, "backup-target");
+    mkdirSync(target);
+    symlinkSync(target, join(location.zinnDir, "backups"), "dir");
+
+    expectOlderUpgraded(location, {});
+
+    expect(readdirSync(target)).toHaveLength(1);
+  });
+});
+
 test("a ZINN_DIR that reaches the default folder through a link or a parent step counts as the default database", () => {
   withHome((home) => {
     const defaultDir = join(home, ".zinn");

@@ -47,7 +47,7 @@ Core opens the database on first use. `project.create` and `label.create` create
 
 By default it shares `~/.zinn/data/zinn.sqlite` with the CLI, but `ZINN_DIR` and settings files can select another location. See [Settings](/docs/settings) for directory selection.
 
-`getStorage()` returns a fresh `Storage` snapshot on each call. Settings and the selected directory are chosen on first use and stay cached. Each snapshot resolves the database destination through the current filesystem links. Keep one snapshot throughout an operation. An existing connection retains the destination it opened, including for its errors and search reindexing.
+`getStorage()` returns a fresh `Storage` snapshot on each call. Settings and the selected directory are chosen on first use and stay cached. Each snapshot resolves the database destination through the current filesystem links. `getBackupStorage()` resolves the backup folder as well, for an operation that writes a backup. Keep one snapshot throughout an operation. An existing connection retains the destination it opened, including for its errors and search reindexing.
 
 The client supplies its own `release` identity: `source` for development and `published` for prepared release artifacts. Core identifies its own build independently. Core throws errors while the client handles output, prompts, and optional database-wait and legacy-read callbacks.
 
@@ -293,6 +293,6 @@ Each migration step also checks existing foreign-key definitions, including thos
 
 Core backup and restore operations use the selected store independently of the normal database-opening policy. See [Data and backups](/docs/data) for shared storage and restore behavior.
 
-`backup.restore({ path, client, version, storage? })` accepts an optional snapshot from `getStorage()`. Pass it when the caller confirms a destination before restoring. Restore uses that captured destination even if the configured symbolic link changes afterward. Without `storage`, restore captures a fresh snapshot when called. Source backups are validated again when restore runs.
+`backup.restore({ path, client, version, storage? })` accepts an optional `BackupStorage` snapshot from `getBackupStorage()`. Pass it when the caller confirms a destination before restoring. Restore uses that captured destination even if the configured symbolic link changes afterward. Without `storage`, restore captures a fresh snapshot when called. Source backups are validated again when restore runs.
 
 The [public exports](https://github.com/yethranayeh/zinn/blob/main/packages/core/index.ts), [input schemas](https://github.com/yethranayeh/zinn/tree/main/packages/core/src/schemas), and [operation implementations](https://github.com/yethranayeh/zinn/tree/main/packages/core/src/operations) document the available API.

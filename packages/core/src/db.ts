@@ -11,7 +11,7 @@ import type {
 import { existsSync } from "node:fs";
 import { openResolvedDatabase } from "#sqlite";
 
-import { getStorage, resetStorageForTests } from "./storage.js";
+import { getBackupStorage, getStorage, resetStorageForTests } from "./storage.js";
 import { ensureDataDirectory } from "./config.js";
 import { applyConnectionSettings } from "./connection.js";
 import { classifyConnection } from "./migrations/classify.js";
@@ -197,9 +197,10 @@ function settle(connection: Database, prepared: Prepared, storage: Storage): typ
         return settle(connection, reclassified, storage);
       }
     case "upgrade": {
+      const { backupDirectory } = getBackupStorage(storage);
       const { status, previousVersion } = upgradeDatabase(connection, {
         backup: {
-          directory: storage.backupDirectory,
+          directory: backupDirectory,
           client: policy.client,
           version: policy.version,
         },

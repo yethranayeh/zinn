@@ -1,7 +1,7 @@
 import type { BackupCreateInput } from "../db/backup.js";
 import type { LockWait } from "../migrations/upgrade.js";
 
-import { getStorage } from "../storage.js";
+import { getBackupStorage } from "../storage.js";
 import { migrateDatabase } from "../migrations/migrate.js";
 
 export type MigrateRunInput = BackupCreateInput & {
@@ -11,7 +11,7 @@ export type MigrateRunInput = BackupCreateInput & {
 
 export const migrate = {
   run: ({ client, version, onWait }: MigrateRunInput) => {
-    const { databasePath, backupDirectory } = getStorage();
+    const { databasePath, backupDirectory } = getBackupStorage();
     return migrateDatabase(databasePath, {
       backup: { directory: backupDirectory, client, version },
       onWait,

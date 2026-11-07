@@ -5,7 +5,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 
-import { resolveDatabasePath, type ResolvedPath } from "./database-path.js";
+import { resolveBackupDirectory, resolveDatabasePath, type ResolvedPath } from "./database-path.js";
 import { resolveSettings } from "./settings.js";
 import { CoreError, isMissingFileError } from "./errors.js";
 import { DB_FILE_NAME, MAIN_FOLDER_NAME } from "./constant.js";
@@ -40,12 +40,16 @@ export type ConfiguredStorage = StoragePaths & {
 };
 
 /**
- * A storage snapshot. The database and backup destinations are resolved through filesystem links,
+ * A storage snapshot. The database destination is resolved through filesystem links,
  *  and the data folder is the resolved database's folder.
- * The log folder is left unresolved, so a broken link there fails only the log write and not every command.
+ * The backup and log folders are left unresolved, so a broken link there fails only the operation that uses it.
  */
 export type Storage = ConfiguredStorage & {
   databasePath: ResolvedPath;
+};
+
+/** A storage snapshot with the backup folder resolved, for an operation that writes a backup. */
+export type BackupStorage = Storage & {
   backupDirectory: ResolvedPath;
 };
 
@@ -274,8 +278,8 @@ export function getConfiguredStorage(): ConfiguredStorage {
 
 /**
  * Captures a fresh database destination from the configuration selected on first use.
- * Settings and the selected directory stay cached. The database and backup paths are resolved
- *  through filesystem links for each snapshot.
+ * Settings and the selected directory stay cached.
+ * The database path is resolved through filesystem links for each snapshot.
  * Keep the snapshot throughout an operation. An open connection retains its own opening target.
  */
 export function getStorage() {
@@ -286,6 +290,17 @@ export function getStorage() {
     ...configured,
     dataDirectory: dirname(databasePath),
     databasePath,
-    backupDirectory: resolveDatabasePath(configured.backupDirectory),
+  };
+}
+
+/**
+ * Captures a storage snapshot with its backup folder resolved through filesystem links.
+ * Use it for an operation that writes a backup,
+ *  so a broken link there fails that operation with the folder named.
+ */
+export function getBackupStorage(storage: Storage = getStorage()): BackupStorage {
+  return {
+    ...storage,
+    backupDirectory: resolveBackupDirectory(storage.backupDirectory),
   };
 }

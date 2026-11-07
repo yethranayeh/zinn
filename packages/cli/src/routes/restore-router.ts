@@ -4,7 +4,7 @@ import type { CommandInput } from "../input.js";
 
 import { parseArgs } from "node:util";
 import { resolve } from "node:path";
-import { backup, RestoreRefusedError, getStorage, isSqliteErrorFamily } from "@zinn-dev/core";
+import { backup, RestoreRefusedError, getBackupStorage, isSqliteErrorFamily } from "@zinn-dev/core";
 
 import { jsonResult } from "../results.js";
 import { reportLockWait } from "../database.js";
@@ -50,7 +50,8 @@ export const restoreCommand = {
     validatePositionals(positionals, restoreInputs.command.forms[0]);
 
     const path = resolve(positionals[0]!);
-    const { databasePath, backupDirectory } = getStorage();
+    const storage = getBackupStorage();
+    const { databasePath, backupDirectory } = storage;
     const isPreconfirmed = values.yes === true;
 
     // A backup that would be refused is refused before the prompt.
@@ -69,7 +70,12 @@ export const restoreCommand = {
     }
 
     try {
-      const result: PresentedRestore = backup.restore({ ...build, path, onWait: reportLockWait });
+      const result: PresentedRestore = backup.restore({
+        ...build,
+        path,
+        storage,
+        onWait: reportLockWait,
+      });
 
       output(result, (r) => {
         const restored = `Restored the database from ${path} at schema version ${r.restoredVersion}.`;

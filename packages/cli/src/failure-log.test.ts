@@ -239,6 +239,25 @@ test("the log of a healthy store names its schema version, and keeps notices, ca
   expect(lines(log).find((line) => /schema version/i.test(line))).toContain(String(CURRENT_SCHEMA_VERSION));
 });
 
+test("a dangling backups link leaves healthy commands working, and a failed backup's log names the schema version", () => {
+  const store = healthyStore();
+  symlinkSync(join(store, "nowhere"), join(store, "backups"));
+
+  expect(run(store, ["task", "list"]).code).toBe(0);
+
+  const error = parseFailure(run(store, ["backup", "--json"]));
+  const log = readFileSync(error.details!.logPath!, "utf8");
+
+  expect(error).toMatchObject({
+    code: "storage",
+    details: { entity: "backup", backupDirectory: join(store, "backups") },
+  });
+  expect(error.message).toContain(join(store, "backups"));
+  expect(error.message).not.toContain("Cannot resolve the database path");
+  expect(lines(log).find((line) => /schema version/i.test(line))).toContain(String(CURRENT_SCHEMA_VERSION));
+  expect(existsSync(join(store, "nowhere"))).toBe(false);
+});
+
 test("the log prints a thrown string and stops at an error chain that repeats", () => {
   const cases = [
     { expression: "'a thrown string'", fact: "a thrown string" },
