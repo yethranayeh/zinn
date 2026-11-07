@@ -705,6 +705,26 @@ describe("telemetry retention", () => {
     }
   });
 
+  test("a telemetry limit in zinn.local.json stops the command and deletes no records", async () => {
+    await withIsolatedZinnDir(async (root) => {
+      const home = join(root, "home");
+      const store = join(home, ".zinn");
+      const codebase = join(root, "codebase");
+      mkdirSync(store, { recursive: true });
+      mkdirSync(codebase);
+      const expired = prepareRecordFile(store, recordFileName(200));
+      writeFileSync(join(codebase, "zinn.local.json"), JSON.stringify({ telemetry: { maxAgeDays: 7 } }));
+      const env: Record<string, string | undefined> = { ...TEST_ENVIRONMENT, HOME: home };
+      delete env.ZINN_DIR;
+
+      const result = await runProcessAsync([process.execPath, CLI_PATH, "task", "list"], { env, cwd: codebase });
+
+      expect(result.code).not.toBe(0);
+      expect(result.stderr).toContain(join(codebase, "zinn.local.json"));
+      expect(listTelemetry(store)).toEqual([expired]);
+    });
+  });
+
   test.skipIf(!doFolderModesBind)("a cleanup that cannot list keeps the result and the record, and says so", async () => {
     const args = ["frobnicate"];
 
@@ -725,7 +745,7 @@ describe("telemetry retention", () => {
         const lines = telemetryLines(debugged);
         expect(lines).toHaveLength(1);
         expect(lines[0]).toContain(telemetryFolder(store));
-        expect(lines[0]).not.toContain("could not write");
+        expect(lines[0]).not.toContain(recordFileName(0));
         expect(listTelemetry(store)).toEqual([expired, recordFileName(0)].sort());
         expect(readRecords(store)).toHaveLength(1);
       });

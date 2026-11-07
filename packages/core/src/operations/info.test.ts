@@ -201,12 +201,20 @@ test("ZINN-347: settings choose the mode over DO_NOT_TRACK, and a file that sets
   const local = join(root, "repo", "zinn.local.json");
   settings(global, { telemetry: { mode: "local" } });
   expect(info.get({ home, cwd, env: { DO_NOT_TRACK: "1" } }).telemetry).toMatchObject({ mode: "local", source: "settings", settingsPath: global, maxMegabytes: 100 });
-  settings(local, { telemetry: { mode: "off", maxMegabytes: 8 } });
+  settings(global, { telemetry: { mode: "local", maxMegabytes: 8 } });
+  settings(local, { telemetry: { mode: "off" } });
   expect(info.get({ home, cwd, env: {} }).telemetry).toMatchObject({ mode: "off", source: "settings", settingsPath: local, maxMegabytes: 8 });
-  settings(local, { telemetry: { maxMegabytes: 9 } });
+  settings(local, {});
+  settings(global, { telemetry: { mode: "local", maxMegabytes: 9 } });
   expect(info.get({ home, cwd, env: {} }).telemetry).toMatchObject({ mode: "local", source: "settings", settingsPath: global, maxMegabytes: 9 });
-  settings(global, {});
+  settings(global, { telemetry: { maxMegabytes: 9 } });
   expect(info.get({ home, cwd, env: {} }).telemetry).toMatchObject({ mode: "local", source: "default", settingsPath: null, maxMegabytes: 9 });
+});
+
+test("a telemetry limit in zinn.local.json reports the settings error and no limits", () => {
+  const local = join(root, "repo", "zinn.local.json");
+  settings(local, { telemetry: { maxAgeDays: 7 } });
+  expect(info.get({ home, cwd, env: {} }).telemetry).toMatchObject({ maxMegabytes: null, maxAgeDays: null, error: expect.stringContaining(local) });
 });
 
 test("ZINN-347: the folder size sums the files directly inside it and skips nested folders", () => {

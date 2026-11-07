@@ -224,16 +224,16 @@ function isDoNotTrackSet(env: SettingsInputs["env"]) {
   return env[DO_NOT_TRACK_VARIABLE] === "1";
 }
 
-/** A `telemetry` field decided by the codebase file first, the global file after, or `null` when neither sets it. */
-function chooseTelemetryField<Field extends "mode" | "maxMegabytes" | "maxAgeDays">(
-  { local, global }: Pick<ResolvedSettings, "global" | "local">,
-  field: Field,
-): { value: NonNullable<NonNullable<Settings["telemetry"]>[Field]>; settingsPath: string } | null {
+/** The telemetry mode decided by the codebase file first, the global file after, or `null` when neither sets it */
+function chooseTelemetryMode({ local, global }: Pick<ResolvedSettings, "global" | "local">): {
+  mode: TelemetryMode;
+  settingsPath: string;
+} | null {
   for (const file of [local, global]) {
-    const value = file?.settings.telemetry?.[field];
+    const mode = file?.settings.telemetry?.mode;
 
-    if (file !== null && value !== undefined) {
-      return { value, settingsPath: file.path };
+    if (file !== null && mode !== undefined) {
+      return { mode, settingsPath: file.path };
     }
   }
 
@@ -245,22 +245,20 @@ function chooseTelemetryField<Field extends "mode" | "maxMegabytes" | "maxAgeDay
  * The mode is the nearest `telemetry.mode` in a settings file (the codebase file before the global one),
  *  else off when `DO_NOT_TRACK` is 1, else local.
  * A settings file overrides `DO_NOT_TRACK`.
- * The limits come from the same files, else their defaults.
+ * The limits come from the global file, else their defaults.
  */
 export function resolveTelemetry(
   { local, global }: Pick<ResolvedSettings, "global" | "local">,
   env: SettingsInputs["env"],
 ): ResolvedTelemetry {
-  const modeChoice = chooseTelemetryField({ local, global }, "mode");
-  const maxMegabytes =
-    chooseTelemetryField({ local, global }, "maxMegabytes")?.value ??
-    DEFAULT_TELEMETRY_MAX_MEGABYTES;
-  const maxAgeDays =
-    chooseTelemetryField({ local, global }, "maxAgeDays")?.value ?? DEFAULT_TELEMETRY_MAX_AGE_DAYS;
+  const modeChoice = chooseTelemetryMode({ local, global });
+  const limits = global?.settings.telemetry;
+  const maxMegabytes = limits?.maxMegabytes ?? DEFAULT_TELEMETRY_MAX_MEGABYTES;
+  const maxAgeDays = limits?.maxAgeDays ?? DEFAULT_TELEMETRY_MAX_AGE_DAYS;
 
   if (modeChoice !== null) {
     return {
-      mode: modeChoice.value,
+      mode: modeChoice.mode,
       source: "settings",
       settingsPath: modeChoice.settingsPath,
       maxMegabytes,
@@ -297,6 +295,26 @@ export function inspectSettings(inputs: SettingsInputs): SettingsInspection {
   return loadSettings(inputs, { collectErrors: true });
 }
 
+/**
+ * A set field that `zinn.local.json` may not set.
+ * Hooks run commands, and the telemetry limits delete records every codebase shares.
+ */
+function findGlobalOnlyField({ hooks, telemetry }: Settings) {
+  if (hooks !== undefined) {
+    return ["hooks"];
+  }
+
+  if (telemetry?.maxMegabytes !== undefined) {
+    return ["telemetry", "maxMegabytes"];
+  }
+
+  if (telemetry?.maxAgeDays !== undefined) {
+    return ["telemetry", "maxAgeDays"];
+  }
+
+  return undefined;
+}
+
 function loadSettings(
   { cwd, env, home }: SettingsInputs,
   { collectErrors }: { collectErrors: boolean },
@@ -309,12 +327,14 @@ function loadSettings(
     let inspected: SettingsFileInspection;
     try {
       const file = readSettingsFile(path);
-      if (source === "local" && file?.settings.hooks !== undefined) {
+      const globalOnlyField =
+        source === "local" && file !== null ? findGlobalOnlyField(file.settings) : undefined;
+      if (globalOnlyField !== undefined) {
         throw settingsFileError(
           path,
-          `it sets hooks, which Zinn reads only from the global ${GLOBAL_SETTINGS_FILE_NAME}`,
+          `it sets ${globalOnlyField.join(".")}, which Zinn reads only from the global ${GLOBAL_SETTINGS_FILE_NAME}`,
           "input",
-          { reason: "invalid_settings", field: ["hooks"] },
+          { reason: "invalid_settings", field: globalOnlyField },
           undefined,
         );
       }

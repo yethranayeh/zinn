@@ -5,7 +5,7 @@ description: Choose Zinn's data directory and default project, run hooks after c
 
 # Settings
 
-Without `ZINN_DIR`, Zinn reads the global `~/.zinn/settings.json` and the nearest optional `zinn.local.json` in a codebase. They can choose the data directory, a default project and the telemetry settings. The global file can also configure hooks. With `ZINN_DIR`, Zinn reads only `settings.json` inside that selected directory. Note that `storage.directory` does not cause settings from its target directory to be read.
+Without `ZINN_DIR`, Zinn reads the global `~/.zinn/settings.json` and the nearest optional `zinn.local.json` in a codebase. They can choose the data directory, a default project and the telemetry mode. The global file can also set the telemetry limits and configure hooks. With `ZINN_DIR`, Zinn reads only `settings.json` inside that selected directory. Note that `storage.directory` does not cause settings from its target directory to be read.
 
 For the files and paths that make up a store, see [Data and backups](/docs/data).
 
@@ -66,7 +66,7 @@ A `hooks` key in `zinn.local.json` is a settings error like any other invalid se
 
 ## Control local telemetry
 
-Zinn records local usage by default and sends nothing off the machine. See [Telemetry](/docs/data#telemetry) for the records and their limits. The `telemetry` key has three fields, and a settings file can set any of them:
+Zinn records local usage by default and sends nothing off the machine. See [Telemetry](/docs/data#telemetry) for the records and their limits. The `telemetry` key has three fields, and a file can set any of those it is allowed to:
 
 ```json
 {
@@ -82,7 +82,7 @@ Zinn records local usage by default and sends nothing off the machine. See [Tele
 - `maxMegabytes` is a positive whole number of megabytes, each 1,048,576 bytes. It limits the total size of the record files and defaults to `100`.
 - `maxAgeDays` is a positive whole number of days to keep records. It defaults to `90`.
 
-`zinn.local.json` can set `telemetry`. The nearest `zinn.local.json` overrides the global file field by field, and with `ZINN_DIR` only that directory's `settings.json` is read.
+`zinn.local.json` can set `mode`, and the nearest one overrides the global file. `maxMegabytes` and `maxAgeDays` are read only from the global file, because the records they delete can come from any codebase. Either limit in `zinn.local.json` is a settings error like any other invalid setting. With `ZINN_DIR`, only that directory's `settings.json` is read, and it can set all three fields.
 
 ## Inspect the selected store
 

@@ -48,14 +48,16 @@ export const settingsSchema = z
           .positive()
           .optional()
           .describe(
-            "The total size of telemetry record files, in whole megabytes of 1,048,576 bytes. A run that starts a new file deletes the oldest ones to bring the total under this limit. Defaults to 100.",
+            "The total size of telemetry record files, in whole megabytes of 1,048,576 bytes. A run that starts a new file deletes the oldest ones to bring the total under this limit. Defaults to 100. Read only from the global settings file. zinn.local.json cannot set it.",
           ),
         maxAgeDays: z
           .number()
           .int()
           .positive()
           .optional()
-          .describe("How many days Zinn keeps telemetry records. Defaults to 90."),
+          .describe(
+            "How many days Zinn keeps telemetry records. Defaults to 90. Read only from the global settings file. zinn.local.json cannot set it.",
+          ),
       })
       .optional()
       .describe(

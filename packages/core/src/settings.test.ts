@@ -385,23 +385,38 @@ test("zinn.local.json decides the mode over the global file, and a file that set
 
   expect(telemetryFor(cwd, { DO_NOT_TRACK: "1" })).toMatchObject({ mode: "local", source: "settings", settingsPath: localPath });
 
-  writeJson(localPath, { telemetry: { maxMegabytes: 5 } });
+  globalFile({ telemetry: { mode: "off", maxMegabytes: 5 } });
+  writeJson(localPath, {});
 
   expect(telemetryFor(cwd)).toEqual({ mode: "off", source: "settings", settingsPath: globalPath, maxMegabytes: 5, maxAgeDays: 90 });
 
-  globalFile({});
+  globalFile({ telemetry: { maxMegabytes: 5 } });
 
   expect(telemetryFor(cwd, { DO_NOT_TRACK: "1" })).toEqual({ mode: "off", source: "DO_NOT_TRACK", settingsPath: null, maxMegabytes: 5, maxAgeDays: 90 });
   expect(telemetryFor(cwd)).toEqual({ mode: "local", source: "default", settingsPath: null, maxMegabytes: 5, maxAgeDays: 90 });
 });
 
-test("each file may set one telemetry field and the merged settings carry both", () => {
-  const { cwd, localPath, globalPath } = telemetryProject();
-  globalFile({ telemetry: { mode: "off" } });
-  writeJson(localPath, { telemetry: { maxMegabytes: 7 } });
+test("the local mode and the global limits combine, and the merged settings carry both", () => {
+  const { cwd, localPath } = telemetryProject();
+  globalFile({ telemetry: { maxMegabytes: 7, maxAgeDays: 30 } });
+  writeJson(localPath, { telemetry: { mode: "off" } });
 
-  expect(resolveSettings({ cwd, env: {}, home }).merged).toEqual({ telemetry: { mode: "off", maxMegabytes: 7 } });
-  expect(telemetryFor(cwd)).toEqual({ mode: "off", source: "settings", settingsPath: globalPath, maxMegabytes: 7, maxAgeDays: 90 });
+  expect(resolveSettings({ cwd, env: {}, home }).merged).toEqual({ telemetry: { mode: "off", maxMegabytes: 7, maxAgeDays: 30 } });
+  expect(telemetryFor(cwd)).toEqual({ mode: "off", source: "settings", settingsPath: localPath, maxMegabytes: 7, maxAgeDays: 30 });
+});
+
+test("a telemetry limit in zinn.local.json is a settings error, and is not read with ZINN_DIR", () => {
+  const { cwd, localPath } = telemetryProject();
+  const zinnDirectory = join(root, "selected");
+  globalFile({ telemetry: { maxMegabytes: 7, maxAgeDays: 30 } });
+
+  for (const [field, value] of [["maxMegabytes", 5], ["maxAgeDays", 7]] as const) {
+    writeJson(localPath, { telemetry: { [field]: value } });
+
+    expect(() => resolveSettings({ cwd, env: {}, home })).toThrow(expect.objectContaining({ kind: "input", facts: expect.objectContaining({ settingsPath: localPath, reason: "invalid_settings", field: ["telemetry", field] }) }));
+    expect(inspectSettings({ cwd, env: {}, home }).files).toContainEqual(expect.objectContaining({ path: localPath, source: "local", state: "error" }));
+    expect(telemetryFor(cwd, { ZINN_DIR: zinnDirectory })).toMatchObject({ maxMegabytes: 100, maxAgeDays: 90 });
+  }
 });
 
 test("with ZINN_DIR only that directory's settings.json sets telemetry", () => {
@@ -415,8 +430,16 @@ test("with ZINN_DIR only that directory's settings.json sets telemetry", () => {
 });
 
 test("a telemetry value Zinn does not accept is a settings error naming the file", () => {
-  const { cwd, localPath } = telemetryProject();
+  const { cwd, localPath, globalPath } = telemetryProject();
   const rejected = [{ maxMegabytes: "1G" }, { maxMegabytes: 0 }, { maxMegabytes: -1 }, { maxMegabytes: 1.5 }, { maxMegabytes: null }, { mode: "on" }, { mode: "Local" }, { enabled: true }];
+
+  for (const telemetry of rejected) {
+    globalFile({ telemetry });
+
+    expect(() => resolveSettings({ cwd, env: {}, home })).toThrow(expect.objectContaining({ message: expect.stringContaining(globalPath), kind: "input" }));
+  }
+
+  globalFile({});
 
   for (const telemetry of rejected) {
     writeJson(localPath, { telemetry });
