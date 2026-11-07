@@ -86,7 +86,7 @@ function recordRun(outcome: Parameters<typeof writeRunRecord>[0]) {
   const problem = writeRunRecord(outcome);
 
   if (problem !== undefined && isDebugOutputEnabled()) {
-    diagnostic(`::telemetry could not write a record: ${problem}`);
+    diagnostic(`::telemetry ${problem}`);
   }
 }
 

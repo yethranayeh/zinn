@@ -181,7 +181,7 @@ test("ZINN-347: a default store reports local telemetry and a missing folder wit
     mode: "local",
     source: "default",
     settingsPath: null,
-    maxMegabytes: 1024,
+    maxMegabytes: 100,
     directory: join(home, ".zinn", "telemetry"),
     exists: false,
     sizeBytes: 0,
@@ -199,7 +199,7 @@ test("ZINN-347: settings choose the mode over DO_NOT_TRACK, and a file that sets
   const global = join(home, ".zinn", "settings.json");
   const local = join(root, "repo", "zinn.local.json");
   settings(global, { telemetry: { mode: "local" } });
-  expect(info.get({ home, cwd, env: { DO_NOT_TRACK: "1" } }).telemetry).toMatchObject({ mode: "local", source: "settings", settingsPath: global, maxMegabytes: 1024 });
+  expect(info.get({ home, cwd, env: { DO_NOT_TRACK: "1" } }).telemetry).toMatchObject({ mode: "local", source: "settings", settingsPath: global, maxMegabytes: 100 });
   settings(local, { telemetry: { mode: "off", maxMegabytes: 8 } });
   expect(info.get({ home, cwd, env: {} }).telemetry).toMatchObject({ mode: "off", source: "settings", settingsPath: local, maxMegabytes: 8 });
   settings(local, { telemetry: { maxMegabytes: 9 } });

@@ -16,7 +16,7 @@ const GIT_ENTRY_NAME = ".git";
 /** One megabyte, as `telemetry.maxMegabytes` counts it. */
 export const BYTES_PER_MEGABYTE = 1_048_576;
 export const DEFAULT_TELEMETRY_MODE: TelemetryMode = "local";
-export const DEFAULT_TELEMETRY_MAX_MEGABYTES = 1024;
+export const DEFAULT_TELEMETRY_MAX_MEGABYTES = 100;
 const DO_NOT_TRACK_VARIABLE = "DO_NOT_TRACK";
 
 export type SettingsFile = {

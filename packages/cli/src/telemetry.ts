@@ -2,14 +2,16 @@ import type { ParseArgsOptionsConfig } from "node:util";
 import type { ClassifiedFailure } from "./errors.js";
 import type { ParsedRoute } from "./types.js";
 
-import { closeSync, openSync, writeSync } from "node:fs";
+import { closeSync, openSync, readdirSync, rmSync, statSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { isatty } from "node:tty";
 import { parseArgs } from "node:util";
 import {
+  BYTES_PER_MEGABYTE,
   TELEMETRY_FOLDER_NAME,
   getConfiguredStorage,
   getProcessSettings,
+  isMissingFileError,
   resolveTelemetry,
 } from "@zinn-dev/core";
 
@@ -35,6 +37,9 @@ const DOUBLE_DASH = "--";
 const STDIN_DESCRIPTOR = 0;
 const STDOUT_DESCRIPTOR = 1;
 const ISO_DATE_LENGTH = "YYYY-MM-DD".length;
+const DAY_FILE_NAME = /^\d{4}-\d{2}-\d{2}\.jsonl$/;
+const RETENTION_DAYS = 90;
+const MILLISECONDS_PER_DAY = 86_400_000;
 /** A successful run of a command that declares one of these only reads or reports, and leaves no record */
 const UNRECORDED_STORAGE_EFFECTS: ReadonlyArray<ParsedRoute["effects"]["storage"]> = [
   "none",
@@ -229,33 +234,107 @@ function appendLine(path: string, line: string) {
   }
 }
 
+/** A file's size in bytes or `undefined` when it does not exist */
+function readFileSize(path: string) {
+  try {
+    return statSync(path).size;
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return undefined;
+    }
+
+    throw error;
+  }
+}
+
+function firstLineOf(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.split("\n")[0];
+}
+
+/**
+ * Deletes expired day files, then the oldest others until the rest total under the cap.
+ * A file another run already removed is not a failure. Any other failure throws and ends the cleanup.
+ */
+function deleteOldDayFiles(folder: string, startedAt: Date, capBytes: number) {
+  const oldestKeptMs = startedAt.getTime() - RETENTION_DAYS * MILLISECONDS_PER_DAY;
+  const oldestKeptDate = new Date(oldestKeptMs).toISOString().slice(0, ISO_DATE_LENGTH);
+  const names = readdirSync(folder, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && DAY_FILE_NAME.test(entry.name))
+    .map((entry) => entry.name)
+    .sort();
+  const kept: Array<string> = [];
+
+  for (const name of names) {
+    const isExpired = name.slice(0, ISO_DATE_LENGTH) < oldestKeptDate;
+    if (isExpired) {
+      rmSync(join(folder, name), { force: true });
+    } else {
+      kept.push(name);
+    }
+  }
+
+  const files = kept.map((name) => {
+    const path = join(folder, name);
+    return { path, size: readFileSize(path) ?? 0 };
+  });
+  let total = files.reduce((sum, { size }) => sum + size, 0);
+
+  for (const { path, size } of files) {
+    if (total < capBytes) {
+      break;
+    }
+
+    rmSync(path, { force: true });
+    total -= size;
+  }
+}
+
 /**
  * Appends this run's record to the day's file in the store's `telemetry` folder.
+ * A run that starts a new day file first deletes old ones. A day file at the size cap takes no more records.
  * It never throws, so recording cannot change a run's result.
- * Returns what went wrong, or undefined when the record was written or none was due.
+ * Returns one sentence saying what went wrong, or `undefined` when nothing did or no record was due.
  */
-export function writeRunRecord(outcome: RunOutcome): string | undefined {
+export function writeRunRecord(outcome: RunOutcome) {
   try {
     if (isUnrecordedRun(outcome)) {
       return undefined;
     }
 
     const storage = getConfiguredStorage();
-    if (resolveTelemetry(getProcessSettings(), process.env).mode !== "local") {
+    const { mode, maxMegabytes } = resolveTelemetry(getProcessSettings(), process.env);
+    if (mode !== "local") {
       return undefined;
     }
 
     const { startedAt, elapsedMs } = readRunClock();
     const folder = join(storage.directory, TELEMETRY_FOLDER_NAME);
     const name = `${startedAt.toISOString().slice(0, ISO_DATE_LENGTH)}${RECORD_EXTENSION}`;
+    const path = join(folder, name);
     const line = `${JSON.stringify(createRecord(outcome, startedAt, elapsedMs))}\n`;
+    const capBytes = maxMegabytes * BYTES_PER_MEGABYTE;
 
     ensureFolderInStore(folder);
-    appendLine(join(folder, name), line);
 
-    return undefined;
+    const daySize = readFileSize(path);
+    if (daySize !== undefined && daySize >= capBytes) {
+      return `dropped a record because ${path} has reached the ${maxMegabytes} MB cap`;
+    }
+
+    let cleanupProblem: string | undefined;
+    if (daySize === undefined) {
+      try {
+        deleteOldDayFiles(folder, startedAt, capBytes);
+      } catch (error) {
+        cleanupProblem = `wrote the record but could not delete old day files: ${firstLineOf(error)}`;
+      }
+    }
+
+    appendLine(path, line);
+
+    return cleanupProblem;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return message.split("\n")[0];
+    return `could not write a record: ${firstLineOf(error)}`;
   }
 }

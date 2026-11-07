@@ -236,7 +236,7 @@ test("ZINN-347: telemetry state is reported in JSON and text from settings and D
   mkdirSync(join(directory, "telemetry"), { recursive: true });
   writeFileSync(join(directory, "telemetry", "2026-11-06.jsonl"), "x".repeat(10));
   const fallback = await report(directory);
-  expect(fallback.telemetry).toEqual({ mode: "local", source: "default", settingsPath: null, maxMegabytes: 1024, directory: join(directory, "telemetry"), exists: true, sizeBytes: 10, error: null });
+  expect(fallback.telemetry).toEqual({ mode: "local", source: "default", settingsPath: null, maxMegabytes: 100, directory: join(directory, "telemetry"), exists: true, sizeBytes: 10, error: null });
 
   const tracked = await run(["info", "--json"], directory, { DO_NOT_TRACK: "1" });
   expect(JSON.parse(tracked.stdout).telemetry).toMatchObject({ mode: "off", source: "DO_NOT_TRACK", settingsPath: null });

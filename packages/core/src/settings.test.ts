@@ -352,30 +352,30 @@ function telemetryFor(cwd: string, env: Record<string, string | undefined> = {})
   return resolveTelemetry(resolveSettings({ cwd, env, home }), env);
 }
 
-test("a megabyte is 1,048,576 bytes and the cap defaults to 1024 of them", () => {
+test("a megabyte is 1,048,576 bytes and the cap defaults to 100 of them", () => {
   expect(BYTES_PER_MEGABYTE).toBe(1024 * 1024);
-  expect(DEFAULT_TELEMETRY_MAX_MEGABYTES).toBe(1024);
+  expect(DEFAULT_TELEMETRY_MAX_MEGABYTES).toBe(100);
 });
 
 test("without settings telemetry is local, and only DO_NOT_TRACK=1 turns it off", () => {
   const { cwd } = telemetryProject();
-  const local = { mode: "local", source: "default", settingsPath: null, maxMegabytes: 1024 } as const;
+  const local = { mode: "local", source: "default", settingsPath: null, maxMegabytes: 100 } as const;
 
   expect(telemetryFor(cwd)).toEqual(local);
   for (const value of ["true", "0", "", "yes", " 1", "1 "]) {
     expect(telemetryFor(cwd, { DO_NOT_TRACK: value })).toEqual(local);
   }
-  expect(telemetryFor(cwd, { DO_NOT_TRACK: "1" })).toEqual({ mode: "off", source: "DO_NOT_TRACK", settingsPath: null, maxMegabytes: 1024 });
+  expect(telemetryFor(cwd, { DO_NOT_TRACK: "1" })).toEqual({ mode: "off", source: "DO_NOT_TRACK", settingsPath: null, maxMegabytes: 100 });
 });
 
 test("a telemetry.mode in a settings file wins over DO_NOT_TRACK in both directions", () => {
   const { cwd, globalPath } = telemetryProject();
 
   globalFile({ telemetry: { mode: "off" } });
-  expect(telemetryFor(cwd)).toEqual({ mode: "off", source: "settings", settingsPath: globalPath, maxMegabytes: 1024 });
+  expect(telemetryFor(cwd)).toEqual({ mode: "off", source: "settings", settingsPath: globalPath, maxMegabytes: 100 });
 
   globalFile({ telemetry: { mode: "local" } });
-  expect(telemetryFor(cwd, { DO_NOT_TRACK: "1" })).toEqual({ mode: "local", source: "settings", settingsPath: globalPath, maxMegabytes: 1024 });
+  expect(telemetryFor(cwd, { DO_NOT_TRACK: "1" })).toEqual({ mode: "local", source: "settings", settingsPath: globalPath, maxMegabytes: 100 });
 });
 
 test("zinn.local.json decides the mode over the global file, and a file that sets only the cap leaves it alone", () => {

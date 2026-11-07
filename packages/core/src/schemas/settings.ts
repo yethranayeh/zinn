@@ -48,7 +48,7 @@ export const settingsSchema = z
           .positive()
           .optional()
           .describe(
-            "The most disk space, in whole megabytes of 1,048,576 bytes, that the telemetry folder may use. Defaults to 1024.",
+            "The most disk space, in whole megabytes of 1,048,576 bytes, that the telemetry folder may use. Defaults to 100.",
           ),
       })
       .optional()
