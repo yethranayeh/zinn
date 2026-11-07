@@ -7,14 +7,15 @@ interface Props {
 
 const { label, total = false, ...attributes } = Astro.props;
 const lineClass = total
-	? "flex items-baseline gap-2 mt-5 pt-3 overflow-hidden border-t border-soot border-dashed text-[1.125rem]"
-	: "flex items-baseline gap-2 mt-1 overflow-hidden";
+	? "flex items-baseline gap-2 mt-5 pt-3 border-t border-soot border-dashed text-[1.125rem]"
+	: "flex items-baseline gap-2 mt-1";
 const dotLeader =
-	"after:tracking-[0.1em] after:text-muted-foreground after:content-['_................................................................................................................']";
+	"flex-1 min-w-[2ch] overflow-hidden whitespace-nowrap after:tracking-[0.1em] after:text-muted-foreground after:content-['................................................................................................................']";
 ---
 
 <p class={lineClass}>
-	<span class:list={["relative flex-1 min-w-0 overflow-hidden whitespace-nowrap", dotLeader]}>{label}</span><span
+	<span class='min-w-0'>{label}</span><span class={dotLeader} aria-hidden='true'></span><span
 		class='shrink-0 tabular-nums'
-		{...attributes}><slot /></span>
+		{...attributes}><slot /></span
+	>
 </p>
