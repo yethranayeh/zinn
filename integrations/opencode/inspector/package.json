@@ -24,7 +24,9 @@
 	},
 	"homepage": "https://zinn.sh/integrations/opencode/inspector",
 	"exports": {
-		"./tui": "./dist/tui.js"
+		".": "./dist/index.js",
+		"./tui": "./dist/tui.js",
+		"./gui-experimental": "./dist/gui-experimental.cjs"
 	},
 	"files": [
 		"dist"
@@ -56,7 +58,9 @@
 		"@opentui/core": "0.7.0",
 		"@opentui/solid": "0.7.0",
 		"babel-preset-solid": "1.9.12",
-		"solid-js": "^1.9.0"
+		"solid-js": "^1.9.0",
+		"vite": "7.3.7",
+		"vite-plugin-solid": "2.11.14"
 	},
 	"publishConfig": {
 		"access": "public"
