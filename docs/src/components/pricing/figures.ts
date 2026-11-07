@@ -89,7 +89,7 @@ export const comparison = [
   ["License", "MIT"],
   ["Accounts", "None to create"],
   ["Seats", "None to find"],
-  ["Agents", "Included, same bytes"],
+  ["Agents", "Bring your own"],
   ["Renewal", "Updates, when you want them"],
   ["Annual discount", "Nothing to discount"],
   ["Your data", "On your machine"],
