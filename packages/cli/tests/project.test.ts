@@ -420,3 +420,25 @@ test("project edit rejects invalid requests without writes", async () => {
     }
   });
 });
+
+test("project list shows every established project", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "LIST", "--name", "Listed"], testDir);
+
+    const result = await runZinn(["project", "list"], testDir);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("LIST");
+  });
+});
+
+test("project mutations print the affected entity", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    expect((await runZinn(["project", "create", "life", "--name", "Responsive"], testDir)).stdout).toBe(
+      "LIFE | Responsive\n",
+    );
+    expect((await runZinn(["project", "delete", "life", "--yes"], testDir)).stdout).toContain(
+      "Deleted LIFE | Responsive\n",
+    );
+  });
+});

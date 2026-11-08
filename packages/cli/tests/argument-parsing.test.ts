@@ -838,3 +838,18 @@ test("task and comment key numbers are capped at 15 digits", async () => {
     expect(errorDocumentSchema.parse(JSON.parse(missingComment.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "comment", key: `CAP-1#${fifteenDigits}` } });
   });
 });
+
+// ? Empty strings pass the routers' `== null` guards; core's validation rejects them.
+test("empty-string arguments are rejected", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "EMPTY", "--name", "Empty"], testDir);
+
+    const blankTitle = await runZinn(["--json", "task", "create", "EMPTY", "--title", ""], testDir);
+    expect(blankTitle.code).toBe(1);
+    expect(errorDocumentSchema.parse(JSON.parse(blankTitle.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["title"] } });
+
+    const blankProject = await runZinn(["--json", "project", "create", "", "--name", ""], testDir);
+    expect(blankProject.code).toBe(1);
+    expect(errorDocumentSchema.parse(JSON.parse(blankProject.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["key"] } });
+  });
+});
