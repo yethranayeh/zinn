@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
+import type { Activity } from "@zinn-dev/core";
 import { TELEMETRY_FOLDER_NAME } from "../core/src/constant";
 import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import { createSchema } from "../core/src/migrations/runner";
@@ -55,6 +56,11 @@ export function runZinn(
     env: { ...TEST_ENVIRONMENT, ...additionalEnv, ZINN_DIR: testDir },
     cwd: testDir,
   });
+}
+
+export function runZinnAs(args: Array<string>, testDir: string, env: Record<string, string>) {
+  // ? cwd outside any repository, so only the identity file given per case applies.
+  return runProcessAsync([process.execPath, CLI_PATH, ...args], { cwd: testDir, env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir, ...env } });
 }
 
 // ? Pipes "y" into the CLI, as a script would; it does not answer a confirmation.
@@ -122,4 +128,42 @@ export async function createDatabase(dir: string, version: number) {
   await runZinn(["project", "create", "MIG"], dir);
   await runZinn(["task", "create", "MIG", "--title", "Kept"], dir);
   withTestDb(dir, (db) => db.run(`PRAGMA user_version = ${version}`));
+}
+
+export async function seedRecordedActivity(
+  directory: string,
+  inputs: Array<Pick<Activity, "id"> & Partial<Activity>>,
+) {
+  if (!existsSync(join(directory, "data", "zinn.sqlite"))) {
+    createEmptyDatabase(directory);
+  }
+  const events: Array<Activity> = inputs.map((input) => ({
+    id: input.id,
+    created_at: input.created_at ?? Date.UTC(2026, 9, 8, 10, 30),
+    actor_name: input.actor_name === undefined ? "Test Agent" : input.actor_name,
+    actor_email: input.actor_email === undefined ? "agent@example.com" : input.actor_email,
+    actor_kind: input.actor_kind ?? "agent",
+    actor_source: input.actor_source ?? null,
+    actor_session_id: input.actor_session_id ?? null,
+    actor_thread_id: input.actor_thread_id ?? null,
+    actor_agent: input.actor_agent ?? null,
+    actor_model: input.actor_model ?? null,
+    actor_effort: input.actor_effort ?? null,
+    actor_client: input.actor_client ?? null,
+    entity_type: input.entity_type ?? "task",
+    entity_id: input.entity_id ?? "11111111-1234-7000-8000-123456abcdef",
+    action: input.action ?? "edit",
+    changes: input.changes ?? null,
+  }));
+  withTestDb(directory, (db) => {
+    const insert = db.query("INSERT INTO activity (id, created_at, actor_name, actor_email, actor_kind, actor_source, actor_session_id, actor_thread_id, actor_agent, actor_model, actor_effort, actor_client, entity_type, entity_id, action, changes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    for (const event of events) {
+      insert.run(event.id, event.created_at, event.actor_name, event.actor_email, event.actor_kind,
+        event.actor_source, event.actor_session_id, event.actor_thread_id, event.actor_agent, event.actor_model, event.actor_effort,
+        event.actor_client,
+        event.entity_type, event.entity_id, event.action,
+        event.changes === null ? null : JSON.stringify(event.changes));
+    }
+  });
+  return events;
 }
