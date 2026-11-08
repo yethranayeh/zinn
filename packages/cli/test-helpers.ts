@@ -47,6 +47,14 @@ export function runZinn(
   });
 }
 
+// ? Pipes "y" into the CLI, as a script would; it does not answer a confirmation.
+export function runZinnWithPipedYes(args: Array<string>, testDir: string) {
+  return runProcessAsync(
+    ["/bin/sh", "-c", 'printf "y\\n" | exec bun "$@"', "zinn-confirm", CLI_PATH, ...args],
+    { env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir }, cwd: testDir },
+  );
+}
+
 /** Creates a database at the latest schema with no records or activity. */
 export function createEmptyDatabase(testDir: string) {
   mkdirSync(join(testDir, "data"), { recursive: true });

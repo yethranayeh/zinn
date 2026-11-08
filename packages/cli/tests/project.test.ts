@@ -364,3 +364,59 @@ test("project create rejects blank or non-single-line names", async () => {
     }
   });
 });
+
+test("project edit renames without changing identity, tasks, columns, or archive state", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "EDIT", "--name", "Original"], dir);
+    await runZinn(["task", "create", "EDIT", "--title", "Keep task"], dir);
+    const read = () => withTestDb(dir, (db) => ({
+      project: db.query<import("../../core/src/types").Project, []>("SELECT * FROM project").get()!,
+      tasks: db.query("SELECT * FROM task").all(),
+      columns: db.query("SELECT * FROM project_column").all(),
+    }));
+    withTestDb(dir, (db) => db.run("UPDATE project SET updated_at = 1, archived_at = 2"));
+    const before = read();
+    const result = await runZinn(["project", "edit", "edit", "--name", "New name"], dir);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe("EDIT | New name\n");
+    expect(result.stderr).toBe("");
+    const after = read();
+    expect(after).toEqual({ ...before, project: {
+      ...before.project, name: "New name", updated_at: after.project.updated_at,
+    } });
+    expect(after.project.updated_at).toBeGreaterThan(1);
+    withTestDb(dir, (db) => db.run("UPDATE project SET updated_at = 1"));
+    expect((await runZinn(["project", "edit", "EDIT", "--name", "New name"], dir)).code).toBe(0);
+    expect(read().project.updated_at).toBe(1);
+    expect((await runZinn(["project", "edit", "--name=--example", "EDIT"], dir)).code).toBe(0);
+    expect((await runZinn(["project", "list"], dir)).stdout).toContain("EDIT | --example");
+  });
+});
+
+test("project edit rejects invalid requests without writes", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "EDIT", "--name", "Original"], dir);
+    const read = () => withTestDb(dir, (db) => db.query("SELECT * FROM project").get());
+    const before = read();
+    const usage = "Usage: zinn project edit";
+    const cases = [
+      [[], { code: "invalid_input", details: { argument: "project-key" }, help: expect.stringContaining(usage) }],
+      [["EDIT"], { code: "invalid_input" }],
+      [["EDIT", "--name"], { code: "invalid_input", details: { argument: "--name" } }],
+      [["EDIT", "--key", "NEW"], { code: "invalid_input", details: { argument: "--key" } }],
+      [["EDIT", "extra", "--name", "Name"], { code: "invalid_input", message: expect.stringContaining("extra"), details: { field: [] }, help: expect.stringContaining(usage) }],
+      [["EDIT", "--name", "One", "--name", "Two"], { code: "invalid_input", details: { argument: "--name" } }],
+      [["EDIT", "--name", ""], { code: "invalid_input", details: { field: ["name"] } }],
+      [["EDIT", "--name", "   "], { code: "invalid_input", details: { field: ["name"] } }],
+      [["EDIT", "--name", "Two\nlines"], { code: "invalid_input", details: { field: ["name"] } }],
+      [["MISSING", "--name", "Name"], { code: "not_found", details: { entity: "project", key: "MISSING" } }],
+    ] as const;
+    for (const [args, expected] of cases) {
+      const result = await runZinn(["project", "edit", ...args, "--json"], dir);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject(expected);
+      expect(read()).toEqual(before);
+    }
+  });
+});
