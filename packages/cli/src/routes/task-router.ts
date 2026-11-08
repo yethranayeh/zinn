@@ -290,7 +290,9 @@ const taskInputs = {
     notes: [textEditHelp("--description")],
   },
   move: {
-    options: {},
+    options: {
+      from: { type: "string", value: { kind: "column-name", name: "column" } },
+    },
     forms: [
       {
         id: "default",
@@ -849,17 +851,22 @@ Examples:
     input: taskInputs.move,
     results: taskChangeResults,
     run: (args) => {
-      const { positionals } = parseArgs({
+      const { values, positionals, tokens } = parseArgs({
         options: taskInputs.move.options,
         args,
         allowPositionals: true,
         strict: true,
+        tokens: true,
       });
+      validateUniqueOptions(tokens, taskInputs.move.options);
       validatePositionals(positionals, taskInputs.move.forms[0]);
 
       const taskKeys = positionals.slice(0, -1);
       const targetColumn = positionals.at(-1)!;
-      const moves = task.moveMany({ taskKeys, targetColumn }, currentActor());
+      const moves = task.moveMany(
+        { taskKeys, targetColumn, fromColumn: values.from },
+        currentActor(),
+      );
       const board = createColumnBoard();
       outputChanges(
         moves,
@@ -876,9 +883,12 @@ Each task's column is looked up in its own project.
 
 Moving to the current column leaves the task unchanged.
 Archived tasks must be unarchived before they can be moved.
+With --from, the move fails with a conflict error unless every task is still in that column.
 If any task cannot be moved, none change.
 
-Example: zinn task move MDR-1 MDR-2 'In Progress'`,
+Examples:
+  zinn task move MDR-1 MDR-2 'In Progress'
+  zinn task move MDR-1 'In Progress' --from TODO`,
     guessedFlags: { "--status": suggestTaskMove, "--column": suggestTaskMove },
   },
   order: {

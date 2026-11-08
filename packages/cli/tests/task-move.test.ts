@@ -208,3 +208,90 @@ test("task move rejects archived tasks", async () => {
     expect(after).toEqual(before);
   });
 });
+
+const countMoves = (testDir: string) =>
+  withTestDb(testDir, (db) =>
+    db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM activity WHERE action = 'move'").get()!.count,
+  );
+
+test("task move --from moves only tasks still in that column", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "GUARD"], testDir);
+    await runZinn(["task", "create", "GUARD", "--title", "one"], testDir);
+
+    const moved = await runZinn(["task", "move", "GUARD-1", "In Progress", "--from", "backlog"], testDir);
+    expect(moved.code).toBe(0);
+    expect(moved.stdout).toContain("In Progress");
+
+    // A second taker gets a conflict, even though the task is already in its target column.
+    const taken = await runZinn(["--json", "task", "move", "GUARD-1", "In Progress", "--from", "Backlog"], testDir);
+    expect(taken.code).toBe(1);
+    expect(taken.stdout).toBe("");
+    expect(errorDocumentSchema.parse(JSON.parse(taken.stderr)).error).toMatchObject({
+      code: "conflict",
+      details: {
+        entity: "task",
+        key: "GUARD-1",
+        reason: "column_changed",
+        expectedColumn: "Backlog",
+        actualColumn: "In Progress",
+      },
+    });
+    expect(countMoves(testDir)).toBe(1);
+  });
+});
+
+test("task move --from changes no task when any of them left the column", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "BULK"], testDir);
+    await runZinn(["task", "create", "BULK", "--title", "one"], testDir);
+    await runZinn(["task", "create", "BULK", "--title", "two"], testDir);
+    await runZinn(["task", "move", "BULK-2", "Review"], testDir);
+
+    const result = await runZinn(["--json", "task", "move", "BULK-1", "BULK-2", "Done", "--from", "Backlog"], testDir);
+
+    expect(result.code).toBe(1);
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({
+      code: "conflict",
+      details: { key: "BULK-2", reason: "column_changed", actualColumn: "Review" },
+    });
+    expect((await runZinn(["task", "list", "BULK"], testDir)).stdout).toMatch(/^BULK-1 \| Backlog[^\n]*\nBULK-2 \| Review/);
+    expect(countMoves(testDir)).toBe(1);
+  });
+});
+
+test("task move --from rejects a column the project does not have", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "MISS"], testDir);
+    await runZinn(["task", "create", "MISS", "--title", "one"], testDir);
+
+    const result = await runZinn(["--json", "task", "move", "MISS-1", "Done", "--from", "Later"], testDir);
+
+    expect(result.code).toBe(1);
+    expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({
+      code: "not_found",
+      details: { entity: "column", key: "Later" },
+    });
+    expect(countMoves(testDir)).toBe(0);
+  });
+});
+
+test("concurrent guarded moves of one task let exactly one succeed", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const takerCount = 8;
+    await runZinn(["project", "create", "RACE"], testDir);
+    await runZinn(["task", "create", "RACE", "--title", "contested"], testDir);
+
+    const results = await Promise.all(
+      Array.from({ length: takerCount }, () =>
+        runZinn(["--json", "task", "move", "RACE-1", "In Progress", "--from", "Backlog"], testDir),
+      ),
+    );
+
+    expect(results.filter((result) => result.code === 0)).toHaveLength(1);
+    for (const result of results.filter((result) => result.code !== 0)) {
+      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error.details?.reason).toBe("column_changed");
+    }
+    expect(countMoves(testDir)).toBe(1);
+  });
+});

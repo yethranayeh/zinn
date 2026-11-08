@@ -461,6 +461,14 @@ zinn task move MDR-1 MDR-2 APP-4 'In Progress'
 
 See [Changing tasks in bulk](#changing-tasks-in-bulk).
 
+`--from` moves a task only if it is still in the given column. Use it to take a task that another agent or person may be taking at the same time:
+
+```sh title="Take a task only if nobody else has"
+zinn task move MDR-1 'In Progress' --from TODO
+```
+
+When the task has left that column, the move changes nothing and fails with error code `conflict` and reason `column_changed`. The error's `expectedColumn` and `actualColumn` name both columns. This holds even when the task is already in the target column, so of several callers taking the same task, exactly one succeeds. With several task keys, one task outside the column fails the whole move.
+
 Change a task's position within its current column:
 
 ```sh title="Order tasks"

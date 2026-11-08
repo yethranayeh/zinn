@@ -22,6 +22,7 @@ export type FailureFacts = {
     | "archived"
     | "parent_exists"
     | "relation_changed"
+    | "column_changed"
     | "cycle"
     | "different_project"
     | "different_column"
@@ -51,6 +52,8 @@ export type FailureFacts = {
   backupPath?: string;
   schemaVersion?: number;
   supportedSchemaVersion?: number;
+  expectedColumn?: string;
+  actualColumn?: string;
 };
 
 export class CoreError extends Error {

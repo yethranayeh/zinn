@@ -297,7 +297,9 @@ function orderTask(props: TaskOrderProps, actor: Actor): TaskChange {
   };
 }
 
-function moveTask(props: { taskKey: string; targetColumn: string }, actor: Actor): TaskChange {
+type TaskMoveProps = { taskKey: string; targetColumn: string; fromColumn?: string };
+
+function moveTask(props: TaskMoveProps, actor: Actor): TaskChange {
   const taskMatch = getTaskByKey(props.taskKey);
 
   if (taskMatch.archived_at != null) {
@@ -311,12 +313,35 @@ function moveTask(props: { taskKey: string; targetColumn: string }, actor: Actor
   const projectMatch = dbProject.getById(taskMatch.project_id)!;
   const projectColumns = dbColumn.getAllByProjectId(taskMatch.project_id);
   const { columnMatch } = requireColumnByName(projectMatch, projectColumns, props.targetColumn);
+  const currentColumn = projectColumns.find((column) => column.id === taskMatch.column_id)!;
+
+  if (props.fromColumn !== undefined) {
+    const { columnMatch: expectedColumn } = requireColumnByName(
+      projectMatch,
+      projectColumns,
+      props.fromColumn,
+    );
+    const hasLeftExpectedColumn = expectedColumn.id !== currentColumn.id;
+
+    if (hasLeftExpectedColumn) {
+      throw new CoreError(
+        `${taskMatch.key} is in ${currentColumn.name}, not ${expectedColumn.name}`,
+        "conflict",
+        {
+          entity: "task",
+          key: taskMatch.key,
+          reason: "column_changed",
+          expectedColumn: expectedColumn.name,
+          actualColumn: currentColumn.name,
+        },
+      );
+    }
+  }
 
   if (columnMatch.id === taskMatch.column_id) {
     return { task: taskMatch, changed: false };
   }
 
-  const currentColumn = projectColumns.find((column) => column.id === taskMatch.column_id)!;
   const lastTask = dbTask.getLastByColumnId(columnMatch.id);
   const order = generateKeyBetween(lastTask?.task_order ?? null, null);
   const now = Date.now();
@@ -683,21 +708,25 @@ export const task = {
    *  matching placement at the bottom of a visual kanban column.
    * Giving a task's current column as the target will not do anything.
    * Archived tasks must be unarchived before they can be moved.
+   * With `fromColumn`, the move fails with reason `column_changed` unless the task is still in that column.
    */
-  move: (props: { taskKey: string; targetColumn: string }, actor: Actor) => {
+  move: (props: TaskMoveProps, actor: Actor) => {
     const validActor = validateTaskInput(actorSchema, actor);
 
     return writeTransaction(() => moveTask(props, validActor).task);
   },
   moveMany: (
-    props: { taskKeys: Array<string>; targetColumn: string },
+    props: { taskKeys: Array<string>; targetColumn: string; fromColumn?: string },
     actor: Actor,
   ): Array<TaskChange> => {
     const validActor = validateTaskInput(actorSchema, actor);
 
     return writeTransaction(() =>
       props.taskKeys.map((taskKey) =>
-        moveTask({ taskKey, targetColumn: props.targetColumn }, validActor),
+        moveTask(
+          { taskKey, targetColumn: props.targetColumn, fromColumn: props.fromColumn },
+          validActor,
+        ),
       ),
     );
   },
