@@ -1,4 +1,5 @@
-import { fit, ink, noise, onResize, stepper } from "./canvas";
+import { stepper } from "./canvas";
+import { fit, ink, noise, onResize } from "../ui/texture-slider/canvas";
 
 const glyphs: Record<string, string[]> = {
   "0": ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],

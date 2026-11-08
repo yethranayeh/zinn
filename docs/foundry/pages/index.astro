@@ -18,7 +18,12 @@ const typefaces = [...theme.matchAll(/--font-([\w-]+): "([^"]+)"/g)].map(([, nam
 <FoundryLayout description="Zinn's design system, rendered from the components zinn.sh is built with.">
 	<header class='flex max-w-[65ch] flex-col gap-4'>
 		<h1 class='text-3xl font-semibold md:text-4xl'>Foundry</h1>
-		<p>Zinn's design system. Every specimen here is rendered from the same components zinn.sh is built with.</p>
+		<p>
+			Zinn's design system. Every specimen here is rendered from the same components <a
+				href='https://zinn.sh'
+				target='_blank'>[zinn.sh]</a
+			> is built with.
+		</p>
 	</header>
 
 	<section class='flex flex-col gap-4' aria-labelledby='components'>

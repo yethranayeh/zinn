@@ -1,4 +1,4 @@
-import { framesDrawn } from "./canvas";
+import { framesDrawn } from "../ui/texture-slider/canvas";
 
 const HISTORY_LENGTH = 60;
 

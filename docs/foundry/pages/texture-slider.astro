@@ -1,0 +1,54 @@
+---
+import TextureSlider from "../../src/components/ui/texture-slider/TextureSlider.astro";
+import { textureNames } from "../../src/components/ui/texture-slider/variants";
+import ComponentHeading from "../components/ComponentHeading.astro";
+import Specimen from "../components/Specimen.astro";
+import FoundryLayout from "../layouts/FoundryLayout.astro";
+
+const labels = {
+	rules: "Rules",
+	scatter: "Scatter",
+	halftone: "Halftone"
+};
+---
+
+<FoundryLayout title='Texture slider' description='Texture slider is a range input over a canvas track.'>
+	<ComponentHeading folder='texture-slider'>
+		<p>
+			A range input over a canvas track, for picking one value on a continuous scale. The track is solid up to the
+			value, and the texture named by <code>texture</code> fills the rest. The track follows the hand with no easing. The
+			label and the value readout stay outside the component, and the caller keeps <code>aria-valuetext</code> in its unit.
+		</p>
+		<ul class='flex flex-col gap-2'>
+			<li><code>rules</code>, the default, draws evenly spaced vertical rules.</li>
+			<li><code>scatter</code> thins pixels out from the edge.</li>
+			<li>
+				<code>halftone</code> grows a staggered dot grid toward the edge. Its dots never vanish, so use another texture when
+				zero has to read as empty.
+			</li>
+		</ul>
+	</ComponentHeading>
+
+	<div class='grid gap-4'>
+		{
+			textureNames.map((texture) => (
+				<Specimen label={`<TextureSlider texture='${texture}'>`} block>
+					<div class='grid gap-3'>
+						<label for={`texture-slider-${texture}`} class='font-mono text-xs'>
+							{labels[texture]} texture
+						</label>
+						<TextureSlider
+							texture={texture}
+							id={`texture-slider-${texture}`}
+							min='0'
+							max='1000'
+							step='1'
+							value='620'
+							aria-valuetext='620 of 1000'
+						/>
+					</div>
+				</Specimen>
+			))
+		}
+	</div>
+</FoundryLayout>

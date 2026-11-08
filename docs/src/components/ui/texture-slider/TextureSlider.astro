@@ -1,0 +1,68 @@
+---
+import type { TextureName } from "./variants";
+
+import { twMerge } from "tailwind-merge";
+import { defaultTexture } from "./variants";
+
+interface Props {
+	/** The texture drawn behind the track. */
+	texture?: TextureName;
+	id?: string;
+	min?: number | string;
+	max?: number | string;
+	step?: number | string;
+	value?: number | string;
+	"aria-valuetext"?: string;
+	class?: string;
+}
+
+const {
+	texture = defaultTexture,
+	id,
+	min,
+	max,
+	step,
+	value,
+	"aria-valuetext": ariaValueText,
+	class: className
+} = Astro.props;
+---
+
+<div class={twMerge("relative h-11", className)} data-texture-slider data-texture={texture}>
+	<canvas class='block absolute inset-x-0 top-[0.375rem] w-full h-8 pointer-events-none' aria-hidden='true'></canvas>
+	<input
+		id={id}
+		class='absolute inset-0 w-full h-11 m-0 appearance-none bg-transparent cursor-ew-resize touch-pan-y [&::-webkit-slider-runnable-track]:h-11 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-0 [&::-webkit-slider-thumb]:h-11 [&::-webkit-slider-thumb]:border-0 [&::-webkit-slider-thumb]:bg-transparent [&::-moz-range-track]:h-11 [&::-moz-range-track]:bg-transparent [&::-moz-range-thumb]:w-0 [&::-moz-range-thumb]:h-11 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:rounded-none [&::-moz-range-thumb]:bg-transparent'
+		type='range'
+		{min}
+		{max}
+		{step}
+		{value}
+		aria-valuetext={ariaValueText}
+	/>
+</div>
+
+<script>
+	import type { TextureName } from "./variants";
+
+	import { onResize } from "./canvas";
+	import { painters } from "./draw";
+
+	function setup(slider: HTMLElement) {
+		const canvas = slider.querySelector<HTMLCanvasElement>("canvas");
+		const input = slider.querySelector<HTMLInputElement>("input");
+		if (!canvas || !input) {
+			return;
+		}
+		const paint = painters[slider.dataset.texture as TextureName];
+		const share = () => (input.valueAsNumber - Number(input.min)) / (Number(input.max) - Number(input.min));
+		const draw = () => paint(canvas, share());
+
+		input.addEventListener("input", draw);
+		onResize(canvas, draw);
+	}
+
+	for (const slider of document.querySelectorAll<HTMLElement>("[data-texture-slider]")) {
+		setup(slider);
+	}
+</script>
