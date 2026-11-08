@@ -44,6 +44,8 @@ import { headerLinks } from "./links";
 </Dialog>
 
 <script>
+	// Tailwind's sm breakpoint, where the drawer and its trigger hide.
+	const smBreakpoint = "(min-width: 40rem)";
 	const dialog = document.querySelector<HTMLDialogElement>("#mobile-menu");
 	const trigger = document.querySelector<HTMLButtonElement>("[data-menu-open]");
 
@@ -61,7 +63,7 @@ import { headerLinks } from "./links";
 			link.addEventListener("click", () => dialog.close());
 		});
 
-		window.matchMedia("(min-width: 40rem)").addEventListener("change", (event) => {
+		window.matchMedia(smBreakpoint).addEventListener("change", (event) => {
 			if (event.matches && dialog.open) {
 				dialog.close();
 			}

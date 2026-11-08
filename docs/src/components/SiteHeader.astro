@@ -31,8 +31,11 @@ import { headerLinks } from "./header/links";
 	<noscript>
 		<style>
 			/* Brand row plus the no-JS fallback row: 1.5rem padding, 1.5rem links and the top rule. */
-			:root {
-				--site-header-height: calc(var(--site-brand-height) + 1px + 3.0625rem);
+			/* 40rem is Tailwind's sm breakpoint, where the fallback row hides. */
+			@media (width < 40rem) {
+				:root {
+					--site-header-height: calc(var(--site-brand-height) + 1px + 3.0625rem);
+				}
 			}
 		</style>
 		<nav
