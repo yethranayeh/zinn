@@ -5,7 +5,9 @@ import sitemap from "@astrojs/sitemap";
 import tailwindcss from "@tailwindcss/vite";
 import mdx from "@astrojs/mdx";
 import { satteri } from "@astrojs/markdown-satteri";
+
 import { commandBlocks } from "./src/markdown/command-blocks.mjs";
+import { pagefindIgnoreContents } from "./src/markdown/pagefind-ignore-contents.mjs";
 
 const prototypesDir = new URL("./src/prototypes/", import.meta.url);
 
@@ -34,7 +36,7 @@ export default defineConfig({
 	devToolbar: { enabled: false },
 	integrations: [
 		sitemap({ filter: (page) => !page.endsWith(".md") }),
-		mdx({ processor: satteri({ hastPlugins: [commandBlocks] }) }),
+		mdx({ processor: satteri({ hastPlugins: [commandBlocks, pagefindIgnoreContents] }) }),
 		devPrototypes
 	],
 	markdown: { syntaxHighlight: false },

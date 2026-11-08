@@ -103,3 +103,14 @@ test("the CLI reference's table of contents is not a result", async () => {
   const sections = pages.flatMap((page) => page.sub_results.map((section) => section.url));
   expect(sections).not.toContain("/docs/cli/#contents");
 });
+
+// "Shared conventions" is only a Contents label. The others each also title one section.
+test.each([
+  ["Shared conventions", 0],
+  ["Command aliases", 1],
+  ["Task relations", 1],
+  ["Who am I?", 1],
+])("the CLI reference indexes %s outside its table of contents %d times", async (label, count) => {
+  const reference = (await search(null)).find((page) => page.url === "/docs/cli/");
+  expect(reference?.content.split(label).length - 1).toBe(count);
+});
