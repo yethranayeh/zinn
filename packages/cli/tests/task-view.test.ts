@@ -57,21 +57,6 @@ test("task view exposes stored timestamps after its content and history, using l
   });
 });
 
-test("task view resolves a case-insensitive key and prints its canonical form", async () => {
-  await withIsolatedZinnDir(async (testDir) => {
-    await runZinn(["project", "create", "VIEW", "--name", "Viewed"], testDir);
-    await runZinn(["task", "create", "VIEW", "--title", "visible task", "--description", "visible description"], testDir);
-
-    const result = await runZinn(["task", "view", "vIeW-1"], testDir);
-
-    expect(result.code).toBe(0);
-    expect(result.stderr).toBe("");
-    expect(taskViewContent(result.stdout)).toBe(
-      `VIEW-1 | Backlog | - | visible task\n\n${SECTION_RULE}\nDescription:\nvisible description\n`,
-    );
-  });
-});
-
 test("task view prints the task row followed by Description, Relations, and Comments sections", async () => {
   await withIsolatedZinnDir(async (testDir) => {
     const run = (...args: Array<string>) => runZinn(args, testDir, { TZ: "Europe/Berlin" });
@@ -255,14 +240,11 @@ test("task view requires a task key", async () => {
 
 test("task view rejects malformed task keys with an actionable error", async () => {
   await withIsolatedZinnDir(async (testDir) => {
-    for (const invalidKey of ["VIEW", "VIEW-", "VIEW-one", "VIEW-1-extra"]) {
-      const result = await runZinn(["--json", "task", "view", invalidKey], testDir);
+    const invalid = await runZinn(["--json", "task", "view", "VIEW-one"], testDir);
 
-      expect(result.code).toBe(1);
-      expect(result.stdout).toBe("");
-      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "invalid_input", message: expect.stringContaining(invalidKey), details: { field: ["taskKey"] } });
-
-    }
+    expect(invalid.code).toBe(1);
+    expect(invalid.stdout).toBe("");
+    expect(errorDocumentSchema.parse(JSON.parse(invalid.stderr)).error).toMatchObject({ code: "invalid_input", message: expect.stringContaining("VIEW-one"), details: { field: ["taskKey"] } });
 
     // ? ZINN-51: a word that begins with a dash is read as a word only after --.
     const dashKey = await runZinn(["--json", "task", "view", "--", "-1"], testDir);

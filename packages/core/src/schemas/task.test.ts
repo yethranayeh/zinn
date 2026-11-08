@@ -1,10 +1,17 @@
 import { expect, test } from "bun:test";
-import { validateTaskInput, taskEditSchema, taskCreateSchema, taskListSchema } from "./task";
+import { validateTaskInput, taskEditSchema, taskCreateSchema, taskListSchema, parseTaskKey } from "./task";
 
 test("task list normalizes a single column name", () => {
   expect(taskListSchema.parse({ columnName: " In Progress " })).toEqual({ columnName: "In Progress" });
   expect(taskListSchema.parse({})).toEqual({});
   expect(taskListSchema.safeParse({ columnName: ["Review", "Done"] }).success).toBe(false);
+});
+
+test("task keys require a letter-led project key and a positive number", () => {
+  for (const key of ["VIEW", "VIEW-", "VIEW-one", "VIEW-1-extra", "-1", "2B-1"]) {
+    expect(parseTaskKey(key)).toBeNull();
+  }
+  expect(parseTaskKey("app-1")).toEqual({ projectKey: "app", taskNumber: 1 });
 });
 
 test("edit schemas normalize empty descriptions and never default omitted fields", () => {
