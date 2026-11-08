@@ -6,6 +6,8 @@ import { commandLine } from "./format.ts";
 
 const TIME_MACHINE_PREFERENCES = "/Library/Preferences/com.apple.TimeMachine";
 const AUTO_BACKUP_KEY = "AutoBackup";
+// `tmutil destinationinfo -X` prints a plist with an empty top-level dict when no destination is configured.
+const EMPTY_PLIST_DICT = /<plist[^>]*>\s*<dict>\s*<\/dict>\s*<\/plist>/;
 
 export type SettingFlags = {
   spotlight: boolean;
@@ -143,6 +145,10 @@ async function planTimeMachineChange(
   reads: Array<string>,
   allowSudoReads: boolean,
 ) {
+  if (!(await hasBackupDestination(runner, reads))) {
+    notes.push("Time Machine isn't set up, leaving it unchanged");
+    return;
+  }
   const automatic = await readAutomaticBackups(runner, allowSudoReads, reads);
   if (automatic === undefined) {
     notes.push(
@@ -165,6 +171,15 @@ async function planTimeMachineChange(
       guard: "time-machine",
     }),
   );
+}
+
+/** Without a destination there are no automatic backups to pause, and no sudo read is needed. */
+async function hasBackupDestination(runner: Runner, reads: Array<string>): Promise<boolean> {
+  const readArguments = ["tmutil", "destinationinfo", "-X"];
+  reads.push(commandLine(readArguments));
+  const result = await runner.capture(readArguments);
+  const noDestinations = result.exitCode === 0 && EMPTY_PLIST_DICT.test(result.stdout);
+  return !noDestinations;
 }
 
 async function readAutomaticBackups(

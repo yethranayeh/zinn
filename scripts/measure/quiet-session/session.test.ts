@@ -157,6 +157,7 @@ class FakeRunner implements Runner {
   readonly jobOutputs = new Map<string, string[]>();
   spotlightOutput = "/:\n\tIndexing enabled. \n";
   timeMachineResult: CommandResult = { exitCode: 1, stdout: "", stderr: "not set" };
+  timeMachineDestinations = true;
   wifiDevice = "en0";
   wifiPower: "On" | "Off" = "On";
   interactiveResult: CommandResult = OK;
@@ -178,6 +179,16 @@ class FakeRunner implements Runner {
     }
     if (isDefaultsRead(argv)) {
       return this.timeMachineResult;
+    }
+    if (key === "tmutil destinationinfo -X") {
+      const destinations = this.timeMachineDestinations
+        ? "<key>Destinations</key><array><dict></dict></array>"
+        : "";
+      return {
+        exitCode: 0,
+        stdout: `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n${destinations}</dict>\n</plist>\n`,
+        stderr: "",
+      };
     }
     if (key === "networksetup -listallhardwareports") {
       return { exitCode: 0, stdout: hardwarePorts(this.wifiDevice), stderr: "" };
@@ -418,7 +429,27 @@ test("an unreadable Time Machine state is left unchanged", async () => {
   try {
     const outcome = await runSession(options);
     expect(outcome.exitCode).toBe(0);
-    expect(callsOf(runner).some((call) => call.includes("tmutil"))).toBe(false);
+    expect(callsOf(runner).some((call) => call.includes("tmutil disable"))).toBe(false);
+    expect(existsSync(options.statePath)).toBe(false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Time Machine without a destination is left unchanged without reading its preferences", async () => {
+  const runner = new FakeRunner();
+  runner.timeMachineDestinations = false;
+  runner.timeMachineResult = { exitCode: 0, stdout: "1\n", stderr: "" };
+  const { options, root } = createSession(runner, {
+    settings: { spotlight: false, timeMachine: true, wifi: false },
+  });
+  try {
+    const outcome = await runSession(options);
+    expect(outcome.exitCode).toBe(0);
+    const calls = callsOf(runner);
+    expect(calls).toContain("tmutil destinationinfo -X");
+    expect(calls.some((call) => call.includes("defaults read"))).toBe(false);
+    expect(calls.some((call) => call.includes("tmutil disable"))).toBe(false);
     expect(existsSync(options.statePath)).toBe(false);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -732,6 +763,7 @@ test("--dry-run reads state but changes no setting and writes no session files",
       const readOnly =
         call === "mdutil -s -a" ||
         call === TIME_MACHINE_READ ||
+        call === "tmutil destinationinfo -X" ||
         call === "networksetup -listallhardwareports" ||
         call === "networksetup -getairportpower en0";
       expect(readOnly).toBe(true);
