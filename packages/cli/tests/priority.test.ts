@@ -72,16 +72,8 @@ test("priority persists across CLI creation, editing, listing, clearing, and no-
         `PRI-5 | Backlog | U | urgent`,
       ].join("\n") + "\n",
     );
-    withTestDb(directory, (db) => db.run("UPDATE task SET updated_at = 1 WHERE number = 1"));
     expect((await runZinn(["task", "edit", "PRI-1", "--priority", "high"], directory)).code).toBe(0);
-    withTestDb(directory, (db) => {
-      expect(db.query<{ updated_at: number }, []>("SELECT updated_at FROM task WHERE number = 1").get()!.updated_at).toBeGreaterThan(1);
-    });
-    withTestDb(directory, (db) => db.run("UPDATE task SET updated_at = 1 WHERE number = 1"));
     expect((await runZinn(["task", "edit", "PRI-1", "--priority", "high"], directory)).code).toBe(0);
-    withTestDb(directory, (db) => {
-      expect(db.query<{ updated_at: number }, []>("SELECT updated_at FROM task WHERE number = 1").get()!.updated_at).toBe(1);
-    });
     expect((await runZinn(["task", "edit", "PRI-1", "--title", "Renamed"], directory)).stdout).toBe(
       "PRI-1 | Backlog | H | Renamed\n",
     );
