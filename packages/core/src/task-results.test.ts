@@ -248,6 +248,7 @@ test("column filtering narrows ordered project and global lists together with la
       const later = project.create({ key: "BBB" }, actor);
       const earlier = project.create({ key: "AAA" }, actor);
       const missing = project.create({ key: "CCC" }, actor);
+      const idle = project.create({ key: "IDLE" }, actor);
       column.edit({ projectKey: "CCC", columnName: "In Progress", name: "Working" }, actor);
       label.create({ name: "CLI" }, actor);
       label.create({ name: "Groom" }, actor);
@@ -284,6 +285,7 @@ test("column filtering narrows ordered project and global lists together with la
         }
       }
       assert.deepEqual(keys({ projectKey: "CCC", columnName: "In Progress" }), []);
+      assert.deepEqual(keys({ projectKey: "IDLE" }), []);
       assert.throws(() => task.getAll({ columnName: "Nowhere", labelNames: ["missing"] }), /label/);
       assert.throws(() => task.getAll({ projectKey: "NOPE", columnName: "Nowhere" }), (error) => error instanceof CoreError && error.kind === "missing");
     });
