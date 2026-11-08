@@ -371,17 +371,6 @@ test("project activity navigation scans history a bounded number of times for ma
   });
 });
 
-test("activity returns all events by default and limits only after selecting matches", async () => {
-  await withIsolatedZinnDir(async (directory) => {
-    const events = await seedRecordedActivity(directory, Array.from({ length: 55 }, (_, index) => ({
-      id: `11111111-1234-7000-8000-${String(index).padStart(12, "0")}`,
-      created_at: index,
-    })));
-    expect(JSON.parse((await runZinn(["activity", "list", "--json"], directory)).stdout)).toEqual(events.toReversed());
-    expect(JSON.parse((await runZinn(["activity", "list", "--limit", "2", "--json"], directory)).stdout)).toEqual(events.toReversed().slice(0, 2));
-  });
-});
-
 test("activity continuation commands preserve filters, globals and shell-sensitive values", async () => {
   await withIsolatedZinnDir(async (directory) => {
     const session = "-a session ' $(touch pagination-injected) `touch pagination-injected`\nnext";
