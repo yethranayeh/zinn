@@ -18,6 +18,14 @@ export type SpawnOptions = {
   onOutput?: (output: OutputLine) => void;
 };
 
+export type CaptureOptions = {
+  cwd?: string;
+  /** Replaces the inherited environment, as measured commands need a fixed one. */
+  env?: Record<string, string>;
+  /** Sends stdout to /dev/null instead of buffering it, for a command run in a tight loop. */
+  discardStdout?: boolean;
+};
+
 export type ProcessHandle = {
   readonly pid: number | undefined;
   readonly done: Promise<CommandResult>;
@@ -36,7 +44,7 @@ export type PipeProcess = {
 
 export interface Runner {
   /** Runs a command to completion and captures its output. */
-  capture: (argv: readonly string[], options?: { cwd?: string }) => Promise<CommandResult>;
+  capture: (argv: readonly string[], options?: CaptureOptions) => Promise<CommandResult>;
   /** Runs a command with the terminal attached, so sudo can prompt for a password. */
   interactive: (argv: readonly string[], options?: { cwd?: string }) => Promise<CommandResult>;
   /** Starts a command and streams its output line by line. */
@@ -62,12 +70,17 @@ export function createRunner(): Runner {
       const child = Bun.spawn({
         cmd: [...argv],
         cwd: options?.cwd,
+        env: options?.env,
         stdin: "ignore",
-        stdout: "pipe",
+        stdout: options?.discardStdout === true ? "ignore" : "pipe",
         stderr: "pipe",
       });
+      const stdoutPromise =
+        options?.discardStdout === true || child.stdout === undefined
+          ? Promise.resolve("")
+          : new Response(child.stdout).text();
       const [stdout, stderr, exitCode] = await Promise.all([
-        new Response(child.stdout).text(),
+        stdoutPromise,
         new Response(child.stderr).text(),
         child.exited,
       ]);

@@ -2,15 +2,19 @@
 /** Measures a published @zinn-dev/cli release against cached fixtures. */
 
 import { readdirSync, realpathSync, statSync } from "node:fs";
-import { copyFile, mkdir } from "node:fs/promises";
+import { copyFile, mkdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 
+import { analyze, formatAnalysis } from "../energy/analysis.ts";
+import { parseBlocks } from "../energy/blocks.ts";
+import { parsePowerLog } from "../energy/samples.ts";
 import { createRecordFolder, writeJson, writeMeta } from "../record.ts";
 import { createRunner, type Runner } from "../quiet-session/runner.ts";
 import { parseArguments, USAGE, type TimeArguments } from "./args.ts";
 import { selectCommands, STARTUP_COMMANDS } from "./commands.ts";
 import { computeDiskSlopes, DISK_FIXTURES } from "./disk.ts";
+import { runEnergy } from "./energy.ts";
 import { measuredEnvironment, runWithEnvironment } from "./exec.ts";
 import {
   buildCommandLine,
@@ -20,6 +24,7 @@ import {
   type CommandTiming,
   type HyperfineEntry,
 } from "./hyperfine.ts";
+import { buildMeta } from "./meta.ts";
 import { canonicalPath, isInside, removeRunDirectory, resolveScratchDirectory } from "./paths.ts";
 import {
   ensureFixture,
@@ -30,11 +35,8 @@ import {
 } from "./setup.ts";
 import { formatTimingTable } from "./report.ts";
 import {
-  readHyperfineVersion,
   readLoadAverages,
   readNodeVersion,
-  readRepositoryState,
-  readSystemInfo,
 } from "./system.ts";
 
 type FileEntry = {
@@ -57,21 +59,6 @@ type SizeRecord = {
   commands: SingleRunOutput[];
 };
 
-type MetaOptions = {
-  mode: string;
-  version: string;
-  arguments: readonly string[];
-  runner: Runner;
-  repositoryRoot: string;
-  install: InstallInfo;
-  nodePath: string;
-  nodeVersion: string;
-  loadStart: number[];
-  loadEnd: number[];
-  startedAt: Date;
-  endedAt: Date;
-};
-
 const USAGE_ERROR_EXIT = 2;
 
 async function main(): Promise<number> {
@@ -79,6 +66,10 @@ async function main(): Promise<number> {
   if (parsed.kind === "error") {
     process.stderr.write(`${parsed.message}\n\n${USAGE}\n`);
     return USAGE_ERROR_EXIT;
+  }
+  if (parsed.kind === "energy-analyze") {
+    await runEnergyAnalyze(parsed.powerPath, parsed.blocksPath);
+    return 0;
   }
 
   const runner = createRunner();
@@ -114,10 +105,22 @@ async function main(): Promise<number> {
   };
   if (parsed.kind === "time") {
     await runTime({ ...common, parsed });
-  } else {
+  } else if (parsed.kind === "disk") {
     await runDisk(common);
+  } else {
+    await runEnergy({ ...common, parsed });
   }
   return 0;
+}
+
+async function runEnergyAnalyze(powerPath: string, blocksPath: string): Promise<void> {
+  const [powerText, blocksText] = await Promise.all([
+    readFile(powerPath, "utf8"),
+    readFile(blocksPath, "utf8"),
+  ]);
+  const samples = parsePowerLog(powerText);
+  const blocks = parseBlocks(blocksText);
+  console.log(formatAnalysis(analyze(samples, blocks)).join("\n"));
 }
 
 async function runTime(options: {
@@ -367,29 +370,6 @@ async function runDisk(options: {
   console.log(`perTask: ${slopes.perTask} bytes`);
   console.log(`perComment: ${slopes.perComment} bytes`);
   console.log(`Results: ${recordDirectory}`);
-}
-
-async function buildMeta(options: MetaOptions): Promise<unknown> {
-  return {
-    mode: options.mode,
-    version: options.version,
-    arguments: options.arguments,
-    repository: await readRepositoryState(options.runner, options.repositoryRoot),
-    cli: options.install.cliVersion,
-    core: options.install.coreVersion,
-    node: {
-      path: options.nodePath,
-      version: options.nodeVersion,
-    },
-    hyperfine: await readHyperfineVersion(options.runner),
-    system: await readSystemInfo(options.runner),
-    loadAverages: {
-      start: options.loadStart,
-      end: options.loadEnd,
-    },
-    startedAt: options.startedAt.toISOString(),
-    endedAt: options.endedAt.toISOString(),
-  };
 }
 
 async function runHyperfine(

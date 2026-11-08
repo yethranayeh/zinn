@@ -10,6 +10,18 @@ export const DEFAULT_SIZES: readonly number[] = [100, 1_000, 10_000];
 export const DEFAULT_RUNS = 30;
 export const DEFAULT_WARMUP = 3;
 
+export const DEFAULT_ENERGY_ROUNDS = 5;
+export const DEFAULT_ENERGY_IDLE_SECONDS = 20;
+export const DEFAULT_ENERGY_WORK_SECONDS = 20;
+export const DEFAULT_ENERGY_SETTLE_SECONDS = 5;
+export const CHECK_ROUNDS = 1;
+export const CHECK_IDLE_SECONDS = 5;
+export const CHECK_WORK_SECONDS = 5;
+export const CHECK_SETTLE_SECONDS = 2;
+
+/** Sizes used when only --commands overrides the default energy workload set. */
+export const DEFAULT_ENERGY_SIZES: readonly number[] = [100, 10_000];
+
 export type TimeArguments = {
   kind: "time";
   version: string;
@@ -20,8 +32,23 @@ export type TimeArguments = {
   commands: string[];
 };
 
+export type EnergyArguments = {
+  kind: "energy";
+  version: string;
+  rounds: number;
+  idleSeconds: number;
+  workSeconds: number;
+  settleSeconds: number;
+  /** Undefined keeps the fixed default workload set. */
+  commands: string[] | undefined;
+  /** Undefined keeps the fixed default workload set. */
+  sizes: number[] | undefined;
+};
+
 export type ParsedArguments =
   | TimeArguments
+  | EnergyArguments
+  | { kind: "energy-analyze"; powerPath: string; blocksPath: string }
   | { kind: "disk"; version: string }
   | { kind: "error"; message: string };
 
@@ -30,7 +57,16 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
   if (mode === undefined) {
     return { kind: "error", message: "pass a mode and a release version" };
   }
-  if (mode !== "time" && mode !== "disk") {
+  if (mode === "energy-analyze") {
+    if (args.length !== 3) {
+      return {
+        kind: "error",
+        message: "energy-analyze needs a power plist and a blocks tsv",
+      };
+    }
+    return { kind: "energy-analyze", powerPath: args[1]!, blocksPath: args[2]! };
+  }
+  if (mode !== "time" && mode !== "disk" && mode !== "energy") {
     return { kind: "error", message: `unknown mode: ${mode}` };
   }
   const version = args[1];
@@ -45,6 +81,9 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
       return { kind: "error", message: "disk takes only a release version" };
     }
     return { kind: "disk", version };
+  }
+  if (mode === "energy") {
+    return parseEnergyArguments(args, version);
   }
 
   let sizes: number[] = [...DEFAULT_SIZES];
@@ -107,6 +146,84 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
   }
 
   return { kind: "time", version, sizes, runs, warmup, commands };
+}
+
+function parseEnergyArguments(args: readonly string[], version: string): ParsedArguments {
+  let rounds = DEFAULT_ENERGY_ROUNDS;
+  let check = false;
+  let commands: string[] | undefined;
+  let sizes: number[] | undefined;
+
+  for (let index = 2; index < args.length; index++) {
+    const argument = args[index]!;
+    if (argument === "--check") {
+      check = true;
+      continue;
+    }
+    if (argument === "--rounds" || argument.startsWith("--rounds=")) {
+      const option = readOptionValue(argument, args, index);
+      const parsed = parsePositiveInteger(option.value);
+      if (parsed === undefined) {
+        return { kind: "error", message: "--rounds needs a positive whole number" };
+      }
+      rounds = parsed;
+      index = option.index;
+      continue;
+    }
+    if (argument === "--sizes" || argument.startsWith("--sizes=")) {
+      const option = readOptionValue(argument, args, index);
+      if (option.value === undefined) {
+        return { kind: "error", message: "--sizes needs a comma-separated list of task counts" };
+      }
+      const parsed = parseSizes(option.value);
+      if (parsed === undefined) {
+        return {
+          kind: "error",
+          message: `--sizes needs positive whole task counts: ${option.value}`,
+        };
+      }
+      sizes = parsed;
+      index = option.index;
+      continue;
+    }
+    if (argument === "--commands" || argument.startsWith("--commands=")) {
+      const option = readOptionValue(argument, args, index);
+      const parsed = parseCommands(option.value);
+      if (parsed === undefined) {
+        return {
+          kind: "error",
+          message: `--commands needs a subset of ${COMMAND_NAMES.join(", ")}`,
+        };
+      }
+      commands = parsed;
+      index = option.index;
+      continue;
+    }
+    return { kind: "error", message: `unknown option: ${argument}` };
+  }
+
+  if (check) {
+    return {
+      kind: "energy",
+      version,
+      rounds: CHECK_ROUNDS,
+      idleSeconds: CHECK_IDLE_SECONDS,
+      workSeconds: CHECK_WORK_SECONDS,
+      settleSeconds: CHECK_SETTLE_SECONDS,
+      commands,
+      sizes,
+    };
+  }
+  return {
+    kind: "energy",
+    version,
+    rounds,
+    idleSeconds: DEFAULT_ENERGY_IDLE_SECONDS,
+    workSeconds: DEFAULT_ENERGY_WORK_SECONDS,
+    settleSeconds: DEFAULT_ENERGY_SETTLE_SECONDS,
+    commands,
+    sizes,
+  };
 }
 
 type OptionValue = { value: string | undefined; index: number };
@@ -179,6 +296,8 @@ function parseNonNegativeInteger(text: string | undefined): number | undefined {
 export const USAGE = [
   "Usage:",
   "  bun run measure time <version> [--sizes 100,1000,10000] [--runs 30] [--warmup 3] [--commands list,view,...]",
+  "  bun run measure energy <version> [--rounds 5] [--check] [--sizes 100,10000] [--commands list,view,...]",
+  "  bun run measure energy-analyze <power.plist> <blocks.tsv>",
   "  bun run measure disk <version>",
   "",
   "Commands:",

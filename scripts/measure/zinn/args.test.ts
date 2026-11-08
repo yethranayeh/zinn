@@ -1,10 +1,19 @@
 import { expect, test } from "bun:test";
 
 import {
+  CHECK_IDLE_SECONDS,
+  CHECK_ROUNDS,
+  CHECK_SETTLE_SECONDS,
+  CHECK_WORK_SECONDS,
+  DEFAULT_ENERGY_IDLE_SECONDS,
+  DEFAULT_ENERGY_ROUNDS,
+  DEFAULT_ENERGY_SETTLE_SECONDS,
+  DEFAULT_ENERGY_WORK_SECONDS,
   DEFAULT_RUNS,
   DEFAULT_SIZES,
   DEFAULT_WARMUP,
   parseArguments,
+  type EnergyArguments,
   type TimeArguments,
 } from "./args.ts";
 import { COMMAND_NAMES } from "./commands.ts";
@@ -23,6 +32,14 @@ function errorArguments(args: string[]): string {
     throw new Error(`Expected an argument error, got ${parsed.kind}`);
   }
   return parsed.message;
+}
+
+function energyArguments(args: string[]): EnergyArguments {
+  const parsed = parseArguments(args);
+  if (parsed.kind !== "energy") {
+    throw new Error(`Expected energy arguments, got ${parsed.kind}`);
+  }
+  return parsed;
 }
 
 test("time defaults to the three sizes, 30 runs and every command", () => {
@@ -96,4 +113,58 @@ test("bad arguments are refused", () => {
   expect(errorArguments(["time", "0.44.0", "--warmup", "-1"])).toContain("--warmup");
   expect(errorArguments(["time", "0.44.0", "--commands", "explode"])).toContain("--commands");
   expect(errorArguments(["time", "0.44.0", "--unknown"])).toContain("--unknown");
+});
+
+test("energy defaults to five full rounds and the fixed default workloads", () => {
+  const parsed = energyArguments(["energy", "0.44.0"]);
+  expect(parsed.rounds).toBe(DEFAULT_ENERGY_ROUNDS);
+  expect(parsed.idleSeconds).toBe(DEFAULT_ENERGY_IDLE_SECONDS);
+  expect(parsed.workSeconds).toBe(DEFAULT_ENERGY_WORK_SECONDS);
+  expect(parsed.settleSeconds).toBe(DEFAULT_ENERGY_SETTLE_SECONDS);
+  expect(parsed.commands).toBeUndefined();
+  expect(parsed.sizes).toBeUndefined();
+});
+
+test("energy --check shortens the round for a two minute confirmation", () => {
+  const parsed = energyArguments(["energy", "0.44.0", "--check"]);
+  expect(parsed.rounds).toBe(CHECK_ROUNDS);
+  expect(parsed.idleSeconds).toBe(CHECK_IDLE_SECONDS);
+  expect(parsed.workSeconds).toBe(CHECK_WORK_SECONDS);
+  expect(parsed.settleSeconds).toBe(CHECK_SETTLE_SECONDS);
+});
+
+test("energy reads rounds, command and size overrides", () => {
+  const parsed = energyArguments([
+    "energy",
+    "0.44.0",
+    "--rounds",
+    "3",
+    "--commands",
+    "view,list",
+    "--sizes",
+    "100,1000",
+  ]);
+  expect(parsed.rounds).toBe(3);
+  expect(parsed.commands).toEqual(["list", "view"]);
+  expect(parsed.sizes).toEqual([100, 1_000]);
+});
+
+test("energy-analyze takes two paths and no version", () => {
+  expect(parseArguments(["energy-analyze", "power.plist", "blocks.tsv"])).toEqual({
+    kind: "energy-analyze",
+    powerPath: "power.plist",
+    blocksPath: "blocks.tsv",
+  });
+});
+
+test("bad energy arguments are refused", () => {
+  expect(errorArguments(["energy"])).toContain("version");
+  expect(errorArguments(["energy", "latest"])).toContain("latest");
+  expect(errorArguments(["energy", "0.44.0", "--rounds", "0"])).toContain("--rounds");
+  expect(errorArguments(["energy", "0.44.0", "--rounds"])).toContain("--rounds");
+  expect(errorArguments(["energy", "0.44.0", "--sizes", "100,abc"])).toContain("--sizes");
+  expect(errorArguments(["energy", "0.44.0", "--commands", "explode"])).toContain("--commands");
+  expect(errorArguments(["energy", "0.44.0", "--unknown"])).toContain("--unknown");
+  expect(errorArguments(["energy-analyze"])).toContain("power plist");
+  expect(errorArguments(["energy-analyze", "power.plist"])).toContain("power plist");
 });

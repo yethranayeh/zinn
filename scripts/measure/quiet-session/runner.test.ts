@@ -78,3 +78,17 @@ test("the runner pipes lines to a process and closes its stdin", async () => {
   const result = await child.close();
   expect(result.exitCode).toBe(0);
 });
+
+test("capture accepts a fixed environment and can discard stdout", async () => {
+  const runner = createRunner();
+  const result = await runner.capture(
+    ["/bin/sh", "-c", "printf '%s' \"$MARK\"; printf 'bad' >&2; exit 4"],
+    {
+      env: { PATH: "/usr/bin:/bin", HOME: "/tmp", MARK: "value" },
+      discardStdout: true,
+    },
+  );
+  expect(result.exitCode).toBe(4);
+  expect(result.stdout).toBe("");
+  expect(result.stderr).toBe("bad");
+});
