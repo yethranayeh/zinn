@@ -56,6 +56,9 @@ for (const relationType of relationTypeSchema.options) {
 
         project.delete(removed.key, actor);
 
+        assert.deepEqual(getDb().query("SELECT id FROM project_column WHERE project_id = $project_id").all({ $project_id: removed.id }), []);
+        assert.deepEqual(getDb().query("PRAGMA foreign_key_check").all(), []);
+
         const events = activity.getAll().events.filter(event => !beforeIds.has(event.id));
         const aggregate = events.filter(event => event.entity_type === "project");
         assert.equal(aggregate.length, 1);

@@ -32,8 +32,10 @@ test("project.create can establish a project", () => {
 
 test("project.create standardizes the key", () => {
   const created = project.create({ key: "key", name: "Lowercased Key" });
+  const numbered = project.create({ key: "b2B", name: "Numbered Key" });
 
   expect(created?.key).toBe("KEY");
+  expect(numbered?.key).toBe("B2B");
 });
 
 test("project.create rejects a duplicate key", () => {

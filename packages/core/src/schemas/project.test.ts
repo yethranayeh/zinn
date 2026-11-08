@@ -6,8 +6,15 @@ test("project creation accepts an omitted name but rejects null", () => {
   expect(projectCreateSchema.safeParse({ key: "TEST", name: null }).success).toBe(false);
 });
 
+test("project keys start with a letter and contain only letters and digits", () => {
+  expect(projectCreateSchema.parse({ key: "b2B" })).toEqual({ key: "b2B", description: null });
+  for (const key of ["2B", "APP-DEV", "APP_DEV", "ÅPP", ""]) {
+    expect(projectCreateSchema.safeParse({ key }).success).toBe(false);
+  }
+});
+
 test("project creation and editing share name validation and trim supplied text", () => {
-  for (const name of ["", " ", "Two\nlines", "Bad\u0000name"]) {
+  for (const name of ["", " ", "Two\nlines", "Bad\u0000name", "name\u001b[31m"]) {
     expect(projectCreateSchema.safeParse({ key: "TEST", name }).success).toBe(false);
     expect(projectEditSchema.safeParse({ projectKey: "TEST", name }).success).toBe(false);
   }
