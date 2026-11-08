@@ -8,7 +8,9 @@ type Props = HTMLAttributes<"div">;
 const { class: className, ...attributes } = Astro.props;
 ---
 
-<div class={twMerge("relative isolate flex flex-col border border-soot bg-bone space-y-4", className)} {...attributes}>
+<div
+	class={twMerge("relative isolate flex flex-col border border-soot bg-limestone space-y-2", className)}
+	{...attributes}>
 	<ReservedGround class='absolute inset-0 -z-10' />
 	<slot />
 </div>
