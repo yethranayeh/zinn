@@ -1,6 +1,6 @@
 {
 	"compilerOptions": {
-		"jsx": "preserve",
+		"jsx": "react-jsx",
 		"jsxImportSource": "solid-js",
 		"target": "ES2022",
 		"module": "ESNext",
@@ -9,5 +9,5 @@
 		"skipLibCheck": true,
 		"noEmit": true
 	},
-	"include": ["index.tsx"]
+	"include": ["**/*.ts", "**/*.tsx"]
 }

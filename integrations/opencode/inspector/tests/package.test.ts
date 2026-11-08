@@ -28,7 +28,7 @@ test("the packed inspector installs independently with exact compatible OpenTUI 
   expect(existsSync(join(consumer.installed, "dist/gui-experimental.cjs"))).toBe(true);
   const gui = readFileSync(join(consumer.installed, "dist/gui-experimental.cjs"), "utf8");
   expect(gui.length).toBeGreaterThan(0);
-  expect(gui).toContain("zinn.ping");
+  expect(gui).toContain("zinn.board");
   expect(existsSync(join(consumer.installed, "pkg/tui.tsx"))).toBe(false);
   expect(manifest.dependencies).toBeUndefined();
   expect(manifest.peerDependencies["@opencode/plugin"]).toBe("2.2.0");
