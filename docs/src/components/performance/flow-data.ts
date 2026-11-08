@@ -15,9 +15,6 @@ import { kindColors } from "./flow-palette";
 /** Flow figures for the performance page. */
 export const fixture = pricingEnvironment;
 
-/** Node timings and install timings are illustrative. */
-export const mockNote = "Node timings and install timings are placeholders.";
-
 export const performanceNote = `Measured with CLI ${pricingEnvironment.cli} and the packages it installs. Command times are medians of 30 runs, p95 is the nearest rank of those 30, and peak memory is the median per-run peak RSS from hyperfine. Each task has a ${pricingEnvironment.titleChars}-character title, a ${pricingEnvironment.descriptionChars}-character description and one ${pricingEnvironment.commentChars}-character comment.`;
 
 /** Memory in whole megabytes, or gigabytes above 1_000 MB */

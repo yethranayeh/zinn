@@ -11,6 +11,7 @@
 		"dev": "bun scripts/dev-cli.ts",
 		"dev:seed": "bun scripts/seed-dev.ts",
 		"settings-schema": "bun scripts/settings-schema.ts",
+		"measure": "bun scripts/measure/zinn/index.ts",
 		"measure:quiet": "bun scripts/measure/quiet-session/index.ts",
 		"test": "bun scripts/test.ts",
 		"typecheck": "bun scripts/typecheck.ts",
