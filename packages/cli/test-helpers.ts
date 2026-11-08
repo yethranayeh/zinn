@@ -1,3 +1,4 @@
+import { expect } from "bun:test";
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -6,12 +7,21 @@ import { TELEMETRY_FOLDER_NAME } from "../core/src/constant";
 import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import { createSchema } from "../core/src/migrations/runner";
 import { openDatabase } from "../core/src/sqlite/bun";
-import { runProcessAsync } from "./testing";
+import { runCliInTerminal, runProcessAsync } from "./testing";
 
 export { runProcessAsync };
 
 const PREFIX = join(tmpdir(), "zinntest-");
 export const CLI_PATH = join(import.meta.dir, "index.ts");
+
+export const GRAY_BACKLOG = "\x1b[90mBacklog\x1b[39m";
+export const GREEN_DONE = "\x1b[32mDone\x1b[39m";
+// ? Chrome (separators, empty markers, timestamps) is dimmed, never colored: SGR 2 on, SGR 22 off.
+export const DIM_SEPARATOR = "\x1b[2m | \x1b[22m";
+export const DIM_EMPTY_PRIORITY = "\x1b[2m-\x1b[22m";
+export const dim = (text: string) => `\x1b[2m${text}\x1b[22m`;
+export const SECTION_RULE = "-".repeat(60);
+export const bold = (text: string) => `\x1b[1m${text}\x1b[22m`;
 
 function removeIsolatedZinnDir(testDir: string) {
   if (!testDir.startsWith(PREFIX)) {
@@ -53,6 +63,22 @@ export function runZinnWithPipedYes(args: Array<string>, testDir: string) {
     ["/bin/sh", "-c", 'printf "y\\n" | exec bun "$@"', "zinn-confirm", CLI_PATH, ...args],
     { env: { ...TEST_ENVIRONMENT, ZINN_DIR: testDir }, cwd: testDir },
   );
+}
+
+export function taskViewContent(output: string) {
+  const footerStart = output.lastIndexOf("\n\n");
+  const footer = Bun.stripANSI(output.slice(footerStart)).trim();
+  expect(footer.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2} [+-]\d{2}:\d{2}/g)).toHaveLength(2);
+  return `${output.slice(0, footerStart)}\n`;
+}
+
+export function runZinnInTerminal(
+  args: Array<string>,
+  testDir: string,
+  additionalEnv: Record<string, string> = {},
+  columns?: number,
+) {
+  return runCliInTerminal(args, { env: { ...TEST_ENVIRONMENT, ...additionalEnv, ZINN_DIR: testDir }, cwd: testDir, columns });
 }
 
 /** Creates a database at the latest schema with no records or activity. */

@@ -778,3 +778,39 @@ test("with --json, an extra word is one JSON error on stderr whose help is the u
     expect(existsSync(join(dir, "data"))).toBe(false);
   });
 });
+
+test("shared option checks reject repeated scalar flags and retain positional validation", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    for (const args of [
+      ["label", "create", "bug", "--color", "red", "--color", "blue"],
+      ["label", "create", "bug", "--description", "a", "--description", "b"],
+      ["label", "edit", "bug", "--name", "a", "--name", "b"],
+      ["label", "edit", "bug", "--color", "red", "--color", "blue"],
+      ["label", "edit", "bug", "--description", "a", "--description", "b"],
+      ["project", "create", "APP", "--name", "a", "--name", "b"],
+      ["project", "edit", "APP", "--name", "a", "--name", "b"],
+      ["task", "edit", "APP-1", "--title", "a", "--title", "b"],
+      ["task", "relation", "create", "APP-1", "APP-2", "--type", "related", "--type", "duplicate"],
+    ]) {
+      const result = await runZinn(args, dir);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain(args[args.length - 2]!);
+    }
+    // ? Each case lists the facts its error carries.
+    const labelWordCases: Array<[string[], ...string[]]> = [
+      [["label", "create"], "Usage: zinn label create"],
+      [["label", "create", "one", "two"], `"two"`, "Usage: zinn label create"],
+      [["label", "edit"], "Usage: zinn label edit"],
+      [["label", "edit", "one", "two", "--color", "red"], `"two"`, "Usage: zinn label edit"],
+    ];
+    for (const [args, ...facts] of labelWordCases) {
+      const result = await runZinn(args, dir);
+      for (const fact of facts) {
+        expect(result.stderr).toContain(fact);
+      }
+    }
+    const extraLabel = await runZinn(["label", "delete", "one", "two"], dir);
+    expect(extraLabel.stderr).toContain(`"two"`);
+    expect(extraLabel.stderr).toContain("Usage: zinn label delete");
+  });
+});
