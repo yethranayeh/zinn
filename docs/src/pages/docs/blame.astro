@@ -1,0 +1,74 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import Breadcrumbs from "../../components/Breadcrumbs.astro";
+import MarkdownH1 from "../../components/MarkdownH1.astro";
+import MarkdownH2 from "../../components/MarkdownH2.astro";
+import Blame from "../../components/blame/Blame.astro";
+
+const rules = [
+	{
+		heading: "Whole lines, matched exactly",
+		body: "Description attribution compares complete lines, whitespace included. Blank lines are preserved."
+	},
+	{
+		heading: "Shared lines keep their event",
+		body: "Lines the edit leaves alone keep their attribution. Lines it introduces belong to the edit."
+	},
+	{
+		heading: "Missing history reads as unrecorded",
+		body: "A field or line without a recorded origin prints as unrecorded rather than guessing."
+	},
+	{
+		heading: "Archived tasks still answer",
+		body: "Blame reads active and archived tasks, and records no activity of its own."
+	}
+];
+---
+
+<BaseLayout
+	title='Task blame'
+	description={`Attribute a task's fields and description lines to the edits that set them, and to the person or program behind each edit.`}>
+	<div class='site-container flex flex-1 flex-col'>
+		<div class='w-full py-8 md:pt-14 md:pb-16'>
+			<div class='max-w-3xl'>
+				<Breadcrumbs />
+				<MarkdownH1>Task blame</MarkdownH1>
+				<p class='mb-3 text-lg leading-[1.6] text-muted-foreground md:text-xl'>
+					The whole task, attributed. Every field and description line with recorded history points at the edit that set
+					it, and the edit names the person or program behind it.
+				</p>
+			</div>
+
+			<Blame />
+
+			<div class='mt-16 max-w-6xl border-t border-soot pt-8' id='how-it-decides'>
+				<MarkdownH2>How it decides</MarkdownH2>
+				<div class='grid gap-x-12 gap-y-8 sm:grid-cols-2'>
+					{
+						rules.map((rule) => (
+							<div>
+								<h3 class='mb-2 text-base font-semibold'>{rule.heading}</h3>
+								<p class='text-base leading-[1.6] text-muted-foreground'>{rule.body}</p>
+							</div>
+						))
+					}
+				</div>
+				<p class='mt-8 max-w-3xl text-base leading-[1.6] text-muted-foreground'>
+					Gaps and mismatched history can leave lines unrecorded. The full rules, including comparison edge cases, are
+					in the <a href='/docs/cli#task-blame' class='underline'>CLI reference</a>.
+				</p>
+			</div>
+
+			<div class='mt-12 max-w-3xl border-t border-soot pt-6' id='json'>
+				<h2 class='mb-3 text-base font-semibold'>JSON</h2>
+				<p class='text-base leading-[1.6] text-muted-foreground'>
+					With <code class='bg-soot/8 px-1 py-px text-sm'>--json</code>, the command returns the{" "}
+					<a href='/docs/core#task-blame-result' class='underline'
+						><code class='bg-soot/8 px-1 py-px text-sm'>TaskBlame</code></a
+					> result. Each reference opens with{" "}
+					<code class='bg-soot/8 px-1 py-px text-sm'>zinn activity view &lt;activity-id&gt;</code>.
+				</p>
+			</div>
+		</div>
+	</div>
+</BaseLayout>

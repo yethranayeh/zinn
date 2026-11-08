@@ -147,7 +147,7 @@ If the conflicting IDs changed before the write, core throws a `CoreError` with 
 
 ## Task blame
 
-`task.blame(taskKey)` returns a `TaskBlame` for the current active or archived task. It resolves the key once and reads the task, current memberships and ID-scoped history in one database snapshot. A [reused key](/docs/data#task-key-reuse) selects only the current task lifetime. Unknown and deleted keys throw the ordinary missing-task `CoreError`.
+`task.blame(taskKey)` returns a `TaskBlame` for the current active or archived task. It resolves the key once and reads the task, current memberships and ID-scoped history in one database snapshot. A [reused key](/docs/data#task-key-reuse) selects only the current task lifetime. Unknown and deleted keys throw the ordinary missing-task `CoreError`. For the command and a worked example, see [Task blame](/docs/blame).
 
 ```ts title="Read task attribution"
 import type { TaskBlame } from "@zinn-dev/core";

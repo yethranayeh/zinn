@@ -20,6 +20,7 @@ When to use Zinn: track development work locally, carry task scope and progress 
 - [Installation](https://zinn.sh/docs/installation.md): Requirements, installing, upgrading and uninstalling the CLI and core, and running them on Bun.
 - [Quick start](https://zinn.sh/docs/quick-start.md): Create a project, add a task, and move it through the board.
 - [CLI reference](https://zinn.sh/docs/cli.md): Project, task, label, relation, comment, and activity commands.
+- [Task blame](https://zinn.sh/docs/blame.md): Attribute a task's fields and description lines to the edits that set them, and to the person or program behind each edit.
 - [Settings](https://zinn.sh/docs/settings.md): Data-directory selection, default projects, and store inspection.
 - [Scripting and JSON output](https://zinn.sh/docs/scripting.md): JSON contracts, command discovery, and confirmations.
 - [Hooks](https://zinn.sh/docs/hooks.md): Commands that run after a saved change, with activity records on stdin.

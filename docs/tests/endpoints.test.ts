@@ -495,6 +495,7 @@ test("every generated public endpoint is served with its expected type", async (
     "https://zinn.sh/",
     ...[
       ...markdownPages,
+      "docs/blame",
       "performance",
       "pricing",
       "integrations",

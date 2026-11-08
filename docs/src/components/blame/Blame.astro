@@ -1,0 +1,46 @@
+---
+import Panel from "./Panel.astro";
+import { notes } from "./example";
+---
+
+<div class='grid items-start gap-10 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]'>
+	<div class='relative min-w-0'>
+		<Panel />
+		<div class='pointer-events-none absolute inset-0 z-10 overflow-hidden' data-brackets aria-hidden='true'></div>
+	</div>
+
+	<aside class='flex flex-col gap-6 lg:sticky lg:top-[var(--site-header-height)] lg:self-start lg:pt-2' data-notes>
+		<p class='font-mono text-xs leading-[1.6] text-muted-foreground' data-blame-init>
+			Hover, tap or tab to a note to cut its region out of the output.
+		</p>
+
+		{
+			notes.map((note) => (
+				<div
+					class='group/note border-t border-soot pt-4 outline-offset-4 focus-visible:outline-2 focus-visible:outline-soot'
+					data-note={note.id}
+					role='note'
+					tabindex='0'>
+					<div class='mb-2 flex items-center gap-2'>
+						<span class='grid size-6 shrink-0 place-items-center border border-soot font-mono text-[10px] leading-none text-soot tabular-nums group-data-[active]/note:border-bronze group-data-[active]/note:bg-bronze'>
+							{note.number}
+						</span>
+						<span class='h-px flex-1 bg-soot/20' />
+					</div>
+					<p class='mb-2 border-l-2 border-bronze bg-soot px-2.5 py-1.5 font-mono text-xs break-words whitespace-pre-wrap text-soot-foreground'>
+						{note.label}
+					</p>
+					<p class='text-base leading-[1.6] text-muted-foreground'>{note.body}</p>
+				</div>
+			))
+		}
+	</aside>
+</div>
+
+<script>
+	import { setupBlameNotes } from "./notes";
+
+	for (const init of document.querySelectorAll<HTMLElement>("[data-blame-init]")) {
+		setupBlameNotes(init);
+	}
+</script>

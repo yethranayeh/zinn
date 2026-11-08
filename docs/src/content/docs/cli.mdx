@@ -274,7 +274,7 @@ zinn task blame MDR-1
 zinn task blame MDR-1 --json
 ```
 
-`task blame <task-key>` attributes the current title, column, priority, deadline, label membership, parent, relations and description lines to recorded activity. It reads active and archived tasks. A [reused key](/docs/data#task-key-reuse) selects its current task lifetime. Unknown and deleted keys produce the ordinary missing-task error.
+`task blame <task-key>` attributes the current title, column, priority, deadline, label membership, parent, relations and description lines to recorded activity. It reads active and archived tasks. A [reused key](/docs/data#task-key-reuse) selects its current task lifetime. Unknown and deleted keys produce the ordinary missing-task error. For a worked example of the output, see [Task blame](/docs/blame).
 
 Creation records can supply the initial attribution, including unset values. Later edits, moves and membership changes replace it. Labels are one collection, attributed to the latest attachment or removal, including removal when a label is deleted, when the recorded creation and changes add up to the current number of labels. Column and label renames preserve membership attribution while returning the current names. Parent assignment and removal follow outgoing `subtask` relation events. Each current relation carries its own creation attribution, including incoming links and the parent link.
 
