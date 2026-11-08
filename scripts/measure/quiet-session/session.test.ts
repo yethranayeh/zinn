@@ -180,6 +180,16 @@ class FakeRunner implements Runner {
     if (isDefaultsRead(argv)) {
       return this.timeMachineResult;
     }
+    if (key === "sysctl -n vm.loadavg") {
+      return { exitCode: 0, stdout: "{ 2.50 2.00 1.50 }\n", stderr: "" };
+    }
+    if (key === "ps -A -r -o pcpu=,rss=,pid=,comm=") {
+      return {
+        exitCode: 0,
+        stdout: " 42.0 51200   101 /Applications/Busy App.app/Contents/MacOS/Busy App\n  1.5  2048   202 /usr/sbin/idle\n",
+        stderr: "",
+      };
+    }
     if (key === "tmutil destinationinfo -X") {
       const destinations = this.timeMachineDestinations
         ? "<key>Destinations</key><array><dict></dict></array>"
@@ -813,6 +823,57 @@ test("the log and status files carry job output and the final paths", async () =
     expect(status).toContain(outcome.sessionDir);
     expect(log).toContain(outcome.logPath);
     expect(log).toContain(outcome.sessionDir);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a session samples load and the busiest processes into the session folder", async () => {
+  const runner = new FakeRunner();
+  const { options, root } = createSession(runner, {
+    settings: { spotlight: false, timeMachine: false, wifi: false },
+  });
+  try {
+    const outcome = await runSession(options);
+    expect(outcome.exitCode).toBe(0);
+    const samplesPath = join(outcome.sessionDir, "samples.tsv");
+    const [header, ...rows] = readFileSync(samplesPath, "utf8").trim().split("\n");
+    const columns = header!.split("\t");
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    const busiest = Object.fromEntries(columns.map((name, index) => [name, rows[0]!.split("\t")[index]]));
+    expect(busiest.load1).toBe("2.50");
+    expect(busiest.pid).toBe("101");
+    expect(busiest.command).toBe("/Applications/Busy App.app/Contents/MacOS/Busy App");
+    expect(readFileSync(outcome.logPath, "utf8")).toContain(samplesPath);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a failing sample does not fail the session", async () => {
+  const runner = new FakeRunner();
+  runner.failingCommands.add("ps -A -r -o pcpu=,rss=,pid=,comm=");
+  const { options, root } = createSession(runner, {
+    settings: { spotlight: false, timeMachine: false, wifi: false },
+  });
+  try {
+    const outcome = await runSession(options);
+    expect(outcome.exitCode).toBe(0);
+    const lines = readFileSync(join(outcome.sessionDir, "samples.tsv"), "utf8").trim().split("\n");
+    expect(lines).toHaveLength(1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a dry run takes no samples", async () => {
+  const runner = new FakeRunner();
+  const { options, root } = createSession(runner, { dryRun: true });
+  try {
+    await runSession(options);
+    expect(callsOf(runner).some((call) => call.startsWith("ps ") || call.startsWith("sysctl"))).toBe(
+      false,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

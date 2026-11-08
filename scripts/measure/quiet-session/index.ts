@@ -74,6 +74,7 @@ async function main(): Promise<number> {
       sessionId,
       startedAt,
       signalSource: createSignalSource(),
+      sampleSeconds: parsed.sampleSeconds,
       write,
     });
     return outcome.exitCode;

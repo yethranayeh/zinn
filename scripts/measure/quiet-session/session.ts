@@ -17,6 +17,7 @@ import {
   formatSessionId,
 } from "./format.ts";
 import { restoreEntries } from "./restore.ts";
+import { DEFAULT_SAMPLE_SECONDS, SAMPLES_FILE_NAME, type Sampler, startSampler } from "./sampler.ts";
 import { planSettingChanges } from "./settings.ts";
 import { removeRestoreState, writeRestoreState } from "./state.ts";
 
@@ -53,6 +54,8 @@ export type SessionOptions = {
   write?: (text: string) => void;
   now?: () => Date;
   sudoRefreshIntervalMs?: number;
+  /** Seconds between load and process samples. */
+  sampleSeconds?: number;
   notify?: boolean;
 };
 
@@ -91,6 +94,8 @@ export async function runSession(options: SessionOptions): Promise<SessionOutcom
   const guardLogPath = join(sessionDir, GUARD_LOG_NAME);
   const statusPath = join(sessionDir, "status.txt");
   const outStatusPath = join(options.outDir, "status.txt");
+  const samplesPath = join(sessionDir, SAMPLES_FILE_NAME);
+  const sampleSeconds = options.sampleSeconds ?? DEFAULT_SAMPLE_SECONDS;
   const jobResults: Array<JobResult> = [];
   const changeResults: Array<ChangeResult> = [];
   let restoreResults: Array<RestoreResult> = [];
@@ -126,6 +131,7 @@ export async function runSession(options: SessionOptions): Promise<SessionOutcom
   let changeFailureCount = 0;
   let caffeinate: ProcessHandle | undefined;
   let refreshTimer: ReturnType<typeof setInterval> | undefined;
+  let sampler: Sampler | undefined;
   let status: StatusWriter | undefined;
   let guard: PipeProcess | undefined;
   let guardUsable = false;
@@ -280,6 +286,16 @@ export async function runSession(options: SessionOptions): Promise<SessionOutcom
         );
       }, refreshInterval);
       refreshTimer.unref?.();
+      sampler = startSampler({
+        runner: options.runner,
+        path: samplesPath,
+        intervalMs: sampleSeconds * 1000,
+        now,
+        onFirstFailure: (message) => {
+          log.line(`A load sample failed (${message}), sampling continues`);
+        },
+      });
+      log.line(`Sampling load and the busiest processes every ${sampleSeconds} s`);
     }
 
     const plan = await planSettingChanges(options.runner, options.settings, {
@@ -310,6 +326,8 @@ export async function runSession(options: SessionOptions): Promise<SessionOutcom
       statusPath,
       guardPath: GUARD_SCRIPT,
       guardLogPath,
+      samplesPath,
+      sampleSeconds,
       dryRun: options.dryRun,
     });
 
@@ -386,6 +404,9 @@ export async function runSession(options: SessionOptions): Promise<SessionOutcom
   } finally {
     if (refreshTimer !== undefined) {
       clearInterval(refreshTimer);
+    }
+    if (sampler !== undefined) {
+      await sampler.stop();
     }
 
     if (!options.dryRun) {
@@ -820,6 +841,8 @@ type PlanOutput = {
   statusPath: string;
   guardPath: string;
   guardLogPath: string;
+  samplesPath: string;
+  sampleSeconds: number;
   dryRun: boolean;
 };
 
@@ -830,6 +853,7 @@ function printPlan(output: PlanOutput): void {
   log.line(`Status: ${output.statusPath}`);
   log.line(`Restore guard: /bin/sh ${output.guardPath} (starts when a system change is planned)`);
   log.line(`Guard log: ${output.guardLogPath}`);
+  log.line(`Samples: ${output.samplesPath} (every ${output.sampleSeconds} s)`);
   if (output.dryRun) {
     log.line("Dry run: the plan below is not executed, no password is requested");
   }

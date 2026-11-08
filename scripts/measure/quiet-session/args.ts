@@ -9,6 +9,7 @@ export type ParsedSession = {
   dryRun: boolean;
   outDir?: string;
   jobsPath?: string;
+  sampleSeconds?: number;
   command?: string[];
 };
 
@@ -27,6 +28,7 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
   let dryRun = false;
   let outDir: string | undefined;
   let jobsPath: string | undefined;
+  let sampleSeconds: number | undefined;
   let command: string[] | undefined;
 
   for (let index = 0; index < args.length; index++) {
@@ -73,6 +75,19 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
       index = value.index;
       continue;
     }
+    if (argument === "--sample-seconds" || argument.startsWith("--sample-seconds=")) {
+      const value = readOptionValue(argument, args, index);
+      const seconds = Number(value.value);
+      if (value.value === undefined || !Number.isInteger(seconds) || seconds < 1) {
+        return {
+          kind: "error",
+          message: "--sample-seconds needs a whole number of seconds, 1 or more",
+        };
+      }
+      sampleSeconds = seconds;
+      index = value.index;
+      continue;
+    }
     if (argument === "restore") {
       return { kind: "error", message: "restore takes no other arguments" };
     }
@@ -93,7 +108,16 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
     return { kind: "error", message: "pass --jobs <jobs.json> or -- <command...>" };
   }
 
-  return { kind: "session", settings, stopOnFailure, dryRun, outDir, jobsPath, command };
+  return {
+    kind: "session",
+    settings,
+    stopOnFailure,
+    dryRun,
+    outDir,
+    jobsPath,
+    sampleSeconds,
+    command,
+  };
 }
 
 type OptionValue = { value: string; index: number } | { value: undefined; index: number };
@@ -123,4 +147,5 @@ export const USAGE = [
   "  --stop-on-failure   stop after the first failed job",
   "  --dry-run           print the plan without changing anything",
   "  --out <dir>         session output directory (default .measure)",
+  "  --sample-seconds <n>  seconds between load and process samples (default 5)",
 ].join("\n");
