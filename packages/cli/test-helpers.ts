@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { TELEMETRY_FOLDER_NAME } from "../core/src/constant";
@@ -68,4 +68,24 @@ export function withTestDb<T>(testDir: string, inspect: (db: Database) => T) {
   } finally {
     db.close();
   }
+}
+
+export function backupFiles(dir: string) {
+  return existsSync(join(dir, "backups")) ? readdirSync(join(dir, "backups")).sort() : [];
+}
+
+// ? Rows, schema and version, to prove a refused migrate wrote nothing.
+export function databaseSnapshot(dir: string) {
+  return withTestDb(dir, (db) => ({
+    version: db.query("PRAGMA user_version").get(),
+    schema: db.query("SELECT type, name, sql FROM sqlite_schema ORDER BY name").all(),
+    projects: db.query("SELECT * FROM project").all(),
+    tasks: db.query("SELECT * FROM task").all(),
+  }));
+}
+
+export async function createDatabase(dir: string, version: number) {
+  await runZinn(["project", "create", "MIG"], dir);
+  await runZinn(["task", "create", "MIG", "--title", "Kept"], dir);
+  withTestDb(dir, (db) => db.run(`PRAGMA user_version = ${version}`));
 }
