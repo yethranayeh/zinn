@@ -11,42 +11,81 @@ import {
 } from "../../config/pricing";
 
 /**
- * Calculator stops, one comment per task, same fixture as the pricing config.
- * 100 and 10_000 are the published figures. 1, 10 and 1_000 are medians of five on CLI 0.43.0,
- * measured 07.11.2026
+ * Calculator stops: one comment per task sharing the pricing config's fixture and method
+ * Only `markedStops` get a mark.
  */
 export const calculatorStops = [
   {
     tasks: 1,
     databaseBytes: 122_880,
-    seconds: 0.1,
-    memoryBytes: 78_381_056,
+    seconds: 0.12,
+    memoryBytes: 79_020_032,
     outputBytes: 64,
-    jsonOutputBytes: 673,
+    jsonOutputBytes: 717,
   },
   {
     tasks: 10,
     databaseBytes: 147_456,
-    seconds: 0.11,
-    memoryBytes: 77_791_232,
+    seconds: 0.12,
+    memoryBytes: 79_708_160,
     outputBytes: 650,
-    jsonOutputBytes: 6_704,
+    jsonOutputBytes: 7_144,
   },
   {
     tasks: 100,
     databaseBytes: 471_040,
     seconds: 0.12,
-    memoryBytes: 81_166_336,
+    memoryBytes: 81_920_000,
     outputBytes: 6_600,
-    jsonOutputBytes: 67_095,
+    jsonOutputBytes: 71_495,
   },
   {
     tasks: 1_000,
     databaseBytes: 3_072_000,
-    seconds: 0.15,
-    memoryBytes: 85_377_024,
+    seconds: 0.18,
+    memoryBytes: 94_142_464,
     outputBytes: 67_000,
-    jsonOutputBytes: 671_896,
+    jsonOutputBytes: 715_896,
+  },
+  {
+    tasks: 1_585,
+    databaseBytes: 4_751_360,
+    seconds: 0.24,
+    memoryBytes: 101_040_128,
+    outputBytes: 106_195,
+    jsonOutputBytes: 1_135_341,
+  },
+  {
+    tasks: 2_512,
+    databaseBytes: 7_438_336,
+    seconds: 0.34,
+    memoryBytes: 114_180_096,
+    outputBytes: 168_304,
+    jsonOutputBytes: 1_800_000,
+  },
+  {
+    tasks: 3_981,
+    databaseBytes: 11_677_696,
+    seconds: 0.56,
+    memoryBytes: 134_381_568,
+    outputBytes: 266_727,
+    jsonOutputBytes: 2_853_273,
+  },
+  {
+    tasks: 6_310,
+    databaseBytes: 18_456_576,
+    seconds: 1.38,
+    memoryBytes: 171_098_112,
+    outputBytes: 422_770,
+    jsonOutputBytes: 4_523_166,
+  },
+  {
+    tasks: 7_943,
+    databaseBytes: 23_171_072,
+    seconds: 2.32,
+    memoryBytes: 172_687_360,
+    outputBytes: 532_181,
+    jsonOutputBytes: 5_694_027,
   },
   {
     tasks: 10_000,
@@ -54,18 +93,21 @@ export const calculatorStops = [
     seconds: largeListCost.seconds,
     memoryBytes: largeListCost.memoryBytes,
     outputBytes: largeListCost.output,
-    jsonOutputBytes: 6_728_897,
+    jsonOutputBytes: 7_168_897,
   },
 ];
 
 export const defaultStop = 2;
+
+/** The slider draws a mark at these stops */
+export const markedStops = [1, 10, 100, 1_000, 10_000];
 
 /** Zinn's own packages as a share of the whole download */
 export const netShare = pricingTotals.softwareDownload / pricingTotals.download;
 
 /** From the registry metadata of the published package */
 export const cliIntegrity =
-  "sha512-JGp577cR8YOfrBg9oV7Uhb1UWxE8rMxfE5KVJ9uk+yKJOogentMZfX2N2Lh4QqknI5trcIA5Lh0aw4k6b5g8lg==";
+  "sha512-dUxF1gS3EVUTdJqNsrNiaCQvLiQlO/9dGvOjuGzy9rleK6vBBeABH0yWIsPeMz7ggKs/OW/BPkKHl2PSZMGRZA==";
 
 /**
  * Estimated processor energy above idle, 100-task fixture, CLI 0.43.0, M4 MacBook Pro on AC.

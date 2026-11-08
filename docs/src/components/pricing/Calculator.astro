@@ -6,7 +6,7 @@ import Readout from "./Readout.astro";
 import TextureSlider from "../ui/texture-slider/TextureSlider.astro";
 
 import { groupedNumber, memoryLabel, outputLabel, sizeLabel } from "../../config/pricing-labels";
-import { calculatorStops, defaultStop, storageNote } from "./figures";
+import { calculatorStops, defaultStop, markedStops, storageNote } from "./figures";
 import { lastPosition, positionOf } from "./calculator-scale";
 
 const stop = calculatorStops[defaultStop];
@@ -36,19 +36,22 @@ const stop = calculatorStops[defaultStop];
 
 			<div class='relative h-[1.4em] font-mono text-[11px]/[1.4] text-muted-foreground'>
 				{
-					calculatorStops.map((entry) => {
-						const position = positionOf(entry.tasks);
-						return (
-							<button
-								type='button'
-								class='absolute top-0 -my-2 py-2 -translate-x-1/2 first:translate-x-0 last:-translate-x-full hover:text-soot'
-								style={`left: ${(position / lastPosition) * 100}%`}
-								data-calc-mark={position}
-								aria-label={`Set to ${groupedNumber(entry.tasks)} tasks`}>
-								{groupedNumber(entry.tasks)}
-							</button>
-						);
-					})
+					calculatorStops
+						.filter((entry) => markedStops.includes(entry.tasks))
+						.map((entry) => {
+							const position = positionOf(entry.tasks);
+
+							return (
+								<button
+									type='button'
+									class='absolute top-0 -my-2 py-2 -translate-x-1/2 first:translate-x-0 last:-translate-x-full hover:text-soot'
+									style={`left: ${(position / lastPosition) * 100}%`}
+									data-calc-mark={position}
+									aria-label={`Set to ${groupedNumber(entry.tasks)} tasks`}>
+									{groupedNumber(entry.tasks)}
+								</button>
+							);
+						})
 				}
 			</div>
 			<PricingNote>Marks are measured. Figures between them are interpolated. {storageNote}</PricingNote>

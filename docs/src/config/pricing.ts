@@ -1,11 +1,12 @@
 /**
- * Measured 2026-11-02 from the packages published in CLI 0.43.0. Download
- *  bytes are the registry tarballs, unpacked bytes are what npm writes to disk.
- *  The fixture is one project whose tasks each have a 40-character title, a
- *  200-character description and one 200-character comment. Memory is the
- *  node process's peak resident set size and, like time, the median of five
- *  runs on Node 26.13.0, macOS arm64. File sizes are read after the writing
- *  process exits.
+ * Measured from the packages published in the CLI release `pricingEnvironment`
+ *  names. Download bytes are the registry tarballs,
+ *  unpacked bytes are what npm writes to disk.
+ * The fixture is one project whose tasks each have a
+ *  40-character title, a 200-character description and one 200-character
+ *  comment. Memory is the node process's peak resident set size and, like time,
+ *  the median of five runs on the Node and platform `pricingEnvironment` names.
+ * File sizes are read after the writing process exits.
  *
  * The per-package figures are the measurement record. The page presents Zinn's
  *  package as a whole, so it renders the totals only and names no dependency.
@@ -25,25 +26,25 @@ export interface PricingPackage {
 export const pricingPackages: Array<PricingPackage> = [
   {
     name: "@zinn-dev/cli",
-    version: "0.43.0",
-    download: 96_178,
-    unpacked: 553_641,
-    files: 104,
+    version: "0.44.0",
+    download: 110_803,
+    unpacked: 623_904,
+    files: 116,
     zinn: true,
   },
   {
     name: "@zinn-dev/core",
-    version: "0.32.0",
-    download: 100_592,
-    unpacked: 389_498,
-    files: 143,
+    version: "0.33.0",
+    download: 115_610,
+    unpacked: 444_913,
+    files: 157,
     zinn: true,
   },
   {
     name: "zod",
-    version: "4.6.4",
-    download: 1_052_201,
-    unpacked: 6_138_878,
+    version: "4.6.7",
+    download: 1_141_941,
+    unpacked: 6_148_944,
     files: 840,
     zinn: false,
   },
@@ -78,8 +79,8 @@ export const pricingTotals = {
 };
 
 export const pricingEnvironment = {
-  measured: "2026-11-02",
-  cli: "0.43.0",
+  measured: "2026-11-08",
+  cli: "0.44.0",
   node: "26.13.0",
   platform: "macOS arm64",
   tasks: 100,
@@ -88,7 +89,7 @@ export const pricingEnvironment = {
   descriptionChars: 200,
   commentChars: 200,
   /** Peak memory of `node -e 0`, Node with no script loaded. */
-  nodeMemoryBytes: 39_075_840,
+  nodeMemoryBytes: 38_125_568,
 };
 
 export interface CommandCost {
@@ -102,17 +103,17 @@ export interface CommandCost {
 
 /** Against the fixture at 100 tasks with 100 comments. */
 export const pricingCommands: CommandCost[] = [
-  { command: "zinn task list", memoryBytes: 81_166_336, seconds: 0.12, output: 6_600 },
-  { command: "zinn task list --json", memoryBytes: 80_429_056, seconds: 0.12, output: 67_095 },
-  { command: "zinn task view", memoryBytes: 78_528_512, seconds: 0.11, output: 737 },
-  { command: "zinn task create", memoryBytes: 80_035_840, seconds: 0.16, output: 66 },
+  { command: "zinn task list", memoryBytes: 81_920_000, seconds: 0.12, output: 6_600 },
+  { command: "zinn task list --json", memoryBytes: 82_280_448, seconds: 0.12, output: 71_495 },
+  { command: "zinn task view", memoryBytes: 79_429_632, seconds: 0.11, output: 737 },
+  { command: "zinn task create", memoryBytes: 80_887_808, seconds: 0.16, output: 66 },
 ];
 
 /** `zinn task list` against the fixture at 10_000 tasks with 10_000 comments. */
 export const largeListCost: CommandCost = {
   command: "zinn task list",
-  memoryBytes: 166_428_672,
-  seconds: 3.55,
+  memoryBytes: 187_957_248,
+  seconds: 3.7,
   output: 680_000,
 };
 
