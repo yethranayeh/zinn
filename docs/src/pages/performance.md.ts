@@ -4,23 +4,17 @@ import {
   count,
   fixture,
   memory,
-  mockNote,
   output,
   packages,
+  performanceNote,
   projectSizes,
-  secondsLabel,
   size,
   storage,
   flows,
 } from "../components/performance/flow-data";
 import { formatMs } from "../components/performance/flow-ui";
 import { kindLabels } from "../components/performance/flow-palette";
-import {
-  energyLabel,
-  energyMethodNote,
-  measurementNote,
-  nodeEnergyLabel,
-} from "../components/pricing/figures";
+import { energyLabel, energyMethodNote, nodeEnergyLabel } from "../components/pricing/figures";
 
 const flowSections = flows
   .map((flow) => {
@@ -52,14 +46,14 @@ const flowSections = flows
 const commandRows = commands
   .map(
     (entry) =>
-      `| \`${entry.command}\` | ${secondsLabel(entry.p50)} | ${secondsLabel(entry.p95)} | ${memory(entry.memoryBytes)} | ${output(entry.outputBytes)} |`,
+      `| \`${entry.command}\` | ${formatMs(entry.p50 * 1000)} | ${formatMs(entry.p95 * 1000)} | ${memory(entry.memoryBytes)} | ${output(entry.outputBytes)} |`,
   )
   .join("\n");
 
 const projectRows = projectSizes
   .map(
     (entry) =>
-      `| ${count(entry.tasks)} | ${size(entry.databaseBytes)} | ${secondsLabel(entry.seconds)} | ${memory(entry.memoryBytes)} | ${output(entry.jsonBytes)} |`,
+      `| ${count(entry.tasks)} | ${size(entry.databaseBytes)} | ${formatMs(entry.seconds * 1000)} | ${memory(entry.memoryBytes)} | ${output(entry.jsonBytes)} |`,
   )
   .join("\n");
 
@@ -77,7 +71,7 @@ ${flowSections}
 
 ## Commands
 
-The 100-task fixture, one comment per task. p50, peak memory and output are measured for the first four commands. p95 and the last three commands are placeholders.
+The 100-task fixture, one comment per task. p50, p95, peak memory and output are measured for all seven commands.
 
 | Command | p50 | p95 | Peak memory | Output |
 | --- | --- | --- | --- | --- |
@@ -85,7 +79,7 @@ ${commandRows}
 
 ## Project size
 
-The same list command as the board grows. The 100, 1,000 and 10,000-task rows are measured. The 100,000-task row is a placeholder.
+The same list command as the board grows. The 100, 1,000 and 10,000-task rows are measured.
 
 | Tasks | Database | List time | Peak memory | JSON output |
 | --- | --- | --- | --- | --- |
@@ -93,17 +87,15 @@ ${projectRows}
 
 ## Storage
 
-An empty database is ${size(storage.empty)}. A task adds about ${size(storage.task)} and a comment about ${size(storage.comment)}. At 10,000 tasks the file is ${size(storage.tenK)}. The 100,000-task placeholder lands near ${size(storage.hundredK)}.
+An empty database is ${size(storage.empty)}. A task adds about ${size(storage.task)} and a comment about ${size(storage.comment)}. At 10,000 tasks the file is ${size(storage.tenK)}.
 
 The published packages download ${size(packages.download)}, unpack to ${size(packages.unpacked)} in ${count(packages.files)} files, and Zinn's own packages are ${size(packages.zinn)} of the download.
 
 ## Method
 
-${measurementNote}
+${performanceNote}
 
-Node timings, p95, install timings, the extra commands and 100,000 tasks are placeholders. ${energyMethodNote} The read flow uses about ${energyLabel("zinn task list --json")} above idle, and Node accounts for ${nodeEnergyLabel}.
-
-${mockNote}
+Node timings and install timings are placeholders. ${energyMethodNote} The read flow uses about ${energyLabel("zinn task list --json")} above idle, and Node accounts for ${nodeEnergyLabel}.
 `,
     { headers: { "Content-Type": "text/markdown; charset=utf-8" } },
   );

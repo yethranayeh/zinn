@@ -1,29 +1,27 @@
 ---
 import PricingBody from "../pricing/PricingBody.astro";
-import PricingNote from "../pricing/PricingNote.astro";
 import Section from "../pricing/Section.astro";
 import Table from "../ui/table/Table.astro";
 import TableCell from "../ui/table/TableCell.astro";
 import TableHead from "../ui/table/TableHead.astro";
 import TableRow from "../ui/table/TableRow.astro";
 
-import { commands, memory, output, secondsLabel } from "./flow-data";
+import { commands, memory, output } from "./flow-data";
+import { formatMs } from "./flow-ui";
 
 const rows = commands.map((entry) => ({
 	command: entry.command,
-	p50: secondsLabel(entry.p50),
-	p95: secondsLabel(entry.p95),
+	p50: formatMs(entry.p50 * 1000),
+	p95: formatMs(entry.p95 * 1000),
 	memory: memory(entry.memoryBytes),
-	output: output(entry.outputBytes),
-	mock: entry.mock ?? false
+	output: output(entry.outputBytes)
 }));
 ---
 
 <Section id='perf-commands' label='Commands' title='What a command costs.'>
 	<div class='min-w-0'>
 		<PricingBody>
-			The 100-task fixture, one comment per task. p50, peak memory and output are measured for the first four commands.
-			p95 and the last three commands are placeholders.
+			The 100-task fixture, one comment per task. p50, p95, peak memory and output are measured for all seven commands.
 		</PricingBody>
 		<Table class='[&_td]:text-[13px]'>
 			<thead>
@@ -41,9 +39,6 @@ const rows = commands.map((entry) => ({
 						<TableRow>
 							<TableCell>
 								<span class='font-mono whitespace-nowrap'>{row.command}</span>
-								{row.mock && (
-									<span class='ml-1.5 font-mono text-[9px]/[1.4] tracking-[0.12em] text-cinnabar uppercase'>mock</span>
-								)}
 							</TableCell>
 							<TableCell class='font-mono tabular-nums'>{row.p50}</TableCell>
 							<TableCell class='font-mono tabular-nums'>{row.p95}</TableCell>
@@ -54,6 +49,5 @@ const rows = commands.map((entry) => ({
 				}
 			</tbody>
 		</Table>
-		<PricingNote>p95 and the last three commands are placeholders. The other columns are measured.</PricingNote>
 	</div>
 </Section>

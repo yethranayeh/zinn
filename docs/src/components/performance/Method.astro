@@ -1,19 +1,17 @@
 ---
 import PricingBody from "../pricing/PricingBody.astro";
-import PricingNote from "../pricing/PricingNote.astro";
 import Section from "../pricing/Section.astro";
 
-import { energyLabel, energyMethodNote, measurementNote, nodeEnergyLabel } from "../pricing/figures";
-import { mockNote } from "./flow-data";
+import { energyLabel, energyMethodNote, nodeEnergyLabel } from "../pricing/figures";
+import { performanceNote } from "./flow-data";
 ---
 
 <Section id='perf-method' label='Method' title='What these figures are.'>
 	<div class='min-w-0'>
-		<PricingBody>{measurementNote}</PricingBody>
+		<PricingBody>{performanceNote}</PricingBody>
 		<PricingBody>
-			Node timings, p95, install timings, the extra commands and 100,000 tasks are placeholders. {energyMethodNote} The read
-			flow uses about {energyLabel("zinn task list --json")} above idle, and Node accounts for {nodeEnergyLabel}.
+			Node timings and install timings are placeholders. {energyMethodNote} The read flow uses about
+			{energyLabel("zinn task list --json")} above idle, and Node accounts for {nodeEnergyLabel}.
 		</PricingBody>
-		<PricingNote>{mockNote}</PricingNote>
 	</div>
 </Section>

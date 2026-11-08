@@ -5,7 +5,6 @@ import {
   groupedNumber,
   memoryLabel,
   outputLabel,
-  pricingCommands,
   pricingEnvironment,
   pricingTotals,
   sizeLabel,
@@ -13,55 +12,26 @@ import {
 import { calculatorStops, energyPerCommand, nodeEnergyLabel } from "../pricing/figures";
 import { kindColors } from "./flow-palette";
 
-/**
- * Flow figures for the performance page.
- * ! FIXME: The 100-task command and package values are measured. Node timings, p95, install timings, the extra commands and 100,000 tasks are placeholders.
- */
+/** Flow figures for the performance page. */
 export const fixture = pricingEnvironment;
 
-// FIXME
-export const mockNote =
-  "Mock figures. The 100-task command and package values are measured. Node timings, p95, install timings, the extra commands and 100,000 tasks are placeholders.";
+/** Node timings and install timings are illustrative. */
+export const mockNote = "Node timings and install timings are placeholders.";
+
+export const performanceNote = `Measured with CLI ${pricingEnvironment.cli} and the packages it installs. Command times are medians of 30 runs, p95 is the nearest rank of those 30, and peak memory is the median per-run peak RSS from hyperfine. Each task has a ${pricingEnvironment.titleChars}-character title, a ${pricingEnvironment.descriptionChars}-character description and one ${pricingEnvironment.commentChars}-character comment.`;
 
 /** Memory in whole megabytes, or gigabytes above 1_000 MB */
 export function memory(bytes: number) {
   return bytes >= 1_000_000_000 ? `${(bytes / 1_000_000_000).toFixed(1)} GB` : memoryLabel(bytes);
 }
 
+/** Hyperfine reports peak RSS in mebibytes. */
+const mib = (value: number) => Math.round(value * 1_048_576);
+
 export const secondsLabel = (seconds: number) => `${seconds.toFixed(2)} s`;
 export const output = outputLabel;
 export const size = sizeLabel;
 export const count = groupedNumber;
-
-function measuredCommand(name: string) {
-  const entry = pricingCommands.find((candidate) => candidate.command === name);
-  if (!entry) {
-    throw new Error(`Missing measured command: ${name}`);
-  }
-
-  return entry;
-}
-
-const listCommand = measuredCommand("zinn task list");
-const listJsonCommand = measuredCommand("zinn task list --json");
-const viewCommand = measuredCommand("zinn task view");
-const createCommand = measuredCommand("zinn task create");
-
-const p95ByCommand: Record<string, number> = {
-  "zinn task list": 0.14,
-  "zinn task list --json": 0.15,
-  "zinn task view": 0.13,
-  "zinn task create": 0.19,
-};
-
-function p95For(name: string) {
-  const value = p95ByCommand[name];
-  if (value === undefined) {
-    throw new Error(`Missing p95 placeholder: ${name}`);
-  }
-
-  return value;
-}
 
 export interface CommandBenchmark {
   command: string;
@@ -69,62 +39,73 @@ export interface CommandBenchmark {
   p95: number;
   memoryBytes: number;
   outputBytes: number;
-  mock?: boolean;
 }
 
+const listCommand: CommandBenchmark = {
+  command: "zinn task list",
+  p50: 0.1172,
+  p95: 0.1239,
+  memoryBytes: mib(77.7),
+  outputBytes: 6_600,
+};
+
+const listJsonCommand: CommandBenchmark = {
+  command: "zinn task list --json",
+  p50: 0.1169,
+  p95: 0.1185,
+  memoryBytes: mib(77.8),
+  outputBytes: 71_495,
+};
+
+const viewCommand: CommandBenchmark = {
+  command: "zinn task view BNCH-50",
+  p50: 0.1134,
+  p95: 0.1149,
+  memoryBytes: mib(75.7),
+  outputBytes: 737,
+};
+
+const createCommand: CommandBenchmark = {
+  command: "zinn task create",
+  p50: 0.157,
+  p95: 0.161,
+  memoryBytes: mib(77.2),
+  outputBytes: 66,
+};
+
+const moveCommand: CommandBenchmark = {
+  command: "zinn task move BNCH-50 TODO",
+  p50: 0.1557,
+  p95: 0.1591,
+  memoryBytes: mib(76.8),
+  outputBytes: 62,
+};
+
+const searchCommand: CommandBenchmark = {
+  command: "zinn task search amarillo BNCH",
+  p50: 0.1156,
+  p95: 0.1169,
+  memoryBytes: mib(75.9),
+  outputBytes: 390,
+};
+
+const backupCommand: CommandBenchmark = {
+  command: "zinn backup",
+  p50: 0.1546,
+  p95: 0.1601,
+  memoryBytes: mib(76.2),
+  outputBytes: 140,
+};
+
+/** The 100-task fixture, 30 runs after 3 warmups, CLI 0.44.0. */
 export const commands: Array<CommandBenchmark> = [
-  {
-    command: listCommand.command,
-    p50: listCommand.seconds,
-    p95: p95For(listCommand.command),
-    memoryBytes: listCommand.memoryBytes,
-    outputBytes: listCommand.output,
-  },
-  {
-    command: listJsonCommand.command,
-    p50: listJsonCommand.seconds,
-    p95: p95For(listJsonCommand.command),
-    memoryBytes: listJsonCommand.memoryBytes,
-    outputBytes: listJsonCommand.output,
-  },
-  {
-    command: viewCommand.command,
-    p50: viewCommand.seconds,
-    p95: p95For(viewCommand.command),
-    memoryBytes: viewCommand.memoryBytes,
-    outputBytes: viewCommand.output,
-  },
-  {
-    command: createCommand.command,
-    p50: createCommand.seconds,
-    p95: p95For(createCommand.command),
-    memoryBytes: createCommand.memoryBytes,
-    outputBytes: createCommand.output,
-  },
-  {
-    command: "zinn task move",
-    p50: 0.17,
-    p95: 0.21,
-    memoryBytes: 80_900_000,
-    outputBytes: 66,
-    mock: true,
-  },
-  {
-    command: "zinn task search amarillo BNCH",
-    p50: 0.23,
-    p95: 0.31,
-    memoryBytes: 84_200_000,
-    outputBytes: 4_120,
-    mock: true,
-  },
-  {
-    command: "zinn backup",
-    p50: 0.31,
-    p95: 0.38,
-    memoryBytes: 83_400_000,
-    outputBytes: 120,
-    mock: true,
-  },
+  listCommand,
+  listJsonCommand,
+  viewCommand,
+  createCommand,
+  moveCommand,
+  searchCommand,
+  backupCommand,
 ];
 
 function calculatorStop(tasks: number) {
@@ -145,47 +126,40 @@ export interface ProjectSize {
   seconds: number;
   memoryBytes: number;
   jsonBytes: number;
-  mock?: boolean;
 }
 
+/** `zinn task list` at each size, 30 runs after 3 warmups, CLI 0.44.0. */
 export const projectSizes: Array<ProjectSize> = [
   {
     tasks: 100,
     databaseBytes: stop100.databaseBytes,
-    seconds: stop100.seconds,
-    memoryBytes: stop100.memoryBytes,
+    seconds: 0.1172,
+    memoryBytes: mib(77.7),
     jsonBytes: stop100.jsonOutputBytes,
   },
   {
     tasks: 1_000,
     databaseBytes: stop1k.databaseBytes,
-    seconds: stop1k.seconds,
-    memoryBytes: stop1k.memoryBytes,
+    seconds: 0.1601,
+    memoryBytes: mib(89.0),
     jsonBytes: stop1k.jsonOutputBytes,
   },
   {
     tasks: 10_000,
     databaseBytes: stop10k.databaseBytes,
-    seconds: stop10k.seconds,
-    memoryBytes: stop10k.memoryBytes,
+    seconds: 3.4508,
+    memoryBytes: mib(178.4),
     jsonBytes: stop10k.jsonOutputBytes,
   },
-  {
-    tasks: 100_000,
-    databaseBytes: 286_000_000,
-    seconds: 34.8,
-    memoryBytes: 1_060_000_000,
-    jsonBytes: 67_300_000,
-    mock: true,
-  },
 ];
+
+// TODO: add the 100,000-task row once measured. The fixture is about 286 MB and adds 15 to 30 minutes to a quiet session.
 
 export const storage = {
   empty: databaseSizes.empty,
   task: databaseSizes.task,
   comment: databaseSizes.comment,
   tenK: stop10k.databaseBytes,
-  hundredK: 286_000_000,
 };
 
 export const packages = {
@@ -263,9 +237,9 @@ const readFlow: Flow = {
   command: listJsonCommand.command,
   summary: "One command from an agent to SQLite and back. The JSON is what the agent reads.",
   keyFigures: [
-    { label: "p50", value: secondsLabel(listJsonCommand.seconds) },
+    { label: "p50", value: secondsLabel(listJsonCommand.p50) },
     { label: "Peak memory", value: memory(listJsonCommand.memoryBytes) },
-    { label: "Output", value: output(listJsonCommand.output) },
+    { label: "Output", value: output(listJsonCommand.outputBytes) },
     { label: "Database", value: size(stop100.databaseBytes) },
   ],
   totalMs: 120,
@@ -445,9 +419,9 @@ const writeFlow: Flow = {
   command: createCommand.command,
   summary: "One create. The row is small, but the write still has to reach the disk.",
   keyFigures: [
-    { label: "p50", value: secondsLabel(createCommand.seconds) },
+    { label: "p50", value: secondsLabel(createCommand.p50) },
     { label: "Peak memory", value: memory(createCommand.memoryBytes) },
-    { label: "Output", value: output(createCommand.output) },
+    { label: "Output", value: output(createCommand.outputBytes) },
     { label: "Database", value: size(stop100.databaseBytes) },
   ],
   totalMs: 160,
