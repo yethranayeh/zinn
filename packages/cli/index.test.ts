@@ -1,7 +1,7 @@
 import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import { test, expect } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 
@@ -13,6 +13,8 @@ import { routes } from "./src/routes/routes";
 import { errorDocumentSchema } from "./src/errors";
 import type { Activity } from "@zinn-dev/core";
 import { latestVersion, MIGRATIONS } from "../core/src/migrations/registry";
+import { createBaseline } from "../core/src/migrations/baseline";
+import { openDatabase } from "../core/src/sqlite/bun";
 import { taskPrioritySchema } from "../core/src/schemas/task";
 import { MAX_TEXT_BYTES, relationTypeSchema } from "@zinn-dev/core";
 
@@ -5951,6 +5953,73 @@ test.serial("restore keeps the database when confirmation is declined", async ()
   });
 });
 
+/** Two stores, each holding one task, and a link selecting the first of them. */
+async function linkedStores(root: string) {
+  const first = join(root, "first");
+  const second = join(root, "second");
+  for (const [store, title] of [[first, "First"], [second, "Second"]] as const) {
+    mkdirSync(store);
+    await runZinn(["project", "create", "RST"], store);
+    await runZinn(["task", "create", "RST", "--title", title], store);
+  }
+  const link = join(root, "selected");
+  symlinkSync(first, link, "dir");
+  return { first, second, link };
+}
+
+function retarget(link: string, target: string) {
+  unlinkSync(link);
+  symlinkSync(target, link, "dir");
+}
+
+for (const { answer, restores } of [{ answer: "y", restores: true }, { answer: "n", restores: false }]) {
+  test.serial(`restore answered ${answer} acts only on the database it showed, after the store link changes at the prompt (ZINN-513)`, async () => {
+    await withIsolatedZinnDir(async (root) => {
+      const source = join(root, "source");
+      mkdirSync(source);
+      const path = await backupWithTask(source, "Kept");
+      const { first, second, link } = await linkedStores(root);
+
+      const result = await runCliInTerminal(["restore", path], {
+        env: { ...TEST_ENVIRONMENT, ZINN_DIR: link },
+        cwd: root,
+        inputWhen: "[y/N]",
+        beforeInput: () => retarget(link, second),
+        input: `${answer}\n`,
+      });
+
+      expect(result.code).toBe(0);
+      expect(result.output).toContain(join(realpathSync(first), "data", "zinn.sqlite"));
+      expect(result.output).not.toContain(second);
+      expect(taskTitles(first)).toEqual(restores ? [{ title: "Kept" }] : [{ title: "First" }]);
+      expect(backupFiles(first)).toHaveLength(restores ? 1 : 0);
+      expect(taskTitles(second)).toEqual([{ title: "Second" }]);
+      expect(backupFiles(second)).toEqual([]);
+    });
+  });
+}
+
+test.serial("restore checks the backup again after confirmation and refuses one that changed at the prompt (ZINN-513)", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const path = await backupWithTask(dir, "Kept");
+    await runZinn(["task", "create", "RST", "--title", "Later"], dir);
+    const backupsBefore = backupFiles(dir);
+
+    const result = await runCliInTerminal(["restore", path], {
+      env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir },
+      cwd: dir,
+      inputWhen: "[y/N]",
+      beforeInput: () => writeFileSync(path, "not a database"),
+      input: "y\n",
+    });
+
+    expect(result.code).toBe(1);
+    expect(result.output).toContain(path);
+    expect(taskTitles(dir)).toEqual([{ title: "Kept" }, { title: "Later" }]);
+    expect(backupFiles(dir)).toEqual(backupsBefore);
+  });
+});
+
 test("restore with --json needs --yes, and with it prints the restore result", async () => {
   await withIsolatedZinnDir(async (dir) => {
     const path = await backupWithTask(dir, "Kept");
@@ -6234,6 +6303,32 @@ test("migrate on a current database is a no-op with no backup", async () => {
     expect((await runZinn(["migrate"], dir)).stdout).toContain(String(CURRENT_SCHEMA_VERSION));
     expect(databaseSnapshot(dir)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
+  });
+});
+
+test("migrate reports the same resolved database path when it upgrades and when it then finds the database current (ZINN-513)", async () => {
+  await withIsolatedZinnDir(async (root) => {
+    const store = join(root, "store");
+    mkdirSync(join(store, "data"), { recursive: true });
+    const db = openDatabase(join(store, "data", "zinn.sqlite"));
+    try {
+      createBaseline(db);
+      db.exec("PRAGMA user_version = 1");
+    } finally {
+      db.close();
+    }
+    const link = join(root, "selected");
+    symlinkSync(store, link, "dir");
+
+    const upgraded = await runZinn(["migrate", "--json"], link);
+    const unchanged = await runZinn(["migrate", "--json"], link);
+
+    expect(upgraded.code).toBe(0);
+    expect(unchanged.code).toBe(0);
+    const upgradedResult = JSON.parse(upgraded.stdout);
+    const unchangedResult = JSON.parse(unchanged.stdout);
+    expect(upgradedResult).toMatchObject({ databasePath: join(realpathSync(store), "data", "zinn.sqlite"), changed: true });
+    expect(unchangedResult).toMatchObject({ databasePath: upgradedResult.databasePath, changed: false, backupPath: null });
   });
 });
 
