@@ -814,3 +814,27 @@ test("shared option checks reject repeated scalar flags and retain positional va
     expect(extraLabel.stderr).toContain("Usage: zinn label delete");
   });
 });
+
+test("task and comment key numbers are capped at 15 digits", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "CAP", "--name", "Cap"], testDir);
+    await runZinn(["task", "create", "CAP", "--title", "Only task"], testDir);
+
+    const tooManyDigits = "9".repeat(20);
+    const fifteenDigits = "9".repeat(15);
+
+    // 16+ digits: rejected as a malformed key, never rounded and looked up.
+    const invalidTask = await runZinn(["--json", "task", "view", `CAP-${tooManyDigits}`], testDir);
+    expect(errorDocumentSchema.parse(JSON.parse(invalidTask.stderr)).error).toMatchObject({ code: "invalid_input", message: expect.stringContaining(`CAP-${tooManyDigits}`), details: { field: ["taskKey"] } });
+
+    const invalidComment = await runZinn(["--json", "task", "comment", "edit", `CAP-1#${tooManyDigits}`, "--text", "x"], testDir);
+    expect(errorDocumentSchema.parse(JSON.parse(invalidComment.stderr)).error).toMatchObject({ code: "invalid_input", message: expect.stringContaining(`CAP-1#${tooManyDigits}`), details: { field: ["commentKey"] } });
+
+    // Exactly 15 digits: still a well-formed key (an exact JS integer), just not found.
+    const missingTask = await runZinn(["--json", "task", "view", `CAP-${fifteenDigits}`], testDir);
+    expect(errorDocumentSchema.parse(JSON.parse(missingTask.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "task", key: `CAP-${fifteenDigits}` } });
+
+    const missingComment = await runZinn(["--json", "task", "comment", "edit", `CAP-1#${fifteenDigits}`, "--text", "x"], testDir);
+    expect(errorDocumentSchema.parse(JSON.parse(missingComment.stderr)).error).toMatchObject({ code: "not_found", details: { entity: "comment", key: `CAP-1#${fifteenDigits}` } });
+  });
+});

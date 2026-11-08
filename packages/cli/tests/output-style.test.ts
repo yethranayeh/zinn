@@ -6,6 +6,7 @@ import {
   DIM_SEPARATOR,
   dim,
   GRAY_BACKLOG,
+  GREEN_DONE,
   runZinn,
   runZinnInTerminal,
   SECTION_RULE,
@@ -389,6 +390,115 @@ test.serial("task text output names labels without color words when color is off
         expect(json).not.toContain("\x1b");
         expect([JSON.parse(json)].flat()[0].labels).toEqual(["bug", "docs"]);
       }
+    }
+  });
+});
+
+test.serial("task move, list and view color workflow column names only in a terminal, while JSON stays raw", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "COLOR", "--name", "Column colors"], testDir);
+    await runZinn(["task", "create", "COLOR", "--title", "waiting"], testDir);
+    await runZinn(["task", "create", "COLOR", "--title", "finished"], testDir);
+
+    const moved = await runZinnInTerminal(["task", "move", "COLOR-2", "Done"], testDir);
+    expect(moved.code).toBe(0);
+    expect(moved.output).toBe(`COLOR-2${DIM_SEPARATOR}${GREEN_DONE}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}finished\n`);
+
+    expect((await runZinnInTerminal(["task", "list", "COLOR"], testDir)).output).toBe(
+      [
+        `COLOR-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}waiting`,
+        `COLOR-2${DIM_SEPARATOR}\x1b[32m${"Done".padEnd("Backlog".length)}\x1b[39m${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}finished`,
+        "",
+      ].join("\n"),
+    );
+    expect((await runZinnInTerminal(["task", "view", "COLOR-1"], testDir)).output).toContain(
+      GRAY_BACKLOG,
+    );
+    expect((await runZinnInTerminal(["task", "view", "COLOR-2"], testDir)).output).toContain(
+      GREEN_DONE,
+    );
+
+    // Piped output keeps the same layout without color codes.
+    expect((await runZinn(["task", "list", "COLOR"], testDir)).stdout).toBe(
+      ["COLOR-1 | Backlog | - | waiting", "COLOR-2 | Done    | - | finished", ""].join("\n"),
+    );
+    expect(taskViewContent((await runZinn(["task", "view", "COLOR-2"], testDir)).stdout)).toBe("COLOR-2 | Done | - | finished\n");
+    expect((await runZinn(["task", "move", "COLOR-2", "Done"], testDir)).stdout).toBe(
+      "COLOR-2 | Done | - | finished\n",
+    );
+
+    const listedJson = (await runZinn(["task", "list", "COLOR", "--json"], testDir)).stdout;
+    expect(listedJson).not.toContain("\x1b");
+    expect(JSON.parse(listedJson).map((task: { column: string }) => task.column)).toEqual([
+      "Backlog",
+      "Done",
+    ]);
+  });
+});
+
+test("Unicode characters stay intact at comment, label and project preview cutoffs", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    const run = (...args: Array<string>) => runZinn(args, directory);
+    expect((await run("project", "create", "NOTE")).code).toBe(0);
+    expect((await run("task", "create", "NOTE", "--title", "Commented task")).code).toBe(0);
+    expect((await run("task", "comment", "create", "NOTE-1", "--text", "Initial text")).code).toBe(0);
+    expect((await run("label", "create", "bug")).code).toBe(0);
+
+    const cases = [
+      { text: `${"x".repeat(78)}😀z`, preview: `${"x".repeat(78)}…` },
+      { text: `${"x".repeat(77)}😀zz`, preview: `${"x".repeat(77)}😀…` },
+      { text: `${"x".repeat(78)}😀`, preview: `${"x".repeat(78)}😀` },
+      { text: `${"x".repeat(78)}😀\nLater text`, preview: `${"x".repeat(78)}…` },
+      { text: `${"x".repeat(78)}e\u0301zz`, preview: `${"x".repeat(78)}e\u0301…` },
+      { text: `${"x".repeat(78)}👨‍👩‍👧‍👦z`, preview: `${"x".repeat(78)}…` },
+      { text: `${"界".repeat(40)}z`, preview: `${"界".repeat(39)}…` },
+    ];
+    for (const [index, { text, preview }] of cases.entries()) {
+      const commands = [
+        ["task", "comment", "create", "NOTE-1", "--text"],
+        ["task", "comment", "edit", "NOTE-1#1", "--text"],
+        ["label", "create", `label-${index}`, "--description"],
+        ["label", "edit", "bug", "--description"],
+        ["project", "create", `P${index}`, "--description"],
+        ["project", "edit", "NOTE", "--description"],
+      ];
+      for (const args of commands) {
+        const result = await run(...args, text);
+        expect(result.code).toBe(0);
+        expect(result.stderr).toBe("");
+        expect(result.stdout).toEndWith(` | ${preview}\n`);
+        expect(result.stdout).not.toContain("\uFFFD");
+      }
+
+      const listed = await run("label", "list");
+      expect(listed.code).toBe(0);
+      expect(listed.stderr).toBe("");
+      expect(listed.stdout).toContain(` | ${preview}\n`);
+      expect(listed.stdout).not.toContain("\uFFFD");
+
+      const projectList = await run("project", "list");
+      expect(projectList.code).toBe(0);
+      expect(projectList.stdout).toContain(` | ${preview}\n`);
+      expect(projectList.stdout).not.toContain("\uFFFD");
+
+      const commentView = await run("task", "comment", "view", "NOTE-1#1");
+      for (const line of text.split("\n")) {
+        expect(commentView.stdout).toContain(line);
+      }
+      const labelView = await run("label", "view", "bug");
+      expect(labelView.stdout).toContain(text);
+      const projectView = await run("project", "view", "NOTE");
+      expect(projectView.stdout).toContain(text);
+
+      const comment = await run("task", "comment", "view", "NOTE-1#1", "--json");
+      expect(comment.code).toBe(0);
+      expect(JSON.parse(comment.stdout).text).toBe(text);
+      const labels = await run("label", "list", "--json");
+      expect(labels.code).toBe(0);
+      expect(JSON.parse(labels.stdout)).toContainEqual({ id: expect.any(String), name: "bug", color: "white", description: text });
+      const project = await run("project", "view", "NOTE", "--json");
+      expect(project.code).toBe(0);
+      expect(JSON.parse(project.stdout).description).toBe(text);
     }
   });
 });

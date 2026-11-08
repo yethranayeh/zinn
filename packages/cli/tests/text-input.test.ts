@@ -316,3 +316,46 @@ test("file input combines with the other fields of an edit", async () => {
     }
   });
 }, 30_000);
+
+test("names and titles share trimming and reject leading or trailing control characters", async () => {
+  await withIsolatedZinnDir(async (directory) => {
+    const commands = [
+      { args: ["project", "create", "TEXT", "--name"], field: "name" },
+      { args: ["project", "column", "create", "TEXT"], field: "name" },
+      { args: ["label", "create"], field: "name" },
+      { args: ["task", "create", "TEXT", "--title"], field: "title" },
+    ];
+    for (const { args, field } of commands) {
+      const created = await runZinn([...args, " Café 🌿  next ", "--json"], directory);
+      expect(created.code).toBe(0);
+      expect(JSON.parse(created.stdout)[field]).toBe("Café 🌿  next");
+    }
+    const edits = [
+      { args: ["project", "edit", "TEXT", "--name"], field: "name" },
+      { args: ["project", "column", "edit", "TEXT", " Café 🌿  next ", "--name"], field: "name" },
+      { args: ["label", "edit", " Café 🌿  next ", "--name"], field: "name" },
+      { args: ["task", "edit", "TEXT-1", "--title"], field: "title" },
+    ];
+    for (const { args, field } of edits) {
+      const edited = await runZinn([...args, " Renamed ", "--json"], directory);
+      expect(edited.code).toBe(0);
+      expect(JSON.parse(edited.stdout)[field]).toBe("Renamed");
+    }
+    for (const args of [
+      ["project", "create", "OTHER", "--name"],
+      ["project", "column", "create", "TEXT"],
+      ["label", "create"],
+      ["task", "create", "TEXT", "--title"],
+      ["project", "edit", "TEXT", "--name"],
+      ["project", "column", "edit", "TEXT", "Renamed", "--name"],
+      ["label", "edit", "Renamed", "--name"],
+      ["task", "edit", "TEXT-1", "--title"],
+    ]) {
+      for (const value of ["\nName", "Name\n", "\tName", "Name\t"]) {
+        const invalid = await runZinn([...args, value, "--json"], directory);
+        expect(invalid.code).toBe(1);
+        expect(errorDocumentSchema.parse(JSON.parse(invalid.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: [args.includes("--title") ? "title" : "name"] } });
+      }
+    }
+  });
+});
