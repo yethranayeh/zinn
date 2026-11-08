@@ -308,6 +308,9 @@ test("task create places a task last in the named column and a bad column saves 
       const second = task.create({ project_id: app.id, title: "Second", description: null, columnName: "in progress" }, actor);
       const third = task.create({ project_id: app.id, title: "Third", description: null, columnName: "IN PROGRESS" }, actor);
       assert.equal(second.column_id, inProgress!.id);
+      // Each column starts its own placement sequence, so first tasks share an order key.
+      assert.equal(first.task_order, second.task_order);
+      assert.ok(third.task_order > second.task_order);
       assert.deepEqual(dbTask.getAllByColumnId(inProgress!.id).map((t) => t.id), [second.id, third.id]);
       assert.deepEqual(dbTask.getAllByColumnId(backlog!.id).map((t) => t.id), [first.id]);
 

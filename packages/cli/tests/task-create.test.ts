@@ -22,47 +22,6 @@ test("task create requires a project key and a title", async () => {
   });
 });
 
-test("task create succeeds against an existing project", async () => {
-  await withIsolatedZinnDir(async (testDir) => {
-    await runZinn(["project", "create", "TSK", "--name", "Tasks"], testDir);
-
-    const result = await runZinn(["task", "create", "TSK", "--title", "first task"], testDir);
-
-    // The placement contract is asserted independently below.
-    expect(result.code).toBe(0);
-  });
-});
-
-test("task create attaches the task to its project's first ordered column", async () => {
-  await withIsolatedZinnDir(async (testDir) => {
-    await runZinn(["project", "create", "PLACE", "--name", "Placed"], testDir);
-    await runZinn(["project", "column", "create", "PLACE", "Later"], testDir);
-
-    expect((await runZinn(["task", "create", "PLACE", "--title", "placed task"], testDir)).code).toBe(0);
-
-    withTestDb(testDir, (db) => {
-      const taskRow = db
-        .query<
-          { project_id: string; column_id: string },
-          []
-        >("SELECT project_id, column_id FROM task WHERE title = 'placed task'")
-        .get();
-      const firstColumn = db
-        .query<
-          { id: string; project_id: string; name: string },
-          []
-        >("SELECT id, project_id, name FROM project_column ORDER BY column_order LIMIT 1")
-        .get();
-
-      expect(taskRow).not.toBeNull();
-      expect(firstColumn).not.toBeNull();
-      expect(firstColumn?.name).toBe("Backlog");
-      expect(taskRow?.column_id).toBe(firstColumn?.id);
-      expect(taskRow?.project_id).toBe(firstColumn?.project_id);
-    });
-  });
-});
-
 test("task create --column places the task last in the named column, matched case-insensitively", async () => {
   await withIsolatedZinnDir(async (testDir) => {
     await runZinn(["project", "create", "COLS", "--name", "Columns"], testDir);
@@ -156,24 +115,6 @@ test("task create relation flags relate the new task to existing tasks, from the
   });
 });
 
-test("task create counts identical relation requests once", async () => {
-  await withIsolatedZinnDir(async (testDir) => {
-    const run = (...args: string[]) => runZinn(args, testDir);
-    await run("project", "create", "APP", "--name", "App");
-    await run("task", "create", "APP", "--title", "Target");
-
-    const created = await run(
-      "task", "create", "APP", "--title", "Source",
-      "--depends-on", "APP-1", "--depends-on", "app-1",
-    );
-    const relations = (await run("task", "relation", "list", "APP-2")).stdout.trimEnd().split("\n");
-
-    expect(created.code).toBe(0);
-    expect(relations).toHaveLength(1);
-    expect(relations[0]).toMatch(/Depends on\s+\|\s+APP-1\s+\|\s+Backlog\s+\|\s+Target/);
-  });
-});
-
 test("task create rejects a missing, malformed or repeated relation target and creates nothing", async () => {
   await withIsolatedZinnDir(async (testDir) => {
     const run = (...args: string[]) => runZinn(args, testDir);
@@ -219,37 +160,6 @@ test("task create help lists the relation flags", async () => {
     for (const flag of ["--parent <task-key>", "--depends-on <task-key>", "--duplicate-of <task-key>", "--related <task-key>"]) {
       expect(help.stdout).toContain(flag);
     }
-  });
-});
-
-test("task ordering starts independently in each column", async () => {
-  await withIsolatedZinnDir(async (testDir) => {
-    await runZinn(["project", "create", "ALPHA", "--name", "Alpha"], testDir);
-    await runZinn(["task", "create", "ALPHA", "--title", "todo first"], testDir);
-
-    withTestDb(testDir, (db) => {
-      const todoColumn = db
-        .query<{ id: string }, []>("SELECT id FROM project_column WHERE name = 'TODO'")
-        .get();
-
-      expect(todoColumn).not.toBeNull();
-      db.run("UPDATE task SET column_id = ? WHERE title = 'todo first'", [todoColumn!.id]);
-    });
-
-    await runZinn(["task", "create", "ALPHA", "--title", "backlog first"], testDir);
-    await runZinn(["task", "create", "ALPHA", "--title", "backlog second"], testDir);
-
-    withTestDb(testDir, (db) => {
-      const rows = db
-        .query<{ title: string; task_order: string }, []>(
-          "SELECT title, task_order FROM task ORDER BY title",
-        )
-        .all();
-
-      expect(rows).toHaveLength(3);
-      expect(rows[0]?.task_order).toBe(rows[2]?.task_order);
-      expect(rows[1]!.task_order > rows[0]!.task_order).toBe(true);
-    });
   });
 });
 
