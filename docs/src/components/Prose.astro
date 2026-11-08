@@ -10,8 +10,13 @@ const { class: className } = Astro.props;
 	class:list={[
 		"prose min-w-0 max-w-[68ch] text-lg leading-[1.7] md:text-xl [&_h2]:mb-6",
 		"[&_h2]:text-[28px] [&_h2]:leading-[1.25] [&_h2]:font-semibold [&_h2]:tracking-[-0.025em] md:[&_h2]:text-[36px] [&_p+p]:mt-6",
-		"[&_.lead]:mb-6 [&_.lead]:text-[22px] [&_.lead]:leading-[1.5] md:[&_.lead]:text-[26px] [&_a]:underline [&_ol]:my-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_:not(pre)>code]:text-[0.85em] [&_:not(pre)>code]:bg-[color-mix(in_srgb,currentColor_8%,transparent)]",
+		"[&_.lead]:mb-6 [&_.lead]:text-[22px] [&_.lead]:leading-[1.5] md:[&_.lead]:text-[26px] [&_a]:underline [&_:not(pre)>code]:text-[0.85em] [&_:not(pre)>code]:bg-[color-mix(in_srgb,currentColor_8%,transparent)]",
 		"[&_:not(pre)>code]:px-[0.22em] [&_:not(pre)>code]:py-[0.05em] [&_:not(pre)>code]:box-decoration-clone [&_:not(pre)>code]:[overflow-wrap:anywhere]",
+		"[&_ul]:my-5 [&_ol]:my-5 [&_ul_ul]:my-[0.4rem] [&_ul_ol]:my-[0.4rem] [&_ol_ul]:my-[0.4rem] [&_ol_ol]:my-[0.4rem]",
+		"[&_ul]:list-none [&_ul]:pl-0 [&_ul>li]:relative [&_ul>li]:pl-[1.3rem] [&_ul>li]:before:absolute [&_ul>li]:before:left-0 [&_ul>li]:before:top-[calc(0.5lh_-_0.19em)] [&_ul>li]:before:size-[0.38em] [&_ul>li]:before:bg-current [&_ul>li]:before:content-['']",
+		"[&_ul_ul>li]:before:border [&_ul_ul>li]:before:border-solid [&_ul_ul>li]:before:border-current [&_ul_ul>li]:before:bg-transparent",
+		"[&_ul_ul_ul>li]:before:top-[calc(0.5lh_-_0.12em)] [&_ul_ul_ul>li]:before:size-[0.24em] [&_ul_ul_ul>li]:before:bg-current [&_ul_ul_ul>li]:before:border-0",
+		"[&_ol]:list-decimal [&_ol]:pl-[1.3rem] [&_ol_ol]:list-[lower-alpha] [&_ol_ol_ol]:list-[lower-roman] [&_ol>li]:marker:tabular-nums",
 		className
 	]}>
 	<slot />

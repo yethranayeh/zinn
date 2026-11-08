@@ -6,4 +6,4 @@ type Props = HTMLAttributes<"ul">;
 const { class: className, ...attributes } = Astro.props;
 ---
 
-<ul class:list={["my-6 list-disc pl-6", className]} {...attributes}><slot /></ul>
+<ul role='list' class={className} {...attributes}><slot /></ul>
