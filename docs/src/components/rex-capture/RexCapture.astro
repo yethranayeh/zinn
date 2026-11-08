@@ -31,7 +31,7 @@ const previewSizes =
 
 <div data-rex-figure>
 	<div
-		class='relative pt-[var(--capture-annotation-gutter)] max-md:pt-0'
+		class='relative pt-(--capture-annotation-gutter) max-md:pt-0'
 		style={`--capture-annotation-gutter: ${rexCapture.noteGutter}px`}>
 		<div class='relative' data-capture-surface>
 			<a
@@ -58,7 +58,7 @@ const previewSizes =
 					rexScenes.map((scene, index) => (
 						<button
 							type='button'
-							class="absolute cursor-pointer border-0 bg-transparent p-0 before:absolute before:inset-x-0 before:-inset-y-[18px] before:content-[''] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-bronze"
+							class="absolute cursor-pointer border-0 bg-transparent p-0 before:absolute before:inset-x-0 before:-inset-y-4.5 before:content-[''] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-bronze"
 							role='tab'
 							aria-selected={index === 0 ? "true" : "false"}
 							tabindex={index === 0 ? 0 : -1}

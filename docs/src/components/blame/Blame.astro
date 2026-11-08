@@ -9,7 +9,7 @@ import { notes } from "./example";
 		<div class='pointer-events-none absolute inset-0 z-10 overflow-hidden' data-brackets aria-hidden='true'></div>
 	</div>
 
-	<aside class='flex flex-col gap-6 lg:sticky lg:top-[var(--site-header-height)] lg:self-start lg:pt-2' data-notes>
+	<aside class='flex flex-col gap-6 lg:sticky lg:top-(--site-header-height) lg:self-start lg:pt-2' data-notes>
 		<p class='font-mono text-xs leading-[1.6] text-muted-foreground' data-blame-init>
 			Hover, tap or tab to a note to cut its region out of the output.
 		</p>
@@ -22,7 +22,7 @@ import { notes } from "./example";
 					role='note'
 					tabindex='0'>
 					<div class='mb-2 flex items-center gap-2'>
-						<span class='grid size-6 shrink-0 place-items-center border border-soot font-mono text-[10px] leading-none text-soot tabular-nums group-data-[active]/note:border-bronze group-data-[active]/note:bg-bronze'>
+						<span class='grid size-6 shrink-0 place-items-center border border-soot font-mono text-[10px] leading-none text-soot tabular-nums group-data-active/note:border-bronze group-data-active/note:bg-bronze'>
 							{note.number}
 						</span>
 						<span class='h-px flex-1 bg-soot/20' />

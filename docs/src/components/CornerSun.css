@@ -3,7 +3,7 @@
 	mask-size: 86px 128px;
 }
 
-@media (min-width: 768px) {
+@media (width >= theme(--breakpoint-md)) {
 	.halftone-mask {
 		mask-size: 128px 192px;
 	}

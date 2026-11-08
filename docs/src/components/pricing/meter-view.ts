@@ -28,7 +28,7 @@ function setText(element: HTMLElement | null, text: string) {
 function waterfallRow(entry: RequestRecord, end: number) {
   const item = document.createElement("li");
   item.className =
-    "grid grid-cols-[minmax(0,13rem)_3.6rem_minmax(0,1fr)_3.6rem] items-center gap-2.5 border-b border-soot/[0.12] py-1 text-[10.5px]/[1.3] @max-[640px]:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_auto]";
+    "grid grid-cols-[minmax(0,13rem)_3.6rem_minmax(0,1fr)_3.6rem] items-center gap-2.5 border-b border-soot/12 py-1 text-[10.5px]/[1.3] @max-[640px]:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_auto]";
   item.dataset.row = "";
 
   const name = document.createElement("span");
@@ -38,11 +38,11 @@ function waterfallRow(entry: RequestRecord, end: number) {
 
   const kind = document.createElement("span");
   kind.className =
-    "text-[9px] tracking-[0.1em] text-muted-foreground uppercase @max-[640px]:hidden";
+    "text-[9px] tracking-widest text-muted-foreground uppercase @max-[640px]:hidden";
   kind.textContent = entry.kind;
 
   const track = document.createElement("span");
-  track.className = "relative h-[9px] bg-soot/[0.08]";
+  track.className = "relative h-2.25 bg-soot/8";
   const bar = document.createElement("i");
   bar.className = `absolute inset-y-0 left-0 ${barColors[entry.kind]}`;
   bar.style.left = `${Math.min(100, (entry.start / end) * 100)}%`;

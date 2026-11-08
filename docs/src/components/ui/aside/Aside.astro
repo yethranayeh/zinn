@@ -11,7 +11,7 @@ const { label, class: className, ...attributes } = Astro.props;
 
 <aside
 	aria-label={label}
-	class={twMerge("my-6 border-l-[6px] border-clay bg-limestone px-3.5 py-2.5", className)}
+	class={twMerge("my-6 border-l-6 border-clay bg-limestone px-3.5 py-2.5", className)}
 	{...attributes}>
 	<p class='font-semibold'>{label}</p>
 

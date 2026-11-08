@@ -9,7 +9,7 @@ const { packages } = Astro.props;
 ---
 
 <div
-	class='mt-5 grid auto-cols-fr grid-flow-col border-y border-soot text-sm leading-[1.6] lg:-ml-[var(--plate-padding-inline)] lg:-mr-[var(--rail-meta-padding-right)]'>
+	class='mt-5 grid auto-cols-fr grid-flow-col border-y border-soot text-sm leading-[1.6] lg:-ml-(--plate-padding-inline) lg:-mr-(--rail-meta-padding-right)'>
 	{
 		packages.map(({ label, url }) => (
 			<a href={url} class='block border-soot py-1.5 text-center not-first:border-l'>

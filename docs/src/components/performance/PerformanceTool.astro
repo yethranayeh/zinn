@@ -15,16 +15,16 @@ const initial = flows[0];
 <section data-performance>
 	<div class='border-b border-soot/22 bg-bone'>
 		<div class='site-container flex flex-wrap items-center gap-x-6 gap-y-3 py-3'>
-			<div class='max-w-[44rem]'>
+			<div class='max-w-176'>
 				<p class='m-0 font-mono text-[10px]/[1.4] tracking-[0.16em] text-muted-foreground uppercase'>Performance</p>
 				<h1 class='mt-0.5 text-[clamp(1.25rem,2.4vw,1.625rem)] leading-none tracking-[-0.02em]'>
 					The shape of a command.
 				</h1>
-				<p class='mt-2 max-w-[40rem] text-[14px]/[1.5] text-muted-foreground'>
+				<p class='mt-2 max-w-160 text-[14px]/normal text-muted-foreground'>
 					Zinn runs when you call it, does its work and exits. These are the numbers for that round trip, and the path
 					they take.
 				</p>
-				<p class='mt-1 font-mono text-[10px]/[1.5] text-muted-foreground'>
+				<p class='mt-1 font-mono text-[10px]/normal text-muted-foreground'>
 					{fixture.tasks} tasks · 1 comment each · CLI {fixture.cli} · {fixture.platform}
 				</p>
 			</div>
@@ -41,7 +41,7 @@ const initial = flows[0];
 		<FlowCanvas flow={initial} />
 
 		<aside
-			class='flex w-full flex-col border-t border-limestone/15 bg-soot text-limestone scheme-dark selection:bg-limestone selection:text-soot lg:w-[19rem] lg:overflow-y-auto lg:border-t-0 lg:border-l'
+			class='flex w-full flex-col border-t border-limestone/15 bg-soot text-limestone scheme-dark selection:bg-limestone selection:text-soot lg:w-76 lg:overflow-y-auto lg:border-t-0 lg:border-l'
 			aria-label='Flow inspector'>
 			<div class='flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 pt-4'>
 				<p class='m-0 font-mono text-[10px]/[1.4] tracking-[0.16em] text-soot-muted-foreground uppercase'>Inspector</p>
@@ -58,7 +58,7 @@ const initial = flows[0];
 
 			{flows.map((flow) => <FlowInspectorState flow={flow} hidden={flow.id !== initial.id} />)}
 
-			<p class='mt-auto px-4 pt-6 pb-4 font-mono text-[10px]/[1.5] text-soot-muted-foreground'>
+			<p class='mt-auto px-4 pt-6 pb-4 font-mono text-[10px]/normal text-soot-muted-foreground'>
 				Mock figures. The 100-task command and package values are measured. Node timings, p95, install timings, the
 				extra commands and 100,000 tasks are placeholders.
 			</p>

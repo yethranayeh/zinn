@@ -6,7 +6,7 @@ import Button from "../ui/button/Button.astro";
 type Props = ComponentProps<typeof Button>;
 
 const base =
-	"min-h-0 px-4 text-[12px]/[1] tracking-[0.14em] uppercase hover:bg-soot hover:text-soot-foreground";
+	"min-h-0 px-4 text-[12px]/none tracking-[0.14em] uppercase hover:bg-soot hover:text-soot-foreground";
 ---
 
 <Button variant='outline' {...Astro.props} class={twMerge(base, Astro.props.class)}><slot /></Button>

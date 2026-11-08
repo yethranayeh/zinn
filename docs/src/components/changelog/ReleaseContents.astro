@@ -13,7 +13,7 @@ const { releases } = Astro.props;
 	<div class='site-container h-full'>
 		<nav
 			aria-label='Releases'
-			class='pointer-events-auto sticky top-[calc(var(--site-header-height)_+_5px)] ml-[var(--container-5xl)] flex max-h-[calc(100vh_-_var(--site-header-height)_-_3rem)] w-56 flex-col px-2'>
+			class='pointer-events-auto sticky top-[calc(var(--site-header-height)_+_5px)] ml-(--container-5xl) flex max-h-[calc(100vh_-_var(--site-header-height)_-_3rem)] w-56 flex-col px-2'>
 			<div class='mb-3 flex shrink-0 items-baseline justify-between border-b border-soot/22 pb-2'>
 				<span class='font-mono text-[11px] tracking-[0.08em] text-muted-foreground uppercase'>Releases</span>
 				<span class='font-mono text-[11px] text-muted-foreground tabular-nums'>{releases.length}</span>
@@ -25,14 +25,14 @@ const { releases } = Astro.props;
 						<li>
 							<a
 								href={`#${anchor}`}
-								class='group relative flex items-baseline justify-between gap-3 px-2 py-1 hover:bg-soot/8 hover:no-underline focus-visible:outline-offset-[-2px]'
+								class='group relative flex items-baseline justify-between gap-3 px-2 py-1 hover:bg-soot/8 hover:no-underline focus-visible:-outline-offset-2'
 								data-release-link>
 								<span
 									aria-hidden='true'
-									class='absolute top-1 bottom-1 left-0 w-0.5 bg-soot opacity-0 group-data-[current]:opacity-100'
+									class='absolute top-1 bottom-1 left-0 w-0.5 bg-soot opacity-0 group-data-current:opacity-100'
 								/>
-								<span class='tabular-nums group-data-[current]:font-semibold'>{version}</span>
-								<span class='text-right text-muted-foreground group-hover:text-soot group-data-[current]:text-soot'>
+								<span class='tabular-nums group-data-current:font-semibold'>{version}</span>
+								<span class='text-right text-muted-foreground group-hover:text-soot group-data-current:text-soot'>
 									{lineLabel}
 								</span>
 							</a>

@@ -21,13 +21,13 @@ const kinds = [
 	<div class='@container min-w-0 font-mono leading-[1.4] text-soot tabular-nums' data-meter>
 		<div class='border border-soot/25 bg-bone'>
 			<div
-				class='flex flex-wrap items-center justify-between gap-x-[18px] gap-y-1 border-b border-soot/[0.22] px-3.5 py-[9px] text-[9.5px]/[1.4] tracking-[0.14em] text-muted-foreground uppercase'>
-				<span class='flex items-center gap-[7px] text-soot'>
+				class='flex flex-wrap items-center justify-between gap-x-4.5 gap-y-1 border-b border-soot/22 px-3.5 py-2.25 text-[9.5px]/[1.4] tracking-[0.14em] text-muted-foreground uppercase'>
+				<span class='flex items-center gap-1.75 text-soot'>
 					<i class='block size-1.5 bg-soot'></i>Usage to date · live
 				</span>
 				<span>1 s tick · read in the browser</span>
 			</div>
-			<div class='grid grid-cols-3 gap-px bg-soot/[0.18] @max-[640px]:grid-cols-1'>
+			<div class='grid grid-cols-3 gap-px bg-soot/18 @max-[640px]:grid-cols-1'>
 				<MeterModule class='col-span-2 @max-[640px]:col-span-1' label='Transferred' data-module>
 					<Fragment slot='meta'><MeterValue field='requests'>0</MeterValue> requests</Fragment>
 					<MeterFigure>
@@ -42,10 +42,10 @@ const kinds = [
 				</MeterModule>
 
 				<MeterModule label='By kind' meta='bytes' data-module>
-					<ul class='mt-[11px] grid gap-1.5'>
+					<ul class='mt-2.75 grid gap-1.5'>
 						{kinds.map((entry) => <MeterKindRow label={entry.label} kind={entry.kind} />)}
 					</ul>
-					<div class='mt-[9px] text-[10.5px]/[1.45] text-muted-foreground'>
+					<div class='mt-2.25 text-[10.5px]/[1.45] text-muted-foreground'>
 						sum <MeterValue field='kind-sum'>0 B</MeterValue>
 					</div>
 				</MeterModule>

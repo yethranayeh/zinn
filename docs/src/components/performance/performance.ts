@@ -46,7 +46,9 @@ export function mountPerformance(root: HTMLElement): () => void {
     },
   });
 
-  if (window.matchMedia("(max-width: 639px)").matches) {
+  // Below Tailwind's sm breakpoint.
+  const belowSmBreakpoint = "(max-width: 639px)";
+  if (window.matchMedia(belowSmBreakpoint).matches) {
     graph.focus("cli");
   }
 

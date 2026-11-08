@@ -42,13 +42,13 @@
 		scroll-padding-top: calc(var(--site-header-height) + 1.5rem);
 	}
 
-	@media (min-width: 48rem) {
+	@media (width >= theme(--breakpoint-md)) {
 		:root {
 			--site-gutter: 3rem;
 		}
 	}
 
-	@media (min-width: 64rem) {
+	@media (width >= theme(--breakpoint-lg)) {
 		:root {
 			--site-gutter: 6rem;
 		}

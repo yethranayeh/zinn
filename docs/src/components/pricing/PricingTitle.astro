@@ -7,7 +7,7 @@ interface Props extends HTMLAttributes<"p"> {
 }
 
 const { as: Tag = "p", class: className, ...attributes } = Astro.props;
-const base = "mt-2 text-[clamp(1.25rem,2.5vw,1.625rem)] leading-[1.25] tracking-[-0.01em]";
+const base = "mt-2 text-[clamp(1.25rem,2.5vw,1.625rem)] leading-tight tracking-[-0.01em]";
 ---
 
 <Tag class={twMerge(base, className)} {...attributes}><slot /></Tag>

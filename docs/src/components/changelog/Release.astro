@@ -36,7 +36,7 @@ const { anchor, heading, name, date, packages, first = false } = Astro.props;
 				<div class='grid grid-cols-1 items-start md:grid-cols-[var(--rail-width)_minmax(0,1fr)] px-0'>
 					<div class='flex flex-col self-stretch'>
 						<div
-							class='md:sticky md:top-[var(--site-header-height)] lg:pr-[var(--rail-meta-padding-right)] bg-limestone'>
+							class='md:sticky md:top-(--site-header-height) lg:pr-(--rail-meta-padding-right) bg-limestone'>
 							<Prose class='px-2'>
 								<MarkdownH2 id={anchor} class='m-0!'>
 									<span class='block'>{heading}</span>
@@ -87,6 +87,7 @@ const { anchor, heading, name, date, packages, first = false } = Astro.props;
 		z-index: 10;
 	}
 
+	/* 48rem is Tailwind's md breakpoint. */
 	@media (max-width: 48rem) {
 		.release-plate {
 			--plate-padding-inline: 1rem;

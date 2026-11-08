@@ -34,7 +34,7 @@ const labelClass = size === "icon" ? "sr-only" : size === "responsive-icon" ? "m
 <Button
 	{...attributes}
 	{size}
-	class:list={["group/copy", feedback === "label" && "data-[error]:w-auto!", className]}
+	class:list={["group/copy", feedback === "label" && "data-error:w-auto!", className]}
 	hidden
 	data-pagefind-ignore
 	data-copy-value={value}
@@ -45,15 +45,15 @@ const labelClass = size === "icon" ? "sr-only" : size === "responsive-icon" ? "m
 	data-copy-event={event}>
 	<Icon
 		name='copy'
-		class:list={[iconSize, "group-data-[copied]/copy:hidden", feedback === "label" && "group-data-[error]/copy:hidden"]}
+		class:list={[iconSize, "group-data-copied/copy:hidden", feedback === "label" && "group-data-error/copy:hidden"]}
 	/>
-	<Icon name='check' class={`hidden ${iconSize} group-data-[copied]/copy:block group-data-[error]/copy:hidden`} />
+	<Icon name='check' class={`hidden ${iconSize} group-data-copied/copy:block group-data-error/copy:hidden`} />
 
-	<span class:list={[labelClass, feedback === "label" && "group-data-[error]/copy:hidden"]}>{label}</span>
+	<span class:list={[labelClass, feedback === "label" && "group-data-error/copy:hidden"]}>{label}</span>
 
 	{
 		feedback === "label" && (
-			<span class='hidden whitespace-nowrap group-data-[error]/copy:inline' aria-hidden='true'>
+			<span class='hidden whitespace-nowrap group-data-error/copy:inline' aria-hidden='true'>
 				Failed to copy
 			</span>
 		)

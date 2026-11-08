@@ -9,12 +9,28 @@ interface Props {
 const { flow, hidden = false } = Astro.props;
 ---
 
-<div class='sr-only' data-flow-state={flow.id} data-node-list hidden={hidden}>
-	{
-		flow.nodes.map((node) => (
-			<button type='button' data-node-select={node.id}>
-				{node.title}. {node.metric.label} {node.metric.value}.
-			</button>
-		))
-	}
+<div
+	class='sr-only focus-within:not-sr-only'
+	data-flow-state={flow.id}
+	data-node-list
+	hidden={hidden}
+	role='group'
+	aria-label='Nodes'>
+	<div class='site-container pb-6'>
+		<div class='border border-soot/22 bg-bone p-3'>
+			<p class='m-0 font-mono text-[10px]/[1.4] tracking-[0.14em] text-muted-foreground uppercase'>Nodes</p>
+			<div class='mt-2 flex flex-wrap gap-2'>
+				{
+					flow.nodes.map((node) => (
+						<button
+							type='button'
+							class='border border-soot/22 px-2 py-1 text-left font-mono text-[10px]/[1.4] hover:bg-soot/8 focus-visible:outline-offset-2'
+							data-node-select={node.id}>
+							{node.title}. {node.metric.label} {node.metric.value}.
+						</button>
+					))
+				}
+			</div>
+		</div>
+	</div>
 </div>

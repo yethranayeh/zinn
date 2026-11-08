@@ -110,7 +110,7 @@ export const commands: Array<CommandBenchmark> = [
     mock: true,
   },
   {
-    command: "zinn task search needle",
+    command: "zinn task search amarillo BNCH",
     p50: 0.23,
     p95: 0.31,
     memoryBytes: 84_200_000,

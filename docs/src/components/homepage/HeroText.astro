@@ -10,10 +10,10 @@ const { word = "terminal" } = Astro.props;
 	A kanban workflow <br />in the <span
 		class='relative inline-block align-baseline text-cinnabar font-[family-name:Doto,var(--font-mono)] font-black tracking-normal max-[21rem]:text-[32px]'
 		data-lattice-word
-		>{word}<canvas class='pointer-events-none absolute inset-0 z-[2] block h-full w-full' aria-hidden='true'
+		>{word}<canvas class='pointer-events-none absolute inset-0 z-2 block h-full w-full' aria-hidden='true'
 		></canvas></span
 	><span
-		class='inline-block h-[1cap] w-5 bg-bronze opacity-0 data-[visible]:opacity-100 data-[visible]:data-[blink]:animate-[hero-lattice-cursor-blink_1s_steps(1)_infinite] motion-reduce:opacity-100 motion-reduce:animate-none'
+		class='inline-block h-[1cap] w-5 bg-bronze opacity-0 data-visible:opacity-100 data-visible:data-blink:animate-[hero-lattice-cursor-blink_1s_steps(1)_infinite] motion-reduce:opacity-100 motion-reduce:animate-none'
 		data-lattice-cursor
 		aria-hidden='true'></span>
 </h1>
@@ -197,7 +197,7 @@ const { word = "terminal" } = Astro.props;
 		}
 
 		const cover = document.createElement("span");
-		cover.className = "pointer-events-none absolute inset-0 z-[3] block bg-limestone";
+		cover.className = "pointer-events-none absolute inset-0 z-3 block bg-limestone";
 		cover.setAttribute("aria-hidden", "true");
 		word.appendChild(cover);
 

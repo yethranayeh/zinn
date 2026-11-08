@@ -36,10 +36,10 @@ const specimens = [
 			specimens.map((specimen) => (
 				<Specimen label={specimen.label} block>
 					<div
-						class='relative pt-[var(--capture-annotation-gutter)] max-md:pt-0'
+						class='relative pt-(--capture-annotation-gutter) max-md:pt-0'
 						style={`--capture-annotation-gutter: ${geometry.gutter}px`}
 						data-capture-figure>
-						<div class='relative aspect-[16/9] overflow-hidden bg-soot text-soot-foreground' data-capture-surface>
+						<div class='relative aspect-video overflow-hidden bg-soot text-soot-foreground' data-capture-surface>
 							<div class='absolute inset-x-0 top-[8%] h-[8%] border-b border-pewter/40'>
 								{annotations.map((annotation, index) => (
 									<span

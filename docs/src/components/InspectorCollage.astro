@@ -58,7 +58,7 @@ const percent = (value: number, total: number) => `${((value / total) * 100).toF
 				{
 					parts.map((part, index) => (
 						<div
-							class='z-30 w-full @min-[880px]:absolute @min-[880px]:top-[var(--callout-top)] @min-[880px]:right-[var(--callout-right)] @min-[880px]:w-60 @min-[880px]:-translate-y-1/2'
+							class='z-30 w-full @min-[880px]:absolute @min-[880px]:top-(--callout-top) @min-[880px]:right-(--callout-right) @min-[880px]:w-60 @min-[880px]:-translate-y-1/2'
 							style={`--callout-top: ${part.callout.top}%; --callout-right: ${part.callout.right}%;`}>
 							<FigureCallout
 								number={index + 1}
