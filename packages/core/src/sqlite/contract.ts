@@ -23,6 +23,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  existingOnlyUrl,
   openWith,
   sqliteCodeName,
   SqliteError,
@@ -1027,23 +1028,19 @@ export function defineContractChecks(test: DefineTest, adapter: Adapter) {
     });
   });
 
-  test("a file attached by path is readable, can be detached after a write transaction on main, and keeps its rows", () => {
+  test("a file attached through an existing-only URL reads committed WAL data, can be detached after a write transaction on main, and keeps its rows", () => {
     withDirectory((directory) => {
       const sourcePath = join(directory, "source # % ü.sqlite");
       const source = adapter.openDatabase(sourcePath);
-
-      try {
-        source.exec(
-          "CREATE TABLE item (value INTEGER); INSERT INTO item VALUES (1); PRAGMA user_version = 7;",
-        );
-      } finally {
-        source.close();
-      }
-
       const db = adapter.openDatabase(join(directory, "contract.sqlite"));
 
       try {
-        db.query("ATTACH DATABASE $path AS source").run({ $path: sourcePath });
+        // The source stays open, so its committed rows are still in the -wal file when it is attached.
+        source.exec(`PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0;
+          CREATE TABLE item (value INTEGER); INSERT INTO item VALUES (1); PRAGMA user_version = 7;`);
+        assert.ok(existsSync(`${sourcePath}-wal`));
+
+        db.query("ATTACH DATABASE $url AS source").run({ $url: existingOnlyUrl(sourcePath).href });
         assert.deepEqual(db.query("PRAGMA source.user_version").get(), { user_version: 7 });
 
         db.transaction(() => {
@@ -1057,6 +1054,7 @@ export function defineContractChecks(test: DefineTest, adapter: Adapter) {
         ]);
       } finally {
         db.close();
+        source.close();
       }
 
       const unchanged = adapter.openDatabase(sourcePath, { readonly: true });
@@ -1067,6 +1065,26 @@ export function defineContractChecks(test: DefineTest, adapter: Adapter) {
       } finally {
         unchanged.close();
       }
+    });
+  });
+
+  test("attaching a missing file through an existing-only URL throws SQLITE_CANTOPEN and creates nothing", () => {
+    withDirectory((directory) => {
+      const db = adapter.openDatabase(join(directory, "contract.sqlite"));
+
+      try {
+        assert.throws(
+          () =>
+            db
+              .query("ATTACH DATABASE $url AS source")
+              .run({ $url: existingOnlyUrl(join(directory, "missing ?#%20ü.sqlite")).href }),
+          (error) => assertSqliteError(error, "SQLITE_CANTOPEN", 14),
+        );
+      } finally {
+        db.close();
+      }
+
+      assert.deepEqual(readdirSync(directory), ["contract.sqlite"]);
     });
   });
 }

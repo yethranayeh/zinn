@@ -56,7 +56,7 @@ export const restoreCommand = {
 
     // A backup that would be refused is refused before the prompt.
     if (!isPreconfirmed) {
-      backup.check({ ...build, path });
+      backup.check({ ...build, path, storage });
     }
 
     const isConfirmed = await askConfirmation(
@@ -112,7 +112,7 @@ Replace the database with the one in a backup file, such as one saved by \`zinn 
 The current database is saved first, in the same place as \`zinn backup\`, and the restore is applied completely or not at all.
 A backup with an older schema version is restored at that version. Zinn then upgrades it like any older database: by itself, except for ~/.zinn run from a source checkout, which needs \`zinn migrate\`.
 Restoring onto a missing database creates it inside an existing Zinn folder.
-Fails, leaving the database as it is, when the backup has a newer schema version than this Zinn or none at all, is damaged, or is not a Zinn database.
+Fails, leaving the database as it is, when the backup has a newer schema version than this Zinn or none at all, is damaged, is not a Zinn database, is the database itself, or changes after restore checked it.
 Use --yes to skip the confirmation prompt, for example in scripts or with --json.
 
 Example: zinn restore ~/.zinn/backups/2026-10-06T12-30-05Z-cli-0.40.0-1a2b3c4d.sqlite`,

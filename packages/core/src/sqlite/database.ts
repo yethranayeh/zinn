@@ -2,7 +2,10 @@
  * Core reads and writes SQLite through the Database class below.
  * bun.ts and node.ts connect this class to one library each, and this class makes both behave the same.
  */
-import { resolveDatabasePath, type ResolvedPath } from "../database-path.ts";
+import type { ResolvedPath } from "../database-path.ts";
+
+import { pathToFileURL } from "node:url";
+import { resolveDatabasePath } from "../database-path.ts";
 
 export type SqliteValue = string | number | bigint | Uint8Array | null;
 /** Named bindings keep the placeholder's `$` prefix in their keys, as in the SQL. */
@@ -23,6 +26,19 @@ export type OpenOptions = {
 /** Whether an open is read-write but fails with SQLITE_CANTOPEN on a missing file instead of creating it. */
 export function opensExistingOnly(options: OpenOptions) {
   return !options.readonly && options.create === false;
+}
+
+/**
+ * A `file:` URL that SQLite opens read-write without `SQLITE_OPEN_CREATE`, for opens and ATTACH alike.
+ * `mode=rw` in the URI drops the create flag, so a missing file is not created.
+ * The URL percent-encodes characters such as ?, # and %, and SQLite decodes them back.
+ * @link https://www.sqlite.org/uri.html
+ */
+export function existingOnlyUrl(path: string): URL {
+  const url = pathToFileURL(path);
+  url.searchParams.set("mode", "rw");
+
+  return url;
 }
 
 export type DriverStatement = {
@@ -532,7 +548,11 @@ export class Database {
   /** The mode of the outermost running transaction() call, or null when none is running. */
   private outerTransactionMode: TransactionMode | null = null;
 
-  constructor(driver: SqliteDriver, connection: DriverConnection, databasePath: ResolvedPath | null) {
+  constructor(
+    driver: SqliteDriver,
+    connection: DriverConnection,
+    databasePath: ResolvedPath | null,
+  ) {
     this.databasePath = databasePath;
     this.driver = driver;
     this.connection = connection;
@@ -685,11 +705,20 @@ export function openWith(driver: SqliteDriver, path: string, options: OpenOption
 }
 
 /** Opens a destination the caller already resolved, as `openWith` does, without resolving it again. */
-export function openResolvedWith(driver: SqliteDriver, databasePath: ResolvedPath, options: OpenOptions = {}) {
+export function openResolvedWith(
+  driver: SqliteDriver,
+  databasePath: ResolvedPath,
+  options: OpenOptions = {},
+) {
   return connectWith(driver, databasePath, databasePath, options);
 }
 
-function connectWith(driver: SqliteDriver, path: string, databasePath: ResolvedPath | null, options: OpenOptions) {
+function connectWith(
+  driver: SqliteDriver,
+  path: string,
+  databasePath: ResolvedPath | null,
+  options: OpenOptions,
+) {
   const connection = withSqliteErrors(driver, () => driver.connect(path, options));
   return new Database(driver, connection, databasePath);
 }

@@ -39,8 +39,13 @@ export const backup = {
    * Throws `RestoreRefusedError` for a backup that `restore` would refuse, without opening the database.
    * `restore` checks again, so a client can call this before asking for confirmation.
    */
-  check: ({ path, client, version }: Omit<BackupRestoreInput, "onWait" | "storage">) =>
-    checkBackup(resolve(path), MIGRATIONS, { client, version }),
+  check: ({
+    path,
+    client,
+    version,
+    storage = getBackupStorage(),
+  }: Omit<BackupRestoreInput, "onWait">) =>
+    checkBackup(resolve(path), MIGRATIONS, { client, version }, storage.databasePath),
   /** Replaces the database contents from a backup, saving the current database first. */
   restore: ({
     path,

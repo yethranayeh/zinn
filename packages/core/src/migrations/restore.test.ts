@@ -7,10 +7,12 @@ import { expect, test } from "bun:test";
 import {
   copyFileSync,
   existsSync,
+  linkSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
   symlinkSync,
   unlinkSync,
   writeFileSync,
@@ -604,6 +606,144 @@ test("restore reads the backup file that was checked when its link changes after
       restoreBackup(db, checked, options(directory));
       expect(db.query("SELECT key FROM project").all()).toEqual([{ key: "SRC" }]);
     });
+  });
+});
+
+/** Files that replace a checked version 1 backup: a newer Zinn backup, and a database of another app at version 1. */
+function replacementsFor(directory: string) {
+  const newer = backupOf(directory, (db) => {
+    seedSource(db);
+    addObjectsMigration.apply(db);
+    db.exec(`PRAGMA user_version = ${NEWER_VERSION}`);
+  });
+  const otherApp = backupOf(directory, (db) => {
+    db.exec("CREATE TABLE note (id INTEGER PRIMARY KEY, text TEXT); PRAGMA user_version = 1");
+  });
+
+  return [newer, otherApp];
+}
+
+test("a backup deleted after its check is refused as missing, and nothing is created at its path", () => {
+  withDirectory((directory) => {
+    const live = makeDatabase(join(directory, "zinn.sqlite"), seedLive);
+    const before = readDatabaseState(live);
+    const backupPath = backupOf(directory, seedSource);
+    const checked = checkBackup(backupPath, [], BUILD);
+
+    unlinkSync(backupPath);
+    withOpen(live, (db) => {
+      const error = catchError(() => restoreBackup(db, checked, options(directory)));
+
+      expect(error).toBeInstanceOf(RestoreRefusedError);
+      expect(error).toMatchObject({ kind: "missing", facts: { entity: "backup", backupPath } });
+      expect(db.query("SELECT name FROM pragma_database_list").all()).toEqual([{ name: "main" }]);
+    });
+
+    expect(existsSync(backupPath)).toBe(false);
+    expect(readDatabaseState(live)).toEqual(before);
+    expect(savedBackups(directory)).toEqual([]);
+  });
+});
+
+test("a backup replaced after its check is refused, and the database is left as it was", () => {
+  withDirectory((directory) => {
+    const live = makeDatabase(join(directory, "zinn.sqlite"), seedLive);
+    const before = readDatabaseState(live);
+    const migrations = [addObjectsMigration];
+
+    for (const replacement of replacementsFor(directory)) {
+      const backupPath = backupOf(directory, seedSource);
+      const checked = checkBackup(backupPath, migrations, BUILD);
+      renameSync(replacement, backupPath);
+
+      const error = catchError(() =>
+        withOpen(live, (db) => restoreBackup(db, checked, options(directory, { migrations }))),
+      );
+
+      expect(error).toBeInstanceOf(RestoreRefusedError);
+      expect(error).toMatchObject({ kind: "conflict", facts: { reason: "invalid_backup", backupPath } });
+    }
+
+    expect(readDatabaseState(live)).toEqual(before);
+    expect(savedBackups(directory)).toEqual([]);
+  });
+});
+
+test("a backup overwritten while the restore waits for the lock is refused, and the database is left as it was", () => {
+  withDirectory((directory) => {
+    const live = makeDatabase(join(directory, "zinn.sqlite"), seedLive);
+    const before = readDatabaseState(live);
+    const migrations = [addObjectsMigration];
+
+    for (const replacement of replacementsFor(directory)) {
+      const backupPath = backupOf(directory, seedSource);
+      const replacementBytes = readFileSync(replacement);
+
+      const error = withOpen(live, (other) => {
+        other.exec("BEGIN IMMEDIATE");
+
+        return catchError(() =>
+          restoreDatabase(
+            live,
+            backupPath,
+            options(directory, {
+              migrations,
+              onWait: () => {
+                writeFileSync(backupPath, replacementBytes);
+                other.exec("ROLLBACK");
+              },
+            }),
+          ),
+        );
+      });
+
+      expect(error).toBeInstanceOf(RestoreRefusedError);
+      expect(error).toMatchObject({ kind: "conflict", facts: { reason: "invalid_backup", backupPath } });
+    }
+
+    expect(readDatabaseState(live)).toEqual(before);
+    expect(savedBackups(directory)).toEqual([]);
+  });
+});
+
+test("a backup path that leads to the database itself is refused without waiting for the lock", () => {
+  withDirectory((directory) => {
+    const live = makeDatabase(join(directory, "zinn.sqlite"), seedLive);
+    const before = readDatabaseState(live);
+    const hardLink = join(directory, "same-file.sqlite");
+    linkSync(live, hardLink);
+    const waits: Array<LockWait> = [];
+
+    for (const backupPath of [live, hardLink]) {
+      const error = catchError(() =>
+        restoreDatabase(live, backupPath, options(directory, { onWait: (wait) => waits.push(wait) })),
+      );
+
+      expect(error).toBeInstanceOf(RestoreRefusedError);
+      expect(error).toMatchObject({
+        kind: "conflict",
+        facts: { reason: "invalid_backup", backupPath, databasePath: realpathSync(live) },
+      });
+    }
+
+    expect(waits).toEqual([]);
+    expect(readDatabaseState(live)).toEqual(before);
+    expect(savedBackups(directory)).toEqual([]);
+  });
+});
+
+test("a backup restores onto a database left with a schema version but no tables", () => {
+  withDirectory((directory) => {
+    const live = makeDatabase(join(directory, "zinn.sqlite"), (db) => {
+      db.exec("PRAGMA user_version = 1");
+    });
+    const backupPath = backupOf(directory, seedSource);
+
+    const result = restoreDatabase(live, backupPath, options(directory));
+
+    expect(result).toMatchObject({ previousVersion: 1, restoredVersion: 1 });
+    expect(readDatabaseState(live)).toEqual(readDatabaseState(backupPath));
+    withOpen(live, expectHealthy);
   });
 });
 

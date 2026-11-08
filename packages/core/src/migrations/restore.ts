@@ -6,7 +6,8 @@
  * @link https://www.sqlite.org/howtocorrupt.html
  */
 import type { BackupCreateInput } from "../db/backup.js";
-import type { Database } from "../sqlite/database.js";
+import type { Database, SqliteError } from "../sqlite/database.js";
+import type { ResolvedPath } from "../database-path.js";
 import type { Migration } from "./registry.js";
 import type { FreeSpace } from "./space.js";
 import type { LockOptions } from "./upgrade.js";
@@ -16,10 +17,10 @@ import { dirname } from "node:path";
 
 import { openDatabase, openResolvedDatabase } from "#sqlite";
 
-import { resolveDatabasePath, type ResolvedPath } from "../database-path.js";
+import { resolveDatabasePath } from "../database-path.js";
 import * as dbBackup from "../db/backup.js";
 import { applyConnectionSettings } from "../connection.js";
-import { attachSuppressed, isSqliteErrorFamily, type SqliteError } from "../sqlite/database.js";
+import { attachSuppressed, existingOnlyUrl, isSqliteErrorFamily } from "../sqlite/database.js";
 import { BASELINE_VERSION } from "./baseline.js";
 import { classifyConnection } from "./classify.js";
 import { latestVersion, MIGRATIONS } from "./registry.js";
@@ -129,6 +130,40 @@ function expectedTableShapes(version: number, migrations: ReadonlyArray<Migratio
   }
 }
 
+/** Whether schema holds exactly the tables this build creates for a database at `version` */
+function hasZinnTables(
+  db: Database,
+  schema: string,
+  version: number,
+  migrations: ReadonlyArray<Migration>,
+) {
+  const expected = expectedTableShapes(version, migrations);
+  const actual = readTableShapes(db, schema);
+
+  return (
+    actual.length === expected.length && actual.every((shape, index) => shape === expected[index])
+  );
+}
+
+/**
+ * The file's status, compared by device and inode to tell whether two paths lead to the same file.
+ * `bigint` keeps inode numbers exact on Windows, where they can exceed `Number.MAX_SAFE_INTEGER`
+ */
+function statBackup(path: string, displayPath: string) {
+  try {
+    return statSync(path, { bigint: true });
+  } catch (error) {
+    if (!isMissingFileError(error)) {
+      throw error;
+    }
+
+    throw new RestoreRefusedError(`There is no file at ${displayPath} to restore`, "missing", {
+      entity: "backup",
+      backupPath: displayPath,
+    });
+  }
+}
+
 function countRows(db: Database, schema: string, table: string) {
   return db
     .query<{ count: number }>(`SELECT COUNT(*) AS count FROM ${schema}.${quote(table)}`)
@@ -217,12 +252,7 @@ function readCheckedVersion(
     throw newerBackupError(path, version, latest, build);
   }
 
-  const expected = expectedTableShapes(version, migrations);
-  const actual = readTableShapes(source, "main");
-  const isZinnDatabase =
-    actual.length === expected.length && actual.every((shape, index) => shape === expected[index]);
-
-  if (!isZinnDatabase) {
+  if (!hasZinnTables(source, "main", version, migrations)) {
     throw new RestoreRefusedError(
       `The file at ${path} is not a Zinn database: its tables differ from the ones Zinn creates at its schema version (${version}), so nothing was restored`,
       "conflict",
@@ -243,23 +273,30 @@ function readCheckedVersion(
  * Checks, through a read-only connection of its own, that the file at path is a sound Zinn database
  *  with a schema version from the baseline to the latest this build reaches.
  * Read-only, so a journal left next to the file is never rolled back into it.
+ * With `databasePath`, a path that leads to that database's own file is refused before it is opened.
  */
 export function checkBackup(
   path: string,
   migrations: ReadonlyArray<Migration>,
   build: BackupCreateInput,
+  databasePath?: string,
 ): CheckedBackup {
-  try {
-    statSync(path);
-  } catch (error) {
-    if (!isMissingFileError(error)) {
-      throw error;
-    }
+  const backupFile = statBackup(path, path);
+  const databaseFile =
+    databasePath == null
+      ? undefined
+      : statSync(databasePath, { bigint: true, throwIfNoEntry: false });
+  const isDatabaseFile =
+    databaseFile != null &&
+    backupFile.dev === databaseFile.dev &&
+    backupFile.ino === databaseFile.ino;
 
-    throw new RestoreRefusedError(`There is no file at ${path} to restore`, "missing", {
-      entity: "backup",
-      backupPath: path,
-    });
+  if (isDatabaseFile) {
+    throw new RestoreRefusedError(
+      `The backup at ${path} is the database itself, so nothing was restored. Choose a backup file instead`,
+      "conflict",
+      { entity: "backup", backupPath: path, databasePath, reason: "invalid_backup" },
+    );
   }
 
   const sourcePath = resolveDatabasePath(path);
@@ -399,7 +436,7 @@ function replaceDatabaseContents(db: Database, version: number) {
   createDatabaseTables(db);
 
   const tables = copyRows(db);
-  // The version is an integer read by checkBackup.
+  // The version is an integer read from the attached backup
   db.exec(`PRAGMA main.user_version = ${version}`);
   assertForeignKeys(db, "restore");
   assertRowCounts(db, tables);
@@ -437,11 +474,62 @@ function detachSource(db: Database) {
 }
 
 /**
+ * Attaches the checked file read-write without creating it.
+ * A plain path would make SQLite create an empty database where a deleted backup was.
+ */
+function attachSource(db: Database, checked: CheckedBackup) {
+  try {
+    db.query(`ATTACH DATABASE $url AS ${SOURCE_SCHEMA}`).run({
+      $url: existingOnlyUrl(checked.sourcePath).href,
+    });
+  } catch (error) {
+    if (isSqliteErrorFamily(error, "SQLITE_CANTOPEN")) {
+      statBackup(checked.sourcePath, checked.path);
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * Returns the attached backup's version after checking that it is still the backup checkBackup passed.
+ * Runs inside the write transaction, after any wait for the lock, so a file deleted, replaced or
+ *  overwritten since the check is refused before anything is saved or changed.
+ */
+function readUnchangedVersion(
+  db: Database,
+  checked: CheckedBackup,
+  migrations: ReadonlyArray<Migration>,
+) {
+  const version = db
+    .query<{ user_version: number }>(`PRAGMA ${SOURCE_SCHEMA}.user_version`)
+    .get()!.user_version;
+  const isUnchanged =
+    version === checked.version && hasZinnTables(db, SOURCE_SCHEMA, version, migrations);
+
+  if (!isUnchanged) {
+    throw new RestoreRefusedError(
+      `The backup at ${checked.path} changed after it was checked, so nothing was restored. Check the file and run the restore again`,
+      "conflict",
+      {
+        entity: "backup",
+        backupPath: checked.path,
+        schemaVersion: version,
+        supportedSchemaVersion: latestVersion(migrations),
+        reason: "invalid_backup",
+      },
+    );
+  }
+
+  return version;
+}
+
+/**
  * Restores a checked backup into the database behind db, whatever that database's version.
- * The backup is attached by path before the write lock. Only main is written;
- *  SQLite may checkpoint a WAL-mode source without changing its rows.
- * Under the lock, with foreign keys off, a database that is not empty gets a free-space check and
- *  a backup through a separate connection while db has written nothing.
+ * The backup is attached before the write lock. Only main is written.
+ * SQLite may checkpoint a WAL-mode source without changing its rows.
+ * Under the lock, with foreign keys off, the attached file is checked again. Then a database that is
+ *  not empty gets a free-space check and a backup through a separate connection while db has written nothing.
  * Then, in the same transaction, it drops main's tables, views and triggers, creates the backup's,
  *  copies the rows and sets the backup's version, and requires no broken foreign keys and every table's
  *  row count to match before committing.
@@ -460,13 +548,14 @@ export function restoreBackup(
 ): RestoreResult {
   const databasePath = requireDatabaseFile(db, "restore");
   const spacePaths = spacePathsFor(databasePath, backup.directory);
-  db.query(`ATTACH DATABASE $path AS ${SOURCE_SCHEMA}`).run({ $path: checked.sourcePath });
+  attachSource(db, checked);
 
   let result: RestoreResult;
 
   try {
     result = withForeignKeysOff(db, () =>
       withMigrationLock(db, databasePath, { ...lock, operation: "restore" }, () => {
+        const restoredVersion = readUnchangedVersion(db, checked, migrations);
         const { state, version: previousVersion } = classifyConnection(db, migrations);
         const sourceBytes = readSourceBytes(db);
         const savesDatabase = state !== "empty";
@@ -483,9 +572,9 @@ export function restoreBackup(
           assertFreeSpace(spacePaths, requiredFree(db, sourceBytes, false), readFree);
         }
 
-        replaceDatabaseContents(db, checked.version);
+        replaceDatabaseContents(db, restoredVersion);
 
-        return { databasePath, previousVersion, restoredVersion: checked.version, backupPath };
+        return { databasePath, previousVersion, restoredVersion, backupPath };
       }),
     );
   } catch (error) {
@@ -513,7 +602,12 @@ export function restoreDatabase(
   backupPath: string,
   options: RestoreOptions,
 ): RestoreResult {
-  const checked = checkBackup(backupPath, options.migrations ?? MIGRATIONS, options.backup);
+  const checked = checkBackup(
+    backupPath,
+    options.migrations ?? MIGRATIONS,
+    options.backup,
+    databasePath,
+  );
 
   mkdirSync(dirname(databasePath), { recursive: true });
   const db = openResolvedDatabase(databasePath);
