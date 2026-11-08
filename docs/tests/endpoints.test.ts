@@ -24,7 +24,7 @@ import {
 } from "../src/config/pricing";
 import { integrationLines, type IntegrationLine } from "../src/config/release-lines";
 import { agentSetupPrompt, installCommand, minimumNodeVersion } from "../src/config/site";
-import { splitShellCommands } from "../src/markdown/shell-commands";
+import { splitShellCommands, startsWithShebang } from "../src/markdown/shell-commands";
 import { expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -327,19 +327,21 @@ test.each(docsSources)(
     for (const [index, block] of blocks.entries()) {
       const [, language, sourceLabel, sourceCommands] = fences[index]!;
       const isShell = ["sh", "bash", "shell"].includes(language!);
-      const commands = isShell
+      const isScript = isShell && startsWithShebang(sourceCommands!);
+      const isCommandList = isShell && !isScript;
+      const commands = isCommandList
         ? splitShellCommands(sourceCommands!)
         : [sourceCommands!.replace(/^\n|\n$/g, "")];
+      const blockKind = isCommandList ? "commands" : isScript ? "script" : "example";
       const expectedLabel =
-        sourceLabel ??
-        (language === "text" ? "Code" : language) + (isShell ? " commands" : " example");
+        sourceLabel ?? `${language === "text" ? "Code" : language} ${blockKind}`;
       const promptCount = block[2]!.match(/aria-hidden="true">\$ <\/span>/g)?.length ?? 0;
       const blockTail = html.slice(block.index! + block[0].length);
       const copyButton = blockTail.match(
         /<button\b[^>]*data-copy-value="([\s\S]*?)"[^>]*>([\s\S]*?)<\/button>/,
       );
       expect(block[1]).toBe(expectedLabel);
-      expect(promptCount).toBe(isShell ? commands.length : 0);
+      expect(promptCount).toBe(isCommandList ? commands.length : 0);
       expect(copyButton).toBeDefined();
       const copiedValue = copyButton?.[1]
         ?.replace(/&quot;/g, '"')

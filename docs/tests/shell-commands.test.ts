@@ -1,5 +1,12 @@
 import { expect, test } from "bun:test";
-import { splitShellCommands } from "../src/markdown/shell-commands";
+import { splitShellCommands, startsWithShebang } from "../src/markdown/shell-commands";
+
+test("recognizes a shebang as a script file", () => {
+  expect(startsWithShebang("#!/bin/sh\nzinn info\n")).toBe(true);
+  expect(startsWithShebang("\n#!/usr/bin/env bash\nzinn info\n")).toBe(true);
+  expect(startsWithShebang("# zinn info\n")).toBe(false);
+  expect(startsWithShebang("zinn info\n")).toBe(false);
+});
 
 test("splits adjacent commands and ignores blank separator lines", () => {
   expect(splitShellCommands("zinn info\nzinn info --json\n")).toEqual([

@@ -1,5 +1,10 @@
 const HEREDOC_START = /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1\s*$/;
 
+/** A shell block that starts with a shebang is a script file, not a command list. */
+export function startsWithShebang(source: string): boolean {
+  return source.trimStart().startsWith("#!");
+}
+
 /**
  * Splits fenced shell text into commands. A newline is considered a command, except
  *  when it follows a trailing backslash or a heredoc body.

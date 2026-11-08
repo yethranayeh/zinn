@@ -1,6 +1,6 @@
 ---
 import TerminalCommands from "./TerminalCommands.astro";
-import { splitShellCommands } from "../markdown/shell-commands";
+import { splitShellCommands, startsWithShebang } from "../markdown/shell-commands";
 
 interface Props {
 	"data-label"?: string;
@@ -10,8 +10,11 @@ interface Props {
 
 const { "data-label": sourceLabel, "data-commands": commands, "data-language": language = "text" } = Astro.props;
 const isShell = ["sh", "bash", "shell"].includes(language);
-const label = sourceLabel ?? `${language === "text" ? "Code" : language} ${isShell ? "commands" : "example"}`;
-const commandList = isShell ? splitShellCommands(commands) : [commands.replace(/^\n|\n$/g, "")];
+const isScript = isShell && startsWithShebang(commands);
+const isCommandList = isShell && !isScript;
+const blockKind = isCommandList ? "commands" : isScript ? "script" : "example";
+const label = sourceLabel ?? `${language === "text" ? "Code" : language} ${blockKind}`;
+const commandList = isCommandList ? splitShellCommands(commands) : [commands.replace(/^\n|\n$/g, "")];
 ---
 
-<TerminalCommands label={label} commands={commandList} showsPrompt={isShell} />
+<TerminalCommands label={label} commands={commandList} showsPrompt={isCommandList} />
