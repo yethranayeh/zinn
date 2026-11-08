@@ -94,13 +94,10 @@ export function setupBlameNotes(init: HTMLElement) {
     placeBrackets();
 
     for (const note of root.querySelectorAll<HTMLElement>(NOTE_SELECTOR)) {
-      const isActive = note.dataset.note === active;
-      note.toggleAttribute("data-active", isActive);
-      if (isActive) {
-        note.setAttribute("aria-current", "true");
-      } else {
-        note.removeAttribute("aria-current");
-      }
+      note.toggleAttribute("data-active", note.dataset.note === active);
+      note
+        .querySelector<HTMLButtonElement>("[data-note-toggle]")
+        ?.setAttribute("aria-pressed", String(note.dataset.note === tapId));
     }
 
     for (const bracket of brackets) {
@@ -121,7 +118,6 @@ export function setupBlameNotes(init: HTMLElement) {
       return;
     }
     hoverId = id;
-    tapId = null;
     update();
   });
 
@@ -141,11 +137,23 @@ export function setupBlameNotes(init: HTMLElement) {
   });
 
   root.addEventListener("click", (event) => {
+    const toggle = (event.target as Element).closest("[data-note-toggle]");
+
+    if (toggle !== null) {
+      const id = readId(toggle);
+      if (id === null) {
+        return;
+      }
+      tapId = tapId === id ? null : id;
+      update();
+      return;
+    }
+
     const id = readId(event.target as Element);
     if (id === null || lastPointerType !== "touch") {
       return;
     }
-    tapId = id;
+    tapId = tapId === id ? null : id;
     hoverId = null;
     focusId = null;
     const focused = document.activeElement;
@@ -156,8 +164,9 @@ export function setupBlameNotes(init: HTMLElement) {
   });
 
   root.addEventListener("focusin", (event) => {
-    const note = (event.target as Element).closest<HTMLElement>(NOTE_SELECTOR);
-    if (!note || !note.matches(":focus-visible")) {
+    const target = event.target as Element;
+    const note = target.closest<HTMLElement>(NOTE_SELECTOR);
+    if (!note || !target.matches(":focus-visible")) {
       return;
     }
     const id = readId(note);
@@ -165,7 +174,6 @@ export function setupBlameNotes(init: HTMLElement) {
       return;
     }
     focusId = id;
-    tapId = null;
     update();
   });
 

@@ -11,20 +11,21 @@ import { notes } from "./example";
 
 	<aside class='flex flex-col gap-6 lg:sticky lg:top-(--site-header-height) lg:self-start lg:pt-2' data-notes>
 		<p class='font-mono text-xs leading-[1.6] text-muted-foreground' data-blame-init>
-			Hover, tap or tab to a note to cut its region out of the output.
+			Press a note's number, or hover the note, to cut its region out of the output.
 		</p>
 
 		{
 			notes.map((note) => (
-				<div
-					class='group/note border-t border-soot pt-4 outline-offset-4 focus-visible:outline-2 focus-visible:outline-soot'
-					data-note={note.id}
-					role='note'
-					tabindex='0'>
+				<div class='group/note border-t border-soot pt-4' data-note={note.id} role='note'>
 					<div class='mb-2 flex items-center gap-2'>
-						<span class='grid size-6 shrink-0 place-items-center border border-soot font-mono text-[10px] leading-none text-soot tabular-nums group-data-active/note:border-bronze group-data-active/note:bg-bronze'>
+						<button
+							type='button'
+							data-note-toggle={note.id}
+							aria-pressed='false'
+							aria-label={`Show note ${note.number} in the output`}
+							class='grid size-6 shrink-0 cursor-pointer place-items-center border border-soot bg-transparent p-0 font-mono text-[10px] leading-none text-soot tabular-nums outline-offset-2 focus-visible:outline-2 focus-visible:outline-soot group-data-active/note:aria-pressed:bg-bronze group-data-active/note:aria-[pressed=false]:border-bronze group-data-active/note:aria-[pressed=false]:bg-bronze/15 group-not-data-active/note:aria-pressed:bg-bronze/15 aria-pressed:border-bronze'>
 							{note.number}
-						</span>
+						</button>
 						<span class='h-px flex-1 bg-soot/20' />
 					</div>
 					<p class='mb-2 border-l-2 border-bronze bg-soot px-2.5 py-1.5 font-mono text-xs break-words whitespace-pre-wrap text-soot-foreground'>
