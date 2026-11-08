@@ -12,11 +12,11 @@ const minimumBarShare = 0.6;
 
 const barColors: Record<Kind, string> = {
   document: "bg-soot",
-  scripts: "bg-soot/[0.72]",
-  styles: "bg-soot/[0.55]",
-  fonts: "bg-soot/[0.4]",
-  images: "bg-soot/[0.62]",
-  other: "bg-soot/[0.3]",
+  scripts: "bg-soot/72",
+  styles: "bg-soot/55",
+  fonts: "bg-soot/40",
+  images: "bg-soot/62",
+  other: "bg-soot/30",
 };
 
 function setText(element: HTMLElement | null, text: string) {

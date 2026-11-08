@@ -55,7 +55,7 @@ const lightboxId = `${id}-lightbox`;
 	</div>
 
 	<a
-		class='group/image relative block aspect-[2840/1640] cursor-zoom-in border border-pewter no-underline focus-visible:outline-offset-4'
+		class='group/image relative block aspect-2840/1640 cursor-zoom-in border border-pewter no-underline focus-visible:outline-offset-4'
 		href={firstImage}
 		target='_blank'
 		rel='noopener'
@@ -99,7 +99,7 @@ const lightboxId = `${id}-lightbox`;
 						data-images={JSON.stringify(scene.images)}
 						aria-pressed={scene.id === firstScene.id}>
 						<img
-							class='block aspect-[2840/1640] h-auto w-full border border-pewter group-aria-pressed:outline-2 group-aria-pressed:outline-offset-2 group-aria-pressed:outline-solid group-aria-pressed:outline-bronze'
+							class='block aspect-2840/1640 h-auto w-full border border-pewter group-aria-pressed:outline-2 group-aria-pressed:outline-offset-2 group-aria-pressed:outline-solid group-aria-pressed:outline-bronze'
 							src={cloudinaryImage(source, 280)}
 							alt=''
 							width='2840'
