@@ -37,6 +37,27 @@ test.each(["", "-dev", "-dev.1"])("the review version ignores only the exact dev
   }
 });
 
+// ZINN-553: a development version is checked for a reviewed version, not compared with it.
+test("a development CLI accepts a skill reviewed against an earlier release", () => {
+  const directory = mkdtempSync(join(tmpdir(), "zinn-skill-version-"));
+  try {
+    const packageDirectory = writeSkillFixture(directory, `${releaseVersion}-dev`, "0.0.1");
+    expect(() => readWorkflowSkill(packageDirectory)).not.toThrow();
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test.each(["", "-dev"])("the skill needs a reviewed version on any CLI version: %s", (suffix) => {
+  const directory = mkdtempSync(join(tmpdir(), "zinn-skill-version-"));
+  try {
+    const packageDirectory = writeSkillFixture(directory, releaseVersion + suffix, undefined);
+    expect(() => readWorkflowSkill(packageDirectory)).toThrow("zinn-cli-reviewed-version");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test.each(["0.0.0", "999.0.0", undefined])("pnpm publish blocks an unmatched skill review version before packing: %s", (reviewedVersion) => {
   const directory = mkdtempSync(join(tmpdir(), "zinn-skill-publish-"));
   try {

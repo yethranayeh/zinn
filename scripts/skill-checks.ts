@@ -7,9 +7,27 @@ import { runCli, runProcessAsync } from "../packages/cli/testing.ts";
 const MAX_DESCRIPTION_CHARACTERS = 1024;
 const MAX_SKILL_LINES = 500;
 const EXAMPLE_TIMEOUT_MS = 120_000;
+const DEVELOPMENT_SUFFIX = "-dev";
 
 /** Validates the skill and its manually maintained CLI review version. */
 export function readWorkflowSkill(packageDirectory: string) {
+  const { skill, reviewedVersion } = readSkillFile(packageDirectory);
+  const manifest = JSON.parse(readFileSync(join(packageDirectory, "package.json"), "utf8"));
+  const cliVersion: string = manifest.version;
+  // A development version is not a release yet. The review happens before the release commit removes -dev.
+  const isDevelopmentVersion = cliVersion.endsWith(DEVELOPMENT_SUFFIX);
+  if (!isDevelopmentVersion) {
+    assert.equal(
+      reviewedVersion,
+      cliVersion,
+      `Skill reviewed version ${reviewedVersion} must match CLI ${cliVersion}. Review the skill and update metadata.zinn-cli-reviewed-version.`,
+    );
+  }
+  return skill;
+}
+
+/** Validates the skill's format and that it names a reviewed CLI version. */
+function readSkillFile(packageDirectory: string): { skill: string; reviewedVersion: string } {
   const skillPath = join(packageDirectory, "skills/zinn/SKILL.md");
   const skill = readFileSync(skillPath, "utf8");
   const frontmatter = skill.match(/^---\n([\s\S]*?)\n---\n/);
@@ -37,18 +55,15 @@ export function readWorkflowSkill(packageDirectory: string) {
   assert.ok(description.length <= MAX_DESCRIPTION_CHARACTERS, "The skill description is too long");
   assert.ok(skill.split("\n").length <= MAX_SKILL_LINES, "The skill is too long");
 
-  const manifest = JSON.parse(readFileSync(join(packageDirectory, "package.json"), "utf8"));
-  const releaseVersion = manifest.version.replace(/-dev$/, "");
   const reviewedVersion = (metadata.metadata as Record<string, unknown> | undefined)?.[
     "zinn-cli-reviewed-version"
   ];
   assert.equal(
-    reviewedVersion,
-    releaseVersion,
-    `Skill reviewed version ${reviewedVersion ?? "missing"} must match CLI ${releaseVersion}. Review the skill and update metadata.zinn-cli-reviewed-version.`,
+    typeof reviewedVersion,
+    "string",
+    "The skill needs metadata.zinn-cli-reviewed-version, the CLI release it was last reviewed against.",
   );
-
-  return skill;
+  return { skill, reviewedVersion: reviewedVersion as string };
 }
 
 /** Runs the skill's shell examples with the selected CLI and an isolated store. */
@@ -60,7 +75,8 @@ export async function checkSkillExamples(options: {
   env: Record<string, string | undefined>;
 }) {
   const { packageDirectory, runtime, entryPoint, directory } = options;
-  const skill = readWorkflowSkill(packageDirectory);
+  // Examples run against any version, including a packed copy that imitates a release.
+  const { skill } = readSkillFile(packageDirectory);
 
   mkdirSync(directory, { recursive: true });
   mkdirSync(join(directory, "store"), { recursive: true });
