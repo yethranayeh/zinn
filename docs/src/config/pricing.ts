@@ -130,4 +130,11 @@ export const databaseSizes = {
   comment: 1_324,
 };
 
+/** Local usage records as shipped. recordBytes is what one `zinn task list` against the fixture appends. */
+export const telemetryCost = {
+  recordBytes: 369,
+  maxMegabytes: 100,
+  maxAgeDays: 90,
+};
+
 export { exactBytes, groupedNumber, memoryLabel, outputLabel, sizeLabel } from "./pricing-labels";

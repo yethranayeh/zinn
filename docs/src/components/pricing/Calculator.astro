@@ -6,7 +6,7 @@ import Readout from "./Readout.astro";
 import TextureSlider from "../ui/texture-slider/TextureSlider.astro";
 
 import { groupedNumber, memoryLabel, outputLabel, sizeLabel } from "../../config/pricing-labels";
-import { calculatorStops, defaultStop, markedStops, storageNote } from "./figures";
+import { calculatorStops, defaultStop, markedStops, storageNote, telemetryNote } from "./figures";
 import { lastPosition, positionOf } from "./calculator-scale";
 
 const stop = calculatorStops[defaultStop];
@@ -54,7 +54,11 @@ const stop = calculatorStops[defaultStop];
 						})
 				}
 			</div>
-			<PricingNote>Marks are measured. Figures between them are interpolated. {storageNote}</PricingNote>
+			<PricingNote>
+				Marks are measured. Figures between them are interpolated. {storageNote}
+				{telemetryNote.text}{" "}
+				<a href={telemetryNote.href}>{telemetryNote.linkLabel}</a>{" "}{telemetryNote.after}
+			</PricingNote>
 		</div>
 
 		<Readouts class='grid-cols-2 @lg:grid-cols-3 @2xl:grid-cols-5 [&_dd]:text-[clamp(1.25rem,3cqw,2rem)]'>

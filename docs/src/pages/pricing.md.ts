@@ -11,6 +11,7 @@ import {
   questions,
   storageNote,
   storySteps,
+  telemetryNote,
 } from "../components/pricing/figures";
 import {
   exactBytes,
@@ -79,7 +80,7 @@ What a project of your size costs, at the sizes we measured. Each task has one c
 | --- | --- | --- | --- | --- | --- |
 ${stopRows}
 
-${storageNote}
+${storageNote} ${telemetryNote.text} [${telemetryNote.linkLabel}](https://zinn.sh${telemetryNote.href}) ${telemetryNote.after}
 
 ## Running costs
 

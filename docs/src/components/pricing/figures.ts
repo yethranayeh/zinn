@@ -8,6 +8,7 @@ import {
   pricingEnvironment,
   pricingTotals,
   sizeLabel,
+  telemetryCost,
 } from "../../config/pricing";
 
 /**
@@ -173,6 +174,17 @@ export const questions: Array<{ q: string; a: string; code?: string; after?: str
 export const measurementNote = `Measured with CLI ${pricingEnvironment.cli} and the packages it installs. Memory and time are medians of five runs on Node ${pricingEnvironment.node}, ${pricingEnvironment.platform}. Each task has a ${pricingEnvironment.titleChars}-character title, a ${pricingEnvironment.descriptionChars}-character description and one ${pricingEnvironment.commentChars}-character comment.`;
 
 export const storageNote = `An empty database is ${sizeLabel(databaseSizes.empty)}. In large projects, a task adds about ${sizeLabel(databaseSizes.task)} and a comment about ${sizeLabel(databaseSizes.comment)}.`;
+
+/** Records differ by a few dozen bytes between commands, so the note rounds to tens */
+const recordBytesShown = Math.round(telemetryCost.recordBytes / 10) * 10;
+
+/** The usage record note, split around its link so the page and its markdown twin each render the link */
+export const telemetryNote = {
+  text: `Each task command also appends about ${sizeLabel(recordBytesShown)} to a local usage record, up to ${telemetryCost.maxMegabytes} MB and kept ${telemetryCost.maxAgeDays} days.`,
+  linkLabel: "Telemetry settings",
+  href: "/docs/data#telemetry",
+  after: "turn it off.",
+};
 
 const firstCommand = pricingCommands[0];
 
