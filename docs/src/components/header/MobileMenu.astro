@@ -1,0 +1,70 @@
+---
+import Button from "../ui/button/Button.astro";
+import Dialog from "../ui/dialog/Dialog.astro";
+import NavLink from "../NavLink.astro";
+import { headerLinks } from "./links";
+---
+
+<Button
+	variant='ghost'
+	size='icon'
+	class='h-11 w-11 shrink-0 border-l border-soot/22 bg-limestone p-0 text-soot hover:bg-bone focus-visible:outline-2 focus-visible:outline-offset-[-3px] sm:hidden [@media(scripting:none)]:hidden'
+	aria-label='Open menu'
+	aria-controls='mobile-menu'
+	aria-expanded='false'
+	aria-haspopup='dialog'
+	data-menu-open>
+	<span class='flex w-4 flex-col gap-[3px]' aria-hidden='true'>
+		<span class='h-px w-full bg-soot'></span>
+		<span class='h-px w-full bg-soot'></span>
+		<span class='h-px w-full bg-soot'></span>
+	</span>
+</Button>
+
+<Dialog
+	id='mobile-menu'
+	title='MENU'
+	class='m-0 ml-auto h-dvh max-h-none w-[min(20rem,85vw)] max-w-none border-0 border-l border-soot bg-soot p-0 text-limestone backdrop:bg-soot/60 sm:hidden'>
+	<div class='flex h-full flex-col'>
+		<nav class='flex flex-col' aria-label='Zinn documentation'>
+			{
+				headerLinks.map((link) => (
+					<NavLink variant='drawer' href={link.path}>
+						{link.name}
+					</NavLink>
+				))
+			}
+		</nav>
+
+		<div
+			class='mt-auto border-t border-limestone/20 px-6 py-4 font-mono text-[10px] tracking-wide text-soot-muted-foreground'>
+			zinn.sh
+		</div>
+	</div>
+</Dialog>
+
+<script>
+	const dialog = document.querySelector<HTMLDialogElement>("#mobile-menu");
+	const trigger = document.querySelector<HTMLButtonElement>("[data-menu-open]");
+
+	if (dialog && trigger) {
+		trigger.addEventListener("click", () => {
+			dialog.showModal();
+			trigger.setAttribute("aria-expanded", "true");
+		});
+
+		dialog.addEventListener("close", () => {
+			trigger.setAttribute("aria-expanded", "false");
+		});
+
+		dialog.querySelectorAll("a").forEach((link) => {
+			link.addEventListener("click", () => dialog.close());
+		});
+
+		window.matchMedia("(min-width: 40rem)").addEventListener("change", (event) => {
+			if (event.matches && dialog.open) {
+				dialog.close();
+			}
+		});
+	}
+</script>

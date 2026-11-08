@@ -2,7 +2,7 @@
 interface Props {
 	href: string;
 	class?: string;
-	variant?: "default" | "header";
+	variant?: "default" | "header" | "drawer";
 }
 
 const { href, class: className, variant = "default" } = Astro.props;
@@ -20,11 +20,18 @@ const headerCellClass = [
 	"min-[420px]:h-11 min-[420px]:px-2 min-[420px]:last:border-r",
 	"sm:h-6 sm:border sm:border-b-0 sm:px-3 sm:not-first:-ml-px sm:focus-visible:outline-offset-[6px]"
 ].join(" ");
+
+const drawerRowClass = [
+	"flex min-h-16 items-center border-t border-limestone/20 px-6 font-mono text-[13px] tracking-wide no-underline first:border-t-0",
+	"hover:bg-limestone/10 hover:no-underline",
+	"aria-[current=page]:bg-limestone aria-[current=page]:text-soot aria-[current=page]:hover:bg-limestone",
+	"focus-visible:outline-2 focus-visible:-outline-offset-2"
+].join(" ");
+
+const variantClass =
+	variant === "header" ? headerCellClass : variant === "drawer" ? drawerRowClass : "aria-[current=page]:underline";
 ---
 
-<a
-	class:list={[className, variant === "header" ? headerCellClass : "aria-[current=page]:underline"]}
-	href={href}
-	aria-current={isCurrentPage ? "page" : undefined}>
+<a class:list={[className, variantClass]} href={href} aria-current={isCurrentPage ? "page" : undefined}>
 	<slot />
 </a>
