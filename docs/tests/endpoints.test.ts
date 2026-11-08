@@ -475,6 +475,7 @@ test("every generated public endpoint is served with its expected type", async (
     ["/social/zinn.png", "image/png"],
     ["/social/changelog.png", "image/png"],
     ["/social/pricing.png", "image/png"],
+    ["/social/blame.png", "image/png"],
   ]) {
     const response = await server.fetch(path!);
     expect(response.status).toBe(200);
@@ -591,6 +592,20 @@ test("pricing preview is a 1200 by 630 PNG linked by pricing metadata", async ()
   expect(alt).toContain("zinn.sh/pricing");
   expect(twitterAlt).toBe(alt);
   await expectSocialImage("/social/pricing.png");
+});
+
+test("task blame preview is a 1200 by 630 PNG linked by task blame metadata", async () => {
+  const html = await (await server.fetch("/docs/blame")).text();
+  const image = html.match(/property="og:image" content="([^"]+)"/)?.[1];
+  const twitterImage = html.match(/name="twitter:image" content="([^"]+)"/)?.[1];
+  expect(image).toBe("https://zinn.sh/social/blame.png");
+  expect(twitterImage).toBe(image);
+  const alt = html.match(/property="og:image:alt" content="([^"]+)"/)?.[1];
+  const twitterAlt = html.match(/name="twitter:image:alt" content="([^"]+)"/)?.[1];
+  expect(alt).toContain("git blame, but for your task board");
+  expect(alt).toContain("zinn.sh/docs/blame");
+  expect(twitterAlt).toBe(alt);
+  await expectSocialImage("/social/blame.png");
 });
 
 test("agent setup prompt uses the installation command and supported runtime", async () => {

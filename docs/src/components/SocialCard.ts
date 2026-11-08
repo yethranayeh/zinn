@@ -10,6 +10,7 @@ const colors = {
 };
 
 const changelogCovers = ["CLI", "Core", "Integrations"];
+const blameCovers = ["FIELDS", "LINES", "ACTORS"];
 
 export function SocialCard({ command }: { command: string }) {
   return jsx("div", {
@@ -307,6 +308,133 @@ export function PricingCard({ wordmark, download }: { wordmark: string; download
           color: colors.pewter,
         },
         children: "zinn.sh/pricing",
+      }),
+    ],
+  });
+}
+
+export function BlameCard({ wordmark }: { wordmark: string }) {
+  return jsx("div", {
+    style: {
+      width: "100%",
+      height: "100%",
+      display: "flex",
+      position: "relative",
+      backgroundColor: colors.limestone,
+      color: colors.soot,
+      fontFamily: "Alan Sans",
+    },
+    children: [
+      jsx("img", {
+        src: wordmark,
+        width: 240,
+        height: 77,
+        style: { position: "absolute", left: 68, top: 54 },
+      }),
+      jsx("div", {
+        style: {
+          position: "absolute",
+          left: 340,
+          top: 54,
+          width: 1,
+          height: 512,
+          backgroundColor: colors.pewter,
+        },
+      }),
+      jsx("div", {
+        style: {
+          position: "absolute",
+          left: 68,
+          top: 200,
+          fontFamily: "MonoMMM",
+          fontSize: 16,
+          letterSpacing: 2.6,
+          color: colors.pewter,
+        },
+        children: "TASK BLAME",
+      }),
+      ...blameCovers.map((name, index) => {
+        const top = 240 + index * 64;
+
+        return jsx("div", {
+          style: {
+            position: "absolute",
+            left: 68,
+            top,
+            width: 200,
+            display: "flex",
+            flexDirection: "column",
+          },
+          children: [
+            jsx("div", {
+              style: { fontSize: 30, fontWeight: 600, letterSpacing: -0.5 },
+              children: name,
+            }),
+            index < blameCovers.length - 1
+              ? jsx("div", {
+                  style: {
+                    position: "absolute",
+                    top: 48,
+                    left: 0,
+                    width: 200,
+                    height: 1,
+                    backgroundColor: colors.pewter,
+                  },
+                })
+              : null,
+          ],
+        });
+      }),
+      jsx("div", {
+        style: {
+          position: "absolute",
+          left: 404,
+          top: 118,
+          width: 728,
+          display: "flex",
+          flexDirection: "column",
+          fontSize: 72,
+          fontWeight: 600,
+          letterSpacing: -3,
+          lineHeight: 1.1,
+        },
+        children: [
+          jsx("div", { children: "git blame, but for" }),
+          jsx("div", { children: "your task board." }),
+        ],
+      }),
+      jsx("div", {
+        style: {
+          position: "absolute",
+          left: 406,
+          top: 300,
+          width: 72,
+          height: 4,
+          backgroundColor: colors.cinnabar,
+        },
+      }),
+      jsx("div", {
+        style: {
+          position: "absolute",
+          left: 404,
+          top: 332,
+          width: 700,
+          fontSize: 30,
+          lineHeight: 1.35,
+          color: colors.pewter,
+        },
+        children: "Every field and description line points at the edit that set it.",
+      }),
+      jsx("div", {
+        style: {
+          position: "absolute",
+          left: 404,
+          top: 560,
+          fontFamily: "MonoMMM",
+          fontSize: 18,
+          color: colors.pewter,
+        },
+        children: "zinn.sh/docs/blame",
       }),
     ],
   });
