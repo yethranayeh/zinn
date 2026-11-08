@@ -442,3 +442,21 @@ test("project mutations print the affected entity", async () => {
     );
   });
 });
+
+test("project descriptions flow through creation, partial edits, view, list and clearing", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = (...args: string[]) => runZinn(args, dir);
+    const description = "Purpose\nMore context";
+    const created = await run("project", "create", "DESC", "--description", description, "--json");
+    expect(created.code).toBe(0);
+    expect(JSON.parse(created.stdout)).toEqual({ id: expect.any(String), key: "DESC", name: "DESC", description });
+    expect((await run("project", "view", "DESC")).stdout).toStartWith(`DESC | DESC\n\nDescription:\n${description}\n\nColumns:\n`);
+    expect((await run("project", "list")).stdout).toBe("DESC | DESC | 0 active | 0 archived | Purpose More context\n");
+    expect(JSON.parse((await run("project", "list", "--json")).stdout)[0].description).toBe(description);
+    expect(JSON.parse((await run("project", "edit", "DESC", "--name", "Renamed", "--json")).stdout).description).toBe(description);
+    expect(JSON.parse((await run("project", "edit", "DESC", "--description", "Updated", "--json")).stdout)).toEqual({ id: expect.any(String), key: "DESC", name: "Renamed", description: "Updated", changed: true });
+    expect((await run("project", "edit", "DESC", "--description", "")).stdout).toBe("DESC | Renamed\n");
+    expect(JSON.parse((await run("project", "view", "DESC", "--json")).stdout).description).toBeNull();
+    expect((await run("project", "edit", "DESC", "--description", "a", "--description", "b")).code).toBe(1);
+  });
+});

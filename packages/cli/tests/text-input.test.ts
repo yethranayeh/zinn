@@ -2,6 +2,7 @@ import { TEST_ENVIRONMENT } from "../../../scripts/test-isolation.ts";
 import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { MAX_TEXT_BYTES } from "@zinn-dev/core";
 import { errorDocumentSchema } from "../src/errors";
 import { generateInputUsage } from "../src/input";
 import { parseRoutes } from "../src/routes/router";
@@ -357,5 +358,295 @@ test("names and titles share trimming and reject leading or trailing control cha
         expect(errorDocumentSchema.parse(JSON.parse(invalid.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: [args.includes("--title") ? "title" : "name"] } });
       }
     }
+  });
+});
+
+// --- PARTIAL TEXT EDITS (ZINN-177)
+
+// ? Creates project APP with task APP-1, label bug and comment APP-1#1, all with the given text.
+async function seedEditableText(dir: string, text: string) {
+  const run = (...args: string[]) => runZinn(args, dir);
+  expect((await run("project", "create", "APP", "--description", text)).code).toBe(0);
+  expect((await run("task", "create", "APP", "--title", "Task", "--description", text)).code).toBe(0);
+  expect((await run("label", "create", "bug", "--description", text)).code).toBe(0);
+  expect((await run("task", "comment", "create", "APP-1", "--text", text)).code).toBe(0);
+
+  return run;
+}
+
+const storedTextOf = (dir: string) =>
+  withTestDb(dir, (db) => ({
+    project: db.query<{ text: string | null }, []>("SELECT description AS text FROM project").get()!.text,
+    task: db.query<{ text: string | null }, []>("SELECT description AS text FROM task").get()!.text,
+    label: db.query<{ text: string | null }, []>("SELECT description AS text FROM label").get()!.text,
+    comment: db.query<{ text: string }, []>("SELECT text FROM comment").get()!.text,
+  }));
+
+test("oversized partial text edits exit 1 with empty stdout and leave the database unchanged", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "Seed");
+    const atLimit = "a".repeat(MAX_TEXT_BYTES - 4) + "😀";
+    withTestDb(dir, (db) => {
+      for (const table of ["project", "task", "label"]) {
+        db.query(`UPDATE ${table} SET description = ?`).run(atLimit);
+      }
+      db.query("UPDATE comment SET text = ?").run(atLimit);
+    });
+    const before = storedTextOf(dir);
+    const activities = (await run("activity", "list", "--json")).stdout;
+    const edits = [
+      { args: ["project", "edit", "APP"], flag: "--description" },
+      { args: ["task", "edit", "APP-1"], flag: "--description" },
+      { args: ["label", "edit", "bug"], flag: "--description" },
+      { args: ["task", "comment", "edit", "APP-1#1"], flag: "--text" },
+    ];
+    for (const { args, flag } of edits) {
+      for (const options of [[flag, "x", "--append"], [flag, "😀x", "--replacing", "😀"]]) {
+        const result = await run(...args, ...options);
+        expect(result.code).toBe(1);
+        expect(result.stdout).toBe("");
+        expect(result.stderr).toContain(String(MAX_TEXT_BYTES));
+        expect(result.stderr).toContain(String(MAX_TEXT_BYTES + (options.includes("--append") ? 3 : 1)));
+        expect(storedTextOf(dir)).toEqual(before);
+        expect((await run("activity", "list", "--json")).stdout).toBe(activities);
+      }
+    }
+  });
+});
+
+test("CRLF text normalizes through CLI creation, replacement and append for every text field", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "  First\r\nSecond\nThird\rEnd  ");
+    const normalized = "  First\nSecond\nThird\rEnd  ";
+    expect(storedTextOf(dir)).toEqual({ project: normalized, task: normalized, label: normalized, comment: normalized });
+
+    const edits = [
+      { args: ["project", "edit", "APP"], flag: "--description" },
+      { args: ["task", "edit", "APP-1"], flag: "--description" },
+      { args: ["label", "edit", "bug"], flag: "--description" },
+      { args: ["task", "comment", "edit", "APP-1#1"], flag: "--text" },
+    ];
+    for (const { args, flag } of edits) {
+      const result = await run(...args, flag, "Joined\r\nLine", "--replacing", "First\r\nSecond", "--json");
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe("");
+      const entity = JSON.parse(result.stdout);
+      expect(entity.description ?? entity.text).toBe("  Joined\nLine\nThird\rEnd  ");
+      expect((await run(...args, flag, "Tail\r\n  Indent", "--append")).code).toBe(0);
+    }
+    const appended = "  Joined\nLine\nThird\rEnd  \n\nTail\n  Indent";
+    expect(storedTextOf(dir)).toEqual({ project: appended, task: appended, label: appended, comment: appended });
+  });
+});
+
+test("--append adds a paragraph to a task description and to a comment's text", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "First.\n");
+
+    expect((await run("task", "edit", "APP-1", "--description", "Second.", "--append")).code).toBe(0);
+    expect((await run("task", "comment", "edit", "APP-1#1", "--text", "More.", "--append")).code).toBe(0);
+
+    expect(storedTextOf(dir)).toMatchObject({ task: "First.\n\nSecond.", comment: "First.\n\nMore." });
+  });
+});
+
+test("--replacing swaps one passage in a project description and in a label description", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "old sentence, kept");
+
+    expect((await run("project", "edit", "APP", "--description", "new", "--replacing", "old sentence")).code).toBe(0);
+    expect((await run("label", "edit", "bug", "--description", "fresh", "--replacing", "old sentence")).code).toBe(0);
+
+    expect(storedTextOf(dir)).toMatchObject({ project: "new, kept", label: "fresh, kept" });
+  });
+});
+
+test("--replacing --all replaces every match and prints the edited object as any edit does", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "board and board");
+
+    const edited = await run("project", "edit", "APP", "--description", "database", "--replacing", "board", "--all");
+    expect(edited.code).toBe(0);
+    expect(edited.stdout).toContain("database and database");
+    expect(storedTextOf(dir).project).toBe("database and database");
+
+    const comment = await run("task", "comment", "edit", "APP-1#1", "--text", "x", "--replacing", "board", "--all");
+    expect(comment.code).toBe(0);
+    expect(comment.stdout).toContain("x and x");
+  });
+});
+
+test("--replacing with several matches and no --all fails with the --all hint and changes nothing", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "dup dup");
+    const before = storedTextOf(dir);
+
+    const attempts = [
+      await run("task", "edit", "APP-1", "--description", "x", "--replacing", "dup", "--json"),
+      await run("project", "edit", "APP", "--description", "x", "--replacing", "dup", "--json"),
+      await run("task", "comment", "edit", "APP-1#1", "--text", "x", "--replacing", "dup", "--json"),
+    ];
+
+    for (const attempt of attempts) {
+      expect(attempt.code).toBe(1);
+      expect(attempt.stdout).toBe("");
+      expect(errorDocumentSchema.parse(JSON.parse(attempt.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "text_match_count", matchCount: 2 } });
+      expect(JSON.parse(attempt.stderr).error.message).toContain("--all");
+    }
+    expect(storedTextOf(dir)).toEqual(before);
+  });
+});
+
+test("--replacing with no match fails without the --all hint and changes nothing", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "Some Text");
+    const before = storedTextOf(dir);
+
+    const attempts = [
+      await run("task", "edit", "APP-1", "--description", "x", "--replacing", "some text", "--json"),
+      await run("label", "edit", "bug", "--description", "x", "--replacing", "absent", "--json"),
+    ];
+
+    for (const attempt of attempts) {
+      expect(attempt.code).toBe(1);
+      expect(errorDocumentSchema.parse(JSON.parse(attempt.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "text_match_count", matchCount: 0, field: ["description"] } });
+      expect(attempt.stderr).not.toContain("--all");
+    }
+    expect(storedTextOf(dir)).toEqual(before);
+  });
+});
+
+test("an empty text with --replacing deletes the match", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "keep\nstale line\n");
+
+    expect((await run("task", "edit", "APP-1", "--description", "", "--replacing", "stale line\n")).code).toBe(0);
+    expect((await run("task", "comment", "edit", "APP-1#1", "--text", "", "--replacing", "\nstale line")).code).toBe(0);
+
+    expect(storedTextOf(dir)).toMatchObject({ task: "keep\n", comment: "keep\n" });
+  });
+});
+
+test("a modifier edit with --json carries the full resulting text", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "One.");
+
+    const task = JSON.parse((await run("task", "edit", "APP-1", "--description", "Two.", "--append", "--json")).stdout);
+    const comment = JSON.parse((await run("task", "comment", "edit", "APP-1#1", "--text", "Two.", "--append", "--json")).stdout);
+
+    expect(task.description).toBe("One.\n\nTwo.");
+    expect(comment.text).toBe("One.\n\nTwo.");
+  });
+});
+
+test("a match error with --json uses the usual error shape, with the hint for several matches", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "dup dup");
+
+    const several = await run("task", "edit", "APP-1", "--description", "x", "--replacing", "dup", "--json");
+    const none = await run("task", "edit", "APP-1", "--description", "x", "--replacing", "absent", "--json");
+
+    expect(several.code).toBe(1);
+    expect(errorDocumentSchema.parse(JSON.parse(several.stderr)).error).toMatchObject({
+      code: "conflict", details: { reason: "text_match_count", matchCount: 2, field: ["description"] },
+    });
+    expect(JSON.parse(several.stderr).error.message).toContain("--all");
+    expect(errorDocumentSchema.parse(JSON.parse(none.stderr)).error).toMatchObject({
+      code: "conflict", details: { reason: "text_match_count", matchCount: 0, field: ["description"] },
+    });
+  });
+});
+
+test("the text-edit flags are usage errors without the text flag or in an invalid combination", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "text");
+    const before = storedTextOf(dir);
+
+    const cases: Array<[Array<string>, string]> = [
+      [["task", "edit", "APP-1", "--append"], '--append --description'],
+      [["project", "edit", "APP", "--name", "New", "--replacing", "a"], '--replacing --description'],
+      [["label", "edit", "bug", "--color", "red", "--append"], '--append --description'],
+      [["task", "comment", "edit", "APP-1#1", "--replacing", "a"], '--replacing --text'],
+      [["task", "edit", "APP-1", "--description", "x", "--all"], '--all --replacing'],
+      [["task", "comment", "edit", "APP-1#1", "--text", "x", "--all"], '--all --replacing'],
+      [["task", "edit", "APP-1", "--description", "x", "--append", "--replacing", "t"], '--append --replacing'],
+      [["task", "comment", "edit", "APP-1#1", "--text", "x", "--append", "--replacing", "t"], '--append --replacing'],
+    ];
+
+    for (const [args, message] of cases) {
+      const result = await run(...args);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      for (const flag of message.split(" ")) {
+        expect(result.stderr).toContain(flag);
+      }
+    }
+    expect(storedTextOf(dir)).toEqual(before);
+    expect(errorDocumentSchema.parse(JSON.parse((await run("task", "edit", "APP-1", "--append", "--json")).stderr)).error).toMatchObject({
+      code: "invalid_input", details: { argument: "--description" },
+    });
+  });
+});
+
+test("core's value rules for the text-edit flags identify the rejected field", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "text");
+
+    const blankAppend = await run("task", "edit", "APP-1", "--description", " ", "--append", "--json");
+    const emptyFind = await run("task", "edit", "APP-1", "--description", "x", "--replacing", "", "--json");
+    const blankComment = await run("task", "comment", "edit", "APP-1#1", "--text", "", "--replacing", "text", "--json");
+
+    expect(blankAppend.code).toBe(1);
+    expect(blankAppend.stdout).toBe("");
+    expect(errorDocumentSchema.parse(JSON.parse(blankAppend.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["description", "append"] } });
+    expect(emptyFind.code).toBe(1);
+    expect(emptyFind.stdout).toBe("");
+    expect(errorDocumentSchema.parse(JSON.parse(emptyFind.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: ["description", "find"] } });
+    expect(blankComment.code).toBe(1);
+    expect(blankComment.stdout).toBe("");
+    expect(errorDocumentSchema.parse(JSON.parse(blankComment.stderr)).error).toMatchObject({ code: "invalid_input", details: { field: [] } });
+  });
+});
+
+test("the text-edit flags are limited to the edit commands and listed in their help", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = await seedEditableText(dir, "text");
+
+    expect((await run("task", "create", "APP", "--title", "T", "--append")).code).toBe(1);
+    expect((await run("task", "comment", "create", "APP-1", "--text", "x", "--append")).code).toBe(1);
+
+    for (const command of [["task", "edit"], ["project", "edit"], ["label", "edit"], ["task", "comment", "edit"]]) {
+      const help = (await run(...command, "--help")).stdout;
+      expect(help).toContain("[--append|--replacing <old> [--all]]");
+      expect(help).toContain("--append");
+    }
+  });
+});
+
+test.each([
+  { type: "project", create: ["EMPTY"], editKey: "EMPTY", read: ["project", "view", "EMPTY"], omitted: ["OMITTED"] },
+  { type: "task", create: ["APP", "--title", "Empty"], editKey: "APP-1", read: ["task", "view", "APP-1"], omitted: ["APP", "--title", "Omitted"] },
+  { type: "label", create: ["empty"], editKey: "empty", read: ["label", "list"], omitted: ["omitted"] },
+])("$type descriptions normalize blank input and preserve meaningful formatting", async (entity) => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = (...args: string[]) => runZinn(args, dir);
+    if (entity.type === "task") {
+      expect((await run("project", "create", "APP")).code).toBe(0);
+    }
+    const created = await run(entity.type, "create", ...entity.create, "--description", " \n\t ", "--json");
+    expect(created.code).toBe(0);
+    expect(JSON.parse(created.stdout).description).toBeNull();
+    for (const clearInput of ["", " \n\t "]) {
+      const description = "  Details\n\tIndented  \n";
+      const edited = await run(entity.type, "edit", entity.editKey, "--description", description, "--json");
+      expect(edited.code).toBe(0);
+      expect(JSON.parse(edited.stdout).description).toBe(description);
+      const cleared = await run(entity.type, "edit", entity.editKey, "--description", clearInput, "--json");
+      expect(cleared.code).toBe(0);
+      expect(JSON.parse(cleared.stdout).description).toBeNull();
+    }
+    const result = JSON.parse((await run(...entity.read, "--json")).stdout);
+    expect((Array.isArray(result) ? result[0] : result).description).toBeNull();
+    expect(JSON.parse((await run(entity.type, "create", ...entity.omitted, "--json")).stdout).description).toBeNull();
   });
 });

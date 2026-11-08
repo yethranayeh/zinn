@@ -502,3 +502,21 @@ test("Unicode characters stay intact at comment, label and project preview cutof
     }
   });
 });
+
+test("project list and write rows show truncated description previews, project view and JSON keep full text, and task rows leave descriptions out", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const run = (...args: string[]) => runZinn(args, dir);
+    const description = "  Context\n" + "x".repeat(200);
+    const preview = `Context ${"x".repeat(71)}…`;
+    expect(preview).toHaveLength(80);
+    const taskProject = JSON.parse((await run("project", "create", "PRE", "--description", description, "--json")).stdout);
+    await run("task", "create", "PRE", "--title", "Task", "--description", description);
+    expect((await run("task", "list", "PRE")).stdout).toBe("PRE-1 | Backlog | - | Task\n");
+    expect((await run("project", "list")).stdout).toBe(`PRE | PRE | 1 active | 0 archived | ${preview}\n`);
+    expect((await run("project", "view", "PRE")).stdout).toStartWith(`PRE | PRE\n\nDescription:\n${description}\n\nColumns:\n`);
+    expect((await run("project", "edit", "PRE", "--description", description)).stdout).toBe(`PRE | PRE | ${preview}\n`);
+    expect(taskProject.description).toBe(description);
+    expect(JSON.parse((await run("project", "view", "PRE", "--json")).stdout).description).toBe(description);
+    expect((await run("project", "edit", "PRE", "--description", " \n ")).stdout).toBe("PRE | PRE\n");
+  });
+});
