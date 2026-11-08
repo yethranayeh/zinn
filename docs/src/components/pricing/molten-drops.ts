@@ -1,5 +1,4 @@
-import { FRAME_MS, reducedMotion } from "./canvas";
-import { fit, ink, noise, onResize } from "../ui/texture-slider/canvas";
+import { FRAME_MS, fit, ink, noise, onResize, reducedMotion } from "../ui/texture-slider/canvas";
 import { figures } from "./page-figures";
 
 interface Drop {

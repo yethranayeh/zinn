@@ -1,3 +1,6 @@
+export const FRAME_MS = 125;
+export const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 let frames = 0;
 
 /** Frames drawn on the page, one per fit call */
@@ -50,6 +53,32 @@ export function onResize(element: Element, redraw: () => void) {
       redraw();
     }
   }).observe(element);
+}
+
+/**
+ * Runs `onFrame` for frames steps at the stepped rate.
+ * Starting again cancels the previous run.
+ */
+export function stepper() {
+  let timer = 0;
+  return (frames: number, onFrame: (frame: number) => void) => {
+    window.clearInterval(timer);
+    if (reducedMotion) {
+      onFrame(frames - 1);
+      return;
+    }
+
+    let frame = 0;
+    onFrame(frame);
+
+    timer = window.setInterval(() => {
+      frame += 1;
+      onFrame(frame);
+      if (frame >= frames - 1) {
+        window.clearInterval(timer);
+      }
+    }, FRAME_MS);
+  };
 }
 
 /** The chance a cell gets a dot, denser near the edge */

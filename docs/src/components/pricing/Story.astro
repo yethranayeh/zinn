@@ -3,7 +3,7 @@ import Section from "./Section.astro";
 import PricingNote from "./PricingNote.astro";
 import PricingBody from "./PricingBody.astro";
 import PricingAction from "./PricingAction.astro";
-import PricingBar from "./PricingBar.astro";
+import Progress from "../ui/progress/Progress.astro";
 
 import { storySteps } from "./figures";
 ---
@@ -27,7 +27,7 @@ import { storySteps } from "./figures";
 				))
 			}
 		</ol>
-		<PricingBar data-story-bar />
+		<Progress class='mt-5' value={storySteps[0].fill} data-story-bar />
 		<div class='min-h-[9rem] mt-5' aria-live='polite' aria-atomic='true'>
 			<p
 				class='font-mono text-[clamp(2rem,6vw,3.5rem)] leading-none tracking-[-0.03em] whitespace-nowrap'
@@ -44,8 +44,8 @@ import { storySteps } from "./figures";
 </Section>
 
 <script>
-	import { drawFillMove, print, stepper } from "./canvas";
-	import { drawScatter, onResize } from "../ui/texture-slider/canvas";
+	import { print } from "./canvas";
+	import { setupProgress } from "../ui/progress/progress";
 	import { figures } from "./page-figures";
 
 	function setupStory() {
@@ -58,9 +58,8 @@ import { storySteps } from "./figures";
 		if (!bar || !figure || !text || !count || !next) {
 			return;
 		}
-		const run = stepper();
+		const progress = setupProgress(bar);
 		let current = 0;
-		let fill = figures.story[0].fill;
 
 		function go(index: number) {
 			current = index;
@@ -72,24 +71,9 @@ import { storySteps } from "./figures";
 			text!.textContent = step.text;
 			count!.textContent = `Step ${index + 1} of ${figures.story.length}`;
 			next!.textContent = index === figures.story.length - 1 ? "Start over" : "Next step";
-			const from = fill;
-			const to = step.fill;
-			fill = step.fill;
-			if (from === to) {
-				return;
-			}
-			// The whole bar takes 12 frames, and any move takes at least 2.
-			const frames = Math.max(2, Math.ceil(Math.abs(to - from) * 12));
-			run(frames, (frame) => {
-				if (frame === frames - 1) {
-					drawScatter(bar!, to, 1);
-				} else {
-					drawFillMove(bar!, from, to, (frame + 1) / frames, frame + 1);
-				}
-			});
+			progress.set(step.fill);
 		}
 
-		onResize(bar, () => drawScatter(bar, fill, 1));
 		next.addEventListener("click", () => go((current + 1) % figures.story.length));
 		for (const button of steps) {
 			button.addEventListener("click", () => go(Number(button.dataset.storyStep)));
