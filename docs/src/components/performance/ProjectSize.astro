@@ -1,0 +1,58 @@
+---
+import PricingBody from "../pricing/PricingBody.astro";
+import Section from "../pricing/Section.astro";
+import Table from "../ui/table/Table.astro";
+import TableCell from "../ui/table/TableCell.astro";
+import TableHead from "../ui/table/TableHead.astro";
+import TableRow from "../ui/table/TableRow.astro";
+
+import { count, memory, output, projectSizes, secondsLabel, size } from "./flow-data";
+
+const rows = projectSizes.map((entry) => ({
+	tasks: count(entry.tasks),
+	database: size(entry.databaseBytes),
+	seconds: secondsLabel(entry.seconds),
+	memory: memory(entry.memoryBytes),
+	json: output(entry.jsonBytes),
+	mock: entry.mock ?? false
+}));
+---
+
+<Section id='perf-size' label='Project size' title='What a bigger board costs.'>
+	<div class='min-w-0'>
+		<PricingBody>
+			The same list command as the board grows. The 100, 1,000 and 10,000-task rows are measured. The 100,000-task row
+			is a placeholder.
+		</PricingBody>
+
+		<Table class='[&_td]:text-[13px]'>
+			<thead>
+				<TableRow>
+					<TableHead>Tasks</TableHead>
+					<TableHead>Database</TableHead>
+					<TableHead>List time</TableHead>
+					<TableHead>Peak memory</TableHead>
+					<TableHead>JSON output</TableHead>
+				</TableRow>
+			</thead>
+			<tbody>
+				{
+					rows.map((row) => (
+						<TableRow>
+							<TableCell class='font-mono tabular-nums'>
+								{row.tasks}
+								{row.mock && (
+									<span class='ml-1.5 font-mono text-[9px]/[1.4] tracking-[0.12em] text-clay uppercase'>mock</span>
+								)}
+							</TableCell>
+							<TableCell class='font-mono tabular-nums'>{row.database}</TableCell>
+							<TableCell class='font-mono tabular-nums'>{row.seconds}</TableCell>
+							<TableCell class='font-mono tabular-nums'>{row.memory}</TableCell>
+							<TableCell class='font-mono tabular-nums'>{row.json}</TableCell>
+						</TableRow>
+					))
+				}
+			</tbody>
+		</Table>
+	</div>
+</Section>

@@ -1,0 +1,25 @@
+---
+import type { Flow } from "./flow-data";
+import Button from "../ui/button/Button.astro";
+
+interface Props {
+	flows: Array<Flow>;
+	current: Flow["id"];
+}
+
+const { flows, current } = Astro.props;
+---
+
+<div class='flex flex-wrap gap-2' role='group' aria-label='Flow'>
+	{
+		flows.map((flow) => (
+			<Button
+				variant='outline'
+				class='min-h-0 px-2.5 py-1.5 text-[10px]/[1.4] tracking-[0.14em] uppercase hover:bg-transparent hover:aria-[pressed=false]:bg-soot/8 aria-pressed:bg-soot aria-pressed:text-soot-foreground'
+				data-flow={flow.id}
+				aria-pressed={flow.id === current ? "true" : "false"}>
+				{flow.name}
+			</Button>
+		))
+	}
+</div>

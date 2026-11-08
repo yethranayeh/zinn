@@ -1,0 +1,25 @@
+---
+import type { Flow } from "./flow-data";
+import { pricingEnvironment } from "../../config/pricing";
+
+interface Props {
+	flow: Flow;
+}
+
+const { flow } = Astro.props;
+---
+
+<div
+	class='relative min-h-[26rem] flex-1 bg-limestone lg:h-[calc(100svh_-_var(--site-header-height)_-_14rem)] lg:min-h-[30rem] lg:max-h-[52rem]'>
+	<canvas
+		class='absolute inset-0 block h-full w-full'
+		data-flow-canvas
+		tabindex='0'
+		role='img'
+		aria-label={`Node graph of the ${flow.name.toLowerCase()} flow. Drag nodes to rearrange them. Use the node list to inspect a node.`}>
+	</canvas>
+
+	<p class='pointer-events-none absolute bottom-4 left-4 m-0 font-mono text-[10px]/[1.5] text-muted-foreground'>
+		Mock figures · {pricingEnvironment.tasks} tasks · 1 comment each
+	</p>
+</div>

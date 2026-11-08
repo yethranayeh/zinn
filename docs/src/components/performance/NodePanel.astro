@@ -1,0 +1,46 @@
+---
+import type { FlowNode } from "./flow-data";
+
+import PricingLabel from "../pricing/PricingLabel.astro";
+import Button from "../ui/button/Button.astro";
+import InspectorRow from "./InspectorRow.astro";
+import PortList from "./PortList.astro";
+
+import { kindLabels } from "./flow-palette";
+
+interface Props {
+	node: FlowNode;
+}
+
+const { node } = Astro.props;
+---
+
+<div class='px-4 pb-4' data-node-panel={node.id} hidden>
+	<div class='mt-4 flex items-baseline justify-between gap-2'>
+		<h2 class='text-[18px]/[1.15]'>{node.title}</h2>
+		<span class='font-mono text-[9px]/[1.4] tracking-[0.14em] text-soot-muted-foreground uppercase'>
+			{kindLabels[node.kind]}
+		</span>
+	</div>
+
+	<PricingLabel as='p' class='mt-3 text-bronze'>{node.metric.label}</PricingLabel>
+
+	<p class='mt-0.5 font-mono text-[clamp(1.5rem,3vw,2rem)] leading-none tabular-nums'>{node.metric.value}</p>
+	<p class='mt-3 text-[12px]/[1.6] text-soot-muted-foreground'>{node.note}</p>
+	<dl class='mt-4 grid gap-1.5 border-t border-limestone/15 pt-3'>
+		{node.rows.map((row) => <InspectorRow label={row.label} value={row.value} />)}
+	</dl>
+
+	<div class='mt-4 grid grid-cols-2 gap-3 border-t border-limestone/15 pt-3'>
+		<PortList label='In' ports={node.inputs} />
+		<PortList label='Out' ports={node.outputs} />
+	</div>
+
+	<Button
+		variant='outline'
+		class='mt-4 min-h-0 border-limestone/20 px-2.5 py-1.5 text-[10px]/[1.4] tracking-[0.14em] uppercase hover:bg-limestone/8'
+		data-node-focus
+		data-node-id={node.id}>
+		Focus node
+	</Button>
+</div>

@@ -1,0 +1,38 @@
+---
+import type { Flow } from "./flow-data";
+
+import PricingLabel from "../pricing/PricingLabel.astro";
+import TimeSplit from "./TimeSplit.astro";
+
+import { energyPerCommand, nodeEnergyLabel } from "../pricing/figures";
+
+interface Props {
+	flow: Flow;
+}
+
+const { flow } = Astro.props;
+const energy = energyPerCommand[flow.command];
+---
+
+<div class='px-4 pb-4' data-inspector-default>
+	<PricingLabel as='p' class='text-soot-muted-foreground'>Flow</PricingLabel>
+
+	<h2 class='mt-1 text-[15px]/[1.2]'>{flow.name}</h2>
+	<code class='mt-0.5 block font-mono text-[11px]/[1.4] text-bronze'>$ {flow.command}</code>
+	<p class='mt-3 text-[12px]/[1.6] text-soot-muted-foreground'>{flow.summary}</p>
+	<p class='mt-2 font-mono text-[10px]/[1.5] text-soot-muted-foreground'>
+		Drag nodes. Scroll to zoom. Double-click to frame.
+	</p>
+
+	<TimeSplit flow={flow} class='mt-6' />
+
+	{
+		energy ? (
+			<p class='mt-3 font-mono text-[10px]/[1.5] text-soot-muted-foreground'>
+				{energy} above idle. {nodeEnergyLabel} of it Node.
+			</p>
+		) : (
+			<p class='mt-3 font-mono text-[10px]/[1.5] text-soot-muted-foreground'>Install energy is not measured.</p>
+		)
+	}
+</div>

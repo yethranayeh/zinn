@@ -1,0 +1,18 @@
+---
+import { twMerge } from "tailwind-merge";
+import Button from "../ui/button/Button.astro";
+
+interface Props {
+	variant?: "primary" | "secondary";
+	class?: string;
+	[key: string]: unknown;
+}
+
+const { variant = "secondary", class: className, ...attributes } = Astro.props;
+const base = "min-h-0 px-2.5 py-1.5 text-[10px]/[1.4] tracking-[0.14em] uppercase";
+const tone = variant === "primary" ? "border-clay bg-clay text-limestone hover:bg-clay/90" : "hover:bg-soot/8";
+---
+
+<Button variant={variant === "primary" ? "solid" : "outline"} class={twMerge(base, tone, className)} {...attributes}>
+	<slot />
+</Button>

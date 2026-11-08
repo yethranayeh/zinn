@@ -38,6 +38,7 @@ When to use Zinn: track development work locally, carry task scope and progress 
 - [Contact](https://zinn.sh/contact.md): Public issue reporting and support information.
 - [Privacy](https://zinn.sh/privacy.md): Website hosting and analytics, local CLI data and external links.
 - [Pricing](https://zinn.sh/pricing.md): What Zinn costs in bytes, downloaded and on disk, and what a command costs to run.
+- [Performance](https://zinn.sh/performance.md): Measured command times, memory, output and the path a command takes from an agent to SQLite and back.
 
 ## Optional
 

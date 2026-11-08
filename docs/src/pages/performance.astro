@@ -1,0 +1,42 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Benchmarks from "../components/performance/Benchmarks.astro";
+import Method from "../components/performance/Method.astro";
+import PerformanceTool from "../components/performance/PerformanceTool.astro";
+import ProjectSize from "../components/performance/ProjectSize.astro";
+import Storage from "../components/performance/Storage.astro";
+---
+
+<BaseLayout
+	title='Performance'
+	description='Measured command times, memory, output and the path a Zinn command takes from an agent to SQLite and back.'>
+	<PerformanceTool />
+
+	<div class='site-container flex-1 max-w-(--site-content-width) pb-24'>
+		<Benchmarks />
+		<ProjectSize />
+		<Storage />
+		<Method />
+	</div>
+</BaseLayout>
+
+<style is:global>
+	:root {
+		/* Flow canvas palette. Canvas resolves these at mount because it cannot read custom properties. */
+		--perf-node-fill: #f1ead9;
+		--perf-kind-agent: var(--color-bronze);
+		--perf-kind-runtime: #7a6a52;
+		--perf-kind-cli: var(--color-clay);
+		--perf-kind-core: var(--color-cinnabar);
+		--perf-kind-sqlite: var(--color-pewter);
+		--perf-kind-disk: var(--color-muted-foreground);
+		--perf-kind-output: #a16a3a;
+		--perf-kind-context: #8a6a3f;
+		--perf-kind-registry: var(--color-clay);
+		--perf-kind-npm: var(--color-bronze);
+		--perf-kind-bin: var(--color-pewter);
+		--perf-kind-wal: var(--color-cinnabar);
+		--perf-kind-cache: #8a6a3f;
+		--perf-kind-module: #9b8b70;
+	}
+</style>

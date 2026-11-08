@@ -1,0 +1,15 @@
+---
+import type { Flow } from "./flow-data";
+import KeyFigure from "./KeyFigure.astro";
+
+interface Props {
+	flow: Flow;
+	hidden?: boolean;
+}
+
+const { flow, hidden = false } = Astro.props;
+---
+
+<div class='grid grid-cols-2 gap-px bg-soot/12 lg:grid-cols-4' data-flow-state={flow.id} hidden={hidden}>
+	{flow.keyFigures.map((figure) => <KeyFigure label={figure.label} value={figure.value} />)}
+</div>

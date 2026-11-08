@@ -495,6 +495,7 @@ test("every generated public endpoint is served with its expected type", async (
     "https://zinn.sh/",
     ...[
       ...markdownPages,
+      "performance",
       "pricing",
       "integrations",
       opencodeTheme.path.slice(1),

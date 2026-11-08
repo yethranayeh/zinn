@@ -1,0 +1,25 @@
+---
+import type { FlowPort } from "./flow-data";
+import PricingLabel from "../pricing/PricingLabel.astro";
+
+interface Props {
+	label: string;
+	ports?: Array<FlowPort>;
+}
+
+const { label, ports = [] } = Astro.props;
+---
+
+<div>
+	<PricingLabel as='p' class='text-soot-muted-foreground'>{label}</PricingLabel>
+
+	<ul class='mt-1.5 grid gap-1'>
+		{
+			ports.length > 0 ? (
+				ports.map((port) => <li class='font-mono text-[10px]/[1.4] text-limestone/80'>{port.name}</li>)
+			) : (
+				<li class='font-mono text-[10px]/[1.4] text-limestone/80'>None</li>
+			)
+		}
+	</ul>
+</div>

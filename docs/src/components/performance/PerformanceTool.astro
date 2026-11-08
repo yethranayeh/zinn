@@ -1,0 +1,83 @@
+---
+import Button from "../ui/button/Button.astro";
+import FlowCanvas from "./FlowCanvas.astro";
+import FlowInspectorState from "./FlowInspectorState.astro";
+import FlowKeyFigures from "./FlowKeyFigures.astro";
+import FlowTabs from "./FlowTabs.astro";
+import NodeIndex from "./NodeIndex.astro";
+import ToolButton from "./ToolButton.astro";
+
+import { fixture, flows } from "./flow-data";
+
+const initial = flows[0];
+---
+
+<section data-performance>
+	<div class='border-b border-soot/22 bg-bone'>
+		<div class='site-container flex flex-wrap items-center gap-x-6 gap-y-3 py-3'>
+			<div class='max-w-[44rem]'>
+				<p class='m-0 font-mono text-[10px]/[1.4] tracking-[0.16em] text-muted-foreground uppercase'>Performance</p>
+				<h1 class='mt-0.5 text-[clamp(1.25rem,2.4vw,1.625rem)] leading-none tracking-[-0.02em]'>
+					The shape of a command.
+				</h1>
+				<p class='mt-2 max-w-[40rem] text-[14px]/[1.5] text-muted-foreground'>
+					Zinn runs when you call it, does its work and exits. These are the numbers for that round trip, and the path
+					they take.
+				</p>
+				<p class='mt-1 font-mono text-[10px]/[1.5] text-muted-foreground'>
+					{fixture.tasks} tasks · 1 comment each · CLI {fixture.cli} · {fixture.platform}
+				</p>
+			</div>
+
+			<div class='flex flex-wrap items-center gap-2 lg:ml-auto'>
+				<FlowTabs flows={flows} current={initial.id} />
+				<ToolButton variant='primary' data-trace aria-label='Run the flow trace'>Run</ToolButton>
+				<ToolButton data-fit>Frame</ToolButton>
+			</div>
+		</div>
+	</div>
+
+	<div class='flex flex-col lg:flex-row'>
+		<FlowCanvas flow={initial} />
+
+		<aside
+			class='flex w-full flex-col border-t border-limestone/15 bg-soot text-limestone scheme-dark selection:bg-limestone selection:text-soot lg:w-[19rem] lg:overflow-y-auto lg:border-t-0 lg:border-l'
+			aria-label='Flow inspector'>
+			<div class='flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 pt-4'>
+				<p class='m-0 font-mono text-[10px]/[1.4] tracking-[0.16em] text-soot-muted-foreground uppercase'>Inspector</p>
+				<span class='font-mono text-[10px]/[1.4] text-soot-muted-foreground' aria-live='polite' data-trace-status
+				></span>
+				<Button
+					variant='ghost-inverted'
+					class='ml-auto min-h-0 p-0 text-[10px]/[1.4] tracking-[0.14em] text-bronze uppercase hover:bg-transparent hover:text-limestone'
+					data-inspector-back
+					hidden>
+					Back
+				</Button>
+			</div>
+
+			{flows.map((flow) => <FlowInspectorState flow={flow} hidden={flow.id !== initial.id} />)}
+
+			<p class='mt-auto px-4 pt-6 pb-4 font-mono text-[10px]/[1.5] text-soot-muted-foreground'>
+				Mock figures. The 100-task command and package values are measured. Node timings, p95, install timings, the
+				extra commands and 100,000 tasks are placeholders.
+			</p>
+		</aside>
+	</div>
+
+	<div class='border-t border-soot/22'>
+		<div class='site-container'>
+			{flows.map((flow) => <FlowKeyFigures flow={flow} hidden={flow.id !== initial.id} />)}
+		</div>
+	</div>
+
+	{flows.map((flow) => <NodeIndex flow={flow} hidden={flow.id !== initial.id} />)}
+</section>
+
+<script>
+	import { mountPerformance } from "./performance";
+
+	for (const root of document.querySelectorAll<HTMLElement>("[data-performance]")) {
+		mountPerformance(root);
+	}
+</script>

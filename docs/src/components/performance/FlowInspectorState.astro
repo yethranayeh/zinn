@@ -1,0 +1,18 @@
+---
+import type { Flow } from "./flow-data";
+
+import FlowSummary from "./FlowSummary.astro";
+import NodePanel from "./NodePanel.astro";
+
+interface Props {
+	flow: Flow;
+	hidden?: boolean;
+}
+
+const { flow, hidden = false } = Astro.props;
+---
+
+<div data-flow-state={flow.id} data-inspector-state hidden={hidden}>
+	<FlowSummary flow={flow} />
+	{flow.nodes.map((node) => <NodePanel node={node} />)}
+</div>

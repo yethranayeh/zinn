@@ -1,0 +1,20 @@
+---
+import type { Flow } from "./flow-data";
+
+interface Props {
+	flow: Flow;
+	hidden?: boolean;
+}
+
+const { flow, hidden = false } = Astro.props;
+---
+
+<div class='sr-only' data-flow-state={flow.id} data-node-list hidden={hidden}>
+	{
+		flow.nodes.map((node) => (
+			<button type='button' data-node-select={node.id}>
+				{node.title}. {node.metric.label} {node.metric.value}.
+			</button>
+		))
+	}
+</div>
