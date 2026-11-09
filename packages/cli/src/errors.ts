@@ -166,7 +166,7 @@ export function recoveryHint(
 
   if (error instanceof CoreError && error.facts.reason === "no_columns") {
     return {
-      suffix: `. Add a column with zinn project column create ${error.facts.key} <name>.`,
+      suffix: `. Add a column with zinn project column create ${error.facts.key} <name> --category <category>.`,
       suggestedRoute: ["project", "column", "create"],
     };
   }

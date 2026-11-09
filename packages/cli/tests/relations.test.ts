@@ -38,7 +38,7 @@ test("relation commands show directional and symmetric links, including archived
     expect(viewed.relations).toContainEqual({
       id: expect.any(String),
       type: "subtask", direction: "outgoing",
-      task: { id: expect.any(String), project_id: expect.any(String), column_id: expect.any(String), key: "OTHER-1", column: "Backlog", is_first: true, is_last: false, title: "Original", status: "Archived" },
+      task: { id: expect.any(String), project_id: expect.any(String), column_id: expect.any(String), key: "OTHER-1", column: "Backlog", is_first: true, is_last: false, column_category: "backlog", title: "Original", status: "Archived" },
     });
     expect((await run("task", "create", "APP", "--title", "Child", "--parent", "APP-1")).code).toBe(0);
     expect(errorDocumentSchema.parse(JSON.parse((await run("--json", "task", "relation", "create", "OTHER-1", "APP-2", "--type", "subtask")).stderr)).error).toMatchObject({ code: "conflict", details: { reason: "cycle" } });
@@ -53,12 +53,14 @@ test("relation list aligns and colors connected columns, and marks archived task
     const run = (...args: string[]) => runZinn(args, dir);
     await run("project", "create", "APP");
     await run("project", "create", "LONGER");
+    // Done stays the last column, which is the one colored green.
+    await run("project", "column", "delete", "LONGER", "Cancelled", "--yes");
     await run("task", "create", "APP", "--title", "Copy");
     await run("task", "create", "APP", "--title", "Plan");
     await run("task", "create", "APP", "--title", "Review");
     await run("task", "create", "LONGER", "--title", "Original");
     await run("task", "move", "LONGER-1", "Done");
-    expect((await run("project", "column", "create", "APP", "Verification")).code).toBe(0);
+    expect((await run("project", "column", "create", "--category", "todo", "APP", "Verification")).code).toBe(0);
     expect((await run("task", "move", "APP-3", "Verification")).code).toBe(0);
     await run("task", "archive", "APP-2");
     await run("task", "relation", "create", "APP-1", "LONGER-1", "--type", "dependency");

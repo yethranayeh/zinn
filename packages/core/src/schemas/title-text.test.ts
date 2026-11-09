@@ -7,7 +7,7 @@ import { taskCreateSchema, taskEditSchema, taskListSchema } from "./task";
 const titleInputs = [
   { schema: projectCreateSchema, input: { key: "APP" }, field: "name" },
   { schema: projectEditSchema, input: { projectKey: "APP" }, field: "name" },
-  { schema: columnCreateSchema, input: { projectKey: "APP" }, field: "name" },
+  { schema: columnCreateSchema, input: { projectKey: "APP", category: "todo" }, field: "name" },
   { schema: columnEditSchema, input: { projectKey: "APP", columnName: "TODO" }, field: "name" },
   { schema: labelCreateSchema, input: {}, field: "name" },
   { schema: labelEditSchema, input: { labelName: "bug" }, field: "name" },

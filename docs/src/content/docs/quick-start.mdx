@@ -13,11 +13,11 @@ Create a project, add a task, and move it through the board:
 zinn project create MDR --name 'Macrodata Refinement'
 zinn task create MDR --title 'Refine 75% of the numbers'
 zinn task list MDR
-zinn task move MDR-1 'In Progress'
+zinn task move MDR-1 Doing
 zinn task view MDR-1
 ```
 
-New projects start with Backlog, TODO, In Progress, Review, and Done columns. Task keys combine the project key and an increasing number, such as `MDR-1`. Use `zinn project column list MDR` to inspect a project's columns.
+New projects start with Backlog, TODO, Doing, Review, Done and Cancelled columns. Task keys combine the project key and an increasing number, such as `MDR-1`. Use `zinn project column list MDR` to inspect a project's columns.
 
 Search tasks and comments, leave a progress note, and inspect recent activity:
 

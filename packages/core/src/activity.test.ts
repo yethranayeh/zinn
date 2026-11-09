@@ -43,7 +43,7 @@ test("declared identity round-trips through mutations and every activity read", 
       }
     };
     const projectWithIdentity = project.create({ key: "IDENTITY" }, declaredActor);
-    column.create({ projectKey: "IDENTITY", name: "Extra" }, declaredActor);
+    column.create({ projectKey: "IDENTITY", name: "Extra", category: "todo" }, declaredActor);
     label.create({ name: "Identity label" }, declaredActor);
     const item = task.create({ project_id: projectWithIdentity.id, title: "Attributed" }, declaredActor);
     const other = task.create({ project_id: projectWithIdentity.id, title: "Related" }, declaredActor);
@@ -99,7 +99,7 @@ test("creation IDs and activity order stay increasing within one millisecond", (
     try {
       const createdProject = project.create({ key: "UUID" }, human);
       const defaultColumns = column.getAllByProjectKey(createdProject.key);
-      const extraColumn = column.create({ projectKey: createdProject.key, name: "Extra" }, human);
+      const extraColumn = column.create({ projectKey: createdProject.key, name: "Extra", category: "todo" }, human);
       const createdLabel = label.create({ name: "UUID label" }, human);
       const firstTask = task.create({ project_id: createdProject.id, title: "First" }, human);
       const secondTask = task.create({ project_id: createdProject.id, title: "Second" }, human);
@@ -545,7 +545,7 @@ test("activity preserves every action, relation pair, null and unknown payload f
     const second = task.create({ project_id: app.id, title: "Second" }, human);
     relation.create({ sourceTaskKey: first.key, targetTaskKey: second.key, relation_type: "related" }, agent);
     task.order({ taskKey: second.key, direction: "top" }, agent);
-    column.create({ projectKey: "APP", name: "Extra" }, human);
+    column.create({ projectKey: "APP", name: "Extra", category: "todo" }, human);
     label.create({ name: "Read test" }, human);
     const unknownId = "33333333-1111-7111-8111-111111111111";
     const changes = { future_field: { text: "  Preserve\n\tthis  ", values: [null, 3] }, title: ["First", "Renamed"] };
@@ -568,7 +568,7 @@ test("project selection retains every member event across explicit deletion and 
     const actor = { ...agent, sessionId: "project/run", threadId: "project/thread" };
     const outside = project.create({ key: "OUT" }, actor);
     const outsideTask = task.create({ project_id: outside.id, title: "Outside" }, actor);
-    const extraColumn = column.create({ projectKey: "APP", name: "Extra" }, actor);
+    const extraColumn = column.create({ projectKey: "APP", name: "Extra", category: "todo" }, actor);
     const first = task.create({ project_id: app.id, title: "Explicitly deleted" }, actor);
     const second = task.create({ project_id: app.id, title: "Archived" }, actor);
     const third = task.create({ project_id: app.id, title: "Custom column", columnName: "Extra" }, actor);
@@ -806,14 +806,14 @@ test("each task mutation records one row with its actor and changes", () => {
     task.label.add({ taskKey: "APP-1", labelNames: ["bug"] }, agent);
     assert.deepEqual(task.activity("APP-1").at(-1)!.changes, { labels: { added: ["bug"], removed: [] } });
 
-    const moved = task.move({ taskKey: "APP-1", targetColumn: "in progress" }, agent);
+    const moved = task.move({ taskKey: "APP-1", targetColumn: "doing" }, agent);
     const moveRow = task.activity("APP-1").at(-1);
     assert.equal(moveRow!.created_at, moved.updated_at);
-    assert.deepEqual((moveRow!.changes!.column as Array<{ id: string; name: string }>).map((column) => column.name), ["Backlog", "In Progress"]);
+    assert.deepEqual((moveRow!.changes!.column as Array<{ id: string; name: string }>).map((column) => column.name), ["Backlog", "Doing"]);
     assert.equal((moveRow!.changes!.column as Array<{ id: string; name: string }>)[1]!.id, moved.column_id);
 
     task.create({ project_id: app.id, title: "Second", description: null }, human);
-    task.move({ taskKey: "APP-2", targetColumn: "In Progress" }, human);
+    task.move({ taskKey: "APP-2", targetColumn: "Doing" }, human);
     task.order({ taskKey: "APP-2", direction: "top" }, human);
     assert.equal(task.activity("APP-2").at(-1)!.action, "order");
     assert.equal(task.activity("APP-2").at(-1)!.changes, null);
@@ -900,7 +900,7 @@ test("no-op mutations record nothing", () => {
 test("failed mutations leave no activity behind", () => {
   runActivityCheck(({ human, app, actions }) => {
     task.create({ project_id: app.id, title: "Only", description: null }, human);
-    const later = column.create({ projectKey: "APP", name: "Later" }, human);
+    const later = column.create({ projectKey: "APP", name: "Later", category: "todo" }, human);
     const bug = label.create({ name: "bug" }, human);
     const db = getDb();
     db.exec("CREATE TRIGGER fail_activity BEFORE INSERT ON activity BEGIN SELECT RAISE(ABORT, 'activity failed'); END");
@@ -949,7 +949,7 @@ test("core requires a valid actor and never defaults one", () => {
     // @ts-expect-error Exercise runtime validation of invalid input.
     assert.throws(() => project.edit({ projectKey: "APP", name: "No actor" }), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field!.length === 0);
     // @ts-expect-error Exercise runtime validation of invalid input.
-    assert.throws(() => column.create({ projectKey: "APP", name: "No actor" }), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field!.length === 0);
+    assert.throws(() => column.create({ projectKey: "APP", name: "No actor", category: "todo" }), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field!.length === 0);
     // @ts-expect-error Exercise runtime validation of invalid input.
     assert.throws(() => label.create({ name: "no-actor" }), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field!.length === 0);
     // @ts-expect-error Exercise runtime validation of invalid input.
@@ -1022,7 +1022,7 @@ test("project, column, and label definition mutations record their own activity"
       key: "APP",
       name: "APP",
       description: null,
-      columns: column.getAllByProjectKey("APP").map(({ id, name }) => ({ id, name })),
+      columns: column.getAllByProjectKey("APP").map(({ id, name, category }) => ({ id, name, category })),
     });
 
     project.edit({ projectKey: "APP", name: "Application" }, human);
@@ -1035,7 +1035,7 @@ test("project, column, and label definition mutations record their own activity"
       name: ["APP", "Application"],
     });
 
-    const createdColumn = column.create({ projectKey: "APP", name: "Later" }, agent);
+    const createdColumn = column.create({ projectKey: "APP", name: "Later", category: "todo" }, agent);
     column.edit({ projectKey: "APP", columnName: "Later", name: "Someday" }, human);
     column.edit({ projectKey: "APP", columnName: "Someday", name: "Someday" }, agent);
     column.order({ projectKey: "APP", columnName: "Someday", direction: "first" }, agent);
@@ -1045,6 +1045,7 @@ test("project, column, and label definition mutations record their own activity"
     assert.deepEqual(columnActivity[0]!.changes, {
       project: { id: app.id, key: "APP" },
       name: "Later",
+      category: "todo",
     });
     assert.deepEqual(columnActivity[1]!.changes, { name: ["Later", "Someday"] });
     assert.equal(columnActivity[2]!.changes, null);
@@ -1070,7 +1071,7 @@ test("project, column, and label definition mutations record their own activity"
 
 test("project deletion records one aggregate event with ordered columns and task snapshots", () => {
   runActivityCheck(({ human, agent, app }) => {
-    const extraColumn = column.create({ projectKey: "APP", name: "Icebox" }, human);
+    const extraColumn = column.create({ projectKey: "APP", name: "Icebox", category: "todo" }, human);
     column.order({ projectKey: "APP", columnName: "Icebox", direction: "first" }, human);
     const first = task.create({ project_id: app.id, title: "First", description: null }, human);
     const second = task.create({ project_id: app.id, title: "Second", description: null }, agent);

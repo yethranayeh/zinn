@@ -137,7 +137,9 @@ Project keys are stored in uppercase. An omitted name defaults to the key.
 
 Descriptions print in full with `project view`. See [Editing conventions](#editing-conventions) for name validation and description storage and clearing, and [Text values](#text-values) for `--description-file`.
 
-Each project starts with _Backlog_, _TODO_, _In Progress_, _Review_, and _Done_ columns.
+Each project starts with _Backlog_, _TODO_, _Doing_, _Review_, _Done_ and _Cancelled_ columns.
+
+Every column has a category, which says what its tasks are to Zinn whatever the column is called or where it sits: `backlog`, `todo`, `in_progress`, `review`, `done` or `cancelled`. The default columns take the category of the same meaning. Tasks in `done` and `cancelled` columns are closed: [`task next`](#next-ready-task) skips them, and they no longer hold back tasks that depend on them. Renaming or moving a column keeps its category.
 
 You can list projects or inspect a project's columns with:
 
@@ -153,7 +155,7 @@ zinn project column list MDR
 
 `project view` and `project column list` accept an omitted project key when [defaultProject](/docs/settings) is configured.
 
-`project column list` counts unarchived tasks. With `--json`, it returns `[{ "id": "<column-id>", "name": "Backlog", "is_first": true, "is_last": false, "taskCount": 3 }, ...]`.
+`project column list` counts unarchived tasks. With `--json`, it returns `[{ "id": "<column-id>", "name": "Backlog", "is_first": true, "is_last": false, "category": "backlog", "taskCount": 3 }, ...]`.
 
 Edit a project:
 
@@ -167,19 +169,24 @@ Provide `--name`, a description (`--description` or `--description-file`), or bo
 The project key can be omitted when [defaultProject](/docs/settings) is configured.
 See [Text values](#text-values) for values that begin with a dash and multi-line text.
 
-Add another column at the end of the board:
+Add another column at the end of the board, with its category:
 
 ```sh title="Add a column"
-zinn project column create MDR Boardlog
+zinn project column create MDR Boardlog --category backlog
 ```
 
-Rename a column:
+`--category` is required. Without it, or with an unknown value, the command fails and lists the valid values.
 
-```sh title="Rename a column"
-zinn project column edit MDR 'In Progress' --name Refining
+Rename a column or change its category:
+
+```sh title="Edit a column"
+zinn project column edit MDR Doing --name Refining
+zinn project column edit MDR Shipped --category done --yes
 ```
 
-Column names follow the shared [name and title rules](#editing-conventions) and match case-insensitively. Names must be unique within the project; changing only the casing is allowed. Renaming keeps tasks in the column.
+Provide `--name`, `--category` or both. Column names follow the shared [name and title rules](#editing-conventions) and match case-insensitively. Names must be unique within the project. Changing only the casing is allowed. Renaming keeps tasks in the column.
+
+Changing the category of a column that holds tasks, active or archived, asks for confirmation, since it changes which of them count as closed. Use `--yes` to skip the prompt, which `--json` and runs without a terminal require. An empty column changes without a prompt.
 
 Change a column's position on the board:
 
@@ -221,7 +228,7 @@ The project key can be omitted when [defaultProject](/docs/settings) is configur
 `--column <name>` starts the task at the bottom of a specific column. The column name matching is case insensitive:
 
 ```sh title="Create a task in a column"
-zinn task create MDR --title 'Compile the Lexington letters' --column 'In Progress'
+zinn task create MDR --title 'Compile the Lexington letters' --column Doing
 ```
 
 Tasks are created with keys such as `MDR-1`. Task numbers increase in creation order within each project. List active tasks, optionally limited to one project, or view one task:
@@ -234,7 +241,7 @@ zinn task list MDR --label CLI --label Groom
 zinn task list MDR --limit 10
 zinn task list MDR --sort activity --limit 10
 zinn task list MDR --due-since 2026-10-25T00:00:00Z --sort due
-zinn task list MDR --column 'In Progress'
+zinn task list MDR --column Doing
 zinn task list --column Done --all
 zinn task view MDR-1
 zinn task view MDR-1 --history
@@ -277,7 +284,7 @@ zinn task next MDR
 zinn task next MDR --column TODO
 ```
 
-A task is ready when it is active, outside the **last column** of its board, and every task it [depends on](#task-relations) is archived or in the last column of its own board. Only dependency relations hold a task back. Tasks in a dependency cycle are never ready.
+A task is ready when it is active, not in a **done or cancelled** column, and every task it [depends on](#task-relations) is archived or in a done or cancelled column. Only dependency relations hold a task back. Tasks in a dependency cycle are never ready.
 
 Ready tasks are ordered by priority, urgent first and unset last. Equal priorities go by the earliest deadline, with undated tasks last, and then by the oldest task. Deadlines only order tasks.
 
@@ -468,7 +475,7 @@ See [Text values](#text-values) for values that begin with a dash and multi-line
 Move a task to another column in its project:
 
 ```sh title="Move a task"
-zinn task move MDR-1 'In Progress'
+zinn task move MDR-1 Doing
 ```
 
 A moved task appears at the bottom of its destination column. Moving it to its current column does nothing. Archived tasks must be unarchived before they can be moved.
@@ -476,7 +483,7 @@ A moved task appears at the bottom of its destination column. Moving it to its c
 For multiple tasks, give their keys before the column. They move in input order; tasks already in that column retain their positions. Each task's column is looked up in its own project:
 
 ```sh title="Move tasks in bulk"
-zinn task move MDR-1 MDR-2 APP-4 'In Progress'
+zinn task move MDR-1 MDR-2 APP-4 Doing
 ```
 
 See [Changing tasks in bulk](#changing-tasks-in-bulk).
@@ -484,7 +491,7 @@ See [Changing tasks in bulk](#changing-tasks-in-bulk).
 `--from` moves a task only if it is still in the given column. Use it to take a task that another agent or person may be taking at the same time:
 
 ```sh title="Take a task only if nobody else has"
-zinn task move MDR-1 'In Progress' --from TODO
+zinn task move MDR-1 Doing --from TODO
 ```
 
 When the task has left that column, the move changes nothing and fails with error code `conflict` and reason `column_changed`. The error's `expectedColumn` and `actualColumn` name both columns. This holds even when the task is already in the target column, so of several callers taking the same task, exactly one succeeds. With several task keys, one task outside the column fails the whole move.

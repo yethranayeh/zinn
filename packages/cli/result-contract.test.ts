@@ -228,10 +228,12 @@ const fixtures: Record<string, Fixture[]> = {
     { schema: "ProjectChange", args: ["APP", "--name", "APP"], check: (v) => expect(v.changed).toBe(false) },
   ],
   "project delete": [{ schema: "Project", args: ["APP", "--yes"] }],
-  "project column create": [{ schema: "Column", args: ["APP", "New column"] }],
+  "project column create": [{ schema: "Column", args: ["APP", "New column", "--category", "todo"] }],
   "project column list": [{ schema: "ColumnList", args: ["APP"] }],
   "project column delete": [{ schema: "Column", args: ["APP", "Review", "--yes"] }],
   "project column edit": [
+    // First, so the confirmation check sees a change that asks: Backlog holds tasks.
+    { schema: "ColumnChange", args: ["APP", "Backlog", "--category", "todo", "--yes"], check: (v) => expect(v.category).toBe("todo") },
     { schema: "ColumnChange", args: ["APP", "Backlog", "--name", "Ideas"], check: (v) => expect(v.changed).toBe(true) },
     { schema: "ColumnChange", args: ["APP", "Backlog", "--name", "Backlog"], check: (v) => expect(v.changed).toBe(false) },
   ],

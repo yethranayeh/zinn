@@ -196,6 +196,7 @@ test("delete commands with --yes and --json print the deleted entity", async () 
       column: "Backlog",
       is_first: true,
       is_last: false,
+      column_category: "backlog",
       title: "Ship it",
       description: null,
       priority: null,

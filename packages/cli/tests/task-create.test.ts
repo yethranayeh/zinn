@@ -26,13 +26,13 @@ test("task create --column places the task last in the named column, matched cas
   await withIsolatedZinnDir(async (testDir) => {
     await runZinn(["project", "create", "COLS", "--name", "Columns"], testDir);
 
-    const first = await runZinn(["task", "create", "COLS", "--title", "first", "--column", "in progress"], testDir);
-    const second = await runZinn(["task", "create", "COLS", "--title", "second", "--column", "IN PROGRESS"], testDir);
+    const first = await runZinn(["task", "create", "COLS", "--title", "first", "--column", "doing"], testDir);
+    const second = await runZinn(["task", "create", "COLS", "--title", "second", "--column", "DOING"], testDir);
 
     expect(first.code).toBe(0);
-    expect(first.stdout).toContain("COLS-1 | In Progress | - | first");
+    expect(first.stdout).toContain("COLS-1 | Doing | - | first");
     expect(second.code).toBe(0);
-    expect(second.stdout).toContain("COLS-2 | In Progress | - | second");
+    expect(second.stdout).toContain("COLS-2 | Doing | - | second");
 
     withTestDb(testDir, (db) => {
       const titles = db
@@ -173,7 +173,7 @@ test("a project without columns rejects task creation without consuming a task n
     expect(rejected.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(rejected.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "no_columns", entity: "project", key: "EMPTYCOL" } });
 
-    await runZinn(["project", "column", "create", "EMPTYCOL", "Inbox"], testDir);
+    await runZinn(["project", "column", "create", "--category", "todo", "EMPTYCOL", "Inbox"], testDir);
     expect((await runZinn(["task", "create", "EMPTYCOL", "--title", "first real task"], testDir)).code).toBe(0);
     expect((await runZinn(["task", "view", "EMPTYCOL-1"], testDir)).stdout).toContain(
       "EMPTYCOL-1 | Inbox | - | first real task",

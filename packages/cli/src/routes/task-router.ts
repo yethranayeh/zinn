@@ -483,7 +483,7 @@ Unknown columns, labels or related tasks abort creation.
 
 Examples:
   zinn task create MDR --title 'Refine the numbers' --description 'Meet the quarterly quota' --label urgent
-  zinn task create MDR --title 'Review the numbers' --column 'In Progress'
+  zinn task create MDR --title 'Review the numbers' --column Doing
   zinn task create MDR --title 'Sort the files' --parent MDR-1 --depends-on MDR-2`,
   },
   list: {
@@ -676,7 +676,7 @@ Example: zinn task search 'refinement quota' MDR --limit 5`,
     help: `${generateCommandUsage("task next", taskInputs.next)}
 
 Show the highest-priority task that is ready to work on.
-A task is ready when it is active, not in the last column of its board, and every task it depends on is archived or in the last column of its own board.
+A task is ready when it is active, not in a done or cancelled column, and every task it depends on is archived or in a done or cancelled column.
 Only dependency relations hold a task back.
 Ready tasks are ordered by priority (urgent first, unset last), then the earliest deadline with undated tasks last, then the oldest task.
 ${projectScopeDescription}
@@ -944,8 +944,8 @@ With --from, the move fails with a conflict error unless every task is still in 
 If any task cannot be moved, none change.
 
 Examples:
-  zinn task move MDR-1 MDR-2 'In Progress'
-  zinn task move MDR-1 'In Progress' --from TODO`,
+  zinn task move MDR-1 MDR-2 Doing
+  zinn task move MDR-1 Doing --from TODO`,
     guessedFlags: { "--status": suggestTaskMove, "--column": suggestTaskMove },
   },
   order: {

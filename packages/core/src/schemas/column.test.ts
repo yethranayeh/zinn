@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
 
-import { columnCreateSchema, columnDeleteSchema, columnEditSchema, columnOrderSchema } from "./column";
+import {
+  columnCategorySchema,
+  columnCreateSchema,
+  columnDeleteSchema,
+  columnEditSchema,
+  columnOrderSchema,
+} from "./column";
 
 test("column deletion requires a project and a trimmed column name", () => {
   expect(columnDeleteSchema.parse({ projectKey: "app", columnName: " Done " })).toEqual({
@@ -16,13 +22,14 @@ test("column deletion requires a project and a trimmed column name", () => {
 });
 
 test("column names are trimmed and reject blank text, line breaks and control characters", () => {
-  expect(columnCreateSchema.parse({ projectKey: "app", name: " Next " })).toEqual({
+  expect(columnCreateSchema.parse({ projectKey: "app", name: " Next ", category: "todo" })).toEqual({
     projectKey: "app",
     name: "Next",
+    category: "todo",
   });
 
   for (const name of ["", "   ", "Next\nDone", "Next\tup", 42]) {
-    expect(columnCreateSchema.safeParse({ projectKey: "app", name }).success).toBe(false);
+    expect(columnCreateSchema.safeParse({ projectKey: "app", name, category: "todo" }).success).toBe(false);
   }
 });
 
@@ -44,6 +51,28 @@ test("column edits require a valid name and trim both names", () => {
   ]) {
     expect(columnEditSchema.safeParse(input).success).toBe(false);
   }
+});
+
+test("column creation requires a category from the vocabulary", () => {
+  for (const category of columnCategorySchema.options) {
+    expect(columnCreateSchema.safeParse({ projectKey: "app", name: "Next", category }).success).toBe(true);
+  }
+
+  for (const category of [undefined, "Done", "canceled", "in progress", ""]) {
+    expect(columnCreateSchema.safeParse({ projectKey: "app", name: "Next", category }).success).toBe(false);
+  }
+});
+
+test("column edits take a name, a category or both", () => {
+  expect(columnEditSchema.parse({ projectKey: "app", columnName: "todo", category: "done" })).toEqual({
+    projectKey: "app",
+    columnName: "todo",
+    category: "done",
+  });
+  expect(
+    columnEditSchema.safeParse({ projectKey: "app", columnName: "todo", name: "Next", category: "review" }).success,
+  ).toBe(true);
+  expect(columnEditSchema.safeParse({ projectKey: "app", columnName: "todo", category: "finished" }).success).toBe(false);
 });
 
 test("column orders take a target only for before and after", () => {

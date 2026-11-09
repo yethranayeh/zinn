@@ -1,12 +1,14 @@
 import type { LabelColor } from "./schemas/label.js";
 import type { TaskPriority } from "./schemas/task.js";
+import type { ColumnCategory } from "./schemas/column.js";
 import type { ActorKind } from "./schemas/actor.js";
 import type { RelationCreateInput } from "./schemas/relation.js";
 import type { ActivityAction, ActivityEntityType } from "./schemas/activity.js";
-export type { ActivityAction, ActivityEntityType } from "./schemas/activity.js";
 
+export type { ActivityAction, ActivityEntityType } from "./schemas/activity.js";
 export type { LabelColor } from "./schemas/label.js";
 export type { TaskPriority } from "./schemas/task.js";
+export type { ColumnCategory } from "./schemas/column.js";
 export type { Actor, ActorKind } from "./schemas/actor.js";
 
 // https://www.typescriptlang.org/docs/handbook/2/template-literal-types.html
@@ -71,6 +73,7 @@ export type Column = {
   project_id: string;
   name: string;
   column_order: string;
+  category?: ColumnCategory;
 };
 
 export type Label = {

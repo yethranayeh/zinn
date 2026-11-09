@@ -547,8 +547,8 @@ export const task = {
   },
   /**
    * Returns the highest-priority ready task, or `null` when none is ready.
-   * A task is ready when it is active, outside its board's last column,
-   *  and every task it depends on is archived or in that task's last column.
+   * A task is ready when it is active, not in a done or cancelled column,
+   *  and every task it depends on is archived or in a done or cancelled column.
    */
   next: (input: TaskNextInput = {}): TaskWithKey | null => {
     const props = validateTaskInput(taskNextSchema, input);

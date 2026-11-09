@@ -251,10 +251,11 @@ export async function checkCapabilityConsumer(
   assert.equal(Object.hasOwn(detail, "activity"), false);
   const history = await consume(["task", "view"], { "task-key": first.key }, { history: true });
   assert.ok(history.activity.length > 0);
-  await consume(["project", "column", "create"], {
-    "project-key": "CAP",
-    "column-name": "--destination",
-  });
+  await consume(
+    ["project", "column", "create"],
+    { "project-key": "CAP", "column-name": "--destination" },
+    { category: "todo" },
+  );
   const single = await consume(["task", "move"], {
     "task-key": first.key,
     "target-column": "--destination",

@@ -54,11 +54,11 @@ export function getAllByProjectId(projectId: string) {
     .all({ $project_id: projectId });
 }
 
-export function create(column: Column) {
+export function create(column: Required<Column>) {
   const db = getDb();
-  const query = db.query<Column, Bind<Column>>(`INSERT INTO
-    ${DB_TABLE.projectColumn} (id, project_id, name, column_order)
-    VALUES                    ($id, $project_id, $name, $column_order)
+  const query = db.query<Column, Bind<Required<Column>>>(`INSERT INTO
+    ${DB_TABLE.projectColumn} (id, project_id, name, column_order, category)
+    VALUES                    ($id, $project_id, $name, $column_order, $category)
     RETURNING *;`);
 
   return query.get({
@@ -66,16 +66,17 @@ export function create(column: Column) {
     $project_id: column.project_id,
     $name: column.name,
     $column_order: column.column_order,
+    $category: column.category,
   });
 }
 
-export function update(props: Pick<Column, "id" | "name">) {
+export function update(props: Required<Pick<Column, "id" | "name" | "category">>) {
   return getDb()
     .query<Column, Bind<typeof props>>(`UPDATE ${DB_TABLE.projectColumn}
-    SET name = $name
+    SET name = $name, category = $category
     WHERE id = $id
     RETURNING *;`)
-    .get({ $id: props.id, $name: props.name });
+    .get({ $id: props.id, $name: props.name, $category: props.category });
 }
 
 export function updateOrder(props: Pick<Column, "id" | "column_order">) {

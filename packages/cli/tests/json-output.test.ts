@@ -35,6 +35,7 @@ test("--json prints the created entity on write commands, wherever the flag is p
       column: "Backlog",
       is_first: true,
       is_last: false,
+      column_category: "backlog",
       title: "Ship it",
       description: null,
       priority: null,
@@ -62,7 +63,7 @@ test("--json combines a task and its relations into one document on task view", 
         id: expect.any(String),
         type: "dependency",
         direction: "outgoing",
-        task: { id: expect.any(String), project_id: expect.any(String), column_id: expect.any(String), key: "WEB-1", column: "Backlog", is_first: true, is_last: false, title: "API", status: "Active" },
+        task: { id: expect.any(String), project_id: expect.any(String), column_id: expect.any(String), key: "WEB-1", column: "Backlog", is_first: true, is_last: false, column_category: "backlog", title: "API", status: "Active" },
       },
     ]);
   });

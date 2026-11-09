@@ -667,7 +667,7 @@ function operationsWalk() {
       delete: () => project.delete("APP", actor),
     },
     column: {
-      create: () => column.create({ projectKey: "APP", name: "Blocked" }, actor),
+      create: () => column.create({ projectKey: "APP", name: "Blocked", category: "todo" }, actor),
       edit: () => column.edit({ projectKey: "APP", columnName: "Todo", name: "Later" }, actor),
       order: () => column.order({ projectKey: "APP", columnName: "Todo", direction: "last" }, actor),
       delete: () => column.delete({ projectKey: "APP", columnName: "Todo" }, actor),

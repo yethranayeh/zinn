@@ -29,11 +29,12 @@ test("task next returns null when no task is ready", () => {
   });
 });
 
-test("task next skips archived tasks and tasks in the last column", () => {
+test("task next skips archived tasks and tasks in done and cancelled columns", () => {
   withTestStore(() => {
     const app = project.create({ key: "APP" }, actor);
     const archived = createTask(app.id, "Archived", { priority: "urgent" });
     createTask(app.id, "Finished", { priority: "urgent", columnName: "Done" });
+    createTask(app.id, "Dropped", { priority: "urgent", columnName: "Cancelled" });
     const open = createTask(app.id, "Open", { priority: "low" });
     task.archive(archived.key, actor);
 
@@ -41,14 +42,16 @@ test("task next skips archived tasks and tasks in the last column", () => {
   });
 });
 
-test("task next releases a dependency once its target is archived or in the last column", () => {
+test("task next releases a dependency once its target is archived, done or cancelled", () => {
   withTestStore(() => {
     const app = project.create({ key: "APP" }, actor);
     const blocked = createTask(app.id, "Blocked", { priority: "urgent" });
-    const firstTarget = createTask(app.id, "First target");
-    const secondTarget = createTask(app.id, "Second target");
+    const firstTarget = createTask(app.id, "First target", { priority: "high" });
+    const secondTarget = createTask(app.id, "Second target", { priority: "medium" });
+    const thirdTarget = createTask(app.id, "Third target");
     dependOn(blocked.key, firstTarget.key);
     dependOn(blocked.key, secondTarget.key);
+    dependOn(blocked.key, thirdTarget.key);
 
     expect(task.next()?.key).toBe(firstTarget.key);
 
@@ -56,6 +59,9 @@ test("task next releases a dependency once its target is archived or in the last
     expect(task.next()?.key).toBe(secondTarget.key);
 
     task.move({ taskKey: secondTarget.key, targetColumn: "Done" }, actor);
+    expect(task.next()?.key).toBe(thirdTarget.key);
+
+    task.move({ taskKey: thirdTarget.key, targetColumn: "Cancelled" }, actor);
     expect(task.next()?.key).toBe(blocked.key);
   });
 });
@@ -91,30 +97,43 @@ test("task next blocks every task in a dependency cycle", () => {
   });
 });
 
-test("task next tests a cross-project dependency against the target's own board", () => {
+test("task next reads closed columns from their category, not their name or position", () => {
   withTestStore(() => {
     const app = project.create({ key: "APP" }, actor);
     const other = project.create({ key: "OTHER" }, actor);
-    column.create({ projectKey: app.key, name: "Shipped" }, actor);
-    const blocked = createTask(app.id, "Blocked");
-    // Done is the last column on OTHER's board but not on APP's.
-    const target = createTask(other.id, "Target", { columnName: "Done" });
-    dependOn(blocked.key, target.key);
+    column.edit({ projectKey: app.key, columnName: "Done", name: "Shipped" }, actor);
+    column.order({ projectKey: app.key, columnName: "Shipped", direction: "first" }, actor);
+    column.create({ projectKey: app.key, name: "Finished", category: "todo" }, actor);
+    const shipped = createTask(app.id, "Shipped", { priority: "urgent", columnName: "Shipped" });
+    const finished = createTask(app.id, "Finished", { columnName: "Finished" });
+    const blocked = createTask(other.id, "Blocked", { priority: "high" });
+    dependOn(blocked.key, shipped.key);
 
-    expect(task.next({ projectKey: app.key })?.key).toBe(blocked.key);
+    expect(task.next()?.key).toBe(blocked.key);
+    expect(task.next({ projectKey: app.key })?.key).toBe(finished.key);
   });
 });
 
-test("task next finds nothing ready on a single-column board", () => {
+test("task next treats every task as open on a board without done or cancelled columns", () => {
   withTestStore(() => {
     const app = project.create({ key: "APP" }, actor);
-    for (const columnName of ["TODO", "In Progress", "Review", "Done"]) {
+    for (const columnName of ["TODO", "Doing", "Review", "Done", "Cancelled"]) {
       column.delete({ projectKey: app.key, columnName }, actor);
     }
-    createTask(app.id, "Only column");
+    const only = createTask(app.id, "Only column");
 
-    expect(column.getAllByProjectKey(app.key)).toHaveLength(1);
-    expect(task.next()).toBeNull();
+    expect(task.next()?.key).toBe(only.key);
+  });
+});
+
+test("task next counts the last column as closed on an older schema without categories", () => {
+  withTestStore(() => {
+    const app = project.create({ key: "APP" }, actor);
+    createTask(app.id, "Last column", { priority: "urgent", columnName: "Cancelled" });
+    const done = createTask(app.id, "Done", { priority: "high", columnName: "Done" });
+    getDb().exec("ALTER TABLE project_column DROP COLUMN category");
+
+    expect(task.next()?.key).toBe(done.key);
   });
 });
 

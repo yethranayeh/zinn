@@ -27,7 +27,7 @@ const FIXTURE_SCRIPT = `
   const old1 = create(oldProject, "Old one");
   const old2 = create(oldProject, "Old two");
   const old3 = create(oldProject, "Old three");
-  const extraColumn = column.create({ projectKey: "APP", name: "Extra" }, actor).id;
+  const extraColumn = column.create({ projectKey: "APP", name: "Extra", category: "todo" }, actor).id;
   column.edit({ projectKey: "APP", columnName: "Extra", name: "Extra renamed" }, session("old-column-edit"));
   project.edit({ projectKey: "APP", name: "Old name" }, session("old-project-edit"));
   task.delete("APP-2", actor);
@@ -38,7 +38,7 @@ const FIXTURE_SCRIPT = `
   const new3 = create(newProject, "New three");
   const new4 = create(newProject, "Never reused");
   const new5 = create(newProject, "Deleted unique");
-  const stagingColumn = column.create({ projectKey: "APP", name: "Staging" }, actor).id;
+  const stagingColumn = column.create({ projectKey: "APP", name: "Staging", category: "todo" }, actor).id;
   column.edit({ projectKey: "APP", columnName: "Staging", name: "Staging two" }, session("new-column-edit"));
   column.delete({ projectKey: "APP", columnName: "Staging two" }, actor);
   task.delete("APP-5", actor);

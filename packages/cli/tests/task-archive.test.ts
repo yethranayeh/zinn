@@ -60,7 +60,7 @@ test("task archive hides a task from active lists without deleting it", async ()
   await withIsolatedZinnDir(async (testDir) => {
     await runZinn(["project", "create", "ARCH", "--name", "Archive"], testDir);
     await runZinn(["task", "create", "ARCH", "--title", "kept task", "--description", "kept description"], testDir);
-    await runZinn(["task", "move", "ARCH-1", "In Progress"], testDir);
+    await runZinn(["task", "move", "ARCH-1", "Doing"], testDir);
 
     const before = withTestDb(testDir, (db) =>
       db
@@ -83,7 +83,7 @@ test("task archive hides a task from active lists without deleting it", async ()
     expect((await runZinn(["task", "archive", "aRcH-1"], testDir)).code).toBe(0);
     expect((await runZinn(["task", "list", "ARCH"], testDir)).stdout).toBe("");
     expect((await runZinn(["task", "list", "ARCH", "--archived"], testDir)).stdout).toContain(
-      "ARCH-1 | In Progress | - | kept task",
+      "ARCH-1 | Doing | - | kept task",
     );
     expect((await runZinn(["task", "list", "--all", "ARCH"], testDir)).stdout).toContain("kept task");
     expect((await runZinn(["task", "view", "ARCH-1"], testDir)).stdout).toContain("kept task");

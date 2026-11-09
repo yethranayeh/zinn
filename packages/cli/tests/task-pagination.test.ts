@@ -47,8 +47,8 @@ test("task list continuation preserves filters, project scope, router flags and 
     await run("label", "create", "cli");
     await run("project", "create", "APP");
     await run("project", "create", "OTHER");
-    await run("project", "column", "create", "APP", "--", specialColumn);
-    await run("project", "column", "create", "OTHER", "--", specialColumn);
+    await run("project", "column", "create", "--category", "todo", "APP", "--", specialColumn);
+    await run("project", "column", "create", "--category", "todo", "OTHER", "--", specialColumn);
     for (const dueAt of [0, 10, 20, 30, 40]) {
       await run(
         "task",

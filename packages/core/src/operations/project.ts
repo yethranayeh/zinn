@@ -1,6 +1,6 @@
 import type { ProjectCreateInput, ProjectEditInput } from "../schemas/project.js";
 import type { Actor } from "../schemas/actor.js";
-import type { ProjectChange } from "../types.js";
+import type { ColumnCategory, ProjectChange } from "../types.js";
 
 import { v7 as uuidv7 } from "uuid";
 import { generateKeyBetween } from "fractional-indexing";
@@ -30,6 +30,16 @@ import {
   resolveDescription,
 } from "./shared.js";
 
+// Every default name is one word, so it can be typed in a shell without quotes.
+const DEFAULT_COLUMNS: ReadonlyArray<{ name: string; category: ColumnCategory }> = [
+  { name: "Backlog", category: "backlog" },
+  { name: "TODO", category: "todo" },
+  { name: "Doing", category: "in_progress" },
+  { name: "Review", category: "review" },
+  { name: "Done", category: "done" },
+  { name: "Cancelled", category: "cancelled" },
+];
+
 export const project = {
   getById: dbProject.getById,
   getByKey: dbProject.getByKey,
@@ -58,19 +68,19 @@ export const project = {
         name: props.name ?? key,
         description: props.description,
       })!;
-      const defaultColumnNames = ["Backlog", "TODO", "In Progress", "Review", "Done"];
-      const createdColumns: Array<{ id: string; name: string }> = [];
+      const createdColumns: Array<{ id: string; name: string; category: ColumnCategory }> = [];
       let lastColumnOrder: string | null = null;
 
-      for (const name of defaultColumnNames) {
+      for (const { name, category } of DEFAULT_COLUMNS) {
         const columnOrder = generateKeyBetween(lastColumnOrder, null);
         const createdColumn = dbColumn.create({
           id: uuidv7(),
           project_id: createdProject.id,
           name,
           column_order: columnOrder,
+          category,
         })!;
-        createdColumns.push({ id: createdColumn.id, name: createdColumn.name });
+        createdColumns.push({ id: createdColumn.id, name: createdColumn.name, category });
         lastColumnOrder = columnOrder;
       }
 

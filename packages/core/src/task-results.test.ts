@@ -225,7 +225,7 @@ test("task lists across projects follow project key, column order, and task orde
         task.create({ project_id: later.id, title, description: null }, actor);
       }
       task.create({ project_id: earlier.id, title: "Only", description: null }, actor);
-      task.move({ taskKey: "BBB-1", targetColumn: "In Progress" }, actor);
+      task.move({ taskKey: "BBB-1", targetColumn: "Doing" }, actor);
       task.order({ taskKey: "BBB-3", direction: "top" }, actor);
       task.archive("BBB-2", actor);
       assert.deepEqual(task.getAll().map(t => t.key), ["AAA-1", "BBB-3", "BBB-1"]);
@@ -249,42 +249,42 @@ test("column filtering narrows ordered project and global lists together with la
       const earlier = project.create({ key: "AAA" }, actor);
       const missing = project.create({ key: "CCC" }, actor);
       const idle = project.create({ key: "IDLE" }, actor);
-      column.edit({ projectKey: "CCC", columnName: "In Progress", name: "Working" }, actor);
+      column.edit({ projectKey: "CCC", columnName: "Doing", name: "Working" }, actor);
       label.create({ name: "CLI" }, actor);
       label.create({ name: "Groom" }, actor);
       const create = (projectId: string, title: string, columnName: string, labelNames: string[] = []) => task.create({
         project_id: projectId, title, columnName, labelNames,
       }, actor);
-      create(later.id, "Archived", "In Progress", ["CLI", "Groom"]);
-      create(later.id, "Both", "In Progress", ["CLI", "Groom"]);
-      create(later.id, "CLI only", "In Progress", ["CLI"]);
+      create(later.id, "Archived", "Doing", ["CLI", "Groom"]);
+      create(later.id, "Both", "Doing", ["CLI", "Groom"]);
+      create(later.id, "CLI only", "Doing", ["CLI"]);
       create(later.id, "Backlog", "Backlog", ["CLI", "Groom"]);
-      create(earlier.id, "Earlier", "In Progress", ["CLI", "Groom"]);
+      create(earlier.id, "Earlier", "Doing", ["CLI", "Groom"]);
       create(missing.id, "Different column", "Working", ["CLI", "Groom"]);
       task.archive("BBB-1", actor);
       task.order({ taskKey: "BBB-3", direction: "top" }, actor);
       const keys = (props: Parameters<typeof task.getAll>[0]) => task.getAll(props).map((row) => row.key);
-      assert.deepEqual(keys({ columnName: " In Progress " }), ["AAA-1", "BBB-3", "BBB-2"]);
-      assert.deepEqual(keys({ columnName: "IN PROGRESS" }), ["AAA-1", "BBB-3", "BBB-2"]);
-      assert.deepEqual(keys({ projectKey: "bbb", columnName: "in progress" }), ["BBB-3", "BBB-2"]);
+      assert.deepEqual(keys({ columnName: " Doing " }), ["AAA-1", "BBB-3", "BBB-2"]);
+      assert.deepEqual(keys({ columnName: "DOING" }), ["AAA-1", "BBB-3", "BBB-2"]);
+      assert.deepEqual(keys({ projectKey: "bbb", columnName: "doing" }), ["BBB-3", "BBB-2"]);
       for (const projectKey of [undefined, "BBB"]) {
         for (const archive of ["active", "archived", "all"] as const) {
           const props = { projectKey, archive, labelNames: ["cli", "GROOM"] };
           const unfiltered = task.getAll(props);
           assert.deepEqual(
-            task.getAll({ ...props, columnName: "In Progress" }),
+            task.getAll({ ...props, columnName: "Doing" }),
             unfiltered.filter((row) => row.key !== "BBB-4" && row.key !== "CCC-1"),
           );
         }
       }
-      assert.deepEqual(keys({ columnName: "In Progress", archive: "archived" }), ["BBB-1"]);
-      assert.deepEqual(keys({ columnName: "In Progress", archive: "all" }), ["AAA-1", "BBB-3", "BBB-2", "BBB-1"]);
+      assert.deepEqual(keys({ columnName: "Doing", archive: "archived" }), ["BBB-1"]);
+      assert.deepEqual(keys({ columnName: "Doing", archive: "all" }), ["AAA-1", "BBB-3", "BBB-2", "BBB-1"]);
       for (const projectKey of [undefined, "BBB", "CCC"]) {
         for (const columnName of ["Nowhere", "Review", "Progress"]) {
           assert.deepEqual(task.getAll({ projectKey, columnName, archive: "all" }), []);
         }
       }
-      assert.deepEqual(keys({ projectKey: "CCC", columnName: "In Progress" }), []);
+      assert.deepEqual(keys({ projectKey: "CCC", columnName: "Doing" }), []);
       assert.deepEqual(keys({ projectKey: "IDLE" }), []);
       assert.throws(() => task.getAll({ columnName: "Nowhere", labelNames: ["missing"] }), /label/);
       assert.throws(() => task.getAll({ projectKey: "NOPE", columnName: "Nowhere" }), (error) => error instanceof CoreError && error.kind === "missing");
@@ -302,22 +302,22 @@ test("task create places a task last in the named column and a bad column saves 
 
       const actor = { name: "Test Human", email: null, kind: "human" as const };
       const app = project.create({ key: "APP", name: "App" }, actor);
-      const [backlog, , inProgress] = column.getAllByProjectKey("APP");
+      const [backlog, , doing] = column.getAllByProjectKey("APP");
       const count = (table: string) => getDb().query<{ n: number }>("SELECT COUNT(*) AS n FROM " + table).get()!.n;
 
       const first = task.create({ project_id: app.id, title: "First", description: null }, actor);
       assert.equal(first.column_id, backlog!.id);
-      const second = task.create({ project_id: app.id, title: "Second", description: null, columnName: "in progress" }, actor);
-      const third = task.create({ project_id: app.id, title: "Third", description: null, columnName: "IN PROGRESS" }, actor);
-      assert.equal(second.column_id, inProgress!.id);
+      const second = task.create({ project_id: app.id, title: "Second", description: null, columnName: "doing" }, actor);
+      const third = task.create({ project_id: app.id, title: "Third", description: null, columnName: "DOING" }, actor);
+      assert.equal(second.column_id, doing!.id);
       // Each column starts its own placement sequence, so first tasks share an order key.
       assert.equal(first.task_order, second.task_order);
       assert.ok(third.task_order > second.task_order);
-      assert.deepEqual(dbTask.getAllByColumnId(inProgress!.id).map((t) => t.id), [second.id, third.id]);
+      assert.deepEqual(dbTask.getAllByColumnId(doing!.id).map((t) => t.id), [second.id, third.id]);
       assert.deepEqual(dbTask.getAllByColumnId(backlog!.id).map((t) => t.id), [first.id]);
 
       assert.deepEqual(task.activity(third.key).map((row) => row.action), ["create"]);
-      assert.deepEqual(task.activity(third.key)[0]!.changes!.column, { id: inProgress!.id, name: "In Progress" });
+      assert.deepEqual(task.activity(third.key)[0]!.changes!.column, { id: doing!.id, name: "Doing" });
 
       const tasksBefore = count("task");
       const activityBefore = count("activity");

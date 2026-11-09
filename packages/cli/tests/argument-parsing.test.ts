@@ -205,7 +205,7 @@ test("every command refuses a word that begins with a single dash, showing the c
 test("the command shown for a word that begins with a single dash runs as shown, keeping --json before --", async () => {
   await withIsolatedZinnDir(async (dir) => {
     await runZinn(["project", "create", "SHOP"], dir);
-    const refused = await runZinn(["project", "column", "create", "SHOP", "-later", "--json"], dir);
+    const refused = await runZinn(["project", "column", "create", "--category", "todo", "SHOP", "-later", "--json"], dir);
     expect(refused.code).toBe(1);
     expect(refused.stdout).toBe("");
 
@@ -408,9 +408,9 @@ test("a guessed --status on task create suggests --column and preserves the othe
     const description = "Keep --status=Done as text\nwith a second line";
 
     const cases = [
-      { statusArgs: ["--status", "In Progress"], projectAfterOptions: false },
-      { statusArgs: ["--status=In Progress"], projectAfterOptions: false },
-      { statusArgs: ["--status", "In Progress"], projectAfterOptions: true },
+      { statusArgs: ["--status", "Doing"], projectAfterOptions: false },
+      { statusArgs: ["--status=Doing"], projectAfterOptions: false },
+      { statusArgs: ["--status", "Doing"], projectAfterOptions: true },
     ];
     for (const { statusArgs, projectAfterOptions } of cases) {
       const before = (await runZinn(["task", "list", "SHOP", "--json"], dir)).stdout;
@@ -437,7 +437,7 @@ test("a guessed --status on task create suggests --column and preserves the othe
       expect(created.code).toBe(0);
       expect(created.stderr).toBe("");
       expect(JSON.parse(created.stdout)).toMatchObject({
-        title, description, column: "In Progress", priority: "high", labels: ["bug", "urgent"],
+        title, description, column: "Doing", priority: "high", labels: ["bug", "urgent"],
       });
     }
   });
@@ -455,7 +455,7 @@ test("a guessed --status or --column on task edit or task move suggests the task
     );
 
     const cases: Array<[string[], string[]]> = [
-      [["task", "edit", "SHOP-1", "--status", "In Progress"], ["In Progress", "Backlog"]],
+      [["task", "edit", "SHOP-1", "--status", "Doing"], ["Doing", "Backlog"]],
       [["task", "edit", "SHOP-1", "--title", "Renamed", "--column=Done"], ["Done", "Backlog"]],
       [["task", "move", "SHOP-1", "SHOP-2", "--column", "TODO"], ["TODO", "TODO"]],
     ];
@@ -566,6 +566,7 @@ test("long parser and routing errors bound both output modes without changing er
 test("oversized column repair commands retain quoting guidance and leave existing data intact", async () => {
   await withIsolatedZinnDir(async (directory) => {
     await runZinn(["project", "create", "APP"], directory);
+    await runZinn(["project", "column", "create", "APP", "In Progress", "--category", "in_progress"], directory);
     const before = await runZinn(["project", "view", "APP", "--json"], directory);
     const activityBefore = await runZinn(["activity", "list", "--json"], directory);
     const args = ["task", "create", "APP", "--title", "x".repeat(1300), "--column", "In", "Progress"];

@@ -120,7 +120,7 @@ test("value-free filters match task creation, clearing and label removals in the
 test("null priority filters match creation and clearing without treating names as sentinels", () => {
   withTestStore(() => {
     const app = project.create({ key: "APP" }, actor);
-    column.create({ projectKey: app.key, name: "none" }, actor);
+    column.create({ projectKey: app.key, name: "none", category: "todo" }, actor);
     label.create({ name: "none" }, actor);
     const item = task.create({ project_id: app.id, title: "Unassigned", columnName: "none", labelNames: ["none"] }, actor);
     const created = activity.getAll({ taskKey: item.key }).events[0]!;

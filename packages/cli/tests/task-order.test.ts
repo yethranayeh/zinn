@@ -119,7 +119,7 @@ test("task order does not cross a column boundary", async () => {
     await runZinn(["task", "create", "BOUND", "--title", "backlog first"], testDir);
     await runZinn(["task", "create", "BOUND", "--title", "backlog last"], testDir);
     await runZinn(["task", "create", "BOUND", "--title", "progress first"], testDir);
-    await runZinn(["task", "move", "BOUND-3", "In Progress"], testDir);
+    await runZinn(["task", "move", "BOUND-3", "Doing"], testDir);
 
     withTestDb(testDir, (db) => {
       db.run("UPDATE task SET updated_at = 1 WHERE number IN (2, 3)");
@@ -160,7 +160,7 @@ test("task order rejects a target in another column", async () => {
     await runZinn(["project", "create", "SCOPE", "--name", "Scoped"], testDir);
     await runZinn(["task", "create", "SCOPE", "--title", "backlog task"], testDir);
     await runZinn(["task", "create", "SCOPE", "--title", "progress task"], testDir);
-    await runZinn(["task", "move", "SCOPE-2", "In Progress"], testDir);
+    await runZinn(["task", "move", "SCOPE-2", "Doing"], testDir);
 
     const result = await runZinn(["--json", "task", "order", "SCOPE-1", "before", "SCOPE-2"], testDir);
 

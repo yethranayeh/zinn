@@ -150,6 +150,8 @@ test("ZINN-346: refusal reasons preserve public facts and leave tasks and activi
   const f = fixture();
   try {
     f.succeed("project", "create", "APP");
+    // The unquoted-column hints need a multi-word column.
+    f.succeed("project", "column", "create", "APP", "In Progress", "--category", "in_progress");
     f.succeed("task", "create", "APP", "--title", "Example");
     const task = f.succeed("task", "view", "APP-1");
     const activity = f.succeed("activity", "list", "--project", "APP");
@@ -231,6 +233,8 @@ test("ZINN-346: canonical repair routes survive rendering limits and never enter
   ];
   try {
     f.succeed("project", "create", "APP");
+    // The unquoted-column hints need a multi-word column.
+    f.succeed("project", "column", "create", "APP", "In Progress", "--category", "in_progress");
     f.succeed("task", "create", "APP", "--title", "Example");
     for (const { args, route } of cases) {
       const result = Bun.spawnSync([process.execPath, "--eval", `

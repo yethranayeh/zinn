@@ -5,6 +5,7 @@ export type { TaskArchiveFilter } from "../schemas/task.js";
 
 import { getDb } from "../db.js";
 import { taskPrioritySchema } from "../schemas/task.js";
+import { CLOSED_COLUMN_CATEGORIES } from "../schemas/column.js";
 import { DB_TABLE } from "../constant.js";
 
 function getArchiveCondition(filter: TaskArchiveFilter) {
@@ -275,11 +276,35 @@ export function getList(input: TaskListQuery) {
 }
 
 /**
- * SQL condition: the task under `alias` is open work, meaning active and not in the last column
- *  of its own board.
- * `ORDER BY ... LIMIT 1` still finds a column when every column_order is NULL.
+ * Whether the column table has categories.
+ * Older schemas do not have them, so they are readolny
  */
-function getOpenWorkCondition(alias: string) {
+function hasColumnCategory() {
+  return (
+    getDb()
+      .query<{ found: number }, []>(
+        `SELECT 1 AS found FROM pragma_table_info('${DB_TABLE.projectColumn}') WHERE name = 'category'`,
+      )
+      .get() != null
+  );
+}
+
+/**
+ * SQL condition: the task under `alias` is open work, meaning active and not in a closed column.
+ * Older schemas without categories count the last column of the task's own board as closed.
+ *  There, `ORDER BY ... LIMIT 1` still finds a column when every column_order is NULL.
+ */
+function getOpenWorkCondition(alias: string, hasCategories: boolean) {
+  if (hasCategories) {
+    const closedCategories = CLOSED_COLUMN_CATEGORIES.map((category) => `'${category}'`).join(", ");
+    return `${alias}.archived_at IS NULL
+      AND ${alias}.column_id NOT IN (
+        SELECT closed_column.id
+        FROM ${DB_TABLE.projectColumn} AS closed_column
+        WHERE closed_column.category IN (${closedCategories})
+      )`;
+  }
+
   return `${alias}.archived_at IS NULL
       AND ${alias}.column_id IS NOT (
         SELECT last_column.id
@@ -291,7 +316,7 @@ function getOpenWorkCondition(alias: string) {
 }
 
 /** SQL condition: the task under `alias` depends on at least one task that is open work. */
-function getOpenDependencyCondition(alias: string) {
+function getOpenDependencyCondition(alias: string, hasCategories: boolean) {
   return `EXISTS (
       SELECT 1
       FROM ${DB_TABLE.task_relations} AS dependency
@@ -299,7 +324,7 @@ function getOpenDependencyCondition(alias: string) {
         ON dependency_target.id = dependency.target_task_id
       WHERE dependency.source_task_id = ${alias}.id
         AND dependency.relation_type = 'dependency'
-        AND ${getOpenWorkCondition("dependency_target")}
+        AND ${getOpenWorkCondition("dependency_target", hasCategories)}
     )`;
 }
 
@@ -330,7 +355,11 @@ function hasDeadlineColumn() {
  *  earliest deadline with undated tasks last, then creation.
  */
 export function getNext(input: TaskNextQuery) {
-  const predicates = [getOpenWorkCondition("task"), `NOT ${getOpenDependencyCondition("task")}`];
+  const hasCategories = hasColumnCategory();
+  const predicates = [
+    getOpenWorkCondition("task", hasCategories),
+    `NOT ${getOpenDependencyCondition("task", hasCategories)}`,
+  ];
   const bindings: Record<string, string> = {};
 
   if (input.projectId !== undefined) {

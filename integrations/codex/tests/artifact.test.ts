@@ -280,9 +280,9 @@ test("relocated Node artifact reads selected tasks and isolates each chat", asyn
 }, 30000);
 
 test("panel lists the selected task's columns and moves through the configured CLI as a human", async () => {
-    context.cli(["project", "column", "create", "APP", "--", "-Needs review"]);
+    context.cli(["project", "column", "create", "--category", "todo", "APP", "--", "-Needs review"]);
     context.cli(["project", "create", "ALT"]);
-    context.cli(["project", "column", "create", "ALT", "--", "-Alpha"]);
+    context.cli(["project", "column", "create", "--category", "todo", "ALT", "--", "-Alpha"]);
     context.cli(["task", "create", "ALT", "--title", "Other project task"]);
     context.cli(["task", "create", "APP", "--title", "Move fixture", "--description", "Keep this description"]);
     context.cli(["task", "create", "APP", "--title", "Earlier destination task"]);

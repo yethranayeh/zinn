@@ -31,7 +31,7 @@ test("project column delete confirms, validates and returns the deleted column",
     expect(deleted.stderr).toBe("");
     expect(JSON.parse(deleted.stdout)).toEqual({
       id: expect.any(String), project_id: expect.any(String), project: "COL", name: "Review",
-      is_first: false, is_last: false,
+      is_first: false, is_last: false, category: "review",
     });
     expect(read().columns).toHaveLength(before.columns.length - 1);
     expect(read().activity).toHaveLength(before.activity.length + 1);
@@ -93,7 +93,8 @@ test("projects with no columns support reads, maintenance, recovery and deletion
     const error = errorDocumentSchema.parse(JSON.parse(failed.stderr)).error;
     expect(error.details).toMatchObject({ reason: "no_columns", key: "COL" });
     expect(error.message).toContain("zinn project column create COL <name>");
-    expect((await runZinn(["project", "column", "create", "COL", "Recovered"], dir)).code).toBe(0);
+    expect(error.message).toContain("--category");
+    expect((await runZinn(["project", "column", "create", "--category", "todo", "COL", "Recovered"], dir)).code).toBe(0);
     const created = await runZinn(["task", "create", "COL", "--title", "Recovered", "--json"], dir);
     expect(created.code).toBe(0);
     expect(JSON.parse(created.stdout)).toMatchObject({ key: "COL-1", column: "Recovered" });
@@ -115,7 +116,7 @@ test("column colors follow board placement, and column lists and task rows agree
     await run("task", "create", "POS", "--title", "Verified task");
     // A renamed first column keeps its color, and a column appended after Done takes over the green.
     await run("project", "column", "edit", "POS", "Backlog", "--name", "Triaged");
-    await run("project", "column", "create", "POS", "Verified");
+    await run("project", "column", "create", "--category", "todo", "POS", "Verified");
     await run("task", "move", "POS-2", "Verified");
 
     const columnList = (await colored("project", "column", "list", "POS")).stdout;
@@ -125,12 +126,12 @@ test("column colors follow board placement, and column lists and task rows agree
       expect(output).toContain(`${GREEN}Verified`);
       expect(output).not.toContain(`${GREEN}Done`);
     }
-    expect(columnList).not.toContain(`${GRAY}In Progress`);
-    expect(columnList).not.toContain(`${GREEN}In Progress`);
+    expect(columnList).not.toContain(`${GRAY}Doing`);
+    expect(columnList).not.toContain(`${GREEN}Doing`);
 
     // A one-column board colors its only column as first, whatever its name.
     await run("project", "create", "ONE");
-    for (const name of ["Backlog", "TODO", "Review", "Done"]) {
+    for (const name of ["Backlog", "TODO", "Review", "Done", "Cancelled"]) {
       await run("project", "column", "delete", "ONE", name, "--yes");
     }
     await run("task", "create", "ONE", "--title", "Only task");
@@ -138,7 +139,7 @@ test("column colors follow board placement, and column lists and task rows agree
       (await colored("project", "column", "list", "ONE")).stdout,
       (await colored("task", "list", "ONE")).stdout,
     ]) {
-      expect(output).toContain(`${GRAY}In Progress`);
+      expect(output).toContain(`${GRAY}Doing`);
       expect(output).not.toContain(GREEN);
     }
   });
@@ -154,13 +155,13 @@ test("project column create takes a name that begins with a dash only after --",
 
     // ? A flag, a word that begins with a dash and the second half of an unquoted name are never saved as a name.
     for (const args of [["SHOP", "--name", "Waiting"], ["SHOP", "Needs", "Review"], ["SHOP", "-later"]]) {
-      const result = await runZinn(["project", "column", "create", ...args], dir);
+      const result = await runZinn(["project", "column", "create", "--category", "todo", ...args], dir);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");
       expect(readNames()).toEqual(before);
     }
 
-    expect((await runZinn(["project", "column", "create", "SHOP", "--", "-later"], dir)).code).toBe(0);
+    expect((await runZinn(["project", "column", "create", "--category", "todo", "SHOP", "--", "-later"], dir)).code).toBe(0);
     expect(readNames()).toEqual([...before, "-later"]);
   });
 });
@@ -168,14 +169,14 @@ test("project column create takes a name that begins with a dash only after --",
 test("project column create rejects a duplicate name regardless of casing", async () => {
   await withIsolatedZinnDir(async (testDir) => {
     await runZinn(["project", "create", "COL", "--name", "Columns"], testDir);
-    expect((await runZinn(["project", "column", "create", "COL", "Later"], testDir)).code).toBe(0);
+    expect((await runZinn(["project", "column", "create", "--category", "todo", "COL", "Later"], testDir)).code).toBe(0);
     const read = () => withTestDb(testDir, (db) => ({
       columns: db.query("SELECT * FROM project_column ORDER BY id").all(),
       activity: db.query("SELECT * FROM activity ORDER BY id").all(),
     }));
     const before = read();
 
-    const duplicate = await runZinn(["--json", "project", "column", "create", "COL", "later"], testDir);
+    const duplicate = await runZinn(["--json", "project", "column", "create", "--category", "todo", "COL", "later"], testDir);
 
     expect(duplicate.code).toBe(1);
     expect(duplicate.stdout).toBe("");
@@ -192,7 +193,7 @@ test("project column create trims names and rejects invalid ones without writes"
       activity: db.query("SELECT * FROM activity ORDER BY id").all(),
     }));
     const before = read();
-    const invalid = await runZinn(["project", "column", "create", "COL", "   ", "--json"], dir);
+    const invalid = await runZinn(["project", "column", "create", "--category", "todo", "COL", "   ", "--json"], dir);
     expect(invalid.code).toBe(1);
     expect(invalid.stdout).toBe("");
     expect(errorDocumentSchema.parse(JSON.parse(invalid.stderr)).error).toMatchObject({
@@ -200,9 +201,9 @@ test("project column create trims names and rejects invalid ones without writes"
     });
     expect(read()).toEqual(before);
 
-    const created = await runZinn(["project", "column", "create", "COL", " Later ", "--json"], dir);
+    const created = await runZinn(["project", "column", "create", "--category", "todo", "COL", " Later ", "--json"], dir);
     expect(created.code).toBe(0);
-    expect(JSON.parse(created.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "COL", name: "Later", is_first: false, is_last: true });
+    expect(JSON.parse(created.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "COL", name: "Later", is_first: false, is_last: true, category: "todo" });
   });
 });
 
@@ -211,15 +212,15 @@ test("project column names are unique only within a project", async () => {
     await runZinn(["project", "create", "ALPHA", "--name", "Alpha"], testDir);
     await runZinn(["project", "create", "BETA", "--name", "Beta"], testDir);
 
-    const alpha = await runZinn(["project", "column", "create", "ALPHA", "QA"], testDir, { FORCE_COLOR: "1" });
-    const beta = await runZinn(["project", "column", "create", "BETA", "qa", "--json"], testDir);
+    const alpha = await runZinn(["project", "column", "create", "--category", "todo", "ALPHA", "QA"], testDir, { FORCE_COLOR: "1" });
+    const beta = await runZinn(["project", "column", "create", "--category", "todo", "BETA", "qa", "--json"], testDir);
 
     expect(alpha.code).toBe(0);
     expect(alpha.stderr).toBe("");
     expect(alpha.stdout).toContain("ALPHA");
     expect(alpha.stdout).toContain("QA");
     expect(beta.code).toBe(0);
-    expect(JSON.parse(beta.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "BETA", name: "qa", is_first: false, is_last: true });
+    expect(JSON.parse(beta.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "BETA", name: "qa", is_first: false, is_last: true, category: "todo" });
   });
 });
 
@@ -235,19 +236,21 @@ test("project column list returns columns in board order with active task counts
     expect(json.code).toBe(0);
     expect(json.stderr).toBe("");
     expect(JSON.parse(json.stdout)).toEqual([
-      { id: expect.any(String), name: "Review", is_first: true, is_last: false, taskCount: 1 },
-      { id: expect.any(String), name: "Backlog", is_first: false, is_last: false, taskCount: 1 },
-      { id: expect.any(String), name: "TODO", is_first: false, is_last: false, taskCount: 0 },
-      { id: expect.any(String), name: "In Progress", is_first: false, is_last: false, taskCount: 0 },
-      { id: expect.any(String), name: "Done", is_first: false, is_last: true, taskCount: 0 },
+      { id: expect.any(String), name: "Review", is_first: true, is_last: false, category: "review", taskCount: 1 },
+      { id: expect.any(String), name: "Backlog", is_first: false, is_last: false, category: "backlog", taskCount: 1 },
+      { id: expect.any(String), name: "TODO", is_first: false, is_last: false, category: "todo", taskCount: 0 },
+      { id: expect.any(String), name: "Doing", is_first: false, is_last: false, category: "in_progress", taskCount: 0 },
+      { id: expect.any(String), name: "Done", is_first: false, is_last: false, category: "done", taskCount: 0 },
+      { id: expect.any(String), name: "Cancelled", is_first: false, is_last: true, category: "cancelled", taskCount: 0 },
     ]);
     await runZinn(["task", "archive", "VIEW-1"], dir);
     expect(JSON.parse((await runZinn(["project", "column", "list", "VIEW", "--json"], dir)).stdout)).toEqual([
-      { id: expect.any(String), name: "Review", is_first: true, is_last: false, taskCount: 1 },
-      { id: expect.any(String), name: "Backlog", is_first: false, is_last: false, taskCount: 0 },
-      { id: expect.any(String), name: "TODO", is_first: false, is_last: false, taskCount: 0 },
-      { id: expect.any(String), name: "In Progress", is_first: false, is_last: false, taskCount: 0 },
-      { id: expect.any(String), name: "Done", is_first: false, is_last: true, taskCount: 0 },
+      { id: expect.any(String), name: "Review", is_first: true, is_last: false, category: "review", taskCount: 1 },
+      { id: expect.any(String), name: "Backlog", is_first: false, is_last: false, category: "backlog", taskCount: 0 },
+      { id: expect.any(String), name: "TODO", is_first: false, is_last: false, category: "todo", taskCount: 0 },
+      { id: expect.any(String), name: "Doing", is_first: false, is_last: false, category: "in_progress", taskCount: 0 },
+      { id: expect.any(String), name: "Done", is_first: false, is_last: false, category: "done", taskCount: 0 },
+      { id: expect.any(String), name: "Cancelled", is_first: false, is_last: true, category: "cancelled", taskCount: 0 },
     ]);
 
     const text = await runZinn(["project", "column", "list", "VIEW"], dir);
@@ -275,17 +278,17 @@ test("project column edit renames a column in place and keeps its tasks", async 
     expect(renamed.stdout).toContain("COL");
     expect(renamed.stdout).toContain("Next up");
     expect(JSON.parse((await runZinn(["project", "column", "list", "COL", "--json"], dir)).stdout))
-      .toContainEqual({ id: expect.any(String), name: "Next up", is_first: false, is_last: false, taskCount: 1 });
+      .toContainEqual({ id: expect.any(String), name: "Next up", is_first: false, is_last: false, category: "todo", taskCount: 1 });
     expect(readColumns()).toEqual(
       before.map((row: any) => (row.name === "TODO" ? { ...row, name: "Next up" } : row)),
     );
     expect((await runZinn(["task", "view", "COL-1", "--json"], dir)).stdout).toContain(`"column": "Next up"`);
 
     const caseOnly = await runZinn(["project", "column", "edit", "COL", "next up", "--name", "NEXT UP", "--json"], dir);
-    expect(JSON.parse(caseOnly.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "COL", name: "NEXT UP", is_first: false, is_last: false, changed: true });
+    expect(JSON.parse(caseOnly.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "COL", name: "NEXT UP", is_first: false, is_last: false, category: "todo", changed: true });
     const dashName = await runZinn(["project", "column", "edit", "COL", "--name=--example", "NEXT UP", "--json"], dir);
     expect(dashName.code).toBe(0);
-    expect(JSON.parse(dashName.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "COL", name: "--example", is_first: false, is_last: false, changed: true });
+    expect(JSON.parse(dashName.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "COL", name: "--example", is_first: false, is_last: false, category: "todo", changed: true });
   });
 });
 
@@ -331,6 +334,8 @@ test("project column edit rejects invalid requests without writes", async () => 
 test("project column order moves a column in every direction and prints it", async () => {
   await withIsolatedZinnDir(async (dir) => {
     await runZinn(["project", "create", "COL", "--name", "Columns"], dir);
+    // Five columns keep the expected orders short.
+    await runZinn(["project", "column", "delete", "COL", "Cancelled", "--yes"], dir);
     const listColumns = async () => JSON.parse(
       (await runZinn(["project", "column", "list", "COL", "--json"], dir)).stdout,
     ).map((column: { name: string }) => column.name);
@@ -340,14 +345,14 @@ test("project column order moves a column in every direction and prints it", asy
     expect(ordered.stderr).toBe("");
     expect(ordered.stdout).toContain("COL");
     expect(ordered.stdout).toContain("Review");
-    expect(await listColumns()).toEqual(["Review", "Backlog", "TODO", "In Progress", "Done"]);
+    expect(await listColumns()).toEqual(["Review", "Backlog", "TODO", "Doing", "Done"]);
 
     const steps: Array<[string[], string[]]> = [
-      [["Review", "next"], ["Backlog", "Review", "TODO", "In Progress", "Done"]],
-      [["Review", "last"], ["Backlog", "TODO", "In Progress", "Done", "Review"]],
-      [["Review", "previous"], ["Backlog", "TODO", "In Progress", "Review", "Done"]],
-      [["todo", "after", "DONE"], ["Backlog", "In Progress", "Review", "Done", "TODO"]],
-      [["todo", "before", "in progress"], ["Backlog", "TODO", "In Progress", "Review", "Done"]],
+      [["Review", "next"], ["Backlog", "Review", "TODO", "Doing", "Done"]],
+      [["Review", "last"], ["Backlog", "TODO", "Doing", "Done", "Review"]],
+      [["Review", "previous"], ["Backlog", "TODO", "Doing", "Review", "Done"]],
+      [["todo", "after", "DONE"], ["Backlog", "Doing", "Review", "Done", "TODO"]],
+      [["todo", "before", "doing"], ["Backlog", "TODO", "Doing", "Review", "Done"]],
     ];
     for (const [args, expected] of steps) {
       const result = await runZinn(["project", "column", "order", "COL", ...args], dir);
@@ -359,13 +364,14 @@ test("project column order moves a column in every direction and prints it", asy
     const json = await runZinn(["project", "column", "order", "COL", "done", "first", "--json"], dir);
     expect(json.code).toBe(0);
     expect(json.stderr).toBe("");
-    expect(JSON.parse(json.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "COL", name: "Done", is_first: true, is_last: false, changed: true });
+    expect(JSON.parse(json.stdout)).toEqual({ id: expect.any(String), project_id: expect.any(String), project: "COL", name: "Done", is_first: true, is_last: false, category: "done", changed: true });
   });
 });
 
 test("project column order rejects invalid requests and skips no-ops without writes", async () => {
   await withIsolatedZinnDir(async (dir) => {
     await runZinn(["project", "create", "COL", "--name", "Columns"], dir);
+    await runZinn(["project", "column", "delete", "COL", "Cancelled", "--yes"], dir);
     const read = () => withTestDb(dir, (db) => ({
       columns: db.query("SELECT * FROM project_column ORDER BY id").all(),
       activity: db.query("SELECT * FROM activity ORDER BY id").all(),
@@ -397,7 +403,7 @@ test("project column order rejects invalid requests and skips no-ops without wri
     for (const json of [false, true]) {
       for (const [name, ...placement] of [
         ["Backlog", "first"], ["Backlog", "previous"], ["Done", "last"], ["Done", "next"],
-        ["TODO", "before", "In Progress"], ["TODO", "after", "Backlog"],
+        ["TODO", "before", "Doing"], ["TODO", "after", "Backlog"],
         ["TODO", "before", "todo"], ["TODO", "after", "TODO"],
       ]) {
         const unchanged = await runZinn(["project", "column", "order", "col", name!, ...placement, ...(json ? ["--json"] : [])], dir);
@@ -413,5 +419,71 @@ test("project column order rejects invalid requests and skips no-ops without wri
         expect(read()).toEqual(before);
       }
     }
+  });
+});
+
+test("project column create requires a category, listing the valid values, and writes nothing without one", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "COL"], dir);
+    const read = () => withTestDb(dir, (db) => ({
+      columns: db.query("SELECT * FROM project_column ORDER BY id").all(),
+      activity: db.query("SELECT * FROM activity ORDER BY id").all(),
+    }));
+    const before = read();
+
+    for (const args of [["COL", "Shipped"], ["COL", "Shipped", "--category", "finished"], ["COL", "Shipped", "--category"]]) {
+      const result = await runZinn(["project", "column", "create", ...args, "--json"], dir);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      const error = errorDocumentSchema.parse(JSON.parse(result.stderr)).error;
+      expect(error.code).toBe("invalid_input");
+      if (args.length !== 3) {
+        for (const category of ["backlog", "todo", "in_progress", "review", "done", "cancelled"]) {
+          expect(error.message).toContain(category);
+        }
+      }
+      expect(read()).toEqual(before);
+    }
+
+    const created = await runZinn(["project", "column", "create", "COL", "Shipped", "--category", "done", "--json"], dir);
+    expect(JSON.parse(created.stdout)).toMatchObject({ name: "Shipped", category: "done" });
+    const text = await runZinn(["project", "column", "list", "COL"], dir);
+    expect(text.stdout).toContain("Shipped");
+    expect(text.stdout).toContain("done");
+  });
+});
+
+test("project column edit changes a category, asking first only when the column holds tasks", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "COL"], dir);
+    await runZinn(["task", "create", "COL", "--title", "Archived in Review", "--column", "Review"], dir);
+    await runZinn(["task", "archive", "COL-1"], dir);
+    const categoryOf = (name: string) => withTestDb(dir, (db) =>
+      db.query<{ category: string }, [string]>("SELECT category FROM project_column WHERE name = ?").get(name)!.category);
+
+    // An empty column changes without a prompt, and a rename keeps the category.
+    const empty = await runZinn(["project", "column", "edit", "COL", "TODO", "--category", "backlog", "--json"], dir);
+    expect(empty.code).toBe(0);
+    expect(JSON.parse(empty.stdout)).toMatchObject({ name: "TODO", category: "backlog", changed: true });
+    const renamed = await runZinn(["project", "column", "edit", "COL", "TODO", "--name", "Later", "--json"], dir);
+    expect(JSON.parse(renamed.stdout)).toMatchObject({ name: "Later", category: "backlog", changed: true });
+
+    // An archived task counts, so Review needs confirmation: --yes, as JSON or without a terminal.
+    for (const args of [["--json"], []]) {
+      const refused = await runZinn(["project", "column", "edit", "COL", "Review", "--category", "done", ...args], dir);
+      expect(refused.code).toBe(1);
+      expect(refused.stdout).toBe("");
+      expect(refused.stderr).toContain("--yes");
+      expect(categoryOf("Review")).toBe("review");
+    }
+    const confirmed = await runZinn(["project", "column", "edit", "COL", "Review", "--category", "done", "--yes", "--json"], dir);
+    expect(confirmed.code).toBe(0);
+    expect(JSON.parse(confirmed.stdout)).toMatchObject({ name: "Review", category: "done", changed: true });
+    expect(categoryOf("Review")).toBe("done");
+
+    // The same category is a no-op and asks nothing.
+    const unchanged = await runZinn(["project", "column", "edit", "COL", "Review", "--category", "done", "--json"], dir);
+    expect(unchanged.code).toBe(0);
+    expect(JSON.parse(unchanged.stdout)).toMatchObject({ category: "done", changed: false });
   });
 });

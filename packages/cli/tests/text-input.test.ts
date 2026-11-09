@@ -322,7 +322,7 @@ test("names and titles share trimming and reject leading or trailing control cha
   await withIsolatedZinnDir(async (directory) => {
     const commands = [
       { args: ["project", "create", "TEXT", "--name"], field: "name" },
-      { args: ["project", "column", "create", "TEXT"], field: "name" },
+      { args: ["project", "column", "create", "--category", "todo", "TEXT"], field: "name" },
       { args: ["label", "create"], field: "name" },
       { args: ["task", "create", "TEXT", "--title"], field: "title" },
     ];
@@ -344,7 +344,7 @@ test("names and titles share trimming and reject leading or trailing control cha
     }
     for (const args of [
       ["project", "create", "OTHER", "--name"],
-      ["project", "column", "create", "TEXT"],
+      ["project", "column", "create", "--category", "todo", "TEXT"],
       ["label", "create"],
       ["task", "create", "TEXT", "--title"],
       ["project", "edit", "TEXT", "--name"],

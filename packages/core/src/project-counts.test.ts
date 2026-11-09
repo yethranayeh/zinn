@@ -25,7 +25,7 @@ test("project task counts follow archive and deletion state independently of col
     const other = project.create({ key: "OTHER" }, actor);
     const archivedOnly = project.create({ key: "OLD" }, actor);
     project.create({ key: "EMPTY" }, actor);
-    column.create({ projectKey: "OTHER", name: "Custom" }, actor);
+    column.create({ projectKey: "OTHER", name: "Custom", category: "todo" }, actor);
 
     const parent = task.create({ project_id: app.id, title: "Parent" }, actor);
     const child = task.create({ project_id: app.id, title: "Child" }, actor);

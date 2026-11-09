@@ -25,14 +25,14 @@ Each project is a board of columns and tasks. You and your agents create, move a
 
 ## Start a project. Move the work.
 
-Create a project, add a task, then move it into In Progress. Each project begins with Backlog, TODO, In Progress, Review and Done columns, which you can rename or extend.
+Create a project, add a task, then move it into Doing. Each project begins with Backlog, TODO, Doing, Review, Done and Cancelled columns, which you can rename or extend.
 
 Descriptions hold the scope and comments the updates. Labels and priorities organize the work, and related, dependency, duplicate and subtask relations connect it. Search covers titles, descriptions and comments, and archiving hides finished tasks from active lists.
 
 \`\`\`sh
 zinn project create DEMO --name 'Release work'
 zinn task create DEMO --title 'Write release notes' --priority high
-zinn task move DEMO-1 'In Progress'
+zinn task move DEMO-1 Doing
 zinn task list DEMO --json
 \`\`\`
 

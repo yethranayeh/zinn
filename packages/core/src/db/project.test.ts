@@ -107,6 +107,7 @@ function createTask(title: string) {
     project_id: taskProject.id,
     name: "Backlog",
     column_order: "a0",
+    category: "backlog" as const,
   };
   column.create(taskColumn);
 

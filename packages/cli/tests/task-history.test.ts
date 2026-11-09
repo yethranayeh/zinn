@@ -15,7 +15,7 @@ test("task view history opts into shared activity previews and full JSON without
     await run("task", "create", "APP", "--title", "Other task");
     await run("task", "edit", "APP-1", "--description", "Full\nrecorded description");
     await run("task", "order", "APP-1", "bottom");
-    await run("task", "move", "APP-1", "In Progress");
+    await run("task", "move", "APP-1", "Doing");
     const originalComment = "Original comment text\n" + "Previous content. ".repeat(20);
     await run("task", "comment", "create", "APP-1", "--text", originalComment);
     await run("task", "comment", "edit", "APP-1#1", "--text", "Current comment");

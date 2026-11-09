@@ -28,20 +28,20 @@ test("task list --column filters project and global results with labels and arch
     expect((await run("project", "create", "BBB")).code).toBe(0);
     expect((await run("label", "create", "CLI")).code).toBe(0);
     expect((await run("label", "create", "Groom")).code).toBe(0);
-    expect((await run("task", "create", "AAA", "--title", "Both", "--column", "In Progress", "--label", "CLI", "--label", "Groom")).code).toBe(0);
-    expect((await run("task", "create", "AAA", "--title", "CLI only", "--column", "In Progress", "--label", "CLI")).code).toBe(0);
+    expect((await run("task", "create", "AAA", "--title", "Both", "--column", "Doing", "--label", "CLI", "--label", "Groom")).code).toBe(0);
+    expect((await run("task", "create", "AAA", "--title", "CLI only", "--column", "Doing", "--label", "CLI")).code).toBe(0);
     expect((await run("task", "create", "AAA", "--title", "Elsewhere", "--label", "CLI", "--label", "Groom")).code).toBe(0);
-    expect((await run("task", "create", "BBB", "--title", "Archived", "--column", "In Progress", "--label", "CLI", "--label", "Groom")).code).toBe(0);
+    expect((await run("task", "create", "BBB", "--title", "Archived", "--column", "Doing", "--label", "CLI", "--label", "Groom")).code).toBe(0);
     expect((await run("task", "archive", "BBB-1")).code).toBe(0);
 
-    expect(await keys("--column", "IN PROGRESS")).toEqual(["AAA-1", "AAA-2"]);
-    expect(await keys("AAA", "--column", "in progress", "--label", "cli", "--label", "GROOM")).toEqual(["AAA-1"]);
-    expect(await keys("--column", "In Progress", "--archived", "--label", "CLI", "--label", "Groom")).toEqual(["BBB-1"]);
-    expect(await keys("--column", "In Progress", "--all", "--label", "CLI", "--label", "Groom")).toEqual(["AAA-1", "BBB-1"]);
+    expect(await keys("--column", "DOING")).toEqual(["AAA-1", "AAA-2"]);
+    expect(await keys("AAA", "--column", "doing", "--label", "cli", "--label", "GROOM")).toEqual(["AAA-1"]);
+    expect(await keys("--column", "Doing", "--archived", "--label", "CLI", "--label", "Groom")).toEqual(["BBB-1"]);
+    expect(await keys("--column", "Doing", "--all", "--label", "CLI", "--label", "Groom")).toEqual(["AAA-1", "BBB-1"]);
     const unfiltered = JSON.parse((await run("task", "list", "--all", "--json")).stdout);
-    const filtered = JSON.parse((await run("task", "list", "--column", "In Progress", "--all", "--json")).stdout);
-    expect(filtered).toEqual(unfiltered.filter((row: { column: string }) => row.column === "In Progress"));
-    const text = await run("task", "list", "AAA", "--column", "In Progress");
+    const filtered = JSON.parse((await run("task", "list", "--column", "Doing", "--all", "--json")).stdout);
+    expect(filtered).toEqual(unfiltered.filter((row: { column: string }) => row.column === "Doing"));
+    const text = await run("task", "list", "AAA", "--column", "Doing");
     expect(text.code).toBe(0);
     expect(text.stdout).toContain("AAA-1");
     expect(text.stdout).toContain("AAA-2");
@@ -144,12 +144,12 @@ test("project-scoped task list aligns column names and follows board order", asy
     await runZinn(["project", "create", "ORDER", "--name", "Ordered"], testDir);
     await runZinn(["task", "create", "ORDER", "--title", "todo first"], testDir);
     await runZinn(["task", "create", "ORDER", "--title", "backlog first"], testDir);
-    await runZinn(["task", "create", "ORDER", "--title", "in progress"], testDir);
+    await runZinn(["task", "create", "ORDER", "--title", "doing"], testDir);
     await runZinn(["task", "create", "ORDER", "--title", "todo second"], testDir);
     await runZinn(["task", "create", "ORDER", "--title", "backlog second"], testDir);
 
     await runZinn(["task", "move", "ORDER-1", "TODO"], testDir);
-    await runZinn(["task", "move", "ORDER-3", "In Progress"], testDir);
+    await runZinn(["task", "move", "ORDER-3", "Doing"], testDir);
     await runZinn(["task", "move", "ORDER-4", "TODO"], testDir);
 
     const result = await runZinn(["task", "list", "ORDER"], testDir);
@@ -158,11 +158,11 @@ test("project-scoped task list aligns column names and follows board order", asy
     expect(result.stderr).toBe("");
     expect(result.stdout).toBe(
       [
-        "ORDER-2 | Backlog     | - | backlog first",
-        "ORDER-5 | Backlog     | - | backlog second",
-        "ORDER-1 | TODO        | - | todo first",
-        "ORDER-4 | TODO        | - | todo second",
-        "ORDER-3 | In Progress | - | in progress",
+        "ORDER-2 | Backlog | - | backlog first",
+        "ORDER-5 | Backlog | - | backlog second",
+        "ORDER-1 | TODO    | - | todo first",
+        "ORDER-4 | TODO    | - | todo second",
+        "ORDER-3 | Doing   | - | doing",
         "",
       ].join("\n"),
     );

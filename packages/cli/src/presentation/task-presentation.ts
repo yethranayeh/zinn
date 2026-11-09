@@ -61,6 +61,7 @@ export function presentTask(
     column_id: taskMatch.column_id,
     is_first: placement.is_first,
     is_last: placement.is_last,
+    column_category: columnMatch.category ?? null,
     title: taskMatch.title,
     description: taskMatch.description,
     priority: taskMatch.priority,

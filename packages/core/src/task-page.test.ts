@@ -55,8 +55,8 @@ test("task pages match list order across board, due and activity keys including 
     const app = project.create({ key: "APP" }, actor);
     const other = project.create({ key: "OTHER" }, actor);
     label.create({ name: "selected" }, actor);
-    column.create({ projectKey: app.key, name: "Kelvin" }, actor);
-    column.create({ projectKey: other.key, name: "Kelvin" }, actor);
+    column.create({ projectKey: app.key, name: "Kelvin", category: "todo" }, actor);
+    column.create({ projectKey: other.key, name: "Kelvin", category: "todo" }, actor);
 
     const create = (
       projectId: string,

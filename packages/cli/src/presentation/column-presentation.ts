@@ -1,3 +1,4 @@
+import type { ColumnCategory } from "@zinn-dev/core";
 import type { RowCell } from "./row-layout.js";
 import type { PresentedColumn, PresentedColumnTaskCount } from "../result-schemas.js";
 
@@ -7,6 +8,7 @@ import { formatRows } from "./row-layout.js";
 
 type ColumnRow = {
   name: string;
+  category?: string | null;
   project?: string;
   taskCount?: number;
   is_first?: boolean;
@@ -52,6 +54,7 @@ export function presentColumn(columnMatch: {
   id: string;
   project_id: string;
   name: string;
+  category?: ColumnCategory;
 }): PresentedColumn {
   const columnProject = project.getById(columnMatch.project_id)!;
   const placement = columnPlacement(column.getAllByProjectKey(columnProject.key), columnMatch.id);
@@ -63,6 +66,7 @@ export function presentColumn(columnMatch: {
     name: columnMatch.name,
     is_first: placement.is_first,
     is_last: placement.is_last,
+    category: columnMatch.category ?? null,
   };
 }
 
@@ -77,6 +81,7 @@ export function presentColumnTaskCounts(
     name: columnCount.column.name,
     is_first: columnIndex === 0,
     is_last: columnIndex === lastColumnIndex,
+    category: columnCount.column.category ?? null,
     taskCount: columnCount.taskCount,
   }));
 }
@@ -108,6 +113,10 @@ export function formatColumnList(
         ? [{ text: presentedColumn.project }]
         : [];
 
+    // The cell stays, empty, for a column without a category on an older database.
+    const categoryCells: Array<RowCell> =
+      presentedColumn.category === undefined ? [] : [{ text: presentedColumn.category ?? "" }];
+
     const taskCountCells: Array<RowCell> =
       options.showsTaskCounts && presentedColumn.taskCount != null
         ? [{ text: String(presentedColumn.taskCount) }]
@@ -116,12 +125,21 @@ export function formatColumnList(
     return [
       ...projectCells,
       columnNameCell(presentedColumn.name, presentedColumn),
+      ...categoryCells,
       ...taskCountCells,
     ];
   });
 
   if (options.archivedTaskCount != null && options.archivedTaskCount > 0) {
-    rows.push([{ text: ARCHIVED_ROW_LABEL }, { text: String(options.archivedTaskCount) }]);
+    // An empty cell keeps the count under the task counts when rows show categories.
+    const hasCategoryCell = presentedColumns.some(
+      (presentedColumn) => presentedColumn.category !== undefined,
+    );
+    rows.push([
+      { text: ARCHIVED_ROW_LABEL },
+      ...(hasCategoryCell ? [{ text: "" }] : []),
+      { text: String(options.archivedTaskCount) },
+    ]);
   }
 
   return formatRows(rows);

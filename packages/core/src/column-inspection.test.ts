@@ -40,7 +40,7 @@ test("column inspection reads names and requested task identities without initia
         } else {
           assert.deepEqual(context?.taskKeys, ["APP-1"]);
           assert.deepEqual(context?.projects.map(entry => entry.key), ["APP", "OTHER"]);
-          assert.ok(context?.projects.every(entry => entry.columns.includes("In Progress")));
+          assert.ok(context?.projects.every(entry => entry.columns.includes("Doing")));
         }
         assert.deepEqual(snapshot(), before);
       }

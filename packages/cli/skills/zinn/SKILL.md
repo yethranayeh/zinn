@@ -57,7 +57,7 @@ zinn project list --json
 zinn task list APP --json
 zinn task view APP-1 --json
 zinn project column list APP --json
-zinn task move APP-1 'In Progress' --json
+zinn task move APP-1 Doing --json
 zinn task comment create APP-1 --text 'Implementation verified; ready for review.' --json
 zinn task move APP-1 Review --json
 ```

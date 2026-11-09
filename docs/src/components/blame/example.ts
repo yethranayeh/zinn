@@ -7,7 +7,7 @@ export const task = {
 
 export const fields = [
   { name: "Title", value: "Draft the release summary card", ref: "01a1bb09-797" },
-  { name: "Column", value: "In Progress", ref: "01a1bb09-797" },
+  { name: "Column", value: "Doing", ref: "01a1bb09-797" },
   { name: "Priority", value: "High", ref: "01a1bb09-797" },
   { name: "Due", value: "none", ref: "01a1bb09-797" },
   { name: "Labels", value: "review", ref: "01a1bb09-797" },

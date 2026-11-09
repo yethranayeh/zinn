@@ -50,32 +50,32 @@ export const column = {
   /** Inspects existing column names and task identities without initializing or upgrading storage. */
   inspect: (input: ColumnInspectionInput = {}) => {
     const props = validateTaskInput(columnInspectionSchema, input);
-    return withDatabaseInspection(
-      getStorage().databasePath,
-      (db) => {
-        const classification = classifyConnection(db);
-        const refusesLegacy = classification.state === "unmarked" && !props.allowsLegacyRead;
-        if (classification.state === "empty" || refusesLegacy) {
-          return null;
-        }
-        const requestedTasks = props.taskKeys.flatMap((key) => {
-          const parsed = parseTaskKey(key);
-          return parsed === null
-            ? []
-            : [{ ...parsed, projectKey: standardizeProjectKey(parsed.projectKey) }];
-        });
-        const facts = dbColumn.inspectContext(db, requestedTasks);
-        return {
-          projects: facts.projects.map(({ id, key }) => ({
-            key,
-            columns: facts.columns
-              .filter((entry) => entry.project_id === id)
-              .map((entry) => entry.name),
-          })),
-          taskKeys: facts.tasks.map((entry) => `${entry.project_key}-${entry.number}`),
-        };
-      },
-    );
+
+    return withDatabaseInspection(getStorage().databasePath, (db) => {
+      const classification = classifyConnection(db);
+      const refusesLegacy = classification.state === "unmarked" && !props.allowsLegacyRead;
+      if (classification.state === "empty" || refusesLegacy) {
+        return null;
+      }
+
+      const requestedTasks = props.taskKeys.flatMap((key) => {
+        const parsed = parseTaskKey(key);
+        return parsed === null
+          ? []
+          : [{ ...parsed, projectKey: standardizeProjectKey(parsed.projectKey) }];
+      });
+
+      const facts = dbColumn.inspectContext(db, requestedTasks);
+      return {
+        projects: facts.projects.map(({ id, key }) => ({
+          key,
+          columns: facts.columns
+            .filter((entry) => entry.project_id === id)
+            .map((entry) => entry.name),
+        })),
+        taskKeys: facts.tasks.map((entry) => `${entry.project_key}-${entry.number}`),
+      };
+    });
   },
   getById: dbColumn.getById,
   getByName: (projectKey: string, columnName: string) => {
@@ -88,18 +88,19 @@ export const column = {
     const activeCountsByColumnId = new Map(
       dbTask.countByColumnId(project.id, "active").map((row) => [row.column_id, row.task_count]),
     );
+    const archivedCounts = dbTask.countByColumnId(project.id, "archived");
+    const archivedCountsByColumnId = new Map(
+      archivedCounts.map((row) => [row.column_id, row.task_count]),
+    );
 
-    /** Unarchived tasks are counted per column, in board order. Archived tasks are counted only in the project-wide total. */
-    const archivedTaskCount = dbTask
-      .countByColumnId(project.id, "archived")
-      .reduce((total, row) => total + row.task_count, 0);
-
+    /** Columns come in board order. taskCount counts unarchived tasks, and archivedTaskCount totals the archived ones across columns. */
     return {
       columns: projectColumns.map((columnMatch) => ({
         column: columnMatch,
         taskCount: activeCountsByColumnId.get(columnMatch.id) ?? 0,
+        archivedTaskCount: archivedCountsByColumnId.get(columnMatch.id) ?? 0,
       })),
-      archivedTaskCount,
+      archivedTaskCount: archivedCounts.reduce((total, row) => total + row.task_count, 0),
     };
   },
   create: (input: ColumnCreateInput, actor: Actor) => {
@@ -126,13 +127,18 @@ export const column = {
         name: props.name,
         column_order: generateKeyBetween(lastColOrder, null),
         project_id: project.id,
+        category: props.category,
       })!;
 
       recordActivity(validActor, {
         entityType: "column",
         entityId: createdColumn.id,
         action: "create",
-        changes: { project: { id: project.id, key: project.key }, name: createdColumn.name },
+        changes: {
+          project: { id: project.id, key: project.key },
+          name: createdColumn.name,
+          category: createdColumn.category,
+        },
         createdAt: Date.now(),
       });
 
@@ -146,32 +152,44 @@ export const column = {
     return writeTransaction(() => {
       const { project, projectColumns } = requireProjectColumns(props.projectKey);
       const { columnMatch } = requireColumnByName(project, projectColumns, props.columnName);
+      const name = props.name ?? columnMatch.name;
+      // Writes run only on the current schema where every column has a category
+      const currentCategory = columnMatch.category!;
+      const category = props.category ?? currentCategory;
 
-      if (props.name === columnMatch.name) {
+      if (name === columnMatch.name && category === currentCategory) {
         return { column: columnMatch, changed: false };
       }
 
-      const existingColumn = findByName(projectColumns, props.name);
+      const existingColumn = findByName(projectColumns, name);
       const isTakenByAnotherColumn = existingColumn != null && existingColumn.id !== columnMatch.id;
 
       if (isTakenByAnotherColumn) {
-        throw new CoreError(`There is already a "${props.name}" column`, "conflict", {
+        throw new CoreError(`There is already a "${name}" column`, "conflict", {
           entity: "column",
-          key: props.name,
+          key: name,
           reason: "already_exists",
         });
       }
 
-      const now = Date.now();
+      const changes: Record<string, unknown> = {};
+      if (name !== columnMatch.name) {
+        changes.name = [columnMatch.name, name];
+      }
+
+      if (category !== currentCategory) {
+        changes.category = [currentCategory, category];
+      }
+
       recordActivity(validActor, {
         entityType: "column",
         entityId: columnMatch.id,
         action: "edit",
-        changes: { name: [columnMatch.name, props.name] },
-        createdAt: now,
+        changes,
+        createdAt: Date.now(),
       });
 
-      const editedColumn = dbColumn.update({ id: columnMatch.id, name: props.name })!;
+      const editedColumn = dbColumn.update({ id: columnMatch.id, name, category })!;
       return { column: editedColumn, changed: true };
     });
   },

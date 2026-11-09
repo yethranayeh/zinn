@@ -88,8 +88,8 @@ async function seedProjects(directory: string, store = join(directory, "store"))
   expect((await runZinn(["project", "create", "ALT", "--name", "Alternate"], store)).code).toBe(0);
   expect((await runZinn(["task", "create", "DEF", "--title", "needle default"], store)).code).toBe(0);
   expect((await runZinn(["task", "create", "ALT", "--title", "needle alternate"], store)).code).toBe(0);
-  expect((await runZinn(["project", "column", "create", "DEF", "Only DEF"], store)).code).toBe(0);
-  expect((await runZinn(["project", "column", "create", "ALT", "Only ALT"], store)).code).toBe(0);
+  expect((await runZinn(["project", "column", "create", "--category", "todo", "DEF", "Only DEF"], store)).code).toBe(0);
+  expect((await runZinn(["project", "column", "create", "--category", "todo", "ALT", "Only ALT"], store)).code).toBe(0);
 }
 
 test("ZINN_DIR selects an empty or populated store without applying the repository default", async () => {
@@ -514,7 +514,7 @@ test("column writes still require an explicit project key when a default is set"
     await seedProjects(directory);
     const invoke = (...args: Array<string>) => runZinnFrom(args, directory, repository);
 
-    expect((await invoke("project", "column", "create", "Later", "--json")).code).toBe(1);
+    expect((await invoke("project", "column", "create", "--category", "todo", "Later", "--json")).code).toBe(1);
     expect((await invoke("project", "column", "edit", "Backlog", "--name", "Later", "--json")).code).toBe(1);
     expect((await invoke("project", "column", "order", "Backlog", "first", "--json")).code).toBe(1);
     const listedColumns = await invoke("project", "column", "list", "--json");

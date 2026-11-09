@@ -55,6 +55,8 @@ for (const runtime of ["node", "bun"]) {
     await withIsolatedZinnDir(async (directory) => {
       for (const args of [
         ["project", "create", "APP"],
+        // The unquoted-column hint needs a multi-word column.
+        ["project", "column", "create", "APP", "In Progress", "--category", "in_progress"],
         ["task", "create", "APP", "--title", "Example"],
       ]) {
         const result = await runBuilt(runtime, [...args, "--json"], directory);

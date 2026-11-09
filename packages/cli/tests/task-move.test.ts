@@ -26,7 +26,7 @@ test("task move rejects a column outside the task's project", async () => {
   await withIsolatedZinnDir(async (testDir) => {
     await runZinn(["project", "create", "ORIGIN", "--name", "Origin"], testDir);
     await runZinn(["project", "create", "OTHER", "--name", "Other"], testDir);
-    await runZinn(["project", "column", "create", "OTHER", "External"], testDir);
+    await runZinn(["project", "column", "create", "--category", "todo", "OTHER", "External"], testDir);
     await runZinn(["task", "create", "ORIGIN", "--title", "stationary task"], testDir);
 
     const result = await runZinn(["--json", "task", "move", "ORIGIN-1", "External"], testDir);
@@ -45,8 +45,8 @@ test("task move appends the task to the destination column", async () => {
     await runZinn(["task", "create", "MOVE", "--title", "first task"], testDir);
     await runZinn(["task", "create", "MOVE", "--title", "second task"], testDir);
 
-    expect((await runZinn(["task", "move", "MOVE-1", "In Progress"], testDir)).code).toBe(0);
-    expect((await runZinn(["task", "move", "MOVE-2", "In Progress"], testDir)).code).toBe(0);
+    expect((await runZinn(["task", "move", "MOVE-1", "Doing"], testDir)).code).toBe(0);
+    expect((await runZinn(["task", "move", "MOVE-2", "Doing"], testDir)).code).toBe(0);
 
     withTestDb(testDir, (db) => {
       const rows = db
@@ -71,7 +71,7 @@ test("task move appends the task to the destination column", async () => {
 
       expect(rows).toHaveLength(2);
       expect(rows.map((row) => row.title)).toEqual(["first task", "second task"]);
-      expect(rows.every((row) => row.column_name === "In Progress")).toBe(true);
+      expect(rows.every((row) => row.column_name === "Doing")).toBe(true);
       expect(rows.every((row) => row.task_project === row.column_project)).toBe(true);
       expect(rows[1]!.task_order > rows[0]!.task_order).toBe(true);
     });
@@ -109,16 +109,16 @@ test("task move takes several tasks, appends them in argument order, and notes n
     for (const title of ["one", "two", "three"]) {
       await runZinn(["task", "create", "MANY", "--title", title], testDir);
     }
-    await runZinn(["task", "move", "MANY-1", "In Progress"], testDir);
+    await runZinn(["task", "move", "MANY-1", "Doing"], testDir);
 
-    const result = await runZinn(["task", "move", "MANY-3", "MANY-1", "MANY-2", "In Progress"], testDir);
+    const result = await runZinn(["task", "move", "MANY-3", "MANY-1", "MANY-2", "Doing"], testDir);
 
     expect(result.code).toBe(0);
     expect(result.stdout).toBe(
-      "MANY-3 | In Progress | - | three\nMANY-1 | In Progress | - | one\nMANY-2 | In Progress | - | two\n",
+      "MANY-3 | Doing | - | three\nMANY-1 | Doing | - | one\nMANY-2 | Doing | - | two\n",
     );
     expect(result.stderr).toContain("MANY-1");
-    expect(result.stderr).toContain("In Progress");
+    expect(result.stderr).toContain("Doing");
     expect((await runZinn(["task", "list", "MANY"], testDir)).stdout).toMatch(
       /^MANY-1[^\n]*\nMANY-3[^\n]*\nMANY-2[^\n]*\n$/,
     );
@@ -134,9 +134,9 @@ test("task move prints the task row, while --json returns the full task", async 
       testDir,
     );
 
-    const moved = await runZinn(["task", "move", "BRIEF-1", "In Progress"], testDir);
+    const moved = await runZinn(["task", "move", "BRIEF-1", "Doing"], testDir);
     expect(moved.code).toBe(0);
-    expect(moved.stdout).toBe("BRIEF-1 | In Progress | H | Detailed task | urgent\n");
+    expect(moved.stdout).toBe("BRIEF-1 | Doing | H | Detailed task | urgent\n");
     expect((await runZinn(["task", "list", "BRIEF"], testDir)).stdout).toBe(moved.stdout);
 
     const movedJson = await runZinn(["task", "move", "BRIEF-1", "Review", "--json"], testDir);
@@ -150,6 +150,7 @@ test("task move prints the task row, while --json returns the full task", async 
       column: "Review",
       is_first: false,
       is_last: false,
+      column_category: "review",
       title: "Detailed task",
       description: "Hidden from move output",
       priority: "high",
@@ -172,8 +173,8 @@ test("task move prints the same row for one task and for several, as task list s
     const movedOne = await runZinn(["task", "move", "ROW-1", "Done"], testDir);
     expect(movedOne.stdout).toBe("ROW-1 | Done | L | one\n");
 
-    const movedSeveral = await runZinn(["task", "move", "ROW-2", "ROW-1", "In Progress"], testDir);
-    expect(movedSeveral.stdout).toBe("ROW-2 | In Progress | - | two\nROW-1 | In Progress | L | one\n");
+    const movedSeveral = await runZinn(["task", "move", "ROW-2", "ROW-1", "Doing"], testDir);
+    expect(movedSeveral.stdout).toBe("ROW-2 | Doing | - | two\nROW-1 | Doing | L | one\n");
     expect(movedSeveral.stdout).toBe((await runZinn(["task", "list", "ROW"], testDir)).stdout);
   });
 });
@@ -192,7 +193,7 @@ test("task move rejects archived tasks", async () => {
         .get(),
     );
 
-    const result = await runZinn(["--json", "task", "move", "ARCHMOVE-1", "In Progress"], testDir);
+    const result = await runZinn(["--json", "task", "move", "ARCHMOVE-1", "Doing"], testDir);
 
     expect(result.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "archived", key: "ARCHMOVE-1" } });
@@ -219,12 +220,12 @@ test("task move --from moves only tasks still in that column", async () => {
     await runZinn(["project", "create", "GUARD"], testDir);
     await runZinn(["task", "create", "GUARD", "--title", "one"], testDir);
 
-    const moved = await runZinn(["task", "move", "GUARD-1", "In Progress", "--from", "backlog"], testDir);
+    const moved = await runZinn(["task", "move", "GUARD-1", "Doing", "--from", "backlog"], testDir);
     expect(moved.code).toBe(0);
-    expect(moved.stdout).toContain("In Progress");
+    expect(moved.stdout).toContain("Doing");
 
     // A second taker gets a conflict, even though the task is already in its target column.
-    const taken = await runZinn(["--json", "task", "move", "GUARD-1", "In Progress", "--from", "Backlog"], testDir);
+    const taken = await runZinn(["--json", "task", "move", "GUARD-1", "Doing", "--from", "Backlog"], testDir);
     expect(taken.code).toBe(1);
     expect(taken.stdout).toBe("");
     expect(errorDocumentSchema.parse(JSON.parse(taken.stderr)).error).toMatchObject({
@@ -234,7 +235,7 @@ test("task move --from moves only tasks still in that column", async () => {
         key: "GUARD-1",
         reason: "column_changed",
         expectedColumn: "Backlog",
-        actualColumn: "In Progress",
+        actualColumn: "Doing",
       },
     });
     expect(countMoves(testDir)).toBe(1);
@@ -284,7 +285,7 @@ test("concurrent guarded moves of one task let exactly one succeed", async () =>
 
     const results = await Promise.all(
       Array.from({ length: takerCount }, () =>
-        runZinn(["--json", "task", "move", "RACE-1", "In Progress", "--from", "Backlog"], testDir),
+        runZinn(["--json", "task", "move", "RACE-1", "Doing", "--from", "Backlog"], testDir),
       ),
     );
 

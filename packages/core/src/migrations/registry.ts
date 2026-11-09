@@ -4,6 +4,7 @@ import { BASELINE_VERSION } from "./baseline.js";
 import { actorIdentityMigration } from "./actor-identity.js";
 import { taskDeadlineMigration } from "./task-deadline.js";
 import { actorClientMigration } from "./actor-client.js";
+import { columnCategoryMigration } from "./column-category.js";
 
 export type ForeignKeyDefinition = {
   table: string;
@@ -51,6 +52,7 @@ export const MIGRATIONS: ReadonlyArray<Migration> = [
   actorIdentityMigration,
   taskDeadlineMigration,
   actorClientMigration,
+  columnCategoryMigration,
 ];
 
 /** Each migration's version follows the one before it, starting right after the baseline. */

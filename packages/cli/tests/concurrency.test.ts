@@ -63,7 +63,7 @@ test("concurrent fresh initialization supports readers and project creators", as
         withTestDb(store, (db) => {
           const expectedProjects = operation === "create" ? 40 : 0;
           expect(db.query("SELECT COUNT(*) AS count FROM project").get()).toEqual({ count: expectedProjects });
-          expect(db.query("SELECT COUNT(*) AS count FROM project_column").get()).toEqual({ count: expectedProjects * 5 });
+          expect(db.query("SELECT COUNT(*) AS count FROM project_column").get()).toEqual({ count: expectedProjects * 6 });
           expect(db.query("SELECT COUNT(*) AS count FROM activity").get()).toEqual({ count: expectedProjects });
           expect(db.query("PRAGMA integrity_check").all()).toEqual([{ integrity_check: "ok" }]);
           expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);

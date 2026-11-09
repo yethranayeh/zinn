@@ -10,7 +10,10 @@ import { CLI_PATH, runProcessAsync, runZinn, withIsolatedZinnDir, withTestDb } f
 async function seed(directory: string) {
   for (const args of [
     ["project", "create", "SHOP"], ["project", "create", "OTHER"],
-    ["project", "column", "create", "SHOP", "Needs Review"],
+    // Multi-word names are what the hints are for.
+    ["project", "column", "create", "--category", "in_progress", "SHOP", "In Progress"],
+    ["project", "column", "create", "--category", "in_progress", "OTHER", "In Progress"],
+    ["project", "column", "create", "--category", "todo", "SHOP", "Needs Review"],
     ["task", "create", "SHOP", "--title", "First"],
     ["task", "create", "SHOP", "--title", "Second"],
     ["task", "create", "OTHER", "--title", "Other"],
@@ -46,7 +49,7 @@ async function runSuggestion(command: string, directory: string) {
 
 test("split-column hints cover six commands, retain error facts and execute only when entered", async () => {
   const cases: Array<{ args: string[]; code: ErrorCode; correctedExit: number }> = [
-    { args: ["project", "column", "new", "SHOP", "In", "Progress"], code: "invalid_input", correctedExit: 1 },
+    { args: ["project", "column", "new", "SHOP", "--category", "todo", "In", "Progress"], code: "invalid_input", correctedExit: 1 },
     { args: ["project", "column", "edit", "SHOP", "In", "Progress", "--name", "Working"], code: "invalid_input", correctedExit: 0 },
     { args: ["project", "column", "order", "SHOP", "In", "Progress", "first"], code: "invalid_input", correctedExit: 0 },
     { args: ["project", "column", "order", "SHOP", "Review", "before", "In", "Progress"], code: "invalid_input", correctedExit: 0 },
@@ -98,7 +101,7 @@ test("split-column hints cover six commands, retain error facts and execute only
 test("column-option hints use explicit, default and all-project scope without discarding real projects", async () => {
   await withIsolatedZinnDir(async directory => {
     await seed(directory);
-    expect((await runZinn(["project", "column", "create", "SHOP", "Ready For Review"], directory)).code).toBe(0);
+    expect((await runZinn(["project", "column", "create", "--category", "todo", "SHOP", "Ready For Review"], directory)).code).toBe(0);
     writeFileSync(join(directory, "settings.json"), JSON.stringify({ defaultProject: "SHOP" }));
     for (const args of [
       ["task", "create", "--title", "Default", "--column", "In", "Progress"],
@@ -131,8 +134,8 @@ test("column hints preserve shell-sensitive names, option values, aliases and se
   await withIsolatedZinnDir(async directory => {
     await seed(directory);
     const name = "QA O'Brien; $(touch marker)";
-    expect((await runZinn(["project", "column", "create", "SHOP", name], directory)).code).toBe(0);
-    expect((await runZinn(["project", "column", "create", "SHOP", "In --json"], directory)).code).toBe(0);
+    expect((await runZinn(["project", "column", "create", "--category", "todo", "SHOP", name], directory)).code).toBe(0);
+    expect((await runZinn(["project", "column", "create", "--category", "todo", "SHOP", "In --json"], directory)).code).toBe(0);
     for (const args of [
       ["project", "column", "edit", "--name", "After 'review'", "SHOP", ...name.split(" ")],
       ["--json", "project", "--allow-legacy-read", "column", "edit", "--name=After", "SHOP", "--", "In", "--json"],
@@ -157,13 +160,13 @@ test("column hints preserve shell-sensitive names, option values, aliases and se
 test("unmatched or unrelated column failures keep their original error and change nothing", async () => {
   await withIsolatedZinnDir(async directory => {
     await seed(directory);
-    expect((await runZinn(["project", "column", "create", "SHOP", "Three Word Column"], directory)).code).toBe(0);
-    expect((await runZinn(["project", "column", "create", "SHOP", "SHOP-2 Progress"], directory)).code).toBe(0);
+    expect((await runZinn(["project", "column", "create", "--category", "todo", "SHOP", "Three Word Column"], directory)).code).toBe(0);
+    expect((await runZinn(["project", "column", "create", "--category", "todo", "SHOP", "SHOP-2 Progress"], directory)).code).toBe(0);
     expect((await runZinn(["project", "column", "edit", "OTHER", "In Progress", "--name", "Working"], directory)).code).toBe(0);
     expect((await runZinn(["task", "archive", "SHOP-2"], directory)).code).toBe(0);
     const before = snapshot(directory);
     for (const args of [
-      ["project", "column", "create", "SHOP", "No", "Match"],
+      ["project", "column", "create", "--category", "todo", "SHOP", "No", "Match"],
       ["project", "column", "edit", "SHOP", "In Progress", "--name", "Needs", "Review"],
       ["project", "column", "edit", "SHOP", "In", "Progress"],
       ["project", "column", "order", "SHOP", "In", "Progress", "sideways"],
@@ -190,7 +193,7 @@ test("column order hints preserve a recognized direction rather than absorb it i
     await withIsolatedZinnDir(async directory => {
       await seed(directory);
       for (const name of ["A after B", "C"]) {
-        expect((await runZinn(["project", "column", "create", "SHOP", name], directory)).code).toBe(0);
+        expect((await runZinn(["project", "column", "create", "--category", "todo", "SHOP", name], directory)).code).toBe(0);
       }
       const args = ["project", "column", "order", "SHOP", "A", "after", "B", "before", "C"];
       const input = json ? [...args, "--json"] : args;
@@ -210,7 +213,7 @@ test("column order hints preserve a recognized direction rather than absorb it i
       expect(snapshot(directory)).toEqual(before);
 
       for (const name of ["A", "B before C"]) {
-        expect((await runZinn(["project", "column", "create", "SHOP", name], directory)).code).toBe(0);
+        expect((await runZinn(["project", "column", "create", "--category", "todo", "SHOP", name], directory)).code).toBe(0);
       }
       const beforeHint = snapshot(directory);
       const result = await runZinn(input, directory);
@@ -231,7 +234,7 @@ test("column order suppresses ambiguous split-source groupings and bulk move can
   await withIsolatedZinnDir(async directory => {
     await seed(directory);
     for (const name of ["A B", "C before D", "A B after C", "D", "Progress"]) {
-      expect((await runZinn(["project", "column", "create", "SHOP", name], directory)).code).toBe(0);
+      expect((await runZinn(["project", "column", "create", "--category", "todo", "SHOP", name], directory)).code).toBe(0);
     }
     const before = snapshot(directory);
     const ambiguous = await runZinn(["project", "column", "order", "SHOP", "A", "B", "after", "C", "before", "D", "--json"], directory);

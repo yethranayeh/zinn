@@ -19,7 +19,7 @@ test("normalized titles persist before no-op detection, activity and search; bod
       const actor = { name: "Test", email: null, kind: "human" as const };
       const body = "\n  Body text\n";
       const app = project.create({ key: "APP", name: " App ", description: body }, actor);
-      const next = column.create({ projectKey: "APP", name: " Next " }, actor);
+      const next = column.create({ projectKey: "APP", name: " Next ", category: "todo" }, actor);
       const bug = label.create({ name: " bug ", description: body }, actor);
       const first = task.create({ project_id: app.id, title: " First ", description: body, columnName: " Next ", labelNames: [" bug "] }, actor);
       const note = comment.create({ taskKey: first.key, text: body }, actor);

@@ -3,6 +3,7 @@ import {
   activityActionSchema,
   activityEntityTypeSchema,
   actorKindSchema,
+  columnCategorySchema,
   infoDatabaseStateSchema,
   labelColorSchema,
   relationTypeSchema,
@@ -22,6 +23,9 @@ const nullableText = z.string().nullable();
 const count = z.number().int().nonnegative();
 const timestamp = z.number().int().describe("Milliseconds since the Unix epoch.");
 const taskStatus = z.enum(["Active", "Archived"]);
+// A newer Zinn may store a category this version does not know.
+const columnCategory = z.string().nullable();
+const columnCategoryValues = `Known categories: ${columnCategorySchema.options.join(", ")}. Other stored values may occur.`;
 
 export const taskSchema = z.strictObject({
   id: z.string().describe("Stored task ID."),
@@ -32,6 +36,9 @@ export const taskSchema = z.strictObject({
   column_id: z.string().describe("Current column ID."),
   is_first: z.boolean().describe("Whether the task's column is the first column of its board."),
   is_last: z.boolean().describe("Whether the task's column is the last column of its board."),
+  column_category: columnCategory.describe(
+    `The task's column category, or null on an older database opened read-only. ${columnCategoryValues}`,
+  ),
   title: z.string(),
   description: nullableText,
   priority: z
@@ -68,6 +75,7 @@ export const relationSchema = z.strictObject({
     column_id: true,
     is_first: true,
     is_last: true,
+    column_category: true,
     title: true,
     status: true,
   }),
@@ -179,15 +187,19 @@ export const columnSchema = z.strictObject({
   name: z.string(),
   is_first: z.boolean().describe("Whether this column is the first column of its board."),
   is_last: z.boolean().describe("Whether this column is the last column of its board."),
+  category: columnCategory.describe(
+    `What the column's tasks are to Zinn, or null on an older database opened read-only. ${columnCategoryValues}`,
+  ),
 });
 export const columnChangeSchema = columnSchema.extend({
-  changed: z.boolean().describe("Whether the column's name or position changed."),
+  changed: z.boolean().describe("Whether the column's name, category or position changed."),
 });
 export const columnTaskCountSchema = z.strictObject({
   id: columnSchema.shape.id,
   name: z.string(),
   is_first: columnSchema.shape.is_first,
   is_last: columnSchema.shape.is_last,
+  category: columnSchema.shape.category,
   taskCount: count,
 });
 export const projectViewSchema = projectSchema.extend({

@@ -66,7 +66,7 @@ label.create(
 );
 
 const app = createProject({ key: "APP", name: "Zinn App" });
-column.create({ projectKey: app.key, name: "Blocked" }, seedHuman);
+column.create({ projectKey: app.key, name: "Blocked", category: "todo" }, seedHuman);
 createTask(app.id, "Design task movement", "Move cards between project columns", ["feature"]);
 createTask(app.id, "Add column-aware task ordering", "Keep card positions local to each column", [
   "feature",
@@ -124,7 +124,7 @@ createTask(
 
 task.move({ taskKey: "APP-1", targetColumn: "Done" }, seedAgent);
 task.move({ taskKey: "APP-2", targetColumn: "Review" }, seedAgent);
-task.move({ taskKey: "APP-3", targetColumn: "In Progress" }, seedAgent);
+task.move({ taskKey: "APP-3", targetColumn: "Doing" }, seedAgent);
 task.move({ taskKey: "APP-4", targetColumn: "Done" }, seedAgent);
 task.move({ taskKey: "APP-6", targetColumn: "TODO" }, seedAgent);
 task.move({ taskKey: "APP-7", targetColumn: "TODO" }, seedAgent);
@@ -134,7 +134,7 @@ task.move({ taskKey: "APP-9", targetColumn: "Blocked" }, seedAgent);
 task.order({ taskKey: "APP-8", direction: "before", targetTaskKey: "APP-6" }, seedAgent);
 
 const site = createProject({ key: "SITE", name: "Zinn Website" });
-column.create({ projectKey: site.key, name: "Icebox" }, seedHuman);
+column.create({ projectKey: site.key, name: "Icebox", category: "todo" }, seedHuman);
 createTask(site.id, "Write the project overview", "Explain what makes Zinn useful", ["docs"]);
 createTask(
   site.id,
@@ -166,7 +166,7 @@ createTask(
   "Superseded by the board navigation task",
   ["interface"],
 );
-task.move({ taskKey: "LAB-1", targetColumn: "In Progress" }, seedAgent);
+task.move({ taskKey: "LAB-1", targetColumn: "Doing" }, seedAgent);
 task.move({ taskKey: "LAB-3", targetColumn: "Done" }, seedAgent);
 task.archive("LAB-3", seedAgent);
 

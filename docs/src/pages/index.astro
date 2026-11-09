@@ -15,7 +15,7 @@ const documentation = "/docs/cli";
 const workflowCommands = [
 	"zinn project create DEMO --name 'Release work'",
 	"zinn task create DEMO \\\n  --title 'Write release notes' \\\n  --priority high",
-	"zinn task move DEMO-1 'In Progress'",
+	"zinn task move DEMO-1 Doing",
 	"zinn task list DEMO --json"
 ];
 ---
@@ -71,8 +71,9 @@ const workflowCommands = [
 		<Prose>
 			<h2 id='workflow-heading'>Start a project. Move the work.</h2>
 			<p>
-				Create a project, add a task, then move it into In Progress. <span class='block'
-					>Each project begins with Backlog, TODO, In Progress, Review and Done columns, which you can rename or extend.</span
+				Create a project, add a task, then move it into <em>Doing</em>. <span class='block'
+					>Each project begins with <em>Backlog, TODO, Doing, Review, Done</em> and <em>Cancelled</em> columns, which you
+					can rename or extend.</span
 				>
 			</p>
 			<p>

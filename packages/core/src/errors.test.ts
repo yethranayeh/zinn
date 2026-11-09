@@ -67,7 +67,7 @@ test("ZINN-282: expected operation failures retain facts and leave all stored ro
       failure(() => project.edit({ projectKey: "missing", name: "Name" }, actor), "missing", missingProject);
       failure(() => project.delete("MISSING", actor), "missing", missingProject);
       failure(() => column.getAllByProjectKey("missing"), "missing", missingProject);
-      failure(() => column.create({ projectKey: "APP", name: "Backlog" }, actor), "conflict", { entity: "column", key: "Backlog", reason: "already_exists" });
+      failure(() => column.create({ projectKey: "APP", name: "Backlog", category: "todo" }, actor), "conflict", { entity: "column", key: "Backlog", reason: "already_exists" });
       failure(() => column.edit({ projectKey: "APP", columnName: "TODO", name: "Backlog" }, actor), "conflict", { entity: "column", reason: "already_exists" });
       failure(() => label.create({ name: "bug" }, actor), "conflict", { entity: "label", key: "bug", reason: "already_exists" });
       failure(() => label.edit({ labelName: "other", name: "bug" }, actor), "conflict", { entity: "label", reason: "already_exists" });

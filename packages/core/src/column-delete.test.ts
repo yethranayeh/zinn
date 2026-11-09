@@ -73,7 +73,7 @@ test("column deletion permits no columns and task creation rolls back numbering 
           !error.message.includes("zinn"));
       assert.deepEqual(snapshot(getDb()), before);
     }
-    column.create({ projectKey: "APP", name: "Recovered" }, actor);
+    column.create({ projectKey: "APP", name: "Recovered", category: "todo" }, actor);
     assert.equal(task.create({ project_id: app.id, title: "Recovered" }, actor).key, "APP-2");
   });
 });

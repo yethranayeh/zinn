@@ -55,6 +55,7 @@ export function presentRelations(
         column_id: other.column_id,
         is_first: placement.is_first,
         is_last: placement.is_last,
+        column_category: columnMatch.category ?? null,
         title: other.title,
         status: other.archived_at == null ? "Active" : "Archived",
       },

@@ -12,7 +12,7 @@ test("client migration preserves version 3 rows and adds a nullable client witho
     seedBaseline(db);
     upgradeSchema(db, previousMigrations);
     const before = snapshot(db);
-    upgradeSchema(db);
+    upgradeSchema(db, [...previousMigrations, actorClientMigration]);
     const after = snapshot(db);
 
     expect(readSchemaVersion(db)).toBe(actorClientMigration.version);
@@ -31,7 +31,7 @@ test("client migration preserves version 3 rows and adds a nullable client witho
     expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
     expect(db.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
     withDatabase((fresh) => {
-      createSchema(fresh);
+      createSchema(fresh, [...previousMigrations, actorClientMigration]);
       expect(after.schema).toEqual(snapshot(fresh).schema);
     });
   });

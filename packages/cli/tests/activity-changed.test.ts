@@ -128,7 +128,7 @@ test("priority=none matches clearing and creation while column and label none re
     };
     const list = async (...flags: string[]): Promise<Activity[]> => JSON.parse(await run("activity", "list", ...flags, "--json"));
     await run("project", "create", "APP");
-    await run("project", "column", "create", "APP", "none");
+    await run("project", "column", "create", "--category", "todo", "APP", "none");
     await run("label", "create", "none");
     await run("task", "create", "APP", "--title", "Unassigned", "--column", "none", "--label", "none");
     const created = (await list("--task", "APP-1"))[0]!;

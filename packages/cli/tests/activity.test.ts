@@ -181,7 +181,7 @@ test("project activity filters retain original member events and project lifetim
     await run("project", "create", "APP");
     const firstProject = { id: (await list())[0]!.entity_id };
     await run("project", "create", "OUT");
-    await run("project", "column", "create", "APP", "Extra");
+    await run("project", "column", "create", "--category", "todo", "APP", "Extra");
     await run("task", "create", "APP", "--title", "Deleted before project");
     await run("task", "create", "APP", "--title", "Archived member");
     await run("task", "create", "OUT", "--title", "Outside");
@@ -290,7 +290,7 @@ test("limited project activity keeps deleted task and column names when identity
     };
     await run(["project", "create", "APP"]);
     const projectId = JSON.parse(await run(["activity", "list", "--json"]))[0].entity_id;
-    await run(["project", "column", "create", "APP", "Extra"]);
+    await run(["project", "column", "create", "--category", "todo", "APP", "Extra"]);
     await run(["task", "create", "APP", "--title", "Original"]);
     const taskId = JSON.parse(await run(["activity", "list", "--task", "APP-1", "--json"]))[0].entity_id;
     await run(["task", "edit", "APP-1", "--title", "Edited"], "task/edit");

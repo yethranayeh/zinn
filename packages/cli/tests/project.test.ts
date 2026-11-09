@@ -202,12 +202,13 @@ test("project view prints the full description and unarchived task counts per co
         "  Keep the quota",
         "",
         "Columns:",
-        "Backlog     | 1",
-        "TODO        | 0",
-        "In Progress | 0",
-        "Review      | 0",
-        "Done        | 2",
-        "Archived    | 1",
+        "Backlog   | backlog     | 1",
+        "TODO      | todo        | 0",
+        "Doing     | in_progress | 0",
+        "Review    | review      | 0",
+        "Done      | done        | 2",
+        "Cancelled | cancelled   | 0",
+        "Archived  |             | 1",
         "",
       ].join("\n"),
     );
@@ -223,11 +224,12 @@ test("project view leaves out the Description section and Archived row when ther
         "EMPTY | Empty project",
         "",
         "Columns:",
-        "Backlog     | 0",
-        "TODO        | 0",
-        "In Progress | 0",
-        "Review      | 0",
-        "Done        | 0",
+        "Backlog   | backlog     | 0",
+        "TODO      | todo        | 0",
+        "Doing     | in_progress | 0",
+        "Review    | review      | 0",
+        "Done      | done        | 0",
+        "Cancelled | cancelled   | 0",
         "",
       ].join("\n"),
     );
@@ -244,11 +246,12 @@ test("project view JSON contains the project, per-column task counts in board or
     await run("project", "column", "order", "VIEW", "Review", "first");
 
     const expectedColumns = [
-      { id: expect.any(String), name: "Review", is_first: true, is_last: false, taskCount: 1 },
-      { id: expect.any(String), name: "Backlog", is_first: false, is_last: false, taskCount: 1 },
-      { id: expect.any(String), name: "TODO", is_first: false, is_last: false, taskCount: 0 },
-      { id: expect.any(String), name: "In Progress", is_first: false, is_last: false, taskCount: 0 },
-      { id: expect.any(String), name: "Done", is_first: false, is_last: true, taskCount: 0 },
+      { id: expect.any(String), name: "Review", is_first: true, is_last: false, category: "review", taskCount: 1 },
+      { id: expect.any(String), name: "Backlog", is_first: false, is_last: false, category: "backlog", taskCount: 1 },
+      { id: expect.any(String), name: "TODO", is_first: false, is_last: false, category: "todo", taskCount: 0 },
+      { id: expect.any(String), name: "Doing", is_first: false, is_last: false, category: "in_progress", taskCount: 0 },
+      { id: expect.any(String), name: "Done", is_first: false, is_last: false, category: "done", taskCount: 0 },
+      { id: expect.any(String), name: "Cancelled", is_first: false, is_last: true, category: "cancelled", taskCount: 0 },
     ];
     const viewedProject = await run("project", "view", "VIEW", "--json");
 

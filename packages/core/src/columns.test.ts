@@ -24,7 +24,7 @@ test("column renames keep identity and tasks, reject duplicates, and skip no-op 
       const renamed = column.edit({ projectKey: "app", columnName: "todo", name: " Next up " }, actor).column;
       assert.deepEqual(renamed, { ...todo, name: "Next up" });
       assert.equal(task.getByKey(first.key).column_id, todo!.id);
-      assert.deepEqual(column.getAllByProjectKey("APP").map(c => c.name), ["Backlog", "Next up", "In Progress", "Review", "Done"]);
+      assert.deepEqual(column.getAllByProjectKey("APP").map(c => c.name), ["Backlog", "Next up", "Doing", "Review", "Done", "Cancelled"]);
       assert.equal(task.move({ taskKey: first.key, targetColumn: "NEXT UP" }, actor).column_id, todo!.id);
 
       assert.deepEqual(column.edit({ projectKey: "APP", columnName: "next up", name: "NEXT UP" }, actor).column, { ...todo, name: "NEXT UP" });
@@ -38,10 +38,10 @@ test("column renames keep identity and tasks, reject duplicates, and skip no-op 
       assert.deepEqual(column.edit({ projectKey: "APP", columnName: "next up", name: " NEXT UP " }, actor).column, { ...todo, name: "NEXT UP" });
       db.exec("DROP TRIGGER fail_column_update");
 
-      assert.throws(() => column.create({ projectKey: "APP", name: "next up" }, actor), (error) => error instanceof CoreError && error.kind === "conflict" && error.facts.entity === "column" && error.facts.key === "next up");
-      assert.throws(() => column.create({ projectKey: "APP", name: " next up " }, actor), (error) => error instanceof CoreError && error.kind === "conflict" && error.facts.entity === "column" && error.facts.key === "next up");
-      assert.throws(() => column.create({ projectKey: "APP", name: " " }, actor), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field!.some((field) => ["name", "columnName"].includes(String(field))));
-      assert.equal(column.create({ projectKey: "APP", name: " Later " }, actor).name, "Later");
+      assert.throws(() => column.create({ projectKey: "APP", name: "next up", category: "todo" }, actor), (error) => error instanceof CoreError && error.kind === "conflict" && error.facts.entity === "column" && error.facts.key === "next up");
+      assert.throws(() => column.create({ projectKey: "APP", name: " next up ", category: "todo" }, actor), (error) => error instanceof CoreError && error.kind === "conflict" && error.facts.entity === "column" && error.facts.key === "next up");
+      assert.throws(() => column.create({ projectKey: "APP", name: " ", category: "todo" }, actor), (error) => error instanceof CoreError && error.kind === "input" && error.facts.field!.some((field) => ["name", "columnName"].includes(String(field))));
+      assert.equal(column.create({ projectKey: "APP", name: " Later ", category: "todo" }, actor).name, "Later");
       assert.equal(column.edit({ projectKey: "APP", columnName: " later ", name: "Someday" }, actor).column.name, "Someday");
     });
 
@@ -58,6 +58,8 @@ test("column orders move only the moved column and skip no-op writes", () => {
       const actor = { name: "Test Human", email: null, kind: "human" as const };
       const db = getDb({ createsDatabase: true });
       project.create({ key: "APP", name: "App" }, actor);
+      // Five columns keep the expected orders short.
+      column.delete({ projectKey: "APP", columnName: "Cancelled" }, actor);
       const names = () => column.getAllByProjectKey("APP").map(c => c.name);
       const order = (columnName: string, direction: Parameters<typeof column.order>[0]["direction"], targetColumnName?: string) =>
         column.order({ projectKey: "app", columnName, direction, ...(targetColumnName == null ? {} : { targetColumnName }) } as Parameters<typeof column.order>[0], actor);
@@ -66,25 +68,25 @@ test("column orders move only the moved column and skip no-op writes", () => {
       const moved = order("review", "first");
       assert.equal(moved.changed, true);
       assert.deepEqual({ ...moved.column, column_order: review!.column_order }, review);
-      assert.deepEqual(names(), ["Review", "Backlog", "TODO", "In Progress", "Done"]);
+      assert.deepEqual(names(), ["Review", "Backlog", "TODO", "Doing", "Done"]);
       order("REVIEW", "next");
-      assert.deepEqual(names(), ["Backlog", "Review", "TODO", "In Progress", "Done"]);
+      assert.deepEqual(names(), ["Backlog", "Review", "TODO", "Doing", "Done"]);
       order("Review", "previous");
-      assert.deepEqual(names(), ["Review", "Backlog", "TODO", "In Progress", "Done"]);
+      assert.deepEqual(names(), ["Review", "Backlog", "TODO", "Doing", "Done"]);
       order("Review", "last");
-      assert.deepEqual(names(), ["Backlog", "TODO", "In Progress", "Done", "Review"]);
+      assert.deepEqual(names(), ["Backlog", "TODO", "Doing", "Done", "Review"]);
 
       const rowsBefore = column.getAllByProjectKey("APP");
       order("backlog", "before", "DONE");
-      assert.deepEqual(names(), ["TODO", "In Progress", "Backlog", "Done", "Review"]);
+      assert.deepEqual(names(), ["TODO", "Doing", "Backlog", "Done", "Review"]);
       const changedRows = column.getAllByProjectKey("APP").filter(row => !rowsBefore.some(before => JSON.stringify(before) === JSON.stringify(row)));
       assert.deepEqual(changedRows.map(row => row.name), ["Backlog"]);
       order("Review", "after", "todo");
-      assert.deepEqual(names(), ["TODO", "Review", "In Progress", "Backlog", "Done"]);
-      order("TODO", "after", "in progress");
-      assert.deepEqual(names(), ["Review", "In Progress", "TODO", "Backlog", "Done"]);
+      assert.deepEqual(names(), ["TODO", "Review", "Doing", "Backlog", "Done"]);
+      order("TODO", "after", "doing");
+      assert.deepEqual(names(), ["Review", "Doing", "TODO", "Backlog", "Done"]);
       order("Done", "before", "Review");
-      assert.deepEqual(names(), ["Done", "Review", "In Progress", "TODO", "Backlog"]);
+      assert.deepEqual(names(), ["Done", "Review", "Doing", "TODO", "Backlog"]);
 
       const rowsBeforeNoOps = column.getAllByProjectKey("APP");
       const activityBeforeNoOps = db.query("SELECT * FROM activity ORDER BY id").all();
@@ -92,7 +94,7 @@ test("column orders move only the moved column and skip no-op writes", () => {
       const writesBeforeNoOps = db.query<{ count: number }>("SELECT total_changes() AS count").get()!.count;
       for (const [columnName, direction, targetColumnName] of [
         ["Done", "first"], ["Done", "previous"], ["Backlog", "last"], ["Backlog", "next"],
-        ["Review", "before", "In Progress"], ["In Progress", "after", "review"],
+        ["Review", "before", "Doing"], ["Doing", "after", "review"],
         ["Review", "before", "review"], ["Review", "after", "REVIEW"],
       ] as const) {
         const unchanged = order(columnName, direction, targetColumnName);
@@ -130,7 +132,7 @@ test("column task counts cover each column in board order, with archived tasks i
       };
 
       assert.deepEqual(counts(), {
-        columns: [["Backlog", 0], ["TODO", 0], ["In Progress", 0], ["Review", 0], ["Done", 0]],
+        columns: [["Backlog", 0], ["TODO", 0], ["Doing", 0], ["Review", 0], ["Done", 0], ["Cancelled", 0]],
         archivedTaskCount: 0,
       });
 
@@ -146,7 +148,7 @@ test("column task counts cover each column in board order, with archived tasks i
       column.order({ projectKey: "APP", columnName: "Done", direction: "first" }, actor);
 
       assert.deepEqual(counts(), {
-        columns: [["Done", 1], ["Backlog", 1], ["TODO", 0], ["In Progress", 0], ["Review", 1]],
+        columns: [["Done", 1], ["Backlog", 1], ["TODO", 0], ["Doing", 0], ["Review", 1], ["Cancelled", 0]],
         archivedTaskCount: 2,
       });
       assert.deepEqual(column.getTaskCountsByProjectKey("APP").columns.map(entry => entry.column), column.getAllByProjectKey("APP"));

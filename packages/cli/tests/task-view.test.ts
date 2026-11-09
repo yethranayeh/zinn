@@ -68,7 +68,7 @@ test("task view prints the task row followed by Description, Relations, and Comm
     await run("task", "create", "MDR", "--title", "Check the totals");
     await run("task", "relation", "create", "MDR-1", "MDR-2", "--type", "dependency");
     await run("task", "comment", "create", "MDR-1", "--text", "Ready for review");
-    await run("task", "move", "MDR-1", "In Progress");
+    await run("task", "move", "MDR-1", "Doing");
     const commentedAt = Date.UTC(2026, 8, 25, 17, 42);
     withTestDb(testDir, (db) => {
       db.run("UPDATE comment SET created_at = ?, updated_at = ?", [commentedAt, commentedAt]);
@@ -80,7 +80,7 @@ test("task view prints the task row followed by Description, Relations, and Comm
     expect(viewed.stderr).toBe("");
     expect(taskViewContent(viewed.stdout)).toBe(
       [
-        "MDR-1 | In Progress | High | Refine the numbers | bug, cli",
+        "MDR-1 | Doing | High | Refine the numbers | bug, cli",
         "",
         SECTION_RULE,
         "Description:",
@@ -104,9 +104,10 @@ test("task view prints the task row followed by Description, Relations, and Comm
       column_id: expect.any(String),
       key: "MDR-1",
       status: "Active",
-      column: "In Progress",
+      column: "Doing",
       is_first: false,
       is_last: false,
+      column_category: "in_progress",
       title: "Refine the numbers",
       description,
       priority: "high",
@@ -120,7 +121,7 @@ test("task view prints the task row followed by Description, Relations, and Comm
           id: expect.any(String),
           type: "dependency",
           direction: "outgoing",
-          task: { id: expect.any(String), project_id: expect.any(String), column_id: expect.any(String), key: "MDR-2", column: "Backlog", is_first: true, is_last: false, title: "Check the totals", status: "Active" },
+          task: { id: expect.any(String), project_id: expect.any(String), column_id: expect.any(String), key: "MDR-2", column: "Backlog", is_first: true, is_last: false, column_category: "backlog", title: "Check the totals", status: "Active" },
         },
       ],
       comments: [

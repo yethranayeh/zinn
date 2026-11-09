@@ -63,3 +63,16 @@ test("column rows color the first board column gray and the last green, whatever
     expect(formatColumnList([{ name: "Done" }])).toBe("Done");
   });
 });
+
+test("column rows show the category after the name, empty when an older database has none", () => {
+  withEnvironment({ FORCE_COLOR: "0" }, () => {
+    const columns = [
+      { name: "Backlog", category: "backlog", taskCount: 2 },
+      { name: "Shipped", category: "done", taskCount: 0 },
+      { name: "Legacy", category: null, taskCount: 1 },
+    ];
+    expect(formatColumnList(columns, { showsTaskCounts: true, archivedTaskCount: 3 })).toBe(
+      "Backlog  | backlog | 2\nShipped  | done    | 0\nLegacy   |         | 1\nArchived |         | 3",
+    );
+  });
+});

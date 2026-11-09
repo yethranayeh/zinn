@@ -1,5 +1,6 @@
 export type { ProjectCreateInput, ProjectEditInput } from "./src/schemas/project.js";
 export type {
+  ColumnCategory,
   ColumnCreateInput,
   ColumnEditInput,
   ColumnDeleteInput,
@@ -82,6 +83,7 @@ export {
 } from "./src/schemas/label.js";
 export { projectCreateSchema, projectEditSchema } from "./src/schemas/project.js";
 export {
+  columnCategorySchema,
   columnCreateSchema,
   columnEditSchema,
   columnDeleteSchema,

@@ -1,12 +1,14 @@
 import type { RouteDef } from "../types.js";
-import type { CommandInput, InputConstraint } from "../input.js";
+import type { CommandInput, InputConstraint, InputOption } from "../input.js";
 import type { PresentedProjectView, PresentedProjectListEntry } from "../result-schemas.js";
+import type { ColumnCategory } from "@zinn-dev/core";
 
 import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
 import {
   column,
   project,
+  columnCategorySchema,
   columnOrderSchema,
   columnDeleteSchema,
   projectCreateSchema,
@@ -61,6 +63,44 @@ const projectEditConstraint = {
   kind: "atLeastOne",
   members: ["option:name", "option:description", "option:description-file"],
 } as const satisfies InputConstraint;
+
+const columnCategoryOption = {
+  type: "string",
+  value: { kind: "enum", name: "category", choices: columnCategorySchema.options },
+} as const satisfies InputOption;
+
+const columnCategoryValues = columnCategorySchema.options.join(", ");
+
+const columnEditConstraint = {
+  kind: "atLeastOne",
+  members: ["option:name", "option:category"],
+} as const satisfies InputConstraint;
+
+/** Asks before a category change that would change whether a column's tasks count as open or closed */
+async function confirmCategoryChange(
+  projectKey: string,
+  columnName: string,
+  category: ColumnCategory,
+  isPreconfirmed: boolean,
+) {
+  const columnMatch = column.getByName(projectKey, columnName);
+  const isSameCategory = columnMatch.category === category;
+  if (isPreconfirmed || isSameCategory) {
+    return true;
+  }
+
+  const { taskCount, archivedTaskCount } = column
+    .getTaskCountsByProjectKey(projectKey)
+    .columns.find((entry) => entry.column.id === columnMatch.id)!;
+  if (taskCount + archivedTaskCount === 0) {
+    return true;
+  }
+
+  return confirmAction(
+    `Column "${columnMatch.name}" holds ${taskCount} active and ${archivedTaskCount} archived tasks. Change its category from ${columnMatch.category} to ${category}?`,
+    false,
+  );
+}
 
 const projectInputs = {
   create: {
@@ -121,7 +161,7 @@ const projectInputs = {
     notes: [requiredProjectDescription],
   },
   column_create: {
-    options: {},
+    options: { category: { ...columnCategoryOption, required: true } },
     forms: [
       {
         id: "default",
@@ -145,7 +185,11 @@ const projectInputs = {
     notes: [requiredProjectDescription],
   },
   column_edit: {
-    options: { name: { type: "string", required: true, value: { kind: "text", name: "text" } } },
+    options: {
+      name: { type: "string", value: { kind: "text", name: "text" } },
+      category: columnCategoryOption,
+      yes: { type: "boolean" },
+    },
     forms: [
       {
         id: "default",
@@ -155,7 +199,7 @@ const projectInputs = {
         ],
       },
     ],
-    constraints: [],
+    constraints: [columnEditConstraint],
   },
   column_delete: {
     options: { yes: { type: "boolean" } },
@@ -491,32 +535,44 @@ Example: zinn project delete MDR`,
       input: projectInputs.column_create,
       results: [jsonResult("Column")],
       run: (args: Array<string>) => {
-        const { positionals } = parseArgs({
+        const { values, positionals, tokens } = parseArgs({
           options: projectInputs.column_create.options,
           args,
           allowPositionals: true,
           strict: true,
+          tokens: true,
         });
+        validateUniqueOptions(tokens, projectInputs.column_create.options);
         validatePositionals(positionals, projectInputs.column_create.forms[0]);
 
-        const projectKey = positionals[0]!;
-        const columnName = positionals[1]!;
-
-        try {
-          const createdColumn = column.create({ projectKey, name: columnName }, currentActor());
-          output(presentColumn(createdColumn), (entry) =>
-            formatColumnList([entry], { showsProject: true }),
-          );
-        } catch (err) {
-          throw err;
-        }
+        const category = requireStringOption(
+          projectInputs.column_create.options.category,
+          values.category,
+          "category",
+          `Provide the column's category with --category: ${columnCategoryValues}`,
+        );
+        const createdColumn = column.create(
+          {
+            projectKey: positionals[0]!,
+            name: positionals[1]!,
+            category: category as ColumnCategory,
+          },
+          currentActor(),
+        );
+        output(presentColumn(createdColumn), (entry) =>
+          formatColumnList([entry], { showsProject: true }),
+        );
       },
       help: `${generateCommandUsage("project column create", projectInputs.column_create)}
 
 Add a column at the end of a project's board.
 Names are trimmed, cannot be blank or contain line breaks or control characters, and must be unique within the project regardless of casing.
 
-Example: zinn project column create MDR Boardlog`,
+--category is required and says what the column's tasks are to Zinn, whatever the column is called.
+Category values: ${columnCategoryValues}.
+Tasks in done and cancelled columns are closed: task next skips them, and they no longer block tasks that depend on them.
+
+Example: zinn project column create MDR Boardlog --category backlog`,
     },
     list: {
       summary: "List a project's columns in board order with their unarchived task counts.",
@@ -549,12 +605,15 @@ ${requiredProjectDescription}
 Example: zinn project column list MDR`,
     },
     edit: {
-      summary: "Rename a column.",
+      summary: "Rename a column or change its category.",
       effects: { domain: "update", storage: "normal-open" },
-      confirmation: { kind: "none" },
+      confirmation: {
+        kind: "prompt",
+        description: `Only asks when changing the category of a column that holds tasks. ${confirmationDescription}`,
+      },
       input: projectInputs.column_edit,
       results: [jsonResult("ColumnChange")],
-      run: (args: Array<string>) => {
+      run: async (args: Array<string>) => {
         const { values, positionals, tokens } = parseArgs({
           args,
           options: projectInputs.column_edit.options,
@@ -566,19 +625,29 @@ Example: zinn project column list MDR`,
         validateUniqueOptions(tokens, projectInputs.column_edit.options);
         validatePositionals(positionals, projectInputs.column_edit.forms[0]);
 
-        const name = requireStringOption(
-          projectInputs.column_edit.options.name,
-          values.name,
-          "name",
-          "Provide an edit flag: --name",
-        );
+        if (violatesConstraint(columnEditConstraint, getOptionInputs(values))) {
+          quit("Provide an edit flag: --name or --category", undefined, { field: [] });
+        }
+
+        const projectKey = positionals[0]!;
+        const columnName = positionals[1]!;
+        const category = values.category as ColumnCategory | undefined;
+
+        if (category !== undefined) {
+          const isConfirmed = await confirmCategoryChange(
+            projectKey,
+            columnName,
+            category,
+            values.yes === true,
+          );
+          if (!isConfirmed) {
+            diagnostic("Column edit cancelled");
+            return;
+          }
+        }
 
         const editedColumn = column.edit(
-          {
-            projectKey: positionals[0]!,
-            columnName: positionals[1]!,
-            name,
-          },
+          { projectKey, columnName, name: values.name, category },
           currentActor(),
         );
         outputChanges(
@@ -590,9 +659,11 @@ Example: zinn project column list MDR`,
       },
       help: `${generateCommandUsage("project column edit", projectInputs.column_edit)}
 
-Rename a column.
-The --name flag is required.
-With --json, changed is false when the name already matches.
+Rename a column, change its category, or both.
+Provide --name, --category or both.
+Category values: ${columnCategoryValues}.
+Changing the category of a column that holds tasks, active or archived, asks first: it changes which of them count as open or closed. Use --yes to change it without a prompt, including with --json or without a terminal.
+With --json, changed is false when the name and category already match.
 
 Columns are matched by name, and matching is case-insensitive.
 Names are trimmed, and must remain unique within the same project.
@@ -600,7 +671,9 @@ Changing only the casing of a column's own name is allowed.
 
 ${dashValueHelp("--name")}
 
-Example: zinn project column edit MDR 'In Progress' --name Refining`,
+Examples:
+  zinn project column edit MDR Doing --name Refining
+  zinn project column edit MDR Shipped --category done --yes`,
     },
     order: {
       summary: "Change a column's position on the project's board.",
@@ -653,7 +726,7 @@ Columns are matched by name, and matching is case-insensitive.
 Ordering to the current position, or before or after itself, leaves the column unchanged.
 With --json, changed is false when the column was already in that position.
 
-Example: zinn project column order MDR Review before 'In Progress'`,
+Example: zinn project column order MDR Review before Doing`,
     },
     delete: {
       summary: "Delete an empty project column after confirmation.",
