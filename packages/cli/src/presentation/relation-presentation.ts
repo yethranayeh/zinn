@@ -101,7 +101,7 @@ export function formatRelationList(
       return [
         { text: label },
         { text: entry.task.key },
-        columnNameCell(entry.task.column, entry.task),
+        columnNameCell(entry.task.column, entry.task.column_category),
         { text: `${entry.task.title}${archived}` },
         ...(options.trailingCell === undefined ? [] : [options.trailingCell(entry)]),
       ];

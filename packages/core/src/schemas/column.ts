@@ -19,6 +19,10 @@ export const columnCategorySchema = z.enum([
 export const CLOSED_COLUMN_CATEGORIES = ["done", "cancelled"] as const satisfies ReadonlyArray<
   z.infer<typeof columnCategorySchema>
 >;
+/** Categories that hold tasks that are ready to start in `task next` ordering */
+export const READY_COLUMN_CATEGORIES = ["todo", "backlog"] as const satisfies ReadonlyArray<
+  z.infer<typeof columnCategorySchema>
+>;
 export const columnCreateSchema = z.strictObject({
   projectKey: z.string(),
   name: columnNameSchema,

@@ -139,7 +139,7 @@ Descriptions print in full with `project view`. See [Editing conventions](#editi
 
 Each project starts with _Backlog_, _TODO_, _Doing_, _Review_, _Done_ and _Cancelled_ columns.
 
-Every column has a category, which says what its tasks are to Zinn whatever the column is called or where it sits: `backlog`, `todo`, `in_progress`, `review`, `done` or `cancelled`. The default columns take the category of the same meaning. Tasks in `done` and `cancelled` columns are closed: [`task next`](#next-ready-task) skips them, and they no longer hold back tasks that depend on them. Renaming or moving a column keeps its category.
+Every column has a category, which says what its tasks are to Zinn whatever the column is called or where it sits: `backlog`, `todo`, `in_progress`, `review`, `done` or `cancelled`. The default columns take the category of the same meaning. Tasks in `done` and `cancelled` columns are closed: they no longer hold back tasks that depend on them. [`task next`](#next-ready-task) hands out tasks from `todo` columns, then `backlog` columns. Renaming or moving a column keeps its category.
 
 You can list projects or inspect a project's columns with:
 
@@ -281,14 +281,14 @@ Use `--column <name>` to filter by an exact column name, ignoring case, within o
 
 ```sh title="Show the next ready task"
 zinn task next MDR
-zinn task next MDR --column TODO
+zinn task next MDR --column Review
 ```
 
-A task is ready when it is active, not in a **done or cancelled** column, and every task it [depends on](#task-relations) is archived or in a done or cancelled column. Only dependency relations hold a task back. Tasks in a dependency cycle are never ready.
+A task is ready when it is active, in a **todo or backlog** column, and every task it [depends on](#task-relations) is archived or in a done or cancelled column. Only dependency relations hold a task back. Tasks in a dependency cycle are never ready.
 
-Ready tasks are ordered by priority, urgent first and unset last. Equal priorities go by the earliest deadline, with undated tasks last, and then by the oldest task. Deadlines only order tasks.
+Ready tasks in todo columns come before those in backlog columns, so a low-priority todo task comes before an urgent backlog task. Within each, tasks are ordered by priority, urgent first and unset last. Equal priorities go by the earliest deadline, with undated tasks last, and then by the oldest task. Deadlines only order tasks.
 
-An omitted project key uses [defaultProject](/docs/settings), or every project when none is configured. `--all-projects` overrides the default. `--column <name>` limits ready tasks to one column, with the same matching as `task list --column`.
+An omitted project key uses [defaultProject](/docs/settings), or every project when none is configured. `--all-projects` overrides the default. `--column <name>` takes ready tasks from one column instead, with the same matching as `task list --column`. It can name a column of any category but done and cancelled, such as Review.
 
 When no task is ready, the command still exits `0`. With `--json`, it prints the task object, or `null` when no task is ready.
 

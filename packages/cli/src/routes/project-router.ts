@@ -571,6 +571,7 @@ Names are trimmed, cannot be blank or contain line breaks or control characters,
 --category is required and says what the column's tasks are to Zinn, whatever the column is called.
 Category values: ${columnCategoryValues}.
 Tasks in done and cancelled columns are closed: task next skips them, and they no longer block tasks that depend on them.
+task next hands out tasks in todo columns, then backlog columns.
 
 Example: zinn project column create MDR Boardlog --category backlog`,
     },

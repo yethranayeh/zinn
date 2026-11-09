@@ -76,7 +76,7 @@ import {
   presentActivities,
 } from "../presentation/activity-presentation.js";
 import { formatTaskBlame } from "../presentation/task-blame-presentation.js";
-import { columnPlacement, createColumnBoard } from "../presentation/column-presentation.js";
+import { createColumnBoard } from "../presentation/column-presentation.js";
 import {
   formatTaskList,
   formatTaskTimestamps,
@@ -648,7 +648,7 @@ ${deadlineFilterHelp}
 Example: zinn task search 'refinement quota' MDR --limit 5`,
   },
   next: {
-    summary: "Show the highest-priority task that is ready to work on.",
+    summary: "Show the next task that is ready to work on.",
     effects: { domain: "read", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: taskInputs.next,
@@ -675,12 +675,13 @@ Example: zinn task search 'refinement quota' MDR --limit 5`,
     },
     help: `${generateCommandUsage("task next", taskInputs.next)}
 
-Show the highest-priority task that is ready to work on.
-A task is ready when it is active, not in a done or cancelled column, and every task it depends on is archived or in a done or cancelled column.
+Show the next task that is ready to work on.
+A task is ready when it is active, in a todo or backlog column, and every task it depends on is archived or in a done or cancelled column.
 Only dependency relations hold a task back.
-Ready tasks are ordered by priority (urgent first, unset last), then the earliest deadline with undated tasks last, then the oldest task.
+Ready tasks in todo columns come before those in backlog columns, whatever their priority.
+Within each, tasks are ordered by priority (urgent first, unset last), then the earliest deadline with undated tasks last, then the oldest task.
 ${projectScopeDescription}
---column limits ready tasks to one column, matching its exact name and ignoring case.
+--column takes ready tasks from one column instead, matching its exact name and ignoring case. Any column but a done or cancelled one can hold them.
 When no task is ready, the command exits 0. With --json, it prints null.
 Two callers can receive the same task. To take it, move it with task move --from, which fails if another caller moved it first.
 
@@ -688,7 +689,7 @@ Use 'task view' to see the task's description, relations and comments.
 
 Examples:
   zinn task next MDR
-  zinn task next MDR --column TODO`,
+  zinn task next MDR --column Review`,
   },
   view: {
     summary:
@@ -803,7 +804,10 @@ Examples:
         const board = createColumnBoard();
         return formatTaskBlame(blame, {
           relations: presentRelations(taskMatch, board),
-          columnPlacement: columnPlacement(board(taskMatch.project_id), taskMatch.column_id),
+          columnCategory:
+            board(taskMatch.project_id).find(
+              (boardColumn) => boardColumn.id === taskMatch.column_id,
+            )?.category ?? null,
           isArchived: taskMatch.archived_at != null,
           activityIdPrefixes: abbreviateActivityIds(activity.getIds()),
         });

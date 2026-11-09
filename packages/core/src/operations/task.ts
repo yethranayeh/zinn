@@ -546,9 +546,10 @@ export const task = {
     });
   },
   /**
-   * Returns the highest-priority ready task, or `null` when none is ready.
-   * A task is ready when it is active, not in a done or cancelled column,
-   *  and every task it depends on is archived or in a done or cancelled column.
+   * Returns the first ready task, or `null` when none is ready.
+   * A task is ready when it is active, in a todo or backlog column (or the column `columnName`
+   *  names, unless it is done or cancelled), and every task it depends on is archived or in a
+   *  done or cancelled column. Todo comes before backlog, then priority, deadline and creation.
    */
   next: (input: TaskNextInput = {}): TaskWithKey | null => {
     const props = validateTaskInput(taskNextSchema, input);

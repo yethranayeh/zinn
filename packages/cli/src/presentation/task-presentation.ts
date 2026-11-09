@@ -96,7 +96,7 @@ export function formatTaskList(
       return [
         { text: `${options.prefix ?? ""}${presentedTask.key}` },
         ...statusCells,
-        columnNameCell(presentedTask.column, presentedTask),
+        columnNameCell(presentedTask.column, presentedTask.column_category),
         taskPriorityCell(presentedTask.priority, options.showsFullPriority ?? false),
         { text: `${presentedTask.title}${deadline}${labels}` },
       ];

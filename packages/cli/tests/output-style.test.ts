@@ -93,8 +93,6 @@ test.serial("task rows color each attached label name by its label color, with d
     await runZinn(["label", "create", "cli", "--color", "blue"], dir);
     await runZinn(["label", "create", "docs", "--color", "cyan"], dir);
     await runZinn(["project", "create", "TAGS", "--name", "Task labels"], dir);
-    // Done stays the last column, which is the one colored green.
-    await runZinn(["project", "column", "delete", "TAGS", "Cancelled", "--yes"], dir);
     await runZinn(
       ["task", "create", "TAGS", "--title", "Several labels", "--priority", "urgent", "--label", "docs", "--label", "bug", "--label", "cli"],
       dir,
@@ -268,8 +266,6 @@ test("project view bolds its section headings, dims the separators and colors co
   await withIsolatedZinnDir(async (dir) => {
     const run = (env: Record<string, string>, ...args: Array<string>) => runZinn(args, dir, env);
     await run({}, "project", "create", "MDR", "--name", "Macrodata", "--description", "First line.\nSecond line.");
-    // Done stays the last column, which is the one colored green.
-    await run({}, "project", "column", "delete", "MDR", "Cancelled", "--yes");
     // A name wider than "Archived" gives project view and column list the same name width.
     await run({}, "project", "column", "edit", "MDR", "Doing", "--name", "In Progress");
     await run({}, "task", "create", "MDR", "--title", "Waiting");
@@ -297,9 +293,10 @@ test("project view bolds its section headings, dims the separators and colors co
         bold("Columns:"),
         row("Backlog", "backlog", 1, 90),
         row("TODO", "todo", 0),
-        row("In Progress", "in_progress", 0),
-        row("Review", "review", 0),
+        row("In Progress", "in_progress", 0, 34),
+        row("Review", "review", 0, 33),
         row("Done", "done", 1, 32),
+        row("Cancelled", "cancelled", 0, 90),
         row("Archived", "", 1),
         "",
       ].join("\n"),
@@ -322,6 +319,7 @@ test("project view bolds its section headings, dims the separators and colors co
         "In Progress | in_progress | 0",
         "Review      | review      | 0",
         "Done        | done        | 1",
+        "Cancelled   | cancelled   | 0",
         "Archived    |             | 1",
         "",
       ].join("\n"),
@@ -409,8 +407,6 @@ test.serial("task text output names labels without color words when color is off
 test.serial("task move, list and view color workflow column names only in a terminal, while JSON stays raw", async () => {
   await withIsolatedZinnDir(async (testDir) => {
     await runZinn(["project", "create", "COLOR", "--name", "Column colors"], testDir);
-    // Done stays the last column, which is the one colored green.
-    await runZinn(["project", "column", "delete", "COLOR", "Cancelled", "--yes"], testDir);
     await runZinn(["task", "create", "COLOR", "--title", "waiting"], testDir);
     await runZinn(["task", "create", "COLOR", "--title", "finished"], testDir);
 

@@ -5,7 +5,7 @@ export type { TaskArchiveFilter } from "../schemas/task.js";
 
 import { getDb } from "../db.js";
 import { taskPrioritySchema } from "../schemas/task.js";
-import { CLOSED_COLUMN_CATEGORIES } from "../schemas/column.js";
+import { CLOSED_COLUMN_CATEGORIES, READY_COLUMN_CATEGORIES } from "../schemas/column.js";
 import { DB_TABLE } from "../constant.js";
 
 function getArchiveCondition(filter: TaskArchiveFilter) {
@@ -289,6 +289,11 @@ function hasColumnCategory() {
   );
 }
 
+/** Quotes fixed vocabulary values, never user input, as an SQL list such as `'done', 'cancelled'`. */
+function toSqlTextList(values: ReadonlyArray<string>) {
+  return values.map((value) => `'${value}'`).join(", ");
+}
+
 /**
  * SQL condition: the task under `alias` is open work, meaning active and not in a closed column.
  * Older schemas without categories count the last column of the task's own board as closed.
@@ -296,12 +301,11 @@ function hasColumnCategory() {
  */
 function getOpenWorkCondition(alias: string, hasCategories: boolean) {
   if (hasCategories) {
-    const closedCategories = CLOSED_COLUMN_CATEGORIES.map((category) => `'${category}'`).join(", ");
     return `${alias}.archived_at IS NULL
       AND ${alias}.column_id NOT IN (
         SELECT closed_column.id
         FROM ${DB_TABLE.projectColumn} AS closed_column
-        WHERE closed_column.category IN (${closedCategories})
+        WHERE closed_column.category IN (${toSqlTextList(CLOSED_COLUMN_CATEGORIES)})
       )`;
   }
 
@@ -350,9 +354,17 @@ function hasDeadlineColumn() {
   );
 }
 
+// Ready categories in their preferred order, any other category after them
+const READY_CATEGORY_RANK_SQL = `CASE task_column.category
+        ${READY_COLUMN_CATEGORIES.map((category, rank) => `WHEN '${category}' THEN ${rank}`).join("\n        ")}
+        ELSE ${READY_COLUMN_CATEGORIES.length}
+      END`;
+
 /**
- * Returns the first ready task: open work with no open dependency. Orders by priority, then the
+ * Returns the first ready task: open work with no open dependency, in a todo or backlog column
+ *  unless `columnIds` names the columns. Orders todo before backlog, then by priority, then the
  *  earliest deadline with undated tasks last, then creation.
+ * Older schemas without categories have no todo or backlog, so every open task is ready there.
  */
 export function getNext(input: TaskNextQuery) {
   const hasCategories = hasColumnCategory();
@@ -361,6 +373,10 @@ export function getNext(input: TaskNextQuery) {
     `NOT ${getOpenDependencyCondition("task", hasCategories)}`,
   ];
   const bindings: Record<string, string> = {};
+
+  if (hasCategories && input.columnIds === undefined) {
+    predicates.push(`task_column.category IN (${toSqlTextList(READY_COLUMN_CATEGORIES)})`);
+  }
 
   if (input.projectId !== undefined) {
     predicates.push("task.project_id = $project_id");
@@ -372,6 +388,7 @@ export function getNext(input: TaskNextQuery) {
     bindings.$columnIds = JSON.stringify(input.columnIds);
   }
 
+  const categoryOrder = hasCategories ? `${READY_CATEGORY_RANK_SQL},\n      ` : "";
   const deadlineOrder = hasDeadlineColumn()
     ? `
       (task.due_at IS NULL) ASC,
@@ -383,8 +400,10 @@ export function getNext(input: TaskNextQuery) {
     FROM ${DB_TABLE.task}
     INNER JOIN ${DB_TABLE.project}
       ON project.id = task.project_id
+    INNER JOIN ${DB_TABLE.projectColumn} AS task_column
+      ON task_column.id = task.column_id
     WHERE ${predicates.join("\n      AND ")}
-    ORDER BY ${PRIORITY_RANK_SQL},${deadlineOrder}
+    ORDER BY ${categoryOrder}${PRIORITY_RANK_SQL},${deadlineOrder}
       task.created_at ASC,
       project.key ASC,
       task.number ASC

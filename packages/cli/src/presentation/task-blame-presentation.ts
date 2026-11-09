@@ -14,7 +14,7 @@ export function formatTaskBlame(
   blame: PresentedTaskBlame,
   options: {
     relations: Array<PresentedRelation>;
-    columnPlacement: { is_first: boolean; is_last: boolean };
+    columnCategory: string | null;
     isArchived: boolean;
     /** Short forms of activity IDs, which `activity view` accepts as well as full IDs. */
     activityIdPrefixes: Map<string, string>;
@@ -43,7 +43,7 @@ export function formatTaskBlame(
         field("Title", fields.title.value, fields.title.attribution),
         field(
           "Column",
-          formatCell(columnNameCell(fields.column.value.name, options.columnPlacement)),
+          formatCell(columnNameCell(fields.column.value.name, options.columnCategory)),
           fields.column.attribution,
         ),
         field(

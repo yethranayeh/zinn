@@ -104,43 +104,51 @@ test("projects with no columns support reads, maintenance, recovery and deletion
   });
 });
 
-test("column colors follow board placement, and column lists and task rows agree", async () => {
+test("column colors follow the category through renames, reorders and category changes, and column lists and task rows agree", async () => {
   await withIsolatedZinnDir(async (dir) => {
     const run = (...args: Array<string>) => runZinn(args, dir);
     const colored = (...args: Array<string>) => runZinn(args, dir, { FORCE_COLOR: "1" });
     const GRAY = "\x1b[90m";
+    const BLUE = "\x1b[34m";
+    const YELLOW = "\x1b[33m";
     const GREEN = "\x1b[32m";
+    const colorCodes = [GRAY, BLUE, YELLOW, GREEN];
 
-    await run("project", "create", "POS");
-    await run("task", "create", "POS", "--title", "Triaged task");
-    await run("task", "create", "POS", "--title", "Verified task");
-    // A renamed first column keeps its color, and a column appended after Done takes over the green.
-    await run("project", "column", "edit", "POS", "Backlog", "--name", "Triaged");
-    await run("project", "column", "create", "--category", "todo", "POS", "Verified");
-    await run("task", "move", "POS-2", "Verified");
+    await run("project", "create", "CAT");
+    await run("task", "create", "CAT", "--title", "Triaged task");
+    await run("task", "create", "CAT", "--title", "Shipped task");
+    await run("task", "create", "CAT", "--title", "Verified task");
+    // A renamed column keeps its color, and so does a column moved to the front of the board.
+    await run("project", "column", "edit", "CAT", "Backlog", "--name", "Triaged");
+    await run("project", "column", "edit", "CAT", "Done", "--name", "Shipped");
+    await run("project", "column", "order", "CAT", "Shipped", "first");
+    await run("project", "column", "create", "--category", "todo", "CAT", "Verified");
+    await run("task", "move", "CAT-2", "Shipped");
+    await run("task", "move", "CAT-3", "Verified");
 
-    const columnList = (await colored("project", "column", "list", "POS")).stdout;
-    const taskRows = (await colored("task", "list", "POS")).stdout;
+    const columnList = (await colored("project", "column", "list", "CAT")).stdout;
+    const taskRows = (await colored("task", "list", "CAT")).stdout;
     for (const output of [columnList, taskRows]) {
       expect(output).toContain(`${GRAY}Triaged`);
-      expect(output).toContain(`${GREEN}Verified`);
-      expect(output).not.toContain(`${GREEN}Done`);
+      expect(output).toContain(`${GREEN}Shipped`);
+      // A todo column is uncolored, even as the board's last column.
+      for (const colorCode of colorCodes) {
+        expect(output).not.toContain(`${colorCode}Verified`);
+      }
     }
-    expect(columnList).not.toContain(`${GRAY}Doing`);
-    expect(columnList).not.toContain(`${GREEN}Doing`);
+    expect(columnList).toContain(`${BLUE}Doing`);
+    expect(columnList).toContain(`${YELLOW}Review`);
+    expect(columnList).toContain(`${GRAY}Cancelled`);
 
-    // A one-column board colors its only column as first, whatever its name.
-    await run("project", "create", "ONE");
-    for (const name of ["Backlog", "TODO", "Review", "Done", "Cancelled"]) {
-      await run("project", "column", "delete", "ONE", name, "--yes");
-    }
-    await run("task", "create", "ONE", "--title", "Only task");
+    // Changing a category changes the color.
+    expect((await run("project", "column", "edit", "CAT", "Verified", "--category", "review", "--yes")).code).toBe(0);
     for (const output of [
-      (await colored("project", "column", "list", "ONE")).stdout,
-      (await colored("task", "list", "ONE")).stdout,
+      (await colored("project", "column", "list", "CAT")).stdout,
+      (await colored("task", "list", "CAT")).stdout,
+      (await colored("task", "view", "CAT-3")).stdout,
+      (await colored("task", "blame", "CAT-3")).stdout,
     ]) {
-      expect(output).toContain(`${GRAY}Doing`);
-      expect(output).not.toContain(GREEN);
+      expect(output).toContain(`${YELLOW}Verified`);
     }
   });
 });

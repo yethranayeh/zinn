@@ -109,7 +109,7 @@ test("task next reads closed columns from their category, not their name or posi
     const blocked = createTask(other.id, "Blocked", { priority: "high" });
     dependOn(blocked.key, shipped.key);
 
-    expect(task.next()?.key).toBe(blocked.key);
+    expect(task.next({ projectKey: other.key })?.key).toBe(blocked.key);
     expect(task.next({ projectKey: app.key })?.key).toBe(finished.key);
   });
 });
@@ -164,6 +164,65 @@ test("task next orders by priority, then deadline, then creation", () => {
 
     const urgent = createTask(app.id, "Urgent", { priority: "urgent", due_at: now + DAY_MS });
     expect(task.next()?.key).toBe(urgent.key);
+  });
+});
+
+test("task next hands out todo and backlog tasks only, unless a column is named", () => {
+  withTestStore(() => {
+    const app = project.create({ key: "APP" }, actor);
+    const doing = createTask(app.id, "Doing", { priority: "urgent", columnName: "Doing" });
+    const review = createTask(app.id, "Review", { priority: "urgent", columnName: "Review" });
+
+    expect(task.next()).toBeNull();
+    expect(task.next({ columnName: "Doing" })?.key).toBe(doing.key);
+    expect(task.next({ columnName: "Review" })?.key).toBe(review.key);
+
+    const backlog = createTask(app.id, "Backlog", { priority: "low" });
+    expect(task.next()?.key).toBe(backlog.key);
+  });
+});
+
+test("task next hands out todo tasks before backlog tasks, whatever their priority", () => {
+  withTestStore(() => {
+    const app = project.create({ key: "APP" }, actor);
+    const urgentBacklog = createTask(app.id, "Urgent backlog", { priority: "urgent" });
+    const lowTodo = createTask(app.id, "Low todo", { priority: "low", columnName: "TODO" });
+    const blocker = createTask(app.id, "Blocker", { columnName: "Doing" });
+
+    expect(task.next()?.key).toBe(lowTodo.key);
+
+    // Backlog stays eligible when no todo task is ready.
+    dependOn(lowTodo.key, blocker.key);
+    expect(task.next()?.key).toBe(urgentBacklog.key);
+  });
+});
+
+test("task next reads ready columns from their category, not their name or position", () => {
+  withTestStore(() => {
+    const app = project.create({ key: "APP" }, actor);
+    column.edit({ projectKey: app.key, columnName: "TODO", name: "Committed" }, actor);
+    column.order({ projectKey: app.key, columnName: "Committed", direction: "last" }, actor);
+    column.edit({ projectKey: app.key, columnName: "Doing", category: "backlog" }, actor);
+    column.edit({ projectKey: app.key, columnName: "Backlog", category: "in_progress" }, actor);
+    createTask(app.id, "Started", { priority: "urgent" });
+    const parked = createTask(app.id, "Parked", { priority: "high", columnName: "Doing" });
+    const committed = createTask(app.id, "Committed", { priority: "low", columnName: "Committed" });
+
+    expect(task.next()?.key).toBe(committed.key);
+
+    task.archive(committed.key, actor);
+    expect(task.next()?.key).toBe(parked.key);
+  });
+});
+
+test("task next hands out tasks from every column but the last on an older schema without categories", () => {
+  withTestStore(() => {
+    const app = project.create({ key: "APP" }, actor);
+    createTask(app.id, "Backlog", { priority: "low" });
+    const review = createTask(app.id, "Review", { priority: "urgent", columnName: "Review" });
+    getDb().exec("ALTER TABLE project_column DROP COLUMN category");
+
+    expect(task.next()?.key).toBe(review.key);
   });
 });
 

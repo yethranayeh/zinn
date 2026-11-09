@@ -53,14 +53,12 @@ test("relation list aligns and colors connected columns, and marks archived task
     const run = (...args: string[]) => runZinn(args, dir);
     await run("project", "create", "APP");
     await run("project", "create", "LONGER");
-    // Done stays the last column, which is the one colored green.
-    await run("project", "column", "delete", "LONGER", "Cancelled", "--yes");
     await run("task", "create", "APP", "--title", "Copy");
     await run("task", "create", "APP", "--title", "Plan");
     await run("task", "create", "APP", "--title", "Review");
     await run("task", "create", "LONGER", "--title", "Original");
     await run("task", "move", "LONGER-1", "Done");
-    expect((await run("project", "column", "create", "--category", "todo", "APP", "Verification")).code).toBe(0);
+    expect((await run("project", "column", "create", "--category", "review", "APP", "Verification")).code).toBe(0);
     expect((await run("task", "move", "APP-3", "Verification")).code).toBe(0);
     await run("task", "archive", "APP-2");
     await run("task", "relation", "create", "APP-1", "LONGER-1", "--type", "dependency");
@@ -77,7 +75,7 @@ test("relation list aligns and colors connected columns, and marks archived task
     const colored = (await runZinn(["task", "relation", "list", "APP-1"], dir, { FORCE_COLOR: "1" })).stdout;
     expect(colored).toContain("\x1b[32mDone        \x1b[39m");
     expect(colored).toContain("\x1b[90mBacklog     \x1b[39m");
-    expect(colored).toContain(`${DIM_SEPARATOR}\x1b[32mVerification\x1b[39m${DIM_SEPARATOR}`);
+    expect(colored).toContain(`${DIM_SEPARATOR}\x1b[33mVerification\x1b[39m${DIM_SEPARATOR}`);
     expect((await runZinn(["task", "relation", "list", "APP-1"], dir, { NO_COLOR: "1" })).stdout).toBe(listed);
     const json = JSON.parse((await run("task", "relation", "list", "APP-1", "--json")).stdout);
     expect(json.find((entry: { task: { key: string } }) => entry.task.key === "LONGER-1").task.column).toBe("Done");

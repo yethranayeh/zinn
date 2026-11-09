@@ -1,4 +1,5 @@
 import type { ColumnCategory } from "@zinn-dev/core";
+import type { StyleFormat } from "./color.js";
 import type { RowCell } from "./row-layout.js";
 import type { PresentedColumn, PresentedColumnTaskCount } from "../result-schemas.js";
 
@@ -11,8 +12,6 @@ type ColumnRow = {
   category?: string | null;
   project?: string;
   taskCount?: number;
-  is_first?: boolean;
-  is_last?: boolean;
 };
 
 /** Archived tasks are off the board, so they share one row below the columns instead of a column of their own. */
@@ -70,7 +69,7 @@ export function presentColumn(columnMatch: {
   };
 }
 
-/** Shapes one board's column rows, in order, with the placement each name is colored by. */
+/** Shapes one board's column rows in order.*/
 export function presentColumnTaskCounts(
   taskCounts: ReturnType<typeof column.getTaskCountsByProjectKey>,
 ): Array<PresentedColumnTaskCount> {
@@ -86,20 +85,22 @@ export function presentColumnTaskCounts(
   }));
 }
 
-export function columnNameCell(
-  columnName: string,
-  placement: Pick<ColumnRow, "is_first" | "is_last"> = {},
-): RowCell {
-  // A board's first column is gray and its last is green. A one-column board is both, and colors as first.
-  if (placement.is_first) {
-    return { text: columnName, style: "gray" };
-  }
+/** The color of each category's column names */
+const CATEGORY_STYLES: Partial<Record<ColumnCategory, StyleFormat>> = {
+  backlog: "gray",
+  in_progress: "blue",
+  review: "yellow",
+  done: "green",
+  cancelled: "gray",
+};
 
-  if (placement.is_last) {
-    return { text: columnName, style: "green" };
-  }
-
-  return { text: columnName };
+/**
+ * Colors a column name by its category.
+ * Names without a category, as on an older database, stay uncolored
+ */
+export function columnNameCell(columnName: string, category?: string | null): RowCell {
+  const style = category == null ? undefined : CATEGORY_STYLES[category as ColumnCategory];
+  return style === undefined ? { text: columnName } : { text: columnName, style };
 }
 
 /** The archived row is left out when there are no archived tasks. */
@@ -124,7 +125,7 @@ export function formatColumnList(
 
     return [
       ...projectCells,
-      columnNameCell(presentedColumn.name, presentedColumn),
+      columnNameCell(presentedColumn.name, presentedColumn.category),
       ...categoryCells,
       ...taskCountCells,
     ];
