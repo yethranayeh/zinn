@@ -321,6 +321,7 @@ export const reindexSchema = z.strictObject({ databasePath: z.string(), taskCoun
 export const resultSchemas = {
   Task: taskSchema,
   TaskList: z.array(taskSchema),
+  NextTask: taskSchema.nullable(),
   TaskDetail: taskDetailSchema,
   TaskBlame: taskBlameSchema,
   TaskDetailHistory: taskDetailHistorySchema,

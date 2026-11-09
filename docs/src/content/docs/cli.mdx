@@ -15,6 +15,7 @@ Use this page for command behavior, shared input rules, and practical examples. 
   - [Changing tasks in bulk](#changing-tasks-in-bulk)
 - [Projects and columns](#start-a-project)
 - [Tasks](#create-and-read-tasks)
+  - [Next ready task](#next-ready-task)
   - [Task blame](#task-blame)
   - [Search tasks](#search-tasks)
   - [Edit tasks](#edit-tasks)
@@ -266,6 +267,25 @@ If a project is deleted and recreated with the same key, `task view --history` s
 Repeat `--label <name>` to require every specified label. Matching ignores case.
 
 Use `--column <name>` to filter by an exact column name, ignoring case, within one project or across projects. Column, label, and archive filters apply together. No matches is a successful empty result (`[]` with `--json`).
+
+## Next ready task
+
+`task next` shows the one task to work on next:
+
+```sh title="Show the next ready task"
+zinn task next MDR
+zinn task next MDR --column TODO
+```
+
+A task is ready when it is active, outside the **last column** of its board, and every task it [depends on](#task-relations) is archived or in the last column of its own board. Only dependency relations hold a task back. Tasks in a dependency cycle are never ready.
+
+Ready tasks are ordered by priority, urgent first and unset last. Equal priorities go by the earliest deadline, with undated tasks last, and then by the oldest task. Deadlines only order tasks.
+
+An omitted project key uses [defaultProject](/docs/settings), or every project when none is configured. `--all-projects` overrides the default. `--column <name>` limits ready tasks to one column, with the same matching as `task list --column`.
+
+When no task is ready, the command still exits `0`. With `--json`, it prints the task object, or `null` when no task is ready.
+
+Two callers can receive the same task. To take it, move it with [`task move --from`](#move-and-order-tasks), which fails with a `conflict` error if another caller moved it first. Then ask `task next` again.
 
 ## Task blame
 

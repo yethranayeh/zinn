@@ -3,6 +3,7 @@ import type {
   TaskCreateInput,
   TaskEditInput,
   TaskListInput,
+  TaskNextInput,
   TaskPageInput,
   TaskSearchInput,
   TaskOrderManyInput,
@@ -32,6 +33,7 @@ import {
   taskCreateSchema,
   taskEditSchema,
   taskListSchema,
+  taskNextSchema,
   taskSearchSchema,
   taskOrderManySchema,
   taskDeleteManySchema,
@@ -114,15 +116,21 @@ function filterTasksByColumn<T extends Pick<Task, "column_id">>(
   return tasks.filter((taskMatch) => columnIds.has(taskMatch.column_id));
 }
 
-function resolveTaskListSelection(props: TaskListInput) {
-  const taskProject = props.projectKey == null ? null : dbProject.getByKey(props.projectKey);
+function requireProject(projectKey: string) {
+  const taskProject = dbProject.getByKey(projectKey);
 
-  if (props.projectKey != null && taskProject == null) {
-    throw new CoreError(`Project with key "${props.projectKey}" does not exist`, "missing", {
+  if (taskProject == null) {
+    throw new CoreError(`Project with key "${projectKey}" does not exist`, "missing", {
       entity: "project",
-      key: props.projectKey,
+      key: projectKey,
     });
   }
+
+  return taskProject;
+}
+
+function resolveTaskListSelection(props: TaskListInput) {
+  const taskProject = props.projectKey == null ? null : requireProject(props.projectKey);
 
   const labelIds =
     props.labelNames === undefined || props.labelNames.length === 0
@@ -535,6 +543,30 @@ export const task = {
         hasMore,
         nextCursor: encodeTaskCursor(props.sort, selectedRows.at(-1)!.position),
       };
+    });
+  },
+  /**
+   * Returns the highest-priority ready task, or `null` when none is ready.
+   * A task is ready when it is active, outside its board's last column,
+   *  and every task it depends on is archived or in that task's last column.
+   */
+  next: (input: TaskNextInput = {}): TaskWithKey | null => {
+    const props = validateTaskInput(taskNextSchema, input);
+
+    return readTransaction(() => {
+      const taskProject =
+        props.projectKey === undefined ? undefined : requireProject(props.projectKey);
+      const taskMatch = dbTask.getNext({
+        projectId: taskProject?.id,
+        columnIds: getTaskListColumnIds(props.columnName, taskProject?.id),
+      });
+
+      if (taskMatch == null) {
+        return null;
+      }
+
+      const { project_key, ...row } = taskMatch;
+      return attachTaskKey(row, project_key);
     });
   },
   getByKey: getTaskByKey,

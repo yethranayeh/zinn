@@ -52,6 +52,7 @@ const commandWords: Record<string, CommandWords> = {
   "task create": { words: ["SHOP"], required: 1, repeatableFlags: ["label", "depends-on", "related"] },
   "task list": { words: ["SHOP"], required: 0, repeatableFlags: ["label"] },
   "task search": { words: ["refine", "SHOP"], required: 1, repeatableFlags: ["label"] },
+  "task next": { words: ["SHOP"], required: 0 },
   "task view": { words: ["SHOP-1"], required: 1 },
   "task blame": { words: ["SHOP-1"], required: 1 },
   "task edit": { words: ["SHOP-1"], required: 1, repeatableFlags: ["add-label", "remove-label"] },

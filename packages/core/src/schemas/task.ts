@@ -153,6 +153,11 @@ export const taskListSchema = z
   })
   .superRefine(validateDeadlineBounds);
 
+export const taskNextSchema = z.strictObject({
+  projectKey: z.string().optional(),
+  columnName: columnNameSchema.optional(),
+});
+
 export const taskPageSchema = taskListSchema.safeExtend({
   startingAfter: z.string().optional(),
 });
@@ -178,6 +183,7 @@ export type TaskCreateInput = z.input<typeof taskCreateSchema>;
 export type TaskEditInput = z.infer<typeof taskEditSchema>;
 export type TaskListInput = z.infer<typeof taskListSchema>;
 export type TaskPageInput = z.input<typeof taskPageSchema>;
+export type TaskNextInput = z.infer<typeof taskNextSchema>;
 export type TaskSearchInput = z.infer<typeof taskSearchSchema>;
 
 export function validateTaskInput<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {

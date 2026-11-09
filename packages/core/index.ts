@@ -10,6 +10,7 @@ export type {
   TaskCreateInput,
   TaskEditInput,
   TaskListInput,
+  TaskNextInput,
   TaskPageInput,
   TaskSearchInput,
   TaskOrderManyInput,

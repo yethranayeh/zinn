@@ -246,6 +246,20 @@ const taskInputs = {
       "A query that is a task key ignores defaultProject unless a project was typed. --all-projects still excludes a typed project.",
     ],
   },
+  next: {
+    options: {
+      "all-projects": { type: "boolean" },
+      column: { type: "string", value: { kind: "column-name", name: "name" } },
+    },
+    forms: [
+      {
+        id: "default",
+        positionals: [{ name: "project-key", min: 0, max: 1, value: { kind: "project-key" } }],
+      },
+    ],
+    constraints: [projectScopeConstraint],
+    notes: [projectScopeDescription],
+  },
   view: {
     options: { history: { type: "boolean" } },
     forms: [
@@ -632,6 +646,49 @@ Repeat --label to require every specified label, ignoring case.
 ${deadlineFilterHelp}
 
 Example: zinn task search 'refinement quota' MDR --limit 5`,
+  },
+  next: {
+    summary: "Show the highest-priority task that is ready to work on.",
+    effects: { domain: "read", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: taskInputs.next,
+    results: [jsonResult("NextTask")],
+    run: (args) => {
+      const { values, positionals, tokens } = parseArgs({
+        args,
+        options: taskInputs.next.options,
+        allowPositionals: true,
+        strict: true,
+        tokens: true,
+      });
+
+      validateUniqueOptions(tokens, taskInputs.next.options);
+      validatePositionals(positionals, taskInputs.next.forms[0]);
+
+      const projectKey = resolveProjectKey(positionals[0], { allProjects: values["all-projects"] });
+      const nextTask = task.next({ projectKey, columnName: values.column });
+      const board = createColumnBoard();
+
+      output(nextTask === null ? null : presentTask(nextTask, board), (presentedTask) =>
+        presentedTask === null ? "No task is ready." : formatTaskList([presentedTask]),
+      );
+    },
+    help: `${generateCommandUsage("task next", taskInputs.next)}
+
+Show the highest-priority task that is ready to work on.
+A task is ready when it is active, not in the last column of its board, and every task it depends on is archived or in the last column of its own board.
+Only dependency relations hold a task back.
+Ready tasks are ordered by priority (urgent first, unset last), then the earliest deadline with undated tasks last, then the oldest task.
+${projectScopeDescription}
+--column limits ready tasks to one column, matching its exact name and ignoring case.
+When no task is ready, the command exits 0. With --json, it prints null.
+Two callers can receive the same task. To take it, move it with task move --from, which fails if another caller moved it first.
+
+Use 'task view' to see the task's description, relations and comments.
+
+Examples:
+  zinn task next MDR
+  zinn task next MDR --column TODO`,
   },
   view: {
     summary:

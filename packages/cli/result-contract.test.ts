@@ -81,6 +81,10 @@ function readEntityRows(directory: string) {
 }
 
 function expectEntityIds(schema: ResultSchemaName, value: any, rows: ReturnType<typeof readEntityRows>) {
+  if (value === null) {
+    return;
+  }
+
   if (Array.isArray(value)) {
     for (const item of value) {
       expectEntityIds(schema, item, rows);
@@ -102,6 +106,7 @@ function expectEntityIds(schema: ResultSchemaName, value: any, rows: ReturnType<
   switch (schema) {
     case "Task":
     case "TaskList":
+    case "NextTask":
     case "TaskDetail":
     case "TaskDetailHistory":
     case "TaskChange":
@@ -242,6 +247,10 @@ const fixtures: Record<string, Fixture[]> = {
     { schema: "TaskList", args: ["APP", "--all"], prepare: async (dir) => { await success(dir, ["task", "archive", "APP-1"]); } },
   ],
   "task search": [{ schema: "TaskList", args: ["Alpha", "APP"] }, { schema: "TaskList", args: ["Unmatched"] }],
+  "task next": [
+    { schema: "NextTask", args: ["APP"], check: (value) => expect(value.key).toBe("APP-2") },
+    { schema: "NextTask", args: ["APP", "--column", "Done"], check: (value) => expect(value).toBeNull() },
+  ],
   "task view": [
     { schema: "TaskDetail", args: ["APP-1"], check: (value) => expect(Object.hasOwn(value, "activity")).toBe(false) },
     { schema: "TaskDetailHistory", args: ["APP-1", "--history"], check: (value) => expect(value.activity.length).toBeGreaterThan(0) },

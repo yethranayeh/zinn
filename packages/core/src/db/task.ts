@@ -4,6 +4,7 @@ import type { TaskArchiveFilter, TaskListInput } from "../schemas/task.js";
 export type { TaskArchiveFilter } from "../schemas/task.js";
 
 import { getDb } from "../db.js";
+import { taskPrioritySchema } from "../schemas/task.js";
 import { DB_TABLE } from "../constant.js";
 
 function getArchiveCondition(filter: TaskArchiveFilter) {
@@ -271,6 +272,95 @@ export function getList(input: TaskListQuery) {
     ORDER BY ${getListOrder(input.sort, "current")}
     ${limit}`)
     .all(bindings);
+}
+
+/**
+ * SQL condition: the task under `alias` is open work, meaning active and not in the last column
+ *  of its own board.
+ * `ORDER BY ... LIMIT 1` still finds a column when every column_order is NULL.
+ */
+function getOpenWorkCondition(alias: string) {
+  return `${alias}.archived_at IS NULL
+      AND ${alias}.column_id IS NOT (
+        SELECT last_column.id
+        FROM ${DB_TABLE.projectColumn} AS last_column
+        WHERE last_column.project_id = ${alias}.project_id
+        ORDER BY last_column.column_order DESC
+        LIMIT 1
+      )`;
+}
+
+/** SQL condition: the task under `alias` depends on at least one task that is open work. */
+function getOpenDependencyCondition(alias: string) {
+  return `EXISTS (
+      SELECT 1
+      FROM ${DB_TABLE.task_relations} AS dependency
+      INNER JOIN ${DB_TABLE.task} AS dependency_target
+        ON dependency_target.id = dependency.target_task_id
+      WHERE dependency.source_task_id = ${alias}.id
+        AND dependency.relation_type = 'dependency'
+        AND ${getOpenWorkCondition("dependency_target")}
+    )`;
+}
+
+// Highest priority first, unset last
+const PRIORITY_RANK_SQL = `CASE task.priority
+        ${[...taskPrioritySchema.options]
+          .reverse()
+          .map((priority, rank) => `WHEN '${priority}' THEN ${rank}`)
+          .join("\n        ")}
+        ELSE ${taskPrioritySchema.options.length}
+      END`;
+
+export type TaskNextQuery = { projectId?: string; columnIds?: Array<string> };
+
+// Older schemas, still readable read-only, have no `due_at` column and so no deadlines to order by.
+function hasDeadlineColumn() {
+  return (
+    getDb()
+      .query<{ found: number }, []>(
+        `SELECT 1 AS found FROM pragma_table_info('${DB_TABLE.task}') WHERE name = 'due_at'`,
+      )
+      .get() != null
+  );
+}
+
+/**
+ * Returns the first ready task: open work with no open dependency. Orders by priority, then the
+ *  earliest deadline with undated tasks last, then creation.
+ */
+export function getNext(input: TaskNextQuery) {
+  const predicates = [getOpenWorkCondition("task"), `NOT ${getOpenDependencyCondition("task")}`];
+  const bindings: Record<string, string> = {};
+
+  if (input.projectId !== undefined) {
+    predicates.push("task.project_id = $project_id");
+    bindings.$project_id = input.projectId;
+  }
+
+  if (input.columnIds !== undefined) {
+    predicates.push("task.column_id IN (SELECT value FROM json_each($columnIds))");
+    bindings.$columnIds = JSON.stringify(input.columnIds);
+  }
+
+  const deadlineOrder = hasDeadlineColumn()
+    ? `
+      (task.due_at IS NULL) ASC,
+      task.due_at ASC,`
+    : "";
+
+  return getDb()
+    .query<TaskListRow, Record<string, string>>(`SELECT task.*, project.key AS project_key
+    FROM ${DB_TABLE.task}
+    INNER JOIN ${DB_TABLE.project}
+      ON project.id = task.project_id
+    WHERE ${predicates.join("\n      AND ")}
+    ORDER BY ${PRIORITY_RANK_SQL},${deadlineOrder}
+      task.created_at ASC,
+      project.key ASC,
+      task.number ASC
+    LIMIT 1`)
+    .get(bindings);
 }
 
 /** Returns the existing tasks, active and archived, with any of the given IDs. */
