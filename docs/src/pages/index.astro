@@ -188,17 +188,20 @@ const workflowCommands = [
 				view-timeline-name: --workflow-sequence;
 			}
 
+			/* Longhands: the animation shorthand cannot carry animation-timeline, and the build minifier folds the two into one invalid declaration. */
 			.workflow-sequence [data-terminal-command] {
 				--workflow-range: cover 0% cover 0%;
 				color: color-mix(in srgb, var(--color-bone) 70%, var(--color-soot));
-				animation: workflow-command-emphasis linear;
+				animation-name: workflow-command-emphasis;
+				animation-timing-function: linear;
 				animation-timeline: --workflow-sequence;
 				animation-range: var(--workflow-range);
 			}
 
 			.workflow-sequence [data-terminal-prompt] {
 				opacity: 0;
-				animation: workflow-command-prompt linear;
+				animation-name: workflow-command-prompt;
+				animation-timing-function: linear;
 				animation-timeline: --workflow-sequence;
 				animation-range: var(--workflow-range);
 			}
