@@ -129,7 +129,7 @@ function buildTaskListFilters(input: TaskListQuery) {
     predicates.push(archiveCondition);
   }
 
-  const stateCondition = getStateCondition(input.state ?? "open");
+  const stateCondition = input.state === undefined ? null : getStateCondition(input.state);
 
   if (stateCondition != null) {
     predicates.push(stateCondition);
@@ -279,17 +279,6 @@ export function getList(input: TaskListQuery) {
     ORDER BY ${getListOrder(input.sort, "current")}
     ${limit}`)
     .all(bindings);
-}
-
-/** Counts the tasks that match the filters, ignoring the limit. */
-export function countList(input: Omit<TaskListQuery, "limit" | "sort">) {
-  const { where, bindings } = buildTaskListFilters(input);
-
-  return getDb()
-    .query<{ count: number }, Record<string, string | number>>(
-      `SELECT COUNT(*) AS count ${TASK_LIST_FROM} ${where}`,
-    )
-    .get(bindings)!.count;
 }
 
 /**

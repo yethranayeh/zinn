@@ -108,18 +108,18 @@ test.serial("task rows color each attached label name by its label color, with d
       "",
     ].join("\n");
 
-    expect((await runZinnInTerminal(["task", "list", "TAGS", "--state", "all"], dir)).output).toBe(coloredRows);
-    expect((await runZinn(["task", "list", "TAGS", "--state", "all"], dir, { FORCE_COLOR: "1" })).stdout).toBe(coloredRows);
+    expect((await runZinnInTerminal(["task", "list", "TAGS"], dir)).output).toBe(coloredRows);
+    expect((await runZinn(["task", "list", "TAGS"], dir, { FORCE_COLOR: "1" })).stdout).toBe(coloredRows);
     expect((await runZinn(["task", "search", "Several", "TAGS"], dir, { FORCE_COLOR: "1" })).stdout).toBe(
       `TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}U${DIM_SEPARATOR}Several labels${DIM_SEPARATOR}${coloredLabels}\n`,
     );
-    expect((await runZinn(["task", "list", "TAGS", "--state", "all", "--all"], dir, { FORCE_COLOR: "1" })).stdout).toContain(
+    expect((await runZinn(["task", "list", "TAGS", "--all"], dir, { FORCE_COLOR: "1" })).stdout).toContain(
       `TAGS-1${DIM_SEPARATOR}Active${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}U${DIM_SEPARATOR}Several labels${DIM_SEPARATOR}${coloredLabels}\n`,
     );
 
     // A label's color applies to every task that has the label.
     await runZinn(["label", "edit", "bug", "--color", "yellow"], dir);
-    expect((await runZinn(["task", "list", "TAGS", "--state", "all"], dir, { FORCE_COLOR: "1" })).stdout).toContain(
+    expect((await runZinn(["task", "list", "TAGS"], dir, { FORCE_COLOR: "1" })).stdout).toContain(
       "\x1b[33mbug\x1b[39m, \x1b[34mcli\x1b[39m",
     );
   });
@@ -414,7 +414,7 @@ test.serial("task move, list and view color workflow column names only in a term
     expect(moved.code).toBe(0);
     expect(moved.output).toBe(`COLOR-2${DIM_SEPARATOR}${GREEN_DONE}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}finished\n`);
 
-    expect((await runZinnInTerminal(["task", "list", "COLOR", "--state", "all"], testDir)).output).toBe(
+    expect((await runZinnInTerminal(["task", "list", "COLOR"], testDir)).output).toBe(
       [
         `COLOR-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}waiting`,
         `COLOR-2${DIM_SEPARATOR}\x1b[32m${"Done".padEnd("Backlog".length)}\x1b[39m${DIM_SEPARATOR}${DIM_EMPTY_PRIORITY}${DIM_SEPARATOR}finished`,
@@ -429,7 +429,7 @@ test.serial("task move, list and view color workflow column names only in a term
     );
 
     // Piped output keeps the same layout without color codes.
-    expect((await runZinn(["task", "list", "COLOR", "--state", "all"], testDir)).stdout).toBe(
+    expect((await runZinn(["task", "list", "COLOR"], testDir)).stdout).toBe(
       ["COLOR-1 | Backlog | - | waiting", "COLOR-2 | Done    | - | finished", ""].join("\n"),
     );
     expect(taskViewContent((await runZinn(["task", "view", "COLOR-2"], testDir)).stdout)).toBe("COLOR-2 | Done | - | finished\n");
@@ -437,7 +437,7 @@ test.serial("task move, list and view color workflow column names only in a term
       "COLOR-2 | Done | - | finished\n",
     );
 
-    const listedJson = (await runZinn(["task", "list", "COLOR", "--state", "all", "--json"], testDir)).stdout;
+    const listedJson = (await runZinn(["task", "list", "COLOR", "--json"], testDir)).stdout;
     expect(listedJson).not.toContain("\x1b");
     expect(JSON.parse(listedJson).map((task: { column: string }) => task.column)).toEqual([
       "Backlog",

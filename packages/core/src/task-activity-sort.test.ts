@@ -16,7 +16,7 @@ test("activity sorting follows task changes, comments and both relation endpoint
       const first = task.create({ project_id: app.id, title: "First" }, actor);
       const second = task.create({ project_id: app.id, title: "Second" }, actor);
       const third = task.create({ project_id: app.id, title: "Third" }, actor);
-      const keys = () => task.getAll({ state: "all", sort: "activity" }).map(({ key }) => key);
+      const keys = () => task.getAll({ sort: "activity" }).map(({ key }) => key);
       expect(keys()).toEqual([first.key, second.key, third.key]);
 
       now++;
@@ -57,7 +57,7 @@ test("activity sorting follows task changes, comments and both relation endpoint
       now++;
       task.edit({ taskKey: third.key, title: "Third edited" }, actor);
       expect(keys()).toEqual([first.key, second.key, third.key]);
-      expect(task.getAll({ state: "all" }).map(({ key }) => key)).toEqual([second.key, third.key, first.key]);
+      expect(task.getAll().map(({ key }) => key)).toEqual([second.key, third.key, first.key]);
     } finally {
       clock.mockRestore();
     }
@@ -106,17 +106,17 @@ test("activity sorting composes with every task filter and keeps board order on 
         }
         task.order({ taskKey: `${key}-3`, direction: "top" }, actor);
       }
-      expect(task.getAll({ state: "all", archive: "all" }).map(({ key }) => key)).toEqual([
+      expect(task.getAll({ archive: "all" }).map(({ key }) => key)).toEqual([
         "APP-1", "APP-3", "APP-2", "APP-4", "OTHER-1", "OTHER-3", "OTHER-2", "OTHER-4",
       ]);
-      expect(task.getAll({ state: "all", archive: "all", sort: "activity" }).map(({ key }) => key)).toEqual([
+      expect(task.getAll({ archive: "all", sort: "activity" }).map(({ key }) => key)).toEqual([
         "APP-1", "APP-3", "APP-2", "APP-4", "OTHER-1", "OTHER-3", "OTHER-2", "OTHER-4",
       ]);
       for (const projectKey of [undefined, "app"]) {
         for (const archive of [undefined, "active", "archived", "all"] as const) {
           for (const columnName of [undefined, "done", "missing"]) {
             for (const labelNames of [undefined, ["BUG", "CLI"], ["absent"]]) {
-              const input = { projectKey, archive, state: "all" as const, columnName, labelNames };
+              const input = { projectKey, archive, columnName, labelNames };
               const boardOrder = task.getAll(input);
               expect(task.getAll({ ...input, sort: "activity" })).toEqual(boardOrder);
               expect(task.getAll({ ...input, sort: "activity", limit: 2 })).toEqual(boardOrder.slice(0, 2));

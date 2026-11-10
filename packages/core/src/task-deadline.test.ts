@@ -60,16 +60,16 @@ test("deadline filters intersect scope and labels before limits and keep stable 
     task.create({ project_id: other.id, title: "Deadline needle", due_at: 0 }, actor);
     const archived = create(0);
     task.archive(archived.key, actor);
-    const board = task.getAll({ state: "all", projectKey: app.key });
+    const board = task.getAll({ projectKey: app.key });
     const rowsBefore = getDb().query("SELECT * FROM task ORDER BY id").all();
-    expect(task.getAll({ state: "all", projectKey: app.key, sort: "due" }).map(row => row.key))
+    expect(task.getAll({ projectKey: app.key, sort: "due" }).map(row => row.key))
       .toEqual([excluded.key, negative.key, zero.key, tie.key, later.key, undated.key]);
-    expect(task.getAll({ state: "all", projectKey: app.key, dueSince: 0, dueUntil: 0, labelNames: ["SELECTED"], limit: 1 }).map(row => row.key)).toEqual([zero.key]);
-    expect(task.getAll({ state: "all", projectKey: app.key, dueSince: 0, dueUntil: 0, columnName: "done" }).map(row => row.key)).toEqual([tie.key]);
-    expect(task.getAll({ state: "all", projectKey: app.key, dueUntil: -1, labelNames: ["selected"] }).map(row => row.key)).toEqual([negative.key]);
-    expect(task.getAll({ state: "all", projectKey: app.key, dueSince: 20 }).map(row => row.key)).toEqual([later.key]);
-    expect(task.getAll({ state: "all", projectKey: app.key, archive: "archived", dueSince: 0, dueUntil: 0 }).map(row => row.key)).toEqual([archived.key]);
-    expect(task.getAll({ state: "all", projectKey: app.key })).toEqual(board);
+    expect(task.getAll({ projectKey: app.key, dueSince: 0, dueUntil: 0, labelNames: ["SELECTED"], limit: 1 }).map(row => row.key)).toEqual([zero.key]);
+    expect(task.getAll({ projectKey: app.key, dueSince: 0, dueUntil: 0, columnName: "done" }).map(row => row.key)).toEqual([tie.key]);
+    expect(task.getAll({ projectKey: app.key, dueUntil: -1, labelNames: ["selected"] }).map(row => row.key)).toEqual([negative.key]);
+    expect(task.getAll({ projectKey: app.key, dueSince: 20 }).map(row => row.key)).toEqual([later.key]);
+    expect(task.getAll({ projectKey: app.key, archive: "archived", dueSince: 0, dueUntil: 0 }).map(row => row.key)).toEqual([archived.key]);
+    expect(task.getAll({ projectKey: app.key })).toEqual(board);
     expect(getDb().query("SELECT * FROM task ORDER BY id").all()).toEqual(rowsBefore);
     const searchBefore = task.search({ query: "needle", projectKey: app.key });
     const filtered = task.search({ query: "needle", projectKey: app.key, dueSince: 0, dueUntil: 0, labelNames: ["selected"], limit: 1 });

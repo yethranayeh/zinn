@@ -64,18 +64,18 @@ test("deadline CLI filters precede limits and key pinning, while due sorting pre
     }
     await json("task", "create", "OTHER", "--title", "Needle", "--due=0");
     await json("task", "move", "APP-4", "Done");
-    const board = await keys("task", "list", "APP", "--state", "all");
-    expect(await keys("task", "list", "APP", "--state", "all", "--sort", "due")).toEqual(["APP-5", "APP-3", "APP-4", "APP-2", "APP-1"]);
+    const board = await keys("task", "list", "APP");
+    expect(await keys("task", "list", "APP", "--sort", "due")).toEqual(["APP-5", "APP-3", "APP-4", "APP-2", "APP-1"]);
     const bounds = ["--due-since=0", "--due-until=0", "--label", "SELECTED", "--limit", "1"];
-    for (const args of [["task", "list", "APP", "--state", "all"], ["task", "search", "Needle", "APP"]]) {
+    for (const args of [["task", "list", "APP"], ["task", "search", "Needle", "APP"]]) {
       expect(await keys(...args, ...bounds)).toEqual(["APP-3"]);
       expect(await keys(...args, "--due-until=-1")).toEqual(["APP-5"]);
     }
-    expect(await keys("task", "list", "APP", "--state", "all", "--column", "done", ...bounds)).toEqual(["APP-4"]);
+    expect(await keys("task", "list", "APP", "--column", "done", ...bounds)).toEqual(["APP-4"]);
     for (const key of ["APP-1", "APP-2"]) {
       expect(await keys("task", "search", key, ...bounds)).toEqual([]);
     }
-    expect(await keys("task", "list", "APP", "--state", "all")).toEqual(board);
+    expect(await keys("task", "list", "APP")).toEqual(board);
   });
 });
 

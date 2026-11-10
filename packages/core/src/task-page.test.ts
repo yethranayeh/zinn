@@ -93,7 +93,6 @@ test("task pages match list order across board, due and activity keys including 
     const selector = {
       projectKey: app.key,
       archive: "all" as const,
-      state: "all" as const,
       labelNames: ["SELECTED"],
     };
     for (const sort of [undefined, "due", "activity"] as const) {
@@ -183,7 +182,6 @@ test("task pages continue from the cursor position and bound full rows under que
       projectKey: app.key,
       labelNames: ["selected"],
       columnName: "Done",
-      state: "all",
       dueSince: 0,
       dueUntil: 0,
       sort: "activity",
@@ -227,12 +225,11 @@ test("task pages continue from the cursor position and bound full rows under que
     expect(getDb().query("SELECT * FROM activity ORDER BY id").all()).toEqual(beforeActivity);
 
     getDb().exec("PRAGMA query_only = OFF");
-    const selectedFirstPage = task.getPage({ projectKey: app.key, state: "all", limit: 1 });
+    const selectedFirstPage = task.getPage({ projectKey: app.key, limit: 1 });
     task.order({ taskKey: selected[2]!.key, direction: "top" }, actor);
     task.move({ taskKey: selected[1]!.key, targetColumn: "Backlog" }, actor);
     const liveContinuation = task.getPage({
       projectKey: app.key,
-      state: "all",
       limit: 1,
       startingAfter: selectedFirstPage.nextCursor,
     });

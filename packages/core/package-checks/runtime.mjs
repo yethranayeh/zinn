@@ -165,18 +165,17 @@ getDb()
 	)
 	.run(boardFirst.id, boardFirstActivityTime, dueFirst.id, dueFirstActivityTime, boardFirst.id, dueFirst.id);
 assert.deepEqual(
-	core.task.getAll({ state: "all", projectKey: listProject.key, limit: 1 }).map(({ key }) => key),
+	core.task.getAll({ projectKey: listProject.key, limit: 1 }).map(({ key }) => key),
 	[boardFirst.key]
 );
 assert.deepEqual(
-	core.task.getAll({ state: "all", projectKey: listProject.key, sort: "due", limit: 1 }).map(({ key }) => key),
+	core.task.getAll({ projectKey: listProject.key, sort: "due", limit: 1 }).map(({ key }) => key),
 	[dueFirst.key]
 );
 assert.deepEqual(
 	core.task
 		.getAll({
 			projectKey: listProject.key,
-			state: "all",
 			columnName: "done",
 			labelNames: ["runtime", "RUNTIME"],
 			dueSince: 0,
@@ -187,7 +186,7 @@ assert.deepEqual(
 	[dueFirst.key]
 );
 assert.deepEqual(
-	core.task.getAll({ state: "all", projectKey: listProject.key, sort: "activity", limit: 1 }).map(({ key }) => key),
+	core.task.getAll({ projectKey: listProject.key, sort: "activity", limit: 1 }).map(({ key }) => key),
 	[dueFirst.key]
 );
 getDb()
@@ -197,7 +196,6 @@ assert.deepEqual(
 	core.task
 		.getAll({
 			projectKey: listProject.key,
-			state: "all",
 			sort: "activity",
 			columnName: "done",
 			labelNames: ["runtime", "RUNTIME"],
@@ -211,7 +209,6 @@ assert.deepEqual(
 getDb().query("UPDATE activity SET created_at = ? WHERE entity_type = 'task' AND entity_id = ?").run(400, dueFirst.id);
 const firstTaskPage = core.task.getPage({
 	projectKey: listProject.key,
-	state: "all",
 	sort: "activity",
 	labelNames: ["runtime"],
 	dueSince: 0,
@@ -226,7 +223,6 @@ assert.equal(typeof firstTaskPage.nextCursor, "string");
 assert.deepEqual(
 	core.task.getPage({
 		projectKey: listProject.key,
-		state: "all",
 		sort: "activity",
 		labelNames: ["runtime"],
 		dueSince: 0,
@@ -239,7 +235,6 @@ assert.deepEqual(
 assert.deepEqual(
 	core.task.getPage({
 		projectKey: listProject.key,
-		state: "all",
 		sort: "activity",
 		columnName: "done",
 		labelNames: ["runtime", "RUNTIME"],

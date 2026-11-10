@@ -35,15 +35,16 @@ function createBoard() {
   };
 }
 
-test("task lists show open tasks by default and closed tasks on request", () => {
+test("task lists show every state by default and filter by state on request", () => {
   withTestStore(() => {
     const board = createBoard();
 
-    expect(keysOf(task.getAll())).toEqual(board.open);
+    expect(keysOf(task.getAll())).toEqual([...board.open, ...board.closed]);
+    expect(keysOf(task.getAll({ state: "all" }))).toEqual([...board.open, ...board.closed]);
     expect(keysOf(task.getAll({ state: "open" }))).toEqual(board.open);
     expect(keysOf(task.getAll({ state: "closed" }))).toEqual(board.closed);
-    expect(keysOf(task.getAll({ state: "all" }))).toEqual([...board.open, ...board.closed]);
-    expect(keysOf(task.getPage().tasks)).toEqual(board.open);
+    expect(keysOf(task.getPage().tasks)).toEqual([...board.open, ...board.closed]);
+    expect(keysOf(task.getPage({ state: "open" }).tasks)).toEqual(board.open);
   });
 });
 
@@ -51,33 +52,12 @@ test("the state filter combines with the archive filter", () => {
   withTestStore(() => {
     const board = createBoard();
 
-    expect(keysOf(task.getAll({ archive: "archived" }))).toEqual([]);
-    expect(keysOf(task.getAll({ archive: "archived", state: "closed" }))).toEqual([
-      board.archivedDone,
-    ]);
+    expect(keysOf(task.getAll({ archive: "archived" }))).toEqual([board.archivedDone]);
+    expect(keysOf(task.getAll({ archive: "archived", state: "open" }))).toEqual([]);
     expect(keysOf(task.getAll({ archive: "all", state: "closed" }))).toContain(board.archivedDone);
-    expect(task.getAll({ archive: "all", state: "all" })).toHaveLength(
+    expect(task.getAll({ archive: "all" })).toHaveLength(
       board.open.length + board.closed.length + 1,
     );
-  });
-});
-
-test("task pages count the closed tasks that the default state hides", () => {
-  withTestStore(() => {
-    const board = createBoard();
-
-    expect(task.getPage().hiddenClosedCount).toBe(board.closed.length);
-    expect(task.getPage({ limit: 1 }).hiddenClosedCount).toBe(board.closed.length);
-    expect(task.getPage({ columnName: "Done" })).toEqual({
-      tasks: [],
-      hasMore: false,
-      hiddenClosedCount: 1,
-    });
-    expect(task.getPage({ archive: "all" }).hiddenClosedCount).toBe(board.closed.length + 1);
-    expect(task.getPage({ columnName: "Doing" })).not.toHaveProperty("hiddenClosedCount");
-    for (const state of ["open", "closed", "all"] as const) {
-      expect(task.getPage({ state })).not.toHaveProperty("hiddenClosedCount");
-    }
   });
 });
 
@@ -90,7 +70,7 @@ test("task lists read closed columns from their category, not their name or posi
     const shipped = createTask(app.id, "Shipped", { columnName: "Shipped" });
     const finished = createTask(app.id, "Finished", { columnName: "Finished" });
 
-    expect(keysOf(task.getAll())).toEqual([finished.key]);
+    expect(keysOf(task.getAll({ state: "open" }))).toEqual([finished.key]);
     expect(keysOf(task.getAll({ state: "closed" }))).toEqual([shipped.key]);
   });
 });
@@ -102,9 +82,8 @@ test("task lists count the last column as closed on an older schema without cate
     const done = createTask(app.id, "Done", { columnName: "Done" });
     getDb().exec("ALTER TABLE project_column DROP COLUMN category");
 
-    expect(keysOf(task.getAll())).toEqual([done.key]);
+    expect(keysOf(task.getAll({ state: "open" }))).toEqual([done.key]);
     expect(keysOf(task.getAll({ state: "closed" }))).toEqual([last.key]);
-    expect(task.getPage().hiddenClosedCount).toBe(1);
   });
 });
 

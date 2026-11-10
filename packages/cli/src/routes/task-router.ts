@@ -492,7 +492,7 @@ Examples:
   zinn task create MDR --title 'Sort the files' --parent MDR-1 --depends-on MDR-2`,
   },
   list: {
-    summary: "List open, active tasks by default.",
+    summary: "List active tasks by default.",
     effects: { domain: "read", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: taskInputs.list,
@@ -551,12 +551,12 @@ Examples:
         (presentedTasks) => formatTaskList(presentedTasks, { showsStatus: values.all }),
       );
 
-      const selectionTokens = tokens.filter(
-        (token) => token.kind !== "option" || token.name !== "all-projects",
-      );
-      const projectScope = projectKey === undefined ? ["--all-projects"] : [projectKey];
-
       if (page.nextCursor !== undefined) {
+        const selectionTokens = tokens.filter(
+          (token) => token.kind !== "option" || token.name !== "all-projects",
+        );
+
+        const projectScope = projectKey === undefined ? ["--all-projects"] : [projectKey];
         diagnostic(
           `More tasks. Continue with: ${formatListContinuation(
             ["task", "list"],
@@ -567,26 +567,12 @@ Examples:
           )}`,
         );
       }
-
-      if (page.hiddenClosedCount !== undefined) {
-        const noun = page.hiddenClosedCount === 1 ? "task" : "tasks";
-        diagnostic(
-          `${page.hiddenClosedCount} closed ${noun} not shown. List every state with: ${formatListContinuation(
-            ["task", "list"],
-            projectScope,
-            selectionTokens,
-            "state",
-            "all",
-          )}`,
-        );
-      }
     },
     help: `${generateCommandUsage("task list", taskInputs.list)}
 
-List open, active tasks by default.
+List active tasks by default.
 ${projectScopeDescription}
---state closed lists tasks in done and cancelled columns, and --state all lists every state.
-When the default hides closed tasks that match, stderr gives a shell-quoted command that includes them, including with --json.
+--state open lists tasks outside done and cancelled columns, and --state closed lists tasks in them.
 Use --archived to list archived tasks or --all to list both.
 Repeat --label to require every specified label.
 --column matches an exact column name. Column and label matching ignore case.

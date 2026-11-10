@@ -77,9 +77,9 @@ Other programs may declare any text. The `client` activity filter uses whitespac
 
 `task.getAll({ sort: "activity", limit: 10 })` returns the ten most recently active tasks. Last activity is the newest recorded task event, including comments and relations, or `updated_at` when no events exist. Filters apply before sorting, and the limit applies afterward. Equal times keep board order. Omitting `sort` preserves board order.
 
-`task.getAll` returns an array. `task.getPage` accepts the same task-list filters plus optional `startingAfter` and returns `{ tasks, hasMore, nextCursor?, hiddenClosedCount? }`. `nextCursor` is an opaque token, present only when `hasMore` is true. Pass it as `startingAfter` to continue.
+`task.getAll` returns an array. `task.getPage` accepts the same task-list filters plus optional `startingAfter` and returns `{ tasks, hasMore, nextCursor? }`. `nextCursor` is an opaque token, present only when `hasMore` is true. Pass it as `startingAfter` to continue.
 
-Both take `state`: `"open"` (the default), `"closed"` or `"all"`. A task is closed when its column's category is `done` or `cancelled`. `state` combines with `archive` and every other filter. When `state` is omitted and closed tasks match the other filters, `task.getPage` returns their count as `hiddenClosedCount`.
+Both take `state`: `"open"`, `"closed"` or `"all"` (the default). A task is closed when its column's category is `done` or `cancelled`. `state` combines with `archive` and every other filter.
 
 Continuation survives edits, moves, archiving, relabelling, deadline changes and deletion of the last listed task. Filters may change while the sort stays the same. No snapshot is kept between calls, so other tasks changing in between can still cause repeats or skips. The order breaks remaining ties by task ID. Omit `limit` to return every remaining task with `hasMore: false`.
 

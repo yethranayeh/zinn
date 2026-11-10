@@ -231,7 +231,7 @@ The project key can be omitted when [defaultProject](/docs/settings) is configur
 zinn task create MDR --title 'Compile the Lexington letters' --column Doing
 ```
 
-Tasks are created with keys such as `MDR-1`. Task numbers increase in creation order within each project. List open tasks, optionally limited to one project, or view one task:
+Tasks are created with keys such as `MDR-1`. Task numbers increase in creation order within each project. List active tasks, optionally limited to one project, or view one task:
 
 ```sh title="List and view tasks"
 zinn task list
@@ -242,13 +242,13 @@ zinn task list MDR --limit 10
 zinn task list MDR --sort activity --limit 10
 zinn task list MDR --due-since 2026-10-25T00:00:00Z --sort due
 zinn task list MDR --column Doing
-zinn task list MDR --state closed
-zinn task list --column Done --state closed --all
+zinn task list MDR --state open
+zinn task list --column Done --all
 zinn task view MDR-1
 zinn task view MDR-1 --history
 ```
 
-`task list` lists open tasks by default, leaving out tasks in done and cancelled columns. `--state closed` lists only those, and `--state all` lists every state. A column's category decides its state, not its name or position. `--state` combines with every other filter, including `--archived`, `--all` and `--column`. When the default leaves out tasks that match the other filters, stderr gives their count and a shell-quoted command that adds `--state all`, in text and JSON modes. `task search` covers every state.
+`task list --state open` leaves out tasks in done and cancelled columns, and `--state closed` lists only those. `--state all` is the default. A column's category decides its state, not its name or position. `--state` combines with every other filter, including `--archived`, `--all` and `--column`.
 
 `task list`, `task search` and `activity list` accept `--limit <n>`, a decimal integer from `1` through `9007199254740991`. The cap applies after all filters and preserves the existing order. Omit it to return every match. With `--json`, each command returns an array.
 
@@ -517,13 +517,13 @@ For several tasks, ordering is the same as ordering the first task as requested,
 
 ## Archive and delete tasks
 
-Active tasks are shown by default. Archive one or more tasks to hide them from active lists, then list archived tasks or all tasks. Archived tasks are usually closed, so add `--state closed` or `--state all` to see them:
+Active tasks are shown by default. Archive one or more tasks to hide them from active lists, then list archived tasks or all tasks:
 
 ```sh title="Archive and list tasks"
 zinn task archive MDR-1
 zinn task archive MDR-2 MDR-3
-zinn task list MDR --archived --state all
-zinn task list MDR --all --state all
+zinn task list MDR --archived
+zinn task list MDR --all
 ```
 
 `--archived` and `--all` cannot be used together.
