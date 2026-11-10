@@ -80,7 +80,7 @@ In a chat, open a new side tab, choose **More tools**, then **Plugins and MCPs**
 
 Enter a task key from your database, such as `APP-1`. Task descriptions and comments are displayed as literal text, preserving line breaks. Select a relation to open the related task. **Refresh** reads the selected task and current-chat references again.
 
-For an active task, choose a destination and select **Move to…**. The initial destination is the project's last column, such as Done. The move uses the inspector's selected database and the task's own project. It follows ordinary `zinn task move` behavior and refreshes the task afterward. Moving to the current column leaves it unchanged. Archived tasks remain available for inspection.
+For an active task, choose a destination and select **Move to…**. The initial destination is the project's first column with the `done` category, or the task's current column when the project has none. The move uses the inspector's selected database and the task's own project. It follows ordinary `zinn task move` behavior and refreshes the task afterward. Moving to the current column leaves it unchanged. Archived tasks remain available for inspection.
 
 Panel moves record your normal CLI human identity, without inherited agent, model, effort, client or conversation declarations. The plugin declares `zinn-codex/0.1.0` after any inherited [client chain](/docs/cli#client-chains) on CLI runs it starts, so a panel move records that token in `actor_client` and `zinn activity list --client zinn-codex` selects it. Codex's tool permission settings apply. A move is submitted only by the explicit button action and is not automatically retried after a failure.
 

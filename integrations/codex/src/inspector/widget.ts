@@ -274,7 +274,9 @@ function renderMove(task: PresentedTaskDetail) {
         option.textContent = column.name;
         destination.append(option);
       }
-      destination.value = result.columns.find((column) => column.is_last)?.name ?? task.column;
+      // Older CLIs return no category, so their panels start on the current column.
+      destination.value =
+        result.columns.find((column) => column.category === "done")?.name ?? task.column;
       destination.disabled = moving;
       feedback.textContent = `Move ${task.key} within its project.`;
       updateDestination();
