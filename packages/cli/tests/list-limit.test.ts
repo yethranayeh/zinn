@@ -57,7 +57,7 @@ test("task list caps filtered JSON and plain output once across projects", async
     }
     for (const scope of [["APP"], ["--all-projects"]]) {
       for (const archive of [[], ["--all"], ["--archived"]]) {
-        const args = ["task", "list", ...scope, ...archive, "--label", "BUG", "--label", "CLI", "--column", "done"];
+        const args = ["task", "list", ...scope, ...archive, "--label", "BUG", "--label", "CLI", "--column", "done", "--state", "all"];
         const all = JSON.parse((await run(...args, "--json")).stdout);
         expect(all.length).toBeGreaterThan(0);
         expect(JSON.parse((await run(...args, "--limit", "1", "--json")).stdout)).toEqual(all.slice(0, 1));

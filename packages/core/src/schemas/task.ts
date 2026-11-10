@@ -119,6 +119,8 @@ export const taskEditSchema = z
 const searchQueryMessage = "Search query cannot be blank";
 
 export const taskArchiveFilterSchema = z.enum(["active", "archived", "all"]);
+/** Open tasks are in a column that is not done or cancelled. Closed tasks are in one that is. */
+export const taskStateFilterSchema = z.enum(["open", "closed", "all"]);
 export const taskSortSchema = z.enum(["activity", "due"]);
 
 const deadlineFilters = {
@@ -149,6 +151,7 @@ export const taskListSchema = z
     projectKey: z.string().optional(),
     columnName: columnNameSchema.optional(),
     archive: taskArchiveFilterSchema.optional(),
+    state: taskStateFilterSchema.optional(),
     labelNames: z.array(labelNameSchema).optional(),
   })
   .superRefine(validateDeadlineBounds);
@@ -179,6 +182,7 @@ export const taskSearchSchema = z
 export type TaskPriority = z.infer<typeof taskPrioritySchema>;
 export type TaskOrderManyInput = z.input<typeof taskOrderManySchema>;
 export type TaskArchiveFilter = z.infer<typeof taskArchiveFilterSchema>;
+export type TaskStateFilter = z.infer<typeof taskStateFilterSchema>;
 export type TaskCreateInput = z.input<typeof taskCreateSchema>;
 export type TaskEditInput = z.infer<typeof taskEditSchema>;
 export type TaskListInput = z.infer<typeof taskListSchema>;

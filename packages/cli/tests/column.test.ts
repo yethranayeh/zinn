@@ -127,7 +127,7 @@ test("column colors follow the category through renames, reorders and category c
     await run("task", "move", "CAT-3", "Verified");
 
     const columnList = (await colored("project", "column", "list", "CAT")).stdout;
-    const taskRows = (await colored("task", "list", "CAT")).stdout;
+    const taskRows = (await colored("task", "list", "CAT", "--state", "all")).stdout;
     for (const output of [columnList, taskRows]) {
       expect(output).toContain(`${GRAY}Triaged`);
       expect(output).toContain(`${GREEN}Shipped`);
@@ -144,7 +144,7 @@ test("column colors follow the category through renames, reorders and category c
     expect((await run("project", "column", "edit", "CAT", "Verified", "--category", "review", "--yes")).code).toBe(0);
     for (const output of [
       (await colored("project", "column", "list", "CAT")).stdout,
-      (await colored("task", "list", "CAT")).stdout,
+      (await colored("task", "list", "CAT", "--state", "all")).stdout,
       (await colored("task", "view", "CAT-3")).stdout,
       (await colored("task", "blame", "CAT-3")).stdout,
     ]) {

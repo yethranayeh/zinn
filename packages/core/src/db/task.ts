@@ -1,5 +1,5 @@
 import type { Bind, Task } from "../types.js";
-import type { TaskArchiveFilter, TaskListInput } from "../schemas/task.js";
+import type { TaskArchiveFilter, TaskListInput, TaskStateFilter } from "../schemas/task.js";
 
 export type { TaskArchiveFilter } from "../schemas/task.js";
 
@@ -109,7 +109,7 @@ export function getAllByProjectId(projectId: string, archive: TaskArchiveFilter 
 
 export type TaskListQuery = Pick<
   TaskListInput,
-  "archive" | "dueSince" | "dueUntil" | "limit" | "sort"
+  "archive" | "state" | "dueSince" | "dueUntil" | "limit" | "sort"
 > & {
   projectId?: string;
   labelIds?: Array<string>;
@@ -127,6 +127,12 @@ function buildTaskListFilters(input: TaskListQuery) {
 
   if (archiveCondition != null) {
     predicates.push(archiveCondition);
+  }
+
+  const stateCondition = getStateCondition(input.state ?? "open");
+
+  if (stateCondition != null) {
+    predicates.push(stateCondition);
   }
 
   if (input.projectId !== undefined) {
@@ -275,6 +281,17 @@ export function getList(input: TaskListQuery) {
     .all(bindings);
 }
 
+/** Counts the tasks that match the filters, ignoring the limit. */
+export function countList(input: Omit<TaskListQuery, "limit" | "sort">) {
+  const { where, bindings } = buildTaskListFilters(input);
+
+  return getDb()
+    .query<{ count: number }, Record<string, string | number>>(
+      `SELECT COUNT(*) AS count ${TASK_LIST_FROM} ${where}`,
+    )
+    .get(bindings)!.count;
+}
+
 /**
  * Whether the column table has categories.
  * Older schemas do not have them, so they are readolny
@@ -295,28 +312,42 @@ function toSqlTextList(values: ReadonlyArray<string>) {
 }
 
 /**
- * SQL condition: the task under `alias` is open work, meaning active and not in a closed column.
+ * SQL condition: the task under `alias` is in a done or cancelled column.
  * Older schemas without categories count the last column of the task's own board as closed.
  *  There, `ORDER BY ... LIMIT 1` still finds a column when every column_order is NULL.
  */
-function getOpenWorkCondition(alias: string, hasCategories: boolean) {
+function getClosedColumnCondition(alias: string, hasCategories: boolean) {
   if (hasCategories) {
-    return `${alias}.archived_at IS NULL
-      AND ${alias}.column_id NOT IN (
+    return `${alias}.column_id IN (
         SELECT closed_column.id
         FROM ${DB_TABLE.projectColumn} AS closed_column
         WHERE closed_column.category IN (${toSqlTextList(CLOSED_COLUMN_CATEGORIES)})
       )`;
   }
 
-  return `${alias}.archived_at IS NULL
-      AND ${alias}.column_id IS NOT (
+  return `${alias}.column_id IS (
         SELECT last_column.id
         FROM ${DB_TABLE.projectColumn} AS last_column
         WHERE last_column.project_id = ${alias}.project_id
         ORDER BY last_column.column_order DESC
         LIMIT 1
       )`;
+}
+
+/** SQL condition: the task under `alias` is open work, meaning active and not in a closed column. */
+function getOpenWorkCondition(alias: string, hasCategories: boolean) {
+  return `${alias}.archived_at IS NULL
+      AND NOT ${getClosedColumnCondition(alias, hasCategories)}`;
+}
+
+/** SQL condition for a task-list state filter, or `null` when every state matches. */
+function getStateCondition(filter: TaskStateFilter) {
+  if (filter === "all") {
+    return null;
+  }
+
+  const closedCondition = getClosedColumnCondition("task", hasColumnCategory());
+  return filter === "closed" ? closedCondition : `NOT ${closedCondition}`;
 }
 
 /** SQL condition: the task under `alias` depends on at least one task that is open work. */

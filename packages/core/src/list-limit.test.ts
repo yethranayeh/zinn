@@ -46,7 +46,7 @@ test("task limits follow all filters and preserve global and project order", () 
       for (const archive of [undefined, "active", "archived", "all"] as const) {
         for (const columnName of [undefined, "done"]) {
           for (const labelNames of [undefined, ["BUG", "CLI"], ["absent"]]) {
-            const input = { projectKey, archive, columnName, labelNames };
+            const input = { projectKey, archive, state: "all" as const, columnName, labelNames };
             const all = task.getAll(input);
             expect(task.getAll({ ...input, limit: 2 })).toEqual(all.slice(0, 2));
             expect(task.getAll({ ...input, limit: MAX_LIST_LIMIT })).toEqual(all);
@@ -54,7 +54,7 @@ test("task limits follow all filters and preserve global and project order", () 
         }
       }
     }
-    const selected = task.getAll({ projectKey: "APP", columnName: "Done", labelNames: ["bug", "cli"], limit: 2 });
+    const selected = task.getAll({ projectKey: "APP", columnName: "Done", state: "all", labelNames: ["bug", "cli"], limit: 2 });
     expect(selected.map(value => value.key)).toEqual(["APP-4", "APP-2"]);
     const search = task.search({ query: "needle" });
     expect(search.tasks).toHaveLength(8);

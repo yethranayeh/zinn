@@ -30,7 +30,7 @@ test("task list sorts filtered tasks before limiting with unchanged text and JSO
       }
     });
     const before = withTestDb(directory, db => db.query("SELECT * FROM activity ORDER BY id").all());
-    const allRows = JSON.parse(await run("task", "list", "--all-projects", "--all", "--json"));
+    const allRows = JSON.parse(await run("task", "list", "--all-projects", "--state", "all", "--all", "--json"));
     const rowsByKey = new Map(allRows.map((row: { key: string }) => [row.key, row]));
     const cases: Array<{ args: Array<string>; keys: Array<string> }> = [
       { args: [], keys: ["APP-1", "APP-2"] },
@@ -47,7 +47,7 @@ test("task list sorts filtered tasks before limiting with unchanged text and JSO
     for (const { args, keys } of cases) {
       for (const limit of [[], ["--limit", "2"]]) {
         const expectedKeys = limit.length === 0 ? keys : keys.slice(0, 2);
-        const sorted = ["task", "list", ...args, "--sort", "activity", ...limit];
+        const sorted = ["task", "list", ...args, "--state", "all", "--sort", "activity", ...limit];
         const json = await runZinn([...sorted, "--json"], directory);
         expect(json.code, json.stderr).toBe(0);
         expect(JSON.parse(json.stdout)).toEqual(expectedKeys.map(key => rowsByKey.get(key)));
@@ -63,7 +63,7 @@ test("task list sorts filtered tasks before limiting with unchanged text and JSO
         }
       }
     }
-    expect(JSON.parse(await run("task", "list", "--all-projects", "--all", "--json"))).toEqual(allRows);
+    expect(JSON.parse(await run("task", "list", "--all-projects", "--state", "all", "--all", "--json"))).toEqual(allRows);
     expect(withTestDb(directory, db => db.query("SELECT * FROM activity ORDER BY id").all())).toEqual(before);
   });
 });

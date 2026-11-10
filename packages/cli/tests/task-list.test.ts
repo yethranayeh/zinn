@@ -259,3 +259,69 @@ test("task list prints labels after the title, and a task without labels ends at
     );
   });
 });
+
+test("task list hides closed tasks by default and --state shows them", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const run = (...args: Array<string>) => runZinn(args, testDir);
+    const keys = async (...args: Array<string>) => {
+      const result = await run("task", "list", ...args, "--json");
+      expect(result.code).toBe(0);
+      return JSON.parse(result.stdout).map((row: { key: string }) => row.key);
+    };
+    expect((await run("project", "create", "APP")).code).toBe(0);
+    for (const column of ["Backlog", "Doing", "Done", "Cancelled", "Done"]) {
+      expect((await run("task", "create", "APP", "--title", column, "--column", column)).code).toBe(0);
+    }
+    expect((await run("task", "archive", "APP-5")).code).toBe(0);
+
+    expect(await keys()).toEqual(["APP-1", "APP-2"]);
+    expect(await keys("--state", "open")).toEqual(["APP-1", "APP-2"]);
+    expect(await keys("--state", "closed")).toEqual(["APP-3", "APP-4"]);
+    expect(await keys("--state", "all")).toEqual(["APP-1", "APP-2", "APP-3", "APP-4"]);
+    expect(await keys("--state", "closed", "--archived")).toEqual(["APP-5"]);
+    expect(await keys("--state", "all", "--all")).toHaveLength(5);
+
+    for (const state of ["open", "closed", "all"]) {
+      expect((await run("task", "list", "APP", "--state", state)).stderr).toBe("");
+    }
+    expect((await run("task", "list", "APP", "--column", "Doing")).stderr).toBe("");
+
+    const invalid = await run("task", "list", "APP", "--state", "done");
+    expect(invalid.code).not.toBe(0);
+    expect(invalid.stdout).toBe("");
+    for (const value of ["open", "closed", "all"]) {
+      expect(invalid.stderr).toContain(value);
+    }
+  });
+});
+
+test("task list names the closed tasks the default hid and a command that includes them", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    const run = (...args: Array<string>) => runZinn(args, testDir);
+    expect((await run("project", "create", "APP")).code).toBe(0);
+    expect((await run("task", "create", "APP", "--title", "Open")).code).toBe(0);
+    for (const title of ["Done", "Also done", "Archived"]) {
+      expect((await run("task", "create", "APP", "--title", title, "--column", "Done")).code).toBe(0);
+    }
+    expect((await run("task", "archive", "APP-4")).code).toBe(0);
+
+    for (const [filters, hidden] of [
+      [[], 2],
+      [["--column", "Done", "--all"], 3],
+      [["--archived"], 1],
+    ] as const) {
+      const result = await run("task", "list", "APP", ...filters, "--json");
+      expect(result.code).toBe(0);
+      expect(JSON.parse(result.stdout).length).toBe(filters.length === 0 ? 1 : 0);
+      expect(result.stderr).toContain(String(hidden));
+
+      const command = result.stderr.slice(result.stderr.indexOf("zinn task list")).trim().split(" ");
+      expect(command).toContain("--state");
+      expect(command).toContain("--json");
+      const rerun = await run(...command.slice(1));
+      expect(rerun.code).toBe(0);
+      expect(rerun.stderr).toBe("");
+      expect(JSON.parse(rerun.stdout)).toHaveLength(filters.length === 0 ? 3 : hidden);
+    }
+  });
+});

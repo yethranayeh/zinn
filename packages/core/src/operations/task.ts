@@ -139,6 +139,7 @@ function resolveTaskListSelection(props: TaskListInput) {
   const query: Omit<dbTask.TaskListQuery, "limit"> = {
     projectId: taskProject?.id,
     archive: props.archive,
+    state: props.state ?? "open",
     labelIds,
     columnIds: getTaskListColumnIds(props.columnName, taskProject?.id),
     dueSince: props.dueSince,
@@ -508,6 +509,7 @@ export const task = {
       return createdTaskWithKey;
     });
   },
+  /** Returns the tasks that match every filter. Without `state`, only open tasks are listed. */
   getAll: (input: TaskListInput = {}) => {
     const props = validateTaskInput(taskListSchema, input);
     const query = resolveTaskListSelection(props);
@@ -515,9 +517,19 @@ export const task = {
 
     return taskMatches.map(({ project_key, ...row }) => attachTaskKey(row, project_key));
   },
+  /**
+   * Returns one page of tasks.
+   * Without `state` only open tasks are listed, and `hiddenClosedCount`
+   *  counts the closed tasks that match every other filter, when there are any.
+   */
   getPage: (
     input: TaskPageInput = {},
-  ): { tasks: Array<TaskWithKey>; hasMore: boolean; nextCursor?: string } => {
+  ): {
+    tasks: Array<TaskWithKey>;
+    hasMore: boolean;
+    nextCursor?: string;
+    hiddenClosedCount?: number;
+  } => {
     const props = validateTaskInput(taskPageSchema, input);
     const after =
       props.startingAfter === undefined
@@ -533,15 +545,19 @@ export const task = {
       const tasks = selectedRows.map(({ task: { project_key, ...row } }) =>
         attachTaskKey(row, project_key),
       );
+      const hiddenClosedCount =
+        props.state === undefined ? dbTask.countList({ ...query, state: "closed" }) : 0;
+      const hidden = hiddenClosedCount > 0 ? { hiddenClosedCount } : {};
 
       if (!hasMore) {
-        return { tasks, hasMore };
+        return { tasks, hasMore, ...hidden };
       }
 
       return {
         tasks,
         hasMore,
         nextCursor: encodeTaskCursor(props.sort, selectedRows.at(-1)!.position),
+        ...hidden,
       };
     });
   },

@@ -16,6 +16,7 @@ import {
   taskDeleteManySchema,
   taskPrioritySchema,
   taskSortSchema,
+  taskStateFilterSchema,
 } from "@zinn-dev/core";
 
 import { listLimitOption, listLimitDescription, parseListLimit } from "../list-limit.js";
@@ -193,6 +194,10 @@ const taskInputs = {
       sort: {
         type: "string",
         value: { kind: "enum", name: "key", choices: taskSortSchema.options },
+      },
+      state: {
+        type: "string",
+        value: { kind: "enum", name: "state", choices: taskStateFilterSchema.options },
       },
       archived: { type: "boolean" },
       all: { type: "boolean" },
@@ -487,7 +492,7 @@ Examples:
   zinn task create MDR --title 'Sort the files' --parent MDR-1 --depends-on MDR-2`,
   },
   list: {
-    summary: "List active tasks by default.",
+    summary: "List open, active tasks by default.",
     effects: { domain: "read", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: taskInputs.list,
@@ -519,12 +524,22 @@ Examples:
         });
       }
 
+      const state = taskStateFilterSchema.optional().safeParse(values.state);
+      if (!state.success) {
+        quit(
+          `Unknown state "${values.state}". Use ${taskStateFilterSchema.options.join(", ")}`,
+          undefined,
+          { argument: "--state" },
+        );
+      }
+
       const page = task.getPage({
         ...parseDeadlineFilters(values),
         limit,
         sort: sort.data,
         projectKey,
         archive,
+        state: state.data,
         labelNames: values.label,
         columnName: values.column,
         startingAfter: values["starting-after"],
@@ -536,12 +551,12 @@ Examples:
         (presentedTasks) => formatTaskList(presentedTasks, { showsStatus: values.all }),
       );
 
-      if (page.nextCursor !== undefined) {
-        const selectionTokens = tokens.filter(
-          (token) => token.kind !== "option" || token.name !== "all-projects",
-        );
+      const selectionTokens = tokens.filter(
+        (token) => token.kind !== "option" || token.name !== "all-projects",
+      );
+      const projectScope = projectKey === undefined ? ["--all-projects"] : [projectKey];
 
-        const projectScope = projectKey === undefined ? ["--all-projects"] : [projectKey];
+      if (page.nextCursor !== undefined) {
         diagnostic(
           `More tasks. Continue with: ${formatListContinuation(
             ["task", "list"],
@@ -552,11 +567,26 @@ Examples:
           )}`,
         );
       }
+
+      if (page.hiddenClosedCount !== undefined) {
+        const noun = page.hiddenClosedCount === 1 ? "task" : "tasks";
+        diagnostic(
+          `${page.hiddenClosedCount} closed ${noun} not shown. List every state with: ${formatListContinuation(
+            ["task", "list"],
+            projectScope,
+            selectionTokens,
+            "state",
+            "all",
+          )}`,
+        );
+      }
     },
     help: `${generateCommandUsage("task list", taskInputs.list)}
 
-List active tasks by default.
+List open, active tasks by default.
 ${projectScopeDescription}
+--state closed lists tasks in done and cancelled columns, and --state all lists every state.
+When the default hides closed tasks that match, stderr gives a shell-quoted command that includes them, including with --json.
 Use --archived to list archived tasks or --all to list both.
 Repeat --label to require every specified label.
 --column matches an exact column name. Column and label matching ignore case.
