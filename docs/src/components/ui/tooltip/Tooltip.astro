@@ -1,27 +1,31 @@
 ---
+import type { TooltipPlacement } from "./variants";
+
 import { twMerge } from "tailwind-merge";
+import { tooltipVariants } from "./variants";
 
 interface Props {
 	text: string;
+	placement?: TooltipPlacement;
 	class?: string;
 }
 
-const { text, class: className } = Astro.props;
+const { text, placement = tooltipVariants.defaultVariants.placement, class: className } = Astro.props;
+const separator = placement.indexOf("-");
+const side = placement.slice(0, separator);
+const align = placement.slice(separator + 1);
 const tooltipId = `tooltip-${crypto.randomUUID()}`;
 ---
 
 <span class={twMerge("group/tooltip relative inline-flex min-w-0", className)} data-tooltip>
 	<slot />
 	<span
-		class:list={[
-			"absolute top-full right-0 z-20 mt-1.75 hidden w-max max-w-[min(20rem,calc(100vw-2rem))]",
-			"bg-soot px-2.5 py-2 font-mono text-[11px]/normal wrap-anywhere text-soot-foreground",
-			"before:absolute before:inset-x-0 before:-top-2 before:bottom-full",
-			"group-hover/tooltip:block group-has-[:focus-visible]/tooltip:block",
-			"group-data-tooltip-open/tooltip:block group-data-tooltip-dismissed/tooltip:hidden!"
-		]}
+		class:list={[tooltipVariants.base, tooltipVariants.variants.placement[placement]]}
 		id={tooltipId}
-		role='tooltip'>{text}</span
+		role='tooltip'
+		data-placement={placement}
+		data-side={side}
+		data-align={align}>{text}</span
 	>
 </span>
 

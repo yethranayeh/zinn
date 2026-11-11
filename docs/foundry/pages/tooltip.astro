@@ -1,17 +1,27 @@
 ---
+import type { TooltipPlacement } from "../../src/components/ui/tooltip/variants";
+
+import FoundryLayout from "../layouts/FoundryLayout.astro";
+import Specimen from "../components/Specimen.astro";
+import ComponentHeading from "../components/ComponentHeading.astro";
 import Button from "../../src/components/ui/button/Button.astro";
 import Icon from "../../src/components/ui/icon/Icon.astro";
 import Tooltip from "../../src/components/ui/tooltip/Tooltip.astro";
-import ComponentHeading from "../components/ComponentHeading.astro";
-import Specimen from "../components/Specimen.astro";
-import FoundryLayout from "../layouts/FoundryLayout.astro";
+import { tooltipVariants } from "../../src/components/ui/tooltip/variants";
+
+const placements = Object.keys(tooltipVariants.variants.placement) as TooltipPlacement[];
 ---
 
 <FoundryLayout title='Tooltip' description='Tooltip shows a text hint for a button or link.'>
 	<ComponentHeading folder='tooltip'>
 		<p>
-			A text hint for a button or link. It shows on hover and keyboard focus, and Escape dismisses it. The pointer can move into
-			the hint without closing it.
+			A text hint for a button or link. It shows on hover and keyboard focus, and Escape dismisses it. The pointer can
+			move into the hint without closing it.
+		</p>
+		<p>
+			<code>placement</code> sets the side and its alignment, such as <code>top-start</code> or <code
+				>bottom-center</code
+			>. The default is <code>bottom-end</code>.
 		</p>
 		<p>The hint adds no tab stop, so the button or link inside still needs its own accessible name.</p>
 		<p>
@@ -29,4 +39,23 @@ import FoundryLayout from "../layouts/FoundryLayout.astro";
 			</Tooltip>
 		</div>
 	</Specimen>
+
+	<section class='flex flex-col gap-4' aria-labelledby='placements'>
+		<h2 id='placements' class='text-xl font-semibold'>Placements</h2>
+		<div class='grid gap-4 md:grid-cols-2 xl:grid-cols-3'>
+			{
+				placements.map((placement) => (
+					<Specimen label={`placement="${placement}"`} block>
+						<div class='flex min-h-40 items-center justify-center'>
+							<Tooltip text='Copy as Markdown' placement={placement}>
+								<Button size='icon' aria-label='Copy as Markdown'>
+									<Icon name='copy' />
+								</Button>
+							</Tooltip>
+						</div>
+					</Specimen>
+				))
+			}
+		</div>
+	</section>
 </FoundryLayout>
