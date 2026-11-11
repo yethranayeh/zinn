@@ -1,0 +1,63 @@
+---
+import Button from "../../src/components/ui/button/Button.astro";
+import Chip from "../../src/components/ui/chip/Chip.astro";
+import Icon from "../../src/components/ui/icon/Icon.astro";
+import Tooltip from "../../src/components/ui/tooltip/Tooltip.astro";
+import Inspector from "../inspector/Inspector.astro";
+import FoundryLayout from "../layouts/FoundryLayout.astro";
+---
+
+<FoundryLayout title='Inspector' description='Inspector measures a component and draws its parts on a drafting layer.'>
+	<header class='flex max-w-[65ch] flex-col gap-4 [&_code]:bg-[color-mix(in_srgb,currentColor_8%,transparent)] [&_code]:px-[0.22em] [&_code]:py-[0.05em] [&_code]:text-[0.85em] [&_kbd]:border [&_kbd]:border-current [&_kbd]:px-1 [&_kbd]:text-[0.85em]'>
+		<h1 class='text-3xl font-semibold md:text-4xl'>Inspector</h1>
+		<p>
+			Measures a component and draws its parts on a drafting layer. Hover a component marked with
+			<code>data-inspect</code> to inspect it. The <kbd>I</kbd> key or the Inspect button shows and hides the
+			layer.
+		</p>
+		<p>
+			The active component's tooltip stays open, so its bubble, gap and bridge can be measured. A tooltip bubble,
+			a button, a link and every <code>data-part</code> element count as parts.
+		</p>
+	</header>
+
+	<Inspector>
+		<article class='max-w-full'>
+			<p class='font-mono text-[0.625rem] tracking-[0.2em] text-pewter uppercase'>Docs · Markdown actions</p>
+			<h2 class='mt-2.5 mb-3 text-[1.75rem] leading-[1.1] font-bold tracking-[-0.02em]'>
+				Every page keeps its Markdown within reach
+			</h2>
+			<p class='max-w-[30rem] text-[0.9375rem] leading-[1.55] text-muted-foreground'>
+				Copy the source of a page, or open it as Markdown. Both actions carry a hint that explains the icon.
+			</p>
+
+			<div class='mt-8 flex flex-col items-start gap-40'>
+				<div class='inline-flex max-w-full items-stretch border border-soot/20 font-mono text-xs/normal'>
+					<span class='inline-flex shrink-0 items-center px-3.5'>Markdown</span>
+					<span class='inline-flex border-l border-soot/20' data-inspect='Tooltip'>
+						<Tooltip text='Copy as Markdown'>
+							<Button size='icon' aria-label='Copy as Markdown'>
+								<Icon name='copy' />
+							</Button>
+						</Tooltip>
+					</span>
+					<span class='inline-flex border-l border-soot/20' data-inspect='Markdown link'>
+						<Tooltip text='Open Markdown'>
+							<a
+								class='inline-flex min-h-11 min-w-11 items-center justify-center no-underline hover:bg-soot/8 hover:no-underline'
+								href='https://zinn.sh/docs/installation.md'
+								aria-label='Open Markdown'>
+								<Icon name='external-link' class='size-4' />
+							</a>
+						</Tooltip>
+					</span>
+				</div>
+
+				<div class='flex flex-wrap items-center gap-4'>
+					<span data-inspect='Chip'><Chip data-part='label'>Experimental</Chip></span>
+					<span data-inspect='Outline button'><Button variant='outline'>View changelog</Button></span>
+				</div>
+			</div>
+		</article>
+	</Inspector>
+</FoundryLayout>

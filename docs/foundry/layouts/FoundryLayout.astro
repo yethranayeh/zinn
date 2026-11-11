@@ -26,9 +26,10 @@ const documentTitle = title ? `${title} | Zinn Foundry` : "Zinn Foundry";
 	</head>
 	<body class='flex min-h-svh flex-col selection:bg-soot selection:text-limestone'>
 		<header class='border-b border-soot'>
-			<div class='site-container flex h-(--site-brand-height) items-center'>
+			<nav class='site-container flex h-(--site-brand-height) items-center gap-5' aria-label='Foundry'>
 				<a href='/' class='font-mono text-xs no-underline hover:underline'>Zinn Foundry</a>
-			</div>
+				<a href='/inspector/' class='font-mono text-xs no-underline hover:underline'>Inspector</a>
+			</nav>
 		</header>
 
 		<main class='site-container flex min-w-0 flex-1 flex-col gap-12 py-12'>
