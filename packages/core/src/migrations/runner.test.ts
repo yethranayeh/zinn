@@ -232,14 +232,19 @@ test("when ROLLBACK and restoring foreign keys also fail, the original error kee
 
     expect(thrown).toBe(failure);
     expect((thrown as Suppressing).suppressed).toBe(rollbackFailure);
-    // The transaction is still open, so switching foreign keys back on did nothing.
+    // The transaction is still open, so the connection refuses to switch foreign keys back on.
     const restoreFailure = (rollbackFailure as Suppressing).suppressed;
     expect(restoreFailure).toBeInstanceOf(Error);
+    expect((restoreFailure as Error).cause).toBe(rollbackFailure);
     expect(db.inTransaction).toBe(true);
-    expect(foreignKeys(db)).toBe(0);
+    expect(() => foreignKeys(db)).toThrow();
 
-    db.exec("ROLLBACK");
-    expect(snapshot(db)).toEqual(before);
+    const other = openWith(bunDriver, db.databasePath!);
+    try {
+      expect(snapshot(other)).toEqual(before);
+    } finally {
+      other.close();
+    }
   });
 });
 

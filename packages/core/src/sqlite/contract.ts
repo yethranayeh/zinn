@@ -655,9 +655,11 @@ export function defineContractChecks(test: DefineTest, adapter: Adapter) {
     });
   });
 
-  test("when ROLLBACK also fails, the original error is thrown and the rollback error kept", () => {
+  test("when ROLLBACK also fails, the original error keeps the rollback error and the connection refuses every later statement", () => {
     const rollbackFailure = new Error("rollback failed");
     let failRollback = true;
+    const isRollbackFailedError = (error: unknown) =>
+      error instanceof Error && !(error instanceof SqliteError) && error.cause === rollbackFailure;
     const driver: SqliteDriver = {
       ...adapter.driver,
       connect(path, options) {
@@ -679,24 +681,60 @@ export function defineContractChecks(test: DefineTest, adapter: Adapter) {
         };
       },
     };
-    const db = openWith(driver, ":memory:");
 
-    try {
-      const failure = new Error("callback failed");
-      assert.throws(
-        () =>
-          db
-            .transaction(() => {
-              throw failure;
-            })
-            .immediate(),
-        (error) =>
-          error === failure && (error as { suppressed?: unknown }).suppressed === rollbackFailure,
-      );
-    } finally {
-      db.exec("ROLLBACK");
-      db.close();
-    }
+    withDirectory((directory) => {
+      const path = join(directory, "contract.sqlite");
+      const db = openWith(driver, path);
+
+      try {
+        db.exec("CREATE TABLE item (value TEXT)");
+        const insert = db.query("INSERT INTO item VALUES (?)");
+        const failure = new Error("callback failed");
+        assert.throws(
+          () =>
+            db
+              .transaction(() => {
+                insert.run("rolled back");
+                throw failure;
+              })
+              .immediate(),
+          (error) =>
+            error === failure && (error as { suppressed?: unknown }).suppressed === rollbackFailure,
+        );
+
+        assert.equal(db.inTransaction, true);
+        assert.throws(
+          () => db.transaction(() => insert.run("later")).immediate(),
+          isRollbackFailedError,
+        );
+        assert.throws(
+          () => db.transaction(() => count(db, "item")).deferred(),
+          isRollbackFailedError,
+        );
+        assert.throws(() => insert.run("later"), isRollbackFailedError);
+        assert.throws(() => db.query("SELECT 1").get(), isRollbackFailedError);
+        assert.throws(() => db.exec("ROLLBACK"), isRollbackFailedError);
+
+        const other = adapter.openDatabase(path);
+        try {
+          assert.equal(count(other, "item"), 0);
+        } finally {
+          other.close();
+        }
+      } finally {
+        db.close();
+      }
+
+      const reopened = openWith(driver, path);
+      try {
+        reopened
+          .transaction(() => reopened.query("INSERT INTO item VALUES (?)").run("after reopen"))
+          .immediate();
+        assert.equal(count(reopened, "item"), 1);
+      } finally {
+        reopened.close();
+      }
+    });
   });
 
   test("SQLite errors keep their extended code, symbolic name and driver cause", () => {

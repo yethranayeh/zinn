@@ -547,6 +547,12 @@ export class Database {
   private transactionDepth = 0;
   /** The mode of the outermost running transaction() call, or null when none is running. */
   private outerTransactionMode: TransactionMode | null = null;
+  /**
+   * The error of a failed ROLLBACK
+   * Any statement after this error is refused
+   *  for the lifetime of this connectino
+   */
+  private rollbackFailure: unknown = null;
 
   constructor(
     driver: SqliteDriver,
@@ -574,6 +580,14 @@ export class Database {
    */
   private readonly assertUsable = () => {
     this.assertOpen();
+
+    // The transaction may still be open, so a later write would land in it and be lost on close.
+    if (this.rollbackFailure != null) {
+      throw new Error(
+        "A ROLLBACK failed on this connection, so it may still be inside a transaction. Close it and open a new connection.",
+        { cause: this.rollbackFailure },
+      );
+    }
 
     const isTransactionLost = this.transactionDepth > 0 && !this.connection.inTransaction;
     if (isTransactionLost) {
@@ -630,6 +644,7 @@ export class Database {
    * which the busy timeout does not retry.
    * @link https://www.sqlite.org/isolation.html
    * If fn or COMMIT fails, an open transaction is rolled back and the original error is rethrown.
+   * If that ROLLBACK fails too, every later statement and transaction throws until the connection is closed.
    * If SQLite rolled the transaction back by itself, statements throw until this call returns.
    */
   transaction<T>(fn: () => T) {
@@ -640,6 +655,7 @@ export class Database {
   }
 
   private runTransaction<T>(fn: () => T, mode: TransactionMode): T {
+    this.assertUsable();
     const isNested = this.inTransaction;
     const isImmediateInDeferred =
       isNested && mode === "IMMEDIATE" && this.outerTransactionMode === "DEFERRED";
@@ -675,16 +691,21 @@ export class Database {
               : "ROLLBACK",
           );
         } catch (rollbackError) {
+          this.rollbackFailure ??= rollbackError;
           attachSuppressed(error, rollbackError);
         }
       }
 
       throw error;
     } finally {
-      this.transactionDepth--;
+      // After a failed ROLLBACK the transaction may still be open, so it is not counted as ended.
+      const hasRollbackFailed = this.rollbackFailure != null;
+      if (!hasRollbackFailed) {
+        this.transactionDepth--;
 
-      if (!isNested) {
-        this.outerTransactionMode = null;
+        if (!isNested) {
+          this.outerTransactionMode = null;
+        }
       }
     }
   }
