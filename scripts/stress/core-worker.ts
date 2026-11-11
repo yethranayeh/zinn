@@ -439,7 +439,7 @@ function planCrashOperation(db: Database, marker: string, rng: Random): PlannedO
 
 function runCrashMode() {
   const runNumber = Number(values.run);
-  const db = getDb();
+  const db = getDb({ createsDatabase: true });
 
   // The first run creates the project. It is logged like any other operation.
   if (project.getByKey(CRASH_PROJECT_KEY) == null) {
@@ -607,7 +607,7 @@ function runContendMode() {
 
 function runSeedMode() {
   const taskCount = Number(values.tasks);
-  const db = getDb();
+  const db = getDb({ createsDatabase: true });
 
   project.create({ key: SEED_PROJECT_KEY, name: "Backup source" }, actor);
   const projectMatch = project.getByKey(SEED_PROJECT_KEY)!;
@@ -631,7 +631,7 @@ function runSeedMode() {
 
 function runSeedLinkedMode() {
   const taskCount = Number(values.tasks);
-  const db = getDb();
+  const db = getDb({ createsDatabase: true });
   const labelNames = ["alpha", "beta", "gamma"];
 
   project.create({ key: SEED_PROJECT_KEY, name: "Linked source" }, actor);

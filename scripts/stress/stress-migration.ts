@@ -1,5 +1,5 @@
 /**
- * The test-only schema version 2 that the migration scenarios put after core's empty migration chain,
+ * The test-only schema version that the migration scenarios put after the last migration in core's chain,
  *  and what it does while it runs. migration-preload.ts registers it in the child processes.
  *
  * Settings come from the environment, so one definition serves every scenario:
@@ -14,8 +14,8 @@ import type { Migration } from "../../packages/core/src/migrations/registry.ts";
 
 import { appendFileSync } from "node:fs";
 
+import { latestVersion, MIGRATIONS } from "../../packages/core/src/migrations/registry.ts";
 import { regenerateSearch } from "../../packages/core/src/migrations/search.ts";
-import { rebuildTask } from "../../packages/core/src/migrations/testing.ts";
 
 export const MIGRATION_EVENTS = ["start", "rebuilt", "spilled", "before-commit"] as const;
 export type MigrationEvent = (typeof MIGRATION_EVENTS)[number];
@@ -52,9 +52,33 @@ function spillCache(db: Database, bytes: number) {
   db.exec("DROP TABLE stress_spill");
 }
 
+/**
+ * Rebuilds the task table from its current definition (https://www.sqlite.org/lang_altertable.html#otheralter):
+ *  create a copy, move the rows, drop the original, rename the copy, then recreate its indexes and triggers.
+ */
+function rebuildTask(db: Database) {
+  const table = db
+    .query<{ sql: string }>("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'task'")
+    .get()!;
+  const dependents = db
+    .query<{ sql: string }>(
+      "SELECT sql FROM sqlite_schema WHERE tbl_name = 'task' AND type IN ('index', 'trigger') AND sql IS NOT NULL",
+    )
+    .all();
+
+  db.exec(table.sql.replace(/^CREATE TABLE "?task"?/, "CREATE TABLE new_task"));
+  db.exec("INSERT INTO new_task SELECT * FROM task");
+  db.exec("DROP TABLE task");
+  db.exec("ALTER TABLE new_task RENAME TO task");
+  for (const dependent of dependents) {
+    db.exec(dependent.sql);
+  }
+}
+
 /** Rebuilds the task table, which has child tables, and regenerates search, like the largest real upgrades. */
 export const STRESS_MIGRATION: Migration = {
-  version: 2,
+  // Read before the preload appends this migration, so it is the version right after core's latest.
+  version: latestVersion(MIGRATIONS) + 1,
   name: "stress rebuild",
   rebuilds: ["task"],
   regeneratesSearch: true,

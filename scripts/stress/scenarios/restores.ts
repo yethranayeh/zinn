@@ -72,8 +72,11 @@ const TARGET_TASK = `${SEED_PROJECT_KEY}-1`;
 
 type Fixture = { old: OlderStore; restored: StoreRows; backup: string };
 
-function restoreCommand(backup: string) {
-  return ["bun", "--preload", PRELOAD, CLI_ENTRY, "restore", backup, "--yes", "--json"];
+// With --json the CLI prints diagnostics only when the command ends, so a stage that watches
+//  for the lock-wait message while the restore runs uses the plain output instead.
+function restoreCommand(backup: string, { json = true } = {}) {
+  const output = json ? ["--json"] : [];
+  return ["bun", "--preload", PRELOAD, CLI_ENTRY, "restore", backup, "--yes", ...output];
 }
 
 async function command(directory: string, args: Array<string>) {
@@ -139,7 +142,7 @@ function stageReached(file: string, stage: string) {
   return readEvents(file, EVENTS).some((record) => record.event === stage);
 }
 
-async function waitUntil(check: () => boolean) {
+async function waitUntil(check: () => boolean, describe: () => string) {
   const began = performance.now();
   while (performance.now() - began < STAGE_TIMEOUT_MS) {
     if (check()) {
@@ -147,7 +150,7 @@ async function waitUntil(check: () => boolean) {
     }
     await sleep(POLL_MS);
   }
-  throw new Error("Timed out waiting for the child process stage");
+  throw new Error(`Timed out waiting for the child process stage: ${describe()}`);
 }
 
 function fail(result: ScenarioResult, reproduce: string, directory: string, error: unknown) {
@@ -214,10 +217,18 @@ export async function runRestoreKill(
         holder = openForChecks(databasePathOf(directory));
         holder.exec("BEGIN IMMEDIATE");
       }
-      child = new Child(restoreCommand(stores.backup), directory, COMMAND_TIMEOUT_MS, environment);
+      child = new Child(
+        restoreCommand(stores.backup, { json: stage !== "waiting" }),
+        directory,
+        COMMAND_TIMEOUT_MS,
+        environment,
+      );
 
       if (stage === "waiting") {
-        await waitUntil(() => child!.stderr.includes(LOCK_WAIT_MESSAGE));
+        await waitUntil(
+          () => child!.stderr.includes(LOCK_WAIT_MESSAGE),
+          () => child!.stderr,
+        );
       } else {
         const reached = await waitForEvent(
           events,
@@ -477,6 +488,7 @@ export async function runRestoreConcurrentWriter(
         () =>
           readEvents(events, EVENTS).filter((event) => event.event === "writer-ready").length ===
           waiters.length,
+        () => waiters.map((child) => child.stderr).join("\n"),
       );
 
       if (waiters.some((child) => child.lines.length > 0 || child.process.exitCode != null)) {

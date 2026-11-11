@@ -1,7 +1,7 @@
 /**
  * Preload for the migration scenarios: `bun --preload <this file> <entry> ...`.
- * Core ships an empty migration chain, so this adds the test-only version 2 (stress-migration.ts) to it,
- *  in the child process that loads it and nowhere else. A store made without this preload is at version 1,
+ * This appends the test-only migration (stress-migration.ts) to core's chain, in the child process that
+ *  loads it and nowhere else. A store made without this preload is at core's latest version,
  *  so with it the store is older and the process upgrades it.
  *
  * It imports core's registry by file path, which is the module the CLI and core load too,

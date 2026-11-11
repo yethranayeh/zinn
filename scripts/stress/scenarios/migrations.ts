@@ -1,6 +1,6 @@
 /**
  * Scenarios for upgrading an older store (see migration-preload.ts for how the CLI gets a test-only
- *  migration, since core ships an empty chain). All of them run the real CLI against isolated stores.
+ *  migration after core's own). All of them run the real CLI against isolated stores.
  *
  *   migrate-open-race   several processes run ordinary commands on one older store at once: exactly one
  *                       upgrades and takes the one backup, the rest find it current; rows survive.
@@ -22,7 +22,7 @@
  */
 import type { Options, ScenarioResult } from "../harness.ts";
 
-import { copyFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { readSchemaVersion } from "../../../packages/core/src/migrations/runner.ts";
@@ -41,6 +41,7 @@ import {
   checkBackups,
   checkSearchIndex,
   checkUpgraded,
+  cliErrorOf,
   compareWithOlder,
   copyOlderStore,
   countMigrationStarts,
@@ -398,7 +399,7 @@ export async function runMigrateRace(
           ? [`${upgradedByMigrate.length} migrate commands report they upgraded`]
           : []),
         ...reports
-          .filter((report) => report.finalVersion !== 2)
+          .filter((report) => report.finalVersion !== UPGRADED_VERSION)
           .map((report) => `a migrate command reports final version ${report.finalVersion}`),
         ...upgradedByMigrate
           .filter(
@@ -1012,9 +1013,10 @@ export async function runMigrateCreateRace(
   const durations: Array<number> = [];
 
   for (let round = 0; round < roundsFor(options); round++) {
-    // The directory does not exist yet, so the first commands also race to create it.
+    // An empty directory with no database yet. Zinn refuses a ZINN_DIR that does not exist.
     const zinnDirectory = join(run.root, `${scenario}-${round}`);
     run.assertIsolated(zinnDirectory);
+    mkdirSync(zinnDirectory);
     const eventsDirectory = run.create(`${scenario}-events`);
     const eventsFile = join(eventsDirectory, "events.txt");
     const environment = {
@@ -1024,7 +1026,8 @@ export async function runMigrateCreateRace(
     };
 
     try {
-      // Mostly creates, with some reads: every command on a missing store creates it first.
+      // Mostly creates, with some reads. A create on a missing store creates it first.
+      //  A read that runs before any create has finished finds no database and changes nothing.
       const commands = Array.from({ length: processCount }, (_, index) =>
         index % 4 === 3
           ? { kind: "list", args: ["project", "list"] }
@@ -1043,7 +1046,17 @@ export async function runMigrateCreateRace(
       result.iterations++;
       durations.push(...outcomes.map((outcome) => outcome.durationMs));
 
-      const failed = outcomes.filter((outcome) => outcome.exitCode !== 0);
+      const foundNoStore = outcomes.map((outcome, index) => {
+        const error = cliErrorOf(outcome.stderr);
+        return (
+          commands[index]!.kind === "list" &&
+          error?.code === "not_found" &&
+          error.details?.entity === "database"
+        );
+      });
+      const failed = outcomes.filter(
+        (outcome, index) => outcome.exitCode !== 0 && !foundNoStore[index],
+      );
       if (failed.length > 0) {
         fail(
           "a command failed on first use",
@@ -1070,7 +1083,9 @@ export async function runMigrateCreateRace(
           `creating a store took a backup: ${readdirSync(backupDirectoryOf(zinnDirectory)).join(", ")}`,
         );
       }
-      const noisy = outcomes.filter((outcome) => outcome.stderr.trim() !== "");
+      const noisy = outcomes.filter(
+        (outcome, index) => outcome.stderr.trim() !== "" && !foundNoStore[index],
+      );
       if (noisy.length > 0) {
         problems.push(
           `${noisy.length} processes printed on stderr, first: ${noisy[0]!.stderr.trim().slice(0, 200)}`,

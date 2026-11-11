@@ -45,7 +45,7 @@ const templates = new WeakMap<RunDirectory, Map<number, OlderStore>>();
 
 /**
  * A store at the version before the test migration, populated through core with tasks, comments,
- *  labels and relations (no preload, so it is made at version 1). Built once per size and copied.
+ *  labels and relations (no preload, so it is made at core's latest version). Built once per size and copied.
  */
 export async function olderStoreTemplate(
   run: RunDirectory,
@@ -359,13 +359,20 @@ export function countMigrationStarts(eventsFile: string) {
   return readEvents(eventsFile).filter((record) => record.event === "start").length;
 }
 
-/** What a CLI command printed as an error, for messages and counting. */
-export function errorMessageOf(stderr: string) {
+type CliError = { code: string; message: string; details?: Record<string, unknown> };
+
+/** The `--json` error a command printed on stderr, or null when stderr holds none. */
+export function cliErrorOf(stderr: string): CliError | null {
   const json = stderr.slice(stderr.indexOf("{"));
 
   try {
-    return (JSON.parse(json) as { error: { message: string } }).error.message;
+    return (JSON.parse(json) as { error: CliError }).error;
   } catch {
-    return stderr.trim().slice(0, 300);
+    return null;
   }
+}
+
+/** What a CLI command printed as an error, for messages and counting. */
+export function errorMessageOf(stderr: string) {
+  return cliErrorOf(stderr)?.message ?? stderr.trim().slice(0, 300);
 }

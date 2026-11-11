@@ -14,7 +14,7 @@
 import type { Options, ScenarioResult } from "../harness.ts";
 import type { Random } from "../random.ts";
 
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -376,9 +376,11 @@ export async function runConcurrencyCli(
       `read latency ${describeLatencies(reads.map((record) => record.durationMs))}`,
     );
 
-    // First use: every process starts on a ZINN_DIR that does not exist yet.
+    // First use: every process starts on an empty ZINN_DIR with no database yet.
+    // Zinn refuses a ZINN_DIR that does not exist, so the folder is created first.
     const raceSize = options.processes * RACE_PROCESSES_PER_LANE;
     const freshDirectory = join(run.root, `${SCENARIO}-fresh-init`);
+    mkdirSync(freshDirectory);
     raceDirectories.push(freshDirectory);
     const freshRace = await runRace("fresh-init", run, freshDirectory, raceSize, (index) => [
       "project",
