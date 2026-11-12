@@ -5,5 +5,7 @@ concurrentTestGlob = [
   "**/packages/cli/result-contract.test.ts",
   "**/packages/cli/telemetry.test.ts",
   "**/packages/cli/src/input.test.ts",
+  "**/packages/cli/src/errors.test.ts",
+  "**/packages/cli/capabilities.test.ts",
   "**/packages/cli/src/project.test.ts",
 ]

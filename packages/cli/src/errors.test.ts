@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CoreError, SqliteError } from "@zinn-dev/core";
 import { CliError, classifyFailure, errorDetailsSchema, errorDocumentSchema } from "./errors";
+import { runProcessAsync } from "../testing";
 import { openDatabase } from "../../core/src/sqlite/bun";
 import { MIGRATIONS, latestVersion } from "../../core/src/migrations/registry";
 
@@ -14,22 +15,19 @@ const CLI_PATH = new URL("../index.ts", import.meta.url).pathname;
 function fixture() {
   const directory = mkdtempSync(join(tmpdir(), "zinn-error-"));
   const databasePath = join(directory, "data/zinn.sqlite");
-  const invoke = (...args: string[]) => {
-    const result = Bun.spawnSync([process.execPath, CLI_PATH, ...args], {
-      cwd: directory,
-      env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory, ZINN_DEBUG: undefined },
-    });
-    return { code: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
-  };
+  const invoke = (...args: string[]) => runProcessAsync([process.execPath, CLI_PATH, ...args], {
+    cwd: directory,
+    env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory, ZINN_DEBUG: undefined },
+  });
   return {
     directory, databasePath, invoke,
-    succeed: (...args: string[]) => {
-      const result = invoke(...args, "--json");
+    succeed: async (...args: string[]) => {
+      const result = await invoke(...args, "--json");
       expect(result.code, result.stderr).toBe(0);
       return JSON.parse(result.stdout);
     },
-    fail: (...args: string[]) => {
-      const result = invoke(...args, "--json");
+    fail: async (...args: string[]) => {
+      const result = await invoke(...args, "--json");
       expect(result.code, result.stderr).toBe(1);
       expect(result.stdout).toBe("");
       return errorDocumentSchema.parse(JSON.parse(result.stderr)).error;
@@ -87,7 +85,7 @@ test("SQLite reason translation leaves unknown primary codes and shaped errors i
   expect(classifyFailure(shaped)).toEqual({ code: "internal" });
 });
 
-test("ZINN-283: rare injected failures include buffered notices once and never serialize arbitrary error properties", () => {
+test("ZINN-283: rare injected failures include buffered notices once and never serialize arbitrary error properties", async () => {
   const lib = new URL("./lib.ts", import.meta.url).pathname;
   const core = new URL("../../core/index.ts", import.meta.url).pathname;
   for (const expression of [
@@ -95,16 +93,16 @@ test("ZINN-283: rare injected failures include buffered notices once and never s
     "Object.assign(new Error('permission denied'), { code: 'EACCES', sql: 'secret SQL', bindings: ['secret binding'] })",
     "{ message: { submitted: 'secret input' }, stack: 'secret stack' }",
   ]) {
-    const result = Bun.spawnSync([process.execPath, "--eval", `
+    const result = await runProcessAsync([process.execPath, "--eval", `
       import { prepareOutput, diagnostic, renderFailure } from ${JSON.stringify(lib)};
       import { SqliteError } from ${JSON.stringify(core)};
       prepareOutput(['--json']);
       diagnostic('prior notice');
       renderFailure(${expression});
     `], { env: TEST_ENVIRONMENT });
-    expect(result.exitCode).toBe(1);
-    expect(result.stdout.toString()).toBe("");
-    const stderr = result.stderr.toString();
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    const stderr = result.stderr;
     const failure = errorDocumentSchema.parse(JSON.parse(stderr)).error;
     expect(failure.diagnostics).toEqual(["prior notice"]);
     expect(stderr).not.toContain("secret");
@@ -112,7 +110,7 @@ test("ZINN-283: rare injected failures include buffered notices once and never s
   }
 });
 
-test("ZINN-283: invocation failures expose their argument or field and preserve usage help", () => {
+test("ZINN-283: invocation failures expose their argument or field and preserve usage help", async () => {
   const f = fixture();
   try {
     const cases = [
@@ -127,9 +125,9 @@ test("ZINN-283: invocation failures expose their argument or field and preserve 
       { args: ["task", "create", "APP", "--title", "Title", "--priority", "invalid"], argument: "--priority" },
       { args: ["task", "order", "APP-1", "sideways"], argument: "direction", help: true },
     ];
-    f.succeed("project", "create", "APP");
+    await f.succeed("project", "create", "APP");
     for (const { args, argument, help } of cases) {
-      const error = f.fail(...args);
+      const error = await f.fail(...args);
       expect(error.code, args.join(" ")).toBe("invalid_input");
       if (argument !== undefined) {
         expect(error.details?.argument).toBe(argument);
@@ -138,23 +136,23 @@ test("ZINN-283: invocation failures expose their argument or field and preserve 
         expect(error.help).toContain("Usage:");
       }
     }
-    expect(f.fail("task", "view", "APP-1", "extra").details?.field).toEqual([]);
-    expect(f.fail("label", "create", "bad", "--color", "invalid")).toMatchObject({ code: "invalid_input", details: { field: ["color"] } });
-    expect(f.succeed("task", "list", "APP")).toEqual([]);
+    expect((await f.fail("task", "view", "APP-1", "extra")).details?.field).toEqual([]);
+    expect(await f.fail("label", "create", "bad", "--color", "invalid")).toMatchObject({ code: "invalid_input", details: { field: ["color"] } });
+    expect(await f.succeed("task", "list", "APP")).toEqual([]);
   } finally {
     f.close();
   }
 });
 
-test("ZINN-346: refusal reasons preserve public facts and leave tasks and activity unchanged", () => {
+test("ZINN-346: refusal reasons preserve public facts and leave tasks and activity unchanged", async () => {
   const f = fixture();
   try {
-    f.succeed("project", "create", "APP");
+    await f.succeed("project", "create", "APP");
     // The unquoted-column hints need a multi-word column.
-    f.succeed("project", "column", "create", "APP", "In Progress", "--category", "in_progress");
-    f.succeed("task", "create", "APP", "--title", "Example");
-    const task = f.succeed("task", "view", "APP-1");
-    const activity = f.succeed("activity", "list", "--project", "APP");
+    await f.succeed("project", "column", "create", "APP", "In Progress", "--category", "in_progress");
+    await f.succeed("task", "create", "APP", "--title", "Example");
+    const task = await f.succeed("task", "view", "APP-1");
+    const activity = await f.succeed("activity", "list", "--project", "APP");
     const cases = [
       { args: [], details: { argument: "command", reason: "missing_command" } },
       { args: ["task"], details: { argument: "command", reason: "missing_command" } },
@@ -176,7 +174,7 @@ test("ZINN-346: refusal reasons preserve public facts and leave tasks and activi
       { args: ["task", "move", "APP-1", "In", "Progress"], code: "not_found", details: { entity: "column", key: "Progress", source: "explicit", reason: "unquoted_column" } },
     ];
     for (const { args, code = "invalid_input", details } of cases) {
-      expect(f.fail(...args), args.join(" ")).toMatchObject({ code, details });
+      expect(await f.fail(...args), args.join(" ")).toMatchObject({ code, details });
     }
     for (const args of [
       ["task", "order", "APP-1", "sideways"],
@@ -185,24 +183,24 @@ test("ZINN-346: refusal reasons preserve public facts and leave tasks and activi
       ["task", "create", "APP", "--title", ""],
       ["task", "create", "APP", "--title", "Title", "--priority", "invalid"],
     ]) {
-      expect(f.fail(...args).details?.reason, args.join(" ")).toBeUndefined();
+      expect((await f.fail(...args)).details?.reason, args.join(" ")).toBeUndefined();
     }
-    expect(f.fail("task", "delete", "APP-1")).toMatchObject({ details: { reason: "confirmation_required" } });
-    const literal = f.invoke("task", "view", "--json", "--", "--bad");
+    expect(await f.fail("task", "delete", "APP-1")).toMatchObject({ details: { reason: "confirmation_required" } });
+    const literal = await f.invoke("task", "view", "--json", "--", "--bad");
     expect(literal.code).toBe(1);
     expect(literal.stdout).toBe("");
     expect(errorDocumentSchema.parse(JSON.parse(literal.stderr)).error).toMatchObject({
       code: "invalid_input", details: { field: ["taskKey"] },
     });
     for (const args of [[], ["--json", "--help"], ["task", "--json", "--help", "--bad"], ["task", "view", "--json", "--help", "--bad"]]) {
-      const result = f.invoke(...args);
+      const result = await f.invoke(...args);
       expect(result.code, result.stderr).toBe(0);
       expect(result.stderr).toBe("");
     }
-    expect(f.succeed("task", "view", "APP-1")).toEqual(task);
-    expect(f.succeed("activity", "list", "--project", "APP")).toEqual(activity);
+    expect(await f.succeed("task", "view", "APP-1")).toEqual(task);
+    expect(await f.succeed("activity", "list", "--project", "APP")).toEqual(activity);
 
-    const manifest = f.succeed("capabilities");
+    const manifest = await f.succeed("capabilities");
     const publicError = manifest.schemas.definitions.ErrorEnvelope.properties.error;
     expect(publicError.properties.details.properties.reason.enum).toEqual(errorDetailsSchema.shape.reason.unwrap().options);
     expect(publicError.properties).not.toHaveProperty("suggestedRoute");
@@ -212,7 +210,7 @@ test("ZINN-346: refusal reasons preserve public facts and leave tasks and activi
   }
 });
 
-test("ZINN-346: canonical repair routes survive rendering limits and never enter the public envelope", () => {
+test("ZINN-346: canonical repair routes survive rendering limits and never enter the public envelope", async () => {
   const f = fixture();
   const lib = new URL("./lib.ts", import.meta.url).pathname;
   const errors = new URL("./errors.ts", import.meta.url).pathname;
@@ -232,12 +230,12 @@ test("ZINN-346: canonical repair routes survive rendering limits and never enter
     { args: ["task", "view"], route: null },
   ];
   try {
-    f.succeed("project", "create", "APP");
+    await f.succeed("project", "create", "APP");
     // The unquoted-column hints need a multi-word column.
-    f.succeed("project", "column", "create", "APP", "In Progress", "--category", "in_progress");
-    f.succeed("task", "create", "APP", "--title", "Example");
+    await f.succeed("project", "column", "create", "APP", "In Progress", "--category", "in_progress");
+    await f.succeed("task", "create", "APP", "--title", "Example");
     for (const { args, route } of cases) {
-      const result = Bun.spawnSync([process.execPath, "--eval", `
+      const result = await runProcessAsync([process.execPath, "--eval", `
         import { mock } from "bun:test";
         const lib = await import(${JSON.stringify(lib)});
         const { classifyFailure } = await import(${JSON.stringify(errors)});
@@ -250,9 +248,9 @@ test("ZINN-346: canonical repair routes survive rendering limits and never enter
         const { createRouter } = await import(${JSON.stringify(router)});
         await createRouter(parsedRoutes).route(${JSON.stringify([...args, "--json"])});
       `], { cwd: f.directory, env: { ...TEST_ENVIRONMENT, ZINN_DIR: f.directory } });
-      expect(result.exitCode, result.stderr.toString()).toBe(1);
-      expect(JSON.parse(result.stdout.toString()), args.join(" ")).toEqual(route);
-      const failure = errorDocumentSchema.parse(JSON.parse(result.stderr.toString())).error;
+      expect(result.code, result.stderr).toBe(1);
+      expect(JSON.parse(result.stdout), args.join(" ")).toEqual(route);
+      const failure = errorDocumentSchema.parse(JSON.parse(result.stderr)).error;
       expect(failure.message.length).toBeLessThanOrEqual(1024);
     }
   } finally {
@@ -274,12 +272,12 @@ test("internal recovery routes survive wrappers and reuse the recovery classific
   });
 });
 
-test("label validation prints plain messages and preserves JSON error facts without writes", () => {
+test("label validation prints plain messages and preserves JSON error facts without writes", async () => {
   const f = fixture();
   try {
-    f.succeed("label", "create", "bug", "--description", "Kept", "--color", "red");
-    const labels = f.succeed("label", "list");
-    const activities = f.succeed("activity", "list");
+    await f.succeed("label", "create", "bug", "--description", "Kept", "--color", "red");
+    const labels = await f.succeed("label", "list");
+    const activities = await f.succeed("activity", "list");
     const cases = [
       { args: ["label", "create", "other", "--color", "purple"], field: ["color"], facts: [/red/, /blue/] },
       { args: ["label", "create", " "], field: ["name"], facts: [/label/i, /name/i] },
@@ -291,7 +289,7 @@ test("label validation prints plain messages and preserves JSON error facts with
       { args: ["label", "delete", " ", "--yes"], field: ["name"], facts: [/label/i, /name/i] },
     ];
     for (const { args, field, facts } of cases) {
-      const text = f.invoke(...args);
+      const text = await f.invoke(...args);
       expect(text.code, args.join(" ")).toBe(1);
       expect(text.stdout).toBe("");
       expect(text.stderr.trim()).not.toStartWith("[");
@@ -299,34 +297,34 @@ test("label validation prints plain messages and preserves JSON error facts with
         expect(text.stderr).toMatch(fact);
       }
 
-      const error = f.fail(...args);
+      const error = await f.fail(...args);
       expect(error).toMatchObject({ code: "invalid_input", details: { field } });
       expect(error.message).toBe(text.stderr.trim());
     }
-    expect(f.succeed("label", "list")).toEqual(labels);
-    expect(f.succeed("activity", "list")).toEqual(activities);
+    expect(await f.succeed("label", "list")).toEqual(labels);
+    expect(await f.succeed("activity", "list")).toEqual(activities);
   } finally {
     f.close();
   }
 });
 
-test("ZINN-283: missing references, conflicts and text matching keep useful facts and change nothing", () => {
+test("ZINN-283: missing references, conflicts and text matching keep useful facts and change nothing", async () => {
   const f = fixture();
   try {
-    f.succeed("project", "create", "APP");
-    f.succeed("task", "create", "APP", "--title", "Kept", "--description", "word word");
-    expect(f.fail("task", "view", "APP-99")).toMatchObject({ code: "not_found", details: { entity: "task", key: "APP-99", source: "explicit" } });
-    expect(f.fail("project", "view", "MISSING")).toMatchObject({ code: "not_found", details: { entity: "project", key: "MISSING" } });
-    expect(f.fail("label", "delete", "missing", "--yes")).toMatchObject({ code: "not_found", details: { entity: "label", key: "missing" } });
-    expect(f.fail("project", "create", "APP")).toMatchObject({ code: "conflict", details: { reason: "already_exists", entity: "project" } });
+    await f.succeed("project", "create", "APP");
+    await f.succeed("task", "create", "APP", "--title", "Kept", "--description", "word word");
+    expect(await f.fail("task", "view", "APP-99")).toMatchObject({ code: "not_found", details: { entity: "task", key: "APP-99", source: "explicit" } });
+    expect(await f.fail("project", "view", "MISSING")).toMatchObject({ code: "not_found", details: { entity: "project", key: "MISSING" } });
+    expect(await f.fail("label", "delete", "missing", "--yes")).toMatchObject({ code: "not_found", details: { entity: "label", key: "missing" } });
+    expect(await f.fail("project", "create", "APP")).toMatchObject({ code: "conflict", details: { reason: "already_exists", entity: "project" } });
     for (const [find, matchCount] of [["absent", 0], ["word", 2]] as const) {
-      expect(f.fail("task", "edit", "APP-1", "--description", "replacement", "--replacing", find)).toMatchObject({ code: "conflict", details: { reason: "text_match_count", matchCount, field: ["description"] } });
+      expect(await f.fail("task", "edit", "APP-1", "--description", "replacement", "--replacing", find)).toMatchObject({ code: "conflict", details: { reason: "text_match_count", matchCount, field: ["description"] } });
     }
-    expect(f.fail("task", "delete", "APP-1")).toMatchObject({ code: "invalid_input", details: { reason: "confirmation_required", argument: "--yes" } });
-    expect(f.succeed("task", "view", "APP-1")).toMatchObject({ title: "Kept", description: "word word" });
-    f.succeed("task", "archive", "APP-1");
-    expect(f.fail("task", "move", "APP-1", "Done")).toMatchObject({ code: "conflict", details: { reason: "archived", key: "APP-1" } });
-    const unchanged = f.invoke("task", "archive", "APP-1", "--json");
+    expect(await f.fail("task", "delete", "APP-1")).toMatchObject({ code: "invalid_input", details: { reason: "confirmation_required", argument: "--yes" } });
+    expect(await f.succeed("task", "view", "APP-1")).toMatchObject({ title: "Kept", description: "word word" });
+    await f.succeed("task", "archive", "APP-1");
+    expect(await f.fail("task", "move", "APP-1", "Done")).toMatchObject({ code: "conflict", details: { reason: "archived", key: "APP-1" } });
+    const unchanged = await f.invoke("task", "archive", "APP-1", "--json");
     expect(unchanged.code).toBe(0);
     expect(JSON.parse(unchanged.stdout).changed).toBe(false);
     expect(unchanged.stderr).toContain("APP-1");
@@ -334,53 +332,53 @@ test("ZINN-283: missing references, conflicts and text matching keep useful fact
     // Give every event a shared prefix independently of UUID timestamps.
     db.exec("UPDATE activity SET id = printf('11111111-1111-7111-8111-%012x', rowid)");
     db.close();
-    const events = f.succeed("activity", "list");
+    const events = await f.succeed("activity", "list");
     const prefix = events[0].id.replaceAll("-", "").slice(0, 8);
-    expect(f.fail("activity", "view", prefix)).toMatchObject({ code: "conflict", details: { reason: "ambiguous_reference", matchCount: events.length, candidateIds: expect.any(Array) } });
+    expect(await f.fail("activity", "view", prefix)).toMatchObject({ code: "conflict", details: { reason: "ambiguous_reference", matchCount: events.length, candidateIds: expect.any(Array) } });
   } finally {
     f.close();
   }
 });
 
-test("ZINN-283: settings errors and missing configured defaults name the selected file", () => {
+test("ZINN-283: settings errors and missing configured defaults name the selected file", async () => {
   const f = fixture();
   const settingsPath = join(f.directory, "settings.json");
   try {
-    f.succeed("project", "create", "APP");
+    await f.succeed("project", "create", "APP");
     writeFileSync(settingsPath, JSON.stringify({ defaultProject: "MISSING" }));
-    expect(f.fail("project", "view")).toMatchObject({ code: "not_found", details: { entity: "project", key: "MISSING", settingsPath, source: "defaultProject" } });
+    expect(await f.fail("project", "view")).toMatchObject({ code: "not_found", details: { entity: "project", key: "MISSING", settingsPath, source: "defaultProject" } });
     writeFileSync(settingsPath, JSON.stringify({ defaultProject: 42 }));
-    expect(f.fail("task", "list")).toMatchObject({ code: "invalid_input", details: { settingsPath, field: ["defaultProject"], reason: "invalid_settings" } });
+    expect(await f.fail("task", "list")).toMatchObject({ code: "invalid_input", details: { settingsPath, field: ["defaultProject"], reason: "invalid_settings" } });
     writeFileSync(settingsPath, "{");
-    expect(f.fail("task", "list")).toMatchObject({ code: "invalid_input", details: { settingsPath, reason: "invalid_json" } });
+    expect(await f.fail("task", "list")).toMatchObject({ code: "invalid_input", details: { settingsPath, reason: "invalid_json" } });
     rmSync(settingsPath);
     mkdirSync(settingsPath);
-    expect(f.fail("task", "list")).toMatchObject({ code: "storage", details: { settingsPath, reason: "io", cause: { code: "EISDIR" } } });
+    expect(await f.fail("task", "list")).toMatchObject({ code: "storage", details: { settingsPath, reason: "io", cause: { code: "EISDIR" } } });
   } finally {
     f.close();
   }
 });
 
-test("ZINN-283: actual SQLite missing-index rollback and unmarked read notices form one error document", () => {
+test("ZINN-283: actual SQLite missing-index rollback and unmarked read notices form one error document", async () => {
   const f = fixture();
   try {
-    f.succeed("project", "create", "APP");
-    f.succeed("task", "create", "APP", "--title", "Kept");
+    await f.succeed("project", "create", "APP");
+    await f.succeed("task", "create", "APP", "--title", "Kept");
     const db = new Database(f.databasePath);
     db.exec("DROP TABLE task_search");
     db.close();
-    const failure = f.fail("task", "edit", "APP-1", "--title", "Lost");
+    const failure = await f.fail("task", "edit", "APP-1", "--title", "Lost");
     expect(failure).toMatchObject({ code: "storage", details: { reason: "missing_index", cause: { code: "SQLITE_ERROR", errcode: 1 } } });
     expect(failure.message).toContain("zinn reindex");
-    expect(f.succeed("task", "view", "APP-1").title).toBe("Kept");
+    expect((await f.succeed("task", "view", "APP-1")).title).toBe("Kept");
     const unmarked = new Database(f.databasePath);
     unmarked.exec("PRAGMA user_version = 0");
     unmarked.close();
-    const warned = f.fail("task", "search", "word", "--allow-legacy-read");
+    const warned = await f.fail("task", "search", "word", "--allow-legacy-read");
     expect(warned.code).toBe("storage");
     expect(warned.diagnostics).toHaveLength(1);
     expect(warned.diagnostics?.[0]).toContain("zinn.sqlite");
-    const success = f.invoke("task", "view", "APP-1", "--allow-legacy-read", "--json");
+    const success = await f.invoke("task", "view", "APP-1", "--allow-legacy-read", "--json");
     expect(success.code).toBe(0);
     expect(JSON.parse(success.stdout).title).toBe("Kept");
     expect(success.stderr).toContain("zinn.sqlite");
@@ -389,12 +387,12 @@ test("ZINN-283: actual SQLite missing-index rollback and unmarked read notices f
   }
 });
 
-test("ZINN-283: actual SQLite busy errors are storage and programming SQL failures are internal", () => {
+test("ZINN-283: actual SQLite busy errors are storage and programming SQL failures are internal", async () => {
   const f = fixture();
   let db: ReturnType<typeof openDatabase> | undefined;
   let contender: ReturnType<typeof openDatabase> | undefined;
   try {
-    f.succeed("project", "create", "APP");
+    await f.succeed("project", "create", "APP");
     db = openDatabase(f.databasePath);
     contender = openDatabase(f.databasePath);
     contender.exec("PRAGMA busy_timeout = 0");
@@ -419,22 +417,22 @@ test("ZINN-283: actual SQLite busy errors are storage and programming SQL failur
   }
 });
 
-test("ZINN-283: absent and incompatible administrative inputs preserve paths and versions", () => {
+test("ZINN-283: absent and incompatible administrative inputs preserve paths and versions", async () => {
   const f = fixture();
   try {
-    expect(f.fail("backup")).toMatchObject({ code: "not_found", details: { entity: "database", databasePath: expect.any(String) } });
+    expect(await f.fail("backup")).toMatchObject({ code: "not_found", details: { entity: "database", databasePath: expect.any(String) } });
     const missingBackup = join(f.directory, "absent.sqlite");
-    expect(f.fail("restore", missingBackup, "--yes")).toMatchObject({ code: "not_found", details: { entity: "backup", backupPath: missingBackup } });
-    f.succeed("project", "create", "APP");
+    expect(await f.fail("restore", missingBackup, "--yes")).toMatchObject({ code: "not_found", details: { entity: "backup", backupPath: missingBackup } });
+    await f.succeed("project", "create", "APP");
     const currentVersion = latestVersion(MIGRATIONS);
     const db = new Database(f.databasePath);
     db.exec(`PRAGMA user_version = ${currentVersion + 1}`);
     db.close();
-    expect(f.fail("project", "create", "REFUSED")).toMatchObject({ code: "conflict", details: { reason: "newer_database", schemaVersion: currentVersion + 1, supportedSchemaVersion: currentVersion } });
-    expect(f.fail("migrate")).toMatchObject({ code: "conflict", details: { reason: "newer_database" } });
+    expect(await f.fail("project", "create", "REFUSED")).toMatchObject({ code: "conflict", details: { reason: "newer_database", schemaVersion: currentVersion + 1, supportedSchemaVersion: currentVersion } });
+    expect(await f.fail("migrate")).toMatchObject({ code: "conflict", details: { reason: "newer_database" } });
     const corrupt = join(f.directory, "not-sqlite");
     writeFileSync(corrupt, "not SQLite");
-    expect(f.fail("restore", corrupt, "--yes")).toMatchObject({ code: "storage", details: { reason: "not_database", cause: { code: "SQLITE_NOTADB", errcode: 26 } } });
+    expect(await f.fail("restore", corrupt, "--yes")).toMatchObject({ code: "storage", details: { reason: "not_database", cause: { code: "SQLITE_NOTADB", errcode: 26 } } });
   } finally {
     f.close();
   }

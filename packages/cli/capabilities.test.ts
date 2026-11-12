@@ -8,7 +8,7 @@ import { rmSync } from "node:fs";
 import { generateCapabilities } from "./src/capabilities";
 import { parseRoutes } from "./src/routes/router";
 import { routes } from "./src/routes/routes";
-import { runCli } from "./testing";
+import { runCli, runProcessAsync } from "./testing";
 import { capabilityValidator, checkCapabilityConsumer, checkCapabilityDiscovery, inventory } from "./capability-checks";
 import { commandAliases } from "./src/routes/aliases";
 
@@ -96,7 +96,7 @@ test("discovery is deterministic across settings, stores, cwd, locale and debug 
   }
 });
 
-test.each(parseRoutes(routes).filter((route) => route.effects.storage === "none").map((route) => route.command))("%s bypasses settings, storage policy, SQLite and Bun process APIs", (command) => {
+test.each(parseRoutes(routes).filter((route) => route.effects.storage === "none").map((route) => route.command))("%s bypasses settings, storage policy, SQLite and Bun process APIs", async (command) => {
   const directory = join(root, `intercepted-${command}`);
   mkdirSync(directory);
   const preload = join(directory, "guard.ts");
@@ -111,21 +111,21 @@ test.each(parseRoutes(routes).filter((route) => route.effects.storage === "none"
     Bun.spawn = Bun.spawnSync = Bun.connect = forbidden;
   `);
   const before = inventory(directory);
-  const result = Bun.spawnSync([process.execPath, "--preload", preload, entryPoint, ...command.split(" "), "--json"], {
+  const result = await runProcessAsync([process.execPath, "--preload", preload, entryPoint, ...command.split(" "), "--json"], {
     cwd: directory, env: { ...env, HOME: directory, ZINN_DIR: join(directory, "forbidden-store"), OPENCODE: "1" },
   });
-  expect(result.exitCode, result.stderr.toString()).toBe(0);
+  expect(result.code, result.stderr).toBe(0);
   if (command === "capabilities") {
-    expect(JSON.parse(result.stdout.toString())).toEqual(manifest);
+    expect(JSON.parse(result.stdout)).toEqual(manifest);
   } else {
-    expect(JSON.parse(result.stdout.toString())).toMatchObject({ actor_name: "opencode", actor_source: "env:OPENCODE" });
+    expect(JSON.parse(result.stdout)).toMatchObject({ actor_name: "opencode", actor_source: "env:OPENCODE" });
   }
   expect(inventory(directory)).toEqual(before);
-  const normalCommand = Bun.spawnSync([process.execPath, "--preload", preload, entryPoint, "task", "list", "--json"], {
+  const normalCommand = await runProcessAsync([process.execPath, "--preload", preload, entryPoint, "task", "list", "--json"], {
     cwd: directory, env: { ...env, HOME: directory, ZINN_DIR: join(directory, "forbidden-store") },
   });
-  expect(normalCommand.exitCode).toBe(1);
-  expect(JSON.parse(normalCommand.stderr.toString()).error.code).toBe("internal");
+  expect(normalCommand.code).toBe(1);
+  expect(JSON.parse(normalCommand.stderr).error.code).toBe("internal");
 });
 
 test("a manifest consumer constructs argv and validates list, history, cardinality and order forms", async () => {
@@ -166,7 +166,7 @@ test("text summary, help precedence and invalid invocations preserve the CLI con
   }
 });
 
-test("text discovery does not generate result schemas", () => {
+test("text discovery does not generate result schemas", async () => {
   const directory = join(root, "summary");
   mkdirSync(directory);
   const preload = join(directory, "guard.ts");
@@ -179,13 +179,13 @@ test("text discovery does not generate result schemas", () => {
       generateResultSchemas() { throw new Error("Unexpected schema generation"); },
     }));
   `);
-  const invoke = (args: string[]) => Bun.spawnSync([process.execPath, "--preload", preload, entryPoint, "capabilities", ...args], {
+  const invoke = (args: string[]) => runProcessAsync([process.execPath, "--preload", preload, entryPoint, "capabilities", ...args], {
     cwd: directory, env: { ...env, ZINN_DIR: join(directory, "store") },
   });
-  const text = invoke([]);
-  expect(text.exitCode, text.stderr.toString()).toBe(0);
-  expect(text.stdout.toString()).toContain(manifest.cli.name);
-  const json = invoke(["--json"]);
-  expect(json.exitCode).toBe(1);
-  expect(JSON.parse(json.stderr.toString()).error.code).toBe("internal");
+  const text = await invoke([]);
+  expect(text.code, text.stderr).toBe(0);
+  expect(text.stdout).toContain(manifest.cli.name);
+  const json = await invoke(["--json"]);
+  expect(json.code).toBe(1);
+  expect(JSON.parse(json.stderr).error.code).toBe("internal");
 });
