@@ -1,6 +1,7 @@
 import type { Settings } from "../src/settings";
 
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { expect } from "bun:test";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { openDatabase } from "../../../packages/core/src/sqlite/bun.ts";
@@ -8,6 +9,20 @@ import { seedBaseline, snapshot } from "../../../packages/core/src/migrations/te
 
 export const repository = resolve(import.meta.dir, "../../..");
 export const cliPath = join(repository, "packages/cli/dist/index.js");
+export function actorEnvironmentNames() {
+  const source = readFileSync(join(repository, "packages/cli/src/actor.ts"), "utf8");
+  const markerBlock = source.match(/const AGENT_MARKERS[\s\S]*?= \[([\s\S]*?)\n\];/)?.[1];
+  const sessionBlock = source.match(/const SESSION_DECLARATIONS = \[([\s\S]*?)\] as const;/)?.[1];
+  const identityBlock = source.match(/function readExecutionIdentity[\s\S]*?\n\}/)?.[0];
+  expect(markerBlock).toBeDefined();
+  expect(sessionBlock).toBeDefined();
+  expect(identityBlock).toBeDefined();
+  const markers = [...markerBlock!.matchAll(/"([A-Z][A-Z0-9_]*)"/g)].map(match => match[1]!);
+  const declarations = [...sessionBlock!.matchAll(/"([A-Z][A-Z0-9_]*)"/g)].map(match => match[1]!);
+  const identity = [...identityBlock!.matchAll(/readDeclaration\(env, "([A-Z][A-Z0-9_]*)"\)/g)].map(match => match[1]!);
+  return [...new Set([...markers, ...declarations, ...identity])].sort();
+}
+
 export function fixture() {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "zinn-codex-")));
   const settings: Settings = {
@@ -25,8 +40,12 @@ export function fixture() {
   mkdirSync(home);
   writeFileSync(config, JSON.stringify(settings));
 
+  const inherited: NodeJS.ProcessEnv = { ...process.env };
+  for (const name of actorEnvironmentNames()) {
+    delete inherited[name];
+  }
   const env = {
-    ...process.env,
+    ...inherited,
     HOME: home,
     USERPROFILE: home,
     ZINN_CODEX_CONFIG: config,

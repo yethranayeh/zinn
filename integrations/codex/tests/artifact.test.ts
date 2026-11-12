@@ -12,7 +12,7 @@ import { CODEX_CLIENT } from "../src/shared/cli";
 import { persist, type Observation } from "../src/shared/feed";
 import { openDatabase } from "../../../packages/core/src/sqlite/bun.ts";
 import { latestVersion, MIGRATIONS } from "../../../packages/core/src/migrations/registry.ts";
-import { cliPath, fixture, inspectStore, repository, seedOlderStore, waitFor } from "./helpers";
+import { actorEnvironmentNames, cliPath, fixture, inspectStore, repository, seedOlderStore, waitFor } from "./helpers";
 const context = fixture();
 const buildDirectory = join(context.directory, "build");
 const packaged = await packageIntegration(buildDirectory, join(context.directory, "release"));
@@ -35,19 +35,6 @@ const resource = `ui://zinn/inspector-${INSPECTOR_VERSION}.html`;
 function fingerprint() {
     const directory = join(context.settings.store, "data");
     return readdirSync(directory).sort().map(file => [file, createHash("sha256").update(readFileSync(join(directory, file))).digest("hex")]);
-}
-function actorEnvironmentNames() {
-    const source = readFileSync(join(repository, "packages/cli/src/actor.ts"), "utf8");
-    const markerBlock = source.match(/const AGENT_MARKERS[\s\S]*?= \[([\s\S]*?)\n\];/)?.[1];
-    const sessionBlock = source.match(/const SESSION_DECLARATIONS = \[([\s\S]*?)\] as const;/)?.[1];
-    const identityBlock = source.match(/function readExecutionIdentity[\s\S]*?\n\}/)?.[0];
-    expect(markerBlock).toBeDefined();
-    expect(sessionBlock).toBeDefined();
-    expect(identityBlock).toBeDefined();
-    const markers = [...markerBlock!.matchAll(/"([A-Z][A-Z0-9_]*)"/g)].map(match => match[1]!);
-    const declarations = [...sessionBlock!.matchAll(/"([A-Z][A-Z0-9_]*)"/g)].map(match => match[1]!);
-    const identity = [...identityBlock!.matchAll(/readDeclaration\(env, "([A-Z][A-Z0-9_]*)"\)/g)].map(match => match[1]!);
-    return [...new Set([...markers, ...declarations, ...identity])].sort();
 }
 async function connect(config = context.config, overrides: NodeJS.ProcessEnv = {}, cwd = context.directory) {
     const client = new Client({ name: "zinn-artifact-check", version: "1.0.0" });
