@@ -1,5 +1,5 @@
 import { TEST_ENVIRONMENT } from "../../../scripts/test-isolation.ts";
-import { afterEach, expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import {
   chmodSync,
   existsSync,
@@ -34,7 +34,7 @@ const CURRENT_SCHEMA_VERSION = latestVersion(MIGRATIONS);
 
 const stores: Array<string> = [];
 
-afterEach(() => {
+afterAll(() => {
   for (const store of stores.splice(0)) {
     rmSync(store, { recursive: true, force: true });
   }
@@ -50,26 +50,31 @@ function runEnvironment(store: string, env: Record<string, string | undefined> =
   return { ...TEST_ENVIRONMENT, ZINN_DIR: store, ZINN_DEBUG: undefined, ...env };
 }
 
-function run(
+/** Runs a command and keeps its process ID, which a failure log records. */
+async function runKeepingPid(command: Array<string>, options: { cwd: string; env: Record<string, string | undefined> }) {
+  const proc = Bun.spawn(command, { ...options, stdout: "pipe", stderr: "pipe" });
+  const [, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+
+  return { code: proc.exitCode, stdout, stderr, pid: proc.pid };
+}
+
+async function run(
   store: string,
   args: Array<string>,
   options: { env?: Record<string, string | undefined>; cwd?: string } = {},
 ) {
-  const result = Bun.spawnSync([process.execPath, CLI_PATH, ...args], {
+  return runKeepingPid([process.execPath, CLI_PATH, ...args], {
     cwd: options.cwd ?? store,
     env: runEnvironment(store, options.env),
   });
-
-  return {
-    code: result.exitCode,
-    stdout: result.stdout.toString(),
-    stderr: result.stderr.toString(),
-    pid: result.pid,
-  };
 }
 
 /** Renders a failure from a throwaway process, after a notice, as the CLI does for an unexpected error. */
-function runRendering(
+async function runRendering(
   expression: string,
   options: {
     json?: boolean;
@@ -83,17 +88,10 @@ function runRendering(
     diagnostic("notice before the failure");
     renderFailure(${expression});
   `;
-  const result = Bun.spawnSync([process.execPath, "--eval", script], {
+  return runKeepingPid([process.execPath, "--eval", script], {
     cwd: options.cwd,
     env: options.env,
   });
-
-  return {
-    code: result.exitCode,
-    stdout: result.stdout.toString(),
-    stderr: result.stderr.toString(),
-    pid: result.pid,
-  };
 }
 
 const INTERNAL_FAILURE = "new Error('outer failure', { cause: new Error('inner cause') })";
@@ -110,10 +108,10 @@ function corruptStore() {
   return store;
 }
 
-function healthyStore() {
+async function healthyStore() {
   const store = newStore();
-  expect(run(store, ["project", "create", "APP"]).code).toBe(0);
-  expect(run(store, ["task", "create", "APP", "--title", "Kept"]).code).toBe(0);
+  expect((await run(store, ["project", "create", "APP"])).code).toBe(0);
+  expect((await run(store, ["task", "create", "APP", "--title", "Kept"])).code).toBe(0);
   return store;
 }
 
@@ -126,7 +124,7 @@ function logPaths(store: string) {
   return logNames(store).map((name) => join(store, "logs", name));
 }
 
-function parseFailure(result: { code: number; stdout: string; stderr: string }) {
+function parseFailure(result: { code: number | null; stdout: string; stderr: string }) {
   expect(result.code, result.stderr).toBe(1);
   expect(result.stdout).toBe("");
   return errorDocumentSchema.parse(JSON.parse(result.stderr)).error;
@@ -136,8 +134,8 @@ function lines(text: string) {
   return text.trimEnd().split("\n");
 }
 
-test("invalid input, missing items, conflicts and successful commands write no log", () => {
-  const store = healthyStore();
+test("invalid input, missing items, conflicts and successful commands write no log", async () => {
+  const store = await healthyStore();
   const cases = [
     { args: ["task", "create", "APP"], code: "invalid_input" },
     { args: ["task", "view", "APP-99"], code: "not_found" },
@@ -145,16 +143,16 @@ test("invalid input, missing items, conflicts and successful commands write no l
   ];
 
   for (const { args, code } of cases) {
-    expect(parseFailure(run(store, [...args, "--json"])), args.join(" ")).toMatchObject({ code });
-    expect(run(store, args).code, args.join(" ")).toBe(1);
+    expect(parseFailure(await run(store, [...args, "--json"])), args.join(" ")).toMatchObject({ code });
+    expect((await run(store, args)).code, args.join(" ")).toBe(1);
   }
-  expect(run(store, ["task", "list", "APP"]).code).toBe(0);
+  expect((await run(store, ["task", "list", "APP"])).code).toBe(0);
   expect(existsSync(join(store, "logs"))).toBe(false);
 });
 
-test("a storage failure writes one log that the text and JSON errors name", () => {
+test("a storage failure writes one log that the text and JSON errors name", async () => {
   const textStore = corruptStore();
-  const text = run(textStore, ["project", "list"]);
+  const text = await run(textStore, ["project", "list"]);
 
   expect(text.code).toBe(1);
   expect(text.stdout).toBe("");
@@ -167,16 +165,16 @@ test("a storage failure writes one log that the text and JSON errors name", () =
   expect(lines(text.stderr).at(-1)).toContain(join(textStore, "logs", textName!));
 
   const jsonStore = corruptStore();
-  const error = parseFailure(run(jsonStore, ["project", "list", "--json"]));
+  const error = parseFailure(await run(jsonStore, ["project", "list", "--json"]));
 
   expect(error).toMatchObject({ code: "storage", details: { reason: "not_database" } });
   expect(logPaths(jsonStore)).toHaveLength(1);
   expect(error.details?.logPath).toBe(logPaths(jsonStore)[0]!);
 });
 
-test("an unexpected error writes one log and gets details when it had none", () => {
-  const textStore = healthyStore();
-  const text = renderIn(textStore, INTERNAL_FAILURE);
+test("an unexpected error writes one log and gets details when it had none", async () => {
+  const textStore = await healthyStore();
+  const text = await renderIn(textStore, INTERNAL_FAILURE);
 
   expect(text.code).toBe(1);
   expect(text.stdout).toBe("");
@@ -184,16 +182,16 @@ test("an unexpected error writes one log and gets details when it had none", () 
   expect(readOutputFileName(logNames(textStore)[0]!, LOG_EXTENSION)).not.toBeNull();
   expect(lines(text.stderr).at(-1)).toContain(logPaths(textStore)[0]!);
 
-  const jsonStore = healthyStore();
-  const error = parseFailure(renderIn(jsonStore, INTERNAL_FAILURE, true));
+  const jsonStore = await healthyStore();
+  const error = parseFailure(await renderIn(jsonStore, INTERNAL_FAILURE, true));
 
   expect(logPaths(jsonStore)).toHaveLength(1);
   expect(error.code).toBe("internal");
   expect(error.details).toEqual({ logPath: logPaths(jsonStore)[0]! });
 });
 
-test("the manifest lists logPath among the error details", () => {
-  const result = run(newStore(), ["capabilities", "--json"]);
+test("the manifest lists logPath among the error details", async () => {
+  const result = await run(newStore(), ["capabilities", "--json"]);
   const details = JSON.parse(result.stdout).schemas.definitions.ErrorEnvelope.properties.error
     .properties.details.properties;
 
@@ -201,10 +199,10 @@ test("the manifest lists logPath among the error details", () => {
   expect(details.logPath).toEqual({ type: "string" });
 });
 
-test("the log holds the error chain, the run, the store, the arguments typed and the notices", () => {
+test("the log holds the error chain, the run, the store, the arguments typed and the notices", async () => {
   const store = corruptStore();
   const args = ["task", "create", "APP", "--title", "Title", "--description", "two words\nand a line break"];
-  const result = run(store, [...args, "--json"]);
+  const result = await run(store, [...args, "--json"]);
   const error = parseFailure(result);
   const log = readFileSync(logPaths(store)[0]!, "utf8");
 
@@ -220,13 +218,13 @@ test("the log holds the error chain, the run, the store, the arguments typed and
   expect(lines(log).find((line) => /schema version/i.test(line))).toContain("unknown");
 });
 
-test("the log of a healthy store names its schema version, and keeps notices, causes and suppressed errors", () => {
-  const store = healthyStore();
+test("the log of a healthy store names its schema version, and keeps notices, causes and suppressed errors", async () => {
+  const store = await healthyStore();
   const expression = `Object.assign(
     new Error('outer failure', { cause: new Error('inner cause') }),
     { code: 'EXAMPLE', suppressed: new Error('cleanup also failed') },
   )`;
-  const result = renderIn(store, expression);
+  const result = await renderIn(store, expression);
   const log = readFileSync(logPaths(store)[0]!, "utf8");
 
   expect(result.code).toBe(1);
@@ -239,13 +237,13 @@ test("the log of a healthy store names its schema version, and keeps notices, ca
   expect(lines(log).find((line) => /schema version/i.test(line))).toContain(String(CURRENT_SCHEMA_VERSION));
 });
 
-test("a dangling backups link leaves healthy commands working, and a failed backup's log names the schema version", () => {
-  const store = healthyStore();
+test("a dangling backups link leaves healthy commands working, and a failed backup's log names the schema version", async () => {
+  const store = await healthyStore();
   symlinkSync(join(store, "nowhere"), join(store, "backups"));
 
-  expect(run(store, ["task", "list"]).code).toBe(0);
+  expect((await run(store, ["task", "list"])).code).toBe(0);
 
-  const error = parseFailure(run(store, ["backup", "--json"]));
+  const error = parseFailure(await run(store, ["backup", "--json"]));
   const log = readFileSync(error.details!.logPath!, "utf8");
 
   expect(error).toMatchObject({
@@ -258,7 +256,7 @@ test("a dangling backups link leaves healthy commands working, and a failed back
   expect(existsSync(join(store, "nowhere"))).toBe(false);
 });
 
-test("the log prints a thrown string and stops at an error chain that repeats", () => {
+test("the log prints a thrown string and stops at an error chain that repeats", async () => {
   const cases = [
     { expression: "'a thrown string'", fact: "a thrown string" },
     {
@@ -268,8 +266,8 @@ test("the log prints a thrown string and stops at an error chain that repeats", 
   ];
 
   for (const { expression, fact } of cases) {
-    const store = healthyStore();
-    const result = renderIn(store, expression);
+    const store = await healthyStore();
+    const result = await renderIn(store, expression);
 
     expect(result.code, result.stderr).toBe(1);
     const log = readFileSync(logPaths(store)[0]!, "utf8");
@@ -278,10 +276,10 @@ test("the log prints a thrown string and stops at an error chain that repeats", 
   }
 });
 
-test("ZINN_DEBUG=1 puts the route detail in the log and without it the log has none", () => {
+test("ZINN_DEBUG=1 puts the route detail in the log and without it the log has none", async () => {
   const debugged = corruptStore();
   const debugDetail = parseFailure(
-    run(debugged, ["project", "list", "--json"], { env: { ZINN_DEBUG: "1" } }),
+    await run(debugged, ["project", "list", "--json"], { env: { ZINN_DEBUG: "1" } }),
   ).diagnostics;
   const debugLog = readFileSync(logPaths(debugged)[0]!, "utf8");
 
@@ -291,7 +289,7 @@ test("ZINN_DEBUG=1 puts the route detail in the log and without it the log has n
   }
 
   const plain = corruptStore();
-  const plainError = parseFailure(run(plain, ["project", "list", "--json"]));
+  const plainError = parseFailure(await run(plain, ["project", "list", "--json"]));
   const plainLog = readFileSync(logPaths(plain)[0]!, "utf8");
 
   expect(plainError.diagnostics).toBeUndefined();
@@ -322,7 +320,7 @@ test("failures that run at once write separate, complete logs", async () => {
   }
 });
 
-test("a failing run keeps the newest ten logs and leaves other files alone", () => {
+test("a failing run keeps the newest ten logs and leaves other files alone", async () => {
   const store = corruptStore();
   const logs = join(store, "logs");
   mkdirSync(logs);
@@ -340,7 +338,7 @@ test("a failing run keeps the newest ten logs and leaves other files alone", () 
     writeFileSync(join(logs, name), content);
   }
 
-  const error = parseFailure(run(store, ["project", "list", "--json"]));
+  const error = parseFailure(await run(store, ["project", "list", "--json"]));
   const remaining = logNames(store).filter((name) => readOutputFileName(name, LOG_EXTENSION) !== null);
 
   expect(remaining).toHaveLength(KEPT_LOG_COUNT);
@@ -352,7 +350,7 @@ test("a failing run keeps the newest ten logs and leaves other files alone", () 
   }
 });
 
-test("logs written in the same second are kept by modification time, not by name", () => {
+test("logs written in the same second are kept by modification time, not by name", async () => {
   const store = corruptStore();
   const logs = join(store, "logs");
   mkdirSync(logs);
@@ -368,7 +366,7 @@ test("logs written in the same second are kept by modification time, not by name
     utimesSync(path, seconds, seconds);
   }
 
-  const error = parseFailure(run(store, ["project", "list", "--json"]));
+  const error = parseFailure(await run(store, ["project", "list", "--json"]));
   const newestOld = oldNames.slice(0, KEPT_LOG_COUNT - 1);
 
   expect(logNames(store).filter((name) => oldNames.includes(name))).toEqual(newestOld);
@@ -401,20 +399,20 @@ test("more failures at once than the limit leave at most ten complete logs", asy
 });
 
 /** The stderr lines of a failure whose log was written, without the line that names the log. */
-function textFailureWithoutLogLine() {
-  const text = run(corruptStore(), ["project", "list"]);
+async function textFailureWithoutLogLine() {
+  const text = await run(corruptStore(), ["project", "list"]);
   expect(text.code).toBe(1);
   return lines(text.stderr).slice(0, -1);
 }
 
-test("a logs path that is a file leaves the original error and exit code unchanged", () => {
+test("a logs path that is a file leaves the original error and exit code unchanged", async () => {
   const store = corruptStore();
   writeFileSync(join(store, "logs"), "not a folder");
-  const text = run(store, ["project", "list"]);
-  const error = parseFailure(run(store, ["project", "list", "--json"]));
+  const text = await run(store, ["project", "list"]);
+  const error = parseFailure(await run(store, ["project", "list", "--json"]));
 
   expect(text.code).toBe(1);
-  expect(lines(text.stderr)).toEqual(textFailureWithoutLogLine());
+  expect(lines(text.stderr)).toEqual(await textFailureWithoutLogLine());
   expect(error).toMatchObject({ code: "storage", details: { reason: "not_database" } });
   expect(error.details?.logPath).toBeUndefined();
   expect(readFileSync(join(store, "logs"), "utf8")).toBe("not a folder");
@@ -423,18 +421,18 @@ test("a logs path that is a file leaves the original error and exit code unchang
 const isRoot = process.getuid?.() === 0;
 const canRestrictFolders = process.platform !== "win32" && !isRoot;
 
-test.skipIf(!canRestrictFolders)("a read-only logs folder leaves the original error and exit code unchanged", () => {
+test.skipIf(!canRestrictFolders)("a read-only logs folder leaves the original error and exit code unchanged", async () => {
   const store = corruptStore();
   const logs = join(store, "logs");
   mkdirSync(logs);
   chmodSync(logs, 0o555);
 
   try {
-    const text = run(store, ["project", "list"]);
-    const error = parseFailure(run(store, ["project", "list", "--json"]));
+    const text = await run(store, ["project", "list"]);
+    const error = parseFailure(await run(store, ["project", "list", "--json"]));
 
     expect(text.code).toBe(1);
-    expect(lines(text.stderr)).toEqual(textFailureWithoutLogLine());
+    expect(lines(text.stderr)).toEqual(await textFailureWithoutLogLine());
     expect(error).toMatchObject({ code: "storage", details: { reason: "not_database" } });
     expect(error.details?.logPath).toBeUndefined();
     expect(readdirSync(logs)).toEqual([]);
@@ -443,46 +441,46 @@ test.skipIf(!canRestrictFolders)("a read-only logs folder leaves the original er
   }
 });
 
-test.skipIf(!canRestrictFolders)("a text file that cannot be read keeps its cause in the log", () => {
-  const store = healthyStore();
+test.skipIf(!canRestrictFolders)("a text file that cannot be read keeps its cause in the log", async () => {
+  const store = await healthyStore();
   const path = join(store, "unreadable.md");
   writeFileSync(path, "text");
   chmodSync(path, 0o000);
 
   const error = parseFailure(
-    run(store, ["task", "create", "APP", "--title", "Title", "--description-file", path, "--json"]),
+    await run(store, ["task", "create", "APP", "--title", "Title", "--description-file", path, "--json"]),
   );
 
   expect(error.details?.cause?.code).toBe("EACCES");
   expect(readFileSync(error.details!.logPath!, "utf8")).toContain("EACCES");
 });
 
-test.skipIf(process.platform === "win32")("a dangling logs link leaves the original error, and healthy commands succeed", () => {
+test.skipIf(process.platform === "win32")("a dangling logs link leaves the original error, and healthy commands succeed", async () => {
   const broken = corruptStore();
   symlinkSync(join(broken, "nowhere"), join(broken, "logs"));
-  const text = run(broken, ["project", "list"]);
-  const error = parseFailure(run(broken, ["project", "list", "--json"]));
+  const text = await run(broken, ["project", "list"]);
+  const error = parseFailure(await run(broken, ["project", "list", "--json"]));
 
   expect(text.code).toBe(1);
-  expect(lines(text.stderr)).toEqual(textFailureWithoutLogLine());
+  expect(lines(text.stderr)).toEqual(await textFailureWithoutLogLine());
   expect(error).toMatchObject({ code: "storage", details: { reason: "not_database" } });
   expect(error.details?.logPath).toBeUndefined();
   expect(existsSync(join(broken, "nowhere"))).toBe(false);
 
-  const healthy = healthyStore();
+  const healthy = await healthyStore();
   symlinkSync(join(healthy, "nowhere"), join(healthy, "logs"));
-  const listed = run(healthy, ["project", "list", "--json"]);
+  const listed = await run(healthy, ["project", "list", "--json"]);
 
   expect(listed.code, listed.stderr).toBe(0);
   expect(JSON.parse(listed.stdout)[0].key).toBe("APP");
 });
 
-test("a store folder that does not exist gets no log and is not created", () => {
+test("a store folder that does not exist gets no log and is not created", async () => {
   const parent = newStore();
   const missing = join(parent, "missing");
   const options = { cwd: parent };
-  const text = run(missing, ["project", "list"], options);
-  const error = parseFailure(run(missing, ["project", "list", "--json"], options));
+  const text = await run(missing, ["project", "list"], options);
+  const error = parseFailure(await run(missing, ["project", "list", "--json"], options));
 
   expect(text.code).toBe(1);
   expect(error).toMatchObject({ code: "storage", details: { reason: "invalid_storage" } });
@@ -491,22 +489,22 @@ test("a store folder that does not exist gets no log and is not created", () => 
   expect(readdirSync(parent)).toEqual([]);
 });
 
-test("a data path that cannot be resolved still writes a log in the store's folder", () => {
+test("a data path that cannot be resolved still writes a log in the store's folder", async () => {
   const store = newStore();
   writeFileSync(join(store, "data"), "not a folder");
-  const error = parseFailure(run(store, ["project", "list", "--json"]));
+  const error = parseFailure(await run(store, ["project", "list", "--json"]));
 
   expect(error.code).toBe("storage");
   expect(logPaths(store)).toEqual([error.details!.logPath!]);
   expect(readFileSync(error.details!.logPath!, "utf8")).toContain(join(store, "data", "zinn.sqlite"));
 });
 
-test("a missing default store is not created to hold a log", () => {
+test("a missing default store is not created to hold a log", async () => {
   const home = newStore();
   const env: Record<string, string | undefined> = { ...TEST_ENVIRONMENT, HOME: home, USERPROFILE: home };
   delete env.ZINN_DIR;
-  const result = runRendering(INTERNAL_FAILURE, { cwd: home, env });
-  const json = runRendering(INTERNAL_FAILURE, { cwd: home, env, json: true });
+  const result = await runRendering(INTERNAL_FAILURE, { cwd: home, env });
+  const json = await runRendering(INTERNAL_FAILURE, { cwd: home, env, json: true });
 
   expect(result.code).toBe(1);
   expect(lines(result.stderr).some((line) => line.includes("outer failure"))).toBe(true);
