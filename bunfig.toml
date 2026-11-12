@@ -1,3 +1,9 @@
 [test]
 preload = ["./scripts/test-isolation.ts"]
-concurrentTestGlob = ["**/packages/cli/tests/*.test.ts"]
+concurrentTestGlob = [
+  "**/packages/cli/tests/*.test.ts",
+  "**/packages/cli/result-contract.test.ts",
+  "**/packages/cli/telemetry.test.ts",
+  "**/packages/cli/src/input.test.ts",
+  "**/packages/cli/src/project.test.ts",
+]

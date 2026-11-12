@@ -144,7 +144,7 @@ test("ZINN_DIR uses its own default and reports unknown defaults from its settin
   });
 });
 
-test("ZINN_DIR ignores malformed repository and home settings but validates its own settings", async () => {
+test.serial("ZINN_DIR ignores malformed repository and home settings but validates its own settings", async () => {
   await withTestDirectoryAsync(async (directory) => {
     const { repository, localSettingsPath, globalSettingsPath } = makeRepository(directory);
     const store = join(directory, "store");
@@ -445,7 +445,7 @@ test("unknown defaults identify their key and settings file", async () => {
   });
 });
 
-test("project delete with a default prompts despite --yes, and refuses without a terminal or with JSON", async () => {
+test.serial("project delete with a default prompts despite --yes, and refuses without a terminal or with JSON", async () => {
   const directory = mkdtempSync(PREFIX);
 
   try {

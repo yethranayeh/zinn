@@ -636,7 +636,7 @@ test("info with unresolved storage still produces a valid successful report", as
   expect(ajv.getSchema("results#/definitions/Info")!(report)).toBe(true);
 });
 
-test("a declined text confirmation succeeds and preserves the task", async () => {
+test.serial("a declined text confirmation succeeds and preserves the task", async () => {
   const directory = fixtureDirectory();
   const result = await runCliInTerminal(["task", "delete", "APP-1"], {
     cwd: root, env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory }, input: "n\n", inputWhen: "[y/N]",
