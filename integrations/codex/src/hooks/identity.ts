@@ -1,6 +1,7 @@
 import type { HookPayload } from "./types";
 
 import { calls } from "../shared/calls";
+import { CODEX_CLIENT } from "../shared/cli";
 import { segments } from "../shared/shell";
 
 const assignment = /^[A-Za-z_][A-Za-z0-9_]*=/;
@@ -85,7 +86,9 @@ export function rewrite(
     return null;
   }
 
+  const inheritedClient = declaration(process.env.ZINN_CLIENT);
   const values = {
+    ZINN_CLIENT: inheritedClient.length === 0 ? CODEX_CLIENT : `${inheritedClient} ${CODEX_CLIENT}`,
     ZINN_AGENT: declaration(payload.agent_type),
     ZINN_MODEL: declaration(payload.model),
     ZINN_EFFORT: effort ?? "",

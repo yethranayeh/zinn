@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, sym
 import { join } from "node:path";
 import { build } from "../build";
 import { rewrite } from "../src/hooks/identity";
+import cliPackage from "../../../packages/cli/package.json";
 import { fromTranscript } from "../src/hooks/effort";
 import type { HookPayload } from "../src/hooks/types";
 import type { Settings } from "../src/settings";
@@ -123,15 +124,26 @@ test.skipIf(process.platform === "win32")("hook supplies scoped identity through
     const command = output.updatedInput.command;
     expect(command).toContain("ZINN_MODEL='fixture-model'");
     expect(command).toEndWith(payload.tool_input.command);
-    const events = context.cli(["activity", "list"]);
-    const write = rewrite({ ...payload, tool_input: { command: `ZINN_MODEL=explicit ${context.settings.cli.join(" ")} task create APP --title 'Identity fixture'` } }, context.settings.cli) as any;
-    const executed = Bun.spawnSync(["/bin/sh", "-c", write.hookSpecificOutput.updatedInput.command], {
-        env: { ...context.env, CODEX_SESSION_ID: base.session_id, CODEX_THREAD_ID: base.agent_id, ZINN_EFFORT: "stale", CLAUDE_EFFORT: "stale" },
-    });
-    expect(executed.exitCode).toBe(0);
-    const after = context.cli(["activity", "list"]);
-    expect(after.length).toBe(events.length + 1);
-    expect(after[0]).toMatchObject({ actor_model: "explicit", actor_agent: "reviewer", actor_effort: null, actor_session_id: "chat-one", actor_thread_id: "child-one" });
+    const cases: Array<[string | undefined, string, string]> = [
+        [undefined, "", CODEX_CLIENT],
+        ["", "", CODEX_CLIENT],
+        [" \t ", "", CODEX_CLIENT],
+        ["  rex/0.9  ", "", `rex/0.9 ${CODEX_CLIENT}`],
+        ["rex/0.9", "ZINN_CLIENT=explicit/1 ", "explicit/1"],
+    ];
+    for (const [inheritedClient, assignment, expectedClient] of cases) {
+        const env = { ...context.env, ZINN_CLIENT: inheritedClient, CODEX_SESSION_ID: base.session_id, CODEX_THREAD_ID: base.agent_id, ZINN_EFFORT: "stale", CLAUDE_EFFORT: "stale" };
+        const events = context.cli(["activity", "list"]);
+        const writePayload = { ...payload, tool_input: { command: `${assignment}ZINN_MODEL=explicit ${context.settings.cli.join(" ")} task create APP --title 'Identity fixture'` } };
+        const rewritten = Bun.spawnSync(["node", join(artifact.plugin, "hook.mjs")], { env, stdin: Buffer.from(JSON.stringify(writePayload)) });
+        expect(rewritten.exitCode).toBe(0);
+        const write = JSON.parse(rewritten.stdout.toString()).hookSpecificOutput;
+        const executed = Bun.spawnSync(["/bin/sh", "-c", write.updatedInput.command], { env });
+        expect(executed.exitCode).toBe(0);
+        const after = context.cli(["activity", "list"]);
+        expect(after.length).toBe(events.length + 1);
+        expect(after[0]).toMatchObject({ actor_model: "explicit", actor_agent: "reviewer", actor_effort: null, actor_session_id: "chat-one", actor_thread_id: "child-one", actor_client: `zinn-cli/${cliPackage.version} ${expectedClient}` });
+    }
 });
 test.skipIf(process.platform === "win32")("identity skips compound shells and safely quotes Unix shell callback values", () => {
     for (const command of ["zinn info && false", "zinn info | cat", "zinn info > file", 'zinn info "$X"', "env zinn info", "echo zinn", "zinn info; false"]) {
