@@ -62,6 +62,34 @@ test("--failed takes a run id joined or as the next argument", () => {
   });
 });
 
+test("--release selects the release checks and is not passed to bun test", () => {
+  expect(readArguments(["--release"])).toMatchObject({ release: true, isFullRun: true, bunArguments: [] });
+  expect(readArguments(["./scripts/pack.release.test.ts"])).toMatchObject({ release: false, hasTargets: true });
+});
+
+test("release checks run only with --release, by path, or in a rerun of their run", withDirectory((directory) => {
+  const passing = (name: string) => `import { test } from "bun:test";\ntest(${JSON.stringify(name)}, () => {});\n`;
+  mkdirSync(join(directory, "packages", "node_modules", "dependency"), { recursive: true });
+  mkdirSync(join(directory, "scripts"));
+  writeFileSync(join(directory, "packages", "unit.test.ts"), passing("unit"));
+  writeFileSync(join(directory, "packages", "node_modules", "dependency", "vendored.release.test.ts"), passing("vendored"));
+  writeFileSync(
+    join(directory, "scripts", "pack.release.test.ts"),
+    'import { expect, test } from "bun:test";\ntest("release", () => { expect(1).toBe(2); });\n',
+  );
+  const runNames = (args: Array<string>) => {
+    const result = Bun.spawnSync([process.execPath, SCRIPT_PATH, ...args], { cwd: directory, env: TEST_ENVIRONMENT });
+    const run = readdirSync(join(directory, ".test-results")).filter((entry) => /^\d/.test(entry)).sort().at(-1)!;
+    const { passed, failed } = readJunit(readFileSync(join(directory, ".test-results", run, "junit.xml"), "utf8"));
+    return { exitCode: result.exitCode, passed, failed: failed.map((test) => test.name) };
+  };
+
+  expect(runNames([])).toEqual({ exitCode: 0, passed: 1, failed: [] });
+  expect(runNames(["--release"])).toEqual({ exitCode: 1, passed: 0, failed: ["release"] });
+  expect(runNames(["--failed"])).toEqual({ exitCode: 1, passed: 0, failed: ["release"] });
+  expect(runNames(["./scripts/pack.release.test.ts"])).toEqual({ exitCode: 1, passed: 0, failed: ["release"] });
+}));
+
 test("Bun's JUnit report yields failed tests with location and timeout, and passed tests", withDirectory((directory) => {
   writeFileSync(join(directory, "sample.test.ts"), sampleTests);
   Bun.spawnSync([process.execPath, "test", "--reporter=junit", "--reporter-outfile=junit.xml", "./sample.test.ts"], {

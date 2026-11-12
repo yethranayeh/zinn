@@ -18,6 +18,8 @@ const MAX_CONCURRENT_TESTS = 4;
 // Tests that start several CLI subprocesses need more than Bun's 5 second default.
 const TEST_TIMEOUT_MS = 30_000;
 const DEFAULT_TARGETS = ["packages", "scripts"];
+// Build and pack checks run only in `bun run test:release`, through --release.
+const RELEASE_TEST_PATTERN = "**/*.release.test.ts";
 const RESULTS_DIRECTORY = ".test-results";
 const KEPT_RUNS = 10;
 const LOCK_FILE = "full-run.lock";
@@ -61,6 +63,7 @@ type TestSelection = { arguments: Array<string>; wholeFile?: string };
 export function readArguments(args: ReadonlyArray<string>) {
   let failedRun: string | undefined;
   let rerunFailed = false;
+  let release = false;
   const bunArguments: Array<string> = [];
   let hasTargets = false;
   let hasNamePattern = false;
@@ -73,6 +76,10 @@ export function readArguments(args: ReadonlyArray<string>) {
         index++;
         failedRun = args[index];
       }
+      continue;
+    }
+    if (argument === "--release") {
+      release = true;
       continue;
     }
     if (argument.startsWith("--failed=")) {
@@ -96,6 +103,7 @@ export function readArguments(args: ReadonlyArray<string>) {
   return {
     rerunFailed,
     failedRun,
+    release,
     bunArguments,
     hasTargets,
     isFullRun: !rerunFailed && !hasTargets && !hasNamePattern,
@@ -218,7 +226,9 @@ export function mergeJunitReports(reports: Array<string>) {
     }
     suites.push(root[2]!.trim());
   }
-  const attributes = Object.entries(totals).map(([key, value]) => `${key}="${value}"`).join(" ");
+  const attributes = Object.entries(totals)
+    .map(([key, value]) => `${key}="${value}"`)
+    .join(" ");
   return `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites name="bun test" ${attributes}>\n${suites.join("\n")}\n</testsuites>\n`;
 }
 
@@ -311,6 +321,15 @@ function quoteArgument(argument: string) {
   return /^[\w@%+=:,./-]+$/.test(argument) ? argument : `'${argument.replaceAll("'", "'\\''")}'`;
 }
 
+/** Release check files under the default targets, as explicit paths. */
+export function findReleaseTests(directory: string) {
+  const pattern = new Bun.Glob(`{${DEFAULT_TARGETS.join(",")}}/${RELEASE_TEST_PATTERN}`);
+  return [...pattern.scanSync({ cwd: directory })]
+    .filter((path) => !path.split("/").includes("node_modules"))
+    .sort()
+    .map((path) => `./${path}`);
+}
+
 function newestFinishedRun(resultsDirectory: string) {
   const runs = readdirSync(resultsDirectory)
     .filter((entry) => RUN_ID_PATTERN.test(entry))
@@ -379,7 +398,8 @@ export function formatSummary(summary: Summary) {
   lines.push(
     `Bun ${Bun.version}, ${summary.seconds.toFixed(1)} s, load average ${summary.loadAtStart.toFixed(1)} at start and ${summary.loadAtEnd.toFixed(1)} at end, ${cpus} CPUs.`,
   );
-  const files = results === undefined ? "summary.txt, output.log" : "summary.txt, junit.xml, output.log";
+  const files =
+    results === undefined ? "summary.txt, output.log" : "summary.txt, junit.xml, output.log";
   lines.push(`Results: ${summary.resultsPath}/ (${files})`);
   if (results !== undefined && results.failed.length > 0) {
     lines.push(`Rerun the failed tests: bun run test --failed=${runId}`);
@@ -402,7 +422,8 @@ async function main() {
   const repositoryDirectory = process.cwd();
   const resultsDirectory = join(repositoryDirectory, RESULTS_DIRECTORY);
   const args = process.argv.slice(2);
-  const { rerunFailed, failedRun, bunArguments, hasTargets, isFullRun } = readArguments(args);
+  const { rerunFailed, failedRun, release, bunArguments, hasTargets, isFullRun } =
+    readArguments(args);
   mkdirSync(resultsDirectory, { recursive: true });
 
   const targetArguments: Array<string> = [];
@@ -424,7 +445,17 @@ async function main() {
     }
     selections = failedTestArguments(failed);
   } else {
-    if (!hasTargets) {
+    if (release && !hasTargets) {
+      const releaseTests = findReleaseTests(repositoryDirectory);
+      if (releaseTests.length === 0) {
+        console.error(
+          `No ${RELEASE_TEST_PATTERN} files under ${DEFAULT_TARGETS.join(" or ")}/ to run.`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      targetArguments.push(...releaseTests);
+    } else if (!hasTargets) {
       targetArguments.push(...DEFAULT_TARGETS);
     }
     selections = [{ arguments: targetArguments }];
@@ -444,6 +475,9 @@ async function main() {
   const tempRoot = join(tempBase, `${TEMP_ROOT_PREFIX}${runId}`);
   mkdirSync(tempRoot);
 
+  // A rerun keeps the release checks its run selected, and a release check named by its path runs.
+  const namesReleaseTest = bunArguments.some((argument) => argument.endsWith(".release.test.ts"));
+  const skipsReleaseTests = !release && !rerunFailed && !namesReleaseTest;
   const command = ["bun run test", ...args.map(quoteArgument)].join(" ");
   const lockPath = join(resultsDirectory, LOCK_FILE);
   console.error(`Test run ${runId} keeps its results in ${resultsPath}/.`);
@@ -457,9 +491,9 @@ async function main() {
   }
 
   const junitPath = join(runDirectory, "junit.xml");
-  const junitPaths = selections.map((_, index) => selections.length === 1
-    ? junitPath
-    : join(runDirectory, `junit-${index + 1}.xml`));
+  const junitPaths = selections.map((_, index) =>
+    selections.length === 1 ? junitPath : join(runDirectory, `junit-${index + 1}.xml`),
+  );
   const logDescriptor = openSync(join(runDirectory, "output.log"), "w");
 
   const loadAtStart = loadavg()[0]!;
@@ -476,6 +510,7 @@ async function main() {
         "--only-failures",
         "--reporter=junit",
         `--reporter-outfile=${junitPaths[index]}`,
+        ...(skipsReleaseTests ? [`--path-ignore-patterns=${RELEASE_TEST_PATTERN}`] : []),
         ...bunArguments,
         ...selection.arguments,
       ];
@@ -503,7 +538,8 @@ async function main() {
         process.off("SIGTERM", forwardSignal);
       }
       signal = child.signalCode;
-      const childExitCode = child.exitCode ?? 128 + (constants.signals[signal as NodeJS.Signals] ?? 0);
+      const childExitCode =
+        child.exitCode ?? 128 + (constants.signals[signal as NodeJS.Signals] ?? 0);
       if (signal !== null) {
         exitCode = childExitCode;
         break;
@@ -511,7 +547,10 @@ async function main() {
       exitCode ||= childExitCode;
     }
     if (signal === null && selections.length > 1 && junitPaths.every((path) => existsSync(path))) {
-      writeFileSync(junitPath, mergeJunitReports(junitPaths.map((path) => readFileSync(path, "utf8"))));
+      writeFileSync(
+        junitPath,
+        mergeJunitReports(junitPaths.map((path) => readFileSync(path, "utf8"))),
+      );
     }
   } finally {
     closeSync(logDescriptor);

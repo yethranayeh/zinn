@@ -49,6 +49,9 @@ jobs:
       - name: Run tests
         run: bun run test
 
+      - name: Run release checks
+        run: bun run test:release
+
       - name: Check Node SQLite adapter
         run: bun run test:node
 

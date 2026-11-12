@@ -9,7 +9,7 @@ test("packing checks fail clearly when pnpm is unavailable", () => {
   const directory = mkdtempSync(join(tmpdir(), "zinn-pack-prerequisite-"));
 
   try {
-    const script = fileURLToPath(new URL("pack.test.ts", import.meta.url));
+    const script = fileURLToPath(new URL("pack.release.test.ts", import.meta.url));
     const result = Bun.spawnSync([process.execPath, "test", script], {
       env: { ...TEST_ENVIRONMENT, PATH: directory, ZINN_TEST_RUNNER: "1" },
     });

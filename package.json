@@ -14,6 +14,7 @@
 		"measure": "bun scripts/measure/zinn/index.ts",
 		"measure:quiet": "bun scripts/measure/quiet-session/index.ts",
 		"test": "bun scripts/test.ts",
+		"test:release": "bun scripts/test.ts --release",
 		"typecheck": "bun scripts/typecheck.ts",
 		"test:node": "node --test packages/core/src/sqlite/node.check.ts",
 		"test:stress": "bun scripts/stress/index.ts",

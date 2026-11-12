@@ -42,9 +42,10 @@ bun install
 bun run typecheck
 bun run test
 bun run test:node
+bun run test:release
 ```
 
-Package and installed-consumer tests need pnpm, Git, and Node.js 24.15.0 or newer on `PATH`. The [website](docs/README.md) has its own checks.
+`bun run test:release` runs the build and package checks, which need pnpm, Git, and Node.js 24.15.0 or newer on `PATH`. The [website](docs/README.md) has its own checks.
 
 Seed and use the isolated `.zinn-dev` database:
 

@@ -46,7 +46,7 @@
 	},
 	"scripts": {
 		"build": "bun build.ts",
-		"prepublishOnly": "bun ../../scripts/verify-installed.ts",
+		"prepublishOnly": "bun ../../scripts/verify-installed.ts && bun run --cwd ../.. test:release",
 		"prepack": "bun ../../scripts/prepare-release.ts"
 	},
 	"bin": {
