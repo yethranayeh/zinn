@@ -71,6 +71,35 @@ test("ui components import only other ui components, Astro types and tailwind-me
   expect(importsOutside(uiDirectory, [uiDirectory])).toEqual([]);
 });
 
+// `:focus\b` also matches :focus-visible and :focus-within.
+// A style-block comment that names a forbidden token will trip the scan.
+const forbiddenStyleCss = [
+  /:hover\b/,
+  /:focus\b/,
+  /:active\b/,
+  /:disabled\b/,
+  /@media\s*\(\s*hover/,
+  /prefers-reduced-motion/,
+  /\btransition(?:-[\w-]+)?\s*:/,
+  /\banimation(?:-[\w-]+)?\s*:/,
+];
+
+test("ui style blocks contain no hand-written state, transition or animation CSS", () => {
+  const violations = sourceFilesIn(uiDirectory)
+    .filter((file) => file.endsWith(".astro"))
+    .flatMap((file) => {
+      const source = readFileSync(file, "utf8");
+      return [...source.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].flatMap(([, css]) =>
+        forbiddenStyleCss.flatMap((pattern) => {
+          const match = css.match(pattern);
+          return match ? [`${relative(docsDirectory, file)}: ${match[0]}`] : [];
+        }),
+      );
+    });
+
+  expect(violations).toEqual([]);
+});
+
 test("Foundry imports only ui components, styles and its own files", () => {
   expect(importsOutside(foundryDirectory, [foundryDirectory, uiDirectory, stylesDirectory])).toEqual([]);
 });
