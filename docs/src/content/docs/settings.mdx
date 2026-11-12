@@ -3,6 +3,8 @@ title: Settings
 description: Choose Zinn's data directory and default project, run hooks after changes, control local telemetry, and inspect the selected store.
 ---
 
+import Aside from "../../components/ui/aside/Aside.astro";
+
 # Settings
 
 Without `ZINN_DIR`, Zinn reads the global `~/.zinn/settings.json` and the nearest optional `zinn.local.json` in a codebase. They can choose the data directory, a default project and the telemetry mode. The global file can also set the telemetry limits and configure hooks. With `ZINN_DIR`, Zinn reads only `settings.json` inside that selected directory. Note that `storage.directory` does not cause settings from its target directory to be read.
@@ -21,6 +23,12 @@ The first configured location wins:
 If a `ZINN_DIR` is provided, Zinn reads only `settings.json` inside that directory. It does not read the home or codebase settings files. While the selected `settings.json` can set `defaultProject`, `ZINN_DIR` itself selects the directory.
 
 Without `ZINN_DIR`, Zinn looks for `zinn.local.json` from the current directory up to the Git root. Outside a Git repository, it checks only the current directory. It reads the global `~/.zinn/settings.json` too, then merges the local file over it field by field. A local setting overrides the same global setting. You can omit fields in the local setting to inherit global values. The local settings file is not meant to be committed, as it can cause unexpected behavior on others' Zinn setups who install the same repo with the tracked local setting.
+
+<Aside label='Hooks and telemetry limits are global-only'>
+
+A `zinn.local.json` may set values that apply only to commands run in that codebase. Settings that apply across every codebase, or that run commands, are read only from the global settings file. So `hooks`, `telemetry.maxMegabytes` and `telemetry.maxAgeDays` cannot be set locally. A file that sets one stops normal commands with a settings error.
+
+</Aside>
 
 `storage.directory` is relative to the folder containing the file that sets it. A leading `~` or `~/` expands to your home directory. It names the Zinn directory, which contains `data/zinn.sqlite`, `backups/`, `logs/`, and `telemetry/`.
 
@@ -62,7 +70,7 @@ The `defaultProject` setting applies only to commands that support an omitted ke
 }
 ```
 
-A `hooks` key in `zinn.local.json` is a settings error like any other invalid setting. Therefore, hooks never run from the local settings file. See [Hooks](/docs/hooks) for what a hook receives and how failures are handled.
+Hooks run commands, so they are read only from the global settings file. A `hooks` key in `zinn.local.json` is a settings error like any other invalid setting, and hooks never run from the local settings file. See [Hooks](/docs/hooks) for what a hook receives and how failures are handled.
 
 ## Control local telemetry
 
@@ -82,7 +90,7 @@ Zinn records local usage by default and sends nothing off the machine. See [Tele
 - `maxMegabytes` is a positive whole number of megabytes, each 1,048,576 bytes. It limits the total size of the record files and defaults to `100`.
 - `maxAgeDays` is a positive whole number of days to keep records. It defaults to `90`.
 
-`zinn.local.json` can set `mode`, and the nearest one overrides the global file. `maxMegabytes` and `maxAgeDays` are read only from the global file, because the records they delete can come from any codebase. Either limit in `zinn.local.json` is a settings error like any other invalid setting. With `ZINN_DIR`, only that directory's `settings.json` is read, and it can set all three fields.
+`zinn.local.json` can set `mode`, and the nearest one overrides the global file. A mode applies only to records written by commands run in that codebase. `maxMegabytes` and `maxAgeDays` are read only from the global file, because the records they delete can come from any codebase. Either limit in `zinn.local.json` is a settings error like any other invalid setting. With `ZINN_DIR`, only that directory's `settings.json` is read, and it can set all three fields.
 
 ## Inspect the selected store
 

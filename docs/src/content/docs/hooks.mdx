@@ -3,6 +3,8 @@ title: Hooks
 description: Run your own commands after Zinn saves a change, with the change's activity records on stdin.
 ---
 
+import Aside from "../../components/ui/aside/Aside.astro";
+
 # Hooks
 
 A hook is a command that Zinn runs after it saves a change. It receives the change's [activity records](/docs/core#activity-records) as JSON on stdin, so it can notify, sync or log what happened. Core runs hooks, so every program that uses the `@zinn-dev/core` package triggers them.
@@ -25,7 +27,11 @@ Add a `hooks` object to the global settings file, `~/.zinn/settings.json`, or to
 
 `command` is required. `timeout` is optional: any positive number of seconds, 30 by default. Other keys in a hook are rejected like any settings error.
 
-Zinn reads `hooks` only from the global settings file. A `hooks` key in `zinn.local.json` is a settings error: normal commands stop with an error naming the file, `zinn info` reports the file as an error, and the hook never runs. See [Settings](/docs/settings) for how settings files are read.
+<Aside label='Hooks are global-only'>
+
+Zinn reads `hooks` only from the global settings file. Hooks run commands, and a `zinn.local.json` can be committed with a repository, so a hook there could run commands on someone else's machine. A `hooks` key in `zinn.local.json` is a settings error: normal commands stop with an error naming the file, `zinn info` reports the file as an error, and the hook never runs. See [Settings](/docs/settings) for how settings files are read.
+
+</Aside>
 
 ## When hooks run
 

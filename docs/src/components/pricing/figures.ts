@@ -111,8 +111,9 @@ export const cliIntegrity =
   "sha512-dUxF1gS3EVUTdJqNsrNiaCQvLiQlO/9dGvOjuGzy9rleK6vBBeABH0yWIsPeMz7ggKs/OW/BPkKHl2PSZMGRZA==";
 
 /**
- * Estimated processor energy above idle, 100-task fixture, CLI 0.43.0, M4 MacBook Pro on AC.
- * Median of five 20-second blocks per command, measured 2026-11-07 with `powermetrics`
+ * Estimated processor energy above idle, 100-task fixture, M4 MacBook Pro on AC, on the CLI
+ * release `pricingEnvironment` names. Median of five 20-second blocks per command, measured
+ * with `powermetrics`.
  */
 export const energyPerCommand: Record<string, string> = {
   "zinn task list": "0.21 mWh",
