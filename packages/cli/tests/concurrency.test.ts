@@ -1,9 +1,14 @@
 import { expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { errorDocumentSchema } from "../src/errors";
 import { runZinn, withIsolatedZinnDir, withoutTelemetry, withTestDb } from "../test-helpers";
+
+// Short enough to keep the timeout case cheap, long enough to tell waiting from failing at once.
+const SHORT_BUSY_TIMEOUT_MS = 1_000;
+// Leaves room for CLI startup and other tests running at the same time.
+const BUSY_FAILURE_LIMIT_MS = 10_000;
 
 test("concurrent fresh initialization supports readers and project creators", async () => {
   await withIsolatedZinnDir(async (dir) => {
@@ -168,8 +173,9 @@ test.serial("a CLI writer waits for a held lock and succeeds after release", asy
   });
 }, 45_000);
 
-test.serial("persistent contention times out without a partial CLI mutation", async () => {
+test("persistent contention times out after the busyTimeoutMs setting without a partial CLI mutation", async () => {
   await withIsolatedZinnDir(async (dir) => {
+    writeFileSync(join(dir, "settings.json"), JSON.stringify({ busyTimeoutMs: SHORT_BUSY_TIMEOUT_MS }));
     expect((await runZinn(["project", "create", "LOCK"], dir)).code).toBe(0);
     const db = new Database(join(dir, "data", "zinn.sqlite"));
     db.run("BEGIN IMMEDIATE");
@@ -182,8 +188,8 @@ test.serial("persistent contention times out without a partial CLI mutation", as
       const busy = errorDocumentSchema.parse(JSON.parse(result.stderr)).error;
       expect(busy).toMatchObject({ code: "storage", details: { reason: "busy", cause: { code: "SQLITE_BUSY" } } });
       expect(readFileSync(busy.details!.logPath!, "utf8")).toContain(busy.details!.cause!.code!);
-      expect(performance.now() - began).toBeGreaterThanOrEqual(29_000);
-      expect(performance.now() - began).toBeLessThan(40_000);
+      expect(performance.now() - began).toBeGreaterThanOrEqual(SHORT_BUSY_TIMEOUT_MS);
+      expect(performance.now() - began).toBeLessThan(BUSY_FAILURE_LIMIT_MS);
       expect(db.query("SELECT COUNT(*) AS count FROM task").get()).toEqual({ count: 0 });
       expect(db.query("SELECT task_count FROM project WHERE key = 'LOCK'").get()).toEqual({ task_count: 0 });
       expect(db.query("SELECT COUNT(*) AS count FROM task_search").get()).toEqual({ count: 0 });
@@ -193,7 +199,7 @@ test.serial("persistent contention times out without a partial CLI mutation", as
       db.close();
     }
   });
-}, 45_000);
+});
 
 test("simultaneous backup commands create distinct valid snapshots", async () => {
   await withIsolatedZinnDir(async (dir) => {

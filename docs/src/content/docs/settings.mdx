@@ -1,13 +1,13 @@
 ---
 title: Settings
-description: Choose Zinn's data directory and default project, run hooks after changes, control local telemetry, and inspect the selected store.
+description: Choose Zinn's data directory and default project, set how long writes wait, run hooks after changes, control local telemetry, and inspect the selected store.
 ---
 
 import Aside from "../../components/ui/aside/Aside.astro";
 
 # Settings
 
-Without `ZINN_DIR`, Zinn reads the global `~/.zinn/settings.json` and the nearest optional `zinn.local.json` in a codebase. They can choose the data directory, a default project and the telemetry mode. The global file can also set the telemetry limits and configure hooks. With `ZINN_DIR`, Zinn reads only `settings.json` inside that selected directory. Note that `storage.directory` does not cause settings from its target directory to be read.
+Without `ZINN_DIR`, Zinn reads the global `~/.zinn/settings.json` and the nearest optional `zinn.local.json` in a codebase. They can choose the data directory, a default project, how long a write waits for a busy database and the telemetry mode. The global file can also set the telemetry limits and configure hooks. With `ZINN_DIR`, Zinn reads only `settings.json` inside that selected directory. Note that `storage.directory` does not cause settings from its target directory to be read.
 
 For the files and paths that make up a store, see [Data and backups](/docs/data).
 
@@ -57,6 +57,18 @@ The `$schema` field is optional and gives editors a schema for autocomplete and 
 The default applies to `task create`, `task list`, `task search`, `project view`, `project column list`, `project edit`, and `project delete` when their project key is omitted. A `null` value is not accepted. Without a default, `task list` and `task search` cover every project; the other commands require a key. A configured default that names a missing project causes a command that uses it to fail and identify the key and settings file. `--all-projects` makes `task list` and `task search` cover every project even when a default is configured; it works with `--all` or `--archived` and cannot be combined with a typed project key.
 
 The `defaultProject` setting applies only to commands that support an omitted key. For example, task-key commands use the project in the task key, and column creation, editing, and ordering require an explicit project key. See the [CLI reference](/docs/cli#start-a-project) for command details.
+
+## Wait for a busy database
+
+One command at a time can write to a database. A command that needs to write while another holds the lock waits, then fails with a `storage` error with reason `busy` if the lock is still held. `busyTimeoutMs` sets how long it waits, in milliseconds:
+
+```json
+{
+	"busyTimeoutMs": 60000
+}
+```
+
+It is a whole number from `0` to `2147483647` and defaults to `30000`. `0` fails at once instead of waiting. `zinn.local.json` can set it, and the nearest one overrides the global file.
 
 ## Run hooks after changes
 

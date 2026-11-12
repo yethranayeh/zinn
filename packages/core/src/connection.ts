@@ -1,6 +1,7 @@
 import type { Database } from "./sqlite/database.js";
+import { getProcessSettings } from "./storage.js";
 
-const BUSY_TIMEOUT_MS = 30_000;
+const DEFAULT_BUSY_TIMEOUT_MS = 30_000;
 /**
  * In WAL mode, synchronous NORMAL skips the fsync on each commit, so a power loss or OS crash
  *  can undo the last commits that were reported as done. FULL syncs the WAL on every commit.
@@ -24,7 +25,9 @@ const FULLFSYNC_ON = "ON";
  * Closing the last connection to a database copies the WAL file into it, so these apply there too.
  */
 export function applyConnectionSettings(db: Database) {
-  db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS};`);
+  const busyTimeoutMs = getProcessSettings().merged.busyTimeoutMs ?? DEFAULT_BUSY_TIMEOUT_MS;
+
+  db.exec(`PRAGMA busy_timeout = ${busyTimeoutMs};`);
   db.exec(`PRAGMA synchronous = ${SYNCHRONOUS_FULL};`);
   db.exec(`PRAGMA fullfsync = ${FULLFSYNC_ON};`);
 }

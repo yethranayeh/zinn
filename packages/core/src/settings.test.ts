@@ -222,6 +222,16 @@ test("defaultProject merges independently of storage and preserves the chosen ke
   });
 });
 
+test("busyTimeoutMs from the codebase file overrides the global one, and 0 is kept", () => {
+  const cwd = join(root, "project");
+  mkdirSync(cwd);
+  globalFile({ busyTimeoutMs: 5_000 });
+  expect(resolveSettings({ cwd, env: {}, home }).merged).toEqual({ busyTimeoutMs: 5_000 });
+
+  writeJson(join(cwd, "zinn.local.json"), { busyTimeoutMs: 0 });
+  expect(resolveSettings({ cwd, env: {}, home }).merged).toEqual({ busyTimeoutMs: 0 });
+});
+
 test("the chosen defaultProject comes from the codebase file before the global one, with the path of the file that sets it", () => {
   const cwd = join(root, "project");
   mkdirSync(cwd);

@@ -11,6 +11,12 @@
 			"type": "string",
 			"pattern": "^[A-Za-z][A-Za-z0-9]*$"
 		},
+		"busyTimeoutMs": {
+			"description": "How many milliseconds a command waits for another Zinn process to finish writing before it fails as busy. 0 fails at once. Defaults to 30000. Local setting overrides the global one.",
+			"type": "integer",
+			"minimum": 0,
+			"maximum": 2147483647
+		},
 		"storage": {
 			"description": "Where Zinn keeps its data.",
 			"type": "object",

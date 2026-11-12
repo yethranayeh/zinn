@@ -192,11 +192,13 @@ function mergeSettings(
       ? global?.telemetry
       : { ...global?.telemetry, ...local.telemetry };
   const defaultProject = local?.defaultProject ?? global?.defaultProject;
+  const busyTimeoutMs = local?.busyTimeoutMs ?? global?.busyTimeoutMs;
 
   return {
     ...(storage === undefined ? {} : { storage }),
     ...(telemetry === undefined ? {} : { telemetry }),
     ...(defaultProject === undefined ? {} : { defaultProject }),
+    ...(busyTimeoutMs === undefined ? {} : { busyTimeoutMs }),
   };
 }
 

@@ -16,6 +16,9 @@ export const SETTINGS_VERSION = 1;
 export const telemetryModeSchema = z.enum(["off", "local"]);
 export type TelemetryMode = z.infer<typeof telemetryModeSchema>;
 
+/** SQLite takes the busy timeout as a signed 32-bit integer. */
+const MAX_BUSY_TIMEOUT_MS = 2_147_483_647;
+
 /** The content of a settings file, global or per codebase. Descriptions show in editors through the published JSON Schema. */
 export const settingsSchema = z
   .strictObject({
@@ -24,6 +27,15 @@ export const settingsSchema = z
       .optional()
       .describe(
         "The project key used to scope results to the specificed project board when no explicit key is given. Local setting overrides the global one. An explicitly given key in a command overrides both.",
+      ),
+    busyTimeoutMs: z
+      .number()
+      .int()
+      .min(0)
+      .max(MAX_BUSY_TIMEOUT_MS)
+      .optional()
+      .describe(
+        "How many milliseconds a command waits for another Zinn process to finish writing before it fails as busy. 0 fails at once. Defaults to 30000. Local setting overrides the global one.",
       ),
     storage: z
       .strictObject({
