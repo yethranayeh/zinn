@@ -31,6 +31,12 @@ export type RunBlocksOptions = {
   settleSeconds: number;
   runner: Runner;
   seed?: number;
+  /** Runs these rounds instead of the seeded schedule, for extra rounds after the planned ones. */
+  orders?: readonly (readonly string[])[];
+  /** The number the first round gets, so extra rounds continue the planned numbering. */
+  firstRound?: number;
+  /** Runs before each block's prepare, such as a wait for a quiet machine. */
+  beforeBlock?: (round: number, label: string) => Promise<void>;
   now?: () => number;
   sleep?: (milliseconds: number) => Promise<void>;
   onBlock?: (row: BlockRow) => void | Promise<void>;
@@ -73,21 +79,26 @@ export async function runBlocks(options: RunBlocksOptions): Promise<BlockRow[]> 
   const sleep =
     options.sleep ??
     ((milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
-  const orders = roundOrders(
-    options.workloads.map((workload) => workload.label),
-    options.rounds,
-    options.seed,
-  );
-  const total = options.workloads.length * options.rounds;
+  const orders =
+    options.orders ??
+    roundOrders(
+      options.workloads.map((workload) => workload.label),
+      options.rounds,
+      options.seed,
+    );
+  const firstRound = options.firstRound ?? 1;
+  const total = orders.reduce((sum, order) => sum + order.length, 0);
   const rows: BlockRow[] = [];
   let done = 0;
 
-  for (let round = 0; round < orders.length; round++) {
-    for (const label of orders[round]!) {
+  for (let index = 0; index < orders.length; index++) {
+    const round = firstRound + index;
+    for (const label of orders[index]!) {
       const workload = byLabel.get(label);
       if (workload === undefined) {
         throw new Error(`No workload for label ${label}`);
       }
+      await options.beforeBlock?.(round, label);
       const command = await workload.prepare();
       await sleep(options.settleSeconds * MILLISECONDS_PER_SECOND);
 
@@ -95,7 +106,7 @@ export async function runBlocks(options: RunBlocksOptions): Promise<BlockRow[]> 
       await sleep(options.idleSeconds * MILLISECONDS_PER_SECOND);
       const idleEnd = now();
       const idleRow: BlockRow = {
-        round: round + 1,
+        round,
         label,
         kind: "idle",
         start: toSeconds(idleStart),
@@ -126,7 +137,7 @@ export async function runBlocks(options: RunBlocksOptions): Promise<BlockRow[]> 
         throw new Error(`${label} finished no run inside its work phase`);
       }
       const workRow: BlockRow = {
-        round: round + 1,
+        round,
         label,
         kind: "work",
         start: toSeconds(workStart),

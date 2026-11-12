@@ -17,7 +17,13 @@ import {
   formatSessionId,
 } from "./format.ts";
 import { restoreEntries } from "./restore.ts";
-import { DEFAULT_SAMPLE_SECONDS, SAMPLES_FILE_NAME, type Sampler, startSampler } from "./sampler.ts";
+import {
+  DEFAULT_SAMPLE_SECONDS,
+  SAMPLES_FILE_NAME,
+  SESSION_SAMPLES_ENV,
+  type Sampler,
+  startSampler,
+} from "./sampler.ts";
 import { planSettingChanges } from "./settings.ts";
 import { removeRestoreState, writeRestoreState } from "./state.ts";
 
@@ -384,6 +390,8 @@ export async function runSession(options: SessionOptions): Promise<SessionOutcom
             log,
             status,
             now,
+            extraEnv:
+              sampler === undefined ? undefined : { [SESSION_SAMPLES_ENV]: samplesPath },
             onProcess: (handle) => {
               currentJob = handle;
             },
@@ -741,6 +749,8 @@ type JobStepInput = {
   log: SessionLog;
   status: StatusWriter | undefined;
   now: () => Date;
+  /** Set while the sampler runs, so a job can judge its own blocks. */
+  extraEnv: Record<string, string> | undefined;
   onProcess: (handle: ProcessHandle | undefined) => void;
 };
 
@@ -760,6 +770,7 @@ async function runJobStep(input: JobStepInput): Promise<JobResult> {
     handle = options.runner.spawn(argv, {
       cwd: options.cwd,
       processGroup: true,
+      extraEnv: input.extraEnv,
       onOutput: (output) => {
         const line = `[${job.name}] ${output.line}`;
         log.line(line);

@@ -48,7 +48,7 @@ export type EnergyArguments = {
 export type ParsedArguments =
   | TimeArguments
   | EnergyArguments
-  | { kind: "energy-analyze"; powerPath: string; blocksPath: string }
+  | { kind: "energy-analyze"; powerPath: string; blocksPath: string; samplesPath?: string }
   | { kind: "disk"; version: string }
   | { kind: "error"; message: string };
 
@@ -58,13 +58,19 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
     return { kind: "error", message: "pass a mode and a release version" };
   }
   if (mode === "energy-analyze") {
-    if (args.length !== 3) {
+    if (args.length !== 3 && args.length !== 4) {
       return {
         kind: "error",
-        message: "energy-analyze needs a power plist and a blocks tsv",
+        message: "energy-analyze needs a power plist, a blocks tsv and optionally a session samples tsv",
       };
     }
-    return { kind: "energy-analyze", powerPath: args[1]!, blocksPath: args[2]! };
+    const [, powerPath, blocksPath, samplesPath] = args;
+    return {
+      kind: "energy-analyze",
+      powerPath: powerPath!,
+      blocksPath: blocksPath!,
+      ...(samplesPath === undefined ? {} : { samplesPath }),
+    };
   }
   if (mode !== "time" && mode !== "disk" && mode !== "energy") {
     return { kind: "error", message: `unknown mode: ${mode}` };
@@ -297,7 +303,7 @@ export const USAGE = [
   "Usage:",
   "  bun run measure time <version> [--sizes 100,1000,10000] [--runs 30] [--warmup 3] [--commands list,view,...]",
   "  bun run measure energy <version> [--rounds 5] [--check] [--sizes 100,10000] [--commands list,view,...]",
-  "  bun run measure energy-analyze <power.plist> <blocks.tsv>",
+  "  bun run measure energy-analyze <power.plist> <blocks.tsv> [samples.tsv]",
   "  bun run measure disk <version>",
   "",
   "Commands:",

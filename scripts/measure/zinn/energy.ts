@@ -5,7 +5,13 @@ import { appendFile, copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/pro
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { analyze, formatAnalysis } from "../energy/analysis.ts";
+import {
+  analyze,
+  formatAnalysis,
+  MINIMUM_CLEAN_ROUNDS,
+  workloadsShortOfCleanRounds,
+  type Analysis,
+} from "../energy/analysis.ts";
 import { formatBlockHeader, formatBlockRow, type BlockRow } from "../energy/blocks.ts";
 import {
   checkPowermetrics,
@@ -19,7 +25,15 @@ import {
   START_LEAD_SECONDS,
 } from "../energy/powermetrics.ts";
 import { parsePowerLog } from "../energy/samples.ts";
-import { runBlocks, type Workload } from "../energy/schedule.ts";
+import {
+  findContaminatedBlocks,
+  QUIET_LOAD,
+  QUIET_WAIT_LIMIT_SECONDS,
+  waitForQuiet,
+  type QuietWait,
+} from "../energy/gate.ts";
+import { roundOrders, runBlocks, SCHEDULE_SEED, type Workload } from "../energy/schedule.ts";
+import { parseSamplesFile, SESSION_SAMPLES_ENV } from "../quiet-session/sampler.ts";
 import { createRecordFolder, writeJson, writeMeta } from "../record.ts";
 import type { Runner } from "../quiet-session/runner.ts";
 import type { EnergyArguments } from "./args.ts";
@@ -46,6 +60,9 @@ const TRAILING_SAMPLE_SECONDS = 2;
 
 /** Exit codes for a run stopped by a signal, as a shell reports them. */
 const SIGNAL_EXIT_CODES = { SIGINT: 130, SIGTERM: 143, SIGHUP: 129 } as const;
+
+/** Extra rounds at most, each for the workloads still short of clean rounds. */
+const MAXIMUM_EXTRA_ROUNDS = 3;
 
 /** The fixtures the default workload set uses. */
 const SMALL_FIXTURE_TASKS = 100;
@@ -161,14 +178,35 @@ export async function runEnergy(options: EnergyRunOptions): Promise<void> {
     install: options.install,
     nodePath: options.nodePath,
   });
-  const plannedSeconds =
-    plan.length *
-    options.parsed.rounds *
-    (options.parsed.settleSeconds + options.parsed.idleSeconds + options.parsed.workSeconds);
-  const sampleLimit = plannedSampleLimit(plannedSeconds);
+  const blockSeconds =
+    options.parsed.settleSeconds + options.parsed.idleSeconds + options.parsed.workSeconds;
+  const plannedSeconds = plan.length * options.parsed.rounds * blockSeconds;
+  const mostBlocks = plan.length * (options.parsed.rounds + MAXIMUM_EXTRA_ROUNDS);
+  const longestSeconds =
+    plannedSeconds +
+    plan.length * MAXIMUM_EXTRA_ROUNDS * blockSeconds +
+    mostBlocks * QUIET_WAIT_LIMIT_SECONDS;
+  const sampleLimit = plannedSampleLimit(longestSeconds);
   console.log(
-    `Plan:   ${plannedSeconds}s of blocks, powermetrics stops by itself after ${sampleLimit} samples`,
+    `Plan:   ${plannedSeconds}s of blocks, at most ${longestSeconds}s with extra rounds and quiet waits`,
   );
+  console.log(`        powermetrics stops by itself after ${sampleLimit} samples`);
+  const sessionSamplesPath = process.env[SESSION_SAMPLES_ENV];
+  console.log(
+    sessionSamplesPath === undefined
+      ? "Gate:   no session samples, so blocks are not checked for background work"
+      : `Gate:   checking blocks against ${sessionSamplesPath}`,
+  );
+  const quietWaits: QuietWait[] = [];
+  const analyzeSoFar = (blockRows: readonly BlockRow[]): Analysis => {
+    const samples = parsePowerLog(readFileSync(powerPath, "utf8"));
+    if (sessionSamplesPath === undefined) {
+      return analyze(samples, blockRows);
+    }
+    const sessionSamples = parseSamplesFile(readFileSync(sessionSamplesPath, "utf8"));
+    const contaminated = findContaminatedBlocks(sessionSamples, blockRows);
+    return analyze(samples, blockRows, contaminated);
+  };
 
   const stopKeepalive = startSudoKeepalive(options.runner);
   // Keeps the Mac awake for as long as this process runs.
@@ -187,24 +225,62 @@ export async function runEnergy(options: EnergyRunOptions): Promise<void> {
     process.once(signal, handler);
     return { signal, handler };
   });
+  const blockOptions = {
+    workloads,
+    rounds: options.parsed.rounds,
+    idleSeconds: options.parsed.idleSeconds,
+    workSeconds: options.parsed.workSeconds,
+    settleSeconds: options.parsed.settleSeconds,
+    runner: options.runner,
+    beforeBlock: async (round: number, label: string) => {
+      const wait = await waitForQuiet({
+        round,
+        label,
+        readLoad: async () => (await readLoadAverages(options.runner))[0]!,
+        sleep,
+      });
+      if (wait !== undefined) {
+        quietWaits.push(wait);
+        const outcome = wait.timedOut ? "still busy, running anyway" : `now ${wait.loadAfter}`;
+        console.log(
+          `  waited ${wait.waitedSeconds}s for load ${wait.loadBefore} to fall below ${QUIET_LOAD}: ${outcome}`,
+        );
+      }
+    },
+    onBlock: async (row: BlockRow) => {
+      await appendFile(blocksPath, `${formatBlockRow(row)}\n`);
+    },
+    onProgress: (done: number, total: number, row: BlockRow) => {
+      console.log(`  block ${done}/${total}: ${row.label}, ${row.count} runs`);
+    },
+  };
   let rows: BlockRow[] = [];
+  let extraRounds = 0;
   try {
     await sleep(START_LEAD_SECONDS * MILLISECONDS_PER_SECOND);
-    rows = await runBlocks({
-      workloads,
-      rounds: options.parsed.rounds,
-      idleSeconds: options.parsed.idleSeconds,
-      workSeconds: options.parsed.workSeconds,
-      settleSeconds: options.parsed.settleSeconds,
-      runner: options.runner,
-      onBlock: async (row) => {
-        await appendFile(blocksPath, `${formatBlockRow(row)}\n`);
-      },
-      onProgress: (done, total, row) => {
-        console.log(`  block ${done}/${total}: ${row.label}, ${row.count} runs`);
-      },
-    });
+    rows = await runBlocks(blockOptions);
     await sleep(TRAILING_SAMPLE_SECONDS * MILLISECONDS_PER_SECOND);
+    // A run planned below the minimum, such as --check, is not topped up.
+    const topsUp = options.parsed.rounds >= MINIMUM_CLEAN_ROUNDS;
+    while (topsUp && extraRounds < MAXIMUM_EXTRA_ROUNDS) {
+      const short = workloadsShortOfCleanRounds(analyzeSoFar(rows));
+      if (short.length === 0) {
+        break;
+      }
+      const round = options.parsed.rounds + extraRounds + 1;
+      console.log(
+        `Extra round ${round}: fewer than ${MINIMUM_CLEAN_ROUNDS} clean rounds for ${short.join(", ")}`,
+      );
+      rows.push(
+        ...(await runBlocks({
+          ...blockOptions,
+          orders: roundOrders(short, 1, SCHEDULE_SEED + round),
+          firstRound: round,
+        })),
+      );
+      extraRounds++;
+      await sleep(TRAILING_SAMPLE_SECONDS * MILLISECONDS_PER_SECOND);
+    }
   } finally {
     await power.stop();
     stopKeepalive();
@@ -236,12 +312,18 @@ export async function runEnergy(options: EnergyRunOptions): Promise<void> {
         build: sampler.build,
         buildVerified: sampler.buildVerified,
         powermetricsPreflight: sampler,
+        quietGate: {
+          load: QUIET_LOAD,
+          waitLimitSeconds: QUIET_WAIT_LIMIT_SECONDS,
+          sessionSamples: sessionSamplesPath ?? null,
+          waits: quietWaits,
+          extraRounds,
+        },
       },
     }),
   );
 
-  const samples = parsePowerLog(readFileSync(powerPath, "utf8"));
-  const analysis = analyze(samples, rows);
+  const analysis = analyzeSoFar(rows);
   await writeJson(recordDirectory, "analysis.json", analysis);
   console.log("");
   console.log(formatAnalysis(analysis).join("\n"));

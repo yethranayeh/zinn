@@ -6,12 +6,15 @@ import { appendFileSync, writeFileSync } from "node:fs";
 
 export const SAMPLES_FILE_NAME = "samples.tsv";
 export const DEFAULT_SAMPLE_SECONDS = 5;
+/** Tells each job where the running session writes its samples. */
+export const SESSION_SAMPLES_ENV = "ZINN_MEASURE_SESSION_SAMPLES";
 
 /** Processes kept per sample, busiest first. */
 const PROCESSES_PER_SAMPLE = 10;
 const LOAD_COMMAND = ["sysctl", "-n", "vm.loadavg"];
 /** ps CPU on macOS is a decaying average, so it shows who has been busy rather than an instant reading. */
 const PROCESS_COMMAND = ["ps", "-A", "-r", "-o", "pcpu=,rss=,pid=,comm="];
+const MILLISECONDS_PER_SECOND = 1_000;
 const HEADER = ["time", "load1", "load5", "load15", "cpu_percent", "rss_kb", "pid", "command"];
 
 export type Sampler = {
@@ -96,4 +99,34 @@ export function parseProcesses(output: string): Array<ProcessRow> {
     rows.push({ cpu: match[1]!, rssKb: match[2]!, pid: match[3]!, command: match[4]! });
   }
   return rows;
+}
+
+export type SessionSample = {
+  /** Unix seconds when the sample was taken. */
+  seconds: number;
+  load1: number;
+  processes: Array<{ cpuPercent: number; command: string }>;
+};
+
+/** Reads a samples file back into one entry per sample time, in file order. */
+export function parseSamplesFile(text: string): Array<SessionSample> {
+  const samples: Array<SessionSample> = [];
+  let current: SessionSample | undefined;
+  for (const line of text.split("\n").slice(1)) {
+    const fields = line.split("\t");
+    if (fields.length !== HEADER.length) {
+      continue;
+    }
+    const [time, load1, , , cpuPercent, , , command] = fields;
+    const seconds = Date.parse(time!) / MILLISECONDS_PER_SECOND;
+    if (Number.isNaN(seconds)) {
+      continue;
+    }
+    if (current === undefined || current.seconds !== seconds) {
+      current = { seconds, load1: Number(load1), processes: [] };
+      samples.push(current);
+    }
+    current.processes.push({ cpuPercent: Number(cpuPercent), command: command! });
+  }
+  return samples;
 }

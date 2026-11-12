@@ -2,6 +2,7 @@
 
 import { median } from "../zinn/stats.ts";
 import type { BlockKind, BlockRow } from "./blocks.ts";
+import type { ContaminatedBlock } from "./gate.ts";
 import { meanPowerMw, samplesInside, type PowerSample } from "./samples.ts";
 
 /** Spread above this fraction means the figure is not stated. */
@@ -52,6 +53,8 @@ export type BlockAnalysis = {
   skipped?: string;
   dropped: boolean;
   dropReason?: DropReason;
+  /** Set when the session samples showed background work during this block. */
+  contamination?: ContaminatedBlock["reason"];
 };
 
 export type WorkloadAnalysis = {
@@ -80,6 +83,8 @@ export type Analysis = {
   blocks: BlockAnalysis[];
   workloads: WorkloadAnalysis[];
   droppedBlocks: DroppedBlock[];
+  /** Blocks the session samples marked as disturbed. Each one drops its round too. */
+  contaminatedBlocks: ContaminatedBlock[];
   droppedRounds: number[];
 };
 
@@ -98,6 +103,7 @@ type WorkPair = {
 export function analyze(
   samples: readonly PowerSample[],
   blocks: readonly BlockRow[],
+  contaminated: readonly ContaminatedBlock[] = [],
 ): Analysis {
   if (samples.length === 0) {
     throw new Error("no usable samples: processor.combined_power missing from the log");
@@ -121,17 +127,19 @@ export function analyze(
 
   const workloadMedians = medianWorkPower(pairs);
   const dropped = findDroppedBlocks(blocks, analyses, workloadMedians);
-  const droppedRounds = new Set(dropped.map((entry) => entry.round));
+  const droppedRounds = new Set([
+    ...dropped.map((entry) => entry.round),
+    ...contaminated.map((entry) => entry.round),
+  ]);
   for (const block of analyses) {
-    const reason = dropped.find(
-      (entry) =>
-        entry.round === block.round &&
-        entry.label === block.label &&
-        entry.kind === block.kind,
-    );
+    const reason = dropped.find((entry) => isSameBlock(entry, block));
     block.dropped = droppedRounds.has(block.round);
     if (reason !== undefined) {
       block.dropReason = reason.reason;
+    }
+    const contamination = contaminated.find((entry) => isSameBlock(entry, block));
+    if (contamination !== undefined) {
+      block.contamination = contamination.reason;
     }
   }
 
@@ -144,8 +152,23 @@ export function analyze(
     blocks: analyses,
     workloads: summarize(pairs, droppedRounds),
     droppedBlocks: dropped,
+    contaminatedBlocks: [...contaminated],
     droppedRounds: [...droppedRounds].sort((left, right) => left - right),
   };
+}
+
+/** Labels of the workloads that need more clean rounds, in analysis order. */
+export function workloadsShortOfCleanRounds(analysis: Analysis): string[] {
+  return analysis.workloads
+    .filter((workload) => workload.cleanVerdict === "rerun")
+    .map((workload) => workload.label);
+}
+
+function isSameBlock(
+  left: { round: number; label: string; kind: BlockKind },
+  right: { round: number; label: string; kind: BlockKind },
+): boolean {
+  return left.round === right.round && left.label === right.label && left.kind === right.kind;
 }
 
 function baseAnalysis(block: BlockRow): BlockAnalysis {
@@ -350,6 +373,7 @@ export function formatAnalysis(analysis: Analysis): string[] {
   );
   lines.push("");
   lines.push(formatDropped(analysis.droppedBlocks));
+  lines.push(formatContaminated(analysis.contaminatedBlocks));
   lines.push("");
   lines.push(
     [
@@ -396,6 +420,21 @@ function formatDropped(dropped: readonly DroppedBlock[]): string {
     lines.push(
       `  round ${entry.round} ${entry.label} (${entry.kind}): ${Math.round(entry.observedMw)} mW, limit ${limit}`,
     );
+  }
+  return lines.join("\n");
+}
+
+function formatContaminated(contaminated: readonly ContaminatedBlock[]): string {
+  if (contaminated.length === 0) {
+    return "contaminated blocks: none";
+  }
+  const lines = [`contaminated blocks: ${contaminated.length}`];
+  for (const entry of contaminated) {
+    const cause =
+      entry.reason === "load"
+        ? `load ${entry.observed}, limit ${entry.limit}`
+        : `${entry.process} at ${entry.observed}% CPU, limit ${entry.limit}%`;
+    lines.push(`  round ${entry.round} ${entry.label} (${entry.kind}): ${cause}`);
   }
   return lines.join("\n");
 }

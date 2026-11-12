@@ -157,6 +157,16 @@ test("energy-analyze takes two paths and no version", () => {
   });
 });
 
+test("energy-analyze takes session samples as an optional third path", () => {
+  expect(parseArguments(["energy-analyze", "power.plist", "blocks.tsv", "samples.tsv"])).toEqual({
+    kind: "energy-analyze",
+    powerPath: "power.plist",
+    blocksPath: "blocks.tsv",
+    samplesPath: "samples.tsv",
+  });
+  expect(parseArguments(["energy-analyze", "a", "b", "c", "d"]).kind).toBe("error");
+});
+
 test("bad energy arguments are refused", () => {
   expect(errorArguments(["energy"])).toContain("version");
   expect(errorArguments(["energy", "latest"])).toContain("latest");

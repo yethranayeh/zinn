@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import type { JobSpec } from "./jobs.ts";
 import { runRestoreCommand } from "./restore.ts";
+import { parseSamplesFile, SESSION_SAMPLES_ENV } from "./sampler.ts";
 import type {
   CommandResult,
   OutputLine,
@@ -832,11 +833,19 @@ test("a session samples load and the busiest processes into the session folder",
   const runner = new FakeRunner();
   const { options, root } = createSession(runner, {
     settings: { spotlight: false, timeMachine: false, wifi: false },
+    jobs: [{ name: "energy", command: "echo measured" }],
   });
   try {
     const outcome = await runSession(options);
     expect(outcome.exitCode).toBe(0);
     const samplesPath = join(outcome.sessionDir, "samples.tsv");
+    const jobProcess = runner.processes.find((process) => process.argv[0] === "sh");
+    expect(jobProcess?.options?.extraEnv?.[SESSION_SAMPLES_ENV]).toBe(samplesPath);
+    const parsed = parseSamplesFile(readFileSync(samplesPath, "utf8"));
+    expect(parsed[0]?.load1).toBe(2.5);
+    expect(parsed[0]?.processes[0]?.command).toBe(
+      "/Applications/Busy App.app/Contents/MacOS/Busy App",
+    );
     const [header, ...rows] = readFileSync(samplesPath, "utf8").trim().split("\n");
     const columns = header!.split("\t");
     expect(rows.length).toBeGreaterThanOrEqual(2);

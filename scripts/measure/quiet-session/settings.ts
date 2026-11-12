@@ -76,6 +76,10 @@ async function planSpotlightChanges(
     return;
   }
   for (const volume of volumes) {
+    if (volume.enabled === "read-only") {
+      notes.push(`Spotlight: ${volume.volume} has a read-only index, leaving it unchanged`);
+      continue;
+    }
     if (volume.enabled === undefined) {
       notes.push(
         `Spotlight: could not read indexing state for ${volume.volume}, leaving it unchanged`,
@@ -100,12 +104,13 @@ async function planSpotlightChanges(
   }
 }
 
-type VolumeStatus = { volume: string; enabled: boolean | undefined };
+/** "read-only" is what mdutil reports for a volume it cannot switch, such as the sealed system volume. */
+type VolumeStatus = { volume: string; enabled: boolean | "read-only" | undefined };
 
 export function parseSpotlightStatus(output: string): Array<VolumeStatus> {
   const volumes: Array<VolumeStatus> = [];
   let currentVolume: string | undefined;
-  const finishVolume = (enabled: boolean | undefined) => {
+  const finishVolume = (enabled: VolumeStatus["enabled"]) => {
     if (currentVolume === undefined) {
       return;
     }
@@ -132,6 +137,10 @@ export function parseSpotlightStatus(output: string): Array<VolumeStatus> {
     }
     if (/\bindexing (?:is )?enabled\b/i.test(line)) {
       finishVolume(true);
+      continue;
+    }
+    if (/\bindex is read-only\b/i.test(line)) {
+      finishVolume("read-only");
     }
   }
   finishVolume(undefined);

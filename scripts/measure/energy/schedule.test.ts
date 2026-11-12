@@ -80,3 +80,45 @@ test("the block loop logs idle and work windows with the run count", async () =>
   expect(calls.every((call) => call.discardStdout === true)).toBe(true);
   expect(calls.every((call) => call.env?.ZINN_DIR === "/tmp/zinn-energy")).toBe(true);
 });
+
+test("given orders run as numbered extra rounds, each block after its before hook", async () => {
+  let clock = 0;
+  const events: string[] = [];
+  const runner = {
+    async capture() {
+      clock += 100;
+      return { exitCode: 0, stdout: "", stderr: "" };
+    },
+  } as unknown as Runner;
+  const workload = (label: string): Workload => ({
+    label,
+    async prepare() {
+      events.push(`prepare ${label}`);
+      return { argv: ["/bin/true"], env: {} };
+    },
+  });
+
+  const rows = await runBlocks({
+    workloads: [workload("a"), workload("b")],
+    rounds: 5,
+    idleSeconds: 1,
+    workSeconds: 1,
+    settleSeconds: 1,
+    runner,
+    orders: [["b"]],
+    firstRound: 6,
+    beforeBlock: async (round, label) => {
+      events.push(`before ${round} ${label}`);
+    },
+    now: () => clock,
+    sleep: async (milliseconds) => {
+      clock += milliseconds;
+    },
+  });
+
+  expect(events).toEqual(["before 6 b", "prepare b"]);
+  expect(rows.map((row) => [row.round, row.label, row.kind])).toEqual([
+    [6, "b", "idle"],
+    [6, "b", "work"],
+  ]);
+});

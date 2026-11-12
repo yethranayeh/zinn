@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 
-import { analyze, MAXIMUM_IDLE_MW, MINIMUM_CLEAN_ROUNDS } from "./analysis.ts";
+import {
+  analyze,
+  MAXIMUM_IDLE_MW,
+  MINIMUM_CLEAN_ROUNDS,
+  workloadsShortOfCleanRounds,
+} from "./analysis.ts";
 import type { BlockRow } from "./blocks.ts";
 import { samplesInside, type PowerSample } from "./samples.ts";
 
@@ -130,4 +135,20 @@ test("fewer than four clean rounds marks the workload for a rerun", () => {
   expect(analysis.droppedRounds).toEqual([2, 5]);
   expect(analysis.workloads[0]!.cleanRounds).toBe(3);
   expect(analysis.workloads[0]!.cleanVerdict).toBe("rerun");
+  expect(workloadsShortOfCleanRounds(analysis)).toEqual(["x"]);
+});
+
+test("a contaminated block drops its whole round", () => {
+  const data = [1, 2, 3, 4, 5].map((round) => pair(round, "x", round * 100, 400, 1_000));
+  const analysis = analyze(
+    data.flatMap((entry) => entry.samples),
+    data.flatMap((entry) => entry.blocks),
+    [{ round: 3, label: "x", kind: "idle", reason: "load", observed: 5, limit: 3.5 }],
+  );
+  expect(analysis.droppedRounds).toEqual([3]);
+  expect(analysis.droppedBlocks).toEqual([]);
+  expect(analysis.contaminatedBlocks).toHaveLength(1);
+  expect(analysis.blocks.find((block) => block.round === 3 && block.kind === "idle")?.contamination).toBe("load");
+  expect(analysis.blocks.filter((block) => block.round === 3).every((block) => block.dropped)).toBe(true);
+  expect(analysis.workloads[0]!.cleanRounds).toBe(4);
 });

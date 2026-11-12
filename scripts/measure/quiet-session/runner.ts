@@ -15,6 +15,8 @@ export type SpawnOptions = {
   cwd?: string;
   /** Starts the command in its own process group in the same session. */
   processGroup?: boolean;
+  /** Added to the inherited environment. */
+  extraEnv?: Record<string, string>;
   onOutput?: (output: OutputLine) => void;
 };
 
@@ -104,6 +106,7 @@ export function createRunner(): Runner {
       const child = Bun.spawn({
         cmd: command,
         cwd: options?.cwd,
+        env: options?.extraEnv === undefined ? undefined : { ...process.env, ...options.extraEnv },
         stdin: "ignore",
         stdout: "pipe",
         stderr: "pipe",

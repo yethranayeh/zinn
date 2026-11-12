@@ -8,7 +8,9 @@ import path from "node:path";
 
 import { analyze, formatAnalysis } from "../energy/analysis.ts";
 import { parseBlocks } from "../energy/blocks.ts";
+import { findContaminatedBlocks } from "../energy/gate.ts";
 import { parsePowerLog } from "../energy/samples.ts";
+import { parseSamplesFile } from "../quiet-session/sampler.ts";
 import { createRecordFolder, writeJson, writeMeta } from "../record.ts";
 import { createRunner, type Runner } from "../quiet-session/runner.ts";
 import { parseArguments, USAGE, type TimeArguments } from "./args.ts";
@@ -68,7 +70,7 @@ async function main(): Promise<number> {
     return USAGE_ERROR_EXIT;
   }
   if (parsed.kind === "energy-analyze") {
-    await runEnergyAnalyze(parsed.powerPath, parsed.blocksPath);
+    await runEnergyAnalyze(parsed.powerPath, parsed.blocksPath, parsed.samplesPath);
     return 0;
   }
 
@@ -113,14 +115,21 @@ async function main(): Promise<number> {
   return 0;
 }
 
-async function runEnergyAnalyze(powerPath: string, blocksPath: string): Promise<void> {
-  const [powerText, blocksText] = await Promise.all([
+async function runEnergyAnalyze(
+  powerPath: string,
+  blocksPath: string,
+  samplesPath: string | undefined,
+): Promise<void> {
+  const [powerText, blocksText, samplesText] = await Promise.all([
     readFile(powerPath, "utf8"),
     readFile(blocksPath, "utf8"),
+    samplesPath === undefined ? undefined : readFile(samplesPath, "utf8"),
   ]);
   const samples = parsePowerLog(powerText);
   const blocks = parseBlocks(blocksText);
-  console.log(formatAnalysis(analyze(samples, blocks)).join("\n"));
+  const contaminated =
+    samplesText === undefined ? [] : findContaminatedBlocks(parseSamplesFile(samplesText), blocks);
+  console.log(formatAnalysis(analyze(samples, blocks, contaminated)).join("\n"));
 }
 
 async function runTime(options: {
