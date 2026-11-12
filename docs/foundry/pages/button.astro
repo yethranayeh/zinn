@@ -1,10 +1,13 @@
 ---
-import Button from "../../src/components/ui/button/Button.astro";
-import { buttonVariants, type ButtonSize, type ButtonVariant } from "../../src/components/ui/button/variants";
-import Icon from "../../src/components/ui/icon/Icon.astro";
-import ComponentHeading from "../components/ComponentHeading.astro";
-import Specimen from "../components/Specimen.astro";
+import type { ButtonSize, ButtonVariant } from "../../src/components/ui/button/variants";
+
 import FoundryLayout from "../layouts/FoundryLayout.astro";
+import Specimen from "../components/Specimen.astro";
+import ComponentHeading from "../components/ComponentHeading.astro";
+import Icon from "../../src/components/ui/icon/Icon.astro";
+import Button from "../../src/components/ui/button/Button.astro";
+
+import { buttonVariants } from "../../src/components/ui/button/variants";
 
 const variants = Object.keys(buttonVariants.variants.variant) as ButtonVariant[];
 const sizes = Object.keys(buttonVariants.variants.size) as ButtonSize[];
@@ -17,15 +20,18 @@ const iconSizes: ButtonSize[] = ["icon", "responsive-icon"];
 <FoundryLayout title='Button' description='Button renders every action on zinn.sh, as a button or as a link.'>
 	<ComponentHeading folder='button'>
 		<p>
-			Use Button for every action on zinn.sh.
-			Given <code>href</code>, it renders a link.
-			Otherwise it renders a button whose <code>type</code> defaults to <code>button</code>.
+			Use Button for every action on zinn.sh. Given <code>href</code>, it renders a link. Otherwise it renders a button
+			whose <code>type</code> defaults to <code>button</code>.
 		</p>
 		<p>
-			Ghost suits actions inside other components, and ghost-inverted is the same on Soot. Solid and outline suit actions that
-			stand on their own. Labels use MonoMMM at every size.
+			Ghost suits actions inside other components, and ghost-inverted is the same on Soot. Solid and outline suit
+			actions that stand on their own. Labels use MonoMMM at every size.
 		</p>
 		<p>A class passed to Button replaces any conflicting class from its variant or size.</p>
+		<p>
+			<code>animated</code> swaps the button to its inverse colors through a stepped wipe on hover. Use it for an action that
+			should draw the eye. With reduced motion, the colors swap instantly.
+		</p>
 	</ComponentHeading>
 
 	<section class='flex flex-col gap-4' aria-labelledby='variants'>
@@ -36,6 +42,7 @@ const iconSizes: ButtonSize[] = ["icon", "responsive-icon"];
 					<tr class='border-b border-soot/20 font-mono text-xs text-muted-foreground'>
 						<th class='p-3 text-left font-normal'>variant</th>
 						{sizes.map((size) => <th class='p-3 text-left font-normal'>size="{size}"</th>)}
+						<th class='p-3 text-left font-normal'>animated</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -66,6 +73,11 @@ const iconSizes: ButtonSize[] = ["icon", "responsive-icon"];
 										)}
 									</td>
 								))}
+								<td class='p-3'>
+									<Button animated variant={variant}>
+										Button
+									</Button>
+								</td>
 							</tr>
 						))
 					}
@@ -79,6 +91,9 @@ const iconSizes: ButtonSize[] = ["icon", "responsive-icon"];
 		<div class='grid gap-4 md:grid-cols-2'>
 			<Specimen label='<Button href="/" variant="outline" size="large">'>
 				<Button href='/' variant='outline' size='large'>Foundry</Button>
+			</Specimen>
+			<Specimen label='<Button animated href="/" variant="outline" size="large">'>
+				<Button animated href='/' variant='outline' size='large'>Foundry</Button>
 			</Specimen>
 			<Specimen label='<Button variant="solid" disabled>'>
 				<Button variant='solid' disabled>Saving</Button>

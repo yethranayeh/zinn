@@ -1,17 +1,26 @@
 ---
 import type { HTMLAttributes } from "astro/types";
+import type { ButtonSize, ButtonVariant } from "./variants";
+
 import { twMerge } from "tailwind-merge";
-import { buttonVariants, type ButtonSize, type ButtonVariant } from "./variants";
+import { buttonVariants, buttonWipe } from "./variants";
+import ButtonContent from "./ButtonContent.astro";
 
 type ButtonProps = HTMLAttributes<"button"> & { href?: undefined };
 type LinkProps = HTMLAttributes<"a"> & { href: string };
 
 // Renders a link when given href
-type Props = (ButtonProps | LinkProps) & { variant?: ButtonVariant; size?: ButtonSize };
+type Props = (ButtonProps | LinkProps) & {
+	variant?: ButtonVariant;
+	size?: ButtonSize;
+	/** Swaps to the inverse colors through a stepped wipe on hover */
+	animated?: boolean;
+};
 
 const {
 	variant = buttonVariants.defaultVariants.variant,
 	size = buttonVariants.defaultVariants.size,
+	animated = false,
 	class: className,
 	...attributes
 } = Astro.props;
@@ -20,6 +29,8 @@ const classes = twMerge(
 	buttonVariants.base,
 	buttonVariants.variants.variant[variant],
 	buttonVariants.variants.size[size],
+	animated && buttonWipe.base,
+	animated && buttonWipe.variants[variant].trigger,
 	className
 );
 ---
@@ -27,11 +38,15 @@ const classes = twMerge(
 {
 	attributes.href === undefined ? (
 		<button class={classes} {...{ type: "button", ...attributes }}>
-			<slot />
+			<ButtonContent variant={variant} animated={animated}>
+				<slot />
+			</ButtonContent>
 		</button>
 	) : (
 		<a class={classes} {...attributes}>
-			<slot />
+			<ButtonContent variant={variant} animated={animated}>
+				<slot />
+			</ButtonContent>
 		</a>
 	)
 }
