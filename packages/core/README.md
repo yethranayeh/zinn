@@ -25,8 +25,7 @@ configureDatabase({
 	client: "example",
 	version: "0.1.0",
 	executable: fileURLToPath(import.meta.url),
-	release: "source",
-	allowsLegacyRead: false
+	release: "source"
 });
 
 const actor: Actor = { name: "Example user", email: null, kind: "human" };

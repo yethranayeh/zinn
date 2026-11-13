@@ -182,7 +182,6 @@ describe("telemetry record", () => {
   test("a string option never takes a router or help flag as its value", async () => {
     const cases = [
       { flag: "--json", code: "invalid_input", help: false },
-      { flag: "--allow-legacy-read", code: "invalid_input", help: false },
       { flag: "--help", code: undefined, help: true },
       { flag: "-h", code: undefined, help: true },
     ];

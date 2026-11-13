@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, readdirSync, realpathSync, symlinkSync, unlinkSy
 import { join, relative } from "node:path";
 
 import { backup, configureDatabase, info, project, reindex } from "../index";
-import type { DatabaseFacts } from "../index";
 import { resolveDatabasePath } from "./database-path";
 import { assertWritable, getDb } from "./db";
 import { CoreError } from "./errors";
@@ -41,7 +40,7 @@ test("relative storage selection keeps its original working-directory base", () 
   });
 });
 
-test("opening carries one captured target through preparation and legacy-read callbacks", () => {
+test("opening carries one captured target through preparation", () => {
   withTestStore((root) => {
     const first = join(root, "first");
     const second = join(root, "second");
@@ -49,17 +48,14 @@ test("opening carries one captured target through preparation and legacy-read ca
     mkdirSync(join(first, "data"), { recursive: true });
     mkdirSync(second);
     const path = join(first, "data", "zinn.sqlite");
-    const unmarked = openDatabase(path);
-    seedBaseline(unmarked);
-    unmarked.exec("PRAGMA user_version = 0");
-    unmarked.close();
+    const newer = openDatabase(path);
+    seedBaseline(newer);
+    newer.exec(`PRAGMA user_version = ${latestVersion(MIGRATIONS) + 1}`);
+    newer.close();
     symlinkSync(first, link, "dir");
 
     withStore(link, () => {
-      const facts: Array<DatabaseFacts> = [];
-      configureDatabase({ ...build, executable: "path-test", release: "source", allowsLegacyRead: true,
-        onLegacyRead: (value) => { facts.push(value); },
-      });
+      configureDatabase({ ...build, executable: "path-test", release: "source" });
       const connect = driver.connect;
       const open = spyOn(driver, "connect").mockImplementation((destination, options) => {
         const connection = connect(destination, options);
@@ -68,8 +64,7 @@ test("opening carries one captured target through preparation and legacy-read ca
       });
       try {
         expect<string | null>(getDb().databasePath).toBe(realpathSync(path));
-        expect(facts).toHaveLength(1);
-        expect(facts[0]!.databasePath).toBe(realpathSync(path));
+        expect(() => assertWritable()).toThrow(realpathSync(path));
         expect(getStorage().databasePath).not.toBe(realpathSync(path));
       } finally {
         open.mockRestore();

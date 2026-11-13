@@ -12,8 +12,7 @@ core.configureDatabase({
 	client: "installed check",
 	version: "1.0.0",
 	executable: "runtime.mjs",
-	release: "published",
-	allowsLegacyRead: false
+	release: "published"
 });
 
 const actor = { name: "installed check", email: "check@example.test", kind: "agent" };

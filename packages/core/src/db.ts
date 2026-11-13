@@ -90,7 +90,6 @@ function prepare(
     isProtectedDatabase: () => isProtectedStorage(storage),
     coreRelease: readCoreReleaseMode(),
     clientRelease: policy.release,
-    allowsLegacyRead: policy.allowsLegacyRead,
   });
 
   if (decision.action === "create" && !createsDatabase) {
@@ -172,10 +171,6 @@ function settle(connection: Database, prepared: Prepared, storage: Storage): typ
     case "write":
       return null;
     case "read-only":
-      if (decision.reason === "unmarked") {
-        policy.onLegacyRead?.(facts);
-      }
-
       return { reason: decision.reason, facts };
     case "refuse":
       throw new UnmarkedDatabaseError(facts);

@@ -359,7 +359,7 @@ test("ZINN-283: settings errors and missing configured defaults name the selecte
   }
 });
 
-test("ZINN-283: actual SQLite missing-index rollback and unmarked read notices form one error document", async () => {
+test("ZINN-283: an actual SQLite missing index rolls back and points at zinn reindex", async () => {
   const f = fixture();
   try {
     await f.succeed("project", "create", "APP");
@@ -371,17 +371,6 @@ test("ZINN-283: actual SQLite missing-index rollback and unmarked read notices f
     expect(failure).toMatchObject({ code: "storage", details: { reason: "missing_index", cause: { code: "SQLITE_ERROR", errcode: 1 } } });
     expect(failure.message).toContain("zinn reindex");
     expect((await f.succeed("task", "view", "APP-1")).title).toBe("Kept");
-    const unmarked = new Database(f.databasePath);
-    unmarked.exec("PRAGMA user_version = 0");
-    unmarked.close();
-    const warned = await f.fail("task", "search", "word", "--allow-legacy-read");
-    expect(warned.code).toBe("storage");
-    expect(warned.diagnostics).toHaveLength(1);
-    expect(warned.diagnostics?.[0]).toContain("zinn.sqlite");
-    const success = await f.invoke("task", "view", "APP-1", "--allow-legacy-read", "--json");
-    expect(success.code).toBe(0);
-    expect(JSON.parse(success.stdout).title).toBe("Kept");
-    expect(success.stderr).toContain("zinn.sqlite");
   } finally {
     f.close();
   }

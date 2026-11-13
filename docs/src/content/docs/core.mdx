@@ -24,8 +24,7 @@ configureDatabase({
 	client: "example",
 	version: "0.1.0",
 	executable: fileURLToPath(import.meta.url),
-	release: "source",
-	allowsLegacyRead: false
+	release: "source"
 });
 
 const actor: Actor = { name: "Alper", email: null, kind: "human" };
@@ -49,7 +48,7 @@ By default it shares `~/.zinn/data/zinn.sqlite` with the CLI, but `ZINN_DIR` and
 
 `getStorage()` returns a fresh `Storage` snapshot on each call. Settings and the selected directory are chosen on first use and stay cached. Each snapshot resolves the database destination through the current filesystem links. `getBackupStorage()` resolves the backup folder as well, for an operation that writes a backup. Keep one snapshot throughout an operation. An existing connection retains the destination it opened, including for its errors and search reindexing.
 
-The client supplies its own `release` identity: `source` for development and `published` for prepared release artifacts. Core identifies its own build independently. Core throws errors while the client handles output, prompts, and optional database-wait and legacy-read callbacks.
+The client supplies its own `release` identity: `source` for development and `published` for prepared release artifacts. Core identifies its own build independently. Core throws errors while the client handles output, prompts, and an optional database-wait callback.
 
 ## Actor clients
 
@@ -287,7 +286,7 @@ Both helpers accept `unknown`, narrow matching values to `SqliteError`, and insp
 
 ## Database compatibility
 
-`column.inspect({ taskKeys, allowsLegacyRead })` reads existing project column names and requested task identities without creating or upgrading storage. Both are optional. It returns `{ projects: [{ key, columns }], taskKeys }`. Note that task keys that do not identify an existing task are omitted. Empty databases and unacknowledged databases without a schema version return `null` and unavailable storage raises an error.
+`column.inspect({ taskKeys })` reads existing project column names and requested task identities without creating or upgrading storage. `taskKeys` is optional. It returns `{ projects: [{ key, columns }], taskKeys }`. Note that task keys that do not identify an existing task are omitted. Empty databases and databases without a schema version return `null` and unavailable storage raises an error.
 
 Opening a database can upgrade it, even for a read operation. Upgrades save a backup first and apply completely or not at all. Upgrades and restores check that foreign keys reference existing tables and rows before committing.
 
@@ -295,7 +294,7 @@ Each migration step also checks existing foreign-key definitions, including thos
 
 - Older databases upgrade automatically when both the core package and client are published releases, or when `ZINN_DIR` explicitly selects a separate database. Source clients otherwise open older databases read-only until an explicit `migrate.run`.
 - Databases newer than core supports open read-only.
-- Databases without a schema version are refused unless `allowsLegacyRead` enables best-effort, read-only access.
+- Databases without a schema version are refused.
 
 Core backup and restore operations use the selected store independently of the normal database-opening policy. See [Data and backups](/docs/data) for shared storage and restore behavior.
 

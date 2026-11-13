@@ -1,7 +1,7 @@
-import type { DatabaseFacts, LockWait, OpenPolicy } from "@zinn-dev/core";
+import type { LockWait, OpenPolicy } from "@zinn-dev/core";
 
 import packageJson from "../package.json" with { type: "json" };
-import { diagnostic, isLegacyReadAllowed } from "./lib.js";
+import { diagnostic } from "./lib.js";
 import { RELEASE_MODE } from "./release-identity.js";
 
 const MS_PER_SECOND = 1000;
@@ -13,12 +13,6 @@ export function reportLockWait({ budgetMs }: LockWait) {
   );
 }
 
-export function reportLegacyRead({ databasePath }: DatabaseFacts) {
-  diagnostic(
-    `Warning: the database at ${databasePath} has no schema version. Reads are best effort and may fail or omit data.`,
-  );
-}
-
 /** How the CLI asks core to open the database. */
 export function getCliOpenPolicy(): OpenPolicy {
   return {
@@ -27,8 +21,6 @@ export function getCliOpenPolicy(): OpenPolicy {
     // The script the CLI runs from; the runtime itself when there is none.
     executable: process.argv[1] ?? process.execPath,
     release: RELEASE_MODE,
-    allowsLegacyRead: isLegacyReadAllowed(),
     onWait: reportLockWait,
-    onLegacyRead: reportLegacyRead,
   };
 }

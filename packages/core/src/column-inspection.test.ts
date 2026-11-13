@@ -33,17 +33,15 @@ test("column inspection reads names and requested task identities without initia
       fixture.exec(`PRAGMA user_version = ${version}`);
       fixture.close();
       const before = snapshot();
-      for (const allowsLegacyRead of [false, true]) {
-        const context = column.inspect({ taskKeys: ["app-1", "APP-99", "In"], allowsLegacyRead });
-        if (version === 0 && !allowsLegacyRead) {
-          assert.equal(context, null);
-        } else {
-          assert.deepEqual(context?.taskKeys, ["APP-1"]);
-          assert.deepEqual(context?.projects.map(entry => entry.key), ["APP", "OTHER"]);
-          assert.ok(context?.projects.every(entry => entry.columns.includes("Doing")));
-        }
-        assert.deepEqual(snapshot(), before);
+      const context = column.inspect({ taskKeys: ["app-1", "APP-99", "In"] });
+      if (version === 0) {
+        assert.equal(context, null);
+      } else {
+        assert.deepEqual(context?.taskKeys, ["APP-1"]);
+        assert.deepEqual(context?.projects.map(entry => entry.key), ["APP", "OTHER"]);
+        assert.ok(context?.projects.every(entry => entry.columns.includes("Doing")));
       }
+      assert.deepEqual(snapshot(), before);
     }
   });
 });

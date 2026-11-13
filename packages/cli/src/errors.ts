@@ -150,7 +150,7 @@ export function recoveryHint(
   }
 
   if (error instanceof UnmarkedDatabaseError) {
-    return { suffix: ". Add --allow-legacy-read to read it anyway." };
+    return { suffix: ". Zinn CLI 0.44.0 reads it, best effort and read-only, with --allow-legacy-read." };
   }
 
   if (error instanceof TextEditMatchError && error.matchCount > 1) {

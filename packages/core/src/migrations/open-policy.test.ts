@@ -15,7 +15,6 @@ type Row = {
   core: ReleaseMode;
   client: ReleaseMode;
   database: "default" | "isolated";
-  legacy?: boolean;
   expected: OpenDecision;
 };
 
@@ -25,7 +24,6 @@ const UPGRADE = { action: "upgrade" } as const;
 const REFUSE = { action: "refuse" } as const;
 const OLDER_READ_ONLY = { action: "read-only", reason: "older" } as const;
 const NEWER_READ_ONLY = { action: "read-only", reason: "newer" } as const;
-const UNMARKED_READ_ONLY = { action: "read-only", reason: "unmarked" } as const;
 
 const rows: Array<Row> = [
   { state: "absent", core: "source", client: "source", database: "default", expected: CREATE },
@@ -35,24 +33,23 @@ const rows: Array<Row> = [
   { state: "newer", core: "source", client: "source", database: "default", expected: NEWER_READ_ONLY },
   { state: "newer", core: "published", client: "published", database: "isolated", expected: NEWER_READ_ONLY },
   { state: "unmarked", core: "published", client: "published", database: "isolated", expected: REFUSE },
-  { state: "unmarked", core: "source", client: "source", database: "default", legacy: true, expected: UNMARKED_READ_ONLY },
+  { state: "unmarked", core: "source", client: "source", database: "default", expected: REFUSE },
   { state: "older", core: "source", client: "source", database: "default", expected: OLDER_READ_ONLY },
   { state: "older", core: "published", client: "source", database: "default", expected: OLDER_READ_ONLY },
   { state: "older", core: "source", client: "published", database: "default", expected: OLDER_READ_ONLY },
-  { state: "older", core: "published", client: "published", database: "default", legacy: true, expected: UPGRADE },
+  { state: "older", core: "published", client: "published", database: "default", expected: UPGRADE },
   { state: "older", core: "source", client: "source", database: "isolated", expected: UPGRADE },
   { state: "older", core: "source", client: "published", database: "isolated", expected: UPGRADE },
 ];
 
 test.each(rows)(
   "$state $database database with core $core and client $client opens as $expected.action",
-  ({ state, core, client, database, legacy = false, expected }) => {
+  ({ state, core, client, database, expected }) => {
     const decision = decideOpen({
       state,
       isProtectedDatabase: () => database === "default",
       coreRelease: core,
       clientRelease: client,
-      allowsLegacyRead: legacy,
     });
 
     expect(decision).toEqual(expected);
@@ -73,7 +70,6 @@ test("only an older database asks whether it is a protected database", () => {
         isProtectedDatabase,
         coreRelease: "source",
         clientRelease: "source",
-        allowsLegacyRead: true,
       }),
     ).not.toThrow();
   }

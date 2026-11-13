@@ -59,7 +59,7 @@ export type { MigrateResult } from "./src/migrations/migrate.js";
 export type { RestoreResult } from "./src/migrations/restore.js";
 export type { ReindexResult } from "./src/migrations/reindex.js";
 export type { LockWait } from "./src/migrations/upgrade.js";
-export type { DatabaseFacts, OpenPolicy, ReadOnlyReason } from "./src/migrations/open-policy.js";
+export type { OpenPolicy, ReadOnlyReason } from "./src/migrations/open-policy.js";
 export type { ReleaseMode } from "./src/release.js";
 export type { Settings, TelemetryMode } from "./src/schemas/settings.js";
 export type {

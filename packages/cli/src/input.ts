@@ -77,10 +77,9 @@ export const archiveConstraint = {
   members: ["option:archived", "option:all"],
 } as const satisfies InputConstraint;
 
-export const routerOptionNames = { json: "json", legacyRead: "allow-legacy-read" } as const;
+export const routerOptionNames = { json: "json" } as const;
 export const routerOptions = {
   [routerOptionNames.json]: { type: "boolean" },
-  [routerOptionNames.legacyRead]: { type: "boolean" },
 } as const;
 export const helpSpellings: readonly string[] = ["-h", "--help"];
 export const versionSpellings: readonly string[] = ["-v", "--version"];
@@ -90,13 +89,9 @@ export function isJsonFlag(flag: string) {
   return flag === `--${routerOptionNames.json}`;
 }
 
-export function isAllowLegacyReadFlag(flag: string) {
-  return flag === `--${routerOptionNames.legacyRead}`;
-}
-
 /** A flag the router reads wherever it appears before --, for every command. */
 export function isRouterFlag(flag: string) {
-  return isJsonFlag(flag) || isAllowLegacyReadFlag(flag);
+  return isJsonFlag(flag);
 }
 
 export function isHelpFlag(flag: string) {

@@ -195,7 +195,6 @@ test("a help flag before command words prints help for the words before it", asy
     const rootHelpRequests = [
       ["--help", "task", "view"],
       ["--json", "--help"],
-      ["--allow-legacy-read", "--help"],
     ];
     for (const args of rootHelpRequests) {
       const result = await runZinn(args, dir);

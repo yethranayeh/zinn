@@ -87,7 +87,6 @@ configureDatabase({
   version: "0.0.0",
   executable: fileURLToPath(import.meta.url),
   release: "source",
-  allowsLegacyRead: false,
 });
 const actor = { name: "Alper Halil", email: "contact@aktasalper.com", kind: "human", source: "git-config" };
 const database = `${directory}/data/zinn.sqlite`;

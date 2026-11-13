@@ -105,13 +105,12 @@ test("task list continuation preserves filters, project scope, router flags and 
       "--sort",
       "due",
     );
-    const appPage = await run("task", "list", ...filters, "--json", "--allow-legacy-read");
+    const appPage = await run("task", "list", ...filters, "--json");
     expect(appPage.code, appPage.stderr).toBe(0);
     expect(JSON.parse(appPage.stdout)).toEqual(expectedApp.slice(0, 2));
     const appCommand = extractContinuation(appPage.stderr);
     expect(appCommand).toContain(" APP ");
     expect(appCommand).toContain("--json");
-    expect(appCommand).toContain("--allow-legacy-read");
     expect(appCommand.match(/--label(?:=|\s)/g)).toHaveLength(2);
 
     await Bun.write(join(directory, "settings.json"), JSON.stringify({ defaultProject: "OTHER" }));

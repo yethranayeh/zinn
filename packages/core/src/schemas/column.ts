@@ -64,6 +64,5 @@ export type ColumnOrderInput = z.infer<typeof columnOrderSchema>;
 
 export const columnInspectionSchema = z.strictObject({
   taskKeys: z.array(z.string()).default([]),
-  allowsLegacyRead: z.boolean().default(false),
 });
 export type ColumnInspectionInput = z.input<typeof columnInspectionSchema>;

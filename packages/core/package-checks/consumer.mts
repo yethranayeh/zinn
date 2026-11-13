@@ -27,7 +27,6 @@ configureDatabase({
   version: "1.0.0",
   executable: "consumer.mts",
   release: "source",
-  allowsLegacyRead: false,
 });
 const createdProject = project.create({ key: "TYPES" }, actor);
 const createdTask: TaskWithKey = task.create(

@@ -7,7 +7,6 @@ import {
   helpSpellings,
   versionSpellings,
   usageLabel,
-  isAllowLegacyReadFlag,
   isHelpFlag,
   isRouterFlag,
   splitAtOptionSeparator,
@@ -30,7 +29,6 @@ import {
   prepareOutput,
   quit,
   renderFailure,
-  setLegacyReadAllowed,
   UsageError,
   validateUniqueOptions,
 } from "../lib.js";
@@ -40,7 +38,7 @@ function getIsRunnable(obj: any): obj is Command {
   return Object.hasOwn(obj, "run");
 }
 
-// --json and --allow-legacy-read can each be given once, like a command's own flags.
+// --json can be given once, like a command's own flags.
 function validateRouterFlags(routableArgs: Array<string>) {
   const { tokens } = parseArgs({
     args: routableArgs.filter(isRouterFlag),
@@ -119,7 +117,6 @@ Options:
   ${helpSpellings.join(", ")}  Show help
   ${versionSpellings.join(", ")}  Show version
   --json      Print command output as JSON
-  --allow-legacy-read  Read a database without a schema version, best effort and read-only
 
 Commands:
 ${formatCommands(parsedRoutes, "")}
@@ -256,10 +253,6 @@ async function route(
   const { optionWords: routableArgs, passthroughWords: passthroughArgs } =
     splitAtOptionSeparator(rawArgs);
   const filteredRoutableArgs = routableArgs.filter((arg) => !isRouterFlag(arg));
-
-  if (routableArgs.some(isAllowLegacyReadFlag)) {
-    setLegacyReadAllowed(true);
-  }
 
   // A help flag asks for help with the command words before it, so nothing after it is read.
   const helpFlagIndex = filteredRoutableArgs.findIndex(isHelpFlag);

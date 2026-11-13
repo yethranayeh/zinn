@@ -2,10 +2,8 @@ import { TEST_ENVIRONMENT } from "../../../../scripts/test-isolation.ts";
 import type { Command, ParsedRoute, RouteDef } from "../types";
 
 import { test, expect, mock, spyOn } from "bun:test";
-import { isLegacyReadAllowed, setLegacyReadAllowed } from "../lib";
 import { createRouter, parseRoutes } from "./router";
 import { jsonResult } from "../results";
-import { getCliOpenPolicy } from "../database";
 import { parsedRoutes } from "./routes";
 import { commandAliases } from "./aliases";
 
@@ -59,30 +57,25 @@ test("aliases preserve root and namespace help", async () => {
   }
 });
 
-test("beforeRun receives the matched route after flags and completes once before the handler", async () => {
+test("beforeRun receives the matched route and completes once before the handler", async () => {
   const events: string[] = [];
   const completion = Promise.withResolvers<void>();
   const run = mock(() => { events.push("run"); });
   const beforeRun = mock(async (command: ParsedRoute) => {
     expect(command.command).toBe("foo bar");
-    expect(getCliOpenPolicy().allowsLegacyRead).toBe(true);
     events.push("beforeRun");
     await completion.promise;
     events.push("ready");
   });
   const router = createRouter({ foo: { bar: { ...commandMetadata, run, help: "" } } }, beforeRun);
-  try {
-    const routed = router.route(["foo", "bar", "--allow-legacy-read", "value"]);
-    expect(events).toEqual(["beforeRun"]);
-    expect(run).not.toHaveBeenCalled();
-    completion.resolve();
-    await routed;
-    expect(events).toEqual(["beforeRun", "ready", "run"]);
-    expect(beforeRun).toHaveBeenCalledTimes(1);
-    expect(run).toHaveBeenCalledWith(["value"]);
-  } finally {
-    setLegacyReadAllowed(false);
-  }
+  const routed = router.route(["foo", "bar", "value"]);
+  expect(events).toEqual(["beforeRun"]);
+  expect(run).not.toHaveBeenCalled();
+  completion.resolve();
+  await routed;
+  expect(events).toEqual(["beforeRun", "ready", "run"]);
+  expect(beforeRun).toHaveBeenCalledTimes(1);
+  expect(run).toHaveBeenCalledWith(["value"]);
 });
 
 test("help skips beforeRun", async () => {
@@ -244,26 +237,4 @@ test("a help flag anywhere before -- prints help for the words before it and run
   } finally {
     info.mockRestore();
   }
-});
-
-test("--allow-legacy-read before a -- is taken out of the arguments and allows legacy reads", async () => {
-  const run = mock(() => {});
-  const router = createRouter({ foo: { ...commandMetadata, run, help: "" } });
-
-  try {
-    await router.route(["foo", "--allow-legacy-read", "--", "literal"]);
-    expect(run).toHaveBeenCalledWith(["--", "literal"]);
-    expect(isLegacyReadAllowed()).toBe(true);
-  } finally {
-    setLegacyReadAllowed(false);
-  }
-});
-
-test("--allow-legacy-read after a -- stays command input and allows nothing", async () => {
-  const run = mock(() => {});
-  const router = createRouter({ foo: { ...commandMetadata, run, help: "" } });
-
-  await router.route(["foo", "--", "--allow-legacy-read"]);
-  expect(run).toHaveBeenCalledWith(["--", "--allow-legacy-read"]);
-  expect(isLegacyReadAllowed()).toBe(false);
 });

@@ -401,7 +401,7 @@ test("restore onto a store with no database creates it from the backup", async (
   });
 });
 
-test("restore works on newer and unmarked databases, without --allow-legacy-read", async () => {
+test("restore works on newer and unmarked databases", async () => {
   await withIsolatedZinnDir(async (sourceDir) => {
     const path = await backupWithTask(sourceDir, "Kept");
 
@@ -521,7 +521,7 @@ test("migrate refuses an empty database", async () => {
   });
 });
 
-test("migrate refuses an unmarked database, with or without --allow-legacy-read, and changes nothing", async () => {
+test("migrate refuses an unmarked database and changes nothing", async () => {
   await withIsolatedZinnDir(async (dir) => {
     await createDatabase(dir, 0);
     const before = databaseSnapshot(dir);
@@ -530,7 +530,6 @@ test("migrate refuses an unmarked database, with or without --allow-legacy-read,
     expect(result.code).toBe(1);
     expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "unmarked_database", schemaVersion: 0 } });
 
-    expect((await runZinn(["migrate", "--allow-legacy-read"], dir)).code).toBe(1);
     expect(databaseSnapshot(dir)).toEqual(before);
     expect(existsSync(join(dir, "backups"))).toBe(false);
   });

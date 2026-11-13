@@ -8,7 +8,6 @@ import { classifyFailure } from "./errors.js";
 import {
   routerOptions,
   getOptionInputs,
-  isAllowLegacyReadFlag,
   isRouterFlag,
   splitAtOptionSeparator,
   violatesConstraint,
@@ -115,7 +114,6 @@ export function quotedColumnHint(
       }
     }
     const args = rawArgs.slice(argumentStart);
-    const { optionWords: optionArgs } = splitAtOptionSeparator(rawArgs);
     const options: InputOptions = { ...route.input.options, ...routerOptions };
     const { tokens, values } = parseArgs({
       args,
@@ -166,7 +164,6 @@ export function quotedColumnHint(
 
     const context = column.inspect({
       taskKeys: isMove ? words.map((word) => word.value) : [],
-      allowsLegacyRead: optionArgs.some(isAllowLegacyReadFlag),
     });
 
     if (context === null) {

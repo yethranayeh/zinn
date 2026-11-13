@@ -5,8 +5,9 @@ import { mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getStorage } from "./storage";
 import { assertWritable, configureDatabase, getDb, resetDatabaseForTests } from "./db";
-import { MissingDatabaseError, ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./migrations/open-policy";
+import { MissingDatabaseError, ReadOnlyDatabaseError } from "./migrations/open-policy";
 import { createSchema } from "./migrations/runner";
+import { latestVersion, MIGRATIONS } from "./migrations/registry";
 import type { OpenOptions } from "./sqlite/database";
 import { openResolvedWith, SqliteError } from "./sqlite/database";
 import { withTestStore } from "./testing";
@@ -182,15 +183,19 @@ test("reset clears the opening policy and read-only state", () => {
     const fixture = adapter.openDatabase(path);
     try {
       createSchema(fixture);
-      fixture.exec("PRAGMA user_version = 0");
+      fixture.exec(`PRAGMA user_version = ${latestVersion(MIGRATIONS) + 1}`);
     } finally {
       fixture.close();
     }
-    configureDatabase({ client: "test", version: "1", executable: "/test/zinn", release: "source", allowsLegacyRead: true });
+    configureDatabase({ client: "test", version: "1", executable: "/test/zinn", release: "source" });
     getDb();
-    expect(() => assertWritable()).toThrow(ReadOnlyDatabaseError);
+    expect(() => assertWritable()).toThrow("/test/zinn");
     resetDatabaseForTests();
-    expect(() => getDb()).toThrow(UnmarkedDatabaseError);
+    process.env.ZINN_DIR = directory;
+    getDb();
+    const afterReset = (() => { try { assertWritable(); } catch (error) { return error; } })();
+    expect(afterReset).toBeInstanceOf(ReadOnlyDatabaseError);
+    expect((afterReset as ReadOnlyDatabaseError).message).not.toContain("/test/zinn");
 
     const fresh = join(directory, "fresh");
     mkdirSync(fresh);
@@ -211,7 +216,7 @@ test("a failed close leaves the connection and selected store available for clea
       expect(() => resetDatabaseForTests()).toThrow(failure);
       expect(getDb()).toBe(connection);
       expect(getStorage()).toEqual(storage);
-      expect(() => configureDatabase({ client: "test", version: "1", executable: "/test/zinn", release: "source", allowsLegacyRead: false })).toThrow();
+      expect(() => configureDatabase({ client: "test", version: "1", executable: "/test/zinn", release: "source" })).toThrow();
       expect(connection.query("SELECT 1 AS value").get()).toEqual({ value: 1 });
     } finally {
       close.mockRestore();

@@ -751,14 +751,12 @@ test("delete commands reject invalid keys and repeated --yes without deleting an
   });
 });
 
-test("--json or --allow-legacy-read given twice runs nothing, while a second help flag still shows help", async () => {
+test("--json given twice runs nothing, while a second help flag still shows help", async () => {
   await withIsolatedZinnDir(async (dir) => {
-    for (const flag of ["--json", "--allow-legacy-read"]) {
-      const result = await runZinn(["project", "create", "APP", flag, flag], dir);
-      expect(result.code).toBe(1);
-      expect(result.stdout).toBe("");
-      expect(result.stderr).toContain(flag);
-    }
+    const result = await runZinn(["project", "create", "APP", "--json", "--json"], dir);
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("--json");
     expect(existsSync(join(dir, "data"))).toBe(false);
 
     const help = await runZinn(["task", "view", "A-1", "-h", "--help"], dir);

@@ -464,7 +464,7 @@ await import(${JSON.stringify(pathToFileURL(cliPath).href)});`);
     }
 }, 30000);
 
-test("relocated Node artifact and ordinary CLI agree on unmarked-store acknowledgment", async () => {
+test("relocated Node artifact and ordinary CLI both refuse an unmarked store", async () => {
     const store = join(context.directory, "unmarked-store");
     seedOlderStore(store);
     const db = openDatabase(join(store, "data/zinn.sqlite"));
@@ -486,25 +486,6 @@ test("relocated Node artifact and ordinary CLI agree on unmarked-store acknowled
         expect(result.kind).toBe("error");
     } finally {
         await refusedClient.close();
-    }
-    expect(inspectStore(store)).toEqual(before);
-
-    const acknowledged = Bun.spawnSync(["node", cliPath, "--allow-legacy-read", "task", "view", "APP-1", "--json"], { env: { ...context.env, ZINN_DIR: store } });
-    expect(acknowledged.exitCode).toBe(0);
-    const ordinaryTask = JSON.parse(acknowledged.stdout.toString());
-    const acknowledgedCli = join(context.directory, "unmarked-acknowledged-cli.mjs");
-    writeFileSync(acknowledgedCli, `import {pathToFileURL} from 'node:url';
-const args = process.argv.slice(2);
-if (args[0] !== '--version') { process.argv.splice(2, 0, '--allow-legacy-read'); }
-await import(${JSON.stringify(pathToFileURL(cliPath).href)});`);
-    const acknowledgedConfig = join(context.directory, "unmarked-acknowledged-config.json");
-    writeFileSync(acknowledgedConfig, JSON.stringify({ ...context.settings, store, cli: ["node", acknowledgedCli] }));
-    const acknowledgedClient = await connect(acknowledgedConfig);
-    try {
-        const result = (await acknowledgedClient.callTool({ name: "inspect_task", arguments: { key: "APP-1" } })).structuredContent as any;
-        expect(result).toMatchObject({ kind: "ready", task: ordinaryTask });
-    } finally {
-        await acknowledgedClient.close();
     }
     expect(inspectStore(store)).toEqual(before);
     expect(existsSync(join(store, "backups"))).toBe(false);

@@ -106,11 +106,10 @@ const POLICY: OpenPolicy = {
   version: "1.0.0",
   executable: "/test/zinn",
   release: "source",
-  allowsLegacyRead: false,
 };
 
-function readOnlyError(reason: "older" | "newer" | "unmarked") {
-  const versions = { older: 1, newer: 3, unmarked: 0 };
+function readOnlyError(reason: "older" | "newer") {
+  const versions = { older: 1, newer: 3 };
   const version = versions[reason];
   return new ReadOnlyDatabaseError(
     reason,
@@ -136,7 +135,7 @@ test("other failures keep their own message, or the fallback when they have none
   expect(failureMessage(undefined, FALLBACK)).toBe(FALLBACK);
 });
 
-test("an unmarked database that was not opened names --allow-legacy-read", () => {
+test("an unmarked database points at the last CLI release that reads it", () => {
   const error = new UnmarkedDatabaseError({
     databasePath: "/data/zinn.sqlite",
     version: 0,
@@ -146,13 +145,8 @@ test("an unmarked database that was not opened names --allow-legacy-read", () =>
 
   expect(message).toStartWith(error.message);
   expect(message).toContain("/data/zinn.sqlite");
+  expect(message).toContain("0.44.0");
   expect(message).toContain("--allow-legacy-read");
-});
-
-test("an unmarked database opened for reading refuses changes without pointing at the flag", () => {
-  const error = readOnlyError("unmarked");
-
-  expect(failureMessage(error, FALLBACK)).toBe(error.message);
 });
 
 test("a text edit that matches several places points at --all, and one that matches none does not", () => {

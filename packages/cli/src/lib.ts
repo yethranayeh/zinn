@@ -24,7 +24,6 @@ type ParsedTokens = NonNullable<ReturnType<typeof parseArgs>["tokens"]>;
 type OutputMode = "text" | "json";
 
 let outputMode: OutputMode = "text";
-let legacyReadAllowed = false;
 const diagnostics: Array<string> = [];
 /** Every notice of this run in order, kept for the failure log */
 const runNotices: Array<string> = [];
@@ -101,14 +100,6 @@ function recordRun(outcome: Parameters<typeof writeRunRecord>[0]) {
 export function finishRun() {
   recordRun({});
   flushDiagnostics();
-}
-
-export function setLegacyReadAllowed(allowed: boolean) {
-  legacyReadAllowed = allowed;
-}
-
-export function isLegacyReadAllowed() {
-  return legacyReadAllowed;
 }
 
 export function output<T>(data: T, transformToString: (data: T) => string) {

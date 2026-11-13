@@ -385,7 +385,7 @@ test("activity continuation commands preserve filters, globals and shell-sensiti
     const args = ["activity", "list", `--session=${session}`, "--thread", thread,
       "--since", "0", "--until", "6", "--action", "edit", "--action", "comment_create",
       "--changed", "priority=HIGH", "--changed", "priority=low", "--changed", "title",
-      "--limit", "1", "--json", "--allow-legacy-read"];
+      "--limit", "1", "--json"];
     let result = await runZinn(args, directory);
     for (let index = 0; index < expected.length; index++) {
       expect(result.code, result.stderr).toBe(0);
@@ -399,7 +399,6 @@ test("activity continuation commands preserve filters, globals and shell-sensiti
       const command = result.stderr.slice(commandStart).trimEnd();
       expect(command).toContain(expected[index]!.id);
       expect(command).toContain("--json");
-      expect(command).toContain("--allow-legacy-read");
       expect(command.match(/--starting-after/g)).toHaveLength(1);
       result = await runProcessAsync(["/bin/sh", "-c",
         'zinn() { bun "$ZINN_TEST_CLI" "$@"; }\n' + command],
@@ -771,7 +770,7 @@ test("activity views preserve recorded text, actor/entity identity, unknown fiel
   });
 });
 
-test.each([0, 9])("activity commands read schema version %i under the existing policy without writes", async (version) => {
+test.each([0, 9])("activity commands follow the open policy at schema version %i without writes", async (version) => {
   await withIsolatedZinnDir(async (directory) => {
     const [event] = await seedRecordedActivity(directory, [{ id: "abcdef12-1234-7000-8000-123456abcdef", action: "delete",
       changes: { key: "GONE-1", title: "Deleted" } }]);
@@ -782,20 +781,14 @@ test.each([0, 9])("activity commands read schema version %i under the existing p
       version: db.query("PRAGMA user_version").get(),
     }));
     const before = snapshot();
-    if (version === 0) {
-      const refused = await runZinn(["activity", "list", "--json"], directory);
-      expect(refused.code).toBe(1);
-      expect(refused.stdout).toBe("");
-      expect(JSON.parse(refused.stderr).error.message).toContain("--allow-legacy-read");
-    }
-    const flags = version === 0 ? ["--allow-legacy-read"] : [];
     for (const args of [["list"], ["list", "--project", "GONE", "--show-deleted"], ["list", "--project-id", event!.entity_id], ["list", "--task", "GONE-1", "--show-deleted"], ["list", "--task-id", event!.entity_id], ["view", event!.id]]) {
       for (const mode of [[], ["--json"]]) {
-        const result = await runZinn(["activity", ...args, ...flags, ...mode], directory);
-        expect(result.code).toBe(0);
+        const result = await runZinn(["activity", ...args, ...mode], directory);
         if (version === 0) {
-          expect(result.stderr.match(/Warning:/g)).toHaveLength(1);
+          expect(result.code).toBe(1);
+          expect(result.stdout).toBe("");
         } else {
+          expect(result.code).toBe(0);
           expect(result.stderr).toBe("");
         }
       }

@@ -25,12 +25,8 @@ export type OpenPolicy = {
   executable: string;
   /** The client's own release mode, independent of core's identity. */
   release: ReleaseMode;
-  /** Opens a database without a schema version for best-effort reading. It never allows changes. */
-  allowsLegacyRead: boolean;
   /** Called once when an automatic upgrade starts waiting for another writer. */
   onWait?: (wait: LockWait) => void;
-  /** Called once, when a database without a schema version is opened. */
-  onLegacyRead?: (facts: DatabaseFacts) => void;
 };
 
 /** Used until a client calls configureDatabase, as in tests and scripts. */
@@ -39,16 +35,14 @@ export const DEFAULT_OPEN_POLICY: OpenPolicy = {
   version: "unknown",
   executable: "unknown",
   release: "source",
-  allowsLegacyRead: false,
 };
 
 /**
  * Why a database opened read-only:
  * - older: a build that is not a published release found a protected database at an older version
  * - newer: the database has a newer version than this build reaches
- * - unmarked: the database has no schema version, and the client allowed best-effort reading
  */
-export type ReadOnlyReason = "older" | "newer" | "unmarked";
+export type ReadOnlyReason = "older" | "newer";
 
 export type OpenDecision =
   | { action: "create" }
@@ -63,7 +57,6 @@ export type OpenFacts = {
   isProtectedDatabase: () => boolean;
   coreRelease: ReleaseMode;
   clientRelease: ReleaseMode;
-  allowsLegacyRead: boolean;
 };
 
 export function decideOpen(facts: OpenFacts): OpenDecision {
@@ -76,9 +69,7 @@ export function decideOpen(facts: OpenFacts): OpenDecision {
     case "newer":
       return { action: "read-only", reason: "newer" };
     case "unmarked":
-      return facts.allowsLegacyRead
-        ? { action: "read-only", reason: "unmarked" }
-        : { action: "refuse" };
+      return { action: "refuse" };
     case "older": {
       /**
        * Source code may hold unreleased migrations,
@@ -144,24 +135,19 @@ export class ReadOnlyDatabaseError extends CoreError {
       databasePath: facts.databasePath,
       schemaVersion: facts.version,
       supportedSchemaVersion: facts.latestVersion,
-      reason:
-        reason === "older"
-          ? "older_database"
-          : reason === "newer"
-            ? "newer_database"
-            : "unmarked_database",
+      reason: reason === "older" ? "older_database" : "newer_database",
     });
     this.reason = reason;
   }
 }
 
-/** Thrown when the database has no schema version and the client did not allow legacy reads. */
+/** Thrown when the database has no schema version. */
 export class UnmarkedDatabaseError extends CoreError {
   override name = "UnmarkedDatabaseError";
 
   constructor({ databasePath, version, latestVersion }: DatabaseFacts) {
     super(
-      `The database at ${databasePath} has no schema version, so it was not opened and was left unchanged. Zinn changes it only after its schema is verified and adopted as version 1, and reads it only when the client allows best-effort legacy reads`,
+      `The database at ${databasePath} has no schema version, so it was not opened and was left unchanged. Zinn opens only databases that record a schema version`,
       "conflict",
       {
         entity: "database",
@@ -199,7 +185,5 @@ function describeReadOnly(
       return `${opening}: it has schema version ${version}, and this build (${build}) uses version ${latestVersion}. A build that is not a published release upgrades only a ZINN_DIR database by itself`;
     case "newer":
       return `${opening}: it has schema version ${version}, but this build (${build}) reaches only version ${latestVersion}. Use a newer Zinn version to change it`;
-    case "unmarked":
-      return `${opening}: it has no schema version, so it is open for reading only`;
   }
 }

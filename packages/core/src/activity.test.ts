@@ -649,10 +649,10 @@ test("exact project selection preserves orphan project events, empty histories a
   });
 });
 
-test.each([0, 9])("activity reads obey the existing read-only policy at schema version %i", (version) => {
+test.each([9])("activity reads obey the existing read-only policy at schema version %i", (version) => {
   const reader = () => {
 
-    configureDatabase({ client: "test", version: "0.0.0", executable: "activity-test", release: "source", allowsLegacyRead: true });
+    configureDatabase({ client: "test", version: "0.0.0", executable: "activity-test", release: "source" });
     const all = activity.getAll().events;
     assert.equal(all.length, 2);
     assert.deepEqual(activity.getAll({ since: 0, until: 8_640_000_000_000_000 }).events, all);

@@ -53,8 +53,7 @@ export const column = {
 
     return withDatabaseInspection(getStorage().databasePath, (db) => {
       const classification = classifyConnection(db);
-      const refusesLegacy = classification.state === "unmarked" && !props.allowsLegacyRead;
-      if (classification.state === "empty" || refusesLegacy) {
+      if (classification.state === "empty" || classification.state === "unmarked") {
         return null;
       }
 

@@ -10,7 +10,6 @@ import { CoreError, ReadOnlyDatabaseError } from "../index";
 import { getStorage } from "./storage";
 import { getDb } from "./db";
 import { BASELINE_VERSION, createBaseline } from "./migrations/baseline";
-import type { DatabaseFacts } from "./migrations/open-policy";
 import type { Migration } from "./migrations/registry";
 import { latestVersion, MIGRATIONS } from "./migrations/registry";
 import { applyPendingMigrations, readSchemaVersion, upgradeSchema } from "./migrations/runner";
@@ -36,7 +35,7 @@ function withLocation<T>(location: Location, check: () => T): T {
   }, location.cwd ?? location.home);
 }
 function configureCore(openCase: OpenCase) {
-  core.configureDatabase({ ...TEST_CLIENT, release: openCase.clientRelease ?? "source", allowsLegacyRead: openCase.allowsLegacyRead ?? false });
+  core.configureDatabase({ ...TEST_CLIENT, release: openCase.clientRelease ?? "source" });
 }
 function runOpen(location: Location, openCase: OpenCase) {
   const mutableMigrations = MIGRATIONS as Migration[];
@@ -152,7 +151,6 @@ type OpenCase = {
   /** Core's release mode. Without it, core reads its own, which is source in this folder. */
   coreRelease?: ReleaseMode;
   clientRelease?: ReleaseMode;
-  allowsLegacyRead?: boolean;
   /** Appends a test-only migration after the shipped migrations. */
   migration?: "adds a table" | "fails";
   /** The project key the child tries to create, or null to only read. */
@@ -163,7 +161,6 @@ type OpenCase = {
 function coreSetup({
   coreRelease,
   clientRelease = "source",
-  allowsLegacyRead = false,
   migration,
 }: OpenCase) {
   const migrations = {
@@ -180,7 +177,7 @@ function coreSetup({
     ${coreRelease == null ? "" : `mock.module(${releaseModule}, () => ({ ...release, readCoreReleaseMode: () => ${JSON.stringify(coreRelease)} }));`}
     ${migration == null ? "" : `mock.module(${registryModule}, () => ({ ...registry, MIGRATIONS: [...registry.MIGRATIONS, ${migrations[migration]}] }));`}
     const core = await import(${modulePath("../index.ts")});
-    core.configureDatabase({ ...${JSON.stringify(TEST_CLIENT)}, release: ${JSON.stringify(clientRelease)}, allowsLegacyRead: ${allowsLegacyRead} });
+    core.configureDatabase({ ...${JSON.stringify(TEST_CLIENT)}, release: ${JSON.stringify(clientRelease)} });
     const actor = { name: "Test Human", email: null, kind: "human" as const };
     const describeError = (error) => ({ name: error.name, reason: error.reason, facts: error.facts, message: error.message });
   `;
@@ -571,7 +568,7 @@ test.each([
   },
 );
 
-test("an unmarked database is refused, for reads and writes, unless the client allows legacy reads", () => {
+test("an unmarked database is refused for reads and writes by published and source builds", () => {
   withHome((home) => {
     const mainDir = join(home, ".zinn");
     createDatabase(mainDir, UNMARKED_VERSION);
@@ -583,44 +580,14 @@ test("an unmarked database is refused, for reads and writes, unless the client a
     expect(refused.readError!.facts).toMatchObject({ reason: "unmarked_database", schemaVersion: 0 });
     expect(refused.writeError!.name).toBe("UnmarkedDatabaseError");
 
-    const allowed = runOpen({ home }, { allowsLegacyRead: true });
-    expect(allowed.projects).toEqual(["APP"]);
-    expect(allowed.writeError!.name).toBe("ReadOnlyDatabaseError");
-    expect(allowed.writeError!.reason).toBe("unmarked");
+    const source = runOpen({ home }, {});
+    expect(source.readError!.name).toBe("UnmarkedDatabaseError");
+    expect(source.writeError!.name).toBe("UnmarkedDatabaseError");
 
     expect(readDatabase(mainDir)).toEqual(before);
     expect(backupsOf(mainDir)).toEqual([]);
     expect(existsSync(join(mainDir, "settings.json"))).toBe(false);
   });
-});
-
-function legacyReadReport() {
-  configureCore({ allowsLegacyRead: true });
-  const legacyReads: DatabaseFacts[] = [];
-  core.configureDatabase({ ...TEST_CLIENT, release: "source", allowsLegacyRead: true, onLegacyRead: (facts) => legacyReads.push(facts) });
-  core.project.getAll();
-  core.project.getAll();
-  try { core.project.create({ key: "NEW" }, actor); } catch { }
-  return { legacyReads };
-}
-
-test("core reports an unmarked database opened for reading once, and no other state", () => {
-  withHome((home) => {
-    const mainDir = join(home, ".zinn");
-    createDatabase(mainDir, UNMARKED_VERSION);
-
-    expect(withLocation({ home }, legacyReadReport).legacyReads).toEqual([
-      { databasePath: databasePath(mainDir), version: UNMARKED_VERSION, latestVersion: latestVersion(MIGRATIONS) },
-    ]);
-  });
-
-  for (const version of [1, NEWER_VERSION]) {
-    withHome((home) => {
-      createDatabase(join(home, ".zinn"), version);
-
-      expect(withLocation({ home }, legacyReadReport).legacyReads).toEqual([]);
-    });
-  }
 });
 
 test("an unmarked database missing tables gets none created, even when a write is attempted", () => {
@@ -636,9 +603,9 @@ test("an unmarked database missing tables gets none created, even when a write i
     });
     const before = readDatabase(mainDir);
 
-    const outcome = runOpen({ home }, { allowsLegacyRead: true });
-    expect(outcome.projects).toEqual([]);
-    expect(outcome.writeError!.name).toBe("ReadOnlyDatabaseError");
+    const outcome = runOpen({ home }, {});
+    expect(outcome.readError!.name).toBe("UnmarkedDatabaseError");
+    expect(outcome.writeError!.name).toBe("UnmarkedDatabaseError");
     expect(readDatabase(mainDir)).toEqual(before);
   });
 });

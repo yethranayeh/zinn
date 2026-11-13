@@ -138,7 +138,7 @@ test("column hints preserve shell-sensitive names, option values, aliases and se
     expect((await runZinn(["project", "column", "create", "--category", "todo", "SHOP", "In --json"], directory)).code).toBe(0);
     for (const args of [
       ["project", "column", "edit", "--name", "After 'review'", "SHOP", ...name.split(" ")],
-      ["--json", "project", "--allow-legacy-read", "column", "edit", "--name=After", "SHOP", "--", "In", "--json"],
+      ["--json", "project", "column", "edit", "--name=After", "SHOP", "--", "In", "--json"],
       ["project", "column", "order", "SHOP", "In", "Progress", "after", "Needs", "Review"],
     ]) {
       const before = snapshot(directory);
@@ -249,7 +249,7 @@ test("column order suppresses ambiguous split-source groupings and bulk move can
   });
 });
 
-test("syntax-error column lookups neither create absent storage nor migrate or bypass legacy storage", async () => {
+test("syntax-error column lookups neither create absent storage nor migrate or read unmarked storage", async () => {
   await withIsolatedZinnDir(async directory => {
     const args = ["project", "column", "edit", "SHOP", "In", "Progress", "--name", "Working", "--json"];
     const absent = await runZinn(args, directory);
@@ -264,8 +264,6 @@ test("syntax-error column lookups neither create absent storage nor migrate or b
       expect(result.code).toBe(1);
       if (version === 0) {
         expect(JSON.parse(result.stderr).error.message).not.toContain("zinn ");
-        const acknowledged = await runZinn(["--allow-legacy-read", ...args], directory);
-        expect(suggestion(acknowledged.stderr, true)).toContain("In Progress");
       } else {
         expect(suggestion(result.stderr, true)).toContain("In Progress");
       }

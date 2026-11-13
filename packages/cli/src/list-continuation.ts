@@ -1,4 +1,4 @@
-import { formatCommand, getOutputMode, isLegacyReadAllowed } from "./lib.js";
+import { formatCommand, getOutputMode } from "./lib.js";
 
 type ContinuationToken =
   | { kind: "option"; name: string; rawName: string; value: string | undefined }
@@ -22,10 +22,6 @@ export function formatListContinuation(
 
   if (getOutputMode() === "json") {
     continuation.push("--json");
-  }
-
-  if (isLegacyReadAllowed()) {
-    continuation.push("--allow-legacy-read");
   }
 
   continuation.push(`--${cursorOption}`, cursorId);

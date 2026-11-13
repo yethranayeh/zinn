@@ -94,7 +94,7 @@ test("emitted core works on both runtimes and its declarations need no Bun types
         process.env.ZINN_DIR = ${JSON.stringify(join(directory, "store"))} + "-" + adapterPath;
         mkdirSync(process.env.ZINN_DIR);
         assert.equal(readCoreReleaseMode(), "source");
-        core.configureDatabase({ client: "build check", version: "1.0.0", executable: "runtime.test.mjs", release: "published", allowsLegacyRead: false });
+        core.configureDatabase({ client: "build check", version: "1.0.0", executable: "runtime.test.mjs", release: "published" });
         const actor = { name: "build check", email: "build@example.test", kind: "agent" };
         const createdProject = core.project.create({ key: "BUILD" }, actor);
         const createdTask = core.task.create({ project_id: createdProject.id, title: "Emitted JavaScript", description: "first\\nsecond" }, actor);
