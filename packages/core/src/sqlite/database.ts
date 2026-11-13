@@ -4,7 +4,6 @@
  */
 import type { ResolvedPath } from "../database-path.ts";
 
-import { pathToFileURL } from "node:url";
 import { resolveDatabasePath } from "../database-path.ts";
 
 export type SqliteValue = string | number | bigint | Uint8Array | null;
@@ -26,19 +25,6 @@ export type OpenOptions = {
 /** Whether an open is read-write but fails with SQLITE_CANTOPEN on a missing file instead of creating it. */
 export function opensExistingOnly(options: OpenOptions) {
   return !options.readonly && options.create === false;
-}
-
-/**
- * A `file:` URL that SQLite opens read-write without `SQLITE_OPEN_CREATE`, for opens and ATTACH alike.
- * `mode=rw` in the URI drops the create flag, so a missing file is not created.
- * The URL percent-encodes characters such as ?, # and %, and SQLite decodes them back.
- * @link https://www.sqlite.org/uri.html
- */
-export function existingOnlyUrl(path: string): URL {
-  const url = pathToFileURL(path);
-  url.searchParams.set("mode", "rw");
-
-  return url;
 }
 
 export type DriverStatement = {

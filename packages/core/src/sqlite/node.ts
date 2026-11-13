@@ -3,13 +3,8 @@ import type { ResolvedPath } from "../database-path.ts";
 import type { DriverArgs, OpenOptions, SqliteDriver, SqliteValue } from "./database.ts";
 
 import { DatabaseSync } from "node:sqlite";
-import {
-  existingOnlyUrl,
-  isNamedBindings,
-  openResolvedWith,
-  openWith,
-  opensExistingOnly,
-} from "./database.ts";
+import { pathToFileURL } from "node:url";
+import { isNamedBindings, openResolvedWith, openWith, opensExistingOnly } from "./database.ts";
 
 /**
  * bun:sqlite binds a number as INTEGER when Number.isSafeInteger is true and it is not -0, and as REAL otherwise.
@@ -41,9 +36,22 @@ function toPlainRow(row: object | undefined) {
   return row == null ? null : { ...row };
 }
 
+/**
+ * node:sqlite has no option to open read-write without `SQLITE_OPEN_CREATE`,
+ *  but it opens a `file:` URL as a URI.
+ * `mode=rw` in the URI drops the create flag, so a missing file is not created.
+ * The URL percent-encodes characters such as ?, # and %, and SQLite decodes them back.
+ * Only for this driver: bun:sqlite on Linux and Windows reads a file: URL as a plain filename.
+ * @link https://www.sqlite.org/uri.html
+ */
+function existingOnlyUrl(path: string) {
+  const url = pathToFileURL(path);
+  url.searchParams.set("mode", "rw");
+  return url;
+}
+
 export const driver: SqliteDriver = {
   connect(path, options) {
-    // node:sqlite has no option to open read-write without `SQLITE_OPEN_CREATE`, but it opens a `file:` URL as a URI.
     const location = opensExistingOnly(options) ? existingOnlyUrl(path) : path;
     // node:sqlite turns foreign keys on by default; start from SQLite's default like bun:sqlite.
     const db = new DatabaseSync(location, {

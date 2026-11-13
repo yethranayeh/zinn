@@ -20,7 +20,7 @@ import { openDatabase, openResolvedDatabase } from "#sqlite";
 import { resolveDatabasePath } from "../database-path.js";
 import * as dbBackup from "../db/backup.js";
 import { applyConnectionSettings } from "../connection.js";
-import { attachSuppressed, existingOnlyUrl, isSqliteErrorFamily } from "../sqlite/database.js";
+import { attachSuppressed, isSqliteErrorFamily } from "../sqlite/database.js";
 import { BASELINE_VERSION } from "./baseline.js";
 import { classifyConnection } from "./classify.js";
 import { latestVersion, MIGRATIONS } from "./registry.js";
@@ -474,14 +474,14 @@ function detachSource(db: Database) {
 }
 
 /**
- * Attaches the checked file read-write without creating it.
- * A plain path would make SQLite create an empty database where a deleted backup was.
+ * Attaches the checked file by plain path, since bun:sqlite on Linux and Windows reads a `file:` URI as a filename
+ * SQLite creates an empty database at a missing path, so a backup deleted since the check is refused first.
  */
 function attachSource(db: Database, checked: CheckedBackup) {
+  statBackup(checked.sourcePath, checked.path);
+
   try {
-    db.query(`ATTACH DATABASE $url AS ${SOURCE_SCHEMA}`).run({
-      $url: existingOnlyUrl(checked.sourcePath).href,
-    });
+    db.query(`ATTACH DATABASE $path AS ${SOURCE_SCHEMA}`).run({ $path: checked.sourcePath });
   } catch (error) {
     if (isSqliteErrorFamily(error, "SQLITE_CANTOPEN")) {
       statBackup(checked.sourcePath, checked.path);
