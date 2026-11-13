@@ -9,6 +9,7 @@ import { generateCapabilities } from "./src/capabilities";
 import { parseRoutes } from "./src/routes/router";
 import { routes } from "./src/routes/routes";
 import { runCli, runProcessAsync } from "./testing";
+import { stubNpx } from "./test-helpers";
 import { capabilityValidator, checkCapabilityConsumer, checkCapabilityDiscovery, inventory } from "./capability-checks";
 import { commandAliases } from "./src/routes/aliases";
 
@@ -97,6 +98,8 @@ test("discovery is deterministic across settings, stores, cwd, locale and debug 
 });
 
 test.each(parseRoutes(routes).filter((route) => route.effects.storage === "none").map((route) => route.command))("%s bypasses settings, storage policy, SQLite and Bun process APIs", async (command) => {
+  // skill install's job is to start npx, so it keeps process APIs and gets a stub npx.
+  const runsAnotherProgram = command === "skill install";
   const directory = join(root, `intercepted-${command}`);
   mkdirSync(directory);
   const preload = join(directory, "guard.ts");
@@ -108,15 +111,19 @@ test.each(parseRoutes(routes).filter((route) => route.effects.storage === "none"
     mock.module(${JSON.stringify(join(coreSource, "db.ts"))}, () => ({ configureDatabase: forbidden, assertWritable: forbidden, getDb: forbidden, writeTransaction: forbidden, readTransaction: forbidden, closeDb: forbidden }));
     mock.module(${JSON.stringify(join(coreSource, "settings.ts"))}, () => ({ settingsFileSourceSchema, settingsFileStateSchema, resolveSettings: forbidden, chooseDefaultProject: forbidden, inspectSettings: forbidden }));
     mock.module("bun:sqlite", () => ({ Database: class { constructor() { forbidden(); } } }));
-    Bun.spawn = Bun.spawnSync = Bun.connect = forbidden;
+    ${runsAnotherProgram ? "" : "Bun.spawn = Bun.spawnSync = "}Bun.connect = forbidden;
   `);
+  // The stub sits outside the inventoried folder, so its argument file does not count as a write.
+  const stubEnv = runsAnotherProgram ? stubNpx(mkdtempSync(join(root, "stub-"))).env : {};
   const before = inventory(directory);
   const result = await runProcessAsync([process.execPath, "--preload", preload, entryPoint, ...command.split(" "), "--json"], {
-    cwd: directory, env: { ...env, HOME: directory, ZINN_DIR: join(directory, "forbidden-store"), OPENCODE: "1" },
+    cwd: directory, env: { ...env, ...stubEnv, HOME: directory, ZINN_DIR: join(directory, "forbidden-store"), OPENCODE: "1" },
   });
   expect(result.code, result.stderr).toBe(0);
   if (command === "capabilities") {
     expect(JSON.parse(result.stdout)).toEqual(manifest);
+  } else if (runsAnotherProgram) {
+    expect(JSON.parse(result.stdout)).toEqual({ source: expect.stringContaining(join("skills", "zinn")) });
   } else {
     expect(JSON.parse(result.stdout)).toMatchObject({ actor_name: "opencode", actor_source: "env:OPENCODE" });
   }

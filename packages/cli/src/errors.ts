@@ -6,7 +6,6 @@ import {
   ReadOnlyDatabaseError,
   SqliteError,
   TextEditMatchError,
-  UnmarkedDatabaseError,
   isSqliteErrorFamily,
 } from "@zinn-dev/core";
 
@@ -92,6 +91,7 @@ export const errorDetailsSchema = z.strictObject({
   expectedColumn: z.string().optional(),
   actualColumn: z.string().optional(),
   logPath: z.string().optional(),
+  exitCode: z.number().int().optional(),
   cause: z
     .strictObject({
       code: z.string().optional(),
@@ -118,6 +118,9 @@ export type ClassifiedFailure = Omit<CliFailure, "message"> & { suggestedRoute?:
 
 /** A CLI failure with public facts and an internal recovery route. */
 export class CliError extends Error {
+  /** The process exit code, when it is not the usual 1 */
+  exitCode?: number;
+
   constructor(
     message: string,
     readonly code: ErrorCode = "invalid_input",
@@ -147,10 +150,6 @@ export function recoveryHint(
 ): { suffix: string; suggestedRoute?: Array<string> } | undefined {
   if (error instanceof ReadOnlyDatabaseError && error.reason === "older") {
     return { suffix: ". Run `zinn migrate` to upgrade it.", suggestedRoute: ["migrate"] };
-  }
-
-  if (error instanceof UnmarkedDatabaseError) {
-    return { suffix: ". Zinn CLI 0.44.0 reads it, best effort and read-only, with --allow-legacy-read." };
   }
 
   if (error instanceof TextEditMatchError && error.matchCount > 1) {

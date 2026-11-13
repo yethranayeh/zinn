@@ -9,6 +9,7 @@ import { reindexCommand } from "./reindex-router.js";
 import { infoCommand } from "./info-router.js";
 import { whoamiCommand } from "./whoami-router.js";
 import { capabilitiesCommand } from "./capabilities-router.js";
+import { skillRouter } from "./skill-router.js";
 import { parseRoutes } from "./router.js";
 
 // TODO: lazy load?
@@ -23,6 +24,7 @@ export const routes = {
   reindex: reindexCommand,
   info: infoCommand,
   whoami: whoamiCommand,
+  skill: skillRouter,
   capabilities: capabilitiesCommand,
 };
 

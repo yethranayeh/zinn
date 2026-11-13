@@ -7,7 +7,7 @@ import { parseArgs } from "node:util";
 import Ajv from "ajv";
 import { Database } from "bun:sqlite";
 import { runCli, runCliInTerminal } from "./testing";
-import { createEmptyDatabase } from "./test-helpers";
+import { createEmptyDatabase, stubNpx } from "./test-helpers";
 import { parseRoutes } from "./src/routes/router";
 import { routes } from "./src/routes/routes";
 import { validateOrderForms } from "./src/lib";
@@ -28,10 +28,10 @@ let backupPath: string;
 let commentKey: string;
 let eventId: string;
 
-function invoke(directory: string, args: string[]) {
+function invoke(directory: string, args: string[], extraEnv: Record<string, string> = {}) {
   return runCli([...args, "--json"], {
     cwd: root,
-    env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory, AI_AGENT: "contract-test", FORCE_COLOR: "0", ZINN_DEBUG: undefined, DEBUG: undefined },
+    env: { ...TEST_ENVIRONMENT, ...extraEnv, ZINN_DIR: directory, AI_AGENT: "contract-test", FORCE_COLOR: "0", ZINN_DEBUG: undefined, DEBUG: undefined },
   });
 }
 async function success(directory: string, args: string[]) {
@@ -215,11 +215,14 @@ type Fixture = {
   empty?: boolean;
   prepare?: (directory: string) => void | Promise<void>;
   check?: (value: any) => void;
+  /** Extra environment for a command that runs another program, such as a stub on PATH */
+  env?: (directory: string) => Record<string, string>;
 };
 
 const fixtures: Record<string, Fixture[]> = {
   "capabilities": [{ schema: "Capabilities", args: [] }],
   "whoami": [{ schema: "Actor", args: [] }],
+  "skill install": [{ schema: "SkillInstall", args: [], empty: true, env: (directory) => stubNpx(directory).env }],
   "project create": [{ schema: "Project", args: ["NEW"] }],
   "project list": [{ schema: "ProjectList", args: [] }, { schema: "ProjectList", args: [], empty: true, prepare: createEmptyDatabase }],
   "project view": [{ schema: "ProjectView", args: ["APP"] }],
@@ -390,7 +393,7 @@ for (const route of commands) {
       const descriptor = selectResult(route, args);
       const hasEntities = ["project", "task", "label"].includes(route.command.split(" ")[0]!);
       const deletedRows = hasEntities && route.effects.domain === "delete" ? readEntityRows(directory) : undefined;
-      const result = await invoke(directory, [...route.command.split(" "), ...args]);
+      const result = await invoke(directory, [...route.command.split(" "), ...args], fixture.env?.(directory));
       expect(result.code, result.stderr).toBe(0);
       const value = JSON.parse(result.stdout);
       const ref = descriptor.schemaRef.replace("#/schemas/", "results#/");

@@ -311,6 +311,9 @@ export const infoSchema = z.strictObject({
 });
 
 export const backupSchema = z.strictObject({ path: z.string() });
+export const skillInstallSchema = z.strictObject({
+  source: z.string().describe("The skill folder inside the CLI package that was installed."),
+});
 export const restoreSchema = z.strictObject({
   databasePath: z.string(),
   previousVersion: count.describe(
@@ -364,6 +367,7 @@ export const resultSchemas = {
   Restore: restoreSchema,
   Migrate: migrateSchema,
   Reindex: reindexSchema,
+  SkillInstall: skillInstallSchema,
   ErrorEnvelope: errorDocumentSchema,
   Capabilities: capabilitiesSchema,
   JsonValue: jsonValueSchema,
@@ -390,6 +394,7 @@ export type PresentedBackup = z.infer<typeof backupSchema>;
 export type PresentedRestore = z.infer<typeof restoreSchema>;
 export type PresentedMigrate = z.infer<typeof migrateSchema>;
 export type PresentedReindex = z.infer<typeof reindexSchema>;
+export type PresentedSkillInstall = z.infer<typeof skillInstallSchema>;
 
 /** Generates local references against the extracted schemas document in draft-07 spec */
 export function generateResultSchemas(schemas: Record<string, z.ZodType> = resultSchemas): {

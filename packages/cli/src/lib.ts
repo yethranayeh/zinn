@@ -275,8 +275,11 @@ export function renderFailure(reason: unknown): void {
     }
   }
 
+  const exitCode =
+    reason instanceof CliError && reason.exitCode !== undefined ? reason.exitCode : 1;
+
   // Let piped stderr finish writing before Node exits
-  process.stderr.write("", () => process.exit(1));
+  process.stderr.write("", () => process.exit(exitCode));
 }
 
 /** A command was given the wrong words. The router prints the message with the command's usage lines. */

@@ -40,9 +40,7 @@ When implementation and appropriate verification are complete, add a concise out
 
 Discover exact commands and flags with `zinn --help` and `zinn <command> --help`. Follow the installed help if it differs from this skill; the skill and CLI can be updated separately. Use `--json` when consuming results programmatically. Check command exit status: errors go to stderr, and empty stdout from a failed command is not an empty successful result.
 
-If a command or option required by this skill is unavailable, or installed help or command results contradict these instructions, check both the CLI and this skill for drift. Do this once per session, and repeat only if either installation changes. Ordinary input, missing-item, permission, and database errors do not trigger this check.
-
-Compare `zinn --version` with the latest published `@zinn-dev/cli` version in the npm registry, and compare the skill file loaded by this session with its installation source, respecting any pinned revision. The unpinned source is [Zinn's workflow skill](https://github.com/yethranayeh/zinn/blob/main/packages/cli/skills/zinn/SKILL.md). Use read-only metadata and file reads. A newer release or changed skill is evidence of a difference, not proof that it caused the problem. Report relevant differences or checks you could not complete. If the intended operation remains unclear, ask before proceeding. Update either installation only when authorized; after updating the skill, reload it or use a fresh session.
+If the installed CLI lacks a command or option this skill uses, tell the user that this skill and their CLI differ, and that `zinn skill install` installs the skill that matches their CLI. Continue with what the installed help offers.
 
 `ZINN_AGENT`, `ZINN_MODEL`, and `ZINN_EFFORT` can declare the agent, model, and effort of the execution making a change when automatic detection or host integration does not provide them. Use only known values; leave unknown values unset.
 

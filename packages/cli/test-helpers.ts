@@ -1,9 +1,10 @@
+import type { Activity } from "@zinn-dev/core";
+
 import { expect } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
-import type { Activity } from "@zinn-dev/core";
 import { TELEMETRY_FOLDER_NAME } from "../core/src/constant";
 import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import { createSchema } from "../core/src/migrations/runner";
@@ -56,6 +57,23 @@ export function runZinn(
     env: { ...TEST_ENVIRONMENT, ...additionalEnv, ZINN_DIR: testDir },
     cwd: testDir,
   });
+}
+
+/**
+ * Puts a stub npx in a bin folder inside dir. It writes each argument it receives on its own line
+ * to npx-args.txt beside it, prints a line on stdout and exits with STUB_NPX_EXIT (default 0).
+ * Returns env that puts the stub first on PATH.
+ */
+export function stubNpx(dir: string) {
+  const bin = join(dir, "bin");
+  mkdirSync(bin, { recursive: true });
+  const script = join(bin, "npx");
+  writeFileSync(
+    script,
+    `#!/bin/sh\nprintf '%s\\n' "$@" > "${join(bin, "npx-args.txt")}"\necho "stub npx ran"\nexit "\${STUB_NPX_EXIT:-0}"\n`,
+  );
+  chmodSync(script, 0o755);
+  return { argsPath: join(bin, "npx-args.txt"), env: { PATH: `${bin}:${TEST_ENVIRONMENT.PATH}` } };
 }
 
 export function runZinnAs(args: Array<string>, testDir: string, env: Record<string, string>) {
