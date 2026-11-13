@@ -1,11 +1,12 @@
 ---
+import colorsCss from "../../src/styles/colors.css?raw";
 import globalCss from "../../src/styles/global.css?raw";
 import FoundryLayout from "../layouts/FoundryLayout.astro";
 import { proposedComponents, uiComponents } from "../ui";
 
-// The palette and typefaces come from the @theme block, so this page lists what the site defines.
+// The palette and typefaces come from their CSS sources.
 const theme = globalCss.match(/@theme \{([\s\S]*?)\n\}/)?.[1] ?? "";
-const colors = [...theme.matchAll(/(?:\/\* (.+?) \*\/\s*)?--color-([\w-]+): ([^;]+);/g)].map(
+const colors = [...colorsCss.matchAll(/(?:\/\* (.+?) \*\/\s*)?--color-([\w-]+): ([^;]+);/g)].map(
 	([, note, name, value]) => ({
 		name,
 		note,

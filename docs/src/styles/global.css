@@ -1,4 +1,5 @@
 @import "tailwindcss" source("../");
+@import "./colors.css";
 @import "../components/ReadingSection.css";
 @import "../components/CornerSun.css";
 
@@ -17,18 +18,6 @@
 }
 
 @theme {
-	--color-limestone: #e8e0cc;
-	--color-bone: #d6cbb0;
-	--color-clay: #b4552f;
-	--color-cinnabar: #7b1e15;
-	--color-bronze: #c8963c;
-	--color-soot: #1c1815;
-	--color-pewter: #6e675c;
-	/* Muted text keeps 5:1 on Limestone and Bone. */
-	--color-muted-foreground: #564f45;
-	--color-soot-foreground: var(--color-limestone);
-	/* Muted text keeps 5:1 on Soot. */
-	--color-soot-muted-foreground: #908876;
 	--font-sans: "Alan Sans", sans-serif;
 	--font-mono: "MonoMMM", monospace;
 }
