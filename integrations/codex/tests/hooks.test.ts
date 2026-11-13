@@ -9,10 +9,10 @@ import type { HookPayload } from "../src/hooks/types";
 import type { Settings } from "../src/settings";
 import { readFeed, sessionDirectory, MAX_EVENTS, MAX_EVENT_BYTES, MAX_RECENT_KEYS, persist, type Observation } from "../src/shared/feed";
 import { readRecent } from "../src/inspector/references";
-import { CODEX_CLIENT, createCliReader } from "../src/shared/cli";
+import { CODEX_CLIENT, createCliReader, HOOK_VERIFICATION_BUDGET_MS } from "../src/shared/cli";
 import { loadSettings } from "../src/settings";
 import { argvKeys, keyCandidates } from "../src/shared/keys";
-import { cliPath, fixture, inspectStore, seedOlderStore } from "./helpers";
+import { cliPath, fixture, inspectStore, seedOlderStore, traceHook } from "./helpers";
 import { infoDatabaseStateSchema } from "../../../packages/core/src/operations/info";
 import { fromJSONSchema } from "zod/v4";
 import { EVENTS } from "../src/hooks/observe";
@@ -25,12 +25,14 @@ const base = { session_id: "chat-one", cwd: context.directory, model: "fixture-m
 afterAll(context.cleanup);
 context.cli(["project", "create", "APP"]);
 context.cli(["task", "create", "APP", "--title", "Literal <script>fixture</script>"]);
+let observationIndex = 0;
 function observe(payload: HookPayload, settings: Settings) {
     const config = join(context.directory, "observation.json");
     writeFileSync(config, JSON.stringify(settings));
-    const result = Bun.spawnSync(["node", join(artifact.plugin, "hook.mjs")], { env: { ...context.env, ZINN_CODEX_CONFIG: config }, stdin: Buffer.from(JSON.stringify(payload)) });
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr.byteLength).toBe(0);
+    const trace = traceHook(join(artifact.plugin, "hook.mjs"), { ...context.env, ZINN_CODEX_CONFIG: config }, payload, join(context.directory, `observation-trace-${observationIndex++}.json`));
+    expect(trace.result.exitCode, trace.diagnostics).toBe(0);
+    expect(trace.result.stderr.byteLength, trace.diagnostics).toBe(0);
+    return trace;
 }
 test("hook inputs and emitted responses match the pinned Codex schemas", () => {
     const cases: Record<(typeof EVENTS)[number], { input: Record<string, unknown>; expectsResponse: boolean }> = {
@@ -216,14 +218,14 @@ test("effort requires exact thread, turn, model and a unique context", () => {
 });
 test("references preserve chat and store isolation without retaining text", async () => {
     const secret = "PRIVATE_TEXT_SENTINEL";
-    observe({ ...base, hook_event_name: "Stop", last_assistant_message: `app-1 APP-999 UNRELATED-999 ${secret}` }, context.settings);
-    observe({ ...base, session_id: "chat-two", hook_event_name: "Stop", last_assistant_message: "APP-2" }, context.settings);
+    const firstTrace = observe({ ...base, hook_event_name: "Stop", last_assistant_message: `app-1 APP-999 UNRELATED-999 ${secret}` }, context.settings);
+    const secondTrace = observe({ ...base, session_id: "chat-two", hook_event_name: "Stop", last_assistant_message: "APP-2" }, context.settings);
     observe({ ...base, hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command: `ZINN_DIR=/other/store zinn task view APP-777` } }, context.settings);
     const first = await readRecent(context.settings, reader, { thread_id: base.session_id });
-    expect(first.references.map(item => item.key)).toEqual(["APP-1", "APP-999"]);
+    expect(first.references.map(item => item.key), firstTrace.diagnostics).toEqual(["APP-1", "APP-999"]);
     expect(first.references[0]!.task?.title).toBe("Literal <script>fixture</script>");
     expect(first.references[1]!.task).toBeUndefined();
-    expect((await readRecent(context.settings, reader, { threadId: "chat-two" })).references.map(item => item.key)).toEqual(["APP-2"]);
+    expect((await readRecent(context.settings, reader, { threadId: "chat-two" })).references.map(item => item.key), secondTrace.diagnostics).toEqual(["APP-2"]);
     expect((await readRecent(context.settings, reader, { thread_id: "one", threadId: "two" })).kind).toBe("conflicting_metadata");
     expect((await readRecent(context.settings, reader)).kind).toBe("absent_metadata");
     const directory = sessionDirectory(context.settings.dataDirectory, base.session_id);
@@ -323,9 +325,9 @@ else {
     process.exit(result.status ?? 1);
 }`);
         const session = `supported-observer-${index}`;
-        observe({ ...base, session_id: session, hook_event_name: "Stop", last_assistant_message: "APP-1" }, { ...context.settings, cli: ["node", executable] });
+        const trace = observe({ ...base, session_id: session, hook_event_name: "Stop", last_assistant_message: "APP-1" }, { ...context.settings, cli: ["node", executable] });
         const feed = readFeed(context.settings.dataDirectory, session, context.settings.store);
-        expect(feed.references).toEqual([{ key: "APP-1", source: "completed-reply", store: context.settings.store }]);
+        expect(feed.references, trace.diagnostics).toEqual([{ key: "APP-1", source: "completed-reply", store: context.settings.store }]);
         expect(feed.replyFailures).toBe(0);
     }
 });
@@ -360,12 +362,41 @@ setTimeout(() => { if (args[0] === '--version') { console.log('0.43.0'); }
 else if (args[0] === 'info') { console.log(JSON.stringify({database:{state:'current',error:null}})); }
 else { console.log('[]'); } }, 600);`);
     const began = performance.now();
-    observe({ ...base, session_id: "budget", hook_event_name: "Stop", last_assistant_message: "APP-1" }, { ...context.settings, cli: ["node", script] });
-    expect(performance.now() - began).toBeLessThan(3000);
+    const trace = observe({ ...base, session_id: "budget", hook_event_name: "Stop", last_assistant_message: "APP-1" }, { ...context.settings, cli: ["node", script] });
+    expect(performance.now() - began, trace.diagnostics).toBeLessThan(3000);
     const calls = readFileSync(log, "utf8").trim().split("\n").map(line => JSON.parse(line));
-    expect(calls).toContainEqual(["info", "--json"]);
-    expect(calls.some(args => args[0] === "task")).toBe(false);
+    expect(calls, trace.diagnostics).toContainEqual(["info", "--json"]);
+    expect(calls.some(args => args[0] === "task"), trace.diagnostics).toBe(false);
     expect(readFeed(context.settings.dataDirectory, "budget", context.settings.store).replyFailures).toBe(1);
+});
+test("reference timeout diagnostics identify the interrupted CLI call", () => {
+    const script = join(context.directory, "timeout-stage.mjs");
+    const stages = [
+        { operation: "--version", args: ["--version"] },
+        { operation: "info", args: ["info", "--json"] },
+        { operation: "task list", args: ["task", "list", "--all", "--json"] },
+    ];
+    for (const { operation, args } of stages) {
+        writeFileSync(script, `const args = process.argv.slice(2);
+const operation = args[0] === 'task' ? args.slice(0, 2).join(' ') : args[0];
+const reply = () => {
+    if (args[0] === '--version') { console.log('0.43.0'); }
+    else if (args[0] === 'info') { console.log(JSON.stringify({database:{state:'current',error:null}})); }
+    else { console.log(JSON.stringify([{key:'APP-1'}])); }
+};
+if (operation === ${JSON.stringify(operation)}) { setTimeout(reply, ${HOOK_VERIFICATION_BUDGET_MS * 2}); }
+else { reply(); }`);
+        const session = `timeout-${operation}`;
+        const trace = observe({ ...base, session_id: session, hook_event_name: "Stop", last_assistant_message: "APP-1" }, { ...context.settings, cli: ["node", script] });
+        const interrupted = trace.calls.filter(call => call.kills.length > 0);
+        expect(interrupted, trace.diagnostics).toHaveLength(1);
+        expect(interrupted[0]!.args.slice(1), trace.diagnostics).toEqual(args);
+        expect(interrupted[0]!.kills[0]!.signal, trace.diagnostics).toBe("SIGTERM");
+        expect(interrupted[0]!.signal, trace.diagnostics).toBe("SIGTERM");
+        expect(readFeed(context.settings.dataDirectory, session, context.settings.store)).toMatchObject({ references: [], replyFailures: 1 });
+        expect(trace.diagnostics).not.toContain("last_assistant_message");
+        expect(trace.diagnostics).not.toContain("APP-1");
+    }
 });
 test("key scanning accepts the CLI number range and excludes free-text arguments", () => {
     expect(argvKeys(["LONGPROJECTPREFIX123-123456789012345"])).toEqual(["LONGPROJECTPREFIX123-123456789012345"]);
@@ -448,9 +479,9 @@ else { console.log(JSON.stringify({storage:{directory:${JSON.stringify(context.s
     const { store: _store, ...options } = context.settings;
     writeFileSync(config, JSON.stringify({ ...options, cli: ["node", script] }));
     const began = performance.now();
-    const result = Bun.spawnSync(["node", join(artifact.plugin, "hook.mjs")], { env: { ...context.env, ZINN_CODEX_CONFIG: config }, stdin: Buffer.from(JSON.stringify({ ...base, session_id: "default-budget", hook_event_name: "Stop", last_assistant_message: "APP-1" })) });
-    expect(result.exitCode).toBe(0);
-    expect(performance.now() - began).toBeLessThan(3000);
+    const trace = traceHook(join(artifact.plugin, "hook.mjs"), { ...context.env, ZINN_CODEX_CONFIG: config }, { ...base, session_id: "default-budget", hook_event_name: "Stop", last_assistant_message: "APP-1" }, join(context.directory, "default-budget-trace.json"));
+    expect(trace.result.exitCode, trace.diagnostics).toBe(0);
+    expect(performance.now() - began, trace.diagnostics).toBeLessThan(3000);
     const calls = readFileSync(log, "utf8").trim().split("\n").map(line => JSON.parse(line));
     expect(calls).toContainEqual(["info", "--json"]);
     expect(calls.some(args => args[0] === "task")).toBe(false);
