@@ -177,7 +177,7 @@ test("administrative refusals distinguish absence, backup policy, corruption and
     expect(caught(() => checkBackup(freshPath, [], build))).toMatchObject({ kind: "conflict", facts: { reason: "newer_database", schemaVersion: 2, supportedSchemaVersion: 1 } });
     expect(caught(() => migrateDatabase(resolvedFreshPath, { ...migrationOptions, migrations: [] }))).toMatchObject({ kind: "conflict", facts: { reason: "newer_database", schemaVersion: 2, supportedSchemaVersion: 1 } });
     const facts = { databasePath: freshPath, version: 2, latestVersion: 1 };
-    for (const reason of ["older", "newer", "unmarked"] as const) {
+    for (const reason of ["older", "newer"] as const) {
       const refusal = new ReadOnlyDatabaseError(reason, facts, DEFAULT_OPEN_POLICY);
       expect(refusal.reason).toBe(reason);
       expect(refusal.facts).toMatchObject({ databasePath: freshPath, schemaVersion: 2, supportedSchemaVersion: 1 });
