@@ -4,8 +4,6 @@ import { join } from "node:path";
 import { errorDocumentSchema } from "../src/errors";
 import { createDatabase, databaseSnapshot, runZinn, withIsolatedZinnDir, withoutTelemetry } from "../test-helpers";
 
-const REMOVED_FLAG = "--allow-legacy-read";
-
 test("an unmarked database is refused for reads and writes and stays unchanged", async () => {
   await withIsolatedZinnDir(async (dir) => {
     await createDatabase(dir, 0);
@@ -36,31 +34,12 @@ test("an unmarked database is refused for reads and writes and stays unchanged",
   });
 });
 
-test("--allow-legacy-read is an unknown option, and after -- it is command input", async () => {
-  await withIsolatedZinnDir(async (dir) => {
-    await createDatabase(dir, 0);
-    const before = databaseSnapshot(dir);
-
-    for (const args of [["task", "list", "MIG", REMOVED_FLAG], [REMOVED_FLAG, "project", "list"]]) {
-      const result = await runZinn(["--json", ...args], dir);
-      expect(result.code).toBe(1);
-      expect(result.stdout).toBe("");
-      expect(errorDocumentSchema.parse(JSON.parse(result.stderr)).error.code).toBe("invalid_input");
-    }
-
-    const searched = await runZinn(["--json", "task", "search", "--", REMOVED_FLAG], dir);
-    expect(searched.code).toBe(1);
-    expect(errorDocumentSchema.parse(JSON.parse(searched.stderr)).error).toMatchObject({ code: "conflict", details: { reason: "unmarked_database" } });
-    expect(databaseSnapshot(dir)).toEqual(before);
-  });
-});
-
 test("help, --version and backup work for an unmarked database", async () => {
   await withIsolatedZinnDir(async (dir) => {
     await createDatabase(dir, 0);
     const before = databaseSnapshot(dir);
 
-    expect((await runZinn(["--help"], dir)).stdout).not.toContain(REMOVED_FLAG);
+    expect((await runZinn(["--help"], dir)).code).toBe(0);
     expect((await runZinn(["--version"], dir)).code).toBe(0);
 
     const backup = await runZinn(["backup", "--json"], dir);

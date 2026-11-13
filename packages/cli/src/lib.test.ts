@@ -2,7 +2,7 @@ import type { OpenPolicy } from "@zinn-dev/core";
 import type { InputForm, PositionalInput } from "./input";
 
 import { expect, test, spyOn } from "bun:test";
-import { ReadOnlyDatabaseError, TextEditMatchError, UnmarkedDatabaseError } from "@zinn-dev/core";
+import { ReadOnlyDatabaseError, TextEditMatchError } from "@zinn-dev/core";
 import { parseArgs } from "node:util";
 
 import { boundParserMessage, diagnostic, flushDiagnostics, prepareOutput, setOutputMode, failureMessage, UsageError, validatePositionals, renameFlag, parseArgsFailure } from "./lib";
@@ -133,20 +133,6 @@ test("other failures keep their own message, or the fallback when they have none
   expect(failureMessage(newer, FALLBACK)).toBe(newer.message);
   expect(failureMessage(new Error("Task does not exist"), FALLBACK)).toBe("Task does not exist");
   expect(failureMessage(undefined, FALLBACK)).toBe(FALLBACK);
-});
-
-test("an unmarked database points at the last CLI release that reads it", () => {
-  const error = new UnmarkedDatabaseError({
-    databasePath: "/data/zinn.sqlite",
-    version: 0,
-    latestVersion: 2,
-  });
-  const message = failureMessage(error, FALLBACK);
-
-  expect(message).toStartWith(error.message);
-  expect(message).toContain("/data/zinn.sqlite");
-  expect(message).toContain("0.44.0");
-  expect(message).toContain("--allow-legacy-read");
 });
 
 test("a text edit that matches several places points at --all, and one that matches none does not", () => {

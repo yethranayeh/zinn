@@ -69,16 +69,6 @@ An up to date database is unchanged when a migration is attempted, which means n
 
 A database with a newer schema can be read, but Zinn refuses changes to it. Use a newer Zinn to change it.
 
-## Databases without a schema version
-
-A database created before version [Eridu/cli-0.37.0/core-0.26.0](/changelog#release-0370), is **unmarked**. Zinn refuses to open it for reads and writes, and `zinn migrate` does not upgrade it. `zinn backup` copies it, and `zinn restore` can replace it with a backup.
-
-CLI 0.44.0 reads an unmarked database, best effort and read-only, when a command includes `--allow-legacy-read`:
-
-```sh title="Read an unmarked database with CLI 0.44.0"
-npx @zinn-dev/cli@0.44.0 task list MDR --allow-legacy-read
-```
-
 ## Failure logs
 
 A CLI command that fails with a `storage` or `internal` error writes one log file to `logs/` in the selected Zinn directory and names the file in its error. Other errors and successful commands write no log. A log's name follows the same pattern as a backup's, such as `2026-09-29T12-30-05Z-cli-0.32.0-b38178c0.log`.
