@@ -80,6 +80,10 @@ In a chat, open a new side tab, choose **More tools**, then **Plugins and MCPs**
 
 Enter a task key from your database, such as `APP-1`. Task descriptions and comments are displayed as literal text, preserving line breaks. Select a relation to open the related task. **Refresh** reads the selected task and current-chat references again.
 
+Opening a task through lookup, an observed reference or a relation remembers its key for the current chat and selected database directory. Reopening the panel reads that task's current contents. A missing task keeps its selected key so you can retry or open another task. An explicit task key supplied when opening the panel takes precedence over the remembered selection.
+
+Selection is remembered only when the host identifies the chat unambiguously. Manual lookup remains available otherwise. A failed selection save leaves task inspection available and reports that the selection could not be remembered. Invalid lookup input and task-read errors preserve the previously remembered key.
+
 For an active task, choose a destination and select **Move to…**. The initial destination is the project's first column with the `done` category, or the task's current column when the project has none. The move uses the inspector's selected database and the task's own project. It follows ordinary `zinn task move` behavior and refreshes the task afterward. Moving to the current column leaves it unchanged. Archived tasks remain available for inspection.
 
 Panel moves record your normal CLI human identity, without inherited agent, model, effort, client or conversation declarations. The plugin declares `zinn-codex/0.1.0` after any inherited [client chain](/docs/cli#client-chains) on CLI runs it starts, so a panel move records that token in `actor_client` and `zinn activity list --client zinn-codex` selects it. Codex's tool permission settings apply. A move is submitted only by the explicit button action and is not automatically retried after a failure.
@@ -100,7 +104,7 @@ The configuration accepts these options:
 | --------------- | --------------------------- | ----------------------------------------------------------------------------------- |
 | `store`         | CLI selection               | Optional absolute Zinn data directory for inspection and reply verification.        |
 | `cli`           | `["zinn"]`                  | Executable and fixed arguments used for local reads.                                |
-| `dataDirectory` | `~/.local/share/zinn-codex` | Absolute directory for reference files, outside the Zinn data directory.            |
+| `dataDirectory` | `~/.local/share/zinn-codex` | Absolute directory for local integration state, outside the Zinn data directory.    |
 | `observe`       | `true`                      | Record task references for the current-chat list.                                   |
 | `identity`      | `true`                      | Supply the callback's agent profile and model to supported direct commands.         |
 | `captureEffort` | `false`                     | Read exact execution metadata from the callback's transcript file to supply effort. |
@@ -113,13 +117,17 @@ With `captureEffort: true`, effort is supplied only when the transcript's thread
 
 To stop reference recording and identity capture, set both `observe` and `identity` to `false`. To keep recording references and disable identity capture, set only `identity` to `false`. These settings take effect on the next hook invocation. Previously recorded references remain available until their files are removed.
 
+These hook settings do not disable the panel's remembered selection.
+
 Optional reply and dispatch verification shares a short deadline across CLI compatibility, `info --json` and task lookup. It proceeds when the schema is current. Unavailable completed-reply verification is recorded separately. Execution identity remains independent. The schema check is best effort because another client can replace or restore the database before the following read.
 
 ## Local data and privacy
 
 The observer writes task keys, their source, selected-store paths, chat IDs and timestamps. It processes shell text, dispatch text and completed replies in memory to find those keys. The reference files contain this metadata rather than command arguments, prompts, replies or task contents. Effort capture processes the callback's transcript file in memory and retains no transcript copy.
 
-Each chat has at most 1,024 reference records of at most 16 KiB each. Reaching that limit is reported by the inspector. Reference data persists across plugin upgrades and has no automatic expiry. Disable observation before removing reference files. With the default dedicated directory, remove `~/.local/share/zinn-codex` to clear them. For a custom directory, remove only the integration's chat subdirectories.
+Each chat has at most 1,024 reference records of at most 16 KiB each. Reaching that limit is reported by the inspector. Reference data persists across plugin upgrades and has no automatic expiry. Disable observation and remove the integration's hashed chat subdirectories to clear only reference records. With the default dedicated directory, remove `~/.local/share/zinn-codex` to clear all local integration state.
+
+The panel keeps one selection record per chat and canonical selected-store path in `dataDirectory/selections`. Each record contains only a format version and task key. Its filename hashes the chat and store scope. Task contents and drafts are fetched or held in memory rather than saved in these records. Selection state survives normal app restarts and plugin upgrades, has no automatic expiry and remains after uninstall. Stop the plugin and remove only its `selections` subdirectory to clear remembered selections while keeping reference records. Restoring or replacing a database at the same path keeps the same selection scope and reads the task key against the current database.
 
 The plugin uses local STDIO and has no hosted server. Task data returned through the native panel passes through Codex. Your host's data-handling settings and policies apply. Keep database files, transcripts and reference files out of public support reports.
 
@@ -133,7 +141,7 @@ Disable **Zinn** in the Plugins browser to stop loading it. Uninstall it there t
 codex plugin marketplace remove zinn
 ```
 
-Your Zinn database, configuration and reference files remain under your control. Remove the dedicated reference directory separately if you want to clear the integration's metadata. To roll back, register the previous built marketplace and reinstall that version.
+Your Zinn database, configuration, reference files and selection records remain under your control. Remove the dedicated integration data directory separately if you want to clear its metadata. To roll back, register the previous built marketplace and reinstall that version.
 
 ## Troubleshooting and compatibility
 
