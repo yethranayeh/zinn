@@ -17,7 +17,7 @@ export const TASK_SEARCH_DEFINITION = `CREATE VIRTUAL TABLE task_search USING ft
     );`;
 
 /**
- * The baseline `CREATE` statements, which `createSchema` runs on every fresh database.
+ * The baseline `CREATE` statements, which `createSchema` runs before the migrations.
  * Databases already at the baseline do not run them again,
  *  so every later schema change is a migration in **registry.ts**
  */

@@ -24,7 +24,7 @@ import {
   UnmarkedDatabaseError,
 } from "./migrations/open-policy.js";
 import { MIGRATIONS } from "./migrations/registry.js";
-import { createSchema, SchemaNotEmptyError } from "./migrations/runner.js";
+import { createLatestSchema, SchemaNotEmptyError } from "./migrations/runner.js";
 import { upgradeDatabase } from "./migrations/upgrade.js";
 import { readCoreReleaseMode } from "./release.js";
 import { attachSuppressed, isSqliteErrorCode } from "./sqlite/database.js";
@@ -176,7 +176,7 @@ function settle(connection: Database, prepared: Prepared, storage: Storage): typ
       throw new UnmarkedDatabaseError(facts);
     case "create":
       try {
-        createSchema(connection, MIGRATIONS);
+        createLatestSchema(connection, MIGRATIONS);
         return null;
       } catch (error) {
         if (!(error instanceof SchemaNotEmptyError)) {

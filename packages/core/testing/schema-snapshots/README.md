@@ -12,3 +12,7 @@ bun packages/core/testing/capture-schema.ts
 ```
 
 Keep existing snapshots unchanged. The script refuses to overwrite one.
+
+Fresh databases are created from `src/migrations/latest.ts`, which must give the
+same definitions as the newest snapshot. After capturing it, copy each changed
+`sql` into `LATEST_STATEMENTS` and set `LATEST_SCHEMA_VERSION` to the new version.

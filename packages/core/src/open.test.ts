@@ -779,9 +779,9 @@ const RACE_INSTRUMENTATION = `
   }));
   mock.module(${modulePath("./migrations/runner.ts")}, () => ({
     ...runner,
-    createSchema: (db, migrations) => {
+    createLatestSchema: (db, migrations) => {
       try {
-        return runner.createSchema(db, migrations);
+        return runner.createLatestSchema(db, migrations);
       } catch (error) {
         lostRace = error.name;
         throw error;

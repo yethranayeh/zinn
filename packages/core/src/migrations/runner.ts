@@ -8,6 +8,7 @@ import type { Migration } from "./registry.js";
 
 import { attachSuppressed } from "../sqlite/database.js";
 import { BASELINE_VERSION, createBaseline } from "./baseline.js";
+import { createLatest, LATEST_SCHEMA_VERSION } from "./latest.js";
 import { assertMigrationOrder, latestVersion, MIGRATIONS } from "./registry.js";
 import { CoreError } from "../errors.js";
 import { prepareForeignKeyVerification, verifyForeignKeyDefinitions } from "./foreign-keys.js";
@@ -217,22 +218,54 @@ export function upgradeSchema(db: Database, migrations: ReadonlyArray<Migration>
   });
 }
 
-/** Creates the baseline and runs every migration on an empty database, ending at the latest version. */
+/** Refuses a database that already has a schema object or a schema version */
+function assertEmpty(db: Database) {
+  const objectCount = db
+    .query<{ count: number }>("SELECT COUNT(*) AS count FROM sqlite_schema")
+    .get()!.count;
+  const version = readSchemaVersion(db);
+  const isEmpty = objectCount === 0 && version === UNMARKED_VERSION;
+
+  if (!isEmpty) {
+    throw new SchemaNotEmptyError(
+      `A schema can only be created in an empty database, and this one has ${objectCount} schema objects and version ${version}`,
+    );
+  }
+}
+
+/**
+ * Creates the baseline and runs every migration on an empty database, ending at the latest version.
+ * It builds the schema of any version, and is what `createLatestSchema` must match.
+ */
 export function createSchema(db: Database, migrations: ReadonlyArray<Migration> = MIGRATIONS) {
   runUpgrade(db, migrations, () => {
-    const objectCount = db
-      .query<{ count: number }>("SELECT COUNT(*) AS count FROM sqlite_schema")
-      .get()!.count;
-    const version = readSchemaVersion(db);
-    const isEmpty = objectCount === 0 && version === UNMARKED_VERSION;
-
-    if (!isEmpty) {
-      throw new SchemaNotEmptyError(
-        `A schema can only be created in an empty database, and this one has ${objectCount} schema objects and version ${version}`,
-      );
-    }
-
+    assertEmpty(db);
     createBaseline(db);
     return BASELINE_VERSION;
+  });
+}
+
+/**
+ * Creates the schema at `LATEST_SCHEMA_VERSION` in an empty database, instead of replaying every migration,
+ * then applies any migrations newer than that version.
+ * `migrations` is the registry, or the registry plus newer migrations.
+ */
+export function createLatestSchema(
+  db: Database,
+  migrations: ReadonlyArray<Migration> = MIGRATIONS,
+) {
+  const targetVersion = latestVersion(migrations);
+
+  // Fewer migrations would stamp the latest schema with an older version.
+  if (targetVersion < LATEST_SCHEMA_VERSION) {
+    throw new Error(
+      `The latest schema has version ${LATEST_SCHEMA_VERSION}, and the given migrations end at version ${targetVersion}`,
+    );
+  }
+
+  runUpgrade(db, migrations, () => {
+    assertEmpty(db);
+    createLatest(db);
+    return LATEST_SCHEMA_VERSION;
   });
 }

@@ -48,7 +48,7 @@ test("emitted core works on both runtimes and its declarations need no Bun types
       import * as core from ${JSON.stringify(outputUrl("index.js"))};
       import { getDb } from ${JSON.stringify(outputUrl("src/db.js"))};
       import { readCoreReleaseMode } from ${JSON.stringify(outputUrl("src/release.js"))};
-      import { upgradeSchema } from ${JSON.stringify(outputUrl("src/migrations/runner.js"))};
+      import { createLatestSchema, createSchema, upgradeSchema } from ${JSON.stringify(outputUrl("src/migrations/runner.js"))};
       const adapterPath = typeof Bun === "undefined" ? "node" : "bun";
       const adapter = await import(${JSON.stringify(outputUrl("src/sqlite/"))} + adapterPath + ".js");
       defineContractChecks(test, adapter);
@@ -88,6 +88,24 @@ test("emitted core works on both runtimes and its declarations need no Bun types
         } finally {
           db.close();
         }
+      });
+
+      test("emitted fresh creation matches the baseline and every migration", () => {
+        const definitions = (create) => {
+          const db = adapter.openDatabase(":memory:");
+          try {
+            create(db);
+            return {
+              version: db.query("PRAGMA user_version").get().user_version,
+              objects: db.query("SELECT type, name, tbl_name, sql FROM sqlite_schema ORDER BY name").all(),
+            };
+          } finally {
+            db.close();
+          }
+        };
+        const created = definitions(createLatestSchema);
+        assert.ok(created.objects.length > 0);
+        assert.deepEqual(created, definitions(createSchema));
       });
 
       test("emitted public API uses the runtime adapter and retains source identity", () => {
