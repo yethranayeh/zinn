@@ -10,7 +10,7 @@ import { z } from "zod";
 
 import { loadSettings, resolveSettings } from "../settings";
 import { INSPECTOR_VERSION } from "../runtime";
-import { readTask } from "./task-reader";
+import { readInspectorTask, rememberSelection } from "./selection";
 import { createHumanActionReader, moveTask, readTaskColumns } from "./task-actions";
 import { readRecent } from "./references";
 import { createCliReader } from "../shared/cli";
@@ -37,7 +37,7 @@ registerAppTool(
   {
     title: "Zinn task inspector",
     description:
-      "Read task details from the selected local Zinn database. Open without a key for manual lookup.",
+      "Read task details from the selected local Zinn database. Open without a key to restore this chat and store's selection.",
     inputSchema: { key: z.string().optional() },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     _meta: {
@@ -47,7 +47,7 @@ registerAppTool(
   },
 
   async ({ key }, extra) => {
-    const result = await readTask(settings, key, reader, extra.signal);
+    const result = await readInspectorTask(settings, key, reader, extra._meta, extra.signal);
     return {
       content: [
         {
@@ -61,6 +61,30 @@ registerAppTool(
       structuredContent: { ...result },
     };
   },
+);
+
+registerAppTool(
+  server,
+  "remember_selection",
+  {
+    title: "Remember selected task",
+    description:
+      "Save only the selected task key for this chat and selected store in local integration state.",
+    inputSchema: { key: z.string(), expectedScope: z.string() },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    _meta: { ui: { visibility: ["app"] } },
+  },
+  async ({ key, expectedScope }, extra) => ({
+    content: [],
+    structuredContent: extra.signal.aborted
+      ? { saved: false, warning: "Selection was not remembered because the request was cancelled." }
+      : { ...rememberSelection(settings, key, expectedScope, extra._meta) },
+  }),
 );
 
 registerAppTool(

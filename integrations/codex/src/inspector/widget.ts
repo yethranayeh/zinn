@@ -1,5 +1,5 @@
 import type { RecentRead } from "./references";
-import type { TaskRead } from "./task-reader";
+import type { InspectorRead, SelectionSave } from "./selection";
 import type { TaskColumnsRead, TaskMoveRead } from "./task-actions";
 import type { PresentedTaskDetail } from "../../../../packages/cli/src/result-schemas.js";
 
@@ -12,6 +12,7 @@ const keyInput = document.querySelector<HTMLInputElement>("#key")!;
 const refresh = document.querySelector<HTMLButtonElement>("#refresh")!;
 const lookup = document.querySelector<HTMLFormElement>("#lookup")!;
 const status = document.querySelector<HTMLElement>("#status")!;
+const selectionStatus = document.querySelector<HTMLElement>("#selection-status")!;
 const store = document.querySelector<HTMLElement>("#store")!;
 const recentList = document.querySelector<HTMLElement>("#recent-list")!;
 const recentStatus = document.querySelector<HTMLElement>("#recent-status")!;
@@ -32,6 +33,8 @@ let referenceSignature = "";
 let referencesExpanded = false;
 let moving = false;
 let polling: ReturnType<typeof setInterval> | undefined;
+let selectionSave = Promise.resolve();
+let selectionIntentVersion = 0;
 
 function markSelection() {
   for (const button of recentList.querySelectorAll<HTMLButtonElement>("button")) {
@@ -115,7 +118,7 @@ function renderRecent(value: RecentRead) {
       button = template<HTMLButtonElement>("reference-template");
       button.dataset.key = reference.key;
       button.addEventListener("click", () => {
-        void openTask(reference.key, { focusHeading: true });
+        void openTask(reference.key, { focusHeading: true, remember: true });
       });
     }
     button.querySelector<HTMLElement>("[data-key]")!.textContent = reference.key;
@@ -368,7 +371,7 @@ function renderTask(task: PresentedTaskDetail, fetchedAt: string) {
         `${direction} ${relation.type} · ${relation.task.status === "Archived" ? "Archived" : relation.task.column}`;
       button.addEventListener(
         "click",
-        () => void openTask(relation.task.key, { focusHeading: true }),
+        () => void openTask(relation.task.key, { focusHeading: true, remember: true }),
       );
       return button;
     });
@@ -412,9 +415,10 @@ function renderState(heading: string, message: string, action?: "lookup" | "retr
   detail.replaceChildren(block);
 }
 
-function render(value: TaskRead) {
+function render(value: InspectorRead) {
   store.textContent = `Store: ${value.store}`;
   status.textContent = "";
+  selectionStatus.textContent = value.selection.warning ?? "";
 
   if (value.kind === "ready" && value.task && value.fetchedAt) {
     selected = value.task.key;
@@ -439,9 +443,45 @@ function render(value: TaskRead) {
   detail.setAttribute("aria-busy", "false");
   markSelection();
 }
+
+function rememberTask(value: InspectorRead) {
+  const scope = value.selection.scope;
+  const key = value.key;
+  if (scope === null || key === undefined || (value.kind !== "ready" && value.kind !== "missing")) {
+    return;
+  }
+
+  const version = ++selectionIntentVersion;
+  selectionSave = selectionSave.then(async () => {
+    if (disposed || version !== selectionIntentVersion) {
+      return;
+    }
+
+    let warning: string;
+    try {
+      const response = await app.callServerTool({
+        name: "remember_selection",
+        arguments: { key, expectedScope: scope },
+      });
+      if (response.isError || !response.structuredContent) {
+        throw new Error("Selection save was not confirmed.");
+      }
+
+      const result = response.structuredContent as SelectionSave;
+      warning = result.saved ? "" : (result.warning ?? "Selection could not be remembered.");
+    } catch {
+      warning = "Selection could not be remembered. Task inspection is still available.";
+    }
+
+    if (!disposed && version === selectionIntentVersion && selected === key) {
+      selectionStatus.textContent = warning;
+    }
+  });
+}
+
 async function openTask(
   rawKey?: string,
-  options: { focusHeading?: boolean; automatic?: boolean } = {},
+  options: { focusHeading?: boolean; automatic?: boolean; remember?: boolean } = {},
 ) {
   if (!connected) {
     return;
@@ -456,6 +496,7 @@ async function openTask(
   if (key !== undefined) {
     keyInput.value = key;
   }
+  const lookupValue = keyInput.value;
 
   const version = ++selectionVersion;
   const initiatingControl = document.activeElement;
@@ -477,7 +518,17 @@ async function openTask(
       throw new Error("The native host could not read this task.");
     }
 
-    render(result.structuredContent as TaskRead);
+    const value = result.structuredContent as InspectorRead;
+    selected = value.task?.key ?? value.key;
+    if (selected !== undefined && keyInput.value === lookupValue) {
+      keyInput.value = selected;
+    }
+
+    render(value);
+
+    if (options.remember) {
+      rememberTask(value);
+    }
   } catch (error) {
     if (!disposed && version === selectionVersion) {
       renderState(key ? `Could not open ${key}` : "Task read failed", String(error), "retry");
@@ -501,7 +552,8 @@ async function openTask(
 app.ontoolresult = (result) => {
   if (!disposed && !userNavigated && result.structuredContent) {
     selectionVersion++;
-    const value = result.structuredContent as TaskRead;
+    const value = result.structuredContent as InspectorRead;
+
     selected = value.task?.key ?? value.key;
     render(value);
     if (keyInput.value === "" && selected !== undefined) {
@@ -528,7 +580,7 @@ referencesToggle.addEventListener("click", () => {
 
 lookup.addEventListener("submit", (event) => {
   event.preventDefault();
-  void openTask(keyInput.value);
+  void openTask(keyInput.value, { remember: true });
 });
 
 refresh.addEventListener("click", () => {

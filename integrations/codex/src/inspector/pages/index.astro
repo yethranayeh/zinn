@@ -39,6 +39,7 @@ const mutedClass = "text-xs leading-relaxed text-muted-foreground wrap-anywhere"
 			<Button id='refresh' variant='outline' class={buttonClass} disabled>Refresh</Button>
 		</form>
 		<p id='status' role='status' class='mb-3 empty:hidden'>Connecting to native host…</p>
+		<p id='selection-status' role='status' class={`${mutedClass} mb-3 empty:hidden`}></p>
 
 		<nav id='recent' aria-label='Observed tasks in this chat' class='mb-5 min-w-0'>
 			<div class='flex flex-wrap items-baseline justify-between gap-2'>

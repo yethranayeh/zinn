@@ -223,12 +223,18 @@ test("relocated Node artifact reads selected tasks and isolates each chat", asyn
     expect(before.find(([file]) => file === "zinn.sqlite")).toEqual(initial.find(([file]) => file === "zinn.sqlite"));
     try {
         const tools = await client.listTools();
-        expect(tools.tools.map(tool => tool.name).sort()).toEqual(["inspect_task", "move_task", "recent_tasks", "task_columns"]);
+        expect(tools.tools.map(tool => tool.name).sort()).toEqual(["inspect_task", "move_task", "recent_tasks", "remember_selection", "task_columns"]);
         for (const tool of tools.tools) {
             expect((tool._meta?.ui as any).visibility).toEqual(["app"]);
         }
         expect(tools.tools.find(tool => tool.name === "inspect_task")?.annotations?.readOnlyHint).toBe(true);
         expect(tools.tools.find(tool => tool.name === "task_columns")?.annotations?.readOnlyHint).toBe(true);
+        expect(tools.tools.find(tool => tool.name === "remember_selection")?.annotations).toMatchObject({
+            readOnlyHint: false,
+            destructiveHint: true,
+            idempotentHint: true,
+            openWorldHint: false,
+        });
         expect(tools.tools.find(tool => tool.name === "move_task")?.annotations).toMatchObject({
             readOnlyHint: false,
             destructiveHint: false,
@@ -263,6 +269,70 @@ test("relocated Node artifact reads selected tasks and isolates each chat", asyn
     }
     finally {
         await restarted.close();
+    }
+}, 30000);
+
+test("relocated Node selection state survives restart and isolates chats and stores", async () => {
+    context.cli(["project", "create", "SEL"]);
+    context.cli(["task", "create", "SEL", "--title", "Selected task"]);
+    context.cli(["task", "create", "SEL", "--title", "Other task"]);
+    const metadata = { thread_id: "selection-chat", threadId: "selection-chat" };
+    let client = await connect();
+    const read = async (key?: string, binding: Record<string, unknown> | undefined = metadata) =>
+        (await client.callTool({ name: "inspect_task", arguments: key === undefined ? {} : { key }, _meta: binding })).structuredContent as any;
+    const save = async (key: string, scope: string, binding: Record<string, unknown> | undefined = metadata) =>
+        (await client.callTool({ name: "remember_selection", arguments: { key, expectedScope: scope }, _meta: binding })).structuredContent as any;
+    try {
+        const first = await read("SEL-1");
+        const scope = first.selection.scope;
+        const before = fingerprint();
+        expect((await save("SEL-1", scope)).saved).toBe(true);
+        expect(fingerprint()).toEqual(before);
+        const savedFile = join(context.settings.dataDirectory, "selections", `v1-${scope}.json`);
+        expect(JSON.parse(readFileSync(savedFile, "utf8"))).toEqual({ version: 1, key: "SEL-1" });
+        context.cli(["task", "edit", "SEL-1", "--title", "Current authoritative title"]);
+        await client.close();
+        client = await connect();
+        expect(await read()).toMatchObject({ kind: "ready", key: "SEL-1", task: { title: "Current authoritative title" } });
+        expect((await read(undefined, { threadId: "another-chat" })).kind).toBe("idle");
+        expect((await save("SEL-2", scope, { thread_id: "another-chat" })).saved).toBe(false);
+        expect((await save("SEL-2", scope, { thread_id: "one", threadId: "two" })).saved).toBe(false);
+        expect((await client.callTool({ name: "remember_selection", arguments: { key: "SEL-2", expectedScope: scope } })).structuredContent).toMatchObject({ saved: false });
+        expect((await client.callTool({ name: "inspect_task", arguments: {} })).structuredContent).toMatchObject({ kind: "idle", selection: { scope: null } });
+        expect((await read("SEL-2")).key).toBe("SEL-2");
+        expect((await read()).key).toBe("SEL-1");
+
+        const otherStore = join(context.directory, "selection-other-store");
+        mkdirSync(otherStore);
+        context.cli(["project", "create", "SEL"], otherStore);
+        context.cli(["task", "create", "SEL", "--title", "Different store task"], otherStore);
+        const config = join(context.directory, "selection-other.json");
+        writeFileSync(config, JSON.stringify({ ...context.settings, store: otherStore }));
+        const other = await connect(config);
+        try {
+            expect((await other.callTool({ name: "inspect_task", arguments: {}, _meta: metadata })).structuredContent).toMatchObject({ kind: "idle" });
+            expect((await other.callTool({ name: "remember_selection", arguments: { key: "SEL-1", expectedScope: scope }, _meta: metadata })).structuredContent).toMatchObject({ saved: false });
+        } finally {
+            await other.close();
+        }
+        const concurrent = await connect();
+        try {
+            const saves = await Promise.all([
+                save("SEL-1", scope),
+                concurrent.callTool({ name: "remember_selection", arguments: { key: "SEL-2", expectedScope: scope }, _meta: metadata }),
+            ]);
+            expect(saves[0].saved).toBe(true);
+            expect((saves[1] as any).structuredContent.saved).toBe(true);
+            expect(["SEL-1", "SEL-2"]).toContain((await read()).key);
+        } finally {
+            await concurrent.close();
+        }
+        expect((await save("SEL-1", scope)).saved).toBe(true);
+        context.cli(["task", "delete", "SEL-1", "--yes"]);
+        expect(await read()).toMatchObject({ kind: "missing", key: "SEL-1" });
+        expect(JSON.parse(readFileSync(savedFile, "utf8")).key).toBe("SEL-1");
+    } finally {
+        await client.close();
     }
 }, 30000);
 
@@ -608,6 +678,7 @@ else { process.on('SIGTERM', () => {}); writeFileSync(${JSON.stringify(marker)},
     };
     const client = await connect(config);
     try {
+        const advertisedTools = (await client.listTools()).tools.map(tool => tool.name);
         const cancellation = new AbortController();
         const pending = client.callTool({ name: "inspect_task", arguments: { key: "APP-1" } }, undefined, { signal: cancellation.signal }).catch(() => undefined);
         await waitFor(() => existsSync(marker));
@@ -615,7 +686,7 @@ else { process.on('SIGTERM', () => {}); writeFileSync(${JSON.stringify(marker)},
         cancellation.abort();
         await pending;
         await waitFor(() => !alive(first));
-        expect((await client.listTools()).tools.length).toBe(4);
+        expect((await client.listTools()).tools.map(tool => tool.name)).toEqual(advertisedTools);
         rmSync(marker);
         const closingRead = client.callTool({ name: "inspect_task", arguments: { key: "APP-2" } }).catch(() => undefined);
         await waitFor(() => existsSync(marker));
