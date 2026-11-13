@@ -49,10 +49,10 @@ Choose either setup for your coding agent:
 Install the [Zinn workflow skill](https://github.com/yethranayeh/zinn/blob/main/packages/cli/skills/zinn/SKILL.md). It covers picking up work, keeping task context, recording follow-ups, and handing off for review.
 
 ```sh title="Install the agent skill"
-npx skills add yethranayeh/zinn --skill zinn -g -y
+zinn skill install
 ```
 
-The skill installs globally for use across repositories. It applies where the user or repository uses Zinn. Its installer is the [open-source skills CLI](https://github.com/vercel-labs/skills).
+The command installs the skill bundled with your Zinn CLI, so the skill matches the commands your CLI has. It installs globally for use across repositories and applies where the user or repository uses Zinn. The installer is the [open-source skills CLI](https://github.com/vercel-labs/skills), which the command runs through `npx`.
 
 <AgentSetup />
 
@@ -89,6 +89,8 @@ If you installed the agent skill, update it separately:
 ```sh title="Update installed agent skills"
 npx skills update -g
 ```
+
+After switching Node versions or package managers, run `zinn skill install` again instead. The CLI then lives in a new folder, and the command installs the skill from there.
 
 In a project that uses core, upgrade it there:
 

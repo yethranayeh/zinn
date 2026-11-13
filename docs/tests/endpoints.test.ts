@@ -615,7 +615,7 @@ test("agent setup prompt uses the installation command and supported runtime", a
     installCommand,
     "node --version",
     "zinn --version",
-    "npx skills add yethranayeh/zinn --skill zinn -g -y",
+    "zinn skill install",
     "zinn --help",
     minimumNodeVersion,
   ]) {

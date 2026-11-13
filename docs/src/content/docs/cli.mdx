@@ -28,6 +28,7 @@ Use this page for command behavior, shared input rules, and practical examples. 
 - [Task comments](#task-comments)
 - [Activity](#activity)
   - [Who am I?](#who-am-i)
+- [Agent skill](#agent-skill)
 - [Command aliases](#command-aliases)
 - [Help](#help)
 
@@ -681,6 +682,17 @@ ZINN_CLIENT='rex/0.9 zinn-opencode:panel/0.3.0' zinn whoami --json
 For example, CLI version `0.44.0` records `zinn-cli/0.44.0 rex/0.9 zinn-opencode:panel/0.3.0` for that declaration. With no declaration, it records `zinn-cli/0.44.0`.
 
 To format a declaration, see the [client chain convention](/docs/core#client-chain-convention). Client declarations identify the calling programs and are not authenticated identities. The chain is also kept in the `actor.client` field of each [local telemetry record](/docs/data#record-fields).
+
+## Agent skill
+
+`zinn skill install` installs the [Zinn workflow skill](/docs/installation#skill) bundled with this CLI. It runs `npx --yes skills add <skill folder> -g -y` with the skill folder inside the CLI's package, and passes the [skills CLI](https://github.com/vercel-labs/skills)'s output and exit code through:
+
+```sh title="Install the agent skill"
+zinn skill install
+zinn skill install --json
+```
+
+With `--json`, stdout gets `{ "source": "<skill folder>" }`, and the skills CLI's output is reported as notices: on stderr after the result, or in `error.diagnostics` when the install fails. A failure's `error.details` holds the skill folder as `path` and the skills CLI's `exitCode`.
 
 ## Command aliases
 
