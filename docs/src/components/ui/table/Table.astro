@@ -1,16 +1,20 @@
 ---
 import type { HTMLAttributes } from "astro/types";
+import type { TableVariant } from "./variants";
+
 import { twMerge } from "tailwind-merge";
+import { tableVariants } from "./variants";
 
-type Props = HTMLAttributes<"table">;
+type Props = HTMLAttributes<"table"> & { variant?: TableVariant };
 
-const { class: className, ...attributes } = Astro.props;
+const { variant = tableVariants.defaultVariants.variant, class: className, ...attributes } = Astro.props;
 ---
 
 <div class='table-frame relative my-8 after:pointer-events-none after:absolute after:inset-0 after:content-[""]'>
 	<div class='table-scroll overflow-x-auto overscroll-x-contain focus-visible:outline-offset-4'>
 		<table
-			class={twMerge("w-full border-collapse border border-soot bg-bone text-base leading-[1.55]", className)}
+			data-variant={variant}
+			class={twMerge(tableVariants.base, tableVariants.variants.variant[variant], className)}
 			{...attributes}>
 			<slot />
 		</table>

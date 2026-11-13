@@ -1,14 +1,14 @@
 ---
 import type { HTMLAttributes } from "astro/types";
+
 import { twMerge } from "tailwind-merge";
+import { tableRowVariants } from "./variants";
 
 type Props = HTMLAttributes<"tr">;
 
 const { class: className, ...attributes } = Astro.props;
 ---
 
-<tr
-	class={twMerge("even:bg-[color-mix(in_srgb,var(--color-limestone)_45%,var(--color-bone))]", className)}
-	{...attributes}>
+<tr class={twMerge(tableRowVariants.ledger, tableRowVariants.soot, className)} {...attributes}>
 	<slot />
 </tr>

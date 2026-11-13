@@ -4,10 +4,13 @@ import Table from "../../src/components/ui/table/Table.astro";
 import TableCell from "../../src/components/ui/table/TableCell.astro";
 import TableHead from "../../src/components/ui/table/TableHead.astro";
 import TableRow from "../../src/components/ui/table/TableRow.astro";
+import { tableVariants, type TableVariant } from "../../src/components/ui/table/variants";
 import ComponentHeading from "../components/ComponentHeading.astro";
 import Specimen from "../components/Specimen.astro";
 
 import { aliases, options } from "../samples";
+
+const variants = Object.keys(tableVariants.variants.variant) as TableVariant[];
 ---
 
 <FoundryLayout title='Table' description='Table lays out rows and columns of short facts.'>
@@ -18,59 +21,66 @@ import { aliases, options } from "../samples";
 				>TableCell</code
 			>.
 		</p>
+		<p>
+			<code>ledger</code>, with a Clay header, is the default and the style of every docs table. <code>soot</code> has a
+			Soot header row and suits pages whose other heavy elements are Soot. Only <code>Table</code> takes the
+			<code>variant</code> prop. The other parts follow it.
+		</p>
 		<p>A table that overflows scrolls inside its frame. Code in a cell stays on one line.</p>
 	</ComponentHeading>
 
 	<div class='grid gap-4'>
-		<Specimen label='<Table> with two columns' block>
-			<Table>
-				<thead>
-					<TableRow>
-						<TableHead>Primary command</TableHead>
-						<TableHead>Alias</TableHead>
-					</TableRow>
-				</thead>
-				<tbody>
-					{
-						aliases.map(([command, alias]) => (
-							<TableRow>
-								<TableCell>
-									<code>{command}</code>
-								</TableCell>
-								<TableCell>
-									<code>{alias}</code>
-								</TableCell>
-							</TableRow>
-						))
-					}
-				</tbody>
-			</Table>
-		</Specimen>
-		<Specimen label='<Table> with three columns' block>
-			<Table>
-				<thead>
-					<TableRow>
-						<TableHead>Option</TableHead>
-						<TableHead>Default</TableHead>
-						<TableHead>Behavior</TableHead>
-					</TableRow>
-				</thead>
-				<tbody>
-					{
-						options.map(([option, fallback, behavior]) => (
-							<TableRow>
-								<TableCell>
-									<code>{option}</code>
-								</TableCell>
-								<TableCell>
-									<code>{fallback}</code>
-								</TableCell>
-								<TableCell>{behavior}</TableCell>
-							</TableRow>
-						))
-					}
-				</tbody>
-			</Table>
-		</Specimen>
+		{
+			variants.map((variant) => (
+				<>
+					<Specimen label={`<Table variant="${variant}"> with two columns`} block>
+						<Table variant={variant}>
+							<thead>
+								<TableRow>
+									<TableHead>Primary command</TableHead>
+									<TableHead>Alias</TableHead>
+								</TableRow>
+							</thead>
+							<tbody>
+								{aliases.map(([command, alias]) => (
+									<TableRow>
+										<TableCell>
+											<code>{command}</code>
+										</TableCell>
+										<TableCell>
+											<code>{alias}</code>
+										</TableCell>
+									</TableRow>
+								))}
+							</tbody>
+						</Table>
+					</Specimen>
+					<Specimen label={`<Table variant="${variant}"> with three columns`} block>
+						<Table variant={variant}>
+							<thead>
+								<TableRow>
+									<TableHead>Option</TableHead>
+									<TableHead>Default</TableHead>
+									<TableHead>Behavior</TableHead>
+								</TableRow>
+							</thead>
+							<tbody>
+								{options.map(([option, fallback, behavior]) => (
+									<TableRow>
+										<TableCell>
+											<code>{option}</code>
+										</TableCell>
+										<TableCell>
+											<code>{fallback}</code>
+										</TableCell>
+										<TableCell>{behavior}</TableCell>
+									</TableRow>
+								))}
+							</tbody>
+						</Table>
+					</Specimen>
+				</>
+			))
+		}
 	</div>
 </FoundryLayout>

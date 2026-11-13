@@ -1,18 +1,14 @@
 ---
 import type { HTMLAttributes } from "astro/types";
+
 import { twMerge } from "tailwind-merge";
+import { tableCellVariants } from "./variants";
 
 type Props = HTMLAttributes<"td">;
 
 const { class: className, ...attributes } = Astro.props;
 ---
 
-<td
-	class={twMerge(
-		"border-b border-b-soot/18 px-4 py-2.5 align-top wrap-anywhere not-first:border-l not-first:border-l-soot/18",
-		"[&_code]:bg-limestone/70! [&_code]:inset-ring [&_code]:inset-ring-soot/30 [&_code]:whitespace-nowrap",
-		className
-	)}
-	{...attributes}>
+<td class={twMerge(tableCellVariants.ledger, tableCellVariants.soot, className)} {...attributes}>
 	<slot />
 </td>
