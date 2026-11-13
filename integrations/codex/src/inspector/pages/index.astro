@@ -1,0 +1,116 @@
+---
+import Button from "../../../../../docs/src/components/ui/button/Button.astro";
+import Input from "../../../../../docs/src/components/ui/input/Input.astro";
+import Separator from "../../../../../docs/src/components/ui/separator/Separator.astro";
+import TaskLink from "../components/TaskLink.astro";
+import "../panel.css";
+
+const buttonClass =
+	"max-w-full font-sans whitespace-normal wrap-anywhere focus-visible:outline-2 focus-visible:outline-current focus-visible:outline-offset-2";
+const mutedClass = "text-xs leading-relaxed text-muted-foreground wrap-anywhere";
+---
+
+<!doctype html>
+<html lang='en'>
+	<head>
+		<meta charset='utf-8' />
+		<meta name='viewport' content='width=device-width,initial-scale=1' />
+		<title>Zinn task inspector</title>
+	</head>
+	<body class='m-0 min-w-0 p-4 text-sm leading-relaxed'>
+		<header class='mb-4 flex flex-wrap items-baseline gap-x-2 gap-y-1'>
+			<strong class='text-base font-semibold'>Zinn</strong>
+			<span class={mutedClass}>Task inspector</span>
+		</header>
+
+		<form id='lookup' class='mb-3 flex min-w-0 flex-wrap items-end gap-2'>
+			<label class='flex min-w-0 basis-40 grow flex-col gap-1'>
+				<span class='text-xs font-medium'>Task key</span>
+				<Input
+					id='key'
+					aria-describedby='status'
+					placeholder='e.g. APP-1'
+					autocomplete='off'
+					spellcheck='false'
+					class='w-full min-w-0 border border-pewter bg-transparent font-sans text-sm caret-current data-deleting:caret-current focus-visible:outline-2 focus-visible:outline-current focus-visible:outline-offset-2'
+				/>
+			</label>
+			<Button id='open-task' type='submit' variant='solid' class={buttonClass} disabled>Open task</Button>
+			<Button id='refresh' variant='outline' class={buttonClass} disabled>Refresh</Button>
+		</form>
+		<p id='status' role='status' class='mb-3 empty:hidden'>Connecting to native host…</p>
+
+		<nav id='recent' aria-label='Observed tasks in this chat' class='mb-5 min-w-0'>
+			<div class='flex flex-wrap items-baseline justify-between gap-2'>
+				<h2 class='text-xs font-semibold'>Observed in this chat</h2>
+				<span id='recent-count' class={mutedClass}></span>
+			</div>
+			<p
+				id='recent-status'
+				role='status'
+				tabindex='-1'
+				class={`${mutedClass} focus-visible:outline-2 focus-visible:outline-current focus-visible:outline-offset-2`}>
+				Connecting…
+			</p>
+			<div id='recent-list' class='mt-2 flex min-w-0 flex-col gap-1'></div>
+			<Button
+				id='references-toggle'
+				aria-expanded='false'
+				aria-controls='recent-list'
+				class={`${buttonClass} mt-1 text-xs`}
+				hidden>Show all references</Button
+			>
+		</nav>
+
+		<Separator />
+		<main id='detail' aria-busy='true' class='min-w-0 py-5'>
+			<p>Waiting for the native host…</p>
+		</main>
+		<Separator />
+		<p id='store' class={`${mutedClass} mt-3`}></p>
+
+		<template id='reference-template'><TaskLink compact /></template>
+		<template id='relation-template'><TaskLink /></template>
+		<template id='separator-template'><Separator /></template>
+		<template id='task-template'>
+			<article class='flex min-w-0 flex-col gap-5'>
+				<header class='flex min-w-0 flex-col gap-2'>
+					<p data-task-key class='font-semibold wrap-anywhere'></p>
+					<h1 tabindex='-1' class='text-xl leading-snug font-semibold wrap-anywhere'></h1>
+					<dl class='flex flex-wrap gap-x-5 gap-y-2 text-xs'>
+						<div><dt class='text-muted-foreground'>Column</dt><dd data-column class='wrap-anywhere'></dd></div>
+						<div><dt class='text-muted-foreground'>Status</dt><dd data-status></dd></div>
+						<div><dt class='text-muted-foreground'>Priority</dt><dd data-priority></dd></div>
+					</dl>
+					<p data-labels class='text-xs wrap-anywhere'></p>
+				</header>
+				<div data-move></div>
+				<section class='flex min-w-0 flex-col gap-2'>
+					<h2 class='text-xs font-semibold'>Description</h2>
+					<div data-description dir='auto' class='whitespace-pre-wrap wrap-anywhere'></div>
+				</section>
+				<div data-sections class='flex min-w-0 flex-col gap-5'></div>
+				<p data-read-time class={mutedClass}></p>
+			</article>
+		</template>
+		<template id='move-template'>
+			<form class='move-controls flex min-w-0 flex-wrap items-end gap-2'>
+				<label class='flex min-w-0 basis-40 grow flex-col gap-1'>
+					<span class='text-xs font-medium'>Destination</span>
+					<select
+						class='min-h-11 w-full min-w-0 border border-pewter bg-transparent p-2.5 text-sm focus-visible:outline-2 focus-visible:outline-current focus-visible:outline-offset-2'
+						disabled></select>
+				</label>
+				<Button type='submit' variant='solid' class={buttonClass} disabled>Move task</Button>
+				<p data-feedback role='status' class={`${mutedClass} basis-full`}>Loading columns…</p>
+			</form>
+		</template>
+		<template id='state-template'>
+			<section class='flex min-w-0 flex-col items-start gap-3'>
+				<h1 tabindex='-1' class='text-lg font-semibold wrap-anywhere'></h1>
+				<p data-message class='whitespace-pre-wrap wrap-anywhere'></p>
+				<Button data-retry variant='outline' class={buttonClass}>Try again</Button>
+			</section>
+		</template>
+	</body>
+</html>

@@ -1,0 +1,19 @@
+---
+import Button from "../../../../../docs/src/components/ui/button/Button.astro";
+
+interface Props {
+	compact?: boolean;
+}
+
+const { compact = false } = Astro.props;
+---
+
+<Button
+	variant='ghost'
+	class='w-full min-w-0 items-start justify-start gap-3 border border-transparent text-left font-sans text-sm whitespace-normal focus-visible:outline-2 focus-visible:outline-current aria-[current=true]:border-pewter aria-[current=true]:bg-soot/8'>
+	<span data-key class='shrink-0 font-semibold whitespace-nowrap'></span>
+	<span class='flex min-w-0 flex-1 flex-col gap-1'>
+		<span data-title class={compact ? "truncate" : "wrap-anywhere"}></span>
+		<span data-meta class='text-xs text-muted-foreground wrap-anywhere'></span>
+	</span>
+</Button>

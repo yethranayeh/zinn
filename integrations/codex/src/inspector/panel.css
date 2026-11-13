@@ -1,0 +1,23 @@
+@import "tailwindcss" source(none);
+@import "../../../../docs/src/styles/colors.css";
+
+@source "../../../../docs/src/components/ui/button";
+@source "../../../../docs/src/components/ui/input";
+@source "../../../../docs/src/components/ui/separator";
+@source "./";
+
+@layer base {
+	:root {
+		color-scheme: light dark;
+		font-family: var(--font-sans, system-ui, sans-serif);
+		color: var(--color-text-primary, CanvasText);
+		background: var(--color-background-primary, Canvas);
+		--color-soot: var(--color-text-primary, CanvasText);
+		--color-soot-foreground: var(--color-background-primary, Canvas);
+		--color-limestone: var(--color-background-primary, Canvas);
+		--color-pewter: var(--color-border-secondary, color-mix(in srgb, currentColor 20%, transparent));
+		--color-muted-foreground: var(--color-text-secondary, CanvasText);
+		--color-bronze: var(--color-ring-primary, CanvasText);
+		--color-cinnabar: var(--color-text-danger, CanvasText);
+	}
+}

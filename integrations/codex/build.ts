@@ -10,6 +10,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { EVENTS } from "./src/hooks/observe";
 import { INSPECTOR_VERSION } from "./src/runtime";
+import { buildPanel } from "./build-panel";
 
 const root = import.meta.dir;
 export async function build(output = join(root, "dist")) {
@@ -20,12 +21,12 @@ export async function build(output = join(root, "dist")) {
   mkdirSync(join(output, ".agents/plugins"), { recursive: true });
 
   const bundledPackages = new Set<string>();
+  const bundledInputs = new Set<string>();
 
   for (const [entry, target, filename] of [
     ["hooks/hook.ts", "node", "hook.mjs"],
     ["inspector/server.ts", "node", "server.mjs"],
     ["inspector/launcher.ts", "node", "launcher.mjs"],
-    ["inspector/widget.ts", "browser", "widget.js"],
   ] as const) {
     const result = await Bun.build({
       entrypoints: [join(root, "src", entry)],
@@ -40,34 +41,34 @@ export async function build(output = join(root, "dist")) {
 
     writeFileSync(join(plugin, filename), await result.outputs[0]!.text());
     for (const input of Object.keys(result.metafile?.inputs ?? {})) {
-      if (!input.includes("node_modules/")) {
-        continue;
-      }
-
-      let directory = dirname(resolve(input));
-      while (dirname(directory) !== directory) {
-        const manifest = join(directory, "package.json");
-        if (existsSync(manifest) && JSON.parse(readFileSync(manifest, "utf8")).name) {
-          break;
-        }
-
-        directory = dirname(directory);
-      }
-      bundledPackages.add(directory);
+      bundledInputs.add(input);
     }
   }
 
-  const script = await Bun.file(join(plugin, "widget.js")).text();
-  const html = await Bun.file(join(root, "src/inspector/index.html")).text();
+  const panel = await buildPanel();
+  writeFileSync(join(plugin, "widget.html"), panel.html);
+  bundledPackages.add(dirname(panel.cssPackage));
 
-  writeFileSync(
-    join(plugin, "widget.html"),
-    html.replace(
-      "<!-- WIDGET -->",
-      () => `<script type="module">${script.replaceAll("</script", "<\\/script")}</script>`,
-    ),
-  );
-  rmSync(join(plugin, "widget.js"));
+  for (const input of panel.inputs) {
+    bundledInputs.add(input);
+  }
+
+  for (const input of bundledInputs) {
+    if (!input.includes("node_modules/")) {
+      continue;
+    }
+
+    let directory = dirname(resolve(input));
+    while (dirname(directory) !== directory) {
+      const manifest = join(directory, "package.json");
+      if (existsSync(manifest) && JSON.parse(readFileSync(manifest, "utf8")).name) {
+        break;
+      }
+
+      directory = dirname(directory);
+    }
+    bundledPackages.add(directory);
+  }
 
   const json = (path: string, value: unknown) =>
     writeFileSync(path, JSON.stringify(value, null, 2) + "\n");
