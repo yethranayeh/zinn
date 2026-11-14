@@ -118,14 +118,12 @@ const fieldClass =
 				</label>
 				<label class='flex min-w-0 flex-col gap-1'>
 					<span class='text-xs font-medium'>Priority</span>
-					<select name='priority' class={fieldClass}>
-						<option value=''>None</option>
-						<option value='low'>Low</option>
-						<option value='medium'>Medium</option>
-						<option value='high'>High</option>
-						<option value='urgent'>Urgent</option>
-					</select>
+					<select name='priority' class={fieldClass} disabled></select>
 				</label>
+				<p data-priority-feedback role='status' class={mutedClass}>Loading priorities…</p>
+				<Button data-retry-priorities variant='outline' class={`${buttonClass} self-start`} hidden
+					>Retry priorities</Button
+				>
 				<div class='flex flex-wrap gap-2'>
 					<Button type='submit' variant='solid' class={buttonClass}>Save</Button>
 					<Button data-cancel-edit variant='outline' class={buttonClass}>Cancel</Button>

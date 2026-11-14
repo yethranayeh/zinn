@@ -1,5 +1,6 @@
 import type { Settings } from "../settings";
 import type { CliReader } from "../shared/cli";
+import type { Capabilities } from "../../../../packages/cli/src/capabilities";
 import type {
   PresentedColumnTaskCount,
   PresentedTaskChange,
@@ -8,6 +9,7 @@ import type {
 import { createCliReader } from "../shared/cli";
 import { argvKeys, projectOf } from "../shared/keys";
 import { readTask } from "./task-reader";
+import { inputValueSchema } from "../../../../packages/cli/src/input";
 
 const HUMAN_ACTOR_ENVIRONMENT: NodeJS.ProcessEnv = {
   AI_AGENT: undefined,
@@ -55,6 +57,39 @@ export type TaskEdits = {
   description?: string;
   priority?: string | null;
 };
+
+export type TaskEditOptionsRead = {
+  kind: "ready" | "error";
+  priorities?: string[];
+  error?: string;
+};
+
+export async function readTaskEditOptions(
+  reader: CliReader,
+  signal?: AbortSignal,
+): Promise<TaskEditOptionsRead> {
+  const result = await reader.run<Capabilities>(["capabilities"], signal);
+  if (!result.ok) {
+    return { kind: "error", error: result.error };
+  }
+
+  const manifest = result.value;
+  const hasSupportedManifest = manifest?.manifestVersion === 1 && Array.isArray(manifest.commands);
+  const edit = hasSupportedManifest
+    ? manifest.commands.find(
+        (command) => Array.isArray(command?.path) && command.path.join(" ") === "task edit",
+      )
+    : undefined;
+  const priority = inputValueSchema.safeParse(edit?.input?.options?.priority?.value);
+  const choices =
+    priority.success && priority.data.kind === "enum" ? priority.data.choices : undefined;
+
+  if (!choices?.includes("none") || choices.some((choice) => choice === "")) {
+    return { kind: "error", error: "The configured CLI did not supply task priority choices." };
+  }
+
+  return { kind: "ready", priorities: choices.filter((choice) => choice !== "none") };
+}
 
 function normalizedTaskKey(rawKey: string) {
   const key = rawKey.trim().toUpperCase();

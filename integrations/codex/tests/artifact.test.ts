@@ -223,12 +223,17 @@ test("relocated Node artifact reads selected tasks and isolates each chat", asyn
     expect(before.find(([file]) => file === "zinn.sqlite")).toEqual(initial.find(([file]) => file === "zinn.sqlite"));
     try {
         const tools = await client.listTools();
-        expect(tools.tools.map(tool => tool.name).sort()).toEqual(["edit_task", "inspect_task", "move_task", "recent_tasks", "remember_selection", "task_columns"]);
+        expect(tools.tools.map(tool => tool.name).sort()).toEqual(["edit_task", "inspect_task", "move_task", "recent_tasks", "remember_selection", "task_columns", "task_edit_options"]);
         for (const tool of tools.tools) {
             expect((tool._meta?.ui as any).visibility).toEqual(["app"]);
         }
         expect(tools.tools.find(tool => tool.name === "inspect_task")?.annotations?.readOnlyHint).toBe(true);
         expect(tools.tools.find(tool => tool.name === "task_columns")?.annotations?.readOnlyHint).toBe(true);
+        expect(tools.tools.find(tool => tool.name === "task_edit_options")?.annotations?.readOnlyHint).toBe(true);
+        const editOptions = await client.callTool({ name: "task_edit_options", arguments: {} });
+        const manifest = context.cli(["capabilities"]);
+        const priorityChoices = manifest.commands.find((command: any) => command.path.join(" ") === "task edit").input.options.priority.value.choices;
+        expect(editOptions.structuredContent).toEqual({ kind: "ready", priorities: priorityChoices.filter((value: string) => value !== "none") });
         expect(tools.tools.find(tool => tool.name === "remember_selection")?.annotations).toMatchObject({
             readOnlyHint: false,
             destructiveHint: true,

@@ -11,7 +11,13 @@ import { z } from "zod";
 import { loadSettings, resolveSettings } from "../settings";
 import { INSPECTOR_VERSION } from "../runtime";
 import { readInspectorTask, rememberSelection } from "./selection";
-import { createHumanActionReader, editTask, moveTask, readTaskColumns } from "./task-actions";
+import {
+  createHumanActionReader,
+  editTask,
+  moveTask,
+  readTaskColumns,
+  readTaskEditOptions,
+} from "./task-actions";
 import { readRecent } from "./references";
 import { createCliReader } from "../shared/cli";
 
@@ -143,6 +149,22 @@ registerAppTool(
       structuredContent: result,
     };
   },
+);
+
+registerAppTool(
+  server,
+  "task_edit_options",
+  {
+    title: "Read task edit options",
+    description: "Read task priority choices from the configured Zinn CLI's capabilities.",
+    inputSchema: {},
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    _meta: { ui: { visibility: ["app"] } },
+  },
+  async (_args, extra) => ({
+    content: [],
+    structuredContent: { ...(await readTaskEditOptions(reader, extra.signal)) },
+  }),
 );
 
 registerAppTool(

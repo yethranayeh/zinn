@@ -1,6 +1,11 @@
 import type { RecentRead } from "./references";
 import type { InspectorRead, SelectionSave } from "./selection";
-import type { TaskColumnsRead, TaskActionRead, TaskEdits } from "./task-actions";
+import type {
+  TaskColumnsRead,
+  TaskActionRead,
+  TaskEdits,
+  TaskEditOptionsRead,
+} from "./task-actions";
 import type { PresentedTaskDetail } from "../../../../packages/cli/src/result-schemas.js";
 
 import { App, applyDocumentTheme, applyHostStyleVariables } from "@modelcontextprotocol/ext-apps";
@@ -409,14 +414,13 @@ function renderEdit(task: PresentedTaskDetail, article: HTMLElement) {
     const priority = form.elements.namedItem("priority") as HTMLSelectElement;
     const save = form.querySelector<HTMLButtonElement>("[type=submit]")!;
     const feedback = form.querySelector<HTMLElement>("[data-edit-feedback]")!;
+    const priorityFeedback = form.querySelector<HTMLElement>("[data-priority-feedback]")!;
+    const retryPriorities = form.querySelector<HTMLButtonElement>("[data-retry-priorities]")!;
+    let prioritiesReady = false;
+    let prioritiesLoading = false;
     title.value = task.title;
     description.value = task.description ?? "";
-    if (
-      task.priority !== null &&
-      ![...priority.options].some((option) => option.value === task.priority)
-    ) {
-      priority.add(new Option(task.priority, task.priority));
-    }
+    priority.add(new Option(task.priority ?? "None", task.priority ?? ""));
     priority.value = task.priority ?? "";
     function changes(): TaskEdits {
       const edits: TaskEdits = {};
@@ -426,7 +430,7 @@ function renderEdit(task: PresentedTaskDetail, article: HTMLElement) {
       if (description.value !== (task.description ?? "")) {
         edits.description = description.value;
       }
-      if (priority.value !== (task.priority ?? "")) {
+      if (prioritiesReady && priority.value !== (task.priority ?? "")) {
         edits.priority = priority.value === "" ? null : priority.value;
       }
       return edits;
@@ -434,7 +438,49 @@ function renderEdit(task: PresentedTaskDetail, article: HTMLElement) {
     draft = { form, changes };
     const updateSave = () => {
       save.disabled = saving || Object.keys(changes()).length === 0;
+      priority.disabled = saving || !prioritiesReady;
+      retryPriorities.disabled = saving || prioritiesLoading;
     };
+    async function loadPriorities() {
+      if (prioritiesLoading || saving) {
+        return;
+      }
+      prioritiesLoading = true;
+      priorityFeedback.textContent = "Loading priorities…";
+      updateSave();
+      try {
+        const response = await app.callServerTool({ name: "task_edit_options", arguments: {} });
+        if (disposed || draft?.form !== form) {
+          return;
+        }
+        const result = response.structuredContent as TaskEditOptionsRead | undefined;
+        if (response.isError || result?.kind !== "ready" || !result.priorities) {
+          throw new Error(result?.error ?? "Could not read task priority choices.");
+        }
+        priority.replaceChildren(new Option("None", ""));
+        for (const value of result.priorities) {
+          priority.add(new Option(value.charAt(0).toUpperCase() + value.slice(1), value));
+        }
+        if (task.priority !== null && !result.priorities.includes(task.priority)) {
+          priority.add(new Option(task.priority, task.priority));
+        }
+        priority.value = task.priority ?? "";
+        prioritiesReady = true;
+        priorityFeedback.textContent = "";
+        retryPriorities.hidden = true;
+      } catch (error) {
+        if (!disposed && draft?.form === form) {
+          priorityFeedback.textContent = `${String(error)} Priority is kept unchanged.`;
+          retryPriorities.hidden = false;
+        }
+      } finally {
+        prioritiesLoading = false;
+        if (!disposed && draft?.form === form) {
+          updateSave();
+        }
+      }
+    }
+    retryPriorities.addEventListener("click", () => void loadPriorities());
     form.addEventListener("input", updateSave);
     form.addEventListener("change", updateSave);
     form.querySelector("[data-cancel-edit]")!.addEventListener("click", () => {
@@ -460,6 +506,8 @@ function renderEdit(task: PresentedTaskDetail, article: HTMLElement) {
     article.querySelector<HTMLElement>("[data-move]")!.hidden = true;
     updateSave();
     title.focus();
+
+    void loadPriorities();
   });
 }
 
