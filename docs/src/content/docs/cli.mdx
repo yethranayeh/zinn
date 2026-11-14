@@ -28,6 +28,7 @@ Use this page for command behavior, shared input rules, and practical examples. 
 - [Task comments](#task-comments)
 - [Activity](#activity)
   - [Who am I?](#who-am-i)
+- [Check for problems](#check-for-problems)
 - [Agent skill](#agent-skill)
 - [Command aliases](#command-aliases)
 - [Help](#help)
@@ -687,6 +688,42 @@ ZINN_CLIENT='rex/0.9 zinn-opencode:panel/0.3.0' zinn whoami --json
 For example, CLI version `0.44.0` records `zinn-cli/0.44.0 rex/0.9 zinn-opencode:panel/0.3.0` for that declaration. With no declaration, it records `zinn-cli/0.44.0`.
 
 To format a declaration, see the [client chain convention](/docs/core#client-chain-convention). Client declarations identify the calling programs and are not authenticated identities. The chain is also kept in the `actor.client` field of each [local telemetry record](/docs/data#record-fields).
+
+## Check for problems
+
+`zinn doctor` checks the settings and database Zinn would use, and the installed [agent skill](/docs/installation#skill), and suggests a fix for each finding. It does not change anything. SQLite may perform its normal file housekeeping while it reads the database.
+
+```sh title="Check the store"
+zinn doctor
+zinn doctor --json
+```
+
+The checks, in order:
+
+- `settings`: every settings file Zinn reads is usable.
+- `store_folder`: the selected store folder exists. A default folder that does not exist yet is fine, because Zinn creates it on the first change.
+- `database`: the database can be read and its schema version is one this Zinn supports. A missing database is fine, and an older one is upgraded by the next change or by `zinn migrate`.
+- `integrity`: SQLite's integrity check passes.
+- `foreign_keys`: every row link points to an existing row.
+- `search_index`: the [search index](#search-tasks) matches the tasks and comments it was built from.
+- `agent_skill`: the skill installed at `~/.agents/skills/zinn/SKILL.md` was reviewed for the same CLI version as the skill bundled with this CLI. No installed skill is fine.
+
+The `search_index` and `agent_skill` findings are warnings. Their remedies are `zinn reindex` and `zinn skill install`. Every other finding is a problem. Database findings suggest [restoring a backup](/docs/data#restore-a-database), or upgrading Zinn when the database has a newer schema version (see [Upgrade a database](/docs/data#upgrade-a-database)).
+
+A check that cannot run because an earlier one failed is left out. After a `settings` problem only `settings` and `agent_skill` are listed. `integrity` and `foreign_keys` run when the database has tables, and `search_index` runs only when the database has the current schema version.
+
+The checks print on stdout. The command exits with code `0` when every check is ok and `1` when any is a warning or problem. Invalid arguments are a normal error: nothing on stdout and the error on stderr, or an error document with `--json`.
+
+With `--json`, `zinn doctor` prints `{ "ok": boolean, "checks": [...] }`. `ok` is `true` only when every listed check is ok. Each check has an `id`, a `status` of `ok`, `warning` or `problem`, a `message`, and a `remedy`, which is `null` for an ok check. Read `ok` or the exit code, because message wording is for people. A search index warning looks like this inside `checks`:
+
+```json
+{
+	"id": "search_index",
+	"status": "warning",
+	"message": "The search index differs from the tasks. Tasks without an entry: 1. Entries out of date: 0. Entries for no task or repeating one: 0",
+	"remedy": "Rebuild the search index with `zinn reindex`"
+}
+```
 
 ## Agent skill
 

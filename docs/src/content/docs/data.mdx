@@ -86,7 +86,7 @@ Zinn keeps local usage records. They are **on** by default, but nothing leaves y
 While telemetry is on, Zinn records every run, whether it succeeds or fails, including help requests and a bare `zinn`. Two kinds of run leave no record:
 
 - `--version` or `-v` as the only argument.
-- A successful `whoami`, `capabilities` or `info`. A failed run of these commands, and a request for their help, is recorded.
+- A successful `whoami`, `capabilities`, `info` or `doctor`, including a `doctor` that reports findings. A failed run of these commands, and a request for their help, is recorded.
 
 Recording never changes a command's output or exit code. When a record cannot be written, Zinn skips it, and the `ZINN_DEBUG=1` output names the problem on a line starting with `::telemetry`.
 
