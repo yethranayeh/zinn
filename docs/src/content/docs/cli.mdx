@@ -84,12 +84,22 @@ EOF
 zinn task comment create MDR-1 --text-file notes.md
 ```
 
+To read only part of a file, pipe the slice into `-`. `tail` and `sed` cover the common cases:
+
+```sh title="Read part of a file"
+tail -n 20 build.log | zinn task comment create MDR-1 --text-file -
+sed -n '40,80p' notes.md | zinn task edit MDR-1 --description-file -
+sed -n '/^--- FAIL/,/^--- PASS/p' test.log | zinn task comment create MDR-1 --text-file -
+```
+
+Process substitution such as `<(tail -n 20 build.log)` is not a regular file and is refused, so pass the slice through a pipe.
+
 - A command takes one `-`, and refuses it when stdin is a terminal.
 - The path must be a regular file or `-`. A directory or another special file, such as a named pipe, is refused before anything is read.
 - The text must be UTF-8. A leading byte order mark is dropped; other encodings, such as UTF-16, and text containing a NUL character fail.
 - Trailing line breaks are dropped, as `$(cat file)` does, so the stored text ends with the last character of the last line.
 - Empty or blank input fails. To clear a description, use `--description ''`.
-- The 1 MiB limit applies to the bytes read, so larger input fails before it is stored.
+- The 1 MiB limit applies to the text Zinn reads, not the size of the source file. A slice that fits is accepted even when the source file is larger. Input over the limit fails before it is stored.
 - The inline flag and its file flag cannot be combined. `--append` and `--replacing` work with either; the `--replacing <old>` text stays inline.
 - A failed read changes nothing.
 
