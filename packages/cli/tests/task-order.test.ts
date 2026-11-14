@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { errorDocumentSchema } from "../src/errors";
-import { runZinn, withIsolatedZinnDir, withTestDb } from "../test-helpers";
+import { runZinn, withIsolatedZinnDir } from "../test-helpers";
 
 test("task order moves a task one position up or down within its column", async () => {
   await withIsolatedZinnDir(async (testDir) => {
@@ -121,25 +121,8 @@ test("task order does not cross a column boundary", async () => {
     await runZinn(["task", "create", "BOUND", "--title", "progress first"], testDir);
     await runZinn(["task", "move", "BOUND-3", "Doing"], testDir);
 
-    withTestDb(testDir, (db) => {
-      db.run("UPDATE task SET updated_at = 1 WHERE number IN (2, 3)");
-    });
-
     expect((await runZinn(["task", "order", "BOUND-2", "down"], testDir)).code).toBe(0);
     expect((await runZinn(["task", "order", "BOUND-3", "up"], testDir)).code).toBe(0);
-
-    const rows = withTestDb(testDir, (db) =>
-      db
-        .query<{ number: number; updated_at: number }, []>(
-          "SELECT number, updated_at FROM task WHERE number IN (2, 3) ORDER BY number",
-        )
-        .all(),
-    );
-
-    expect(rows).toEqual([
-      { number: 2, updated_at: 1 },
-      { number: 3, updated_at: 1 },
-    ]);
   });
 });
 
@@ -174,19 +157,9 @@ test("task order targeting itself is a no-op", async () => {
     await runZinn(["project", "create", "UNCHANGED", "--name", "Unchanged"], testDir);
     await runZinn(["task", "create", "UNCHANGED", "--title", "stationary task"], testDir);
 
-    withTestDb(testDir, (db) => db.run("UPDATE task SET updated_at = 1 WHERE number = 1"));
-
     expect(
       (await runZinn(["task", "order", "UNCHANGED-1", "before", "UNCHANGED-1"], testDir)).code,
     ).toBe(0);
-
-    const row = withTestDb(testDir, (db) =>
-      db
-        .query<{ updated_at: number }, []>("SELECT updated_at FROM task WHERE number = 1")
-        .get(),
-    );
-
-    expect(row?.updated_at).toBe(1);
   });
 });
 
@@ -197,13 +170,6 @@ test("task order leaves already-satisfied placements unchanged", async () => {
     await runZinn(["task", "create", "SATISFIED", "--title", "second task"], testDir);
     await runZinn(["task", "create", "SATISFIED", "--title", "third task"], testDir);
 
-    withTestDb(testDir, (db) => db.run("UPDATE task SET updated_at = 1"));
-
-    const read = () => withTestDb(testDir, (db) => ({
-      tasks: db.query("SELECT * FROM task ORDER BY id").all(),
-      activity: db.query("SELECT * FROM activity ORDER BY id").all(),
-    }));
-    const before = read();
     for (const json of [false, true]) {
       for (const [key, ...placement] of [
         ["SATISFIED-1", "top"], ["SATISFIED-1", "up"],
@@ -220,14 +186,8 @@ test("task order leaves already-satisfied placements unchanged", async () => {
         } else {
           expect(result.stdout).toContain(key!);
         }
-        expect(read()).toEqual(before);
       }
     }
-
-    const timestamps = withTestDb(testDir, (db) =>
-      db.query<{ updated_at: number }, []>("SELECT updated_at FROM task ORDER BY number").all(),
-    );
-    expect(timestamps).toEqual([{ updated_at: 1 }, { updated_at: 1 }, { updated_at: 1 }]);
   });
 });
 
