@@ -8,7 +8,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { packageIntegration } from "../package";
 import { INSPECTOR_VERSION } from "../src/runtime";
 import { EVENTS } from "../src/hooks/observe";
-import { CODEX_CLIENT } from "../src/shared/cli";
+import { CODEX_CLIENT, MINIMUM_CLI_VERSION } from "../src/shared/cli";
 import { persist, type Observation } from "../src/shared/feed";
 import { openDatabase } from "../../../packages/core/src/sqlite/bun.ts";
 import { latestVersion, MIGRATIONS } from "../../../packages/core/src/migrations/registry.ts";
@@ -161,7 +161,7 @@ test("closing during store discovery reaps its owned child", async () => {
     const marker = join(context.directory, "discovery-child.json");
     const script = join(context.directory, "pending-discovery.mjs");
     writeFileSync(script, `import {writeFileSync} from 'node:fs';
-if (process.argv[2] === '--version') { console.log('0.43.0'); }
+if (process.argv[2] === '--version') { console.log(${JSON.stringify(MINIMUM_CLI_VERSION)}); }
 else { process.on('SIGTERM', () => {}); writeFileSync(${JSON.stringify(marker)}, JSON.stringify({pid:process.pid})); setInterval(() => {}, 1000); }`);
     const config = join(context.directory, "pending-discovery.json");
     writeFileSync(config, JSON.stringify({ cli: ["node", script] }));
@@ -500,7 +500,7 @@ test("relocated panel permits an ordinary upgrade and stays responsive during a 
     const script = join(context.directory, "slow-cli.mjs");
     const delayMs = 1800;
     writeFileSync(script, `import {writeFileSync} from 'node:fs';
-if (process.argv[2] === '--version') { console.log('0.43.0'); }
+if (process.argv[2] === '--version') { console.log(${JSON.stringify(MINIMUM_CLI_VERSION)}); }
 else { writeFileSync(${JSON.stringify(started)}, 'started'); setTimeout(() => import(${JSON.stringify(pathToFileURL(cliPath).href)}), ${delayMs}); }`);
     const config = join(context.directory, "slow-config.json");
     writeFileSync(config, JSON.stringify({ ...context.settings, store, cli: ["node", script] }));
@@ -704,7 +704,7 @@ test("structured task and project misses avoid a second CLI read", async () => {
         const error = JSON.stringify({ error: { code: value.code, details: { entity: value.entity }, message: "Fixture failure" } });
         writeFileSync(script, `import {appendFileSync} from 'node:fs';
 const args = process.argv.slice(2); appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');
-if (args[0] === '--version') { console.log('0.43.0'); }
+if (args[0] === '--version') { console.log(${JSON.stringify(MINIMUM_CLI_VERSION)}); }
 else { process.stderr.write(${JSON.stringify(value.code === "malformed" ? "invalid json" : error)}); process.exitCode = 1; }`);
         const config = join(context.directory, `failure-${index}.json`);
         writeFileSync(config, JSON.stringify({ ...context.settings, cli: ["node", script] }));
@@ -724,7 +724,7 @@ test("panel cancellation and shutdown stop the owned CLI even when SIGTERM is ig
     const marker = join(context.directory, "owned-child.json");
     const script = join(context.directory, "pending-cli.mjs");
     writeFileSync(script, `import {writeFileSync} from 'node:fs';
-if (process.argv[2] === '--version') { console.log('0.43.0'); }
+if (process.argv[2] === '--version') { console.log(${JSON.stringify(MINIMUM_CLI_VERSION)}); }
 else { process.on('SIGTERM', () => {}); writeFileSync(${JSON.stringify(marker)}, JSON.stringify({pid:process.pid})); setInterval(() => {}, 1000); }`);
     const config = join(context.directory, "pending-config.json");
     writeFileSync(config, JSON.stringify({ ...context.settings, cli: ["node", script] }));
@@ -781,7 +781,7 @@ test("panel enforces CLI output bounds and reaps the child", async () => {
     const marker = join(context.directory, "oversized-child.json");
     const script = join(context.directory, "oversized-cli.mjs");
     writeFileSync(script, `import {writeFileSync} from 'node:fs';
-if (process.argv[2] === '--version') { console.log('0.43.0'); }
+if (process.argv[2] === '--version') { console.log(${JSON.stringify(MINIMUM_CLI_VERSION)}); }
 else { writeFileSync(${JSON.stringify(marker)}, JSON.stringify({pid:process.pid})); process.stdout.write('x'.repeat(8 * 1024 * 1024 + 1)); setInterval(() => {}, 1000); }`);
     const config = join(context.directory, "oversized-config.json");
     writeFileSync(config, JSON.stringify({ ...context.settings, cli: ["node", script] }));

@@ -9,7 +9,7 @@ import type { HookPayload } from "../src/hooks/types";
 import type { Settings } from "../src/settings";
 import { readFeed, sessionDirectory, MAX_EVENTS, MAX_EVENT_BYTES, MAX_RECENT_KEYS, persist, type Observation } from "../src/shared/feed";
 import { readRecent } from "../src/inspector/references";
-import { CODEX_CLIENT, createCliReader, HOOK_VERIFICATION_BUDGET_MS } from "../src/shared/cli";
+import { CODEX_CLIENT, createCliReader, HOOK_VERIFICATION_BUDGET_MS, MINIMUM_CLI_VERSION } from "../src/shared/cli";
 import { loadSettings } from "../src/settings";
 import { argvKeys, keyCandidates } from "../src/shared/keys";
 import { cliPath, fixture, inspectStore, seedOlderStore, traceHook } from "./helpers";
@@ -165,7 +165,7 @@ test("CLI children declare the Codex client after any inherited chain", async ()
     const script = join(context.directory, "client-chain.mjs");
     writeFileSync(script, `import {writeFileSync} from 'node:fs';
 const args = process.argv.slice(2);
-if (args[0] === '--version') { console.log('0.43.0'); }
+if (args[0] === '--version') { console.log(${JSON.stringify(MINIMUM_CLI_VERSION)}); }
 else { writeFileSync(${JSON.stringify(log)}, process.env.ZINN_CLIENT ?? 'unset'); console.log('[]'); }`);
     const cases: Array<[NodeJS.ProcessEnv, string]> = [
         [{ ZINN_CLIENT: undefined }, CODEX_CLIENT],
@@ -301,7 +301,7 @@ test.skipIf(process.platform === "win32")("inherited relative stores stay unknow
     }
 });
 test("observer refuses unsupported CLI versions before database verification", () => {
-    for (const [index, version] of ["0.42.0", "0.42.0-dev", "0.43.0-dev", "0.44.0-rc.1", "00.44.0-dev", "unknown"].entries()) {
+    for (const [index, version] of ["0.42.0", "0.42.0-dev", "0.43.0", "0.43.1", "0.43.0-dev", "0.44.0-dev", "0.44.0-rc.1", "00.44.0-dev", "unknown"].entries()) {
         const sentinel = join(context.directory, `unexpected-store-open-${index}`);
         const executable = join(context.directory, `old-cli-${index}.mjs`);
         writeFileSync(executable, `import {writeFileSync} from 'node:fs'; if (process.argv[2] === '--version') { console.log(${JSON.stringify(version)}); } else { writeFileSync(${JSON.stringify(sentinel)}, 'unexpected'); }`);
@@ -314,7 +314,7 @@ test("observer refuses unsupported CLI versions before database verification", (
     }
 });
 test("observer verifies references with stable releases and newer canonical development builds", () => {
-    for (const [index, version] of ["0.43.0", "0.43.1-dev", "0.44.0-dev", "1.0.0-dev"].entries()) {
+    for (const [index, version] of ["0.44.0", "0.44.1-dev", "0.45.0-dev", "1.0.0-dev"].entries()) {
         const executable = join(context.directory, `supported-cli-${index}.mjs`);
         writeFileSync(executable, `import {spawnSync} from 'node:child_process';
 if (process.argv[2] === '--version') { console.log(${JSON.stringify(version)}); }
@@ -346,7 +346,7 @@ test("optional verification skips non-current and unavailable preflight results"
         const script = join(context.directory, `preflight-${state}.mjs`);
         writeFileSync(script, `import {appendFileSync} from 'node:fs';
 const args = process.argv.slice(2); appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');
-if (args[0] === '--version') { console.log('0.43.0'); }
+if (args[0] === '--version') { console.log(${JSON.stringify(MINIMUM_CLI_VERSION)}); }
 else { console.log(JSON.stringify({database:{state:${JSON.stringify(state)},error:${state === "unavailable" ? "'fixture failure'" : "null"}}})); }`);
         observe({ ...base, session_id: `preflight-${state}`, hook_event_name: "Stop", last_assistant_message: "APP-1" }, { ...context.settings, cli: ["node", script] });
         expect(readFileSync(log, "utf8").trim().split("\n").map(line => JSON.parse(line))).toEqual([["--version"], ["info", "--json"]]);
@@ -358,7 +358,7 @@ test("hook verification shares one deadline across version, info and task lookup
     const script = join(context.directory, "slow-verification.mjs");
     writeFileSync(script, `import {appendFileSync} from 'node:fs';
 const args = process.argv.slice(2); appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');
-setTimeout(() => { if (args[0] === '--version') { console.log('0.43.0'); }
+setTimeout(() => { if (args[0] === '--version') { console.log(${JSON.stringify(MINIMUM_CLI_VERSION)}); }
 else if (args[0] === 'info') { console.log(JSON.stringify({database:{state:'current',error:null}})); }
 else { console.log('[]'); } }, 600);`);
     const began = performance.now();
@@ -380,7 +380,7 @@ test("reference timeout diagnostics identify the interrupted CLI call", () => {
         writeFileSync(script, `const args = process.argv.slice(2);
 const operation = args[0] === 'task' ? args.slice(0, 2).join(' ') : args[0];
 const reply = () => {
-    if (args[0] === '--version') { console.log('0.43.0'); }
+    if (args[0] === '--version') { console.log(${JSON.stringify(MINIMUM_CLI_VERSION)}); }
     else if (args[0] === 'info') { console.log(JSON.stringify({database:{state:'current',error:null}})); }
     else { console.log(JSON.stringify([{key:'APP-1'}])); }
 };
@@ -473,7 +473,7 @@ test("default-store discovery shares the observer deadline", () => {
     const log = join(context.directory, "default-budget.jsonl");
     writeFileSync(script, `import {appendFileSync} from 'node:fs';
 const args = process.argv.slice(2); appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');
-setTimeout(() => { if (args[0] === '--version') { console.log('0.43.0'); }
+setTimeout(() => { if (args[0] === '--version') { console.log(${JSON.stringify(MINIMUM_CLI_VERSION)}); }
 else { console.log(JSON.stringify({storage:{directory:${JSON.stringify(context.settings.store)},error:null},database:{state:'current',error:null}})); } }, 600);`);
     const config = join(context.directory, "default-budget-config.json");
     const { store: _store, ...options } = context.settings;

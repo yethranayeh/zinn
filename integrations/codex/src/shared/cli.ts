@@ -25,7 +25,7 @@ const VERSION_TIMEOUT_MS = 1500;
 const CLI_OUTPUT_BYTES = 8 * 1024 * 1024;
 const TERMINATION_GRACE_MS = 250;
 
-export const MINIMUM_CLI_VERSION = "0.43.0";
+export const MINIMUM_CLI_VERSION = "0.44.0";
 export const HOOK_VERIFICATION_BUDGET_MS = 1500;
 export const CODEX_CLIENT = `zinn-codex/${INSPECTOR_VERSION}`;
 
