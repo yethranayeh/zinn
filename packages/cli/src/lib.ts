@@ -3,6 +3,7 @@ import type { InputForm, InputOptions, InputOption } from "./input.js";
 import type { ErrorCode, ErrorDetails } from "./errors.js";
 
 import { basename } from "node:path";
+import { once } from "node:events";
 import { parseArgs } from "node:util";
 import { createInterface } from "node:readline/promises";
 import { z } from "zod";
@@ -119,7 +120,11 @@ export function output<T>(data: T, transformToString: (data: T) => string) {
  * Prints items as they arrive for a command that keeps running. JSON mode prints one document per line.
  * It writes to the stream itself, whose error event reports a closed pipe under Node and Bun alike.
  */
-export function outputStream<T>(items: Array<T>, transformToString: (items: Array<T>) => string) {
+export async function outputStream<T>(
+  items: Array<T>,
+  transformToString: (items: Array<T>) => string,
+  signal: AbortSignal,
+) {
   if (items.length === 0) {
     return;
   }
@@ -129,7 +134,9 @@ export function outputStream<T>(items: Array<T>, transformToString: (items: Arra
       ? items.map((item) => JSON.stringify(item)).join("\n")
       : transformToString(items);
 
-  process.stdout.write(`${text}\n`);
+  if (!process.stdout.write(`${text}\n`)) {
+    await once(process.stdout, "drain", { signal });
+  }
 }
 
 /** Includes change data in JSON and adds a stderr note for each unchanged object */

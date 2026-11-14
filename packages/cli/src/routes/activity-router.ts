@@ -112,6 +112,7 @@ const activityInputs = {
         members: ["option:project", "option:task"],
       },
       { kind: "exclusive", members: ["option:follow", "option:limit"] },
+      { kind: "exclusive", members: ["option:follow", "option:starting-after"] },
     ],
     notes: [
       "With --follow, the command prints activity committed after it starts, oldest first, and runs until stopped.",
@@ -151,7 +152,7 @@ export const activityRouter = {
       validateUniqueOptions(tokens, activityInputs.list.options);
       validatePositionals(positionals, activityInputs.list.forms[0]);
 
-      const [selectorConstraint, deletedHistoryConstraint, followConstraint] =
+      const [selectorConstraint, deletedHistoryConstraint, ...followConstraints] =
         activityInputs.list.constraints;
       const optionInputs = getOptionInputs(values);
 
@@ -171,8 +172,11 @@ export const activityRouter = {
         });
       }
 
-      if (violatesConstraint(followConstraint, optionInputs)) {
-        quit("--limit cannot be used with --follow", undefined, { argument: "--limit" });
+      for (const constraint of followConstraints) {
+        if (violatesConstraint(constraint, optionInputs)) {
+          const argument = constraint.members[1].replace("option:", "--");
+          quit(`${argument} cannot be used with --follow`, undefined, { argument });
+        }
       }
 
       const limit = parseListLimit(values.limit);
@@ -205,7 +209,6 @@ export const activityRouter = {
         changed: values.changed?.map(parseChangedFilter),
         since: parseTimestampInput(values.since, "--since"),
         until: parseTimestampInput(values.until, "--until"),
-        startingAfter: values["starting-after"],
       };
       const formatEvents = (events: Array<Activity>) =>
         formatActivityList(presentActivities(events, selection));
@@ -213,14 +216,14 @@ export const activityRouter = {
       if (values.follow === true) {
         const follower = readSelectedActivity(values, () => activity.follow(filters));
 
-        return followUntilStopped(() => {
+        return followUntilStopped(async (signal) => {
           const polled = readSelectedActivity(values, () => follower.poll());
 
           if ("stopped" in polled) {
             const reason =
               polled.stopped === "file_replaced"
                 ? `The database file at ${polled.databasePath} was replaced or removed`
-                : `The database at ${polled.databasePath} was restored, migrated or reindexed`;
+                : `The database schema at ${polled.databasePath} changed`;
 
             throw new CliError(
               `${reason}, so following stopped. Run the command again to follow new activity.`,
@@ -229,11 +232,13 @@ export const activityRouter = {
             );
           }
 
-          outputStream(polled.events, formatEvents);
+          await outputStream(polled.events, formatEvents, signal);
         });
       }
 
-      const page = readSelectedActivity(values, () => activity.getAll({ ...filters, limit }));
+      const page = readSelectedActivity(values, () =>
+        activity.getAll({ ...filters, limit, startingAfter: values["starting-after"] }),
+      );
 
       output(page.events, formatEvents);
       if (page.nextCursor !== undefined) {
@@ -295,8 +300,9 @@ Both bounds are inclusive. --until must be at or after --since.
 
 --follow prints only activity committed after it starts, oldest first, and the
 filters apply to it. It ends on Ctrl-C, once its output is closed, and with an
-error when the database is restored, migrated, reindexed or its file replaced.
---follow cannot be used with --limit.
+error when the database schema changes, including a restore, migration or
+reindex, or when its file is replaced or removed.
+--follow cannot be used with --limit or --starting-after.
 
 Use activity view <activity-id> for complete recorded changes.
 With --json, return an array of full activity records.

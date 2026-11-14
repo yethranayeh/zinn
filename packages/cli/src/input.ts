@@ -201,7 +201,7 @@ export function generateInputUsage(input: CommandInput): string[] {
   const choice = (alternatives: readonly string[], isRequired: boolean) =>
     isRequired ? `(${alternatives.join("|")})` : `[${alternatives.join("|")}]`;
 
-  return input.forms.map((form) => {
+  return input.forms.flatMap((form) => {
     const words = new Map([
       ...form.positionals.map(
         (positional, index) =>
@@ -241,22 +241,48 @@ export function generateInputUsage(input: CommandInput): string[] {
       }
     }
 
-    for (const constraint of input.constraints) {
-      const hasEveryMemberWord =
-        constraint.kind === "exclusive" && constraint.members.every((member) => words.has(member));
+    const exclusiveGroups = input.constraints
+      .filter((constraint) => constraint.kind === "exclusive")
+      .map((constraint) => constraint.members)
+      .filter((members) => members.every((member) => words.has(member)));
 
-      if (!hasEveryMemberWord) {
-        continue;
+    function renderChoices(remaining: Map<string, string>): string[] {
+      const groups = exclusiveGroups
+        .map((members) => members.filter((member) => remaining.has(member)))
+        .filter((members) => members.length > 1);
+      const overlappingMember = groups
+        .flat()
+        .find((member) => groups.filter((members) => members.includes(member)).length > 1);
+
+      // Separate usage lines preserve combinations allowed by overlapping exclusions.
+      if (overlappingMember !== undefined) {
+        const withoutMember = new Map(remaining);
+        withoutMember.delete(overlappingMember);
+
+        const withMember = new Map(remaining);
+        withMember.set(overlappingMember, remaining.get(overlappingMember)!.slice(1, -1));
+
+        for (const members of groups.filter((members) => members.includes(overlappingMember))) {
+          for (const member of members) {
+            if (member !== overlappingMember) {
+              withMember.delete(member);
+            }
+          }
+        }
+        return [...renderChoices(withoutMember), ...renderChoices(withMember)];
       }
 
-      const alternatives = constraint.members.map((member) => words.get(member)!.slice(1, -1));
-      words.set(constraint.members[0]!, choice(alternatives, isRequiredChoice(constraint.members)));
-
-      for (const member of constraint.members.slice(1)) {
-        words.delete(member);
+      for (const members of groups) {
+        const alternatives = members.map((member) => remaining.get(member)!.slice(1, -1));
+        remaining.set(members[0]!, choice(alternatives, isRequiredChoice(members)));
+        for (const member of members.slice(1)) {
+          remaining.delete(member);
+        }
       }
+      return [[...remaining.values()].join(" ")];
     }
-    return [...words.values()].join(" ");
+
+    return renderChoices(words);
   });
 }
 

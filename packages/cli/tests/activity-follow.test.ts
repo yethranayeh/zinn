@@ -357,24 +357,30 @@ test("moving the database file away ends a follower with an error naming the dat
   });
 }, CASE_TIMEOUT_MS);
 
-test("--limit with --follow is refused before anything is followed", async () => {
+test("pagination flags with --follow are refused and ordinary listing can combine them", async () => {
   await withIsolatedZinnDir(async (dir) => {
     await zinn(dir, ["project", "create", "APP"]);
-    for (const mode of [[], ["--json"]]) {
-      const result = await runProcessAsync(
-        [process.execPath, CLI_PATH, "activity", "list", "--follow", "--limit", "1", ...mode],
-        { env: environment(dir), cwd: dir, timeoutMs: 20_000 },
-      );
+    await createTask(dir, "Newest event");
+    const events = await zinn(dir, ["activity", "list"]);
+    const page = await zinn(dir, ["activity", "list", "--limit", "1", "--starting-after", events[0].id]);
+    expect(page.map((event: { id: string }) => event.id)).toEqual([events[1].id]);
+    for (const [flag, value] of [["--limit", "1"], ["--starting-after", events[0].id]]) {
+      for (const mode of [[], ["--json"]]) {
+        const result = await runProcessAsync(
+          [process.execPath, CLI_PATH, "activity", "list", "--follow", flag, value, ...mode],
+          { env: environment(dir), cwd: dir, timeoutMs: 20_000 },
+        );
 
-      expect(result.code).toBe(1);
-      expect(result.stdout).toBe("");
-      if (mode.length > 0) {
-        const { error } = errorDocumentSchema.parse(JSON.parse(result.stderr));
-        expect(error.code).toBe("invalid_input");
-        expect(error.details?.argument).toBe("--limit");
-      } else {
-        expect(result.stderr).toContain("--limit");
-        expect(result.stderr).toContain("--follow");
+        expect(result.code).toBe(1);
+        expect(result.stdout).toBe("");
+        if (mode.length > 0) {
+          const { error } = errorDocumentSchema.parse(JSON.parse(result.stderr));
+          expect(error.code).toBe("invalid_input");
+          expect(error.details?.argument).toBe(flag);
+        } else {
+          expect(result.stderr).toContain(flag);
+          expect(result.stderr).toContain("--follow");
+        }
       }
     }
   });

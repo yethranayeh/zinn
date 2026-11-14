@@ -12,27 +12,48 @@ const CLOSED_PIPE_CODE = "EPIPE";
  * Rejects with what poll throws, which is how poll ends the command.
  * An interrupt ends the process by its signal, as it ends a command that handles no signal.
  */
-export function followUntilStopped(poll: () => void) {
+export function followUntilStopped(poll: (signal: AbortSignal) => void | Promise<void>) {
   return new Promise<void>((resolve, reject) => {
-    const timer = setInterval(() => {
-      try {
-        poll();
-      } catch (error) {
-        clearInterval(timer);
-        reject(error);
-      }
-    }, FOLLOW_POLL_INTERVAL_MS);
+    const stopped = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
 
-    process.once(INTERRUPT_SIGNAL, () => {
-      clearInterval(timer);
+    function stopPolling() {
+      clearTimeout(timer);
+      stopped.abort();
+      process.off(INTERRUPT_SIGNAL, interrupt);
+    }
+
+    async function pollOnce() {
+      try {
+        await poll(stopped.signal);
+      } catch (error) {
+        if (!stopped.signal.aborted) {
+          stopPolling();
+          reject(error);
+        }
+        return;
+      }
+
+      if (!stopped.signal.aborted) {
+        timer = setTimeout(pollOnce, FOLLOW_POLL_INTERVAL_MS);
+      }
+    }
+
+    function interrupt() {
+      stopPolling();
       finishRun();
       // The listener is gone, so the signal now ends the process and the shell sees an interrupt.
       process.kill(process.pid, INTERRUPT_SIGNAL);
-    });
+    }
+
+    process.once(INTERRUPT_SIGNAL, interrupt);
 
     // Stays attached, so a write already on its way to the closed pipe cannot crash the process.
     process.stdout.on("error", (error: NodeJS.ErrnoException) => {
-      clearInterval(timer);
+      if (stopped.signal.aborted) {
+        return;
+      }
+      stopPolling();
 
       if (error.code === CLOSED_PIPE_CODE) {
         resolve();
@@ -40,5 +61,7 @@ export function followUntilStopped(poll: () => void) {
         reject(error);
       }
     });
+
+    timer = setTimeout(pollOnce, FOLLOW_POLL_INTERVAL_MS);
   });
 }

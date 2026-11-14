@@ -8,6 +8,7 @@ import { routes } from "./routes/routes.js";
 import { parseRoutes } from "./routes/router.js";
 import {
   generateCommandUsage,
+  generateInputUsage,
   getOptionInputs,
   violatesConstraint,
   type CommandInput,
@@ -70,6 +71,26 @@ test("generated syntax keeps braces for literal words; a required choice of flag
   expect(generateCommandUsage(commentCreate.command, commentCreate.input)).toContain(
     "(--text <text>|--text-file <path>)",
   );
+});
+
+test("overlapping follow exclusions preserve pagination in a separate usage form", () => {
+  const input = routes.activity.list.input;
+  const forms = generateInputUsage(input);
+  const listing = forms.filter((form) => !form.includes("--follow"));
+  const following = forms.filter((form) => form.includes("--follow"));
+  expect(listing).toHaveLength(1);
+  expect(listing[0]).toContain("[--limit <n>] [--starting-after <id>]");
+  expect(following).toHaveLength(1);
+  expect(following[0]).not.toContain("--limit");
+  expect(following[0]).not.toContain("--starting-after");
+  expect(following[0]).not.toContain("[--follow]");
+
+  for (const pagination of ["limit", "starting-after"]) {
+    const supplied = getOptionInputs({ follow: true, [pagination]: "value" });
+    expect(input.constraints.some((constraint) => violatesConstraint(constraint, supplied))).toBe(true);
+  }
+  const listingInputs = getOptionInputs({ limit: "1", "starting-after": "value" });
+  expect(input.constraints.some((constraint) => violatesConstraint(constraint, listingInputs))).toBe(false);
 });
 
 test("every declared singular option rejects repetition before storage access", async () => {
