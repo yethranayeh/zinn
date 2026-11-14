@@ -34,6 +34,8 @@ export default defineConfig({
 	site: "https://zinn.sh",
 	output: "static",
 	devToolbar: { enabled: false },
+	// Fetch a same-origin page after a short hover. BaseLayout's static speculation rules prerender it in Chromium.
+	prefetch: { prefetchAll: true, defaultStrategy: "hover" },
 	integrations: [
 		sitemap({ filter: (page) => !page.endsWith(".md") }),
 		mdx({ processor: satteri({ hastPlugins: [commandBlocks, pagefindIgnoreContents] }) }),

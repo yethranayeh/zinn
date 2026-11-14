@@ -89,6 +89,17 @@ const homepageStructuredData = [website, softwareApplication];
 					<script type='application/ld+json' is:inline set:html={JSON.stringify(data).replaceAll("<", "\\u003c")} />
 				))
 		}
+		<script type='speculationrules' is:inline>
+			{
+				"prerender": [
+					{
+						"source": "document",
+						"where": { "selector_matches": "a" },
+						"eagerness": "moderate"
+					}
+				]
+			}
+		</script>
 		<link rel='icon' href='/favicon.svg' type='image/svg+xml' />
 		<link rel='preload' href='/fonts/AlanSans.ttf' as='font' type='font/ttf' crossorigin />
 		<link rel='preload' href='/fonts/monoMMM_5.ttf' as='font' type='font/ttf' crossorigin />
@@ -98,15 +109,23 @@ const homepageStructuredData = [website, softwareApplication];
 			)
 		}
 		{
+			// If a prerendered page is not visited yet, the pageview waits for activation
 			isProductionSite && (
-				<script
-					is:inline
-					defer
-					src='https://cloud.umami.is/script.js'
-					data-website-id='2d789988-60f4-4ed7-80e1-c87cc64871d6'
-					data-domains='zinn.sh'
-					data-do-not-track='true'
-				/>
+				<script is:inline>
+					const loadUmami = () => {
+						const script = document.createElement("script");
+						script.src = "https://cloud.umami.is/script.js";
+						script.dataset.websiteId = "2d789988-60f4-4ed7-80e1-c87cc64871d6";
+						script.dataset.domains = "zinn.sh";
+						script.dataset.doNotTrack = "true";
+						document.head.append(script);
+					};
+					if (document.prerendering) {
+						document.addEventListener("prerenderingchange", loadUmami, { once: true });
+					} else {
+						loadUmami();
+					}
+				</script>
 			)
 		}
 	</head>
