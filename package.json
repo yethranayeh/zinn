@@ -32,7 +32,8 @@
 		"codex:build": "bun run --cwd integrations/codex build",
 		"codex:package": "bun run --cwd integrations/codex package",
 		"codex:test": "bun run --cwd integrations/codex test",
-		"codex:typecheck": "bun scripts/typecheck.ts integrations/codex"
+		"codex:typecheck": "bun scripts/typecheck.ts integrations/codex",
+		"firefox:build": "bun integrations/firefox/build.ts"
 	},
 	"devDependencies": {
 		"@types/bun": "latest",

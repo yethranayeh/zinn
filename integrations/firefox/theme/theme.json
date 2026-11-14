@@ -1,0 +1,103 @@
+{
+	"version": "0.1.0",
+	"description": "The Zinn color palette for Firefox, with light and dark appearances.",
+	"minVersion": "157.0",
+	"colors": {
+		"light": {
+			"frame": "#E4DDC9",
+			"toolbar": "#E4DDC9",
+			"toolbar_text": "#1C1815",
+			"icons": "#1C1815",
+			"icons_attention": "#7B1E15",
+			"tab_selected": "#E8E0CC",
+			"tab_text": "#1C1815",
+			"tab_background_text": "#555149",
+			"tab_line": "#7B1E15",
+			"toolbar_field": "#E8E0CC",
+			"toolbar_field_text": "#1C1815",
+			"toolbar_field_border": "#C4BDAC",
+			"toolbar_field_focus": "#E8E0CC",
+			"toolbar_field_text_focus": "#1C1815",
+			"toolbar_field_border_focus": "#7B1E15",
+			"toolbar_field_highlight": "#C8963C",
+			"toolbar_field_highlight_text": "#1C1815",
+			"toolbar_bottom_separator": "#C4BDAC",
+			"toolbar_vertical_separator": "#C4BDAC",
+			"popup": "#E8E0CC",
+			"popup_text": "#1C1815",
+			"popup_border": "#C4BDAC",
+			"popup_highlight": "#D5CDBB",
+			"popup_highlight_text": "#1C1815",
+			"sidebar": "#E4DDC9",
+			"sidebar_text": "#1C1815",
+			"sidebar_border": "#C4BDAC",
+			"button_background_hover": "#1C181512",
+			"button_background_active": "#1C18151F",
+			"ntp_background": "#E8E0CC",
+			"ntp_text": "#1C1815",
+			"ntp_card_background": "#E4DDC9"
+		},
+		"dark": {
+			"frame": "#1C1815",
+			"toolbar": "#1C1815",
+			"toolbar_text": "#E8E0CC",
+			"icons": "#E8E0CC",
+			"icons_attention": "#C8963C",
+			"tab_selected": "#2C2924",
+			"tab_text": "#E8E0CC",
+			"tab_background_text": "#A8A293",
+			"tab_line": "#C8963C",
+			"toolbar_field": "#2C2924",
+			"toolbar_field_text": "#E8E0CC",
+			"toolbar_field_border": "#413E37",
+			"toolbar_field_focus": "#38342F",
+			"toolbar_field_text_focus": "#E8E0CC",
+			"toolbar_field_border_focus": "#C8963C",
+			"toolbar_field_highlight": "#C8963C",
+			"toolbar_field_highlight_text": "#1C1815",
+			"toolbar_bottom_separator": "#38342F",
+			"toolbar_vertical_separator": "#38342F",
+			"popup": "#2C2924",
+			"popup_text": "#E8E0CC",
+			"popup_border": "#38342F",
+			"popup_highlight": "#413E37",
+			"popup_highlight_text": "#E8E0CC",
+			"sidebar": "#1C1815",
+			"sidebar_text": "#E8E0CC",
+			"sidebar_border": "#38342F",
+			"button_background_hover": "#E8E0CC14",
+			"button_background_active": "#E8E0CC26",
+			"ntp_background": "#1C1815",
+			"ntp_text": "#E8E0CC",
+			"ntp_card_background": "#2C2924"
+		}
+	},
+	"textures": {
+		"lattice": {
+			"name": "Zinn Lattice",
+			"id": "zinn-lattice@zinn.sh",
+			"frames": {
+				"light": "frame-light.svg",
+				"dark": "frame-dark.svg"
+			},
+			"properties": {
+				"additional_backgrounds_alignment": ["left top"],
+				"additional_backgrounds_tiling": ["repeat"],
+				"backgrounds_area": "top_toolbars"
+			}
+		},
+		"halftone": {
+			"name": "Zinn Halftone",
+			"id": "zinn-halftone@zinn.sh",
+			"frames": {
+				"light": "frame-light.svg",
+				"dark": "frame-dark.svg"
+			},
+			"properties": {
+				"additional_backgrounds_alignment": ["left top"],
+				"additional_backgrounds_tiling": ["repeat-x"],
+				"backgrounds_area": "top_toolbars"
+			}
+		}
+	}
+}
