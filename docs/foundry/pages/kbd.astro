@@ -1,0 +1,70 @@
+---
+import type { KbdVariant } from "../../src/components/ui/kbd/variants";
+
+import FoundryLayout from "../layouts/FoundryLayout.astro";
+import ComponentHeading from "../components/ComponentHeading.astro";
+import Specimen from "../components/Specimen.astro";
+import Kbd from "../../src/components/ui/kbd/Kbd.astro";
+
+import { kbdVariants } from "../../src/components/ui/kbd/variants";
+
+const variants = Object.keys(kbdVariants.variants.variant) as KbdVariant[];
+
+const variantNotes: Record<KbdVariant, string> = {
+	keycap: "The interface reading on Limestone. A search shortcut or a toolbar uses this form.",
+	terminal: "The CLI and terminal reading. The label sits between muted brackets."
+};
+---
+
+<FoundryLayout
+	title='Kbd'
+	description='Kbd marks a key to press, as a keycap in the interface or as brackets in terminal notation.'>
+	<ComponentHeading folder='kbd'>
+		<p>Kbd marks a key to press. It is not inline code: code is a literal to type, a key is an action.</p>
+		<p>
+			The default keycap is the interface reading on Limestone, for a search shortcut or a toolbar. <code
+				>variant="terminal"</code
+			> is the CLI and terminal reading: the label sits between muted brackets. Use it in terminal output and CLI documentation.
+		</p>
+		<p>Callers place the separator, such as <code>+</code> or a space. The component never adds one.</p>
+	</ComponentHeading>
+
+	<section class='flex flex-col gap-4' aria-labelledby='variants'>
+		<h2 id='variants' class='text-xl font-semibold'>Variants</h2>
+		<div class='overflow-x-auto border border-soot/20'>
+			<table class='w-full border-collapse'>
+				<thead>
+					<tr class='border-b border-soot/20 font-mono text-xs text-muted-foreground'>
+						{variants.map((variant) => <th class='p-3 text-left font-normal'>variant="{variant}"</th>)}
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						{
+							variants.map((variant) => (
+								<td class='p-6 align-top'>
+									<div class='flex flex-wrap items-center gap-2'>
+										<Kbd variant={variant}>Ctrl</Kbd>
+										<span class='text-pewter'>+</span>
+										<Kbd variant={variant}>K</Kbd>
+									</div>
+									<p class='mt-4 max-w-[36ch] text-sm leading-[1.55] text-muted-foreground'>{variantNotes[variant]}</p>
+								</td>
+							))
+						}
+					</tr>
+				</tbody>
+			</table>
+		</div>
+
+		<Specimen label='<Kbd variant="terminal"> in terminal output' block>
+			<div class='w-full bg-soot px-4 py-3.5 font-mono text-sm text-limestone'>
+				<p class='text-bronze'><span aria-hidden='true'>$ </span>zinn task list</p>
+				<p class='mt-3'>
+					Press <Kbd variant='terminal'>Ctrl</Kbd>
+					<Kbd variant='terminal'>K</Kbd> to search.
+				</p>
+			</div>
+		</Specimen>
+	</section>
+</FoundryLayout>

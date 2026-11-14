@@ -1,0 +1,31 @@
+---
+import type { HTMLAttributes } from "astro/types";
+import type { KbdVariant } from "./variants";
+
+import { twMerge } from "tailwind-merge";
+import { kbdVariants } from "./variants";
+
+interface Props extends HTMLAttributes<"kbd"> {
+	variant?: KbdVariant;
+}
+
+const { variant = kbdVariants.defaultVariants.variant, class: className, ...attributes } = Astro.props;
+
+const bracketClass = "text-[color-mix(in_srgb,currentColor_55%,transparent)]";
+---
+
+<kbd class={twMerge(kbdVariants.base, kbdVariants.variants.variant[variant], className)} {...attributes}>
+	{
+		variant === "terminal" && (
+			<span class={bracketClass} aria-hidden='true'>
+				[
+			</span>
+		)
+	}<slot />{
+		variant === "terminal" && (
+			<span class={bracketClass} aria-hidden='true'>
+				]
+			</span>
+		)
+	}
+</kbd>

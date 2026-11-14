@@ -1,21 +1,22 @@
 ---
+import FoundryLayout from "../layouts/FoundryLayout.astro";
+import Inspector from "../inspector/Inspector.astro";
 import Button from "../../src/components/ui/button/Button.astro";
 import Chip from "../../src/components/ui/chip/Chip.astro";
 import Icon from "../../src/components/ui/icon/Icon.astro";
+import Kbd from "../../src/components/ui/kbd/Kbd.astro";
 import Tooltip from "../../src/components/ui/tooltip/Tooltip.astro";
-import Inspector from "../inspector/Inspector.astro";
-import FoundryLayout from "../layouts/FoundryLayout.astro";
 ---
 
 <FoundryLayout
 	title='Inspector'
 	description='Inspector measures a component, draws its parts on a drafting layer and lifts them into dot plates in an exploded view.'>
 	<header
-		class='flex max-w-[65ch] flex-col gap-4 [&_code]:bg-[color-mix(in_srgb,currentColor_8%,transparent)] [&_code]:px-[0.22em] [&_code]:py-[0.05em] [&_code]:text-[0.85em] [&_kbd]:border [&_kbd]:border-current [&_kbd]:px-1 [&_kbd]:text-[0.85em]'>
+		class='flex max-w-[65ch] flex-col gap-4 [&_code]:bg-[color-mix(in_srgb,currentColor_8%,transparent)] [&_code]:px-[0.22em] [&_code]:py-[0.05em] [&_code]:text-[0.85em]'>
 		<h1 class='text-3xl font-semibold md:text-4xl'>Inspector</h1>
 		<p>
 			Measures a component and draws its parts on a drafting layer. Hover a component marked with
-			<code>data-inspect</code> to inspect it. The <kbd>I</kbd> key or the Inspect button shows and hides the layer.
+			<code>data-inspect</code> to inspect it. The <Kbd>I</Kbd> key or the Inspect button shows and hides the layer.
 		</p>
 		<p>
 			The active component's tooltip stays open, so its content box, gap and bridge can be measured. A tooltip content
@@ -23,7 +24,7 @@ import FoundryLayout from "../layouts/FoundryLayout.astro";
 		</p>
 		<p>
 			Explode lifts the measured parts into dot plates while the drawing stays anchored, so the gap, the hover bridge
-			and each edge can be read as separate objects. Press <kbd>E</kbd> or the Explode button. The spec card hides while the
+			and each edge can be read as separate objects. Press <Kbd>E</Kbd> or the Explode button. The spec card hides while the
 			plates are out.
 		</p>
 	</header>

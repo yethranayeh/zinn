@@ -1,5 +1,6 @@
 ---
 import { twMerge } from "tailwind-merge";
+import Kbd from "../../src/components/ui/kbd/Kbd.astro";
 
 interface Props {
 	defaultInspecting?: boolean;
@@ -23,14 +24,14 @@ const { defaultInspecting = true, class: className } = Astro.props;
 				data-explode
 				aria-pressed='false'
 				disabled>
-				Explode <kbd class='border border-current px-1 opacity-70'>E</kbd>
+				Explode <Kbd>E</Kbd>
 			</button>
 			<button
 				type='button'
 				class='inline-flex cursor-pointer items-center gap-1.5 border border-soot bg-transparent px-2 py-0.5 font-mono text-[0.6875rem] text-soot aria-pressed:bg-soot aria-pressed:text-limestone'
 				data-toggle
 				aria-pressed={defaultInspecting ? "true" : "false"}>
-				Inspect <kbd class='border border-current px-1 opacity-70'>I</kbd>
+				Inspect <Kbd>I</Kbd>
 			</button>
 		</div>
 	</div>
