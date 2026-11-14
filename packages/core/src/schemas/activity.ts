@@ -155,6 +155,11 @@ export const activityListSchema = z
 
 export type ActivityListInput = z.input<typeof activityListSchema>;
 
+export const activityFollowSchema = activityListSchema.safeExtend({
+  limit: z.never({ error: "Activity followers do not accept limit" }).optional(),
+  startingAfter: z.never({ error: "Activity followers do not accept startingAfter" }).optional(),
+});
+
 export const activityTaskIdentitiesSchema = z.strictObject({
   taskIds: z.array(activityTaskIdSchema).optional(),
   taskKeys: z.array(activityTaskKeySchema).optional(),

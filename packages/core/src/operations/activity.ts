@@ -9,6 +9,7 @@ import type { z } from "zod";
 import { CoreError } from "../errors.js";
 import {
   activityIdSchema,
+  activityFollowSchema,
   activityListSchema,
   activityTaskIdentitiesSchema,
 } from "../schemas/activity.js";
@@ -39,8 +40,8 @@ export type ActivityTaskIdentity = {
   status: "active" | "archived" | "deleted";
 };
 
-/** A follower takes a listing's filters. It has no pages, so it takes no limit. */
-export type ActivityFollowInput = Omit<ActivityListInput, "limit">;
+/** A follower takes a listing's filters without pagination. */
+export type ActivityFollowInput = Omit<ActivityListInput, "limit" | "startingAfter">;
 
 /**
  * Why a follower can read no further:
@@ -420,18 +421,19 @@ export const activity = {
    * @link https://www.sqlite.org/wal.html#avoiding_excessively_large_wal_files
    */
   follow: (input: ActivityFollowInput = {}): ActivityFollower => {
-    const props = validateTaskInput(activityListSchema, input);
+    const props = validateTaskInput(activityFollowSchema, input);
     const { databasePath } = getStorage();
     const databaseFile = readFileIdentity(databasePath);
-    let { dataVersion, position } = readTransaction(() => {
+    const { schemaMarker, ...initial } = readTransaction(() => {
       prepareSelection(props);
 
       return {
         dataVersion: dbActivity.readDataVersion(),
         position: dbActivity.readLastPosition(),
+        schemaMarker: dbActivity.readSchemaMarker(),
       };
     });
-    const schemaMarker = dbActivity.readSchemaMarker();
+    let { dataVersion, position } = initial;
 
     return {
       poll: () => {

@@ -1,8 +1,10 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { renameSync } from "node:fs";
 import { join } from "node:path";
-import { activity, project, task } from "../index";
+import { activity, backup, InputValidationError, project, task } from "../index";
+import * as dbActivity from "./db/activity";
+import { getDb } from "./db";
 import { latestVersion, MIGRATIONS } from "./migrations/registry";
 import { withTestStore } from "./testing";
 
@@ -76,6 +78,47 @@ test("a follower of a project includes a task created after it started and refus
 
     const polled = follower.poll();
     expect("events" in polled && polled.events.map((event) => event.entity_id)).toEqual([created.id, created.id]);
+  });
+});
+
+test("a restore between the initial cursor read and schema read invalidates the follower", () => {
+  withTestStore(() => {
+    const app = project.create({ key: "APP" }, actor);
+    const snapshot = backup.create({ client: "follow-test", version: "1.0.0" });
+    task.create({ project_id: app.id, title: "After the snapshot" }, actor);
+    const readPosition = dbActivity.readLastPosition;
+    const positionRead = spyOn(dbActivity, "readLastPosition").mockImplementationOnce(() => {
+      const position = readPosition();
+      expect(getDb().inTransaction).toBe(true);
+      backup.restore({ path: snapshot.path, client: "follow-test", version: "1.0.0" });
+      return position;
+    });
+
+    try {
+      const follower = activity.follow();
+      expect(positionRead).toHaveBeenCalledTimes(1);
+      expect(getDb().inTransaction).toBe(false);
+      expect(follower.poll()).toMatchObject({ stopped: "schema_changed" });
+    } finally {
+      positionRead.mockRestore();
+    }
+  });
+});
+
+test("JavaScript callers cannot paginate a follower and its selection validation stays intact", () => {
+  withTestStore(() => {
+    project.create({ key: "APP" }, actor);
+    const event = activity.getAll().events[0]!;
+    for (const input of [
+      { limit: 1 },
+      { startingAfter: event.id },
+      { since: 2, until: 1 },
+      { projectKey: "APP", taskKey: "APP-1" },
+      { showDeleted: true },
+    ]) {
+      expect(() => Reflect.apply(activity.follow, undefined, [input])).toThrow(InputValidationError);
+    }
+    expect(activity.getAll({ limit: 1, startingAfter: event.id }).events).toEqual([]);
   });
 });
 
