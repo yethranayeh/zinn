@@ -56,7 +56,10 @@ import {
   requireColumnByName,
   findByName,
   resolveDescription,
+  requireExpectedValues,
 } from "./shared.js";
+
+const guardedTaskFields = ["title", "description", "priority", "due_at"] as const;
 
 function getSearchMatchExpression(query: string) {
   return query
@@ -640,13 +643,18 @@ export const task = {
       return task.edit({ taskKey: props.taskKey, removeLabelNames: props.labelNames }, actor);
     },
   },
-  /** Edit task content and label attachments, including on archived tasks. */
+  /**
+   * Edit task content and label attachments, including on archived tasks.
+   * With `expected`, the edit fails with reason `value_changed` unless every given field still holds that value.
+   */
   edit: (input: TaskEditInput, actor: Actor): TaskChange => {
     const props = validateTaskInput(taskEditSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);
 
     return writeTransaction(() => {
       const existing = getTaskByKey(props.taskKey);
+      requireExpectedValues("task", existing.key, guardedTaskFields, props.expected, existing);
+
       const additions = resolveLabels(props.addLabelNames ?? []);
       const removals = resolveLabels(props.removeLabelNames ?? []);
       const existingLabelIds = new Set(

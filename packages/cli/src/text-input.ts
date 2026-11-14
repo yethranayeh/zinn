@@ -11,7 +11,14 @@ import { CliError, classifyFailure } from "./errors.js";
 const textOptions = {
   "--description": { text: "description", file: "description-file" },
   "--text": { text: "text", file: "text-file" },
+  "--expect-description": { text: "expect-description", file: "expect-description-file" },
 } as const;
+
+/** How to give an empty value for a text flag, shown when its file input is blank */
+const blankInputHints: Partial<Record<TextFlag, string>> = {
+  "--description": ' To clear a description, use --description "".',
+  "--expect-description": ' To expect no description, use --expect-description "".',
+};
 
 export type TextFlag = keyof typeof textOptions;
 export type TextValues = {
@@ -164,6 +171,39 @@ async function readStdin(fileFlag: string, refuse: (message: string) => never): 
   });
 }
 
+/** Refuses inline text together with its file flag before anything is read */
+export function checkSingleTextSource(
+  text: string | undefined,
+  path: string | undefined,
+  textFlag: TextFlag,
+) {
+  const fileFlag = `--${textOptionNames(textFlag).file}`;
+
+  if (text !== undefined && path !== undefined) {
+    throw new CliError(
+      `Options "${textFlag}" and "${fileFlag}" cannot be used together.`,
+      "invalid_input",
+      { argument: fileFlag, path },
+    );
+  }
+}
+
+/** Refuses more than one file flag reading stdin, since stdin can be read only once.*/
+export function checkSingleStdinReader(values: TextValues, textFlags: ReadonlyArray<TextFlag>) {
+  const stdinFlags = textFlags
+    .map((textFlag) => textOptionNames(textFlag).file)
+    .filter((file) => values[file] === "-")
+    .map((file) => `--${file}`);
+
+  if (stdinFlags.length > 1) {
+    throw new CliError(
+      `Only one option can read stdin, but ${stdinFlags.join(" and ")} are both "-".`,
+      "invalid_input",
+      { argument: stdinFlags[1], path: "-" },
+    );
+  }
+}
+
 /** Resolves one inline or file source before the command opens the database. */
 export async function resolveTextInput(
   text: string | undefined,
@@ -175,9 +215,7 @@ export async function resolveTextInput(
     throw new CliError(message, "invalid_input", { argument: fileFlag, path });
   };
 
-  if (text !== undefined && path !== undefined) {
-    refuse(`Options "${textFlag}" and "${fileFlag}" cannot be used together.`);
-  }
+  checkSingleTextSource(text, path, textFlag);
 
   if (path === undefined) {
     return text;
@@ -225,9 +263,7 @@ export async function resolveTextInput(
 
   const result = decoded.slice(0, end);
   if (result.trim().length === 0) {
-    const clearHint =
-      textFlag === "--description" ? ' To clear a description, use --description "".' : "";
-    refuse(`Input is empty or blank.${clearHint}`);
+    refuse(`Input is empty or blank.${blankInputHints[textFlag] ?? ""}`);
   }
   return result;
 }

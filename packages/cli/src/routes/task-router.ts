@@ -50,8 +50,10 @@ import {
   textEditOptions,
   textEditConstraints,
 } from "../text-edit.js";
+import { expectedValueFlags } from "../expected-values.js";
 import {
   checkFieldsBeforeText,
+  checkSingleStdinReader,
   resolveTextInput,
   textFileHelp,
   textFileOption,
@@ -119,6 +121,30 @@ const dueOption = {
       "Integer epoch milliseconds or YYYY-MM-DDTHH:mm:ss[.SSS] with Z or a numeric offset. Fractions have 1 to 3 digits. none clears the deadline, ignoring case. Omission leaves it unset on creation and unchanged on edit.",
   },
 } as const;
+
+const taskExpectations = expectedValueFlags({
+  title: { field: "title", option: { type: "string", value: { kind: "text", name: "text" } } },
+  description: { field: "description", text: true },
+  priority: {
+    field: "priority",
+    option: {
+      type: "string",
+      value: { ...priorityOption.value, description: "none expects no priority." },
+    },
+    parse: parsePriority,
+  },
+  due: {
+    field: "due_at",
+    option: {
+      type: "string",
+      value: {
+        ...dueOption.value,
+        description: "Same formats as --due. none expects no deadline, ignoring case.",
+      },
+    },
+    parse: parseDue,
+  },
+});
 
 const deadlineFilterOptions = {
   "due-since": {
@@ -294,6 +320,7 @@ const taskInputs = {
         multiple: true,
         value: { kind: "label-name", name: "name" },
       },
+      ...taskExpectations.options,
     },
     forms: [
       {
@@ -305,8 +332,9 @@ const taskInputs = {
       textSourceConstraint("--description"),
       ...textEditConstraints("--description"),
       taskEditConstraint,
+      ...taskExpectations.constraints,
     ],
-    notes: [textEditHelp("--description")],
+    notes: [textEditHelp("--description"), taskExpectations.help],
   },
   move: {
     options: {
@@ -868,7 +896,11 @@ Example: zinn task blame MDR-1`,
         addLabelNames: values["add-label"],
         removeLabelNames: values["remove-label"],
       };
-      checkFieldsBeforeText(taskEditSchema, fields);
+      const expected = taskExpectations.parseValues(values);
+
+      checkFieldsBeforeText(taskEditSchema, { ...fields, expected });
+      checkSingleStdinReader(values, ["--description", ...taskExpectations.textFlags]);
+
       const description = await resolveTextEdit(values, "--description");
 
       // Without a text source nothing was read, so this usage error still comes before any input.
@@ -880,7 +912,11 @@ Example: zinn task blame MDR-1`,
         );
       }
 
-      const editedTask = task.edit({ ...fields, description }, currentActor());
+      const expectedText = await taskExpectations.resolveText(values);
+      const editedTask = task.edit(
+        { ...fields, description, expected: { ...expected, ...expectedText } },
+        currentActor(),
+      );
       const board = createColumnBoard();
 
       outputChanges(
@@ -901,6 +937,8 @@ ${textFileHelp("--description")}
 
 ${textEditHelp("--description")}
 
+${taskExpectations.help}
+
 Repeat --add-label or --remove-label for multiple existing labels, ignoring case.
 The same label cannot be both added and removed.
 Archived tasks can be edited.
@@ -910,7 +948,8 @@ ${dashValueHelp("--description")}
 
 Examples:
   zinn task edit MDR-1 --title 'Meet the quarterly refinement quota'
-  zinn task edit MDR-1 --description 'Bring waffles.' --append`,
+  zinn task edit MDR-1 --description 'Bring waffles.' --append
+  zinn task edit MDR-1 --title 'Refine the Cold Harbor file' --expect-title 'Refine the files'`,
     guessedFlags: {
       "--status": (args) => suggestTaskMove(args, taskInputs.edit.options),
       "--column": (args) => suggestTaskMove(args, taskInputs.edit.options),
@@ -1219,8 +1258,8 @@ function parseNewTaskRelations(flags: NewTaskRelationFlags) {
   );
 }
 
-function parseDue(value: string | undefined) {
-  return value?.toLowerCase() === "none" ? null : parseTimestampInput(value, "--due");
+function parseDue(value: string | undefined, flag = "--due") {
+  return value?.toLowerCase() === "none" ? null : parseTimestampInput(value, flag);
 }
 
 function parseDeadlineFilters(values: { "due-since"?: string; "due-until"?: string }) {
@@ -1234,7 +1273,7 @@ function parseDeadlineFilters(values: { "due-since"?: string; "due-until"?: stri
   return { dueSince, dueUntil };
 }
 
-function parsePriority(value: string | undefined) {
+function parsePriority(value: string | undefined, flag = "--priority") {
   const normalizedPriority = value?.toLowerCase();
   if (normalizedPriority === undefined) {
     return undefined;
@@ -1247,7 +1286,7 @@ function parsePriority(value: string | undefined) {
   const priority = taskPrioritySchema.safeParse(normalizedPriority);
   if (!priority.success) {
     quit("Priority must be low, medium, high, urgent, or none", undefined, {
-      argument: "--priority",
+      argument: flag,
     });
   }
 

@@ -485,6 +485,16 @@ See [Editing conventions](#editing-conventions) for title validation, partial ed
 Archived tasks can be edited without unarchiving them.
 See [Text values](#text-values) for values that begin with a dash and multi-line text.
 
+`--expect-title`, `--expect-description`, `--expect-priority` and `--expect-due` give the value you read before editing. Use them when another agent or person may change the task at the same time:
+
+```sh title="Edit only if the description is still the one you read"
+zinn task edit MDR-1 --description 'Bring waffles and coffee.' --expect-description 'Bring waffles.'
+```
+
+Expected values are spelled as for the edit flags: `--expect-description ''` expects no description, and `--expect-priority none` and `--expect-due none` expect no priority and no deadline. `--expect-description-file <path>` reads the expected text from a file, or from stdin when `<path>` is `-`. An expected value may guard a field the edit does not change, but it is not an edit on its own.
+
+When a stored value differs from the expected one, the edit changes nothing and fails with error code `conflict` and reason `value_changed`. The error's `changedFields` lists the fields that differ, such as `["description"]`. This holds even when the stored value already equals the new one. To change part of a description, `--replacing` is still the tool. With `--expect-description`, it checks the whole stored description first.
+
 ## Move and order tasks
 
 Move a task to another column in its project:

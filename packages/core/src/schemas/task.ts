@@ -86,6 +86,19 @@ export const taskEditSchema = z
     due_at: timestampSchema.nullable().optional(),
     addLabelNames: z.array(labelNameSchema).optional(),
     removeLabelNames: z.array(labelNameSchema).optional(),
+    //  are stored. A mismatch refuses the whole edit.
+    /**
+     * Caller's belief on current value state
+     * e.g. "change priority to high, I exxpect it's currently stored as low"
+     */
+    expected: z
+      .strictObject({
+        title: taskTitleSchema.optional(),
+        description: descriptionSchema.optional(),
+        priority: taskPrioritySchema.nullable().optional(),
+        due_at: timestampSchema.nullable().optional(),
+      })
+      .optional(),
   })
   .refine((value) => {
     const hasTitle = value.title !== undefined;

@@ -54,6 +54,7 @@ export const errorDetailsSchema = z.strictObject({
       "parent_exists",
       "relation_changed",
       "column_changed",
+      "value_changed",
       "cycle",
       "different_project",
       "different_column",
@@ -90,6 +91,7 @@ export const errorDetailsSchema = z.strictObject({
   supportedSchemaVersion: z.number().int().nonnegative().optional(),
   expectedColumn: z.string().optional(),
   actualColumn: z.string().optional(),
+  changedFields: z.array(z.string()).optional(),
   logPath: z.string().optional(),
   exitCode: z.number().int().optional(),
   cause: z
@@ -259,6 +261,7 @@ function publicDetails(facts: ErrorDetails): ErrorDetails {
     supportedSchemaVersion: facts.supportedSchemaVersion,
     expectedColumn: facts.expectedColumn,
     actualColumn: facts.actualColumn,
+    changedFields: facts.changedFields,
   };
 
   return Object.fromEntries(Object.entries(details).filter(([, value]) => value !== undefined));

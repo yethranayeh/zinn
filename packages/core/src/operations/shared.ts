@@ -13,6 +13,7 @@ import type {
 } from "../types.js";
 import type { Actor } from "../schemas/actor.js";
 import type { TextEdit } from "../schemas/text-edit.js";
+import type { FailureFacts } from "../errors.js";
 
 import { CoreError } from "../errors.js";
 import { columnNameSchema } from "../schemas/column.js";
@@ -192,6 +193,35 @@ export function requireSingleIdMatch<T extends { id: string }>(
   }
 
   return matches[0]!;
+}
+
+/**
+ * Throws a `value_changed` conflict naming every field whose expected value differs from the stored one.
+ * Fields without an expected value are not checked. `fields` sets the order of `changedFields`.
+ */
+export function requireExpectedValues<Field extends string>(
+  entity: NonNullable<FailureFacts["entity"]>,
+  key: string,
+  fields: ReadonlyArray<Field>,
+  expected: Partial<Record<Field, unknown>> | undefined,
+  stored: Record<Field, unknown>,
+) {
+  if (expected === undefined) {
+    return;
+  }
+
+  const changedFields = fields.filter((field) => {
+    const expectedValue = expected[field];
+    return expectedValue !== undefined && expectedValue !== stored[field];
+  });
+
+  if (changedFields.length > 0) {
+    throw new CoreError(
+      `Expected values no longer match ${key}: ${changedFields.join(", ")}`,
+      "conflict",
+      { entity, key, reason: "value_changed", changedFields },
+    );
+  }
 }
 
 export function findByName<T extends { name: string }>(matches: Array<T>, name: string) {

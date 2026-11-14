@@ -23,6 +23,7 @@ export type FailureFacts = {
     | "parent_exists"
     | "relation_changed"
     | "column_changed"
+    | "value_changed"
     | "cycle"
     | "different_project"
     | "different_column"
@@ -54,6 +55,7 @@ export type FailureFacts = {
   supportedSchemaVersion?: number;
   expectedColumn?: string;
   actualColumn?: string;
+  changedFields?: Array<string>;
 };
 
 export class CoreError extends Error {
