@@ -113,6 +113,19 @@ export function readSchemaVersionWithoutWaiting(databasePath: ResolvedPath): num
   }
 }
 
+/** The one row `PRAGMA integrity_check` returns for a sound database. */
+const INTEGRITY_OK = "ok";
+
+/** Runs SQLite's integrity check. `rows` holds what it reported, which is the single row "ok" for a sound database. */
+export function checkIntegrity(db: Database) {
+  const rows = db
+    .query<{ integrity_check: string }>("PRAGMA integrity_check")
+    .all()
+    .map((row) => row.integrity_check);
+
+  return { isSound: rows.length === 1 && rows[0] === INTEGRITY_OK, rows };
+}
+
 /** Inspects an existing database without application writes or schema initialization. */
 export function withDatabaseInspection<T>(
   databasePath: ResolvedPath,

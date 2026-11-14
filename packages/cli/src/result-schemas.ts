@@ -4,6 +4,8 @@ import {
   activityEntityTypeSchema,
   actorKindSchema,
   columnCategorySchema,
+  doctorCheckIdSchema,
+  doctorStatusSchema,
   infoDatabaseStateSchema,
   labelColorSchema,
   relationTypeSchema,
@@ -310,6 +312,22 @@ export const infoSchema = z.strictObject({
   }),
 });
 
+export const doctorSchema = z.strictObject({
+  ok: z.boolean().describe("Whether every listed check is ok."),
+  checks: z
+    .array(
+      z.strictObject({
+        id: z.enum([...doctorCheckIdSchema.options, "agent_skill"]),
+        status: doctorStatusSchema,
+        message: z.string(),
+        remedy: nullableText.describe(
+          "What to do about a warning or problem, null when the check is ok.",
+        ),
+      }),
+    )
+    .describe("Checks that could not run because an earlier one failed are left out."),
+});
+
 export const backupSchema = z.strictObject({ path: z.string() });
 export const skillInstallSchema = z.strictObject({
   source: z.string().describe("The skill folder inside the CLI package that was installed."),
@@ -363,6 +381,7 @@ export const resultSchemas = {
   ActivityList: z.array(activitySchema),
   Actor: actorSchema,
   Info: infoSchema,
+  Doctor: doctorSchema,
   Backup: backupSchema,
   Restore: restoreSchema,
   Migrate: migrateSchema,
@@ -390,6 +409,7 @@ export type PresentedLabel = z.infer<typeof labelSchema>;
 export type PresentedActivity = z.infer<typeof activitySchema>;
 export type PresentedActor = z.infer<typeof actorSchema>;
 export type PresentedInfo = z.infer<typeof infoSchema>;
+export type PresentedDoctor = z.infer<typeof doctorSchema>;
 export type PresentedBackup = z.infer<typeof backupSchema>;
 export type PresentedRestore = z.infer<typeof restoreSchema>;
 export type PresentedMigrate = z.infer<typeof migrateSchema>;

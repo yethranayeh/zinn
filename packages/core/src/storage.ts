@@ -215,6 +215,11 @@ export function getProcessSettings() {
   return processSettings;
 }
 
+/** The shell command that creates the store folder at `absoluteDirectory`. */
+export function createFolderCommand(absoluteDirectory: string) {
+  return `mkdir -p '${absoluteDirectory.replaceAll("'", "'\\''")}'`;
+}
+
 /** Selected store folder must exist before any contents can be initialized. */
 function assertStoreDirectory(directory: string, settingsPath: string | null) {
   const absoluteDirectory = resolve(directory);
@@ -239,9 +244,8 @@ function assertStoreDirectory(directory: string, settingsPath: string | null) {
   }
 
   if (problem !== null) {
-    const quotedDirectory = `'${absoluteDirectory.replaceAll("'", "'\\''")}'`;
     throw new CoreError(
-      `Cannot use ${absoluteDirectory}, chosen by ${source}: ${problem}. Create the folder with \`mkdir -p ${quotedDirectory}\`.`,
+      `Cannot use ${absoluteDirectory}, chosen by ${source}: ${problem}. Create the folder with \`${createFolderCommand(absoluteDirectory)}\`.`,
       "storage",
       {
         reason: "invalid_storage",

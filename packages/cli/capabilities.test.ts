@@ -57,6 +57,16 @@ test("the emitted contract covers every route and finite result, including itsel
       expect(validator.getSchema(`results#${result.schemaRef.slice("#/schemas".length)}`)).toBeDefined();
     }
   }
+  // ZINN-134: only doctor reports findings with exit code 1.
+  for (const command of actual.commands) {
+    for (const result of command.results) {
+      if (command.path.join(" ") === "doctor") {
+        expect(result.findingsExitCode).toBe(1);
+      } else {
+        expect(result).not.toHaveProperty("findingsExitCode");
+      }
+    }
+  }
   const validate = validator.getSchema("results#/definitions/Capabilities")!;
   expect(validate({ ...actual, manifestVersion: 2 })).toBe(false);
   const canonicalArgv = actual.invocation.canonicalArgv;

@@ -11,7 +11,8 @@ import { generateCommandUsage, noInput } from "../input.js";
 import { diagnostic, getOutputMode, output, validatePositionals } from "../lib.js";
 import { jsonResult } from "../results.js";
 
-const bundledSkillDirectory = fileURLToPath(new URL("../../skills/zinn", import.meta.url));
+/** The workflow skill folder that ships with the CLI */
+export const bundledSkillDirectory = fileURLToPath(new URL("../../skills/zinn", import.meta.url));
 /** On Windows npx is `npx.cmd`, which Node only starts through a shell */
 const needsShell = process.platform === "win32";
 

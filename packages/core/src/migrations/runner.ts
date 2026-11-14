@@ -91,19 +91,14 @@ function applyMigration(db: Database, migration: Migration) {
   }
 }
 
-/** Checks row links and parent tables before committing a migration or restore. */
-export function assertForeignKeys(db: Database, operation = "schema upgrade") {
-  const violations = db.query<{ table: string; parent: string }>("PRAGMA foreign_key_check").all();
+/** The rows whose foreign keys point to missing rows */
+export function findForeignKeyViolations(db: Database) {
+  return db.query<{ table: string; parent: string }>("PRAGMA foreign_key_check").all();
+}
 
-  if (violations.length > 0) {
-    const links = new Set(violations.map(({ table, parent }) => `${table} to ${parent}`));
-    throw new Error(
-      `The ${operation} would leave ${violations.length} rows whose foreign keys point to missing rows (${[...links].join(", ")})`,
-    );
-  }
-
-  // Row checks cannot find a missing parent table when its child table is empty.
-  const missingParents = db
+/** The foreign keys whose parent table is missing. Row checks cannot find these when the child table is empty. */
+export function findMissingParentTables(db: Database) {
+  return db
     .query<{ child: string; parent: string }>(`
     SELECT DISTINCT child.name AS child, foreign_key.[table] AS parent
     FROM main.sqlite_schema AS child
@@ -114,6 +109,20 @@ export function assertForeignKeys(db: Database, operation = "schema upgrade") {
     )
   `)
     .all();
+}
+
+/** Checks row links and parent tables before committing a migration or restore. */
+export function assertForeignKeys(db: Database, operation = "schema upgrade") {
+  const violations = findForeignKeyViolations(db);
+
+  if (violations.length > 0) {
+    const links = new Set(violations.map(({ table, parent }) => `${table} to ${parent}`));
+    throw new Error(
+      `The ${operation} would leave ${violations.length} rows whose foreign keys point to missing rows (${[...links].join(", ")})`,
+    );
+  }
+
+  const missingParents = findMissingParentTables(db);
 
   if (missingParents.length > 0) {
     const links = missingParents.map(({ child, parent }) => `${child} to ${parent}`);

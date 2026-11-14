@@ -378,6 +378,7 @@ const fixtures: Record<string, Fixture[]> = {
     }, check: (v) => { expect(v.changed).toBe(true); expect(typeof v.backupPath).toBe("string"); } },
   ],
   "reindex": [{ schema: "Reindex", args: [] }],
+  "doctor": [{ schema: "Doctor", args: [], check: (v) => expect(v.ok).toBe(true) }],
   "info": [
     { schema: "Info", args: [] },
     { schema: "Info", args: [], empty: true },

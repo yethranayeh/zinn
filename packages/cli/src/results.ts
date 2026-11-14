@@ -23,6 +23,8 @@ export const commandResultSchema = z.strictObject({
   mode: z.enum(["json", "json-lines"]),
   stream: z.literal("stdout"),
   exitCode: z.literal(0),
+  /** The same document arrives on stdout with this exit code when it reports findings */
+  findingsExitCode: z.literal(1).optional(),
 });
 export type ResultSelector = z.infer<typeof resultSelectorSchema>;
 export type CommandResult = z.infer<typeof commandResultSchema> & {

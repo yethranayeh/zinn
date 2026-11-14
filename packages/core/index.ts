@@ -76,6 +76,7 @@ export type {
 } from "./src/settings.js";
 export type { SettingsFileInspection, SettingsInspection } from "./src/settings.js";
 export type { StoreInfo } from "./src/operations/info.js";
+export type { DoctorCheck, DoctorStatus } from "./src/operations/doctor.js";
 export type { FailureKind, FailureFacts, ValidationIssue } from "./src/errors.js";
 export type { SqliteCode, SqlitePrimaryCode } from "./src/sqlite/database.js";
 export type { BackupStorage, ConfiguredStorage, Storage } from "./src/storage.js";
@@ -176,6 +177,7 @@ export { TELEMETRY_FOLDER_NAME } from "./src/constant.js";
 export { createOutputFileName, readOutputFileName } from "./src/output-file-name.js";
 export { databaseStateSchema, readSchemaVersionWithoutWaiting } from "./src/migrations/classify.js";
 export { info, infoDatabaseStateSchema } from "./src/operations/info.js";
+export { doctor, doctorCheckIdSchema, doctorStatusSchema } from "./src/operations/doctor.js";
 export { CoreError, InputValidationError, isMissingFileError } from "./src/errors.js";
 export { SqliteError, isSqliteErrorCode, isSqliteErrorFamily } from "./src/sqlite/database.js";
 export {

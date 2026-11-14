@@ -22,7 +22,7 @@ import * as dbBackup from "../db/backup.js";
 import { applyConnectionSettings } from "../connection.js";
 import { attachSuppressed, isSqliteErrorFamily } from "../sqlite/database.js";
 import { BASELINE_VERSION } from "./baseline.js";
-import { classifyConnection } from "./classify.js";
+import { checkIntegrity, classifyConnection } from "./classify.js";
 import { latestVersion, MIGRATIONS } from "./registry.js";
 import {
   assertForeignKeys,
@@ -47,8 +47,6 @@ const SOURCE_SCHEMA = "restore_source";
 const INTERNAL_PREFIX = "sqlite_";
 /** SQLite's table of AUTOINCREMENT counters. @link https://www.sqlite.org/autoinc.html */
 const SEQUENCE_TABLE = "sqlite_sequence";
-/** The one row `PRAGMA integrity_check` returns for a sound database. */
-const INTEGRITY_OK = "ok";
 
 /** Thrown when a backup cannot be restored, before anything in the database changed. */
 export class RestoreRefusedError extends CoreError {
@@ -218,11 +216,7 @@ function readCheckedVersion(
   migrations: ReadonlyArray<Migration>,
   build: BackupCreateInput,
 ) {
-  const problems = source
-    .query<{ integrity_check: string }>("PRAGMA integrity_check")
-    .all()
-    .map((row) => row.integrity_check);
-  const isSound = problems.length === 1 && problems[0] === INTEGRITY_OK;
+  const { isSound, rows: problems } = checkIntegrity(source);
   if (!isSound) {
     throw new RestoreRefusedError(
       `The backup at ${path} failed SQLite's integrity check (${problems[0]}), so nothing was restored`,
