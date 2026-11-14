@@ -4,6 +4,7 @@ import type { TooltipPlacement } from "../../src/components/ui/tooltip/variants"
 import FoundryLayout from "../layouts/FoundryLayout.astro";
 import Specimen from "../components/Specimen.astro";
 import ComponentHeading from "../components/ComponentHeading.astro";
+import Inspector from "../inspector/Inspector.astro";
 import Button from "../../src/components/ui/button/Button.astro";
 import Icon from "../../src/components/ui/icon/Icon.astro";
 import Tooltip from "../../src/components/ui/tooltip/Tooltip.astro";
@@ -42,20 +43,29 @@ const placements = Object.keys(tooltipVariants.variants.placement) as TooltipPla
 
 	<section class='flex flex-col gap-4' aria-labelledby='placements'>
 		<h2 id='placements' class='text-xl font-semibold'>Placements</h2>
-		<div class='grid gap-4 md:grid-cols-2 xl:grid-cols-3'>
-			{
-				placements.map((placement) => (
-					<Specimen label={`placement="${placement}"`} block>
-						<div class='flex min-h-40 items-center justify-center'>
-							<Tooltip text='Copy as Markdown' placement={placement}>
-								<Button size='icon' aria-label='Copy as Markdown'>
-									<Icon name='copy' />
-								</Button>
-							</Tooltip>
+		<Inspector defaultInspecting={false} class='max-sm:px-4'>
+			<div class='grid gap-4 md:grid-cols-2 xl:grid-cols-3'>
+				{
+					placements.map((placement) => (
+						<div data-inspect={placement}>
+							<Specimen label={`placement="${placement}"`} block>
+								<div
+									class:list={[
+										"flex min-h-40 items-center justify-center",
+										placement.startsWith("left-") && "max-sm:justify-end",
+										placement.startsWith("right-") && "max-sm:justify-start"
+									]}>
+									<Tooltip text='Copy as Markdown' placement={placement}>
+										<Button size='icon' aria-label='Copy as Markdown'>
+											<Icon name='copy' />
+										</Button>
+									</Tooltip>
+								</div>
+							</Specimen>
 						</div>
-					</Specimen>
-				))
-			}
-		</div>
+					))
+				}
+			</div>
+		</Inspector>
 	</section>
 </FoundryLayout>

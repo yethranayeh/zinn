@@ -10,7 +10,7 @@ type Direction = [number, number];
 
 const EXPLODE: Record<string, Direction> = {
   trigger: [-1, -0.12],
-  bubble: [0, 1],
+  content: [0, 1],
   bridge: [1, 0.12],
 };
 
@@ -113,7 +113,7 @@ export function drawExplode(stage: HTMLElement, target: HTMLElement): ExplodeHan
     const rootCy = root.rect.y + root.rect.h / 2;
     const [ux, uy] = EXPLODE[part.name] ?? unitX(cx - rootCx, cy - rootCy, [0, -1]);
     const distance =
-      part.name === "bubble"
+      part.name === "content"
         ? 84
         : part.name === "bridge"
           ? 112

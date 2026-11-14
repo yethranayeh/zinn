@@ -52,7 +52,7 @@ function nameOf(el: HTMLElement): { name: string; source: string } {
     return { name: declared, source: "data-part" };
   }
   if (el.getAttribute("role") === "tooltip") {
-    return { name: "bubble", source: 'role="tooltip"' };
+    return { name: "content", source: 'role="tooltip"' };
   }
   if (el.matches("button")) {
     return { name: "trigger", source: "<button>" };
@@ -75,7 +75,7 @@ export function partsOf(root: HTMLElement, origin: DOMRect) {
     },
   ];
 
-  const bubble = root.querySelector<HTMLElement>('[role="tooltip"]');
+  const content = root.querySelector<HTMLElement>('[role="tooltip"]');
   const marked = [
     ...root.querySelectorAll<HTMLElement>('[data-part], [role="tooltip"], button, a[href]'),
   ];
@@ -94,8 +94,8 @@ export function partsOf(root: HTMLElement, origin: DOMRect) {
     });
   }
 
-  if (bubble) {
-    const bridge = pseudoRect(bubble, "::before", origin);
+  if (content) {
+    const bridge = pseudoRect(content, "::before", origin);
 
     if (bridge) {
       parts.push({
@@ -103,8 +103,8 @@ export function partsOf(root: HTMLElement, origin: DOMRect) {
         source: "::before",
         note: "covers the 7px gap, 1px onto the trigger",
         rect: bridge,
-        depth: depthOf(bubble, root) + 1,
-        el: bubble,
+        depth: depthOf(content, root) + 1,
+        el: content,
       });
     }
   }
@@ -118,6 +118,9 @@ type BoxOptions = { tone?: Tone; width?: number; dash?: string; fill?: number };
 
 export class Overlay {
   readonly stage: HTMLElement;
+  /** Grid, ticks and the component cross, painted under the specimen content. */
+  readonly underSvg: SVGSVGElement;
+  /** Measurement boxes, gap lines and alignment edges, painted over the content. */
   readonly svg: SVGSVGElement;
   readonly labels: HTMLElement;
 
@@ -125,23 +128,34 @@ export class Overlay {
     this.stage = stage;
     stage.querySelectorAll(".ov").forEach((node) => node.remove());
 
+    this.underSvg = document.createElementNS(SVG, "svg");
+    this.underSvg.setAttribute("class", "ov ov-lines ov-under");
+    this.underSvg.setAttribute("aria-hidden", "true");
+
     this.svg = document.createElementNS(SVG, "svg");
-    this.svg.setAttribute("class", "ov ov-lines");
+    this.svg.setAttribute("class", "ov ov-lines ov-over");
     this.svg.setAttribute("aria-hidden", "true");
 
     this.labels = document.createElement("div");
     this.labels.className = "ov ov-labels";
     this.labels.setAttribute("aria-hidden", "true");
 
-    stage.append(this.svg, this.labels);
+    stage.append(this.underSvg, this.svg, this.labels);
     this.resize();
   }
 
   resize() {
     const { width, height } = this.stage.getBoundingClientRect();
-    this.svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-    this.svg.setAttribute("width", String(width));
-    this.svg.setAttribute("height", String(height));
+
+    for (const svg of [this.underSvg, this.svg]) {
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      svg.setAttribute("width", String(width));
+      svg.setAttribute("height", String(height));
+    }
+  }
+
+  private layer(name: "under" | "over" = "over") {
+    return name === "under" ? this.underSvg : this.svg;
   }
 
   line(
@@ -149,7 +163,13 @@ export class Overlay {
     y1: number,
     x2: number,
     y2: number,
-    options: { tone?: Tone; width?: number; dash?: string; opacity?: number } = {},
+    options: {
+      tone?: Tone;
+      width?: number;
+      dash?: string;
+      opacity?: number;
+      layer?: "under" | "over";
+    } = {},
   ) {
     const line = document.createElementNS(SVG, "line");
     line.setAttribute("x1", String(x1));
@@ -167,11 +187,11 @@ export class Overlay {
       line.setAttribute("opacity", String(options.opacity));
     }
 
-    this.svg.append(line);
+    this.layer(options.layer).append(line);
     return line;
   }
 
-  box(rect: Rect, options: BoxOptions = {}) {
+  box(rect: Rect, options: BoxOptions & { layer?: "under" | "over" } = {}) {
     const node = document.createElementNS(SVG, "rect");
     node.setAttribute("x", String(rect.x));
     node.setAttribute("y", String(rect.y));
@@ -186,7 +206,7 @@ export class Overlay {
       node.setAttribute("stroke-dasharray", options.dash);
     }
 
-    this.svg.append(node);
+    this.layer(options.layer).append(node);
     return node;
   }
 
@@ -250,12 +270,13 @@ export class Overlay {
     }
   }
 
-  cross(rect: Rect, tone: Tone = "clay") {
-    this.line(rect.x, rect.y, rect.x + rect.w, rect.y + rect.h, { tone, dash: "3 3" });
-    this.line(rect.x + rect.w, rect.y, rect.x, rect.y + rect.h, { tone, dash: "3 3" });
+  cross(rect: Rect, tone: Tone = "clay", layer: "under" | "over" = "under") {
+    this.line(rect.x, rect.y, rect.x + rect.w, rect.y + rect.h, { tone, dash: "3 3", layer });
+    this.line(rect.x + rect.w, rect.y, rect.x, rect.y + rect.h, { tone, dash: "3 3", layer });
   }
 
   remove() {
+    this.underSvg.remove();
     this.svg.remove();
     this.labels.remove();
   }

@@ -1,3 +1,14 @@
+---
+import { twMerge } from "tailwind-merge";
+
+interface Props {
+	defaultInspecting?: boolean;
+	class?: string;
+}
+
+const { defaultInspecting = true, class: className } = Astro.props;
+---
+
 <section
 	class='grid grid-cols-[2.5rem_minmax(0,1fr)] grid-rows-[auto_1.5rem_auto]'
 	data-stage-shell
@@ -18,7 +29,7 @@
 				type='button'
 				class='inline-flex cursor-pointer items-center gap-1.5 border border-soot bg-transparent px-2 py-0.5 font-mono text-[0.6875rem] text-soot aria-pressed:bg-soot aria-pressed:text-limestone'
 				data-toggle
-				aria-pressed='true'>
+				aria-pressed={defaultInspecting ? "true" : "false"}>
 				Inspect <kbd class='border border-current px-1 opacity-70'>I</kbd>
 			</button>
 		</div>
@@ -28,10 +39,15 @@
 	<div class='ruler ruler-y col-start-1 row-start-3' data-ruler-y aria-hidden='true'></div>
 
 	<div
-		class='relative col-start-2 row-start-3 min-h-[30rem] overflow-hidden border border-soot bg-limestone px-6 pt-10 pb-36 sm:px-12 sm:pt-14'
+		class={twMerge(
+			"relative col-start-2 row-start-3 min-h-[30rem] overflow-hidden border border-soot bg-limestone px-6 pt-10 pb-36 sm:px-12 sm:pt-14",
+			className
+		)}
 		data-stage
-		data-inspecting='on'>
-		<slot />
+		data-inspecting={defaultInspecting ? "on" : "off"}>
+		<div class='relative z-10'>
+			<slot />
+		</div>
 	</div>
 </section>
 
@@ -87,6 +103,20 @@
 
 		const render = () => {
 			cleanup();
+			cleanup = () => {};
+
+			if (stage.dataset.inspecting === "off") {
+				unpin();
+
+				explode = null;
+				exploded = false;
+				readout.textContent = "";
+				explodeButton.setAttribute("aria-pressed", "false");
+				explodeButton.disabled = true;
+
+				return;
+			}
+
 			pin();
 
 			if (!active) {
@@ -132,16 +162,10 @@
 		});
 
 		toggle.addEventListener("click", () => {
-			const pressed = toggle.getAttribute("aria-pressed") !== "false";
-			toggle.setAttribute("aria-pressed", String(!pressed));
-			if (pressed) {
-				setExploded(false, false);
-			}
-			stage.dataset.inspecting = pressed ? "off" : "on";
-			explodeButton.disabled = pressed || !explode?.canExplode;
-			if (!pressed) {
-				render();
-			}
+			const next = stage.dataset.inspecting === "off";
+			stage.dataset.inspecting = next ? "on" : "off";
+			toggle.setAttribute("aria-pressed", String(next));
+			render();
 		});
 
 		document.addEventListener("keydown", (event) => {
@@ -188,6 +212,13 @@
 
 	.ov-lines {
 		overflow: visible;
+	}
+
+	.ov-under {
+		z-index: 0;
+	}
+
+	.ov-over {
 		z-index: 30;
 	}
 
@@ -226,6 +257,12 @@
 		background: var(--color-soot);
 		color: var(--color-limestone);
 		border-color: var(--color-soot);
+	}
+
+	@media (max-width: 30rem) {
+		.ov-label[data-side="horizontal"] {
+			display: none;
+		}
 	}
 
 	.tone-soot {

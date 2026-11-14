@@ -2,6 +2,8 @@ import { expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
+import { alignmentEdgeOf, gapOf, parsePlacement } from "../foundry/inspector/drafting";
+
 const docsDirectory = resolve(import.meta.dir, "..");
 const sourceDirectory = join(docsDirectory, "src");
 const uiDirectory = join(sourceDirectory, "components/ui");
@@ -125,6 +127,46 @@ test.each(proposedFolders)("the built page for foundry/proposed/%s shows the Pro
 test.each(uiFolders)("the built page for src/components/ui/%s shows no Proposed tag", (folder) => {
   const page = readFileSync(join(foundryBuildDirectory, folder, "index.html"), "utf8");
   expect(page).not.toContain('data-status="proposed"');
+});
+
+test("the built tooltip page hosts its placements in the inspector, off by default", () => {
+  const page = readFileSync(join(foundryBuildDirectory, "tooltip", "index.html"), "utf8");
+  expect(page).toContain("data-stage-shell");
+  expect(page).toContain('data-inspecting="off"');
+});
+
+test("the inspector reads a tooltip placement's side and alignment", () => {
+  expect(parsePlacement("bottom-end")).toEqual({
+    value: "bottom-end",
+    side: "bottom",
+    align: "end",
+  });
+  expect(parsePlacement("left-center")).toEqual({
+    value: "left-center",
+    side: "left",
+    align: "center",
+  });
+  expect(parsePlacement(null)).toEqual({ value: "bottom-end", side: "bottom", align: "end" });
+});
+
+test("the inspector measures the tooltip gap on the placement side", () => {
+  const trigger = { x: 100, y: 100, w: 44, h: 44 };
+
+  expect(gapOf(trigger, { x: 100, y: 151, w: 137, h: 33 }, "bottom")).toBe(7);
+  expect(gapOf(trigger, { x: 100, y: 50, w: 137, h: 33 }, "top")).toBe(17);
+  expect(gapOf(trigger, { x: 0, y: 100, w: 93, h: 33 }, "left")).toBe(7);
+  expect(gapOf(trigger, { x: 151, y: 100, w: 137, h: 33 }, "right")).toBe(7);
+});
+
+test("the inspector picks the aligned edge on the placement axis", () => {
+  const content = { x: 100, y: 151, w: 137, h: 33 };
+
+  expect(alignmentEdgeOf(content, "bottom", "start")).toBe(100);
+  expect(alignmentEdgeOf(content, "bottom", "center")).toBe(168.5);
+  expect(alignmentEdgeOf(content, "bottom", "end")).toBe(237);
+  expect(alignmentEdgeOf(content, "left", "start")).toBe(151);
+  expect(alignmentEdgeOf(content, "left", "center")).toBe(167.5);
+  expect(alignmentEdgeOf(content, "left", "end")).toBe(184);
 });
 
 test("Foundry's build holds exactly the pages in foundry/pages", () => {
