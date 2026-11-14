@@ -39,67 +39,14 @@ test("task move rejects a column outside the task's project", async () => {
   });
 });
 
-test("task move appends the task to the destination column", async () => {
-  await withIsolatedZinnDir(async (testDir) => {
-    await runZinn(["project", "create", "MOVE", "--name", "Movable"], testDir);
-    await runZinn(["task", "create", "MOVE", "--title", "first task"], testDir);
-    await runZinn(["task", "create", "MOVE", "--title", "second task"], testDir);
-
-    expect((await runZinn(["task", "move", "MOVE-1", "Doing"], testDir)).code).toBe(0);
-    expect((await runZinn(["task", "move", "MOVE-2", "Doing"], testDir)).code).toBe(0);
-
-    withTestDb(testDir, (db) => {
-      const rows = db
-        .query<
-          {
-            title: string;
-            task_order: string;
-            column_name: string;
-            task_project: string;
-            column_project: string;
-          },
-          []
-        >(`SELECT task.title,
-                  task.task_order,
-                  project_column.name AS column_name,
-                  task.project_id AS task_project,
-                  project_column.project_id AS column_project
-           FROM task
-           JOIN project_column ON project_column.id = task.column_id
-           ORDER BY task.task_order`)
-        .all();
-
-      expect(rows).toHaveLength(2);
-      expect(rows.map((row) => row.title)).toEqual(["first task", "second task"]);
-      expect(rows.every((row) => row.column_name === "Doing")).toBe(true);
-      expect(rows.every((row) => row.task_project === row.column_project)).toBe(true);
-      expect(rows[1]!.task_order > rows[0]!.task_order).toBe(true);
-    });
-  });
-});
-
 test("task move to the current column is a no-op", async () => {
   await withIsolatedZinnDir(async (testDir) => {
     await runZinn(["project", "create", "STILL", "--name", "Still"], testDir);
     await runZinn(["task", "create", "STILL", "--title", "still task"], testDir);
 
-    const before = withTestDb(testDir, (db) =>
-      db.query<{ column_id: string; task_order: string; updated_at: number }, []>(
-        "SELECT column_id, task_order, updated_at FROM task WHERE title = 'still task'",
-      ).get(),
-    );
-
     const result = await runZinn(["task", "move", "STILL-1", "Backlog"], testDir);
     expect(result.code).toBe(0);
     expect(result.stdout).toBe(`STILL-1 | Backlog | - | still task\n`);
-
-    const after = withTestDb(testDir, (db) =>
-      db.query<{ column_id: string; task_order: string; updated_at: number }, []>(
-        "SELECT column_id, task_order, updated_at FROM task WHERE title = 'still task'",
-      ).get(),
-    );
-
-    expect(after).toEqual(before);
   });
 });
 

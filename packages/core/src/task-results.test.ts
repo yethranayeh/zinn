@@ -133,7 +133,7 @@ test("public task results include keys across reads, mutations, and no-ops; DB r
       const other = project.create({ key: "other" }, actor);
       const first = task.create({ project_id: app.id, title: "First", description: null }, actor);
       assert.equal(first.key, "APP-1");
-      task.create({ project_id: app.id, title: "Second", description: null }, actor);
+      const second = task.create({ project_id: app.id, title: "Second", description: null }, actor);
       task.create({ project_id: other.id, title: "Other", description: null }, actor);
       assert.equal(task.getByKey("app-1").key, "APP-1");
       assert.deepEqual(task.getAll().map(t => t.key).sort(), ["APP-1", "APP-2", "OTHER-1"]);
@@ -149,6 +149,11 @@ test("public task results include keys across reads, mutations, and no-ops; DB r
       check(task.move({ taskKey: "APP-1", targetColumn: "TODO" }, actor));
       const moved = task.getByKey("APP-1");
       assert.deepEqual(check(task.move({ taskKey: "APP-1", targetColumn: "TODO" }, actor)), moved);
+      task.move({ taskKey: second.key, targetColumn: "TODO" }, actor);
+      assert.deepEqual(
+        dbTask.getAllByColumnId(task.getByKey(first.key).column_id).map((entry) => entry.title),
+        ["Edited", "Second"],
+      );
       const archived = check(task.archive("APP-1", actor));
       assert.deepEqual(check(task.archive("APP-1", actor)), archived);
       assert.equal(task.getAll({ archive: "archived" })[0]!.key, "APP-1");
