@@ -3,6 +3,8 @@ title: CLI reference
 description: Reference for Zinn project, task, label, relation, comment, and activity commands.
 ---
 
+import Kbd from "../../components/ui/kbd/Kbd.astro";
+
 # CLI reference
 
 Use this page for command behavior, shared input rules, and practical examples. For JSON contracts, discovery, and unattended commands, see [Scripting and JSON output](/docs/scripting). For database settings and upgrades, see [Settings](/docs/settings) and [Data and backups](/docs/data).
@@ -632,7 +634,10 @@ When another matching event exists after a capped page, stderr gives a command t
 
 `--follow` prints activity as any client commits it and runs until stopped. It prints only events committed after it starts, oldest first in commit order. The other filters apply to followed activity as they do to a listing. `--follow` cannot be used with `--limit` or `--starting-after`.
 
-Ctrl-C ends a following session. It also ends successfully once the reader of its output has closed it, as in `zinn activity list --follow | head -1`, when it writes the next event. It ends with a `conflict` error that names the database when its schema changes, including a restore, migration or reindex, or when its file is replaced or removed. Run the command again to follow from that point.
+<Kbd>Ctrl</Kbd>+<Kbd>C</Kbd> ends a following session. It also ends successfully once the reader of its output has
+closed it, as in `zinn activity list --follow | head -1`, when it writes the next event. It ends with a `conflict` error
+that names the database when its schema changes, including a restore, migration or reindex, or when its file is replaced
+or removed. Run the command again to follow from that point.
 
 `--since` and `--until` select events on or after the lower bound and on or before the upper bound, using their recorded `created_at`. Use either flag alone or both together. Equal bounds select events at exactly that millisecond. `--until` must be at or after `--since`. All supplied filters must match before `--limit` applies.
 

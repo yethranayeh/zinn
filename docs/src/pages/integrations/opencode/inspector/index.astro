@@ -4,6 +4,7 @@ import Button from "../../../../components/ui/button/Button.astro";
 import Breadcrumbs from "../../../../components/Breadcrumbs.astro";
 import Icon from "../../../../components/ui/icon/Icon.astro";
 import InspectorCollage from "../../../../components/InspectorCollage.astro";
+import Kbd from "../../../../components/ui/kbd/Kbd.astro";
 import MarkdownH1 from "../../../../components/MarkdownH1.astro";
 import MarkdownH2 from "../../../../components/MarkdownH2.astro";
 import MarkdownList from "../../../../components/MarkdownList.astro";
@@ -98,8 +99,8 @@ const pluginConfig = `{
 					count and a short excerpt of the latest mention in the conversation. When the detail is opened from a task key
 					mentioned in this chat, it also says how many times that task was mentioned. Select a related task to open it
 					in the same dialog, then use back to return. Long relation lists scroll in place. Close the dialog with its
-					close control or Esc. Unknown keys are shown when their project prefix appears among the loaded tasks. Select
-					the ZINN heading to refresh task and label data.
+					close control or <Kbd>Esc</Kbd>. Unknown keys are shown when their project prefix appears among the loaded
+					tasks. Select the ZINN heading to refresh task and label data.
 				</p>
 
 				<MarkdownH2 id='options'>Options</MarkdownH2>

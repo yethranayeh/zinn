@@ -3,6 +3,8 @@ title: Scripting and JSON
 description: Use Zinn's JSON output and command manifest in scripts, including errors and confirmations.
 ---
 
+import Kbd from "../../components/ui/kbd/Kbd.astro";
+
 # Scripting and JSON output
 
 Add `--json` to a command to get JSON instead of text. The flag can appear anywhere in the command except after `--`, where it is a positional value.
@@ -157,7 +159,7 @@ Project, column, task, label, and comment deletion, and database restore, ask fo
 zinn task delete MDR-1 --yes --json
 ```
 
-With `--json`, `--yes` is required for commands that ask for confirmation. Without a terminal, the same commands require `--yes` and refuse before asking. Piped input such as `echo y` does not answer the prompt. In a terminal, only `y` or `Y` confirms; pressing Enter declines. Declining changes nothing and exits successfully. `task relation delete` does not ask for confirmation and does not accept `--yes`.
+With `--json`, `--yes` is required for commands that ask for confirmation. Without a terminal, the same commands require `--yes` and refuse before asking. Piped input such as `echo y` does not answer the prompt. In a terminal, only `y` or `Y` confirms; pressing <Kbd>Enter</Kbd> declines. Declining changes nothing and exits successfully. `task relation delete` does not ask for confirmation and does not accept `--yes`.
 
 Project deletion has an additional rule: `--yes` skips confirmation only when the project key is typed in the command. A configured default project still requires confirmation and cannot be deleted with `--json`.
 
