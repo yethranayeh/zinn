@@ -1,7 +1,8 @@
 import { afterAll, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { isBuiltin } from "node:module";
+import { basename, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -32,24 +33,27 @@ for (const [session, key] of [["chat-one", "APP-1"], ["chat-two", "APP-2"]]) {
     persist(context.settings.dataDirectory, { version: 1, session, ts: new Date().toISOString(), references: [{ key, source: "argv", store: context.settings.store }], replyFailedStore: null } as Observation);
 }
 const resource = `ui://zinn/inspector-${INSPECTOR_VERSION}.html`;
-function fingerprint() {
-    const directory = join(context.settings.store, "data");
-    return readdirSync(directory).sort().map(file => [file, createHash("sha256").update(readFileSync(join(directory, file))).digest("hex")]);
+function fingerprint(directory = join(context.settings.store, "data")) {
+    return readdirSync(directory, { recursive: true, withFileTypes: true })
+        .filter(entry => entry.isFile())
+        .map(entry => relative(directory, join(entry.parentPath, entry.name)))
+        .sort()
+        .map(file => [file, createHash("sha256").update(readFileSync(join(directory, file))).digest("hex")]);
 }
-function createTransport(config = context.config, overrides: NodeJS.ProcessEnv = {}) {
-    const manifest = JSON.parse(readFileSync(join(artifact.plugin, ".mcp.json"), "utf8"));
+function createTransport(config = context.config, overrides: NodeJS.ProcessEnv = {}, plugin = artifact.plugin) {
+    const manifest = JSON.parse(readFileSync(join(plugin, ".mcp.json"), "utf8"));
     const launch = manifest.mcpServers.zinn;
     const env = Object.fromEntries(Object.entries({ ...context.env, ZINN_CODEX_CONFIG: config, ...overrides }).filter((entry): entry is [string, string] => entry[1] !== undefined));
     return new StdioClientTransport({
         command: launch.command,
         args: launch.args,
-        cwd: resolve(artifact.plugin, launch.cwd),
+        cwd: resolve(plugin, launch.cwd),
         env,
     });
 }
-async function connect(config = context.config, overrides: NodeJS.ProcessEnv = {}) {
+async function connect(config = context.config, overrides: NodeJS.ProcessEnv = {}, plugin = artifact.plugin) {
     const client = new Client({ name: "zinn-artifact-check", version: "1.0.0" });
-    const transport = createTransport(config, overrides);
+    const transport = createTransport(config, overrides, plugin);
     try {
         await client.connect(transport);
     } catch (error) {
@@ -198,6 +202,20 @@ else { process.on('SIGTERM', () => {}); writeFileSync(${JSON.stringify(marker)},
 
 test("artifact contains only portable bundled assets and dependency notices", () => {
     expect(createHash("sha256").update(readFileSync(packaged.archive)).digest("hex")).toBe(packaged.sha256);
+    expect(basename(packaged.archive)).toBe(`zinn-codex-${INSPECTOR_VERSION}.tar.gz`);
+    expect(readFileSync(packaged.archive + ".sha256", "utf8").trim().split(/\s+/)).toEqual([packaged.sha256, basename(packaged.archive)]);
+    const files = readdirSync(extracted, { recursive: true, withFileTypes: true })
+        .filter(entry => entry.isFile())
+        .map(entry => relative(extracted, join(entry.parentPath, entry.name)).replaceAll("\\", "/"));
+    expect(files.sort()).toEqual([
+        "zinn-codex/.agents/plugins/marketplace.json",
+        ...[".codex-plugin/plugin.json", ".mcp.json", "LICENSE", "README.md", "THIRD_PARTY_NOTICES.txt", "hook.mjs", "hooks/hooks.json", "launcher.mjs", "server.mjs", "widget.html"]
+            .map(file => `zinn-codex/plugins/zinn/${file}`),
+    ].sort());
+    expect(existsSync(buildDirectory)).toBe(false);
+    const marketplace = JSON.parse(readFileSync(join(extracted, "zinn-codex/.agents/plugins/marketplace.json"), "utf8"));
+    expect(marketplace).toMatchObject({ name: "zinn", plugins: [{ name: "zinn", source: { source: "local", path: "./plugins/zinn" } }] });
+    expect(readFileSync(join(artifact.plugin, "LICENSE"), "utf8")).toBe(readFileSync(join(repository, "integrations/codex/LICENSE"), "utf8"));
     expect(existsSync(join(extracted, "zinn-codex/tests"))).toBe(false);
     expect(existsSync(join(artifact.plugin, "plugin.json"))).toBe(false);
     expect(existsSync(join(artifact.plugin, "mcp.json"))).toBe(false);
@@ -216,17 +234,31 @@ test("artifact contains only portable bundled assets and dependency notices", ()
     expect(html).not.toMatch(/(?:src|href)=["'](?:https?:|\/_astro|\/fonts)/);
     const script = html.match(/<script type="module">([\s\S]*)<\/script>/)?.[1];
     expect(script).toBeDefined();
-    new Bun.Transpiler({ loader: "js", target: "browser" }).transformSync(script!);
+    const browser = new Bun.Transpiler({ loader: "js", target: "browser" });
+    browser.transformSync(script!);
+    expect(browser.scanImports(script!)).toEqual([]);
+    expect(html).not.toMatch(/<(?:link|script|img|source|iframe)\b[^>]*(?:src|href|srcset)=/);
+    const cssUrls = [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/g)].flatMap(
+        ([, css]) => [...css!.matchAll(/url\(\s*["']?([^)'"\s]+)/g)].map(([, url]) => url!),
+    );
+    expect(cssUrls.filter(url => !url.startsWith("data:") && !url.startsWith("#"))).toEqual([]);
+    for (const file of ["server.mjs", "launcher.mjs", "hook.mjs"]) {
+        const imports = new Bun.Transpiler({ loader: "js", target: "node" }).scanImports(readFileSync(join(artifact.plugin, file), "utf8"));
+        expect(imports.filter(entry => !isBuiltin(entry.path))).toEqual([]);
+    }
     const notices = readFileSync(join(artifact.plugin, "THIRD_PARTY_NOTICES.txt"), "utf8");
     expect(notices).toContain("@modelcontextprotocol/sdk");
     expect(notices).toContain("@modelcontextprotocol/ext-apps");
     expect(notices).toContain("zod");
+    expect(notices).toContain("tailwindcss");
     for (const file of ["server.mjs", "launcher.mjs", "hook.mjs", "widget.html", ".codex-plugin/plugin.json", ".mcp.json", "hooks/hooks.json"]) {
         const text = readFileSync(join(artifact.plugin, file), "utf8");
         expect(text).not.toContain("/Users/");
         expect(text).not.toContain("research/");
         expect(text).not.toContain("Bun.");
         expect(text).not.toContain("bun:");
+        expect(text).not.toContain(repository);
+        expect(text).not.toMatch(/\/(?:_astro|fonts|icons)\//);
     }
 });
 test("relocated Node artifact reads selected tasks and isolates each chat", async () => {
@@ -236,6 +268,10 @@ test("relocated Node artifact reads selected tasks and isolates each chat", asyn
     expect(before.find(([file]) => file === "zinn.sqlite")).toEqual(initial.find(([file]) => file === "zinn.sqlite"));
     try {
         const tools = await client.listTools();
+        expect(client.getServerVersion()).toEqual({ name: "zinn", version: INSPECTOR_VERSION });
+        const resources = await client.listResources();
+        expect(resources.resources.map(entry => entry.uri)).toEqual([resource]);
+        expect(tools.tools.find(tool => tool.name === "inspect_task")?._meta?.ui).toMatchObject({ resourceUri: resource });
         expect(tools.tools.map(tool => tool.name).sort()).toEqual(["edit_task", "inspect_task", "move_task", "recent_tasks", "remember_selection", "task_columns", "task_edit_options"]);
         for (const tool of tools.tools) {
             expect((tool._meta?.ui as any).visibility).toEqual(["app"]);
@@ -276,6 +312,8 @@ test("relocated Node artifact reads selected tasks and isolates each chat", asyn
         expect((await recent({ thread_id: "chat-one", threadId: "chat-two" })).kind).toBe("conflicting_metadata");
         const page = await client.readResource({ uri: resource });
         expect(page.contents[0]!.mimeType).toBe("text/html;profile=mcp-app");
+        expect(page.contents[0]!.uri).toBe(resource);
+        expect(page.contents[0]!._meta).toEqual({ ui: { csp: { connectDomains: [], resourceDomains: [] } } });
         expect((page.contents[0] as any).text).toBe(readFileSync(join(artifact.plugin, "widget.html"), "utf8"));
         expect(fingerprint()).toEqual(before);
         context.cli(["task", "edit", "APP-1", "--title", "Fresh title"]);
@@ -354,6 +392,70 @@ test("relocated Node selection state survives restart and isolates chats and sto
         expect(JSON.parse(readFileSync(savedFile, "utf8")).key).toBe("SEL-1");
     } finally {
         await client.close();
+    }
+}, 30000);
+
+test("re-extracting the archive preserves external settings, references and selection", async () => {
+    const lifecycle = fixture();
+    const metadata = { thread_id: "archive-lifecycle-chat" };
+    const settings = { ...lifecycle.settings, observe: false, identity: false, captureEffort: true };
+    writeFileSync(lifecycle.config, JSON.stringify(settings));
+    writeFileSync(join(settings.store, "settings.json"), JSON.stringify({ telemetry: { mode: "off" } }));
+    lifecycle.cli(["project", "create", "LIF"]);
+    lifecycle.cli(["task", "create", "LIF", "--title", "Retained task", "--description", "Retained description"]);
+    persist(settings.dataDirectory, {
+        version: 1, session: metadata.thread_id, ts: new Date().toISOString(),
+        references: [{ key: "LIF-1", source: "argv", store: settings.store }], replyFailedStore: null,
+    });
+    writeFileSync(join(settings.dataDirectory, "user-retained.json"), JSON.stringify({ retained: true }));
+    const configBefore = readFileSync(lifecycle.config, "utf8");
+    const databaseBefore = fingerprint(settings.store);
+    let referencesBefore: ReturnType<typeof fingerprint> | undefined;
+    try {
+        for (const stage of ["initial", "restart", "re-extracted"]) {
+            let plugin = artifact.plugin;
+            if (stage === "re-extracted") {
+                const replacement = join(lifecycle.directory, "replacement marketplace with spaces");
+                await new Bun.Archive(await Bun.file(packaged.archive).arrayBuffer()).extract(replacement);
+                plugin = join(replacement, "zinn-codex/plugins/zinn");
+            }
+            const client = await connect(lifecycle.config, {}, plugin);
+            try {
+                if (stage === "initial") {
+                    const initial = (await client.callTool({ name: "inspect_task", arguments: { key: "LIF-1" }, _meta: metadata })).structuredContent as any;
+                    const saved = await client.callTool({ name: "remember_selection", arguments: { key: "LIF-1", expectedScope: initial.selection.scope }, _meta: metadata });
+                    expect(saved.structuredContent).toMatchObject({ saved: true });
+                    referencesBefore = fingerprint(settings.dataDirectory);
+                }
+                expect((await client.callTool({ name: "inspect_task", arguments: {}, _meta: metadata })).structuredContent).toMatchObject({
+                    kind: "ready", task: { key: "LIF-1", title: "Retained task", description: "Retained description" },
+                });
+                expect((await client.callTool({ name: "recent_tasks", arguments: {}, _meta: metadata })).structuredContent).toMatchObject({
+                    references: [{ key: "LIF-1" }],
+                });
+                expect((await client.readResource({ uri: resource })).contents[0]).toMatchObject({
+                    uri: resource, text: readFileSync(join(artifact.plugin, "widget.html"), "utf8"),
+                });
+                const disabled = Bun.spawnSync(["node", join(plugin, "hook.mjs")], {
+                    env: { ...lifecycle.env, ZINN_CODEX_CONFIG: lifecycle.config },
+                    stdin: Buffer.from(JSON.stringify({
+                        hook_event_name: "PreToolUse", session_id: metadata.thread_id,
+                        cwd: lifecycle.directory, model: "fixture-model", tool_name: "Bash",
+                        tool_input: { command: "zinn task view LIF-1" },
+                    })),
+                });
+                expect(disabled.exitCode).toBe(0);
+                expect(disabled.stdout.byteLength).toBe(0);
+                expect(disabled.stderr.byteLength).toBe(0);
+            } finally {
+                await client.close();
+            }
+            expect(readFileSync(lifecycle.config, "utf8")).toBe(configBefore);
+            expect(fingerprint(settings.store)).toEqual(databaseBefore);
+            expect(fingerprint(settings.dataDirectory)).toEqual(referencesBefore!);
+        }
+    } finally {
+        lifecycle.cleanup();
     }
 }, 30000);
 
