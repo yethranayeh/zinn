@@ -115,6 +115,23 @@ export function output<T>(data: T, transformToString: (data: T) => string) {
   }
 }
 
+/**
+ * Prints items as they arrive for a command that keeps running. JSON mode prints one document per line.
+ * It writes to the stream itself, whose error event reports a closed pipe under Node and Bun alike.
+ */
+export function outputStream<T>(items: Array<T>, transformToString: (items: Array<T>) => string) {
+  if (items.length === 0) {
+    return;
+  }
+
+  const text =
+    outputMode === "json"
+      ? items.map((item) => JSON.stringify(item)).join("\n")
+      : transformToString(items);
+
+  process.stdout.write(`${text}\n`);
+}
+
 /** Includes change data in JSON and adds a stderr note for each unchanged object */
 export function outputChanges<Change extends { changed: boolean }, Presented extends object>(
   changes: Array<Change>,

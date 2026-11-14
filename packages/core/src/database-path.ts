@@ -1,4 +1,4 @@
-import { lstatSync, realpathSync } from "node:fs";
+import { lstatSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 import { CoreError } from "./errors.ts";
@@ -39,6 +39,16 @@ export function resolveDatabasePath(databasePath: string): ResolvedPath {
       { cause },
     );
   }
+}
+
+/**
+ * The device and inode of the file at path, which tell whether the path still leads to the same file.
+ * Null when no file is there. `bigint` keeps inode numbers exact on Windows.
+ */
+export function readFileIdentity(path: string) {
+  const file = statSync(path, { bigint: true, throwIfNoEntry: false });
+
+  return file == null ? null : `${file.dev}:${file.ino}`;
 }
 
 /** Resolves a backup folder through its nearest existing ancestor without creating anything */

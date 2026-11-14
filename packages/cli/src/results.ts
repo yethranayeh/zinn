@@ -16,7 +16,11 @@ export const resultReferenceSchema = z.string().regex(/^#\/schemas\/definitions\
 export const commandResultSchema = z.strictObject({
   selector: resultSelectorSchema,
   schemaRef: resultReferenceSchema,
-  mode: z.literal("json"),
+  /**
+   * json is one document,
+   * json-lines is one document per line written as each becomes available
+   */
+  mode: z.enum(["json", "json-lines"]),
   stream: z.literal("stdout"),
   exitCode: z.literal(0),
 });
@@ -28,11 +32,12 @@ export type CommandResult = z.infer<typeof commandResultSchema> & {
 export function jsonResult(
   schema: ResultSchemaName,
   selector: ResultSelector = { kind: "always" },
+  mode: CommandResult["mode"] = "json",
 ): CommandResult {
   return {
     selector,
     schemaRef: `#/schemas/definitions/${schema}`,
-    mode: "json",
+    mode,
     stream: "stdout",
     exitCode: 0,
   };

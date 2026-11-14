@@ -39,6 +39,42 @@ async function success(directory: string, args: string[]) {
   expect(result.code, result.stderr).toBe(0);
   return JSON.parse(result.stdout);
 }
+// A json-lines command prints nothing until another process commits, so tasks are created until a line arrives.
+const STREAM_PROBES = 10;
+const STREAM_PROBE_WAIT_MS = 2_500;
+/** The first document of a result that prints one document per line and runs until stopped */
+async function firstStreamedDocument(directory: string, args: string[]) {
+  const proc = Bun.spawn(["bun", join(import.meta.dir, "index.ts"), ...args, "--json"], {
+    cwd: root,
+    env: { ...TEST_ENVIRONMENT, ZINN_DIR: directory, AI_AGENT: "contract-test", FORCE_COLOR: "0" },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  let stdout = "";
+  const reading = (async () => {
+    const decoder = new TextDecoder();
+    for await (const chunk of proc.stdout) {
+      stdout += decoder.decode(chunk, { stream: true });
+    }
+  })();
+
+  try {
+    for (let probe = 0; probe < STREAM_PROBES && !stdout.includes("\n"); probe++) {
+      await success(directory, ["task", "create", "APP", "--title", "Streamed"]);
+      const deadline = Date.now() + STREAM_PROBE_WAIT_MS;
+      while (!stdout.includes("\n") && Date.now() < deadline) {
+        await Bun.sleep(50);
+      }
+    }
+  } finally {
+    proc.kill("SIGKILL");
+    await proc.exited;
+    await reading;
+  }
+
+  expect(stdout, await new Response(proc.stderr).text()).toContain("\n");
+  return JSON.parse(stdout.split("\n")[0]!);
+}
 function fixtureDirectory(empty = false) {
   const directory = mkdtempSync(join(root, "case-"));
   if (!empty) {
@@ -322,7 +358,11 @@ const fixtures: Record<string, Fixture[]> = {
     { schema: "LabelChange", args: ["bug", "--color", "red"], check: (v) => expect(v.changed).toBe(false) },
   ],
   "label delete": [{ schema: "Label", args: ["bug", "--yes"] }],
-  "activity list": [{ schema: "ActivityList", args: [] }, { schema: "ActivityList", args: ["--task", "APP-999", "--show-deleted"] }],
+  "activity list": [
+    { schema: "ActivityList", args: [] },
+    { schema: "ActivityList", args: ["--task", "APP-999", "--show-deleted"] },
+    { schema: "Activity", args: ["--follow"] },
+  ],
   "activity view": [{ schema: "Activity", args: ["$event"] }],
   "backup": [{ schema: "Backup", args: [] }],
   "restore": [
@@ -393,9 +433,14 @@ for (const route of commands) {
       const descriptor = selectResult(route, args);
       const hasEntities = ["project", "task", "label"].includes(route.command.split(" ")[0]!);
       const deletedRows = hasEntities && route.effects.domain === "delete" ? readEntityRows(directory) : undefined;
-      const result = await invoke(directory, [...route.command.split(" "), ...args], fixture.env?.(directory));
-      expect(result.code, result.stderr).toBe(0);
-      const value = JSON.parse(result.stdout);
+      let value: any;
+      if (descriptor.mode === "json-lines") {
+        value = await firstStreamedDocument(directory, [...route.command.split(" "), ...args]);
+      } else {
+        const result = await invoke(directory, [...route.command.split(" "), ...args], fixture.env?.(directory));
+        expect(result.code, result.stderr).toBe(0);
+        value = JSON.parse(result.stdout);
+      }
       const ref = descriptor.schemaRef.replace("#/schemas/", "results#/");
       const validate = ajv.getSchema(ref)!;
       expect(validate(value), JSON.stringify(validate.errors)).toBe(true);

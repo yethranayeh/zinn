@@ -5,6 +5,7 @@ import { v7 as uuidv7 } from "uuid";
 
 import { DB_TABLE } from "../constant.js";
 import { getDb } from "../db.js";
+import { readSchemaVersion } from "../migrations/runner.js";
 
 type StoredActivity = Omit<Activity, "changes"> & { changes: string | null };
 
@@ -102,6 +103,8 @@ export type ActivityQuery = Pick<
   "sessionId" | "threadId" | "since" | "until" | "actions"
 > & {
   before?: Pick<Activity, "created_at" | "id">;
+  /** Selects the events stored after this position and returns them oldest first */
+  afterPosition?: number;
   limit?: number;
   members?: ActivityMembers;
   taskIds?: Array<string>;
@@ -136,6 +139,11 @@ export function getAll(input: ActivityQuery = {}): Array<Activity> {
     bindings.$id = input.before.id;
   }
 
+  if (input.afterPosition !== undefined) {
+    predicates.push("rowid > $afterPosition");
+    bindings.$afterPosition = input.afterPosition;
+  }
+
   if (input.members !== undefined) {
     predicates.push(`((entity_type = 'project' AND entity_id IN (SELECT value FROM json_each($memberProjectIds)))
       OR (entity_type = 'column' AND entity_id IN (SELECT value FROM json_each($memberColumnIds)))
@@ -153,6 +161,7 @@ export function getAll(input: ActivityQuery = {}): Array<Activity> {
   }
 
   const where = predicates.length === 0 ? "" : ` WHERE ${predicates.join(" AND ")}`;
+  const order = input.afterPosition === undefined ? "created_at DESC, id DESC" : "rowid ASC";
   const limit = input.limit === undefined ? "" : " LIMIT $limit";
 
   if (input.limit !== undefined) {
@@ -161,26 +170,61 @@ export function getAll(input: ActivityQuery = {}): Array<Activity> {
 
   return getDb()
     .query<StoredActivity, typeof bindings>(
-      `SELECT * FROM ${DB_TABLE.activity}${where} ORDER BY created_at DESC, id DESC${limit}`,
+      `SELECT * FROM ${DB_TABLE.activity}${where} ORDER BY ${order}${limit}`,
     )
     .all(bindings)
     .map(parseActivity);
 }
 
 /**
+ * A value that changes whenever another connection commits a write from SQLite's `PRAGMA data_version`.
+ * This connection's own writes leave it unchanged.
+ * @link https://www.sqlite.org/pragma.html#pragma_data_version
+ */
+export function readDataVersion() {
+  return getDb().query<{ data_version: number }, []>("PRAGMA data_version").get()!.data_version;
+}
+
+/**
  * A value that changes whenever this connection writes or another connection commits a write,
- *  from SQLite's `total_changes()` and `PRAGMA data_version`
+ *  from SQLite's `total_changes()` and the data version
  */
 export function getWriteMarker() {
-  const connection = getDb();
-  const { changes } = connection
+  const { changes } = getDb()
     .query<{ changes: number }, []>("SELECT total_changes() AS changes")
     .get()!;
-  const { data_version } = connection
-    .query<{ data_version: number }, []>("PRAGMA data_version")
+
+  return `${changes}:${readDataVersion()}`;
+}
+
+/**
+ * The position of the newest stored event, which is `0` if there is none.
+ * It is the table's `rowid`, which grows with every stored event, so positions follow commit order
+ *  even when an event's timestamp was taken before another writer's commit.
+ * @link https://www.sqlite.org/autoinc.html
+ */
+export function readLastPosition() {
+  const { position } = getDb()
+    .query<{ position: number | null }, []>(
+      `SELECT MAX(rowid) AS position FROM ${DB_TABLE.activity}`,
+    )
     .get()!;
 
-  return `${changes}:${data_version}`;
+  return position ?? 0;
+}
+
+/**
+ * A value that changes when another connection replaces tables or sets another schema version,
+ *  as a restore, a migration and a reindex do. From SQLite's schema cookie and `PRAGMA user_version`.
+ * @link https://www.sqlite.org/pragma.html#pragma_schema_version
+ */
+export function readSchemaMarker() {
+  const connection = getDb();
+  const { schema_version } = connection
+    .query<{ schema_version: number }, []>("PRAGMA schema_version")
+    .get()!;
+
+  return `${schema_version}:${readSchemaVersion(connection)}`;
 }
 
 export function getIds(): Array<string> {

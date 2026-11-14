@@ -4,6 +4,7 @@ import type {
   ActivityTaskIdentitiesInput,
 } from "../schemas/activity.js";
 import type { Activity } from "../types.js";
+import type { z } from "zod";
 
 import { CoreError } from "../errors.js";
 import {
@@ -23,7 +24,9 @@ import {
   isRecord,
 } from "./recorded-changes.js";
 import { attachTaskKey, findTaskByExactKey, requireSingleIdMatch } from "./shared.js";
-import { getDb } from "../db.js";
+import { getDb, readTransaction } from "../db.js";
+import { readFileIdentity } from "../database-path.js";
+import { getStorage } from "../storage.js";
 import * as dbActivity from "../db/activity.js";
 import * as dbTask from "../db/task.js";
 import * as dbProject from "../db/project.js";
@@ -36,6 +39,23 @@ export type ActivityTaskIdentity = {
   status: "active" | "archived" | "deleted";
 };
 
+/** A follower takes a listing's filters. It has no pages, so it takes no limit. */
+export type ActivityFollowInput = Omit<ActivityListInput, "limit">;
+
+/**
+ * Why a follower can read no further:
+ * - `file_replaced`: the database path no longer leads to the file this process opened.
+ * - `schema_changed`: another connection replaced tables or set another schema version,
+ *    as a restore, a migration and a reindex do.
+ */
+export type ActivityFollowStop = "file_replaced" | "schema_changed";
+
+export type ActivityFollower = {
+  /** The matching events committed since the previous call, oldest first, or why no more can be read */
+  poll: () => { events: Array<Activity> } | { stopped: ActivityFollowStop; databasePath: string };
+};
+
+type ActivityListProps = z.output<typeof activityListSchema>;
 type ActivityTaskSelector = Pick<ActivityListInput, "taskKey" | "taskId" | "showDeleted">;
 type ActivityProjectSelector = Pick<ActivityListInput, "projectKey" | "projectId" | "showDeleted">;
 
@@ -281,73 +301,83 @@ function getRecordedValues(event: Activity): RecordedValues {
   }
 }
 
+/**
+ * The query, candidate fetch and event filter that a listing input selects.
+ * Throws when it selects a project or task that does not exist.
+ */
+function prepareSelection(props: ActivityListProps) {
+  const query: dbActivity.ActivityQuery = {
+    sessionId: props.sessionId,
+    threadId: props.threadId,
+    since: props.since,
+    until: props.until,
+    actions: props.actions,
+    before: props.startingAfter === undefined ? undefined : activity.getById(props.startingAfter),
+  };
+  let fetchCandidates = (input: dbActivity.ActivityQuery) => dbActivity.getAll(input);
+
+  if (props.projectKey !== undefined || props.projectId !== undefined) {
+    query.members = getProjectMembers(props);
+  } else if (props.taskKey !== undefined || props.taskId !== undefined) {
+    const { identities, projectDeletionIds } = resolveTaskHistory(props);
+    const taskIds =
+      props.taskId === undefined ? identities.map((identity) => identity.id) : [props.taskId];
+
+    fetchCandidates = (input) => dbActivity.getAllForTasks(taskIds, projectDeletionIds, input);
+  }
+
+  const changedValues = new Map<ActivityChangedField, Set<string | null | undefined>>();
+  for (const { field, value } of props.changed ?? []) {
+    const values = changedValues.get(field) ?? new Set<string | null | undefined>();
+    values.add(value == null ? value : standardizeName(value));
+    changedValues.set(field, values);
+  }
+
+  const changedFields = [...changedValues];
+
+  const matchesClient = (event: Activity) => {
+    if (props.client === undefined) {
+      return true;
+    }
+
+    return parseClientChain(event.actor_client).some(
+      ({ name }) => name === props.client || name.startsWith(`${props.client}:`),
+    );
+  };
+
+  const matchesChanges = (event: Activity) => {
+    const recordedValues = getRecordedValues(event);
+
+    return changedFields.every(([field, values]) => {
+      const newValues = recordedValues[field] ?? [];
+      const hasRemovedLabels =
+        field === "labels" &&
+        event.entity_type === "task" &&
+        event.action === "edit" &&
+        getChangedLabelNames(event.changes?.labels, "removed").length > 0;
+      const matchesAnyChange = values.has(undefined) && (newValues.length > 0 || hasRemovedLabels);
+
+      return (
+        matchesAnyChange ||
+        newValues.some(
+          (value) =>
+            typeof value !== "number" && values.has(value === null ? null : standardizeName(value)),
+        )
+      );
+    });
+  };
+
+  const matchesFilters = (event: Activity) => matchesClient(event) && matchesChanges(event);
+
+  return { query, fetchCandidates, matchesFilters };
+}
+
 export const activity = {
   getAll: (
     input: ActivityListInput = {},
   ): { events: Array<Activity>; hasMore: boolean; nextCursor?: string } => {
     const props = validateTaskInput(activityListSchema, input);
-    const query: dbActivity.ActivityQuery = {
-      sessionId: props.sessionId,
-      threadId: props.threadId,
-      since: props.since,
-      until: props.until,
-      actions: props.actions,
-      before: props.startingAfter === undefined ? undefined : activity.getById(props.startingAfter),
-    };
-    let fetchCandidates = (input: dbActivity.ActivityQuery) => dbActivity.getAll(input);
-
-    if (props.projectKey !== undefined || props.projectId !== undefined) {
-      query.members = getProjectMembers(props);
-    } else if (props.taskKey !== undefined || props.taskId !== undefined) {
-      const { identities, projectDeletionIds } = resolveTaskHistory(props);
-      const taskIds =
-        props.taskId === undefined ? identities.map((identity) => identity.id) : [props.taskId];
-      fetchCandidates = (input) => dbActivity.getAllForTasks(taskIds, projectDeletionIds, input);
-    }
-
-    const changedValues = new Map<ActivityChangedField, Set<string | null | undefined>>();
-    for (const { field, value } of props.changed ?? []) {
-      const values = changedValues.get(field) ?? new Set<string | null | undefined>();
-      values.add(value == null ? value : standardizeName(value));
-      changedValues.set(field, values);
-    }
-    const changedFields = [...changedValues];
-
-    const matchesClient = (event: Activity) => {
-      if (props.client === undefined) {
-        return true;
-      }
-
-      return parseClientChain(event.actor_client).some(
-        ({ name }) => name === props.client || name.startsWith(`${props.client}:`),
-      );
-    };
-
-    const matchesChanges = (event: Activity) => {
-      const recordedValues = getRecordedValues(event);
-
-      return changedFields.every(([field, values]) => {
-        const newValues = recordedValues[field] ?? [];
-        const hasRemovedLabels =
-          field === "labels" &&
-          event.entity_type === "task" &&
-          event.action === "edit" &&
-          getChangedLabelNames(event.changes?.labels, "removed").length > 0;
-        const matchesAnyChange =
-          values.has(undefined) && (newValues.length > 0 || hasRemovedLabels);
-
-        return (
-          matchesAnyChange ||
-          newValues.some(
-            (value) =>
-              typeof value !== "number" &&
-              values.has(value === null ? null : standardizeName(value)),
-          )
-        );
-      });
-    };
-
-    const matchesFilters = (event: Activity) => matchesClient(event) && matchesChanges(event);
+    const { query, fetchCandidates, matchesFilters } = prepareSelection(props);
 
     if (props.limit === undefined) {
       return { events: fetchCandidates(query).filter(matchesFilters), hasMore: false };
@@ -382,6 +412,52 @@ export const activity = {
 
     // Events never change position, so the last event's ID continues the list
     return { events, hasMore: true, nextCursor: events.at(-1)!.id };
+  },
+  /**
+   * Follows the activity that other connections commit from this point onward. Only reads.
+   * Each poll reads inside one short transaction, so no read transaction stays open between polls
+   *  and SQLite can keep resetting the WAL file.
+   * @link https://www.sqlite.org/wal.html#avoiding_excessively_large_wal_files
+   */
+  follow: (input: ActivityFollowInput = {}): ActivityFollower => {
+    const props = validateTaskInput(activityListSchema, input);
+    const { databasePath } = getStorage();
+    const databaseFile = readFileIdentity(databasePath);
+    let { dataVersion, position } = readTransaction(() => {
+      prepareSelection(props);
+
+      return {
+        dataVersion: dbActivity.readDataVersion(),
+        position: dbActivity.readLastPosition(),
+      };
+    });
+    const schemaMarker = dbActivity.readSchemaMarker();
+
+    return {
+      poll: () => {
+        if (readFileIdentity(databasePath) !== databaseFile) {
+          return { stopped: "file_replaced", databasePath };
+        }
+
+        return readTransaction(() => {
+          const currentVersion = dbActivity.readDataVersion();
+          if (currentVersion === dataVersion) {
+            return { events: [] };
+          }
+          dataVersion = currentVersion;
+
+          if (dbActivity.readSchemaMarker() !== schemaMarker) {
+            return { stopped: "schema_changed", databasePath };
+          }
+
+          const { query, fetchCandidates, matchesFilters } = prepareSelection(props);
+          query.afterPosition = position;
+          position = dbActivity.readLastPosition();
+
+          return { events: fetchCandidates(query).filter(matchesFilters) };
+        });
+      },
+    };
   },
   getById: (id: string) => {
     const hexPrefix = validateTaskInput(activityIdSchema, id);

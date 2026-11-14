@@ -1,3 +1,4 @@
+import type { Activity, ActivityFollowInput } from "@zinn-dev/core";
 import type { PresentedActivity } from "../result-schemas.js";
 import type { RouteDef } from "../types.js";
 import type { CommandInput } from "../input.js";
@@ -17,7 +18,15 @@ import { generateCommandUsage, getOptionInputs, violatesConstraint } from "../in
 import { CliError } from "../errors.js";
 import { parseTimestampInput } from "../timestamp-input.js";
 import { formatListContinuation } from "../list-continuation.js";
-import { diagnostic, output, quit, validatePositionals, validateUniqueOptions } from "../lib.js";
+import {
+  diagnostic,
+  output,
+  outputStream,
+  quit,
+  validatePositionals,
+  validateUniqueOptions,
+} from "../lib.js";
+import { followUntilStopped } from "../follow.js";
 import { formatActivityList, presentActivities } from "../presentation/activity-presentation.js";
 
 const changedFieldList = activityChangedFieldSchema.options.join(", ");
@@ -87,6 +96,7 @@ const activityInputs = {
           description: `Fields: ${changedFieldList}. Omit the value to match any change. Values apply to column, priority and added labels, ignoring case. priority=none matches an unassigned priority.`,
         },
       },
+      follow: { type: "boolean" },
       limit: listLimitOption,
       "starting-after": { type: "string", value: { kind: "activity-id", name: "id" } },
     },
@@ -101,8 +111,10 @@ const activityInputs = {
         input: "option:show-deleted",
         members: ["option:project", "option:task"],
       },
+      { kind: "exclusive", members: ["option:follow", "option:limit"] },
     ],
     notes: [
+      "With --follow, the command prints activity committed after it starts, oldest first, and runs until stopped.",
       "Repeated --action flags match any listed action. Repeated --changed filters for one field match any of them. Different fields must match the same event. All other filters must also match, before --limit applies.",
     ],
   },
@@ -124,7 +136,10 @@ export const activityRouter = {
     effects: { domain: "read", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: activityInputs.list,
-    results: [jsonResult("ActivityList")],
+    results: [
+      jsonResult("ActivityList", { kind: "booleanOption", name: "follow", value: false }),
+      jsonResult("Activity", { kind: "booleanOption", name: "follow", value: true }, "json-lines"),
+    ],
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
@@ -136,7 +151,8 @@ export const activityRouter = {
       validateUniqueOptions(tokens, activityInputs.list.options);
       validatePositionals(positionals, activityInputs.list.forms[0]);
 
-      const [selectorConstraint, deletedHistoryConstraint] = activityInputs.list.constraints;
+      const [selectorConstraint, deletedHistoryConstraint, followConstraint] =
+        activityInputs.list.constraints;
       const optionInputs = getOptionInputs(values);
 
       if (violatesConstraint(selectorConstraint, optionInputs)) {
@@ -155,87 +171,71 @@ export const activityRouter = {
         });
       }
 
-      const limit = parseListLimit(values.limit);
-
-      let page: ReturnType<typeof activity.getAll>;
-      try {
-        page = activity.getAll({
-          projectKey: values.project,
-          projectId: values["project-id"],
-          taskKey: values.task,
-          taskId: values["task-id"],
-          showDeleted: values["show-deleted"],
-          sessionId: values.session,
-          threadId: values.thread,
-          client: values.client,
-          actions: values.action?.map((action) => {
-            const parsed = activityActionSchema.safeParse(action);
-            if (!parsed.success) {
-              quit(
-                `Unknown action "${action}". Use ${activityActionSchema.options.join(", ")}`,
-                undefined,
-                {
-                  argument: "--action",
-                },
-              );
-            }
-            return parsed.data;
-          }),
-          changed: values.changed?.map(parseChangedFilter),
-          since: parseTimestampInput(values.since, "--since"),
-          until: parseTimestampInput(values.until, "--until"),
-          limit,
-          startingAfter: values["starting-after"],
-        });
-      } catch (error) {
-        const isInvalidUpperBound =
-          error instanceof CoreError &&
-          error.kind === "input" &&
-          error.facts.field?.[0] === "until";
-
-        if (isInvalidUpperBound) {
-          throw new CliError(error.message, "invalid_input", {
-            argument: "--until",
-            field: error.facts.field,
-          });
-        }
-
-        const isMissingCurrentSelection =
-          (values.task !== undefined || values.project !== undefined) &&
-          values["show-deleted"] !== true &&
-          error instanceof CoreError &&
-          error.kind === "missing" &&
-          error.facts.entity === (values.project !== undefined ? "project" : "task");
-
-        if (isMissingCurrentSelection) {
-          const selector = error.facts.entity === "project" ? "--project" : "--task";
-          throw new CliError(
-            error.message,
-            "not_found",
-            {
-              entity: error.facts.entity,
-              key: error.facts.key,
-              source: "explicit",
-              argument: selector,
-            },
-            `Use ${selector} ${values.project ?? values.task} --show-deleted to include deleted history.`,
-          );
-        }
-
-        throw error;
+      if (violatesConstraint(followConstraint, optionInputs)) {
+        quit("--limit cannot be used with --follow", undefined, { argument: "--limit" });
       }
 
-      output(page.events, (items) =>
-        formatActivityList(
-          presentActivities(items, {
-            projectKey: values.project,
-            projectId: values["project-id"],
-            showDeleted: values["show-deleted"],
-            taskKey: values.task,
-            taskId: values["task-id"],
-          }),
-        ),
-      );
+      const limit = parseListLimit(values.limit);
+      const selection = {
+        projectKey: values.project,
+        projectId: values["project-id"],
+        taskKey: values.task,
+        taskId: values["task-id"],
+        showDeleted: values["show-deleted"],
+      };
+      const filters: ActivityFollowInput = {
+        ...selection,
+        sessionId: values.session,
+        threadId: values.thread,
+        client: values.client,
+        actions: values.action?.map((action) => {
+          const parsed = activityActionSchema.safeParse(action);
+          if (!parsed.success) {
+            quit(
+              `Unknown action "${action}". Use ${activityActionSchema.options.join(", ")}`,
+              undefined,
+              {
+                argument: "--action",
+              },
+            );
+          }
+
+          return parsed.data;
+        }),
+        changed: values.changed?.map(parseChangedFilter),
+        since: parseTimestampInput(values.since, "--since"),
+        until: parseTimestampInput(values.until, "--until"),
+        startingAfter: values["starting-after"],
+      };
+      const formatEvents = (events: Array<Activity>) =>
+        formatActivityList(presentActivities(events, selection));
+
+      if (values.follow === true) {
+        const follower = readSelectedActivity(values, () => activity.follow(filters));
+
+        return followUntilStopped(() => {
+          const polled = readSelectedActivity(values, () => follower.poll());
+
+          if ("stopped" in polled) {
+            const reason =
+              polled.stopped === "file_replaced"
+                ? `The database file at ${polled.databasePath} was replaced or removed`
+                : `The database at ${polled.databasePath} was restored, migrated or reindexed`;
+
+            throw new CliError(
+              `${reason}, so following stopped. Run the command again to follow new activity.`,
+              "conflict",
+              { entity: "database", databasePath: polled.databasePath },
+            );
+          }
+
+          outputStream(polled.events, formatEvents);
+        });
+      }
+
+      const page = readSelectedActivity(values, () => activity.getAll({ ...filters, limit }));
+
+      output(page.events, formatEvents);
       if (page.nextCursor !== undefined) {
         diagnostic(
           `More activity. Continue with: ${formatListContinuation(
@@ -274,6 +274,7 @@ Returns all matching events unless --limit is supplied.
                    Without a value, labels match additions and removals.
                    Title and description match any change, without a value.
                    Use priority=none for an unassigned priority.
+--follow           Print new activity as it is committed, until stopped.
 --limit <n>        ${listLimitDescription}
 --starting-after <id> Continue with older events after this activity ID.
 
@@ -292,8 +293,14 @@ Times accept integer epoch milliseconds or YYYY-MM-DDTHH:mm:ss with Z or a
 numeric offset such as +01:00. Optional fractional seconds have 1 to 3 digits.
 Both bounds are inclusive. --until must be at or after --since.
 
+--follow prints only activity committed after it starts, oldest first, and the
+filters apply to it. It ends on Ctrl-C, once its output is closed, and with an
+error when the database is restored, migrated, reindexed or its file replaced.
+--follow cannot be used with --limit.
+
 Use activity view <activity-id> for complete recorded changes.
 With --json, return an array of full activity records.
+With --follow --json, print each full activity record as one JSON object per line.
 
 Examples:
   zinn activity list --limit 10
@@ -305,7 +312,8 @@ Examples:
   zinn activity list --changed column=Review
   zinn activity list --changed priority=high --changed labels=bug
   zinn activity list --task APP-2
-  zinn activity list --task APP-2 --show-deleted`,
+  zinn activity list --task APP-2 --show-deleted
+  zinn activity list --follow --changed column=Review`,
   },
   view: {
     summary: "Show one recorded event with full activity/entity IDs, actor and complete changes.",
@@ -341,6 +349,50 @@ With --json, return one full activity record.
 Example: zinn activity view 019abcdf-1234-7`,
   },
 } satisfies RouteDef;
+
+/** Reads the selected activity, reporting core's refusals with the flag that caused them */
+function readSelectedActivity<Result>(
+  values: { project?: string; task?: string; "show-deleted"?: boolean },
+  read: () => Result,
+): Result {
+  try {
+    return read();
+  } catch (error) {
+    const isInvalidUpperBound =
+      error instanceof CoreError && error.kind === "input" && error.facts.field?.[0] === "until";
+
+    if (isInvalidUpperBound) {
+      throw new CliError(error.message, "invalid_input", {
+        argument: "--until",
+        field: error.facts.field,
+      });
+    }
+
+    const isMissingCurrentSelection =
+      (values.task !== undefined || values.project !== undefined) &&
+      values["show-deleted"] !== true &&
+      error instanceof CoreError &&
+      error.kind === "missing" &&
+      error.facts.entity === (values.project !== undefined ? "project" : "task");
+
+    if (isMissingCurrentSelection) {
+      const selector = error.facts.entity === "project" ? "--project" : "--task";
+      throw new CliError(
+        error.message,
+        "not_found",
+        {
+          entity: error.facts.entity,
+          key: error.facts.key,
+          source: "explicit",
+          argument: selector,
+        },
+        `Use ${selector} ${values.project ?? values.task} --show-deleted to include deleted history.`,
+      );
+    }
+
+    throw error;
+  }
+}
 
 function parseChangedFilter(input: string) {
   const separator = input.indexOf("=");

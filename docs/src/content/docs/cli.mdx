@@ -599,6 +599,7 @@ zinn activity list --task MDR-1 --changed due_at
 zinn activity list --changed column=Review
 zinn activity list --changed priority=high --changed labels=bug
 zinn activity list --changed column=Review --changed column=Done --limit 10
+zinn activity list --follow --changed column=Review
 zinn activity view 019abcdf-1234-7
 ```
 
@@ -607,6 +608,10 @@ zinn activity view 019abcdf-1234-7
 Use `--starting-after <activity-id>` to continue toward older events, while excluding the cursor event. It accepts the same full IDs and unique prefixes as `activity view`. The cursor event need not match the filters. Keep the same filters when continuing. Without `--limit`, the command returns every remaining match.
 
 When another matching event exists after a capped page, stderr gives a command to continue with the last returned event's full ID. The command retains the filters and output mode. This hint also appears with `--json`, whose stdout remains an array of full activity records. Scripts can continue with the last event's ID whenever a page contains exactly the requested limit. An empty array marks exhaustion.
+
+`--follow` prints activity as any client commits it and runs until stopped. It prints only events committed after it starts, oldest first in commit order. The other filters apply to followed activity as they do to a listing. `--follow` cannot be used with `--limit`.
+
+Ctrl-C ends a following session. It also ends successfully once the reader of its output has closed it, as in `zinn activity list --follow | head -1`, when it writes the next event. It ends with a `conflict` error that names the database when the database is restored, migrated or reindexed, or when its file is replaced or removed. Run the command again to follow from that point.
 
 `--since` and `--until` select events on or after the lower bound and on or before the upper bound, using their recorded `created_at`. Use either flag alone or both together. Equal bounds select events at exactly that millisecond. `--until` must be at or after `--since`. All supplied filters must match before `--limit` applies.
 
@@ -644,7 +649,7 @@ Activity text uses local dates and times with a UTC offset. `activity list` uses
 
 `activity view` preserves full recorded text and line breaks, including unknown change fields.
 
-With `--json`, list returns an array of [activity records](/docs/core#activity-records) and view returns one.
+With `--json`, list returns an array of [activity records](/docs/core#activity-records) and view returns one. With `--follow --json`, list prints each record as one JSON object on its own line.
 
 With `--show-deleted`, readable keys can include different identities after a project is deleted and recreated. Group JSON records by (`entity_type`, `entity_id`) to keep their histories distinct, or use `--task-id` or `--project-id` for one identity.
 
