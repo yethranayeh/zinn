@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -36,10 +36,20 @@ function fingerprint() {
     const directory = join(context.settings.store, "data");
     return readdirSync(directory).sort().map(file => [file, createHash("sha256").update(readFileSync(join(directory, file))).digest("hex")]);
 }
-async function connect(config = context.config, overrides: NodeJS.ProcessEnv = {}, cwd = context.directory) {
-    const client = new Client({ name: "zinn-artifact-check", version: "1.0.0" });
+function createTransport(config = context.config, overrides: NodeJS.ProcessEnv = {}) {
+    const manifest = JSON.parse(readFileSync(join(artifact.plugin, ".mcp.json"), "utf8"));
+    const launch = manifest.mcpServers.zinn;
     const env = Object.fromEntries(Object.entries({ ...context.env, ZINN_CODEX_CONFIG: config, ...overrides }).filter((entry): entry is [string, string] => entry[1] !== undefined));
-    const transport = new StdioClientTransport({ command: "node", args: [join(artifact.plugin, "launcher.mjs")], cwd, env });
+    return new StdioClientTransport({
+        command: launch.command,
+        args: launch.args,
+        cwd: resolve(artifact.plugin, launch.cwd),
+        env,
+    });
+}
+async function connect(config = context.config, overrides: NodeJS.ProcessEnv = {}) {
+    const client = new Client({ name: "zinn-artifact-check", version: "1.0.0" });
+    const transport = createTransport(config, overrides);
     try {
         await client.connect(transport);
     } catch (error) {
@@ -58,7 +68,7 @@ test("relocated panel loads fixed-home options and preserves an explicit inspect
     writeFileSync(legacy, "invalid json");
     const client = await connect(context.config, {
         HOME: home, USERPROFILE: home, ZINN_CODEX_CONFIG: undefined, ZINN_DIR: unrelatedStore,
-    }, artifact.plugin);
+    });
     try {
         const response = await client.callTool({ name: "inspect_task", arguments: { key: "APP-1" } });
         expect(response.structuredContent).toMatchObject({
@@ -110,7 +120,7 @@ test.skipIf(process.platform === "win32")("configuration-free panel uses the Uni
                 ordinaryTask = JSON.parse(control.stdout.toString());
                 ordinaryState = inspectStore(store);
             }
-            const client = await connect(context.config, env, artifact.plugin);
+            const client = await connect(context.config, env);
             try {
                 const result = (await client.callTool({ name: "inspect_task", arguments: { key: "APP-1" } })).structuredContent as any;
                 expect(result.store).toBe(store);
@@ -132,7 +142,7 @@ test.skipIf(process.platform === "win32")("configuration-free panel uses the Uni
         const badHome = join(context.directory, "invalid-home");
         mkdirSync(join(badHome, ".zinn"), { recursive: true });
         writeFileSync(join(badHome, ".zinn/settings.json"), "broken json");
-        await expect(connect(context.config, { HOME: badHome, USERPROFILE: badHome, ZINN_DIR: undefined, ZINN_CODEX_CONFIG: undefined, PATH: `${bin}:${process.env.PATH}` }, artifact.plugin)).rejects.toThrow();
+        await expect(connect(context.config, { HOME: badHome, USERPROFILE: badHome, ZINN_DIR: undefined, ZINN_CODEX_CONFIG: undefined, PATH: `${bin}:${process.env.PATH}` })).rejects.toThrow();
         expect(existsSync(join(badHome, ".zinn/data"))).toBe(false);
     } finally {
         rmSync(localSettings);
@@ -166,7 +176,7 @@ else { process.on('SIGTERM', () => {}); writeFileSync(${JSON.stringify(marker)},
     const config = join(context.directory, "pending-discovery.json");
     writeFileSync(config, JSON.stringify({ cli: ["node", script] }));
     const client = new Client({ name: "zinn-startup-check", version: "1.0.0" });
-    const transport = new StdioClientTransport({ command: "node", args: [join(artifact.plugin, "launcher.mjs")], env: { ...context.env as Record<string, string>, ZINN_CODEX_CONFIG: config } });
+    const transport = createTransport(config);
     const connecting = client.connect(transport).catch(() => undefined);
     try {
         await waitFor(() => existsSync(marker));
@@ -197,8 +207,11 @@ test("artifact contains only portable bundled assets and dependency notices", ()
     expect(manifest.hooks).toBe("./hooks/hooks.json");
     const hooks = JSON.parse(readFileSync(join(artifact.plugin, manifest.hooks), "utf8"));
     expect(Object.keys(hooks.hooks).sort()).toEqual([...EVENTS].sort());
+    for (const event of EVENTS) {
+        expect(hooks.hooks[event][0].hooks[0].command).toBe('node "${PLUGIN_ROOT}/hook.mjs"');
+    }
     const mcp = JSON.parse(readFileSync(join(artifact.plugin, ".mcp.json"), "utf8"));
-    expect(mcp.mcpServers.zinn).toMatchObject({ type: "stdio", command: "node", args: ["${PLUGIN_ROOT}/launcher.mjs"], cwd: "${PLUGIN_ROOT}" });
+    expect(mcp.mcpServers.zinn).toMatchObject({ type: "stdio", command: "node", args: ["./launcher.mjs"], cwd: "." });
     const html = readFileSync(join(artifact.plugin, "widget.html"), "utf8");
     expect(html).not.toMatch(/(?:src|href)=["'](?:https?:|\/_astro|\/fonts)/);
     const script = html.match(/<script type="module">([\s\S]*)<\/script>/)?.[1];

@@ -90,8 +90,8 @@ export async function build(output = join(root, "dist")) {
       zinn: {
         type: "stdio",
         command: "node",
-        args: ["${PLUGIN_ROOT}/launcher.mjs"],
-        cwd: "${PLUGIN_ROOT}",
+        args: ["./launcher.mjs"],
+        cwd: ".",
       },
     },
   });
