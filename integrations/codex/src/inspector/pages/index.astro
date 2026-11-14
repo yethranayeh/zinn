@@ -8,6 +8,8 @@ import "../panel.css";
 const buttonClass =
 	"max-w-full font-sans whitespace-normal wrap-anywhere focus-visible:outline-2 focus-visible:outline-current focus-visible:outline-offset-2";
 const mutedClass = "text-xs leading-relaxed text-muted-foreground wrap-anywhere";
+const fieldClass =
+	"min-h-11 w-full min-w-0 border border-pewter bg-transparent p-2.5 font-sans text-sm caret-current data-deleting:caret-current focus-visible:outline-2 focus-visible:outline-current focus-visible:outline-offset-2";
 ---
 
 <!doctype html>
@@ -40,6 +42,13 @@ const mutedClass = "text-xs leading-relaxed text-muted-foreground wrap-anywhere"
 		</form>
 		<p id='status' role='status' class='mb-3 empty:hidden'>Connecting to native host…</p>
 		<p id='selection-status' role='status' class={`${mutedClass} mb-3 empty:hidden`}></p>
+		<section id='discard-prompt' aria-label='Unsaved changes' class='mb-4 border border-pewter p-3' hidden>
+			<p class='mb-2'>Discard your unsaved changes?</p>
+			<div class='flex flex-wrap gap-2'>
+				<Button id='keep-editing' variant='outline' class={buttonClass}>Keep editing</Button>
+				<Button id='discard-changes' variant='solid' class={buttonClass}>Discard changes</Button>
+			</div>
+		</section>
 
 		<nav id='recent' aria-label='Observed tasks in this chat' class='mb-5 min-w-0'>
 			<div class='flex flex-wrap items-baseline justify-between gap-2'>
@@ -86,6 +95,9 @@ const mutedClass = "text-xs leading-relaxed text-muted-foreground wrap-anywhere"
 					<p data-labels class='text-xs wrap-anywhere'></p>
 				</header>
 				<div data-move></div>
+				<div data-edit>
+					<Button data-start-edit variant='outline' class={buttonClass}>Edit</Button>
+				</div>
 				<section class='flex min-w-0 flex-col gap-2'>
 					<h2 class='text-xs font-semibold'>Description</h2>
 					<div data-description dir='auto' class='whitespace-pre-wrap wrap-anywhere'></div>
@@ -93,6 +105,33 @@ const mutedClass = "text-xs leading-relaxed text-muted-foreground wrap-anywhere"
 				<div data-sections class='flex min-w-0 flex-col gap-5'></div>
 				<p data-read-time class={mutedClass}></p>
 			</article>
+		</template>
+		<template id='edit-template'>
+			<form class='flex min-w-0 flex-col gap-3' aria-label='Edit task'>
+				<label class='flex min-w-0 flex-col gap-1'>
+					<span class='text-xs font-medium'>Title</span>
+					<Input name='title' class={fieldClass} autocomplete='off' />
+				</label>
+				<label class='flex min-w-0 flex-col gap-1'>
+					<span class='text-xs font-medium'>Description</span>
+					<textarea name='description' rows='8' dir='auto' class={`${fieldClass} resize-y`}></textarea>
+				</label>
+				<label class='flex min-w-0 flex-col gap-1'>
+					<span class='text-xs font-medium'>Priority</span>
+					<select name='priority' class={fieldClass}>
+						<option value=''>None</option>
+						<option value='low'>Low</option>
+						<option value='medium'>Medium</option>
+						<option value='high'>High</option>
+						<option value='urgent'>Urgent</option>
+					</select>
+				</label>
+				<div class='flex flex-wrap gap-2'>
+					<Button type='submit' variant='solid' class={buttonClass}>Save</Button>
+					<Button data-cancel-edit variant='outline' class={buttonClass}>Cancel</Button>
+				</div>
+				<p data-edit-feedback role='status' class={mutedClass}></p>
+			</form>
 		</template>
 		<template id='move-template'>
 			<form class='move-controls flex min-w-0 flex-wrap items-end gap-2'>

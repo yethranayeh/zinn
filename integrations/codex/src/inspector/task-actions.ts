@@ -40,13 +40,20 @@ export type TaskColumnsRead = {
   error?: string;
 };
 
-export type TaskMoveRead = {
+export type TaskActionRead = {
   kind: "ready" | "error";
   store: string;
   key: string;
   task?: PresentedTaskChange;
   changed?: boolean;
   error?: string;
+  uncertain?: boolean;
+};
+
+export type TaskEdits = {
+  title?: string;
+  description?: string;
+  priority?: string | null;
 };
 
 function normalizedTaskKey(rawKey: string) {
@@ -93,7 +100,7 @@ export async function moveTask(
   column: string,
   reader: CliReader,
   signal?: AbortSignal,
-): Promise<TaskMoveRead> {
+): Promise<TaskActionRead> {
   const validKey = normalizedTaskKey(rawKey);
   const key = validKey ?? rawKey.trim().toUpperCase();
   if (validKey === null) {
@@ -117,4 +124,43 @@ export async function moveTask(
 export function createHumanActionReader(settings: Settings): CliReader {
   // Preserve configured CLI environment while removing inherited agent attribution.
   return createCliReader(settings, { env: HUMAN_ACTOR_ENVIRONMENT });
+}
+
+export async function editTask(
+  settings: Settings,
+  rawKey: string,
+  edits: TaskEdits,
+  reader: CliReader,
+  signal?: AbortSignal,
+): Promise<TaskActionRead> {
+  const validKey = normalizedTaskKey(rawKey);
+  const key = validKey ?? rawKey.trim().toUpperCase();
+  if (validKey === null) {
+    return { kind: "error", store: settings.store, key, error: "Enter a task key such as APP-1." };
+  }
+
+  const args = ["task", "edit", key];
+  for (const field of ["title", "description", "priority"] as const) {
+    if (edits[field] !== undefined) {
+      args.push(`--${field}=${edits[field] ?? "none"}`);
+    }
+  }
+  const result = await reader.run<PresentedTaskChange>(args, signal);
+  if (!result.ok) {
+    return {
+      kind: "error",
+      store: settings.store,
+      key,
+      error: result.error,
+      uncertain: result.code === undefined,
+    };
+  }
+
+  return {
+    kind: "ready",
+    store: settings.store,
+    key,
+    task: result.value,
+    changed: result.value.changed,
+  };
 }

@@ -223,7 +223,7 @@ test("relocated Node artifact reads selected tasks and isolates each chat", asyn
     expect(before.find(([file]) => file === "zinn.sqlite")).toEqual(initial.find(([file]) => file === "zinn.sqlite"));
     try {
         const tools = await client.listTools();
-        expect(tools.tools.map(tool => tool.name).sort()).toEqual(["inspect_task", "move_task", "recent_tasks", "remember_selection", "task_columns"]);
+        expect(tools.tools.map(tool => tool.name).sort()).toEqual(["edit_task", "inspect_task", "move_task", "recent_tasks", "remember_selection", "task_columns"]);
         for (const tool of tools.tools) {
             expect((tool._meta?.ui as any).visibility).toEqual(["app"]);
         }
@@ -240,6 +240,9 @@ test("relocated Node artifact reads selected tasks and isolates each chat", asyn
             destructiveHint: false,
             idempotentHint: true,
             openWorldHint: false,
+        });
+        expect(tools.tools.find(tool => tool.name === "edit_task")?.annotations).toMatchObject({
+            readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false,
         });
         const read = async (key: string) => (await client.callTool({ name: "inspect_task", arguments: { key } })).structuredContent as any;
         expect(await read("app-1")).toMatchObject({ kind: "ready", task: { key: "APP-1", description: "First line\n<script>literal text</script>" } });
@@ -419,6 +422,53 @@ await import(${JSON.stringify(pathToFileURL(cliPath).href)});
         await client.close();
     }
 });
+test("relocated Node field edits preserve literal and omitted values and record the actual predecessor as a human", async () => {
+    context.cli(["project", "create", "EDT"]);
+    context.cli(["task", "create", "EDT", "--title", "A", "--description", "Keep this description", "--priority", "high"]);
+    const wrongStore = join(context.directory, "edit-unselected-store");
+    const actorEnv = Object.fromEntries(actorEnvironmentNames().map(name => [name, `synthetic-${name}`]));
+    const client = await connect(context.config, { ...actorEnv, ZINN_DIR: wrongStore });
+    try {
+        const edit = async (fields: Record<string, unknown>, key = "EDT-1") =>
+            (await client.callTool({ name: "edit_task", arguments: { key, ...fields } })).structuredContent as any;
+        const read = async () => (await client.callTool({ name: "inspect_task", arguments: { key: "EDT-1" } })).structuredContent as any;
+        const events = () => context.cli(["activity", "list", "--task", "EDT-1"]).filter((event: any) => event.action === "edit");
+        expect((await read()).task.title).toBe("A");
+        context.cli(["task", "edit", "EDT-1", "--title", "C"]);
+        const title = "-B <script>literal</script> `$(echo text)`";
+        expect(await edit({ title })).toMatchObject({ kind: "ready", changed: true, store: context.settings.store });
+        expect((await read()).task).toMatchObject({ title, description: "Keep this description", priority: "high" });
+        const panelEvent = events().find((event: any) => event.changes.title?.[1] === title);
+        expect(panelEvent).toMatchObject({
+            actor_kind: "human", actor_session_id: null, actor_thread_id: null,
+            actor_agent: null, actor_model: null, actor_effort: null, changes: { title: ["C", title] },
+        });
+        expect(panelEvent.actor_client).toEndWith(` ${CODEX_CLIENT}`);
+        expect(panelEvent.actor_client).not.toContain("synthetic-");
+        const eventCount = events().length;
+        expect(await edit({ title })).toMatchObject({ kind: "ready", changed: false });
+        expect(events()).toHaveLength(eventCount);
+        for (const fields of [{ title: "", description: "Should not write" }, { priority: "invalid" }, {}]) {
+            expect(await edit(fields)).toMatchObject({ kind: "error", uncertain: false });
+        }
+        expect(events()).toHaveLength(eventCount);
+        expect((await read()).task.description).toBe("Keep this description");
+        expect(await edit({ description: "", priority: null })).toMatchObject({ kind: "ready", changed: true });
+        expect((await read()).task).toMatchObject({ title, description: null, priority: null });
+        const description = "- first line\n<script>literal</script>\n最後の行";
+        expect(await edit({ description, priority: "urgent" })).toMatchObject({ kind: "ready", changed: true });
+        expect((await read()).task).toMatchObject({ title, description, priority: "urgent" });
+        context.cli(["task", "archive", "EDT-1"]);
+        expect(await edit({ title: "Archived edit" })).toMatchObject({ kind: "ready", changed: true });
+        expect((await read()).task).toMatchObject({ title: "Archived edit", status: "Archived" });
+        expect(await edit({ title: "Missing" }, "EDT-999")).toMatchObject({ kind: "error", uncertain: false });
+        expect(await edit({ title: "Invalid" }, "invalid")).toMatchObject({ kind: "error", key: "INVALID" });
+        expect(existsSync(wrongStore)).toBe(false);
+    } finally {
+        await client.close();
+    }
+}, 30000);
+
 test("relocated Node artifact reports an absent store without creating it", async () => {
     const absent = join(context.directory, "absent-store");
     const config = join(context.directory, "absent-config.json");

@@ -1,6 +1,6 @@
 import type { RecentRead } from "./references";
 import type { InspectorRead, SelectionSave } from "./selection";
-import type { TaskColumnsRead, TaskMoveRead } from "./task-actions";
+import type { TaskColumnsRead, TaskActionRead, TaskEdits } from "./task-actions";
 import type { PresentedTaskDetail } from "../../../../packages/cli/src/result-schemas.js";
 
 import { App, applyDocumentTheme, applyHostStyleVariables } from "@modelcontextprotocol/ext-apps";
@@ -18,6 +18,8 @@ const recentList = document.querySelector<HTMLElement>("#recent-list")!;
 const recentStatus = document.querySelector<HTMLElement>("#recent-status")!;
 const recentCount = document.querySelector<HTMLElement>("#recent-count")!;
 const referencesToggle = document.querySelector<HTMLButtonElement>("#references-toggle")!;
+const discardPrompt = document.querySelector<HTMLElement>("#discard-prompt")!;
+const keepEditing = document.querySelector<HTMLButtonElement>("#keep-editing")!;
 // Keep the selected task near the lookup even when a chat has many references.
 const COLLAPSED_REFERENCE_COUNT = 3;
 
@@ -35,6 +37,36 @@ let moving = false;
 let polling: ReturnType<typeof setInterval> | undefined;
 let selectionSave = Promise.resolve();
 let selectionIntentVersion = 0;
+let draft: { form: HTMLFormElement; changes(): TaskEdits } | undefined;
+let saving = false;
+let afterDiscard: (() => void) | undefined;
+
+function leaveDraft(action: () => void) {
+  if (saving) {
+    return;
+  }
+  if (draft && Object.keys(draft.changes()).length > 0) {
+    afterDiscard = action;
+    discardPrompt.hidden = false;
+    keepEditing.focus();
+    return;
+  }
+  draft = undefined;
+  action();
+}
+
+keepEditing.addEventListener("click", () => {
+  afterDiscard = undefined;
+  discardPrompt.hidden = true;
+  draft?.form.querySelector<HTMLInputElement>("input")?.focus();
+});
+document.querySelector("#discard-changes")!.addEventListener("click", () => {
+  const action = afterDiscard;
+  afterDiscard = undefined;
+  discardPrompt.hidden = true;
+  draft = undefined;
+  action?.();
+});
 
 function markSelection() {
   for (const button of recentList.querySelectorAll<HTMLButtonElement>("button")) {
@@ -231,7 +263,11 @@ function section(title: string, nodes: HTMLElement[]) {
 }
 
 async function moveTask(key: string, column: string) {
-  if (moving || disposed) {
+  if (moving || saving || disposed) {
+    return;
+  }
+  if (draft) {
+    leaveDraft(() => void moveTask(key, column));
     return;
   }
 
@@ -251,7 +287,7 @@ async function moveTask(key: string, column: string) {
       );
     }
 
-    const result = response.structuredContent as TaskMoveRead;
+    const result = response.structuredContent as TaskActionRead;
     message =
       result.kind === "ready"
         ? result.changed
@@ -343,8 +379,7 @@ function renderMove(task: PresentedTaskDetail, container: HTMLElement) {
   })();
 }
 
-function renderTask(task: PresentedTaskDetail, fetchedAt: string) {
-  const article = template<HTMLElement>("task-template");
+function renderTaskContents(article: HTMLElement, task: PresentedTaskDetail, fetchedAt: string) {
   article.querySelector<HTMLElement>("[data-task-key]")!.textContent = task.key;
   article.querySelector<HTMLElement>("h1")!.textContent = task.title;
   article.querySelector<HTMLElement>("[data-column]")!.textContent = task.column;
@@ -357,9 +392,168 @@ function renderTask(task: PresentedTaskDetail, fetchedAt: string) {
     task.description ?? "No description.";
   article.querySelector<HTMLElement>("[data-read-time]")!.textContent =
     `Read at ${new Date(fetchedAt).toLocaleTimeString()}`;
+}
+
+function renderEdit(task: PresentedTaskDetail, article: HTMLElement) {
+  const container = article.querySelector<HTMLElement>("[data-edit]")!;
+  const editButton = container.querySelector<HTMLButtonElement>("[data-start-edit]")!;
+  editButton.disabled = moving;
+  editButton.addEventListener("click", () => {
+    if (draft || moving || saving) {
+      return;
+    }
+    userNavigated = true;
+    const form = template<HTMLFormElement>("edit-template");
+    const title = form.elements.namedItem("title") as HTMLInputElement;
+    const description = form.elements.namedItem("description") as HTMLTextAreaElement;
+    const priority = form.elements.namedItem("priority") as HTMLSelectElement;
+    const save = form.querySelector<HTMLButtonElement>("[type=submit]")!;
+    const feedback = form.querySelector<HTMLElement>("[data-edit-feedback]")!;
+    title.value = task.title;
+    description.value = task.description ?? "";
+    if (
+      task.priority !== null &&
+      ![...priority.options].some((option) => option.value === task.priority)
+    ) {
+      priority.add(new Option(task.priority, task.priority));
+    }
+    priority.value = task.priority ?? "";
+    function changes(): TaskEdits {
+      const edits: TaskEdits = {};
+      if (title.value !== task.title) {
+        edits.title = title.value;
+      }
+      if (description.value !== (task.description ?? "")) {
+        edits.description = description.value;
+      }
+      if (priority.value !== (task.priority ?? "")) {
+        edits.priority = priority.value === "" ? null : priority.value;
+      }
+      return edits;
+    }
+    draft = { form, changes };
+    const updateSave = () => {
+      save.disabled = saving || Object.keys(changes()).length === 0;
+    };
+    form.addEventListener("input", updateSave);
+    form.addEventListener("change", updateSave);
+    form.querySelector("[data-cancel-edit]")!.addEventListener("click", () => {
+      leaveDraft(() => {
+        const initiatingControl = document.activeElement;
+        void openTask(task.key).then(() => {
+          const focusStayedOnCancel =
+            document.activeElement === initiatingControl ||
+            document.activeElement === document.body;
+          if (!disposed && selected === task.key && document.hasFocus() && focusStayedOnCancel) {
+            detail.querySelector<HTMLButtonElement>("[data-start-edit]")?.focus();
+          }
+        });
+      });
+    });
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!save.disabled) {
+        void saveEdits(task.key, form, changes(), feedback, updateSave);
+      }
+    });
+    container.replaceChildren(form);
+    article.querySelector<HTMLElement>("[data-move]")!.hidden = true;
+    updateSave();
+    title.focus();
+  });
+}
+
+async function saveEdits(
+  key: string,
+  form: HTMLFormElement,
+  edits: TaskEdits,
+  feedback: HTMLElement,
+  updateSave: () => void,
+) {
+  if (saving || disposed) {
+    return;
+  }
+  saving = true;
+  afterDiscard = undefined;
+  discardPrompt.hidden = true;
+  for (const control of form.querySelectorAll<
+    HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement
+  >("input, textarea, select, button")) {
+    control.disabled = true;
+  }
+  feedback.textContent = `Saving ${key}…`;
+  let confirmed = false;
+  let uncertain = false;
+  let message = "";
+  try {
+    const response = await app.callServerTool({ name: "edit_task", arguments: { key, ...edits } });
+    if (response.isError || !response.structuredContent) {
+      throw new Error("The host did not confirm the save.");
+    }
+    const result = response.structuredContent as TaskActionRead;
+    confirmed = result.kind === "ready";
+    uncertain = !confirmed && result.uncertain === true;
+    message = confirmed
+      ? result.changed
+        ? `Saved ${key}.`
+        : `No stored changes for ${key}.`
+      : (result.error ?? `Could not save ${key}.`);
+  } catch (error) {
+    uncertain = true;
+    message = String(error);
+  }
+
+  try {
+    if (confirmed || uncertain) {
+      const response = await app.callServerTool({ name: "inspect_task", arguments: { key } });
+      const fresh = response.structuredContent as InspectorRead | undefined;
+      if (
+        response.isError ||
+        fresh?.kind !== "ready" ||
+        fresh.task?.key !== key ||
+        !fresh.fetchedAt
+      ) {
+        throw new Error(fresh?.error ?? "Could not read the current task.");
+      }
+      if (!disposed) {
+        if (confirmed) {
+          draft = undefined;
+          render(fresh);
+          status.textContent = message;
+          if (document.hasFocus() && document.activeElement === document.body) {
+            detail.querySelector<HTMLButtonElement>("[data-start-edit]")?.focus();
+          }
+        } else {
+          renderTaskContents(form.closest("article")!, fresh.task, fresh.fetchedAt);
+          message +=
+            " Current task read. Review it before explicitly retrying Save. Your draft is kept.";
+        }
+      }
+    }
+  } catch (error) {
+    message += ` ${String(error)} Your draft is kept. Refresh or retry Save explicitly.`;
+  } finally {
+    saving = false;
+    if (!disposed && form.isConnected) {
+      feedback.textContent = message;
+      for (const control of form.querySelectorAll<
+        HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement
+      >("input, textarea, select, button")) {
+        control.disabled = false;
+      }
+      updateSave();
+    }
+  }
+  void refreshRecent();
+}
+
+function renderTask(task: PresentedTaskDetail, fetchedAt: string) {
+  const article = template<HTMLElement>("task-template");
+  renderTaskContents(article, task, fetchedAt);
   const sections = article.querySelector<HTMLElement>("[data-sections]")!;
   detail.replaceChildren(article);
   renderMove(task, article.querySelector<HTMLElement>("[data-move]")!);
+  renderEdit(task, article);
   if (task.relations?.length) {
     const nodes = task.relations.map((relation) => {
       const direction =
@@ -484,6 +678,13 @@ async function openTask(
   options: { focusHeading?: boolean; automatic?: boolean; remember?: boolean } = {},
 ) {
   if (!connected) {
+    return;
+  }
+  if (saving || disposed) {
+    return;
+  }
+  if (draft) {
+    leaveDraft(() => void openTask(rawKey, options));
     return;
   }
   if (!options.automatic) {

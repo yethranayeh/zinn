@@ -11,7 +11,7 @@ import { z } from "zod";
 import { loadSettings, resolveSettings } from "../settings";
 import { INSPECTOR_VERSION } from "../runtime";
 import { readInspectorTask, rememberSelection } from "./selection";
-import { createHumanActionReader, moveTask, readTaskColumns } from "./task-actions";
+import { createHumanActionReader, editTask, moveTask, readTaskColumns } from "./task-actions";
 import { readRecent } from "./references";
 import { createCliReader } from "../shared/cli";
 
@@ -139,6 +139,37 @@ registerAppTool(
                 ? `Moved ${result.key}.`
                 : `${result.key} was already in the ${result.task!.column} column.`,
         },
+      ],
+      structuredContent: result,
+    };
+  },
+);
+
+registerAppTool(
+  server,
+  "edit_task",
+  {
+    title: "Edit task",
+    description: "Save changed title, description or priority fields on the selected task.",
+    inputSchema: {
+      key: z.string(),
+      title: z.string().optional(),
+      description: z.string().optional(),
+      priority: z.string().nullable().optional(),
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    _meta: { ui: { visibility: ["app"] } },
+  },
+  async ({ key, ...edits }, extra) => {
+    const result = await editTask(settings, key, edits, humanActionReader, extra.signal);
+    return {
+      content: [
+        { type: "text", text: result.kind === "error" ? result.error! : `Saved ${result.key}.` },
       ],
       structuredContent: result,
     };
