@@ -243,7 +243,7 @@ if (firstPage.hasMore) {
 }
 ```
 
-`activity.follow(input)` returns a follower for the activity that other connections commit from then on. It accepts the fields of `activity.getAll` except `limit`, and throws as `activity.getAll` does for a selection that does not exist. Each `poll()` returns `{ events }` with the matching events committed since the previous call, oldest first in commit order, which is `[]` when nothing new matches. Polling detects commits through SQLite's `PRAGMA data_version`, reads inside one short transaction and keeps none open between calls.
+`activity.follow(input)` returns a follower for the activity that other connections commit from then on. It accepts the fields of `activity.getAll` except `limit` and `startingAfter`, which raise an input error when supplied, and throws as `activity.getAll` does for a selection that does not exist. Each `poll()` returns `{ events }` with the matching events committed since the previous call, oldest first in commit order, which is `[]` when nothing new matches. Polling detects commits through SQLite's `PRAGMA data_version`, reads inside one short transaction and keeps none open between calls.
 
 ```ts title="Follow moves into Review"
 const follower = activity.follow({ changed: [{ field: "column", value: "Review" }] });
@@ -260,7 +260,7 @@ setInterval(() => {
 }, 1000);
 ```
 
-A poll returns `{ stopped, databasePath }` once the follower can read no further. `stopped` is `"schema_changed"` after another connection restored, migrated or reindexed the database, and `"file_replaced"` when the database path no longer leads to the file the process opened. Create a new follower to continue. Core exports `ActivityFollower`, `ActivityFollowInput` and `ActivityFollowStop`.
+A poll returns `{ stopped, databasePath }` once the follower can read no further. `stopped` is `"schema_changed"` when the database's schema marker changes, including a restore, migration or reindex by another connection, and `"file_replaced"` when the database path no longer leads to the file the process opened. After file replacement, restart the hosting process before following again so it opens the replacement database. Core exports `ActivityFollower`, `ActivityFollowInput` and `ActivityFollowStop`.
 
 Optional numeric `since` and `until` fields filter the stored `created_at`, inclusively, before `limit` applies. Use either bound alone or both together. They accept integer epoch milliseconds between `-8640000000000000` and `8640000000000000`, inclusive. Equal bounds select events at exactly that millisecond. A reversed range raises an input `CoreError` whose `facts.field` is `["until"]`. Historical identity resolution uses the full recorded history before time selection.
 
