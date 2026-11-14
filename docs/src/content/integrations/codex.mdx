@@ -1,24 +1,25 @@
 ---
 title: Zinn for Codex
-description: Build and install the local Zinn task inspector and execution-identity hooks for Codex desktop.
+description: Install the local Zinn task inspector, edit task fields and configure optional execution-identity hooks for Codex desktop.
 ---
 
 # Zinn for Codex
 
-Inspect local Zinn tasks alongside a Codex desktop conversation and move reviewed tasks to another column. The plugin provides manual task lookup, full descriptions, comments, relation navigation and observed task references from the current chat. Optional hooks supply execution identity for direct Zinn commands.
+Inspect local Zinn tasks alongside a Codex desktop conversation, move reviewed tasks and edit their title, description and priority. The plugin provides manual task lookup, full descriptions, comments, relation navigation and observed task references from the current chat. Optional hooks supply execution identity for direct Zinn commands.
 
-The source builds version **0.1.0** as a candidate in a self-contained local marketplace. The plugin includes its runtime JavaScript and inspector assets.
+This guide covers the Experimental **0.1.0** candidate. Its versioned archive contains a self-contained local marketplace, runtime JavaScript, inspector assets and dependency licenses.
 
 ## Requirements
 
-- Codex desktop with local plugin marketplaces, lifecycle hooks and MCP Apps conversation panels.
+- Codex desktop on macOS with local plugin marketplaces, lifecycle hooks and MCP Apps conversation panels. See [Compatibility](#compatibility) for the candidate's verification status.
 - Node.js 24.15.0 or newer and Zinn CLI 0.44.0 or newer on the app's `PATH`.
 - An existing Zinn database that the installed CLI can read.
-- Node to run the **built** plugin, and <span class="text-muted-foreground">(optionally)</span> Bun to **build** the plugin.
+
+Follow [CLI installation](/docs/installation) to install Zinn. The archive runs with Node and the installed CLI. Bun, Astro, Tailwind and the source checkout are build tools.
+
+A `-dev` CLI build must have a numeric version newer than `0.44.0`.
 
 The inspector and hook verification use ordinary CLI read commands with the host user's permissions. Normal database compatibility rules apply, including backups and automatic upgrades when the CLI opens an older database. Current-schema reads leave task data and activity unchanged. SQLite manages its normal WAL coordination files.
-
-The packaged Node backend is tested on macOS, Linux and Windows. Identity command rewriting uses Unix shell syntax.
 
 Configured CLI executables are trusted local programs. The hook writes its own reference files.
 
@@ -52,27 +53,46 @@ If the desktop app cannot find `zinn`, use the executable's absolute path:
 
 `cli` is an array containing the executable and any fixed arguments. The app must also be able to find `node` on its `PATH`.
 
-## Build and install
+## Install the archive
 
-From a Zinn source checkout:
+Place `zinn-codex-0.1.0.tar.gz` and `zinn-codex-0.1.0.tar.gz.sha256` from the same candidate together in a directory you control. From that directory on macOS, verify the checksum before extracting:
 
 ```sh
+shasum -a 256 -c zinn-codex-0.1.0.tar.gz.sha256
+```
+
+Continue only when the checksum check succeeds. Then extract and register the marketplace:
+
+```sh
+tar -xzf zinn-codex-0.1.0.tar.gz
+codex plugin marketplace add ./zinn-codex
+```
+
+Keep the extracted `zinn-codex` directory available as the marketplace source. Codex manages its installed copy.
+
+Open Codex's Plugins browser, choose the **Zinn** marketplace and install **Zinn**. Review the plugin's hook definitions and approve the components you want to use when Codex requests it, then start a new chat. Installing or enabling a plugin does not automatically trust its hooks. You can configure observation and identity independently under [Hook settings](#hook-settings). See [OpenAI's plugin setup guide](https://developers.openai.com/plugins/build/plugins).
+
+For a consumer check before selecting your own database, replace `/absolute/path/to/zinn-sample` below with a new directory and seed a synthetic project there:
+
+```sh
+mkdir -p /absolute/path/to/zinn-sample
+ZINN_DIR=/absolute/path/to/zinn-sample zinn project create APP
+ZINN_DIR=/absolute/path/to/zinn-sample zinn task create APP --title "Review the example" --description "Synthetic setup task"
+```
+
+Set the optional plugin `store` to that absolute directory, restart the inspector and look up `APP-1`. You can test Move, Edit, Save and reopen behavior there before selecting your working database. Agent commands need their own matching `ZINN_DIR` to use the sample.
+
+### Build from source
+
+To create the candidate archive from a Zinn source checkout:
+
+```sh
+bun install --frozen-lockfile
 bun install --cwd integrations/codex --frozen-lockfile
-bun run codex:build
-codex plugin marketplace add ./integrations/codex/dist
+bun run codex:package
 ```
 
-Open Codex's Plugins browser, choose the **Zinn** marketplace and install **Zinn**. Review and trust the plugin's hook definitions when Codex requests it, then start a new chat. Installing or enabling a plugin does not automatically trust its hooks. See [OpenAI's plugin setup guide](https://developers.openai.com/plugins/build/plugins).
-
-For an already built marketplace, register the extracted marketplace root instead:
-
-```sh
-codex plugin marketplace add /absolute/path/to/zinn-codex
-```
-
-Keep the extracted directory available as the marketplace source. Codex manages the installed copy. The built folder contains `.agents/plugins/marketplace.json` and `plugins/zinn`, including the manifest, hooks, MCP configuration, bundled scripts, HTML and license notices.
-
-`bun run codex:package` builds the marketplace and writes `zinn-codex-0.1.0.tar.gz` and its SHA-256 file to `integrations/codex/release-dist`. The archive includes a `zinn-codex` marketplace root. Consumers can extract and register it without installing build dependencies.
+The archive and checksum are written to `integrations/codex/release-dist`. Use the archive installation steps above. Building does not install the plugin.
 
 ## Inspect tasks
 
@@ -86,7 +106,19 @@ Selection is remembered only when the host identifies the chat unambiguously. Ma
 
 For an active task, choose a destination and select **Move to…**. The initial destination is the project's first column with the `done` category, or the task's current column when the project has none. The move uses the inspector's selected database and the task's own project. It follows ordinary `zinn task move` behavior and refreshes the task afterward. Moving to the current column leaves it unchanged. Archived tasks remain available for inspection.
 
-Panel moves record your normal CLI human identity, without inherited agent, model, effort, client or conversation declarations. The plugin declares `zinn-codex/0.1.0` after any inherited [client chain](/docs/cli#client-chains) on CLI runs it starts, so a panel move records that token in `actor_client` and `zinn activity list --client zinn-codex` selects it. Codex's tool permission settings apply. A move is submitted only by the explicit button action and is not automatically retried after a failure.
+Panel moves and field saves record your normal CLI human identity, with inherited agent, model, effort, client and conversation declarations cleared. Their `actor_client` identifies the CLI and `zinn-codex/0.1.0`. Use `zinn activity list --client zinn-codex` to select that history. Read commands retain any inherited [client chain](/docs/cli#client-chains) and append the plugin token. Codex's tool permission settings apply. A move is submitted only by the explicit button action and is not automatically retried after a failure.
+
+### Edit task fields
+
+For an active task, select **Edit**, change its title, description or priority, then select **Save**. Saving sends only changed fields through ordinary `zinn task edit` and reads the task again afterward. **None** clears the priority. An empty description clears its stored value. Priority choices come from the configured CLI. If loading them fails, title and description remain editable while priority stays unchanged. Use **Retry priorities** to try loading the choices again.
+
+There is no autosave. **Cancel**, **Refresh** or opening another task requires explicit discard when the draft has changes. Keep the panel open while you work: drafts stay in panel memory, while remembered selection stores only the task key.
+
+Validation, permission and write failures keep the draft. If the host cannot confirm whether a save completed, the panel reads the current task without replaying the write. Review the refreshed task before retrying **Save**. If the follow-up read fails, the draft remains available for explicit recovery.
+
+A supplied field value replaces that field's current value, including a value another client saved after you opened the editor. Refresh before editing when you need the latest contents. A save that changes no stored values adds no activity.
+
+### Current-chat references
 
 Observed references come from supported direct CLI calls, task keys in agent dispatches and completed replies. A reference is an observation, rather than a task assignment or proof that the task changed. References refresh every five seconds while the panel is visible, keeping the selected task open. Task details are re-read when opened or refreshed.
 
@@ -103,7 +135,7 @@ The configuration accepts these options:
 | Option          | Default                     | Behavior                                                                            |
 | --------------- | --------------------------- | ----------------------------------------------------------------------------------- |
 | `store`         | CLI selection               | Optional absolute Zinn data directory for inspection and reply verification.        |
-| `cli`           | `["zinn"]`                  | Executable and fixed arguments used for local reads.                                |
+| `cli`           | `["zinn"]`                  | Executable and fixed arguments used for reads and requested panel changes.          |
 | `dataDirectory` | `~/.local/share/zinn-codex` | Absolute directory for local integration state, outside the Zinn data directory.    |
 | `observe`       | `true`                      | Record task references for the current-chat list.                                   |
 | `identity`      | `true`                      | Supply the callback's agent profile and model to supported direct commands.         |
@@ -133,7 +165,15 @@ The plugin uses local STDIO and has no hosted server. Task data returned through
 
 ## Update, disable and remove
 
-Build the selected source version again, or extract a new versioned marketplace archive. Refresh the source and update or reinstall Zinn through Codex's Plugins browser. Restart Codex only if refreshed changes do not appear. Keep `codex.json` and the reference directory outside the plugin folder. Review changed hook definitions again when requested.
+Keep the previous archive, checksum and extracted marketplace for rollback. Verify the new archive's checksum and extract it into a separate directory. Close the inspector, uninstall the current plugin and replace its marketplace registration:
+
+```sh
+codex plugin remove zinn@zinn
+codex plugin marketplace remove zinn
+codex plugin marketplace add /absolute/path/to/new-release/zinn-codex
+```
+
+Install **Zinn** from the new source through Codex's Plugins browser. Restart Codex and start a new chat to use the replacement plugin. Review changed hook definitions again when requested. Keep `codex.json` and `dataDirectory` outside the plugin folder.
 
 Disable **Zinn** in the Plugins browser to stop loading it. Uninstall it there to remove the installed plugin. Remove the marketplace source with:
 
@@ -141,12 +181,24 @@ Disable **Zinn** in the Plugins browser to stop loading it. Uninstall it there t
 codex plugin marketplace remove zinn
 ```
 
-Your Zinn database, configuration, reference files and selection records remain under your control. Remove the dedicated integration data directory separately if you want to clear its metadata. To roll back, register the previous built marketplace and reinstall that version.
+Your Zinn database, configuration, reference files and selection records remain under your control. Remove the dedicated integration data directory separately if you want to clear its metadata.
 
-## Troubleshooting and compatibility
+To roll back, follow the same replacement steps with the previous extracted marketplace's path and reinstall that plugin version through the Plugins browser. Restart Codex and check lookup, editing and hook trust again. Plugin rollback changes the plugin files. Database compatibility continues to follow the installed CLI and its ordinary [backup and restore rules](/docs/data).
+
+## Troubleshooting
 
 For startup failures, check the configuration path, absolute store path, app `PATH`, Node version and CLI version. Run the configured CLI's `zinn info --json` equivalent with the same `ZINN_DIR` to check database compatibility.
 
 For an empty recent list, check hook trust and `observe`, then mention a real task key in a completed reply or run a direct CLI lookup. Failed verification is reported separately from a missing task. A newly created task becomes available on the next refresh.
 
-The backend uses Node and ordinary CLI commands. Native plugin, hook and panel behavior also depends on the Codex host and operating system. Verify native opening, hook trust, references, update and removal when adopting a new host version. Report the plugin, Codex, Node and CLI versions through [Contact](/contact).
+If saving fails, keep the panel open, read its error and review the current task before retrying. A retained draft is not proof that the first save failed to reach the database.
+
+## Compatibility
+
+Version 0.1.0 is an Experimental candidate. Native macOS Desktop certification for this candidate is pending. Native support is tied to the exact app, plugin, Node and CLI versions certified for a release.
+
+The candidate's installed-backend check used `codex-cli 0.167.0-alpha.4.1`, Node `26.13.0` and published Zinn CLI `0.44.0` on macOS. It covered startup, task inspection, human field saves, exact inspector assets, persisted plugin disable, removal and reinstall. Backend tests also run on macOS, Linux and Windows. Native panel rendering and hook behavior require their own host checks. Identity command rewriting uses Unix shell syntax.
+
+When the host or plugin version changes, recheck native opening, hook trust, references, human Move and Save attribution, selection after reopen, update, disable, removal and rollback before relying on that combination. Zinn maintains the plugin and its compatibility fixes.
+
+Report problems through [GitHub Issues](https://github.com/yethranayeh/zinn/issues). Include the plugin version and archive checksum, Codex desktop app and CLI versions, Node and Zinn CLI versions, operating system, relevant component settings, expected behavior and a synthetic reproduction. Keep database files, transcripts, reference records and private task text out of the report.
