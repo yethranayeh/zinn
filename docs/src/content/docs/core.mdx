@@ -314,6 +314,7 @@ Each migration step also checks existing foreign-key definitions, including thos
 - Older databases upgrade automatically when both the core package and client are published releases, or when `ZINN_DIR` explicitly selects a separate database. Source clients otherwise open older databases read-only until an explicit `migrate.run`.
 - Databases newer than core supports open read-only.
 - Databases without a schema version are refused.
+- A process that keeps the database open checks the schema version at the start of each write. When another process has changed it, such as a newer Zinn upgrading the database, the write throws a `CoreError` with kind `conflict` and reason `newer_database` or `older_database` and changes nothing. Reads keep working. Restart the process to write again.
 
 Core backup and restore operations use the selected store independently of the normal database-opening policy. See [Data and backups](/docs/data) for shared storage and restore behavior.
 

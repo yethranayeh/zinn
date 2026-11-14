@@ -24,17 +24,20 @@ import {
   UnmarkedDatabaseError,
 } from "./migrations/open-policy.js";
 import { MIGRATIONS } from "./migrations/registry.js";
-import { createLatestSchema, SchemaNotEmptyError } from "./migrations/runner.js";
+import { createLatestSchema, readSchemaVersion, SchemaNotEmptyError } from "./migrations/runner.js";
 import { upgradeDatabase } from "./migrations/upgrade.js";
 import { readCoreReleaseMode } from "./release.js";
 import { attachSuppressed, isSqliteErrorCode } from "./sqlite/database.js";
 import { rethrowSearchError } from "./search-error.js";
 import { withChangeHooks } from "./hooks.js";
+import { CoreError } from "./errors.js";
 
 let db: Database | null = null;
 let policy: OpenPolicy = DEFAULT_OPEN_POLICY;
 /** Why the open database refuses changes, null while it accepts them. */
 let readOnly: { reason: ReadOnlyReason; facts: DatabaseFacts } | null = null;
+/** The schema version the open database had once it settled, `null` while none is open. */
+let openedVersion: number | null = null;
 
 export type DatabaseAccess = {
   /** Creates the database when the store has none. Only operations that need no existing record pass it. */
@@ -50,6 +53,7 @@ export function resetDatabaseForTests() {
   db = null;
   policy = DEFAULT_OPEN_POLICY;
   readOnly = null;
+  openedVersion = null;
   resetStorageForTests();
 }
 
@@ -237,6 +241,7 @@ export function getDb(access: DatabaseAccess = {}) {
       const opened = openWithRetries(access, storage);
       connection = opened.connection;
       readOnly = settle(connection, opened, storage);
+      openedVersion = readSchemaVersion(connection);
       db = connection;
     } catch (err) {
       if (connection != null) {
@@ -269,22 +274,52 @@ export function assertWritable() {
   }
 }
 
+/** Throws when another process changed the schema version since this one opened the database */
+function assertSchemaUnchanged(connection: Database, expectedVersion: number) {
+  const version = readSchemaVersion(connection);
+
+  if (version === expectedVersion) {
+    return;
+  }
+
+  const databasePath = getStorage().databasePath;
+  throw new CoreError(
+    `The database at ${databasePath} changed from schema version ${expectedVersion} to ${version} after this process opened it, so the change was not made. Restart Zinn to continue`,
+    "conflict",
+    {
+      entity: "database",
+      databasePath,
+      schemaVersion: version,
+      supportedSchemaVersion: expectedVersion,
+      reason: version > expectedVersion ? "newer_database" : "older_database",
+    },
+  );
+}
+
 /**
  * Runs fn in one write transaction once the database accepts changes. Every core mutation uses it.
- * The outermost call runs the configured hooks after the commit, and a nested call runs inside it.
+ * The outermost call checks the schema version under the write lock before fn runs.
+ * It also runs the configured hooks after the commit, and a nested call runs inside it.
  */
 export function writeTransaction<T>(fn: () => T): T {
   assertWritable();
   const connection = getDb();
+  // `getDb` sets it whenever it returns a connection
+  const expectedVersion = openedVersion!;
+  const isNested = connection.inTransaction;
+  const checked = () => {
+    assertSchemaUnchanged(connection, expectedVersion);
+    return fn();
+  };
   const write = () => {
     try {
-      return connection.transaction(fn).immediate();
+      return connection.transaction(isNested ? fn : checked).immediate();
     } catch (error) {
       rethrowSearchError(error);
     }
   };
 
-  return connection.inTransaction ? write() : withChangeHooks(write);
+  return isNested ? write() : withChangeHooks(write);
 }
 
 /** Runs fn in one deferred transaction, so every read inside sees the same snapshot. */

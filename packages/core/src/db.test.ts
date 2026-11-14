@@ -6,8 +6,10 @@ import { join } from "node:path";
 import { getStorage } from "./storage";
 import { assertWritable, configureDatabase, getDb, resetDatabaseForTests } from "./db";
 import { MissingDatabaseError, ReadOnlyDatabaseError } from "./migrations/open-policy";
-import { createSchema } from "./migrations/runner";
+import { createSchema, upgradeSchema } from "./migrations/runner";
 import { latestVersion, MIGRATIONS } from "./migrations/registry";
+import type { Migration } from "./migrations/registry";
+import { CoreError, project } from "../index";
 import type { OpenOptions } from "./sqlite/database";
 import { openResolvedWith, SqliteError } from "./sqlite/database";
 import { withTestStore } from "./testing";
@@ -247,5 +249,50 @@ test("ZINN-458: an open that creates initializes a zero-byte database file", () 
     getDb({ createsDatabase: true });
     resetDatabaseForTests();
     expect(() => assertWritable()).not.toThrow();
+  });
+});
+
+test("ZINN-507: a write is refused after another connection changed the schema version", () => {
+  withTestStore(() => {
+    const human = { name: "Test Human", email: "human@example.com", kind: "human" as const };
+    project.create({ key: "ONE" }, human);
+
+    const { databasePath } = getStorage();
+    const extra: Migration = {
+      version: latestVersion(MIGRATIONS) + 1,
+      name: "test addition",
+      rebuilds: [],
+      apply(db) {
+        db.exec("ALTER TABLE task ADD COLUMN test_addition TEXT NOT NULL DEFAULT 'unset'");
+      },
+    };
+    const other = adapter.openDatabase(databasePath);
+    try {
+      upgradeSchema(other, [...MIGRATIONS, extra]);
+    } finally {
+      other.close();
+    }
+
+    const countRows = (table: string) =>
+      getDb().query<{ count: number }>(`SELECT COUNT(*) AS count FROM ${table}`).get()!.count;
+    const before = { project: countRows("project"), activity: countRows("activity") };
+
+    const refused = (() => {
+      try {
+        project.create({ key: "TWO" }, human);
+      } catch (error) {
+        return error;
+      }
+      return null;
+    })();
+    expect(refused).toBeInstanceOf(CoreError);
+    expect((refused as CoreError).kind).toBe("conflict");
+    expect((refused as CoreError).facts).toMatchObject({
+      reason: "newer_database",
+      schemaVersion: latestVersion(MIGRATIONS) + 1,
+      databasePath,
+    });
+
+    expect({ project: countRows("project"), activity: countRows("activity") }).toEqual(before);
   });
 });
