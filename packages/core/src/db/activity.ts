@@ -234,14 +234,30 @@ export function getIds(): Array<string> {
     .map((row) => row.id);
 }
 
+/** Where each hex group of a stored UUID starts and ends (8-4-4-4-12) */
+const UUID_GROUP_BOUNDARIES = [0, 8, 12, 16, 20, 32];
+/** Sorts after every character a stored ID holds (hex digits and hyphens) */
+const AFTER_ID_CHARACTER = "g";
+
+/** Spells a lowercase hex prefix the way stored IDs are, with hyphens between complete groups */
+function toStoredIdPrefix(hexPrefix: string) {
+  return UUID_GROUP_BOUNDARIES.slice(0, -1)
+    .map((start, index) => hexPrefix.slice(start, UUID_GROUP_BOUNDARIES[index + 1]))
+    .filter((group) => group.length > 0)
+    .join("-");
+}
+
+/** Returns events whose ID starts with the lowercase hex prefix, as a range the primary key serves */
 export function getByIdPrefix(hexPrefix: string): Array<Activity> {
+  const storedPrefix = toStoredIdPrefix(hexPrefix);
+
   return getDb()
-    .query<StoredActivity, [string]>(
+    .query<StoredActivity, { $lower: string; $upper: string }>(
       `SELECT * FROM ${DB_TABLE.activity}
-    WHERE LOWER(REPLACE(id, '-', '')) LIKE ?
+    WHERE id >= $lower AND id < $upper
     ORDER BY id ASC`,
     )
-    .all(`${hexPrefix}%`)
+    .all({ $lower: storedPrefix, $upper: `${storedPrefix}${AFTER_ID_CHARACTER}` })
     .map(parseActivity);
 }
 
