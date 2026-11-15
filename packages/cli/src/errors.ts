@@ -78,6 +78,9 @@ export const errorDetailsSchema = z.strictObject({
       "corrupt",
       "not_database",
       "missing_index",
+      "claimed",
+      "not_claimed",
+      "claim_limit",
       "io",
     ])
     .optional(),
@@ -92,6 +95,11 @@ export const errorDetailsSchema = z.strictObject({
   expectedColumn: z.string().optional(),
   actualColumn: z.string().optional(),
   changedFields: z.array(z.string()).optional(),
+  claimExpiresAt: z
+    .number()
+    .int()
+    .describe("When the task's current claim expires, in epoch milliseconds.")
+    .optional(),
   logPath: z.string().optional(),
   exitCode: z.number().int().optional(),
   cause: z
@@ -262,6 +270,7 @@ function publicDetails(facts: ErrorDetails): ErrorDetails {
     expectedColumn: facts.expectedColumn,
     actualColumn: facts.actualColumn,
     changedFields: facts.changedFields,
+    claimExpiresAt: facts.claimExpiresAt,
   };
 
   return Object.fromEntries(Object.entries(details).filter(([, value]) => value !== undefined));

@@ -43,7 +43,10 @@ export type FailureFacts = {
     | "disk_full"
     | "corrupt"
     | "not_database"
-    | "missing_index";
+    | "missing_index"
+    | "claimed"
+    | "not_claimed"
+    | "claim_limit";
   matchCount?: number;
   candidateIds?: Array<string>;
   settingsPath?: string;
@@ -56,6 +59,8 @@ export type FailureFacts = {
   expectedColumn?: string;
   actualColumn?: string;
   changedFields?: Array<string>;
+  /** When the task's current claim expires in epoch milliseconds */
+  claimExpiresAt?: number;
 };
 
 export class CoreError extends Error {

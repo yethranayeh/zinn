@@ -44,6 +44,7 @@ test("--json prints the created entity on write commands, wherever the flag is p
       label_ids: [],
       created_at: expect.any(Number),
       updated_at: expect.any(Number),
+      claim: null,
     });
   });
 });

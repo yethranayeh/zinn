@@ -652,6 +652,9 @@ function operationsWalk() {
       archiveMany: () => task.archiveMany(["APP-1"], actor),
       unarchive: () => task.unarchive("APP-3", actor),
       unarchiveMany: () => task.unarchiveMany(["APP-3"], actor),
+      claim: () => task.claim({ taskKey: "APP-1", leaseMs: 60_000 }, actor),
+      heartbeat: () => task.heartbeat("APP-1", actor),
+      release: () => task.release("APP-1", actor),
     },
     "task.label": {
       add: () => task.label.add({ taskKey: "APP-2", labelNames: ["unused"] }, actor),

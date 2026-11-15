@@ -116,6 +116,7 @@ test("task view prints the task row followed by Description, Relations, and Comm
       label_ids: [expect.any(String), expect.any(String)],
       created_at: expect.any(Number),
       updated_at: expect.any(Number),
+      claim: null,
       relations: [
         {
           id: expect.any(String),

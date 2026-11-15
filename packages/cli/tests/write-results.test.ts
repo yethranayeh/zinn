@@ -164,6 +164,7 @@ test("task write commands print JSON with the full task details, unchanged by th
       label_ids: [expect.any(String)],
       created_at: expect.any(Number),
       updated_at: expect.any(Number),
+      claim: null,
     });
 
     const edited = await runZinn(["task", "edit", "ROW-1", "--title", "uno", "--json"], testDir);
@@ -185,6 +186,7 @@ test("task write commands print JSON with the full task details, unchanged by th
       label_ids: [expect.any(String)],
       created_at: expect.any(Number),
       updated_at: expect.any(Number),
+      claim: null,
       changed: true,
     });
 
@@ -207,6 +209,7 @@ test("task write commands print JSON with the full task details, unchanged by th
       label_ids: [expect.any(String)],
       created_at: expect.any(Number),
       updated_at: expect.any(Number),
+      claim: null,
       changed: true,
     });
   });

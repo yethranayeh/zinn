@@ -95,6 +95,8 @@ for (const line of require("node:fs").readFileSync(0, "utf8").split("\n")) {
 
 A hook that exits without reading all of its stdin is fine.
 
+[Task claims](/docs/cli#claim-tasks) record the actions `claim`, `claim_take`, `claim_heartbeat` and `claim_release`, and that section lists the changes each one records. Archiving a claimed task, or moving it into a done or cancelled column, runs hooks once with two records: first `claim_release`, with `changes.cause` set to `archive` or `closed`, then the archive or move. Other changes by the holder renew a claim without a claim record, and an expiring claim runs no hooks.
+
 ## Failures
 
 A hook that exits non-zero, is ended by a signal, cannot start, or runs past its timeout prints a warning that names the hook on stderr. A hook past its timeout is stopped at once, together with the programs it started on macOS and Linux. The change stays saved and Zinn's exit status does not change.

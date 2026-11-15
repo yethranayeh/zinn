@@ -53,7 +53,24 @@ const RECORDED_FIELDS = new Set([
   "target",
   "comment",
   "text",
+  "lease_ms",
+  "replaced",
+  "previous_expires_at",
+  "claimed_at",
+  "expires_at",
+  "cause",
 ]);
+const CLAIM_ACTIONS = new Set<string>(["claim", "claim_take", "claim_heartbeat", "claim_release"]);
+// A released claim records its holder as actor fields, which summaries show as one holder.
+const CLAIM_HOLDER_FIELDS = new Set([
+  "actor_kind",
+  "actor_name",
+  "actor_session_id",
+  "actor_thread_id",
+]);
+const RECORDED_TIME_FIELDS = new Set(["due_at", "previous_expires_at", "claimed_at", "expires_at"]);
+// Summaries leave out a released claim's own times, which activity view shows.
+const CLAIM_SPAN_FIELDS = new Set(["claimed_at", "expires_at"]);
 
 const ENTITY_PREVIEW_LENGTH = 24;
 const UNKNOWN_ACTOR_NAME = "unknown";
@@ -81,6 +98,10 @@ const ACTION_LABELS: Record<ActivityAction, string> = {
   comment_create: "added comment",
   comment_edit: "edited comment",
   comment_delete: "deleted comment",
+  claim: "claimed",
+  claim_take: "took over claim",
+  claim_heartbeat: "renewed claim",
+  claim_release: "released claim",
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -489,6 +510,37 @@ function formatDeadline(value: unknown) {
     : summarizeValue(value);
 }
 
+/**
+ * Summarizes a claim action's holder, replaced claim and times.
+ * Returns `null` to leave the field out, or `undefined` for the usual summary.
+ */
+function summarizeClaimChange(
+  changes: Record<string, unknown>,
+  field: string,
+  value: unknown,
+): string | null | undefined {
+  if (CLAIM_HOLDER_FIELDS.has(field)) {
+    const holder = changes as Pick<PresentedActor, "actor_name" | "actor_kind">;
+    return field === "actor_kind" ? `holder: ${formatActorLabel(holder)}` : null;
+  }
+
+  if (CLAIM_SPAN_FIELDS.has(field)) {
+    return null;
+  }
+
+  if (field === "replaced") {
+    return isRecord(value)
+      ? `replaced: ${formatActorLabel(value as Pick<PresentedActor, "actor_name" | "actor_kind">)}`
+      : null;
+  }
+
+  if (RECORDED_TIME_FIELDS.has(field)) {
+    return `${field}: ${formatDeadline(value)}`;
+  }
+
+  return undefined;
+}
+
 function formatRemovedTasks(entry: PresentedActivity) {
   return entry.removedTasks.map((identity) => `removed ${identity.key} (${identity.id})`);
 }
@@ -509,6 +561,14 @@ function formatChangeSummary(
           if (isSnapshot && value === null) {
             return null;
           }
+
+          if (CLAIM_ACTIONS.has(event.action)) {
+            const claimSummary = summarizeClaimChange(changes, field, value);
+            if (claimSummary !== undefined) {
+              return claimSummary;
+            }
+          }
+
           const repeatsIdentity =
             options.omitsIdentity &&
             isSnapshot &&
@@ -637,15 +697,21 @@ function formatRecordedChanges(event: Activity) {
 
   const sections: Array<string> = [];
   const unknownFields: Record<string, unknown> = {};
+  const isClaimAction = CLAIM_ACTIONS.has(event.action);
+
   for (const [field, value] of Object.entries(event.changes)) {
-    if (!RECORDED_FIELDS.has(field)) {
+    const isRecordedField =
+      RECORDED_FIELDS.has(field) || (isClaimAction && CLAIM_HOLDER_FIELDS.has(field));
+    if (!isRecordedField) {
       unknownFields[field] = value;
       continue;
     }
-    const formatValue = field === "due_at" ? formatDeadline : formatRecordedValue;
+
+    const formatValue = RECORDED_TIME_FIELDS.has(field) ? formatDeadline : formatRecordedValue;
     const body = isRecordedChangePair(event, value)
       ? `${formatSection("From", formatValue(value[0]))}\n\n${formatSection("To", formatValue(value[1]))}`
       : formatValue(value);
+
     sections.push(formatSection(field, body));
   }
   if (Object.keys(unknownFields).length > 0) {
@@ -676,6 +742,11 @@ export function formatActor(actor: PresentedActor) {
   ].join("\n");
 }
 
+/** An actor's name and kind, as activity rows show who acted */
+export function formatActorLabel(actor: Pick<PresentedActor, "actor_name" | "actor_kind">) {
+  return `${actor.actor_name ?? UNKNOWN_ACTOR_NAME} (${actor.actor_kind})`;
+}
+
 export function formatActivityList(
   entries: Array<PresentedActivity>,
   options: { showsDetails?: boolean } = {},
@@ -684,7 +755,7 @@ export function formatActivityList(
     const metadata = [
       { text: entry.displayId },
       { text: formatLocalTime(entry.event.created_at), style: "dim" as const },
-      { text: `${entry.event.actor_name ?? UNKNOWN_ACTOR_NAME} (${entry.event.actor_kind})` },
+      { text: formatActorLabel(entry.event) },
       { text: entry.event.actor_client ?? "null" },
     ];
 

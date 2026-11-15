@@ -56,6 +56,8 @@ function expectLatestBehavior(db: Database) {
   db.exec(`INSERT INTO activity (id, created_at, actor_kind, actor_client, entity_type, entity_id, action)
     VALUES ('a1', 1, 'agent', 'test', 'task', 't1', 'create')`);
   db.exec("INSERT INTO task_search (task_id, title, comments) VALUES ('t1', 'Café', 'one')");
+  db.exec(`INSERT INTO task_claim (task_id, actor_kind, claimed_at, renewed_at, worked_at, lease_ms)
+    VALUES ('t1', 'human', 1, 1, 1, 60000)`);
 
   // Defaults
   expect(db.query("SELECT task_count FROM project").get()).toEqual({ task_count: 0 });
@@ -134,7 +136,7 @@ function expectLatestBehavior(db: Database) {
 
   // Deleting a project removes everything under it and keeps labels
   db.exec("DELETE FROM project");
-  for (const table of ["project_column", "task", "task_relations", "task_label", "comment"]) {
+  for (const table of ["project_column", "task", "task_relations", "task_label", "comment", "task_claim"]) {
     expect({ table, count: count(db, table) }).toEqual({ table, count: 0 });
   }
   expect(count(db, "label")).toBe(1);

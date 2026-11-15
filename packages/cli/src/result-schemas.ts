@@ -16,11 +16,13 @@ import {
   taskPrioritySchema,
   telemetryModeSchema,
   telemetrySourceSchema,
+  CLAIM_WORK_LIMIT_MS,
 } from "@zinn-dev/core";
 
 import { errorDocumentSchema } from "./errors.js";
 import { capabilitiesSchema, jsonValueSchema } from "./capabilities-schema.js";
 
+const MS_PER_HOUR = 3_600_000;
 const nullableText = z.string().nullable();
 const count = z.number().int().nonnegative();
 const timestamp = z.number().int().describe("Milliseconds since the Unix epoch.");
@@ -28,6 +30,29 @@ const taskStatus = z.enum(["Active", "Archived"]);
 // A newer Zinn may store a category this version does not know.
 const columnCategory = z.string().nullable();
 const columnCategoryValues = `Known categories: ${columnCategorySchema.options.join(", ")}. Other stored values may occur.`;
+
+export const taskClaimSchema = z.strictObject({
+  state: z
+    .enum(["live", "expired"])
+    .describe(
+      "live until expires_at, expired after it. An expired claim stays until it is replaced or released.",
+    ),
+  actor_kind: z
+    .string()
+    .describe(
+      `Known actor kinds: ${actorKindSchema.options.join(", ")}. Other stored values may occur.`,
+    ),
+  actor_name: nullableText,
+  actor_session_id: nullableText,
+  actor_thread_id: nullableText,
+  claimed_at: timestamp,
+  renewed_at: timestamp.describe("When the holder last renewed the claim."),
+  worked_at: timestamp.describe("When the holder last recorded work on the task."),
+  lease_ms: z.number().int().positive().describe("Lease length in milliseconds."),
+  expires_at: timestamp.describe(
+    `The end of the lease after renewed_at, or ${CLAIM_WORK_LIMIT_MS / MS_PER_HOUR} hours after worked_at, whichever comes first.`,
+  ),
+});
 
 export const taskSchema = z.strictObject({
   id: z.string().describe("Stored task ID."),
@@ -56,6 +81,9 @@ export const taskSchema = z.strictObject({
   label_ids: z.array(z.string()).describe("Attached label IDs, in the same order as labels."),
   created_at: timestamp,
   updated_at: timestamp,
+  claim: taskClaimSchema
+    .nullable()
+    .describe("The task's claim, or null when it has none or the database predates claims."),
 });
 
 export const relationSchema = z.strictObject({

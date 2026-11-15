@@ -16,10 +16,12 @@ export type {
   TaskSearchInput,
   TaskStateFilter,
   TaskOrderManyInput,
+  TaskClaimInput,
 } from "./src/schemas/task.js";
 export type {
   TaskWithKey,
   TaskChange,
+  TaskClaim,
   TaskAttribution,
   TaskBlamedValue,
   TaskBlame,
@@ -108,6 +110,9 @@ export {
   taskSearchSchema,
   taskOrderManySchema,
   taskDeleteManySchema,
+  taskClaimSchema,
+  MIN_CLAIM_LEASE_MS,
+  CLAIM_WORK_LIMIT_MS,
   positiveIntegerPattern,
   searchLimitMessage,
   parseTaskKey,

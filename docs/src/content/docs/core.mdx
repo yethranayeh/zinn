@@ -131,6 +131,16 @@ Task results include `due_at: number | null`, an exact deadline in integer Unix 
 
 `task.getAll({ sort: "due" })` sorts by earliest deadline first, puts undated tasks last, and preserves board order for equal deadlines and undated tasks. This is opt-in and does not change task positions. `task.search` has no due sort option.
 
+## Task claims
+
+`task.claim({ taskKey, leaseMs, force? }, actor)`, `task.heartbeat(taskKey, actor)` and `task.release(taskKey, actor)` claim, renew and release a task, as the [CLI claim commands](/docs/cli#claim-tasks) do. Each returns a `TaskChange`. `release` returns `changed: false` for a task without a claim.
+
+`taskClaimSchema` validates the claim input, typed as `TaskClaimInput`. `leaseMs` is an integer from `MIN_CLAIM_LEASE_MS` (`60000`, one minute) through `CLAIM_WORK_LIMIT_MS` (`86400000`, 24 hours). `CLAIM_WORK_LIMIT_MS` is also how long a claim lasts after its holder's last change to the task. `force: true` takes over another holder's live claim.
+
+The holder is matched by the actor's `sessionId`, then its `threadId`, then its `kind` and `name`. `task.claim` with an agent actor that has neither `sessionId` nor `threadId` throws a `CoreError` with kind `input` and `field: ["sessionId"]`. Refusals throw kind `conflict` with reason `claimed`, `not_claimed`, `claim_limit` or `archived`, and a `claimExpiresAt` fact in epoch milliseconds when the task has a claim.
+
+Every task result includes `claim`, a `TaskClaim` or `null`. It has `state` (`"live"` or `"expired"`), the holder's `actor_kind`, `actor_name`, `actor_session_id` and `actor_thread_id`, and `claimed_at`, `renewed_at`, `worked_at`, `lease_ms` and `expires_at` in epoch milliseconds. `state` is computed when the task is read. On an older database opened read-only, `claim` is `null`. Claims record the activity actions `claim`, `claim_take`, `claim_heartbeat` and `claim_release` without changing the task's `updated_at`.
+
 ## Task relations
 
 `relation.create({ sourceTaskKey, targetTaskKey, relation_type }, actor)` creates a relation. Types are `related`, `dependency`, `duplicate` and `subtask`. A pair has at most one relation across all types and both directions. Directed types preserve their source and target. An exact existing relation is an error.

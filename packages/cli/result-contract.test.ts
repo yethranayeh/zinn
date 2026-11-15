@@ -255,6 +255,13 @@ type Fixture = {
   env?: (directory: string) => Record<string, string>;
 };
 
+// An agent holds a claim through its session.
+const contractSession = { ZINN_SESSION_ID: "contract-session" };
+async function claimAsContractSession(directory: string) {
+  const result = await invoke(directory, ["task", "claim", "APP-1", "--lease", "30m"], contractSession);
+  expect(result.code, result.stderr).toBe(0);
+}
+
 const fixtures: Record<string, Fixture[]> = {
   "capabilities": [{ schema: "Capabilities", args: [] }],
   "whoami": [{ schema: "Actor", args: [] }],
@@ -326,6 +333,16 @@ const fixtures: Record<string, Fixture[]> = {
     { schema: "TaskChange", args: ["APP-1"], prepare: async (dir) => { await success(dir, ["task", "archive", "APP-1"]); }, check: (v) => expect(v.changed).toBe(true) },
     { schema: "TaskChanges", args: ["APP-1", "APP-2"] },
     { schema: "TaskChanges", args: ["APP-1", "APP-1"] },
+  ],
+  "task claim": [
+    { schema: "TaskChange", args: ["APP-1", "--lease", "30m"], env: () => contractSession, check: (v) => expect(v.claim).toMatchObject({ state: "live", actor_session_id: contractSession.ZINN_SESSION_ID }) },
+  ],
+  "task heartbeat": [
+    { schema: "TaskChange", args: ["APP-1"], env: () => contractSession, prepare: claimAsContractSession, check: (v) => expect(v.changed).toBe(true) },
+  ],
+  "task release": [
+    { schema: "TaskChange", args: ["APP-1"], env: () => contractSession, prepare: claimAsContractSession, check: (v) => expect(v.claim).toBeNull() },
+    { schema: "TaskChange", args: ["APP-1"], env: () => contractSession, check: (v) => expect(v.changed).toBe(false) },
   ],
   "task delete": [
     { schema: "Task", args: ["APP-1", "--yes"] },

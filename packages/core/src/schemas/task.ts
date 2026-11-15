@@ -174,6 +174,22 @@ export const taskNextSchema = z.strictObject({
   columnName: columnNameSchema.optional(),
 });
 
+/** The shortest lease a claim accepts. */
+export const MIN_CLAIM_LEASE_MS = 60_000;
+/** The longest lease, and how long a claim outlives its holder's last recorded work. */
+export const CLAIM_WORK_LIMIT_MS = 86_400_000;
+const claimLeaseMessage = `Lease must be an integer from ${MIN_CLAIM_LEASE_MS} through ${CLAIM_WORK_LIMIT_MS} milliseconds`;
+
+export const taskClaimSchema = z.strictObject({
+  taskKey: z.string(),
+  leaseMs: z
+    .number({ error: claimLeaseMessage })
+    .int(claimLeaseMessage)
+    .min(MIN_CLAIM_LEASE_MS, claimLeaseMessage)
+    .max(CLAIM_WORK_LIMIT_MS, claimLeaseMessage),
+  force: z.boolean().optional(),
+});
+
 export const taskPageSchema = taskListSchema.safeExtend({
   startingAfter: z.string().optional(),
 });
@@ -202,6 +218,7 @@ export type TaskListInput = z.infer<typeof taskListSchema>;
 export type TaskPageInput = z.input<typeof taskPageSchema>;
 export type TaskNextInput = z.infer<typeof taskNextSchema>;
 export type TaskSearchInput = z.infer<typeof taskSearchSchema>;
+export type TaskClaimInput = z.infer<typeof taskClaimSchema>;
 
 export function validateTaskInput<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {
   const result = schema.safeParse(input);

@@ -205,6 +205,7 @@ test("delete commands with --yes and --json print the deleted entity", async () 
       label_ids: [],
       created_at: expect.any(Number),
       updated_at: expect.any(Number),
+      claim: null,
     });
     expect(JSON.parse((await run("task", "list", "WEB", "--json")).stdout)).toMatchObject([
       { key: "WEB-2" },

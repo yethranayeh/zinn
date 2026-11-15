@@ -23,6 +23,7 @@ Use this page for command behavior, shared input rules, and practical examples. 
   - [Edit tasks](#edit-tasks)
   - [Move and order tasks](#move-and-order-tasks)
   - [Archive and delete tasks](#archive-and-delete-tasks)
+  - [Claim tasks](#claim-tasks)
   - [Task priority](#task-priority)
   - [Task deadlines](#task-deadlines)
 - [Labels](#labels)
@@ -568,6 +569,53 @@ zinn task unarchive MDR-2 MDR-3
 Archive or unarchive multiple tasks by giving several keys. Unarchived tasks land in the order given. See [Changing tasks in bulk](#changing-tasks-in-bulk).
 
 Delete tasks permanently with `zinn task delete MDR-1 MDR-2`. Active and archived tasks from any project can be deleted together. It asks for one confirmation before performing the action, unless `--yes` is used (see [Confirmations](/docs/scripting#confirmations-in-scripts)). See [Changing tasks in bulk](#changing-tasks-in-bulk) for validation and JSON results. See [Task key reuse](/docs/data#task-key-reuse) for what happens to task numbers.
+
+## Claim tasks
+
+A claim marks a task as being worked on by one holder for a lease, so other agents and people can see who works on it. A claim is advisory: Zinn records and shows it, and anyone can still change the task. It is kept apart from the task's column, and any active task can be claimed, in any column.
+
+```sh title="Claim, renew and release a task"
+zinn task claim MDR-1 --lease 30m
+zinn task heartbeat MDR-1
+zinn task release MDR-1
+```
+
+`task claim <task-key> --lease <duration>` claims a task. `--lease` is required: a whole number of minutes or hours, such as `30m` or `2h`, from `1m` through `24h`.
+
+- A task without a claim gets a new one.
+- Claiming a task you hold renews your claim with the new lease, also after it expired. The claim keeps the time it was first claimed.
+- Someone else's expired claim is replaced.
+- Someone else's live claim fails with error code `conflict` and reason `claimed`. `--force` takes the claim over.
+- An archived task fails with error code `conflict` and reason `archived`.
+
+```sh title="Take over a live claim"
+zinn task claim MDR-1 --lease 2h --force
+```
+
+`task heartbeat <task-key>` renews your claim with the lease it already has. It never creates a claim: a task without one fails with reason `not_claimed`, and someone else's claim fails with reason `claimed`.
+
+`task release <task-key>` removes your claim. A task without a claim is left unchanged and the command exits `0`. Someone else's claim fails with reason `claimed`.
+
+Each command prints the task. With `--json`, it returns the task object with `changed`, like the other single-task write commands. `changed` is `false` when `task release` finds no claim. Task objects carry the claim in `claim` (see [Entity identity](/docs/scripting#entity-identity)), and claim failures carry its expiry in `claimExpiresAt` (see [Handle errors and notices](/docs/scripting#handle-errors-and-notices)).
+
+The holder is the [actor](#who-am-i) that claimed the task. Holders are told apart by their session, from `ZINN_SESSION_ID` or the session the agent's host declares, then by their thread, then by actor kind and name. So a person without a session holds a claim by name, and the same agent under a new session ID is a different holder. An agent with neither a session nor a thread cannot claim a task: the command fails with error code `invalid_input` and a message that names `ZINN_SESSION_ID`.
+
+Your claim renews when you run `task heartbeat`, claim the task again, or make any recorded change to the task, including a comment. Reading the task does not renew it. Failed commands and edit actions that lead to no change also do not renew it.
+
+A claim expires early if its lease ends, or 24 hours later after the last change at the latest. `task heartbeat` and a repeated `task claim` renew the lease. Still they are not technically a **change** to the task, so on their own they keep a claim for at most 24 hours after your last change. After that, both fail with reason `claim_limit`. A change to the task renews the claim again, as long as nobody has replaced it.
+
+An expired claim stays on the task until someone replaces or releases it. Archiving a task releases its claim, and so does moving it into a column whose category is `done` or `cancelled`. Moving it into a `review` column keeps the claim. Deleting a task or its project deletes its claim too.
+
+`task view` shows a claim with its holder and when its lease ends, also once it expired. Task rows in lists show the holder of a live claim.
+
+Claims record four task activity actions:
+
+- `claim`: a new claim. `changes` holds `lease_ms` and `replaced`, which is `null` or the expired claim it replaced, with `actor_kind`, `actor_name`, `actor_session_id`, `actor_thread_id`, `claimed_at` and `expires_at`.
+- `claim_take`: a live claim taken over with `--force`, with the same changes. `replaced` is always set.
+- `claim_heartbeat`: `task heartbeat`, or a repeated `task claim` by the holder. `changes` holds `lease_ms` and `previous_expires_at`.
+- `claim_release`: a removed claim. `changes` holds the claim's `actor_kind`, `actor_name`, `actor_session_id`, `actor_thread_id`, `claimed_at` and `expires_at`, and `cause`, which is `release`, `archive` or `closed`. Archiving and moving into a done or cancelled column record it beside their own record, under the actor who archived or moved the task.
+
+Other changes by the holder renew the claim without a claim record. Expiry records nothing, and neither does a claim deleted with its task or project. Claim commands leave the task's `updated_at` unchanged.
 
 ## Task priority
 

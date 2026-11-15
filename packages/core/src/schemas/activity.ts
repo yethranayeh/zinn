@@ -31,6 +31,10 @@ export const activityActionSchema = z.enum([
   "comment_create",
   "comment_edit",
   "comment_delete",
+  "claim",
+  "claim_take",
+  "claim_heartbeat",
+  "claim_release",
 ]);
 export const activityEntityTypeSchema = z.enum(["task", "project", "column", "label"]);
 const changedFieldNames = [

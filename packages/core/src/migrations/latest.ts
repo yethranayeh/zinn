@@ -3,7 +3,7 @@ import type { Database } from "../sqlite/database.js";
 import { TASK_SEARCH_DEFINITION } from "./baseline.js";
 
 /** The schema version `LATEST_STATEMENTS` create, which is the newest one in **registry.ts** */
-export const LATEST_SCHEMA_VERSION = 5;
+export const LATEST_SCHEMA_VERSION = 6;
 
 /**
  * The whole schema at `LATEST_SCHEMA_VERSION`, which `createLatestSchema` runs on every fresh database.
@@ -95,6 +95,17 @@ export const LATEST_STATEMENTS: ReadonlyArray<string> = [
         action           TEXT NOT NULL,
         changes          TEXT
       , actor_client TEXT)`,
+
+  `CREATE TABLE task_claim (
+    task_id          TEXT PRIMARY KEY REFERENCES task(id) ON DELETE CASCADE,
+    actor_kind       TEXT NOT NULL,
+    actor_name       TEXT,
+    actor_session_id TEXT,
+    actor_thread_id  TEXT,
+    claimed_at       INTEGER NOT NULL,
+    renewed_at       INTEGER NOT NULL,
+    worked_at        INTEGER NOT NULL,
+    lease_ms         INTEGER NOT NULL)`,
 ];
 
 /** Creates the latest schema. The runner calls it inside its transaction, on an empty database. */

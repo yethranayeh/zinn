@@ -1,4 +1,4 @@
-import type { Task, TaskChange, TaskWithKey } from "../types.js";
+import type { KeyedTask, KeyedTaskChange, Task, TaskChange, TaskWithKey } from "../types.js";
 import type {
   TaskCreateInput,
   TaskEditInput,
@@ -19,6 +19,7 @@ import { CoreError } from "../errors.js";
 import { readTransaction, writeTransaction } from "../db.js";
 import { rethrowSearchError } from "../search-error.js";
 import { taskLabelSchema } from "../schemas/label.js";
+import { CLOSED_COLUMN_CATEGORIES } from "../schemas/column.js";
 
 import * as dbProject from "../db/project.js";
 import * as dbColumn from "../db/column.js";
@@ -44,7 +45,11 @@ import { decodeTaskCursor, encodeTaskCursor } from "../task-cursor.js";
 
 import { relation } from "./relation.js";
 import { blameTask } from "./task-blame.js";
+import { releaseTaskClaim, taskClaim } from "./task-claim.js";
 import {
+  attachChangeClaims,
+  attachClaim,
+  attachClaims,
   getTaskByKey,
   findTaskByExactKey,
   attachTaskKey,
@@ -214,7 +219,7 @@ const neutralTaskDirections = {
   bottom: "last",
 } as const;
 
-function orderTask(props: TaskOrderProps, actor: Actor): TaskChange {
+function orderTask(props: TaskOrderProps, actor: Actor): KeyedTaskChange {
   const { taskKey, direction } = props;
   const taskMatch = getTaskByKey(taskKey);
 
@@ -311,7 +316,7 @@ function orderTask(props: TaskOrderProps, actor: Actor): TaskChange {
 
 type TaskMoveProps = { taskKey: string; targetColumn: string; fromColumn?: string };
 
-function moveTask(props: TaskMoveProps, actor: Actor): TaskChange {
+function moveTask(props: TaskMoveProps, actor: Actor): KeyedTaskChange {
   const taskMatch = getTaskByKey(props.taskKey);
 
   if (taskMatch.archived_at != null) {
@@ -357,6 +362,13 @@ function moveTask(props: TaskMoveProps, actor: Actor): TaskChange {
   const lastTask = dbTask.getLastByColumnId(columnMatch.id);
   const order = generateKeyBetween(lastTask?.task_order ?? null, null);
   const now = Date.now();
+  const isClosingMove = CLOSED_COLUMN_CATEGORIES.some(
+    (category) => category === columnMatch.category,
+  );
+
+  if (isClosingMove) {
+    releaseTaskClaim(taskMatch.id, actor, "closed", now);
+  }
 
   recordTaskActivity(actor, {
     taskId: taskMatch.id,
@@ -380,7 +392,7 @@ function moveTask(props: TaskMoveProps, actor: Actor): TaskChange {
   return { task: { ...movedTask, key: taskMatch.key }, changed: true };
 }
 
-function archiveTask(taskKey: string, actor: Actor): TaskChange {
+function archiveTask(taskKey: string, actor: Actor): KeyedTaskChange {
   const taskMatch = getTaskByKey(taskKey);
 
   if (taskMatch.archived_at != null) {
@@ -388,6 +400,7 @@ function archiveTask(taskKey: string, actor: Actor): TaskChange {
   }
 
   const now = Date.now();
+  releaseTaskClaim(taskMatch.id, actor, "archive", now);
   recordTaskActivity(actor, {
     taskId: taskMatch.id,
     action: "archive",
@@ -400,7 +413,7 @@ function archiveTask(taskKey: string, actor: Actor): TaskChange {
   return { task: { ...archivedTask, key: taskMatch.key }, changed: true };
 }
 
-function unarchiveTask(taskKey: string, actor: Actor): TaskChange {
+function unarchiveTask(taskKey: string, actor: Actor): KeyedTaskChange {
   const taskMatch = getTaskByKey(taskKey);
 
   if (taskMatch.archived_at == null) {
@@ -426,6 +439,37 @@ function unarchiveTask(taskKey: string, actor: Actor): TaskChange {
   })!;
 
   return { task: { ...unarchivedTask, key: taskMatch.key }, changed: true };
+}
+
+/** Deletes a task, recording a `relation_delete` row on each related task first */
+function deleteTask(taskKey: string, actor: Actor): KeyedTask {
+  const taskMatch = getTaskByKey(taskKey);
+  const now = Date.now();
+
+  for (const relationMatch of dbRelation.getAllByTaskId(taskMatch.id)) {
+    const otherTaskId =
+      relationMatch.source_task_id === taskMatch.id
+        ? relationMatch.target_task_id
+        : relationMatch.source_task_id;
+
+    recordTaskActivity(actor, {
+      taskId: otherTaskId,
+      action: "relation_delete",
+      changes: describeRelation(relationMatch),
+      createdAt: now,
+    });
+  }
+
+  recordTaskActivity(actor, {
+    taskId: taskMatch.id,
+    action: "delete",
+    changes: { key: taskMatch.key, title: taskMatch.title },
+    createdAt: now,
+  });
+
+  dbSearch.removeTask(taskMatch.id);
+  dbTask.deleteById(taskMatch.id);
+  return taskMatch;
 }
 
 export const task = {
@@ -509,7 +553,7 @@ export const task = {
         relation.create({ sourceTaskKey: createdTaskWithKey.key, ...request }, validActor);
       }
 
-      return createdTaskWithKey;
+      return attachClaim(createdTaskWithKey);
     });
   },
   getAll: (input: TaskListInput = {}) => {
@@ -517,7 +561,9 @@ export const task = {
     const query = resolveTaskListSelection(props);
     const taskMatches = dbTask.getList({ ...query, limit: props.limit });
 
-    return taskMatches.map(({ project_key, ...row }) => attachTaskKey(row, project_key));
+    return attachClaims(
+      taskMatches.map(({ project_key, ...row }) => attachTaskKey(row, project_key)),
+    );
   },
   getPage: (
     input: TaskPageInput = {},
@@ -534,8 +580,8 @@ export const task = {
       const rows = dbTask.getPage({ ...query, limit: fetchLimit, after });
       const hasMore = props.limit !== undefined && rows.length > props.limit;
       const selectedRows = hasMore ? rows.slice(0, props.limit) : rows;
-      const tasks = selectedRows.map(({ task: { project_key, ...row } }) =>
-        attachTaskKey(row, project_key),
+      const tasks = attachClaims(
+        selectedRows.map(({ task: { project_key, ...row } }) => attachTaskKey(row, project_key)),
       );
 
       if (!hasMore) {
@@ -571,10 +617,10 @@ export const task = {
       }
 
       const { project_key, ...row } = taskMatch;
-      return attachTaskKey(row, project_key);
+      return attachClaim(attachTaskKey(row, project_key));
     });
   },
-  getByKey: getTaskByKey,
+  getByKey: (taskKey: string): TaskWithKey => attachClaim(getTaskByKey(taskKey)),
   blame: blameTask,
   search: (input: TaskSearchInput) => {
     const props = validateTaskInput(taskSearchSchema, input);
@@ -626,9 +672,11 @@ export const task = {
         : 0;
 
     return {
-      tasks: matches
-        .filter((taskMatch) => dbTask.matchesArchiveFilter(taskMatch, archive))
-        .slice(0, props.limit),
+      tasks: attachClaims(
+        matches
+          .filter((taskMatch) => dbTask.matchesArchiveFilter(taskMatch, archive))
+          .slice(0, props.limit),
+      ),
       hiddenArchivedCount,
     };
   },
@@ -686,7 +734,7 @@ export const task = {
         isDeadlineUnchanged &&
         areLabelsUnchanged;
       if (isTaskUnchanged) {
-        return { task: existing, changed: false };
+        return { task: attachClaim(existing), changed: false };
       }
 
       for (const label of labelsToAdd) {
@@ -740,7 +788,7 @@ export const task = {
 
       updateTaskSearchRecord(existing.id);
 
-      return { task: { ...editedTask, key: existing.key }, changed: true };
+      return { task: attachClaim({ ...editedTask, key: existing.key }), changed: true };
     });
   },
   /**
@@ -755,7 +803,7 @@ export const task = {
   move: (props: TaskMoveProps, actor: Actor) => {
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return writeTransaction(() => moveTask(props, validActor).task);
+    return writeTransaction(() => attachClaim(moveTask(props, validActor).task));
   },
   moveMany: (
     props: { taskKeys: Array<string>; targetColumn: string; fromColumn?: string },
@@ -764,17 +812,19 @@ export const task = {
     const validActor = validateTaskInput(actorSchema, actor);
 
     return writeTransaction(() =>
-      props.taskKeys.map((taskKey) =>
-        moveTask(
-          { taskKey, targetColumn: props.targetColumn, fromColumn: props.fromColumn },
-          validActor,
+      attachChangeClaims(
+        props.taskKeys.map((taskKey) =>
+          moveTask(
+            { taskKey, targetColumn: props.targetColumn, fromColumn: props.fromColumn },
+            validActor,
+          ),
         ),
       ),
     );
   },
   order: (props: TaskOrderProps, actor: Actor): TaskChange => {
     const validActor = validateTaskInput(actorSchema, actor);
-    return writeTransaction(() => orderTask(props, validActor));
+    return writeTransaction(() => attachChangeClaims([orderTask(props, validActor)])[0]!);
   },
   orderMany: (input: TaskOrderManyInput, actor: Actor): Array<TaskChange> => {
     const props = validateTaskInput(taskOrderManySchema, input);
@@ -834,13 +884,15 @@ export const task = {
         });
       }
 
-      return props.taskKeys.map((taskKey, index) => {
-        const placement: TaskOrderProps =
-          index === 0
-            ? { ...props, taskKey }
-            : { taskKey, direction: "after", targetTaskKey: props.taskKeys[index - 1]! };
-        return orderTask(placement, validActor);
-      });
+      return attachChangeClaims(
+        props.taskKeys.map((taskKey, index) => {
+          const placement: TaskOrderProps =
+            index === 0
+              ? { ...props, taskKey }
+              : { taskKey, direction: "after", targetTaskKey: props.taskKeys[index - 1]! };
+          return orderTask(placement, validActor);
+        }),
+      );
     });
   },
   /**
@@ -848,64 +900,45 @@ export const task = {
    * Tasks on the other side of its relations get a relation_delete row,
    *  since the cascade removes those relations too.
    */
-  delete: (taskKey: string, actor: Actor) => {
+  delete: (taskKey: string, actor: Actor): TaskWithKey => {
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return writeTransaction(() => {
-      const taskMatch = getTaskByKey(taskKey);
-      const now = Date.now();
-
-      for (const relationMatch of dbRelation.getAllByTaskId(taskMatch.id)) {
-        const otherTaskId =
-          relationMatch.source_task_id === taskMatch.id
-            ? relationMatch.target_task_id
-            : relationMatch.source_task_id;
-
-        recordTaskActivity(validActor, {
-          taskId: otherTaskId,
-          action: "relation_delete",
-          changes: describeRelation(relationMatch),
-          createdAt: now,
-        });
-      }
-
-      recordTaskActivity(validActor, {
-        taskId: taskMatch.id,
-        action: "delete",
-        changes: { key: taskMatch.key, title: taskMatch.title },
-        createdAt: now,
-      });
-
-      dbSearch.removeTask(taskMatch.id);
-      dbTask.deleteById(taskMatch.id);
-      return taskMatch;
-    });
+    return writeTransaction(() => attachClaim(deleteTask(taskKey, validActor)));
   },
   deleteMany: (taskKeys: Array<string>, actor: Actor): Array<TaskWithKey> => {
     const validTaskKeys = validateTaskInput(taskDeleteManySchema, taskKeys);
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return writeTransaction(() => validTaskKeys.map((taskKey) => task.delete(taskKey, validActor)));
+    return writeTransaction(() =>
+      attachClaims(validTaskKeys.map((taskKey) => deleteTask(taskKey, validActor))),
+    );
   },
   archive: (taskKey: string, actor: Actor) => {
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return writeTransaction(() => archiveTask(taskKey, validActor).task);
+    return writeTransaction(() => attachClaim(archiveTask(taskKey, validActor).task));
   },
   archiveMany: (taskKeys: Array<string>, actor: Actor): Array<TaskChange> => {
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return writeTransaction(() => taskKeys.map((taskKey) => archiveTask(taskKey, validActor)));
+    return writeTransaction(() =>
+      attachChangeClaims(taskKeys.map((taskKey) => archiveTask(taskKey, validActor))),
+    );
   },
   unarchive: (taskKey: string, actor: Actor) => {
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return writeTransaction(() => unarchiveTask(taskKey, validActor).task);
+    return writeTransaction(() => attachClaim(unarchiveTask(taskKey, validActor).task));
   },
   unarchiveMany: (taskKeys: Array<string>, actor: Actor): Array<TaskChange> => {
     const validActor = validateTaskInput(actorSchema, actor);
 
-    return writeTransaction(() => taskKeys.map((taskKey) => unarchiveTask(taskKey, validActor)));
+    return writeTransaction(() =>
+      attachChangeClaims(taskKeys.map((taskKey) => unarchiveTask(taskKey, validActor))),
+    );
   },
   activity: (taskKey: string) => dbActivity.getAllByEntity("task", getTaskByKey(taskKey).id),
+  claim: taskClaim.claim,
+  heartbeat: taskClaim.heartbeat,
+  release: taskClaim.release,
 };

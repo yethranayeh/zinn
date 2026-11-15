@@ -12,4 +12,5 @@ export const DB_TABLE = {
   comment: "comment",
   taskSearch: "task_search",
   activity: "activity",
+  taskClaim: "task_claim",
 };

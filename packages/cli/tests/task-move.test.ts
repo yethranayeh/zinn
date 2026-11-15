@@ -106,6 +106,7 @@ test("task move prints the task row, while --json returns the full task", async 
       label_ids: [expect.any(String)],
       created_at: expect.any(Number),
       updated_at: expect.any(Number),
+      claim: null,
       changed: true,
     });
   });

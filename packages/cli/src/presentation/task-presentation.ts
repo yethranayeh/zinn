@@ -9,6 +9,7 @@ import { columnNameCell, columnPlacement, createColumnBoard } from "./column-pre
 import { labelNameCell } from "./label-presentation.js";
 import { formatCell, formatCellSeparator, formatRows } from "./row-layout.js";
 import { formatLocalTime } from "./time.js";
+import { formatActorLabel } from "./activity-presentation.js";
 
 const EMPTY_CELL_MARKER = "-";
 const LABEL_NAME_SEPARATOR = ", ";
@@ -70,12 +71,52 @@ export function presentTask(
     label_ids: labels.map((label) => label.id),
     created_at: taskMatch.created_at,
     updated_at: taskMatch.updated_at,
+    claim: presentClaim(taskMatch.claim),
   };
+}
+
+function presentClaim(claim: TaskWithKey["claim"]): PresentedTask["claim"] {
+  if (claim == null) {
+    return null;
+  }
+
+  return {
+    state: claim.state,
+    actor_kind: claim.actor_kind,
+    actor_name: claim.actor_name,
+    actor_session_id: claim.actor_session_id,
+    actor_thread_id: claim.actor_thread_id,
+    claimed_at: claim.claimed_at,
+    renewed_at: claim.renewed_at,
+    worked_at: claim.worked_at,
+    lease_ms: claim.lease_ms,
+    expires_at: claim.expires_at,
+  };
+}
+
+/** Who holds the claim, and when its lease ends or ended when `showsExpiry` is set */
+function formatClaim(claim: NonNullable<PresentedTask["claim"]>, showsExpiry: boolean) {
+  const holder = formatActorLabel(claim);
+
+  if (!showsExpiry) {
+    return `Claimed by ${holder}`;
+  }
+
+  const expiresAt = formatLocalTime(claim.expires_at, { includesSeconds: true });
+  return claim.state === "live"
+    ? `Claimed by ${holder} until ${expiresAt}`
+    : `Claim by ${holder} expired at ${expiresAt}`;
 }
 
 export function formatTaskList(
   presentedTasks: Array<PresentedTask>,
-  options: { showsStatus?: boolean; showsFullPriority?: boolean; prefix?: string } = {},
+  options: {
+    showsStatus?: boolean;
+    showsFullPriority?: boolean;
+    prefix?: string;
+    /** Shows an expired claim too, and when each claim's lease ends */
+    showsClaimDetail?: boolean;
+  } = {},
 ) {
   const labelColorsByName = getLabelColorsByName();
 
@@ -92,13 +133,19 @@ export function formatTaskList(
         presentedTask.due_at == null
           ? ""
           : `${formatCellSeparator()}Due ${formatLocalTime(presentedTask.due_at, { includesSeconds: true })}`;
+      const showsClaimDetail = options.showsClaimDetail ?? false;
+      const claim = presentedTask.claim;
+      const showsClaim = claim != null && (claim.state === "live" || showsClaimDetail);
+      const claimText = showsClaim
+        ? `${formatCellSeparator()}${formatClaim(claim, showsClaimDetail)}`
+        : "";
 
       return [
         { text: `${options.prefix ?? ""}${presentedTask.key}` },
         ...statusCells,
         columnNameCell(presentedTask.column, presentedTask.column_category),
         taskPriorityCell(presentedTask.priority, options.showsFullPriority ?? false),
-        { text: `${presentedTask.title}${deadline}${labels}` },
+        { text: `${presentedTask.title}${deadline}${claimText}${labels}` },
       ];
     }),
   );

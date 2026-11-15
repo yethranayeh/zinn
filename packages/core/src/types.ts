@@ -47,9 +47,32 @@ export type Task = {
   archived_at: number | null;
 };
 
-export type TaskWithKey = Task & { key: string };
+/** The stored claim on a task */
+export type TaskClaimRecord = {
+  task_id: string;
+  actor_kind: ActorKind;
+  actor_name: string | null;
+  actor_session_id: string | null;
+  actor_thread_id: string | null;
+  claimed_at: number;
+  renewed_at: number;
+  worked_at: number;
+  lease_ms: number;
+};
+
+/** A task's claim as read at call time */
+export type TaskClaim = { state: "live" | "expired" } & Omit<TaskClaimRecord, "task_id"> & {
+    expires_at: number;
+  };
+
+/** A task with its readable key, before its claim is read. */
+export type KeyedTask = Task & { key: string };
+
+export type TaskWithKey = KeyedTask & { claim: TaskClaim | null };
 
 export type TaskChange = { task: TaskWithKey; changed: boolean };
+
+export type KeyedTaskChange = { task: KeyedTask; changed: boolean };
 
 export type ColumnChange = { column: Column; changed: boolean };
 

@@ -12,7 +12,13 @@ import { validateTaskInput } from "../schemas/task.js";
 import { relationCreateSchema, relationDeleteSchema } from "../schemas/relation.js";
 import { actorSchema } from "../schemas/actor.js";
 
-import { getTaskByKey, attachTaskKey, recordTaskActivity, describeRelation } from "./shared.js";
+import {
+  getTaskByKey,
+  attachClaims,
+  attachTaskKey,
+  recordTaskActivity,
+  describeRelation,
+} from "./shared.js";
 
 type RelationResult = TaskRelation & {
   source?: TaskWithKey;
@@ -36,15 +42,23 @@ function getRelations(taskKey: string, options?: RelationGetOptions): Array<Rela
     return relations;
   }
 
-  return relations.map(includeRelationTasks);
+  return includeRelationTasks(relations);
 }
 
-function includeRelationTasks(entry: TaskRelation) {
-  return {
+/** Adds each relation's source and target task, with their claims read in one query */
+function includeRelationTasks(entries: Array<TaskRelation>) {
+  const tasks = attachClaims(
+    entries.flatMap((entry) => [
+      attachTaskKey(dbTask.getById(entry.source_task_id)!),
+      attachTaskKey(dbTask.getById(entry.target_task_id)!),
+    ]),
+  );
+
+  return entries.map((entry, index) => ({
     ...entry,
-    source: attachTaskKey(dbTask.getById(entry.source_task_id)!),
-    target: attachTaskKey(dbTask.getById(entry.target_task_id)!),
-  };
+    source: tasks[index * 2]!,
+    target: tasks[index * 2 + 1]!,
+  }));
 }
 
 function resolveRelationTaskIds(props: RelationDeleteInput) {
@@ -135,7 +149,7 @@ export const relation = {
 
     validateRelationCreation(resolved, conflicts);
 
-    return conflicts.map(includeRelationTasks);
+    return includeRelationTasks(conflicts);
   },
   /** Creates or explicitly replaces relations and records each change on both endpoints. */
   create: (input: RelationCreateInput, actor: Actor) => {

@@ -7,7 +7,10 @@ import type {
   CommentWithKey,
   Label,
   Project,
+  KeyedTask,
   Task,
+  TaskClaim,
+  TaskClaimRecord,
   TaskRelation,
   TaskWithKey,
 } from "../types.js";
@@ -19,7 +22,7 @@ import { CoreError } from "../errors.js";
 import { columnNameSchema } from "../schemas/column.js";
 import { descriptionSchema } from "../schemas/description.js";
 import { commentTextSchema } from "../schemas/comment.js";
-import { validateTaskInput } from "../schemas/task.js";
+import { CLAIM_WORK_LIMIT_MS, validateTaskInput } from "../schemas/task.js";
 import { parseTaskKey, positiveIntegerPattern } from "../schemas/task.js";
 import { assembleSearchEntry } from "../search-entry.js";
 
@@ -29,6 +32,7 @@ import * as dbSearch from "../db/search.js";
 import * as dbLabel from "../db/label.js";
 import * as dbActivity from "../db/activity.js";
 import * as dbComment from "../db/comment.js";
+import * as dbClaim from "../db/claim.js";
 
 import { standardizeName, standardizeProjectKey } from "../lib.js";
 import { isRecordingChange, recordChange } from "../hooks.js";
@@ -102,9 +106,70 @@ export function updateTaskSearchRecord(taskId: string) {
   dbSearch.addTask(assembleSearchEntry(taskMatch, comments));
 }
 
-export function attachTaskKey(task: Task, projectKey?: string): TaskWithKey {
+export function attachTaskKey(task: Task, projectKey?: string): KeyedTask {
   const key = projectKey ?? dbProject.getById(task.project_id)!.key;
   return { ...task, key: `${key}-${task.number}` };
+}
+
+/**
+ * A claim expires at the end of its lease,
+ *  or a day after its holder's last work, whichever comes first
+ */
+export function getClaimExpiry(claim: TaskClaimRecord) {
+  return Math.min(claim.renewed_at + claim.lease_ms, claim.worked_at + CLAIM_WORK_LIMIT_MS);
+}
+
+export function isClaimHolder(claim: TaskClaimRecord, actor: Actor) {
+  if (claim.actor_session_id != null) {
+    return actor.sessionId === claim.actor_session_id;
+  }
+
+  if (claim.actor_thread_id != null) {
+    return actor.threadId === claim.actor_thread_id;
+  }
+
+  return actor.kind === claim.actor_kind && actor.name === claim.actor_name;
+}
+
+export function describeClaim(claim: TaskClaimRecord) {
+  return {
+    actor_kind: claim.actor_kind,
+    actor_name: claim.actor_name,
+    actor_session_id: claim.actor_session_id,
+    actor_thread_id: claim.actor_thread_id,
+    claimed_at: claim.claimed_at,
+    expires_at: getClaimExpiry(claim),
+  };
+}
+
+function presentClaim(claim: TaskClaimRecord, now: number): TaskClaim {
+  const { task_id, ...stored } = claim;
+  const expiresAt = getClaimExpiry(claim);
+
+  return { state: now < expiresAt ? "live" : "expired", ...stored, expires_at: expiresAt };
+}
+
+/** Adds each task's current claim, read in one query. */
+export function attachClaims<T extends KeyedTask>(
+  tasks: Array<T>,
+): Array<T & Pick<TaskWithKey, "claim">> {
+  const claims = dbClaim.getByTaskIds(tasks.map((taskMatch) => taskMatch.id));
+  const now = Date.now();
+
+  return tasks.map((taskMatch) => {
+    const claim = claims.get(taskMatch.id);
+    return { ...taskMatch, claim: claim === undefined ? null : presentClaim(claim, now) };
+  });
+}
+
+export function attachClaim<T extends KeyedTask>(task: T) {
+  return attachClaims([task])[0]!;
+}
+
+/** Adds the current claim to each changed task, read in one query */
+export function attachChangeClaims(changes: Array<{ task: KeyedTask; changed: boolean }>) {
+  const tasks = attachClaims(changes.map((change) => change.task));
+  return changes.map((change, index) => ({ task: tasks[index]!, changed: change.changed }));
 }
 
 export function attachCommentKey(comment: Comment, taskKey: string): CommentWithKey {
@@ -343,6 +408,22 @@ export function recordTaskActivity(
     action: props.action,
     changes: props.changes,
     createdAt: props.createdAt,
+  });
+  renewHeldClaim(actor, props.taskId, props.action, props.createdAt);
+}
+
+/** Renews the task's claim when the actor holds it. Any action but a heartbeat also counts as work. */
+function renewHeldClaim(actor: Actor, taskId: string, action: ActivityAction, now: number) {
+  const claim = dbClaim.getByTaskId(taskId);
+
+  if (claim == null || !isClaimHolder(claim, actor)) {
+    return;
+  }
+
+  dbClaim.renew({
+    task_id: taskId,
+    renewed_at: now,
+    worked_at: action === "claim_heartbeat" ? claim.worked_at : now,
   });
 }
 

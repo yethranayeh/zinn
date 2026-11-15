@@ -1,6 +1,10 @@
 import type { ParseArgsOptionsConfig } from "node:util";
 import type { TaskRelationType } from "@zinn-dev/core";
-import type { PresentedTaskDetail, PresentedTaskDetailHistory } from "../result-schemas.js";
+import type {
+  PresentedTask,
+  PresentedTaskDetail,
+  PresentedTaskDetailHistory,
+} from "../result-schemas.js";
 import type { RouteDef } from "../types.js";
 import type { CommandInput, InputConstraint } from "../input.js";
 
@@ -17,11 +21,14 @@ import {
   taskPrioritySchema,
   taskSortSchema,
   taskStateFilterSchema,
+  CLAIM_WORK_LIMIT_MS,
+  MIN_CLAIM_LEASE_MS,
 } from "@zinn-dev/core";
 
 import { listLimitOption, listLimitDescription, parseListLimit } from "../list-limit.js";
 import { formatListContinuation } from "../list-continuation.js";
 import { parseTimestampInput } from "../timestamp-input.js";
+import { durationPattern, formatDurationInput, parseDurationInput } from "../duration-input.js";
 import { CliError } from "../errors.js";
 import {
   generateCommandUsage,
@@ -399,6 +406,28 @@ const taskInputs = {
     ],
     constraints: [],
   },
+  claim: {
+    options: {
+      lease: {
+        type: "string",
+        required: true,
+        value: {
+          kind: "duration",
+          name: "duration",
+          pattern: durationPattern,
+          description: `Whole minutes or hours, such as 30m or 2h, from ${formatDurationInput(MIN_CLAIM_LEASE_MS)} through ${formatDurationInput(CLAIM_WORK_LIMIT_MS)}.`,
+        },
+      },
+      force: { type: "boolean" },
+    },
+    forms: [{ id: "default", positionals: [taskKeyPositional] }],
+    constraints: [],
+  },
+  heartbeat: {
+    options: {},
+    forms: [{ id: "default", positionals: [taskKeyPositional] }],
+    constraints: [],
+  },
   delete: {
     options: { yes: { type: "boolean" } },
     forms: [
@@ -614,7 +643,7 @@ When additional matches remain after --limit, stderr gives a shell-quoted comman
 --starting-after <cursor>: Continue after the position a cursor records. Copy the cursor from that command.
 A cursor works only with the --sort it was made for. Changes to other tasks between commands can still cause repeats or skips.
 
-Use 'task view' to see a task's full details, including its description.
+Use 'task view' to see a task's full details, including its description and an expired claim.
 
 Example: zinn task list MDR --label cli`,
   },
@@ -786,7 +815,11 @@ Examples:
         const comments = formatCommentList(t.comments);
         const isArchived = t.status === "Archived";
         const sections = [
-          formatTaskList([t], { showsStatus: isArchived, showsFullPriority: true }),
+          formatTaskList([t], {
+            showsStatus: isArchived,
+            showsFullPriority: true,
+            showsClaimDetail: true,
+          }),
         ];
 
         if (t.description != null) {
@@ -820,6 +853,7 @@ Show a task with its description, relations, comments, and creation and update t
 A section is shown when the task has that content. The description prints in full, keeping its line breaks.
 Task update time advances for edits, label attachment changes, moves, reorders, archiving and unarchiving.
 With --json, created_at and updated_at are stored epoch milliseconds.
+A claim shows with its holder and when its lease ends, also once it expired.
 Use --history to include this task's recorded activity, newest first, including reorders and comment changes.
 Use activity view <activity-id> for full recorded changes. Text times are local with a UTC offset.
 With --history --json, the activity field contains full activity records, or [] when none are recorded.
@@ -1112,6 +1146,107 @@ Each task's changed field is 'false' when it was already in the requested state.
 
 Example: zinn task unarchive MDR-1 MDR-2`,
   },
+  claim: {
+    summary: "Claim a task for a lease, so other agents and people can see who works on it.",
+    effects: { domain: "update", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: taskInputs.claim,
+    results: [jsonResult("TaskChange")],
+    run: (args) => {
+      const { values, positionals, tokens } = parseArgs({
+        args,
+        options: taskInputs.claim.options,
+        allowPositionals: true,
+        strict: true,
+        tokens: true,
+      });
+      validateUniqueOptions(tokens, taskInputs.claim.options);
+      validatePositionals(positionals, taskInputs.claim.forms[0]);
+
+      const lease = requireStringOption(
+        taskInputs.claim.options.lease,
+        values.lease,
+        "lease",
+        "A claim needs a lease: use --lease, such as --lease 30m",
+      );
+      const leaseMs = parseDurationInput(lease, "--lease")!;
+      const isLeaseInRange = leaseMs >= MIN_CLAIM_LEASE_MS && leaseMs <= CLAIM_WORK_LIMIT_MS;
+      if (!isLeaseInRange) {
+        quit(
+          `Use a lease from ${formatDurationInput(MIN_CLAIM_LEASE_MS)} through ${formatDurationInput(CLAIM_WORK_LIMIT_MS)}`,
+          undefined,
+          { argument: "--lease" },
+        );
+      }
+
+      const claimed = task.claim(
+        {
+          taskKey: positionals[0]!,
+          leaseMs,
+          force: values.force,
+        },
+        currentActor(),
+      );
+      outputClaimChange(claimed, (entry) => `${entry.key} was unchanged`);
+    },
+    help: `${generateCommandUsage("task claim", taskInputs.claim)}
+
+Claim a task for a lease, so other agents and people can see who works on it.
+--lease takes whole minutes or hours, such as 30m or 2h, from ${formatDurationInput(MIN_CLAIM_LEASE_MS)} through ${formatDurationInput(CLAIM_WORK_LIMIT_MS)}.
+Any change the holder makes to the task, including a comment, renews the claim. So does task heartbeat.
+A claim expires when its lease runs out, or ${formatDurationInput(CLAIM_WORK_LIMIT_MS)} after the holder last changed the task.
+After that limit, only a change to the task renews it.
+Claiming a task you hold renews it with the new lease.
+An expired claim is replaced. A live claim by someone else is a conflict, unless --force takes it over.
+Agents are told apart by their session, so an agent needs ZINN_SESSION_ID or a session its host sets.
+Archived tasks cannot be claimed. Archiving a task or moving it to a done or cancelled column releases its claim.
+
+Examples:
+  zinn task claim MDR-1 --lease 30m
+  zinn task claim MDR-1 --lease 2h --force`,
+  },
+  heartbeat: {
+    summary: "Renew your claim on a task with its current lease.",
+    effects: { domain: "update", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: taskInputs.heartbeat,
+    results: [jsonResult("TaskChange")],
+    run: (args) => {
+      const taskKey = parseClaimedTaskKey(args);
+      outputClaimChange(
+        task.heartbeat(taskKey, currentActor()),
+        (entry) => `${entry.key} was unchanged`,
+      );
+    },
+    help: `${generateCommandUsage("task heartbeat", taskInputs.heartbeat)}
+
+Renew your claim on a task with its current lease.
+It fails when the task has no claim or someone else holds it.
+It also fails ${formatDurationInput(CLAIM_WORK_LIMIT_MS)} after you last changed the task. After that, only a change to the task renews the claim.
+
+Example: zinn task heartbeat MDR-1`,
+  },
+  release: {
+    summary: "Release your claim on a task.",
+    effects: { domain: "update", storage: "normal-open" },
+    confirmation: { kind: "none" },
+    input: taskInputs.heartbeat,
+    results: [jsonResult("TaskChange")],
+    run: (args) => {
+      const taskKey = parseClaimedTaskKey(args);
+      outputClaimChange(
+        task.release(taskKey, currentActor()),
+        (entry) => `${entry.key} had no claim`,
+      );
+    },
+    help: `${generateCommandUsage("task release", taskInputs.heartbeat)}
+
+Release your claim on a task.
+Releasing a task without a claim does not do anything. Someone else's claim is a conflict.
+With --json, changed is false when the task had no claim.
+
+Example: zinn task release MDR-1`,
+  },
   delete: {
     summary: "Permanently delete tasks after confirmation.",
     effects: { domain: "delete", storage: "normal-open" },
@@ -1222,6 +1357,33 @@ function parseTaskKeys(args: Array<string>) {
   validatePositionals(positionals, taskInputs.archive.forms[0]);
 
   return positionals;
+}
+
+function parseClaimedTaskKey(args: Array<string>) {
+  const { positionals } = parseArgs({
+    options: taskInputs.heartbeat.options,
+    args,
+    allowPositionals: true,
+    strict: true,
+  });
+
+  validatePositionals(positionals, taskInputs.heartbeat.forms[0]);
+
+  return positionals[0]!;
+}
+
+/** Prints a claim command's task with its claim and when the lease ends */
+function outputClaimChange(
+  change: ReturnType<typeof task.claim>,
+  describeUnchanged: (entry: PresentedTask) => string,
+) {
+  const board = createColumnBoard();
+  outputChanges(
+    [change],
+    (claimChange) => presentTask(claimChange.task, board),
+    (entries) => formatTaskList(entries, { showsClaimDetail: true }),
+    describeUnchanged,
+  );
 }
 
 function parseTaskLabelArgs(args: string[]) {
