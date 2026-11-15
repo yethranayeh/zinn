@@ -1198,7 +1198,7 @@ A claim expires when its lease runs out, or ${formatDurationInput(CLAIM_WORK_LIM
 After that limit, only a change to the task renews it.
 Claiming a task you hold renews it with the new lease.
 An expired claim is replaced. A live claim by someone else is a conflict, unless --force takes it over.
-Agents are told apart by their session, so an agent needs ZINN_SESSION_ID or a session its host sets.
+Agents are told apart by their session or thread, so an agent needs one its host sets, or ZINN_SESSION_ID.
 Archived tasks cannot be claimed. Archiving a task or moving it to a done or cancelled column releases its claim.
 
 Examples:

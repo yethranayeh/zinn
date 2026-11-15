@@ -179,6 +179,7 @@ test("ZINN-585: a second session is refused a live claim with the expiry in deta
     expect(textRefusal.code).toBe(1);
     expect(textRefusal.stdout).toBe("");
     expect(textRefusal.stderr).toContain("session-a");
+    expect(textRefusal.stderr).toContain(utcTime(expiresAt));
 
     const forced = await runZinn(["task", "claim", "APP-1", "--lease", "30m", "--force", "--json"], dir, SESSION_B);
     expect(forced.code).toBe(0);

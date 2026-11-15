@@ -20,9 +20,9 @@ import {
 } from "@zinn-dev/core";
 
 import { errorDocumentSchema } from "./errors.js";
+import { formatDurationInput } from "./duration-input.js";
 import { capabilitiesSchema, jsonValueSchema } from "./capabilities-schema.js";
 
-const MS_PER_HOUR = 3_600_000;
 const nullableText = z.string().nullable();
 const count = z.number().int().nonnegative();
 const timestamp = z.number().int().describe("Milliseconds since the Unix epoch.");
@@ -50,7 +50,7 @@ export const taskClaimSchema = z.strictObject({
   worked_at: timestamp.describe("When the holder last recorded work on the task."),
   lease_ms: z.number().int().positive().describe("Lease length in milliseconds."),
   expires_at: timestamp.describe(
-    `The end of the lease after renewed_at, or ${CLAIM_WORK_LIMIT_MS / MS_PER_HOUR} hours after worked_at, whichever comes first.`,
+    `The end of the lease after renewed_at, or ${formatDurationInput(CLAIM_WORK_LIMIT_MS)} after worked_at, whichever comes first.`,
   ),
 });
 

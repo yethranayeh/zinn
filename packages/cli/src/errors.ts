@@ -9,6 +9,8 @@ import {
   isSqliteErrorFamily,
 } from "@zinn-dev/core";
 
+import { formatLocalTime } from "./presentation/time.js";
+
 export const errorCodeSchema = z.enum([
   "invalid_input",
   "not_found",
@@ -178,6 +180,17 @@ export function recoveryHint(
       suffix: `. Add a column with zinn project column create ${error.facts.key} <name> --category <category>.`,
       suggestedRoute: ["project", "column", "create"],
     };
+  }
+
+  if (
+    error instanceof CoreError &&
+    error.facts.reason === "claimed" &&
+    error.facts.claimExpiresAt !== undefined
+  ) {
+    const expiresAt = error.facts.claimExpiresAt;
+    const timing = Date.now() < expiresAt ? "until" : "whose claim expired at";
+
+    return { suffix: `, ${timing} ${formatLocalTime(expiresAt, { includesSeconds: true })}` };
   }
 
   if (error instanceof CoreError && error.facts.reason === "has_tasks") {

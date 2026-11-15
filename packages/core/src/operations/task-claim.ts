@@ -38,15 +38,13 @@ function describeHolder(claim: TaskClaimRecord) {
   return name;
 }
 
-function claimedByOther(taskMatch: KeyedTask, claim: TaskClaimRecord, now: number) {
-  const expiresAt = getClaimExpiry(claim);
-  const timing = now < expiresAt ? "until" : "whose claim expired at";
-
-  return new CoreError(
-    `${taskMatch.key} is claimed by ${describeHolder(claim)}, ${timing} ${new Date(expiresAt).toISOString()}`,
-    "conflict",
-    { entity: "task", key: taskMatch.key, reason: "claimed", claimExpiresAt: expiresAt },
-  );
+function claimedByOther(taskMatch: KeyedTask, claim: TaskClaimRecord) {
+  return new CoreError(`${taskMatch.key} is claimed by ${describeHolder(claim)}`, "conflict", {
+    entity: "task",
+    key: taskMatch.key,
+    reason: "claimed",
+    claimExpiresAt: getClaimExpiry(claim),
+  });
 }
 
 /** Refuses to renew a claim whose holder recorded no work for the whole work limit */
@@ -158,7 +156,7 @@ export const taskClaim = {
 
       const isTakingLiveClaim = existing != null && now < getClaimExpiry(existing);
       if (isTakingLiveClaim && props.force !== true) {
-        throw claimedByOther(taskMatch, existing, now);
+        throw claimedByOther(taskMatch, existing);
       }
 
       dbClaim.put({
@@ -203,7 +201,7 @@ export const taskClaim = {
       }
 
       if (!isClaimHolder(existing, validActor)) {
-        throw claimedByOther(taskMatch, existing, now);
+        throw claimedByOther(taskMatch, existing);
       }
 
       requireWithinWorkLimit(taskMatch, existing, now);
@@ -226,7 +224,7 @@ export const taskClaim = {
       }
 
       if (!isClaimHolder(existing, validActor)) {
-        throw claimedByOther(taskMatch, existing, now);
+        throw claimedByOther(taskMatch, existing);
       }
 
       releaseTaskClaim(taskMatch.id, validActor, "release", now);
