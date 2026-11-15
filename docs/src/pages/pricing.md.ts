@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import {
+  benchdownCredit,
   calculatorStops,
   cliIntegrity,
   comparison,
@@ -91,6 +92,8 @@ What an agent has to read, against a database of ${pricingEnvironment.tasks} tas
 ${commandRows}
 
 ${memoryLabel(pricingEnvironment.nodeMemoryBytes)} of that memory and ${nodeEnergyLabel} of that electricity is Node itself. ${energyMethodNote}
+
+${benchdownCredit.text} [${benchdownCredit.linkLabel}](${benchdownCredit.href}).
 
 ## Compare plans
 

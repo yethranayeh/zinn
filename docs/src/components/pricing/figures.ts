@@ -127,6 +127,13 @@ export const nodeEnergyLabel = "0.06 mWh";
 
 export const energyMethodNote = "Estimated processor energy above idle, on an M4 MacBook Pro.";
 
+/** The energy figure measurement tool credit */
+export const benchdownCredit = {
+  text: "Processor energy measured with",
+  linkLabel: "benchdown",
+  href: "https://www.aktasalper.com/benchdown/",
+};
+
 export const energyLabel = (command: string) => energyPerCommand[command] ?? "Measuring";
 
 export const comparison = [

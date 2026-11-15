@@ -14,7 +14,12 @@ import {
 } from "../components/performance/flow-data";
 import { formatMs } from "../components/performance/flow-ui";
 import { kindLabels } from "../components/performance/flow-palette";
-import { energyLabel, energyMethodNote, nodeEnergyLabel } from "../components/pricing/figures";
+import {
+  benchdownCredit,
+  energyLabel,
+  energyMethodNote,
+  nodeEnergyLabel,
+} from "../components/pricing/figures";
 
 const flowSections = flows
   .map((flow) => {
@@ -96,6 +101,8 @@ The published packages download ${size(packages.download)}, unpack to ${size(pac
 ${performanceNote}
 
 Node timings and install timings are placeholders. ${energyMethodNote} The read flow uses about ${energyLabel("zinn task list --json")} above idle, and Node accounts for ${nodeEnergyLabel}.
+
+${benchdownCredit.text} [${benchdownCredit.linkLabel}](${benchdownCredit.href}).
 `,
     { headers: { "Content-Type": "text/markdown; charset=utf-8" } },
   );

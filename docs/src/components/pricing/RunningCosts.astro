@@ -3,6 +3,7 @@ import Section from "./Section.astro";
 import PricingNote from "./PricingNote.astro";
 import Readouts from "./Readouts.astro";
 import Readout from "./Readout.astro";
+import BenchdownCredit from "../benchdown/BenchdownCredit.astro";
 
 import { memoryLabel, outputLabel, pricingCommands, pricingEnvironment } from "../../config/pricing";
 import { energyLabel, energyMethodNote, nodeEnergyLabel } from "./figures";
@@ -52,6 +53,8 @@ const firstCommand = pricingCommands[0];
 			}
 			{energyMethodNote}
 		</PricingNote>
+
+		<BenchdownCredit />
 	</div>
 </Section>
 

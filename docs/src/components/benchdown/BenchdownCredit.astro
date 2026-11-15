@@ -1,0 +1,18 @@
+---
+import PricingNote from "../pricing/PricingNote.astro";
+import Link from "../ui/link/Link.astro";
+
+import { benchdownCredit } from "../pricing/figures";
+
+// TODO: use benchdown-mark-light.svg
+// https://raw.githubusercontent.com/yethranayeh/benchdown/refs/heads/main/assets/benchdown-mark-light.svg
+const mark = "https://raw.githubusercontent.com/yethranayeh/benchdown/refs/heads/main/assets/benchdown-mark.svg";
+---
+
+<PricingNote>
+	{benchdownCredit.text}{" "}
+	<Link class='inline-flex gap-1' href={benchdownCredit.href}>
+		<img src={mark} alt='' class='size-4 object-contain' />
+		<span>{benchdownCredit.linkLabel}</span></Link
+	>.
+</PricingNote>
