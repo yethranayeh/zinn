@@ -27,6 +27,12 @@ export const projectEditSchema = z
     projectKey: z.string(),
     name: projectNameSchema.optional(),
     description: descriptionEditSchema.optional(),
+    expected: z
+      .strictObject({
+        name: projectNameSchema.optional(),
+        description: descriptionSchema.optional(),
+      })
+      .optional(),
   })
   .refine(
     (value) => value.name !== undefined || value.description !== undefined,

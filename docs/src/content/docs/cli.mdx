@@ -183,6 +183,8 @@ Provide `--name`, a description (`--description` or `--description-file`), or bo
 The project key can be omitted when [defaultProject](/docs/settings) is configured.
 See [Text values](#text-values) for values that begin with a dash and multi-line text.
 
+`--expect-name`, `--expect-description` and `--expect-description-file` give the values you read before editing. They work as in [Edit tasks](#edit-tasks), which explains the failure and how to expect an empty description.
+
 Add another column at the end of the board, with its category:
 
 ```sh title="Add a column"
@@ -400,6 +402,8 @@ Label colors default to white. Available colors are _red_, _green_, _yellow_, _b
 
 `label edit` accepts name, color, and description. `label create` and `label edit` take `--description-file` for a description from a file or stdin (see [Text values](#text-values)). Renaming preserves every task attachment because attachments refer to the label's internal ID. Updating a label definition does not affect attached tasks' timestamps.
 
+`label edit` takes `--expect-name`, `--expect-description`, `--expect-description-file` and `--expect-color`, the values you read before editing. They work as in [Edit tasks](#edit-tasks), which explains the failure and how to expect an empty description.
+
 `label create`, `label edit`, `label list`, and `label delete` show a preview of the descriptions. `label view <name>` shows the full description, which preserves line breaks and whitespace. `label view --json` returns one object with `id`, `name`, `color`, and the `description` in full.
 
 Task creation and edits apply content and label changes together, or roll back together on failure.
@@ -467,6 +471,8 @@ zinn task comment delete 'MDR-1#1'
 ```
 
 `task comment create` and `task comment edit` take `--text-file` instead of `--text` to read the text from a file or stdin (see [Text values](#text-values)).
+
+`task comment edit` takes `--expect-text` or `--expect-text-file`, the text you read before editing. It works as in [Edit tasks](#edit-tasks), which explains the failure.
 
 `task comment view` shows the current text in full, keeping its line breaks, including on archived tasks. With `--json`, it returns one object with `id`, `key`, `task_id`, `text`, `created_at` and `updated_at`.
 

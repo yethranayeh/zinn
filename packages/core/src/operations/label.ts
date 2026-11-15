@@ -17,7 +17,10 @@ import {
   resolveDescription,
   recordActivity,
   recordTaskActivity,
+  requireExpectedValues,
 } from "./shared.js";
+
+const guardedLabelFields = ["name", "description", "color"] as const;
 
 function findLabelByName(name: string) {
   return findByName(dbLabel.getAll(), name);
@@ -68,6 +71,8 @@ export const label = {
 
     return writeTransaction(() => {
       const match = resolveLabels([props.labelName])[0]!;
+      requireExpectedValues("label", match.name, guardedLabelFields, props.expected, match);
+
       const name = props.name ?? match.name;
       const description =
         props.description === undefined

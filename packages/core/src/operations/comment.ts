@@ -1,5 +1,9 @@
 import type { CommentChange, CommentWithKey } from "../types.js";
-import type { CommentCreateInput, CommentDeleteInput, CommentEditInput } from "../schemas/comment.js";
+import type {
+  CommentCreateInput,
+  CommentDeleteInput,
+  CommentEditInput,
+} from "../schemas/comment.js";
 import type { Actor } from "../schemas/actor.js";
 
 import { writeTransaction } from "../db.js";
@@ -18,7 +22,10 @@ import {
   updateTaskSearchRecord,
   recordTaskActivity,
   resolveCommentText,
+  requireExpectedValues,
 } from "./shared.js";
+
+const guardedCommentFields = ["text"] as const;
 
 function describeComment(comment: CommentWithKey) {
   return { id: comment.id, key: comment.key, text: comment.text };
@@ -70,6 +77,14 @@ export const comment = {
 
     return writeTransaction(() => {
       const existing = getCommentByKey(props.commentKey);
+      requireExpectedValues(
+        "comment",
+        existing.key,
+        guardedCommentFields,
+        props.expected,
+        existing,
+      );
+
       const text = resolveCommentText(props.text, existing.text, `comment ${existing.key}`);
 
       if (existing.text === text) {

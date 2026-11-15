@@ -28,7 +28,10 @@ import {
   recordActivity,
   recordTaskActivity,
   resolveDescription,
+  requireExpectedValues,
 } from "./shared.js";
+
+const guardedProjectFields = ["name", "description"] as const;
 
 // Every default name is one word, so it can be typed in a shell without quotes.
 const DEFAULT_COLUMNS: ReadonlyArray<{ name: string; category: ColumnCategory }> = [
@@ -114,6 +117,14 @@ export const project = {
           { entity: "project", key: standardizeProjectKey(props.projectKey) },
         );
       }
+
+      requireExpectedValues(
+        "project",
+        projectMatch.key,
+        guardedProjectFields,
+        props.expected,
+        projectMatch,
+      );
 
       const name = props.name ?? projectMatch.name;
       const description =

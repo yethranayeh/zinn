@@ -68,10 +68,11 @@ export function expectedValueFlags<const G extends Guards>(guards: G) {
   }
 
   const flagNames = entries.map(([name]) => `--expect-${name}`);
-  const help = [
-    `${joinFlags(flagNames)} give the values read before the edit, spelled as for the edit flags. If one of them no longer matches the stored value, the edit fails and changes nothing.`,
-    ...textFlags.map(textFileHelp),
-  ].join("\n");
+  const guardSentence =
+    flagNames.length === 1
+      ? `${flagNames[0]} gives the value read before the edit, spelled as for the edit flag. If it no longer matches the stored value, the edit fails and changes nothing.`
+      : `${joinFlags(flagNames)} give the values read before the edit, spelled as for the edit flags. If one of them no longer matches the stored value, the edit fails and changes nothing.`;
+  const help = [guardSentence, ...textFlags.map(textFileHelp)].join("\n");
 
   return {
     options: options as ExpectOptions<G>,

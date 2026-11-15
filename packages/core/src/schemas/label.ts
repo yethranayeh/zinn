@@ -27,6 +27,13 @@ export const labelEditSchema = z
     name: labelNameSchema.optional(),
     description: descriptionEditSchema.optional(),
     color: labelColorSchema.optional(),
+    expected: z
+      .strictObject({
+        name: labelNameSchema.optional(),
+        description: descriptionSchema.optional(),
+        color: labelColorSchema.optional(),
+      })
+      .optional(),
   })
   .refine(
     (value) =>

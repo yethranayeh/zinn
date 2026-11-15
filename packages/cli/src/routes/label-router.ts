@@ -28,8 +28,10 @@ import {
   textEditOptions,
   textEditConstraints,
 } from "../text-edit.js";
+import { expectedValueFlags } from "../expected-values.js";
 import {
   checkFieldsBeforeText,
+  checkSingleStdinReader,
   resolveTextInput,
   textFileHelp,
   textFileOption,
@@ -46,6 +48,12 @@ const colorOption = {
     choices: labelColorSchema.options,
   },
 } as const satisfies InputOption;
+
+const labelExpectations = expectedValueFlags({
+  name: { field: "name", option: { type: "string", value: { kind: "text", name: "text" } } },
+  description: { field: "description", text: true },
+  color: { field: "color", option: colorOption },
+});
 
 const labelInputs = {
   create: {
@@ -77,6 +85,7 @@ const labelInputs = {
       "description-file": textFileOption,
       ...textEditOptions,
       color: colorOption,
+      ...labelExpectations.options,
     },
     forms: [
       { id: "default", positionals: [{ name: "name", min: 1, max: 1, value: { kind: "name" } }] },
@@ -88,15 +97,16 @@ const labelInputs = {
         kind: "atLeastOne",
         // A description can also come from --description-file
         members: Object.keys(labelEditSchema.shape)
-          .filter((name) => name !== "labelName")
+          .filter((name) => name !== "labelName" && name !== "expected")
           .flatMap((name) =>
             name === "description"
               ? textSourceConstraint("--description").members
               : [`option:${name}` as const],
           ),
       },
+      ...labelExpectations.constraints,
     ],
-    notes: [textEditHelp("--description")],
+    notes: [textEditHelp("--description"), labelExpectations.help],
   },
   delete: {
     options: { yes: { type: "boolean" } },
@@ -235,19 +245,29 @@ Example: zinn label view bug`,
       validateUniqueOptions(tokens, labelInputs.edit.options);
       validatePositionals(positionals, labelInputs.edit.forms[0]);
 
+      const expected = labelExpectations.parseValues(values);
       checkFieldsBeforeText(labelEditSchema, {
         labelName: positionals[0],
         name: values.name,
         color: values.color,
+        expected,
       });
+      checkSingleStdinReader(values, ["--description", ...labelExpectations.textFlags]);
+
       const description = await resolveTextEdit(values, "--description");
       const input = labelEditSchema.parse({
         labelName: positionals[0],
         name: values.name,
         description,
         color: values.color,
+        expected,
       });
-      const edited = label.edit(input, currentActor());
+      // Read only after the parse, which refuses an edit without edit flags
+      const expectedText = await labelExpectations.resolveText(values);
+      const edited = label.edit(
+        { ...input, expected: { ...input.expected, ...expectedText } },
+        currentActor(),
+      );
 
       outputChanges(
         [edited],
@@ -267,13 +287,16 @@ Valid colors: ${labelInputs.edit.options.color.value.choices.join(", ")}.
 
 ${textEditHelp("--description")}
 
+${labelExpectations.help}
+
 Label names match without case sensitivity.
 
 ${dashValueHelp("--description")}
 
 Examples:
   zinn label edit bug --name defect --color yellow
-  zinn label edit bug --description 'Reported by users.' --append`,
+  zinn label edit bug --description 'Reported by users.' --append
+  zinn label edit bug --color red --expect-color yellow`,
   },
   delete: {
     summary: "Delete a label definition and remove it from all tasks after confirmation.",

@@ -37,8 +37,10 @@ import {
   textEditOptions,
   textEditConstraints,
 } from "../text-edit.js";
+import { expectedValueFlags } from "../expected-values.js";
 import {
   checkFieldsBeforeText,
+  checkSingleStdinReader,
   resolveTextInput,
   textFileHelp,
   textFileOption,
@@ -63,6 +65,11 @@ const projectEditConstraint = {
   kind: "atLeastOne",
   members: ["option:name", "option:description", "option:description-file"],
 } as const satisfies InputConstraint;
+
+const projectExpectations = expectedValueFlags({
+  name: { field: "name", option: { type: "string", value: { kind: "text", name: "text" } } },
+  description: { field: "description", text: true },
+});
 
 const columnCategoryOption = {
   type: "string",
@@ -135,6 +142,7 @@ const projectInputs = {
       description: { type: "string", value: { kind: "text", name: "text" } },
       "description-file": textFileOption,
       ...textEditOptions,
+      ...projectExpectations.options,
     },
     forms: [
       {
@@ -146,8 +154,9 @@ const projectInputs = {
       textSourceConstraint("--description"),
       ...textEditConstraints("--description"),
       projectEditConstraint,
+      ...projectExpectations.constraints,
     ],
-    notes: [requiredProjectDescription, textEditHelp("--description")],
+    notes: [requiredProjectDescription, textEditHelp("--description"), projectExpectations.help],
   },
   delete: {
     options: { yes: { type: "boolean" } },
@@ -408,10 +417,14 @@ Example: zinn project view MDR`,
       validatePositionals(positionals, projectInputs.edit.forms[0]);
 
       const projectChoice = chooseProjectKey(positionals[0], { required: true })!;
+      const expected = projectExpectations.parseValues(values);
       checkFieldsBeforeText(projectEditSchema, {
         projectKey: projectChoice.key,
         name: values.name,
+        expected,
       });
+      checkSingleStdinReader(values, ["--description", ...projectExpectations.textFlags]);
+
       const description = await resolveTextEdit(values, "--description");
 
       // Without a text source nothing was read, so this usage error still comes before any input
@@ -422,8 +435,14 @@ Example: zinn project view MDR`,
       }
       checkDefaultProject(projectChoice);
 
+      const expectedText = await projectExpectations.resolveText(values);
       const editedProject = project.edit(
-        { projectKey: projectChoice.key, name: values.name, description },
+        {
+          projectKey: projectChoice.key,
+          name: values.name,
+          description,
+          expected: { ...expected, ...expectedText },
+        },
         currentActor(),
       );
       outputChanges(
@@ -443,11 +462,14 @@ ${textFileHelp("--description")}
 
 ${textEditHelp("--description")}
 
+${projectExpectations.help}
+
 ${dashValueHelp("--description")}
 
 Examples:
   zinn project edit MDR --name 'Macrodata Refinement'
-  zinn project edit MDR --description database --replacing board --all`,
+  zinn project edit MDR --description database --replacing board --all
+  zinn project edit MDR --name 'Macrodata Refinement' --expect-name 'Macrodata'`,
   },
   delete: {
     summary: "Permanently delete a project and all of its columns and tasks after confirmation.",

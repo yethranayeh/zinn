@@ -19,6 +19,7 @@ export const commentCreateSchema = z.strictObject({
 export const commentEditSchema = z.strictObject({
   commentKey: z.string(),
   text: fullTextOrPartialEdit(commentTextSchema),
+  expected: z.strictObject({ text: commentTextSchema.optional() }).optional(),
 });
 
 export const commentDeleteSchema = z.strictObject({ commentKey: z.string() });

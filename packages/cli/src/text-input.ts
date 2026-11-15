@@ -12,6 +12,7 @@ const textOptions = {
   "--description": { text: "description", file: "description-file" },
   "--text": { text: "text", file: "text-file" },
   "--expect-description": { text: "expect-description", file: "expect-description-file" },
+  "--expect-text": { text: "expect-text", file: "expect-text-file" },
 } as const;
 
 /** How to give an empty value for a text flag, shown when its file input is blank */

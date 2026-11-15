@@ -28,7 +28,9 @@ import {
   textEditOptions,
   textEditConstraints,
 } from "../text-edit.js";
+import { expectedValueFlags } from "../expected-values.js";
 import {
+  checkSingleStdinReader,
   resolveTextInput,
   textFileHelp,
   textFileOption,
@@ -45,6 +47,8 @@ const commentTextConstraint = {
   kind: "atLeastOne",
   members: ["option:text", "option:text-file"],
 } as const satisfies InputConstraint;
+
+const commentExpectations = expectedValueFlags({ text: { field: "text", text: true } });
 
 function requireCommentText(values: { text?: string; "text-file"?: string }) {
   if (violatesConstraint(commentTextConstraint, getOptionInputs(values))) {
@@ -84,11 +88,16 @@ async function parseCommentEditArgs(args: Array<string>) {
   validateUniqueOptions(tokens, commentInputs.edit.options);
   validatePositionals(positionals, commentInputs.edit.forms[0]);
 
+  commentExpectations.parseValues(values);
+  checkSingleStdinReader(values, ["--text", ...commentExpectations.textFlags]);
+
   const text = await resolveTextEdit(values, "--text");
   // Without a text source nothing was read, so this usage error still comes before any input
   requireCommentText(values);
 
-  return { key: positionals[0]!, text: text! };
+  const expected = await commentExpectations.resolveText(values);
+
+  return { key: positionals[0]!, text: text!, expected };
 }
 
 const commentInputs = {
@@ -130,6 +139,7 @@ const commentInputs = {
       text: { type: "string", value: { kind: "text", name: "text" } },
       "text-file": textFileOption,
       ...textEditOptions,
+      ...commentExpectations.options,
     },
     forms: [
       {
@@ -141,8 +151,9 @@ const commentInputs = {
       textSourceConstraint("--text"),
       ...textEditConstraints("--text"),
       commentTextConstraint,
+      ...commentExpectations.constraints,
     ],
-    notes: [textEditHelp("--text")],
+    notes: [textEditHelp("--text"), commentExpectations.help],
   },
   delete: {
     options: { yes: { type: "boolean" } },
@@ -253,7 +264,11 @@ Example: zinn task comment view 'MDR-1#1'`,
     },
     run: async (args) => {
       const props = await parseCommentEditArgs(args);
-      const edited = comment.edit({ commentKey: props.key, text: props.text }, currentActor());
+      const edited = comment.edit(
+        { commentKey: props.key, text: props.text, expected: props.expected },
+        currentActor(),
+      );
+
       outputChanges(
         [edited],
         (change) => presentComment(change.comment),
@@ -270,11 +285,14 @@ The printed result is a preview. 'task comment view' shows the full text. --json
 
 ${textEditHelp("--text")}
 
+${commentExpectations.help}
+
 ${dashValueHelp("--text")}
 
 Examples:
   zinn task comment edit 'MDR-1#2' --text Approved
-  zinn task comment edit 'MDR-1#2' --text 'Also approved.' --append`,
+  zinn task comment edit 'MDR-1#2' --text 'Also approved.' --append
+  zinn task comment edit 'MDR-1#2' --text Approved --expect-text 'Looks good'`,
   },
   delete: {
     summary: "Permanently delete a comment after confirmation.",
