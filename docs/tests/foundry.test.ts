@@ -3,6 +3,13 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
 import { alignmentEdgeOf, gapOf, parsePlacement } from "../foundry/inspector/drafting";
+import {
+  cropFor,
+  fitCrop,
+  rectInPlate,
+  slotCapacity,
+  slotStops,
+} from "../foundry/inspector/plates";
 
 const docsDirectory = resolve(import.meta.dir, "..");
 const sourceDirectory = join(docsDirectory, "src");
@@ -167,6 +174,62 @@ test("the inspector picks the aligned edge on the placement axis", () => {
   expect(alignmentEdgeOf(content, "left", "start")).toBe(151);
   expect(alignmentEdgeOf(content, "left", "center")).toBe(167.5);
   expect(alignmentEdgeOf(content, "left", "end")).toBe(184);
+});
+
+test("the tab trace crop covers the focus ring and any open tooltip", () => {
+  const surface = { w: 400, h: 300 };
+  const focus = { x: 100, y: 100, w: 44, h: 44 };
+
+  expect(cropFor(focus, null, surface)).toEqual({ x: 92, y: 92, w: 60, h: 60 });
+  expect(cropFor(focus, { x: 151, y: 151, w: 137, h: 33 }, surface)).toEqual({
+    x: 92,
+    y: 92,
+    w: 204,
+    h: 100,
+  });
+  expect(cropFor({ x: 0, y: 0, w: 44, h: 44 }, null, surface)).toEqual({ x: 0, y: 0, w: 52, h: 52 });
+  expect(cropFor({ x: 100, y: 60, w: 44, h: 44 }, null, { w: 300, h: 100 })).toEqual({
+    x: 92,
+    y: 52,
+    w: 60,
+    h: 48,
+  });
+});
+
+test("a plate fits its crop without distortion and stays centred", () => {
+  const wide = fitCrop({ x: 0, y: 0, w: 200, h: 100 }, { x: 0, y: 0, w: 100, h: 56 }, 2);
+  expect(wide.scale).toBeCloseTo(0.48, 5);
+  expect(wide).toEqual({ x: 2, y: 4, w: 96, h: 48, scale: 0.48 });
+
+  const tall = fitCrop({ x: 0, y: 0, w: 100, h: 200 }, { x: 0, y: 0, w: 100, h: 56 }, 2);
+  expect(tall.scale).toBeCloseTo(0.26, 5);
+  expect(tall.x).toBeCloseTo(37, 5);
+  expect(tall.y).toBeCloseTo(2, 5);
+  expect(tall.w).toBeCloseTo(26, 5);
+  expect(tall.h).toBeCloseTo(52, 5);
+});
+
+test("a plate maps the focused box with its crop", () => {
+  const crop = { x: 100, y: 0, w: 200, h: 100 };
+  const fit = fitCrop(crop, { x: 0, y: 0, w: 100, h: 56 }, 2);
+  const mapped = rectInPlate({ x: 100, y: 20, w: 40, h: 40 }, crop, fit);
+
+  expect(mapped.x).toBeCloseTo(2, 5);
+  expect(mapped.y).toBeCloseTo(13.6, 5);
+  expect(mapped.w).toBeCloseTo(19.2, 5);
+  expect(mapped.h).toBeCloseTo(19.2, 5);
+});
+
+test("the strip fits fixed slots and reuses them in order", () => {
+  expect(slotCapacity(216)).toBe(2);
+  expect(slotCapacity(50)).toBe(1);
+  expect(slotCapacity(400)).toBe(3);
+  expect(slotCapacity(4000)).toBe(6);
+
+  expect(slotStops([1, 2, 3], 6)).toEqual([1, 2, 3]);
+  expect(slotStops([1, 2, 3, 4, 5, 6, 7], 6)).toEqual([2, 3, 4, 5, 6, 7]);
+  expect(slotStops([1, 2, 3, 4, 5, 6, 7, 8, 9], 2)).toEqual([8, 9]);
+  expect(slotStops([1, 2], 0)).toEqual([2]);
 });
 
 test("Foundry's build holds exactly the pages in foundry/pages", () => {

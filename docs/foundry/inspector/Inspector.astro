@@ -20,6 +20,13 @@ const { defaultInspecting = true, class: className } = Astro.props;
 		<div class='ml-auto flex flex-wrap items-center justify-end gap-2'>
 			<button
 				type='button'
+				class='inline-flex cursor-pointer items-center gap-1.5 border border-soot bg-transparent px-2 py-0.5 font-mono text-[0.6875rem] text-soot aria-pressed:bg-soot aria-pressed:text-limestone'
+				data-toggle
+				aria-pressed={defaultInspecting ? "true" : "false"}>
+				Inspect <Kbd>I</Kbd>
+			</button>
+			<button
+				type='button'
 				class='inline-flex cursor-pointer items-center gap-1.5 border border-soot bg-transparent px-2 py-0.5 font-mono text-[0.6875rem] text-soot aria-pressed:bg-soot aria-pressed:text-limestone disabled:cursor-not-allowed disabled:opacity-40'
 				data-explode
 				aria-pressed='false'
@@ -28,10 +35,11 @@ const { defaultInspecting = true, class: className } = Astro.props;
 			</button>
 			<button
 				type='button'
-				class='inline-flex cursor-pointer items-center gap-1.5 border border-soot bg-transparent px-2 py-0.5 font-mono text-[0.6875rem] text-soot aria-pressed:bg-soot aria-pressed:text-limestone'
-				data-toggle
-				aria-pressed={defaultInspecting ? "true" : "false"}>
-				Inspect <Kbd>I</Kbd>
+				class='inline-flex cursor-pointer items-center gap-1.5 border border-soot bg-transparent px-2 py-0.5 font-mono text-[0.6875rem] text-soot aria-pressed:bg-soot aria-pressed:text-limestone disabled:cursor-not-allowed disabled:opacity-40'
+				data-trace
+				aria-pressed='false'
+				disabled>
+				Trace <Kbd>T</Kbd>
 			</button>
 		</div>
 	</div>
@@ -46,7 +54,7 @@ const { defaultInspecting = true, class: className } = Astro.props;
 		)}
 		data-stage
 		data-inspecting={defaultInspecting ? "on" : "off"}>
-		<div class='relative z-10'>
+		<div class='relative z-10' data-stage-content>
 			<slot />
 		</div>
 	</div>
@@ -56,6 +64,7 @@ const { defaultInspecting = true, class: className } = Astro.props;
 	import { drawDrafting } from "./drafting";
 	import { drawExplode, type ExplodeHandle } from "./explode";
 	import { partsOf } from "./measure";
+	import { startTabTrace, type TabTraceHandle } from "./trace";
 
 	const INPUT_TAGS = /^(INPUT|TEXTAREA|SELECT)$/;
 
@@ -64,16 +73,20 @@ const { defaultInspecting = true, class: className } = Astro.props;
 		const readout = shell.querySelector<HTMLElement>("[data-readout]");
 		const toggle = shell.querySelector<HTMLButtonElement>("[data-toggle]");
 		const explodeButton = shell.querySelector<HTMLButtonElement>("[data-explode]");
-		if (!stage || !readout || !toggle || !explodeButton) {
+		const traceButton = shell.querySelector<HTMLButtonElement>("[data-trace]");
+		if (!stage || !readout || !toggle || !explodeButton || !traceButton) {
 			continue;
 		}
 
+		const content = stage.querySelector<HTMLElement>("[data-stage-content]");
 		const targets = [...stage.querySelectorAll<HTMLElement>("[data-inspect]")];
 		let active = targets[0];
 		let cleanup: () => void = () => {};
 		let pinned: HTMLElement | null = null;
 		let explode: ExplodeHandle | null = null;
 		let exploded = false;
+		/** Set from the first stop of a trace until the strip is cleared. */
+		let trace: TabTraceHandle | null = null;
 
 		const unpin = () => {
 			pinned?.removeAttribute("data-tooltip-open");
@@ -103,6 +116,11 @@ const { defaultInspecting = true, class: className } = Astro.props;
 		};
 
 		const render = () => {
+			// A trace owns the stage until the strip is cleared.
+			if (trace) {
+				return;
+			}
+
 			cleanup();
 			cleanup = () => {};
 
@@ -148,9 +166,64 @@ const { defaultInspecting = true, class: className } = Astro.props;
 			}
 		};
 
+		const updateTraceButton = () => {
+			traceButton.disabled = stage.dataset.inspecting === "off";
+			traceButton.setAttribute("aria-pressed", String(trace !== null));
+		};
+
+		const clearTrace = (focusButton = false) => {
+			if (!trace) {
+				return;
+			}
+
+			trace.clear();
+			trace = null;
+			updateTraceButton();
+			render();
+			if (focusButton) {
+				traceButton.focus();
+			}
+		};
+
+		const startTrace = () => {
+			if (!content || stage.dataset.inspecting === "off") {
+				return;
+			}
+
+			unpin();
+			cleanup();
+			cleanup = () => {};
+			explode = null;
+			exploded = false;
+			explodeButton.setAttribute("aria-pressed", "false");
+			explodeButton.disabled = true;
+
+			trace = startTabTrace(stage, content, readout, { onClear: () => clearTrace(true) });
+			updateTraceButton();
+		};
+
+		const toggleTrace = () => {
+			if (stage.dataset.inspecting === "off") {
+				return;
+			}
+
+			if (!trace) {
+				startTrace();
+				return;
+			}
+
+			if (trace.tracing) {
+				trace.end();
+				updateTraceButton();
+				return;
+			}
+
+			clearTrace(true);
+		};
+
 		for (const target of targets) {
 			target.addEventListener("pointerenter", () => {
-				if (active === target) {
+				if (trace || active === target) {
 					return;
 				}
 				active = target;
@@ -162,10 +235,17 @@ const { defaultInspecting = true, class: className } = Astro.props;
 			setExploded(!exploded, true);
 		});
 
+		traceButton.addEventListener("click", toggleTrace);
+
 		toggle.addEventListener("click", () => {
 			const next = stage.dataset.inspecting === "off";
+			if (!next && trace) {
+				trace.clear();
+				trace = null;
+			}
 			stage.dataset.inspecting = next ? "on" : "off";
 			toggle.setAttribute("aria-pressed", String(next));
+			updateTraceButton();
 			render();
 		});
 
@@ -181,6 +261,10 @@ const { defaultInspecting = true, class: className } = Astro.props;
 				toggle.click();
 				return;
 			}
+			if ((event.key === "t" || event.key === "T") && stage.dataset.inspecting !== "off") {
+				toggleTrace();
+				return;
+			}
 			if ((event.key === "e" || event.key === "E") && stage.dataset.inspecting !== "off" && explode?.canExplode) {
 				event.preventDefault();
 				setExploded(!exploded, true);
@@ -191,6 +275,7 @@ const { defaultInspecting = true, class: className } = Astro.props;
 		window.addEventListener("pagehide", unpin);
 
 		render();
+		updateTraceButton();
 		document.fonts.ready.then(render);
 	}
 </script>
@@ -375,6 +460,103 @@ const { defaultInspecting = true, class: className } = Astro.props;
 		margin-left: 0.4rem;
 		font-weight: 400;
 		opacity: 0.65;
+	}
+
+	/* The Tab trace tray is built by script, so Tailwind never sees its classes. */
+	.ov-trace {
+		position: fixed;
+		right: 0.75rem;
+		bottom: 0.75rem;
+		z-index: 50;
+		box-sizing: border-box;
+		width: min(42.375rem, calc(100vw - 1.5rem));
+		padding: 0.625rem;
+		border: 1px solid var(--color-soot);
+		background: var(--color-limestone);
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		line-height: 1.5;
+	}
+
+	.ov-trace-head {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.ov-trace-title {
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--color-pewter);
+	}
+
+	.ov-trace-status {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: var(--color-soot);
+	}
+
+	.ov-trace-clear {
+		flex: none;
+		cursor: pointer;
+		border: 1px solid var(--color-soot);
+		background: transparent;
+		padding: 0.05rem 0.375rem;
+		font: inherit;
+		color: var(--color-soot);
+	}
+
+	.ov-trace-row {
+		display: flex;
+		align-items: flex-end;
+		justify-content: center;
+		gap: 0.375rem;
+		min-height: 4.5rem;
+	}
+
+	/* Keep the focused stop clear of the fixed tray while a trace owns the page. */
+	[data-trace-active] [data-inspect],
+	[data-trace-active] :focus {
+		scroll-margin-bottom: 9rem;
+	}
+
+	.ov-plate {
+		flex: none;
+		border-style: solid;
+		border-color: var(--color-soot);
+		background: var(--color-limestone);
+	}
+
+	.ov-plate-image {
+		display: block;
+		width: 100%;
+	}
+
+	.ov-plate-caption {
+		display: flex;
+		align-items: baseline;
+		gap: 0.25rem;
+		padding: 0 0.25rem;
+		overflow: hidden;
+		font-family: var(--font-mono);
+		font-size: 0.5625rem;
+		line-height: 0.875rem;
+		color: var(--color-pewter);
+	}
+
+	.ov-plate-caption b {
+		font-weight: 400;
+		color: var(--color-soot);
+	}
+
+	.ov-plate-caption span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.ruler {

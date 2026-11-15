@@ -158,6 +158,9 @@ function factCard(
 }
 
 function drawGap(ov: Overlay, trigger: Part, content: Part, side: PlacementSide, gap: number) {
+  // A label taller than the gap would cover the trigger or the content.
+  const text = gap >= 20 ? `${gap}px gap` : null;
+
   if (isVertical(side)) {
     const bracketX = trigger.rect.x + trigger.rect.w + 13;
     const [first, second] =
@@ -165,7 +168,7 @@ function drawGap(ov: Overlay, trigger: Part, content: Part, side: PlacementSide,
         ? [content.rect.y + content.rect.h, trigger.rect.y]
         : [trigger.rect.y + trigger.rect.h, content.rect.y];
 
-    ov.dimension(bracketX, first, bracketX, second, `${gap}px gap`, "clay");
+    ov.dimension(bracketX, first, bracketX, second, text, "clay");
     return;
   }
 
@@ -175,7 +178,7 @@ function drawGap(ov: Overlay, trigger: Part, content: Part, side: PlacementSide,
       ? [content.rect.x + content.rect.w, trigger.rect.x]
       : [trigger.rect.x + trigger.rect.w, content.rect.x];
 
-  ov.dimension(first, y, second, y, `${gap}px gap`, "clay");
+  ov.dimension(first, y, second, y, text, "clay");
 }
 
 function drawAlignment(
@@ -194,10 +197,21 @@ function drawAlignment(
 
     ov.line(edge, top, edge, bottom, { tone: "cinnabar", dash: "2 4" });
 
-    const hasRoomRight = edge + 6 + 72 <= stageWidth;
-    ov.label(label, hasRoomRight ? edge + 6 : edge - 6, bottom + 4, {
+    // Keep the label off the content: start content sits right of the line,
+    // end content sits left, centre picks the roomier side.
+    const labelWidth = 88;
+    const roomLeft = edge - 6 - labelWidth >= 0;
+    const roomRight = edge + 6 + labelWidth <= stageWidth;
+    const goesRight =
+      placement.align === "start"
+        ? !roomLeft
+        : placement.align === "end"
+          ? roomRight
+          : roomRight || !roomLeft;
+
+    ov.label(label, goesRight ? edge + 6 : edge - 6, bottom + 4, {
       tone: "cinnabar",
-      anchor: hasRoomRight ? "start" : "end",
+      anchor: goesRight ? "start" : "end",
     });
     return;
   }
@@ -237,12 +251,13 @@ export function drawDrafting(stage: HTMLElement, target: HTMLElement): () => voi
     ov.box(part.rect, { tone, dash: "4 3" });
     if (part.name === "bridge") return;
     const above = part.name === "trigger";
-    ov.label(
+    const label = ov.label(
       `${part.name} · ${Math.round(part.rect.w)}×${Math.round(part.rect.h)}`,
       part.rect.x,
       above ? part.rect.y - 12 : part.rect.y + part.rect.h + 8,
       { tone },
     );
+    keepLabelInStage(stage, label, part.rect);
   });
 
   const trigger = byName(parts, "trigger");
@@ -258,8 +273,57 @@ export function drawDrafting(stage: HTMLElement, target: HTMLElement): () => voi
     factCard(ov, target, parts, placement, gap);
   }
 
+  avoidLabelCollisions(stage, ov);
+
   return () => {
     ov.remove();
     removeRuler();
   };
+}
+
+function rectsOverlap(a: DOMRect, b: DOMRect): boolean {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+/** Flips a label to the part's other edge when it would leave the stage. */
+function keepLabelInStage(stage: HTMLElement, label: HTMLElement, rect: Rect) {
+  const stageRect = stage.getBoundingClientRect();
+  const box = label.getBoundingClientRect();
+
+  if (box.right > stageRect.right - 4) {
+    label.dataset.anchor = "end";
+    label.style.left = `${rect.x + rect.w}px`;
+  } else if (box.left < stageRect.left + 4) {
+    label.dataset.anchor = "start";
+    label.style.left = `${Math.max(rect.x, 0)}px`;
+  }
+}
+
+/** Nudges a label past an earlier one when their boxes overlap. */
+function avoidLabelCollisions(stage: HTMLElement, ov: Overlay) {
+  const stageRect = stage.getBoundingClientRect();
+  const placed: Array<DOMRect> = [];
+
+  for (const label of ov.labels.querySelectorAll<HTMLElement>(".ov-label")) {
+    let rect = label.getBoundingClientRect();
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const other = placed.find((candidate) => rectsOverlap(rect, candidate));
+      if (!other) {
+        break;
+      }
+
+      const top = Number.parseFloat(label.style.top) || 0;
+      const downShift = other.bottom - rect.top + 4;
+      if (rect.bottom + downShift <= stageRect.bottom - 4) {
+        label.style.top = `${top + downShift}px`;
+      } else {
+        label.style.top = `${top - (rect.bottom - other.top + 4)}px`;
+      }
+
+      rect = label.getBoundingClientRect();
+    }
+
+    placed.push(rect);
+  }
 }

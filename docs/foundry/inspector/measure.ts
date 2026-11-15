@@ -253,7 +253,14 @@ export class Overlay {
     return node;
   }
 
-  dimension(x1: number, y1: number, x2: number, y2: number, text: string, tone: Tone = "soot") {
+  dimension(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    text: string | null,
+    tone: Tone = "soot",
+  ) {
     this.line(x1, y1, x2, y2, { tone });
 
     const horizontal = Math.abs(y2 - y1) < 1;
@@ -262,11 +269,15 @@ export class Overlay {
     if (horizontal) {
       this.line(x1, y1 - tick, x1, y1 + tick, { tone });
       this.line(x2, y2 - tick, x2, y2 + tick, { tone });
-      this.label(text, (x1 + x2) / 2, y1, { anchor: "middle", tone, dy: -9 });
+      if (text) {
+        this.label(text, (x1 + x2) / 2, y1, { anchor: "middle", tone, dy: -9 });
+      }
     } else {
       this.line(x1 - tick, y1, x1 + tick, y1, { tone });
       this.line(x2 - tick, y2, x2 + tick, y2, { tone });
-      this.label(text, x1, (y1 + y2) / 2, { anchor: "middle", tone, dx: 12 });
+      if (text) {
+        this.label(text, x1, (y1 + y2) / 2, { anchor: "middle", tone, dx: 12 });
+      }
     }
   }
 
