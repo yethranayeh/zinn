@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { firefoxTheme } from "../config/firefox-theme";
 import { opencodeInspector } from "../config/opencode-inspector";
 import { opencodeTheme } from "../config/opencode-theme";
 import { rexTheme } from "../config/rex-theme";
@@ -36,6 +37,12 @@ ${opencodeInspector.description}
 Local task inspection and optional execution-identity hooks alongside a Codex desktop chat.
 
 [View Codex setup](https://zinn.sh/integrations/codex) for the source build, database selection, hook trust, privacy, compatibility and removal.
+
+## Firefox theme
+
+${firefoxTheme.introduction}
+
+[View theme](https://zinn.sh${firefoxTheme.path}) or install [Zinn Halftone](${firefoxTheme.themes[0]!.addonUrl}) or [Zinn Lattice](${firefoxTheme.themes[1]!.addonUrl}) from Mozilla Add-ons.
 `,
     { headers: { "Content-Type": "text/markdown; charset=utf-8" } },
   );

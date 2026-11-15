@@ -35,6 +35,7 @@ When to use Zinn: track development work locally, carry task scope and progress 
 - [Rex theme](https://zinn.sh/integrations/rex/theme.md): Screenshots, download and setup for the Zinn theme in Rex, in light and dark.
 - [OpenCode task inspector](https://zinn.sh/integrations/opencode/inspector.md): Native package setup, task marks, compatibility, update and removal.
 - [Codex integration](https://zinn.sh/integrations/codex.md): Local task inspector, source build, explicit database selection, hook trust, identity and privacy settings.
+- [Firefox theme](https://zinn.sh/integrations/firefox/theme.md): Light and dark themes in two textures, installed from Mozilla Add-ons.
 - [About Zinn](https://zinn.sh/about.md): Scope, Experimental status, source and license.
 - [Contact](https://zinn.sh/contact.md): Public issue reporting and support information.
 - [Privacy](https://zinn.sh/privacy.md): Website hosting and analytics, local CLI data and external links.

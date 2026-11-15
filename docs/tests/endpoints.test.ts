@@ -8,6 +8,7 @@ import {
   questions,
   storageNote,
 } from "../src/components/pricing/figures";
+import { firefoxTheme } from "../src/config/firefox-theme";
 import { opencodeInspector } from "../src/config/opencode-inspector";
 import { latestReleaseVersion } from "../src/config/latest-release";
 import { opencodeScenes, opencodeTheme } from "../src/config/opencode-theme";
@@ -507,6 +508,7 @@ test("every generated public endpoint is served with its expected type", async (
       opencodeTheme.path.slice(1),
       opencodeInspector.path.slice(1),
       rexTheme.path.slice(1),
+      firefoxTheme.path.slice(1),
     ]
       .sort()
       .map((page) => `https://zinn.sh/${page}/`),
@@ -639,6 +641,7 @@ test.each([
   opencodeTheme.path.slice(1),
   opencodeInspector.path.slice(1),
   rexTheme.path.slice(1),
+  firefoxTheme.path.slice(1),
 ])("%s offers its Markdown actions directly after the heading", async (page) => {
   const html = await (await server.fetch(`/${page}`)).text();
   expect(html).toMatch(new RegExp(`</h1>\\s*<div[^>]*>[\\s\\S]*?data-copy-url="/${page}\\.md"`));
@@ -738,6 +741,40 @@ test("Rex theme page and its Markdown twin offer both downloadable theme files",
       await Bun.file(join(docsDirectory, `../integrations/rex/theme/${fileName}`)).text(),
     );
   }
+});
+
+test("Firefox theme page presents both add-on listings with Halftone first", async () => {
+  const index = await server.fetch("/integrations");
+  expect(index.status).toBe(200);
+  const indexHtml = await index.text();
+  expect(indexHtml).toContain(`href="${firefoxTheme.path}"`);
+  expect(indexHtml).toContain(firefoxTheme.themes[0]!.image);
+
+  const response = await server.fetch(firefoxTheme.path);
+  expect(response.status).toBe(200);
+  const html = await response.text();
+  const [halftone, lattice] = firefoxTheme.themes;
+
+  expect(html).toContain(`rel="canonical" href="https://zinn.sh${firefoxTheme.path}/"`);
+  expect(html).toContain('rel="alternate" type="text/markdown"');
+  expect(html).toContain(firefoxTheme.minimumVersion);
+  for (const theme of firefoxTheme.themes) {
+    expect(html).toContain(theme.addonUrl);
+    expect(html).toContain(theme.image);
+    expect(html).toContain(theme.name);
+  }
+  expect(html.indexOf(halftone.addonUrl)).toBeLessThan(html.indexOf(lattice!.addonUrl));
+
+  const markdownResponse = await server.fetch(`${firefoxTheme.path}.md`);
+  expect(markdownResponse.status).toBe(200);
+  expect(markdownResponse.headers.get("Content-Type")).toContain("text/markdown");
+  const markdown = await markdownResponse.text();
+  for (const theme of firefoxTheme.themes) {
+    expect(markdown).toContain(theme.addonUrl);
+    expect(markdown).toContain(theme.image);
+    expect(markdown).toContain(theme.name);
+  }
+  expect(markdown.indexOf(halftone.addonUrl)).toBeLessThan(markdown.indexOf(lattice!.addonUrl));
 });
 
 test("inspector integration page carries the setup guide and its Markdown twin", async () => {

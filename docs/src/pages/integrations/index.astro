@@ -11,13 +11,15 @@ import Chip from "../../components/ui/chip/Chip.astro";
 import Icon from "../../components/ui/icon/Icon.astro";
 import MarkdownH1 from "../../components/MarkdownH1.astro";
 
+import { cloudinaryImage } from "../../images/cloudinary";
 import { opencodeInspector } from "../../config/opencode-inspector";
 import { opencodeScenes, opencodeTheme } from "../../config/opencode-theme";
 import { rexScenes, rexTheme } from "../../config/rex-theme";
-import { cloudinaryImage } from "../../images/cloudinary";
+import { firefoxTheme } from "../../config/firefox-theme";
 
 const opencodePreview = opencodeScenes.find((scene) => scene.id === "code")!;
 const rexPreview = rexScenes.find((scene) => scene.id === "shell")!;
+const firefoxPreview = firefoxTheme.themes[0]!;
 
 type IntegrationEntry = {
 	title: string;
@@ -25,7 +27,7 @@ type IntegrationEntry = {
 	description: string;
 	path: string;
 	action: string;
-	image?: { src: string; alt: string; width: number; height: number };
+	image?: { src: string; alt: string; width: number; height: number; banner?: boolean };
 };
 
 const entries: IntegrationEntry[] = [
@@ -68,6 +70,20 @@ const entries: IntegrationEntry[] = [
 		description: "Local task inspection and optional execution-identity hooks alongside a Codex desktop chat.",
 		path: "/integrations/codex",
 		action: "View setup"
+	},
+	{
+		title: "Zinn theme",
+		host: "Firefox",
+		description: firefoxTheme.introduction,
+		path: firefoxTheme.path,
+		action: "View theme",
+		image: {
+			src: firefoxPreview.image,
+			alt: firefoxPreview.imageAlt,
+			width: 680,
+			height: 92,
+			banner: true
+		}
 	}
 ];
 ---
@@ -83,7 +99,8 @@ const entries: IntegrationEntry[] = [
 				<a class='group block no-underline hover:no-underline' href={entry.path}>
 					<Card class='h-full'>
 						{entry.image && (
-							<CardMedia>
+							// The Firefox preview is a 680x92 strip, so it keeps its own ratio instead of the 16:10 crop.
+							<CardMedia class={entry.image.banner ? "aspect-[680/92]" : undefined}>
 								<img
 									src={entry.image.src}
 									alt={entry.image.alt}
