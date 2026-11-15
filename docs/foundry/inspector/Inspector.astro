@@ -44,6 +44,40 @@ const { defaultInspecting = true, class: className } = Astro.props;
 		</div>
 	</div>
 
+	<div class='ov-trace' data-trace-panel role='region' aria-label='Tab trace' hidden>
+		<div class='ov-trace-head'>
+			<span class='ov-trace-title'>Tab trace</span>
+			<span class='ov-trace-status' data-trace-status>Ready</span>
+			<button
+				type='button'
+				class='cursor-pointer border border-soot bg-transparent px-1.5 py-0.5 font-mono text-[0.75rem] leading-tight text-soot'
+				data-trace-close
+				aria-label='Close tab trace'
+				title='Close (T)'>&times;</button
+			>
+		</div>
+		<div class='ov-trace-row' data-trace-row>
+			<p class='m-0 self-center text-center text-pewter' data-trace-empty>Press Record, then Tab through the stage.</p>
+		</div>
+		<div class='mt-2 flex items-center justify-between gap-2'>
+			<button
+				type='button'
+				class='inline-flex cursor-pointer items-center gap-1 border border-soot bg-transparent px-2 py-0.5 font-mono text-[0.625rem] text-soot disabled:cursor-not-allowed disabled:opacity-40'
+				data-trace-clear
+				disabled>
+				Clear <Kbd>C</Kbd>
+			</button>
+			<button
+				type='button'
+				class='inline-flex cursor-pointer items-center gap-1 border border-soot bg-transparent px-2 py-0.5 font-mono text-[0.625rem] text-soot aria-pressed:bg-soot aria-pressed:text-limestone'
+				data-trace-record
+				aria-pressed='false'>
+				<span data-trace-record-label>Record</span>
+				<Kbd>R</Kbd>
+			</button>
+		</div>
+	</div>
+
 	<div class='ruler ruler-x col-start-2 row-start-2' data-ruler-x aria-hidden='true'></div>
 	<div class='ruler ruler-y col-start-1 row-start-3' data-ruler-y aria-hidden='true'></div>
 
@@ -64,7 +98,7 @@ const { defaultInspecting = true, class: className } = Astro.props;
 	import { drawDrafting } from "./drafting";
 	import { drawExplode, type ExplodeHandle } from "./explode";
 	import { partsOf } from "./measure";
-	import { startTabTrace, type TabTraceHandle } from "./trace";
+	import { openTabTrace, type TabTraceHandle, type TabTraceState } from "./trace";
 
 	const INPUT_TAGS = /^(INPUT|TEXTAREA|SELECT)$/;
 
@@ -74,7 +108,19 @@ const { defaultInspecting = true, class: className } = Astro.props;
 		const toggle = shell.querySelector<HTMLButtonElement>("[data-toggle]");
 		const explodeButton = shell.querySelector<HTMLButtonElement>("[data-explode]");
 		const traceButton = shell.querySelector<HTMLButtonElement>("[data-trace]");
-		if (!stage || !readout || !toggle || !explodeButton || !traceButton) {
+		const panel = shell.querySelector<HTMLElement>("[data-trace-panel]");
+		if (!stage || !readout || !toggle || !explodeButton || !traceButton || !panel) {
+			continue;
+		}
+
+		const traceStatus = panel.querySelector<HTMLElement>("[data-trace-status]");
+		const traceEmpty = panel.querySelector<HTMLElement>("[data-trace-empty]");
+		const traceRow = panel.querySelector<HTMLElement>("[data-trace-row]");
+		const traceClose = panel.querySelector<HTMLButtonElement>("[data-trace-close]");
+		const traceClear = panel.querySelector<HTMLButtonElement>("[data-trace-clear]");
+		const traceRecord = panel.querySelector<HTMLButtonElement>("[data-trace-record]");
+		const traceRecordLabel = panel.querySelector<HTMLElement>("[data-trace-record-label]");
+		if (!traceStatus || !traceEmpty || !traceRow || !traceClose || !traceClear || !traceRecord || !traceRecordLabel) {
 			continue;
 		}
 
@@ -85,7 +131,7 @@ const { defaultInspecting = true, class: className } = Astro.props;
 		let pinned: HTMLElement | null = null;
 		let explode: ExplodeHandle | null = null;
 		let exploded = false;
-		/** Set from the first stop of a trace until the strip is cleared. */
+		/** The open trace mode, or null while Drafting owns the stage. */
 		let trace: TabTraceHandle | null = null;
 
 		const unpin = () => {
@@ -116,7 +162,7 @@ const { defaultInspecting = true, class: className } = Astro.props;
 		};
 
 		const render = () => {
-			// A trace owns the stage until the strip is cleared.
+			// The trace mode owns the stage until it closes.
 			if (trace) {
 				return;
 			}
@@ -171,21 +217,27 @@ const { defaultInspecting = true, class: className } = Astro.props;
 			traceButton.setAttribute("aria-pressed", String(trace !== null));
 		};
 
-		const clearTrace = (focusButton = false) => {
-			if (!trace) {
-				return;
+		const updateTracePanel = (state: TabTraceState) => {
+			const recording = state.phase === "recording";
+			let status = "Ready";
+
+			if (recording) {
+				status = state.captures === 0 ? "Recording · Tab to start" : `Recording · ${state.captures} captured`;
+			} else if (state.phase === "stopped") {
+				status = `${state.captures} captured · stopped`;
 			}
 
-			trace.clear();
-			trace = null;
-			updateTraceButton();
-			render();
-			if (focusButton) {
-				traceButton.focus();
-			}
+			traceStatus.textContent = status;
+			traceEmpty.textContent = recording
+				? "Tab through the stage to capture elements."
+				: "Press Record, then Tab through the stage.";
+			traceEmpty.hidden = state.captures > 0;
+			traceClear.disabled = state.phase === "ready";
+			traceRecordLabel.textContent = recording ? "Stop" : "Record";
+			traceRecord.setAttribute("aria-pressed", String(recording));
 		};
 
-		const startTrace = () => {
+		const openTrace = () => {
 			if (!content || stage.dataset.inspecting === "off") {
 				return;
 			}
@@ -198,8 +250,27 @@ const { defaultInspecting = true, class: className } = Astro.props;
 			explodeButton.setAttribute("aria-pressed", "false");
 			explodeButton.disabled = true;
 
-			trace = startTabTrace(stage, content, readout, { onClear: () => clearTrace(true) });
+			panel.hidden = false;
+			trace = openTabTrace(stage, content, readout, traceRow, {
+				startControl: traceRecord,
+				onChange: updateTracePanel
+			});
 			updateTraceButton();
+		};
+
+		const closeTrace = (focusButton = false) => {
+			if (!trace) {
+				return;
+			}
+
+			trace.close();
+			trace = null;
+			panel.hidden = true;
+			updateTraceButton();
+			render();
+			if (focusButton) {
+				traceButton.focus();
+			}
 		};
 
 		const toggleTrace = () => {
@@ -207,18 +278,34 @@ const { defaultInspecting = true, class: className } = Astro.props;
 				return;
 			}
 
+			if (trace) {
+				closeTrace(true);
+				return;
+			}
+
+			openTrace();
+		};
+
+		const toggleRecording = () => {
 			if (!trace) {
-				startTrace();
 				return;
 			}
 
 			if (trace.tracing) {
-				trace.end();
-				updateTraceButton();
+				trace.stop();
 				return;
 			}
 
-			clearTrace(true);
+			trace.record();
+		};
+
+		const clearTrace = () => {
+			if (!trace) {
+				return;
+			}
+
+			trace.clear();
+			traceRecord.focus();
 		};
 
 		for (const target of targets) {
@@ -236,17 +323,23 @@ const { defaultInspecting = true, class: className } = Astro.props;
 		});
 
 		traceButton.addEventListener("click", toggleTrace);
+		traceRecord.addEventListener("click", toggleRecording);
+		traceClear.addEventListener("click", clearTrace);
+		traceClose.addEventListener("click", () => closeTrace(true));
 
 		toggle.addEventListener("click", () => {
 			const next = stage.dataset.inspecting === "off";
-			if (!next && trace) {
-				trace.clear();
-				trace = null;
-			}
+			const focusWasInPanel = panel.contains(document.activeElement);
 			stage.dataset.inspecting = next ? "on" : "off";
 			toggle.setAttribute("aria-pressed", String(next));
+			if (!next && trace) {
+				closeTrace(false);
+			}
 			updateTraceButton();
 			render();
+			if (focusWasInPanel) {
+				toggle.focus();
+			}
 		});
 
 		document.addEventListener("keydown", (event) => {
@@ -265,7 +358,20 @@ const { defaultInspecting = true, class: className } = Astro.props;
 				toggleTrace();
 				return;
 			}
-			if ((event.key === "e" || event.key === "E") && stage.dataset.inspecting !== "off" && explode?.canExplode) {
+			if ((event.key === "r" || event.key === "R") && trace) {
+				toggleRecording();
+				return;
+			}
+			if ((event.key === "c" || event.key === "C") && trace) {
+				clearTrace();
+				return;
+			}
+			if (
+				(event.key === "e" || event.key === "E") &&
+				!trace &&
+				stage.dataset.inspecting !== "off" &&
+				explode?.canExplode
+			) {
 				event.preventDefault();
 				setExploded(!exploded, true);
 			}
@@ -462,7 +568,7 @@ const { defaultInspecting = true, class: className } = Astro.props;
 		opacity: 0.65;
 	}
 
-	/* The Tab trace tray is built by script, so Tailwind never sees its classes. */
+	/* The trace shell uses these overlay classes; its plates are built by script. */
 	.ov-trace {
 		position: fixed;
 		right: 0.75rem;
@@ -500,16 +606,6 @@ const { defaultInspecting = true, class: className } = Astro.props;
 		color: var(--color-soot);
 	}
 
-	.ov-trace-clear {
-		flex: none;
-		cursor: pointer;
-		border: 1px solid var(--color-soot);
-		background: transparent;
-		padding: 0.05rem 0.375rem;
-		font: inherit;
-		color: var(--color-soot);
-	}
-
 	.ov-trace-row {
 		display: flex;
 		align-items: flex-end;
@@ -518,10 +614,10 @@ const { defaultInspecting = true, class: className } = Astro.props;
 		min-height: 4.5rem;
 	}
 
-	/* Keep the focused stop clear of the fixed tray while a trace owns the page. */
+	/* Keep the focused stop clear of the fixed panel while a trace owns the page. */
 	[data-trace-active] [data-inspect],
 	[data-trace-active] :focus {
-		scroll-margin-bottom: 9rem;
+		scroll-margin-bottom: 10.5rem;
 	}
 
 	.ov-plate {

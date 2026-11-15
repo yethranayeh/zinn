@@ -20,7 +20,7 @@ const PLATE_BORDER = 1;
 const TRAY_INSET = 11;
 
 type PlateData = {
-  /** 1-based position in the trace, kept when a slot is reused. */
+  /** 1-based position in the capture, kept when a slot is reused. */
   stop: number;
   name: string;
   crop: Rect;
@@ -33,79 +33,66 @@ type Plate = PlateData & {
   canvas: HTMLCanvasElement;
 };
 
+export type TabTracePhase = "ready" | "recording" | "stopped";
+
+export type TabTraceState = {
+  phase: TabTracePhase;
+  captures: number;
+};
+
 export type TabTraceOptions = {
-  /** Clears the whole trace, including the tray. */
-  onClear?: () => void;
+  /** The control immediately before the stage in tab order. */
+  startControl: HTMLElement;
+  /** Called whenever the phase or capture count changes. */
+  onChange?: (state: TabTraceState) => void;
 };
 
 export type TabTraceHandle = {
-  /** True while real focus stops are being captured. */
   readonly tracing: boolean;
-  /** Ends capture, restores the DOM and replays the plates. */
-  end(): void;
-  /** Removes the tray and restores everything. */
+  readonly captures: number;
+  /** Starts a new recording, replacing any plates. Moves focus to `startControl`. */
+  record(): void;
+  /** Ends recording, replays the plates and keeps them. */
+  stop(): void;
+  /** Ends any recording and removes all plates; the panel stays open. */
   clear(): void;
+  /** Ends any recording and removes everything; the caller hides the panel. */
+  close(): void;
 };
 
 /**
- * Records the real keyboard focus stops inside the stage as numbered plates in a
- * fixed tray. The capture surface is mounted before the first stop, so mounting
- * cannot blur a stop. Every plate is read from one `focusin`; nothing is
- * synthesised and the tray is never captured.
+ * Opens the Tab trace mode and returns its capture handle. The caller shows the
+ * panel; this module records the real focus stops, redraws the plates and owns
+ * the readout.
+ *
+ * Recording mounts the capture surface before the first stop. The start control
+ * sits immediately before the stage in the DOM, so focusing it makes the next
+ * Tab the stage's first focus stop. Nothing inside the stage is focused here.
  */
-export function startTabTrace(
+export function openTabTrace(
   stage: HTMLElement,
   content: HTMLElement,
   readout: HTMLElement,
-  options: TabTraceOptions = {},
+  row: HTMLElement,
+  options: TabTraceOptions,
 ): TabTraceHandle {
-  const session: CaptureSession | null = startSession(stage, { content });
   const tones = {
     limestone: token(stage, "--color-limestone"),
     soot: token(stage, "--tone-soot"),
     cinnabar: token(stage, "--tone-cinnabar"),
   };
 
-  const tray = document.createElement("div");
-  tray.className = "ov-trace";
-  tray.setAttribute("role", "region");
-  tray.setAttribute("aria-label", "Tab trace");
-
-  const head = document.createElement("div");
-  head.className = "ov-trace-head";
-
-  const title = document.createElement("span");
-  title.className = "ov-trace-title";
-  title.textContent = "Tab trace";
-
-  const status = document.createElement("span");
-  status.className = "ov-trace-status";
-
-  const clearButton = document.createElement("button");
-  clearButton.type = "button";
-  clearButton.className = "ov-trace-clear";
-  clearButton.textContent = "Clear";
-  clearButton.setAttribute("aria-label", "Clear tab trace");
-
-  head.append(title, status, clearButton);
-
-  const row = document.createElement("div");
-  row.className = "ov-trace-row";
-  row.setAttribute("aria-hidden", "true");
-
-  tray.append(head, row);
-  document.body.append(tray);
-  stage.setAttribute("data-trace-active", "");
-
   const stopNumbers: number[] = [];
   const plates: Plate[] = [];
-  let tracing = true;
-  let cleared = false;
+  let session: CaptureSession | null = null;
+  let phase: TabTracePhase = "ready";
+  let tracing = false;
+  let closed = false;
 
-  const setStatus = () => {
-    const count = stopNumbers.length;
-    status.textContent =
-      count === 0 ? "Tab through the stage" : `${count} ${count === 1 ? "stop" : "stops"}`;
+  const summary = () => `Tab trace · ${stopNumbers.length} captured`;
+
+  const emit = () => {
+    options.onChange?.({ phase, captures: stopNumbers.length });
   };
 
   // One line keeps the readout from adding a toolbar row, which would move the stage.
@@ -143,24 +130,35 @@ export function startTabTrace(
     return { x: rect.left - origin.x, y: rect.top - origin.y, w: rect.width, h: rect.height };
   };
 
+  const removePlate = (plate: Plate) => {
+    plate.element.remove();
+    const index = plates.indexOf(plate);
+    if (index !== -1) {
+      plates.splice(index, 1);
+    }
+  };
+
+  const removePlates = () => {
+    for (const plate of [...plates]) {
+      removePlate(plate);
+    }
+    stopNumbers.length = 0;
+  };
+
   const renderTray = () => {
     const usableWidth = row.clientWidth || window.innerWidth - 2 * TRAY_INSET;
     const capacity = slotCapacity(usableWidth);
     const kept = new Set(slotStops(stopNumbers, capacity));
 
     for (const plate of [...plates]) {
-      if (kept.has(plate.stop)) {
-        continue;
+      if (!kept.has(plate.stop)) {
+        removePlate(plate);
       }
-      plate.element.remove();
-      plates.splice(plates.indexOf(plate), 1);
     }
 
     for (const plate of [...plates].sort((a, b) => a.stop - b.stop)) {
       row.append(plate.element);
     }
-
-    setStatus();
   };
 
   const drawPlate = (
@@ -232,51 +230,30 @@ export function startTabTrace(
     renderTray();
     // The canvas needs its CSS box before it can be sized to device pixels.
     drawPlate(canvas, data, snapshot);
+    emit();
   };
 
   const replay = () => {
-    if (plates.length === 0) {
+    const replayed = [...plates];
+    if (replayed.length === 0) {
       return;
     }
 
-    for (const plate of plates) {
+    for (const plate of replayed) {
       plate.element.style.visibility = "hidden";
     }
 
     const run = stepper();
-    run(plates.length, (frame) => {
-      plates.forEach((plate, index) => {
+    run(replayed.length, (frame) => {
+      replayed.forEach((plate, index) => {
         plate.element.style.visibility = index <= frame ? "" : "hidden";
       });
     });
   };
 
-  const stopCapture = () => {
-    if (!tracing) {
-      return;
-    }
-
-    tracing = false;
-    stage.removeEventListener("focusin", onFocus);
-    session?.restore();
-  };
-
-  const summary = () => `Tab trace · ${stopNumbers.length} stops`;
-
-  const end = () => {
-    if (!tracing) {
-      return;
-    }
-
-    stopCapture();
-    readout.textContent = summary();
-    setStatus();
-    replay();
-  };
-
   const onFocus = (event: FocusEvent) => {
     const target = event.target;
-    if (!tracing || cleared || !(target instanceof HTMLElement) || !stage.contains(target)) {
+    if (!tracing || closed || !(target instanceof HTMLElement) || !stage.contains(target)) {
       return;
     }
 
@@ -290,7 +267,7 @@ export function startTabTrace(
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         // A stop the browser already moved past cannot be shown honestly.
-        if (!tracing || cleared || document.activeElement !== target) {
+        if (!tracing || closed || document.activeElement !== target) {
           return;
         }
 
@@ -307,54 +284,121 @@ export function startTabTrace(
 
         stopNumbers.push(number);
         addPlate({ stop: number, name, crop, focus, tooltip }, snapshot);
-        readout.textContent = `Tab trace · stop ${number} · ${name}`;
+        readout.textContent = `Tab trace · ${number} captured · ${name}`;
       });
     });
   };
 
-  const onResize = () => {
-    stopCapture();
-    setStatus();
-    readout.textContent = summary();
-  };
-
-  const clear = () => {
-    if (cleared) {
+  const stopCapture = () => {
+    if (!tracing) {
       return;
     }
 
-    cleared = true;
+    tracing = false;
+    stage.removeEventListener("focusin", onFocus);
+    session?.restore();
+    session = null;
+  };
+
+  const record = () => {
+    if (closed || tracing) {
+      return;
+    }
+
+    // A new recording replaces the previous plates.
+    removePlates();
+    // The start control sits before the stage, so the next Tab is its first stop.
+    options.startControl.focus();
+    tracing = true;
+    phase = "recording";
+    session = startSession(stage, { content });
+    stage.addEventListener("focusin", onFocus);
+    readout.textContent = "Tab trace · recording";
+    emit();
+  };
+
+  const stop = () => {
+    if (!tracing) {
+      return;
+    }
+
+    stopCapture();
+
+    if (stopNumbers.length === 0) {
+      phase = "ready";
+      readout.textContent = "Tab trace · ready";
+    } else {
+      phase = "stopped";
+      readout.textContent = summary();
+      replay();
+    }
+
+    emit();
+  };
+
+  const clear = () => {
+    if (closed) {
+      return;
+    }
+
+    stopCapture();
+    removePlates();
+    phase = "ready";
+    readout.textContent = "Tab trace · ready";
+    emit();
+  };
+
+  const onResize = () => {
+    if (tracing) {
+      stopCapture();
+
+      if (stopNumbers.length === 0) {
+        phase = "ready";
+        readout.textContent = "Tab trace · ready";
+      } else {
+        phase = "stopped";
+        readout.textContent = summary();
+      }
+
+      emit();
+    }
+
+    // Refit the held plates to the panel's new width.
+    renderTray();
+  };
+
+  const close = () => {
+    if (closed) {
+      return;
+    }
+
+    closed = true;
     stopCapture();
     window.removeEventListener("resize", onResize);
-    tray.remove();
     stage.removeAttribute("data-trace-active");
-    plates.length = 0;
-    stopNumbers.length = 0;
+    removePlates();
     readout.style.whiteSpace = readoutLine.whiteSpace;
     readout.style.overflow = readoutLine.overflow;
     readout.style.textOverflow = readoutLine.textOverflow;
     readout.style.minWidth = readoutLine.minWidth;
   };
 
-  clearButton.addEventListener("click", () => {
-    if (options.onClear) {
-      options.onClear();
-      return;
-    }
-    clear();
-  });
-
-  stage.addEventListener("focusin", onFocus);
+  stage.setAttribute("data-trace-active", "");
   window.addEventListener("resize", onResize, { passive: true });
-  readout.textContent = "Tab trace · tab through the stage";
-  setStatus();
+  readout.textContent = "Tab trace · ready";
+  emit();
 
   return {
     get tracing() {
       return tracing;
     },
-    end,
+    get captures() {
+      return stopNumbers.length;
+    },
+    record,
+    stop,
     clear,
+    close,
   };
 }
 
