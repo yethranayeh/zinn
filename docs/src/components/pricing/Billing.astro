@@ -1,6 +1,7 @@
 ---
 import CopyButton from "../CopyButton.astro";
 import Icon from "../ui/icon/Icon.astro";
+import Link from "../ui/link/Link.astro";
 import PricingLabel from "./PricingLabel.astro";
 import PricingBody from "./PricingBody.astro";
 import PricingNote from "./PricingNote.astro";
@@ -21,9 +22,9 @@ import { netShare } from "./figures";
 			Zinn is an Experimental kanban CLI for you and your agents.
 		</p>
 		<PricingBody>
-			It is <a href={projectLinks.license}>MIT licensed</a>, so there is no monetary charge. You don't have to create an
-			account, or find a seat for you and your team to sit on. You still pay, the way you pay for all free software: in
-			download, disk, memory, time, output, electricity and your internet bill. This page is the bill.
+			It is <Link href={projectLinks.license}>MIT licensed</Link>, so there is no monetary charge. You don't have to
+			create an account, or find a seat for you and your team to sit on. You still pay, the way you pay for all free
+			software: in download, disk, memory, time, output, electricity and your internet bill. This page is the bill.
 		</PricingBody>
 		<div
 			class='flex items-center gap-3 mt-7 py-1 pl-4 pr-1 bg-soot text-soot-foreground font-mono text-[13px]/[1.4] scheme-dark'>

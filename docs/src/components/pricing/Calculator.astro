@@ -3,6 +3,7 @@ import Section from "./Section.astro";
 import PricingNote from "./PricingNote.astro";
 import Readouts from "./Readouts.astro";
 import Readout from "./Readout.astro";
+import Link from "../ui/link/Link.astro";
 import TextureSlider from "../ui/texture-slider/TextureSlider.astro";
 
 import { groupedNumber, memoryLabel, outputLabel, sizeLabel } from "../../config/pricing-labels";
@@ -57,7 +58,7 @@ const stop = calculatorStops[defaultStop];
 			<PricingNote>
 				Marks are measured. Figures between them are interpolated. {storageNote}
 				{telemetryNote.text}{" "}
-				<a href={telemetryNote.href}>{telemetryNote.linkLabel}</a>{" "}{telemetryNote.after}
+				<Link href={telemetryNote.href}>{telemetryNote.linkLabel}</Link>{" "}{telemetryNote.after}
 			</PricingNote>
 		</div>
 

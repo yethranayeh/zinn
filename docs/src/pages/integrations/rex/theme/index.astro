@@ -3,6 +3,7 @@ import BaseLayout from "../../../../layouts/BaseLayout.astro";
 import Button from "../../../../components/ui/button/Button.astro";
 import Breadcrumbs from "../../../../components/Breadcrumbs.astro";
 import Icon from "../../../../components/ui/icon/Icon.astro";
+import Link from "../../../../components/ui/link/Link.astro";
 import MarkdownH1 from "../../../../components/MarkdownH1.astro";
 import PaletteStrip from "../../../../components/PaletteStrip.astro";
 import Prose from "../../../../components/Prose.astro";
@@ -22,7 +23,7 @@ import { projectLinks } from "../../../../config/site";
 			<div class='grid gap-7 md:grid-cols-[1.1fr_1fr] md:items-end md:gap-12'>
 				<div>
 					<p class='max-w-md text-lg leading-relaxed'>
-						The Zinn color palette for <a href={rexTheme.site}>Rex</a>, with light and dark appearances.
+						The Zinn color palette for <Link href={rexTheme.site}>Rex</Link>, with light and dark appearances.
 					</p>
 					<div class='mt-6'><PaletteStrip /></div>
 				</div>
@@ -67,7 +68,9 @@ import { projectLinks } from "../../../../config/site";
 						from <code>rex client ls</code>. Switch the appearance mode to move between the two.
 					</p>
 
-					<p>Rex's <a href={rexTheme.importDocs}>settings reference</a> covers Import Theme and the theme sheet.</p>
+					<p>
+						Rex's <Link href={rexTheme.importDocs}>settings reference</Link> covers Import Theme and the theme sheet.
+					</p>
 
 					<p>The files are in Ghostty's theme format, so they also work in Ghostty itself.</p>
 

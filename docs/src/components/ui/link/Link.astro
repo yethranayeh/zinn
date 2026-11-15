@@ -1,0 +1,15 @@
+---
+import type { HTMLAttributes } from "astro/types";
+
+import { twMerge } from "tailwind-merge";
+
+type Props = HTMLAttributes<"a">;
+
+const { class: className, ...attributes } = Astro.props;
+---
+
+<a
+	class={twMerge("text-cinnabar underline decoration-1 underline-offset-4 hover:decoration-2", className)}
+	{...attributes}>
+	<slot />
+</a>

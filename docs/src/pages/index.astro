@@ -8,6 +8,7 @@ import ReadingSection from "../components/ReadingSection.astro";
 import TerminalCommands from "../components/TerminalCommands.astro";
 import ScrollCue from "../components/ScrollCue.astro";
 import Icon from "../components/ui/icon/Icon.astro";
+import Link from "../components/ui/link/Link.astro";
 
 import { homepage, projectLinks } from "../config/site";
 
@@ -106,22 +107,22 @@ const workflowCommands = [
 				Zinn doesn't stop at who changed a task. It takes you back into the conversation that made the change.
 			</p>
 			<p>
-				<a href='/docs/cli#activity'>Activity</a> records the agent and session behind a change, and <code
+				<Link href='/docs/cli#activity'>Activity</Link> records the agent and session behind a change, and <code
 					>zinn activity list --task &lt;task-key&gt;</code
 				> lists the changes to a task. Claude Code and Codex sessions are recorded without setup.
 			</p>
 			<p>
 				The Zinn workflow skill teaches an agent to find its task, keep context in comments, record follow-ups and hand
-				off at the project's review column. <a href='/docs/installation#use-with-coding-agents'
-					>Set it up for your agent</a
+				off at the project's review column. <Link href='/docs/installation#use-with-coding-agents'
+					>Set it up for your agent</Link
 				>.
 			</p>
 			<p>
 				For scripts, <code>--json</code> prints one JSON document on <strong>stdout</strong>. A failure exits with code
 				{" "}<code>1</code> and writes a JSON error to <strong>stderr</strong>, so scripts can match its code. <code
 					>zinn capabilities --json</code
-				> describes every command's inputs, effects and result schemas, and <code>--yes</code> confirms prompts. Read <a
-					href='/docs/scripting'>scripting and JSON output</a
+				> describes every command's inputs, effects and result schemas, and <code>--yes</code> confirms prompts. Read <Link
+					href='/docs/scripting'>scripting and JSON output</Link
 				> for the details.
 			</p>
 		</Prose>
@@ -134,12 +135,12 @@ const workflowCommands = [
 				Every project lives in one SQLite database, <code>~/.zinn/data/zinn.sqlite</code> by default. Keep it elsewhere with{
 					" "
 				}
-				<a href='/docs/settings'>settings</a>.
+				<Link href='/docs/settings'>settings</Link>.
 			</p>
 			<p>
 				<code>zinn backup</code> saves a database snapshot, and <code>zinn restore</code> puts one back after saving the current
-				database. A newer release upgrades an older database after making a backup. Read <a href='/docs/data'
-					>data and backups</a
+				database. A newer release upgrades an older database after making a backup. Read <Link href='/docs/data'
+					>data and backups</Link
 				> for the details.
 			</p>
 		</Prose>
@@ -149,15 +150,13 @@ const workflowCommands = [
 		<Prose>
 			<h2 id='next-heading'>Take the next command</h2>
 			<p>
-				Zinn is free and MIT licensed. See its <a href='/pricing'>price in bytes and running costs</a>.
+				Zinn is free and MIT licensed. See its <Link href='/pricing'>price in bytes and running costs</Link>.
 			</p>
 			<p>
-				Read the <a href='/docs/quick-start'>quick start</a> or <a href={`${documentation}#start-a-project`}
-					>project reference</a
-				>, browse the <a href={projectLinks.github} data-site-event='github-click'>Zinn source on GitHub</a> or find the <a
-					href={projectLinks.npm}
-					data-site-event='npm-click'>Zinn CLI package on npm</a
-				>.
+				Read the <Link href='/docs/quick-start'>quick start</Link> or <Link href={`${documentation}#start-a-project`}
+					>project reference</Link
+				>, browse the <Link href={projectLinks.github} data-site-event='github-click'>Zinn source on GitHub</Link> or find
+				the <Link href={projectLinks.npm} data-site-event='npm-click'>Zinn CLI package on npm</Link>.
 			</p>
 		</Prose>
 	</ReadingSection>

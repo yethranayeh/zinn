@@ -1,0 +1,27 @@
+---
+import FoundryLayout from "../layouts/FoundryLayout.astro";
+import ComponentHeading from "../components/ComponentHeading.astro";
+import Specimen from "../components/Specimen.astro";
+import Link from "../../src/components/ui/link/Link.astro";
+---
+
+<FoundryLayout title='Link' description='Link is the inline Cinnabar text link for reading text on Limestone.'>
+	<ComponentHeading folder='link'>
+		<p>
+			Link is an inline link for reading text on Limestone. It is Cinnabar, stays underlined, and thickens its underline
+			on hover. Reading text renders its links with it.
+		</p>
+		<p>Cinnabar holds 7.8:1 against Limestone at body size. Use Button for an action instead.</p>
+	</ComponentHeading>
+
+	<div class='grid gap-4 md:grid-cols-2'>
+		<Specimen label='<Link href="/">'>
+			<Link href='/'>Foundry</Link>
+		</Specimen>
+		<Specimen label='In prose'>
+			<p class='max-w-[40ch]'>
+				For an action, open the <Link href='/button/'>Button</Link> page.
+			</p>
+		</Specimen>
+	</div>
+</FoundryLayout>

@@ -4,6 +4,7 @@ import Breadcrumbs from "../../components/Breadcrumbs.astro";
 import MarkdownH1 from "../../components/MarkdownH1.astro";
 import MarkdownH2 from "../../components/MarkdownH2.astro";
 import Blame from "../../components/blame/Blame.astro";
+import Link from "../../components/ui/link/Link.astro";
 
 const rules = [
 	{
@@ -57,7 +58,7 @@ const rules = [
 				</div>
 				<p class='mt-8 max-w-3xl text-base leading-[1.6] text-muted-foreground'>
 					Gaps and mismatched history can leave lines unrecorded. The full rules, including comparison edge cases, are
-					in the <a href='/docs/cli#task-blame' class='underline'>CLI reference</a>.
+					in the <Link href='/docs/cli#task-blame'>CLI reference</Link>.
 				</p>
 			</div>
 
@@ -65,9 +66,8 @@ const rules = [
 				<h2 class='mb-3 text-base font-semibold'>JSON</h2>
 				<p class='text-base leading-[1.6] text-muted-foreground'>
 					With <code class='bg-soot/8 px-1 py-px text-sm'>--json</code>, the command returns the{" "}
-					<a href='/docs/core#task-blame-result' class='underline'
-						><code class='bg-soot/8 px-1 py-px text-sm'>TaskBlame</code></a
-					> result. Each reference opens with{" "}
+					<Link href='/docs/core#task-blame-result'><code class='bg-soot/8 px-1 py-px text-sm'>TaskBlame</code></Link> result.
+					Each reference opens with{" "}
 					<code class='bg-soot/8 px-1 py-px text-sm'>zinn activity view &lt;activity-id&gt;</code>.
 				</p>
 			</div>

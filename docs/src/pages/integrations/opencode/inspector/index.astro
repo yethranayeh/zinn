@@ -5,6 +5,7 @@ import Breadcrumbs from "../../../../components/Breadcrumbs.astro";
 import Icon from "../../../../components/ui/icon/Icon.astro";
 import InspectorCollage from "../../../../components/InspectorCollage.astro";
 import Kbd from "../../../../components/ui/kbd/Kbd.astro";
+import Link from "../../../../components/ui/link/Link.astro";
 import MarkdownH1 from "../../../../components/MarkdownH1.astro";
 import MarkdownH2 from "../../../../components/MarkdownH2.astro";
 import MarkdownList from "../../../../components/MarkdownList.astro";
@@ -82,8 +83,8 @@ const pluginConfig = `{
 				</p>
 				<TerminalCommands label='OpenCode plugin configuration' commands={[pluginConfig]} showsPrompt={false} />
 				<p>
-					OpenCode loads this TUI-only package through its native <a href='https://opencode.ai/v2/docs/cli/plugins/'
-						>CLI plugin configuration</a
+					OpenCode loads this TUI-only package through its native <Link href='https://opencode.ai/v2/docs/cli/plugins/'
+						>CLI plugin configuration</Link
 					>. Start OpenCode, open a conversation and mention a task key from your database. Select the task to inspect
 					it.
 				</p>
@@ -140,7 +141,7 @@ const pluginConfig = `{
 				<p>
 					OpenCode's native shell session ID is recorded by Zinn as a thread ID. An explicit{" "}
 					<code>ZINN_SESSION_ID</code> and <code>ZINN_THREAD_ID</code> pair takes precedence. The inspector recognizes both
-					routes. See <a href='/docs/cli#who-am-i'>actor identity</a> for the CLI contract.
+					routes. See <Link href='/docs/cli#who-am-i'>actor identity</Link> for the CLI contract.
 				</p>
 				<p>
 					The mark animates while OpenCode reports that conversation as busy. Busy state comes from the host
