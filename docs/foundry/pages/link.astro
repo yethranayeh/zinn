@@ -1,6 +1,7 @@
 ---
 import FoundryLayout from "../layouts/FoundryLayout.astro";
 import ComponentHeading from "../components/ComponentHeading.astro";
+import ContrastMark from "../components/ContrastMark.astro";
 import Specimen from "../components/Specimen.astro";
 import Link from "../../src/components/ui/link/Link.astro";
 ---
@@ -11,7 +12,9 @@ import Link from "../../src/components/ui/link/Link.astro";
 			Link is an inline link for reading text on Limestone. It is Cinnabar, stays underlined, and thickens its underline
 			on hover. Reading text renders its links with it.
 		</p>
-		<p>Cinnabar holds 7.8:1 against Limestone at body size. Use Button for an action instead.</p>
+		<p>
+			<ContrastMark foreground='cinnabar' background='limestone' /> at body size. Use Button for an action instead.
+		</p>
 	</ComponentHeading>
 
 	<div class='grid gap-4 md:grid-cols-2'>

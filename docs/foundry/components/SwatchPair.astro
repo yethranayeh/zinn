@@ -1,0 +1,18 @@
+---
+import Swatch from "../../src/components/ui/swatch/Swatch.astro";
+
+interface Props {
+	/** Any CSS colour value, such as `var(--color-cinnabar)` */
+	foreground: string;
+	/** Any CSS colour value, such as `var(--color-limestone)` */
+	background: string;
+	class?: string;
+}
+
+const { foreground, background, class: className } = Astro.props;
+---
+
+<span class:list={["relative inline-block h-[22px] w-[30px]", className]} aria-hidden='true'>
+	<Swatch color={background} class='absolute top-0 left-0 h-[18px] w-[18px]' />
+	<Swatch color={foreground} class='absolute right-0 bottom-0 h-[18px] w-[18px]' />
+</span>

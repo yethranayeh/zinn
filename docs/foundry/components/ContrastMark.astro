@@ -1,0 +1,33 @@
+---
+import colorsCss from "../../src/styles/colors.css?raw";
+import Tooltip from "../../src/components/ui/tooltip/Tooltip.astro";
+import SwatchPair from "./SwatchPair.astro";
+import { contrastRatio, levelOf, paletteFrom } from "../contrast";
+
+interface Props {
+	/** Palette token name, such as `cinnabar` */
+	foreground: string;
+	/** Palette token name, such as `limestone` */
+	background: string;
+}
+
+const { foreground, background } = Astro.props;
+const palette = paletteFrom(colorsCss);
+const foregroundHex = palette[foreground];
+const backgroundHex = palette[background];
+
+if (!foregroundHex || !backgroundHex) {
+	throw new Error(`ContrastMark needs palette colours: ${foreground}, ${background}`);
+}
+
+const ratio = contrastRatio(foregroundHex, backgroundHex);
+const level = levelOf(ratio);
+const reading = `${Number(ratio.toFixed(2))}:1·${level}`;
+---
+
+<span class='inline-flex items-center gap-2 font-mono text-[11px] leading-none align-middle'>
+	<Tooltip text={reading} placement='bottom-start'>
+		<SwatchPair foreground={`var(--color-${foreground})`} background={`var(--color-${background})`} />
+	</Tooltip>
+	<span>{foreground} <span class='text-muted-foreground'>on</span> {background}</span>
+</span>
