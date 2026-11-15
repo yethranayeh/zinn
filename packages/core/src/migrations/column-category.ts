@@ -12,8 +12,11 @@ const CATEGORY_BY_DEFAULT_NAME: ReadonlyMap<string, ColumnCategory> = new Map([
   ["cancelled", "cancelled"],
 ]);
 
+/** The schema version that adds column categories */
+export const COLUMN_CATEGORY_VERSION = 5;
+
 export const columnCategoryMigration: Migration = {
-  version: 5,
+  version: COLUMN_CATEGORY_VERSION,
   name: "column category",
   rebuilds: [],
   apply(db) {

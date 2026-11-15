@@ -3,10 +3,12 @@ import type { TaskArchiveFilter, TaskListInput, TaskStateFilter } from "../schem
 
 export type { TaskArchiveFilter } from "../schemas/task.js";
 
-import { getDb } from "../db.js";
+import { getDb, hasSchemaVersion } from "../db.js";
 import { taskPrioritySchema } from "../schemas/task.js";
 import { CLOSED_COLUMN_CATEGORIES, READY_COLUMN_CATEGORIES } from "../schemas/column.js";
 import { DB_TABLE } from "../constant.js";
+import { COLUMN_CATEGORY_VERSION } from "../migrations/column-category.js";
+import { TASK_DEADLINE_VERSION } from "../migrations/task-deadline.js";
 
 function getArchiveCondition(filter: TaskArchiveFilter) {
   switch (filter) {
@@ -286,13 +288,7 @@ export function getList(input: TaskListQuery) {
  * Older schemas do not have them, so they are readolny
  */
 function hasColumnCategory() {
-  return (
-    getDb()
-      .query<{ found: number }, []>(
-        `SELECT 1 AS found FROM pragma_table_info('${DB_TABLE.projectColumn}') WHERE name = 'category'`,
-      )
-      .get() != null
-  );
+  return hasSchemaVersion(COLUMN_CATEGORY_VERSION);
 }
 
 /** Quotes fixed vocabulary values, never user input, as an SQL list such as `'done', 'cancelled'`. */
@@ -365,13 +361,7 @@ export type TaskNextQuery = { projectId?: string; columnIds?: Array<string> };
 
 // Older schemas, still readable read-only, have no `due_at` column and so no deadlines to order by.
 function hasDeadlineColumn() {
-  return (
-    getDb()
-      .query<{ found: number }, []>(
-        `SELECT 1 AS found FROM pragma_table_info('${DB_TABLE.task}') WHERE name = 'due_at'`,
-      )
-      .get() != null
-  );
+  return hasSchemaVersion(TASK_DEADLINE_VERSION);
 }
 
 // Ready categories in their preferred order, any other category after them

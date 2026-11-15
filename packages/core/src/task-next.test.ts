@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import { column, project, relation, task } from "../index.js";
 import type { TaskCreateInput } from "../index.js";
 import { getDb } from "./db.js";
-import { withTestStore } from "./testing.js";
+import { removeColumnCategories, withTestHome, withTestStore } from "./testing.js";
 
 const actor = { name: "Task next", email: null, kind: "human" as const };
 const DAY_MS = 86_400_000;
@@ -127,11 +127,11 @@ test("task next treats every task as open on a board without done or cancelled c
 });
 
 test("task next counts the last column as closed on an older schema without categories", () => {
-  withTestStore(() => {
+  withTestHome(() => {
     const app = project.create({ key: "APP" }, actor);
     createTask(app.id, "Last column", { priority: "urgent", columnName: "Cancelled" });
     const done = createTask(app.id, "Done", { priority: "high", columnName: "Done" });
-    getDb().exec("ALTER TABLE project_column DROP COLUMN category");
+    removeColumnCategories();
 
     expect(task.next()?.key).toBe(done.key);
   });
@@ -216,11 +216,11 @@ test("task next reads ready columns from their category, not their name or posit
 });
 
 test("task next hands out tasks from every column but the last on an older schema without categories", () => {
-  withTestStore(() => {
+  withTestHome(() => {
     const app = project.create({ key: "APP" }, actor);
     createTask(app.id, "Backlog", { priority: "low" });
     const review = createTask(app.id, "Review", { priority: "urgent", columnName: "Review" });
-    getDb().exec("ALTER TABLE project_column DROP COLUMN category");
+    removeColumnCategories();
 
     expect(task.next()?.key).toBe(review.key);
   });

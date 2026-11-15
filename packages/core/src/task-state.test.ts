@@ -2,8 +2,7 @@ import { expect, test } from "bun:test";
 
 import { column, project, task } from "../index.js";
 import type { TaskCreateInput } from "../index.js";
-import { getDb } from "./db.js";
-import { withTestStore } from "./testing.js";
+import { removeColumnCategories, withTestHome, withTestStore } from "./testing.js";
 
 const actor = { name: "Task state", email: null, kind: "human" as const };
 
@@ -76,11 +75,11 @@ test("task lists read closed columns from their category, not their name or posi
 });
 
 test("task lists count the last column as closed on an older schema without categories", () => {
-  withTestStore(() => {
+  withTestHome(() => {
     const app = project.create({ key: "APP" }, actor);
     const last = createTask(app.id, "Last column", { columnName: "Cancelled" });
     const done = createTask(app.id, "Done", { columnName: "Done" });
-    getDb().exec("ALTER TABLE project_column DROP COLUMN category");
+    removeColumnCategories();
 
     expect(keysOf(task.getAll({ state: "open" }))).toEqual([done.key]);
     expect(keysOf(task.getAll({ state: "closed" }))).toEqual([last.key]);

@@ -731,7 +731,9 @@ function operationsWalk() {
 test("every core mutation is refused before any SQL runs on a read-only database, while every read works", () => {
   withHome((home) => {
     const mainDir = join(home, ".zinn");
-    createDatabase(mainDir, NEWER_VERSION);
+    // A newer database holds everything the current schema has.
+    createCurrentDatabase(mainDir);
+    withDatabase(mainDir, (db) => db.exec(`PRAGMA user_version = ${NEWER_VERSION}`));
     const before = readDatabase(mainDir);
     const result = withLocation({ home }, () => { configureCore({}); return operationsWalk(); });
 

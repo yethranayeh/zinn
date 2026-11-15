@@ -265,6 +265,14 @@ export function getDb(access: DatabaseAccess = {}) {
   return db;
 }
 
+/** Whether the open database had at least the given schema version when this process opened it */
+export function hasSchemaVersion(version: number) {
+  getDb();
+
+  // `getDb` sets it whenever it returns a connection
+  return openedVersion! >= version;
+}
+
 /** Throws before any SQL runs when the database opened read-only. */
 export function assertWritable() {
   getDb();

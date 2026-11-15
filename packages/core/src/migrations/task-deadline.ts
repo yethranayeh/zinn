@@ -1,7 +1,10 @@
 import type { Migration } from "./registry.js";
 
+/** The schema version that adds task deadlines */
+export const TASK_DEADLINE_VERSION = 3;
+
 export const taskDeadlineMigration: Migration = {
-  version: 3,
+  version: TASK_DEADLINE_VERSION,
   name: "task deadline",
   rebuilds: [],
   apply(db) {

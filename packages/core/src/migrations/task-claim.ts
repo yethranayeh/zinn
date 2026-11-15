@@ -1,7 +1,10 @@
 import type { Migration } from "./registry.js";
 
+/** The schema version that adds the claim table */
+export const TASK_CLAIM_VERSION = 6;
+
 export const taskClaimMigration: Migration = {
-  version: 6,
+  version: TASK_CLAIM_VERSION,
   name: "task claim",
   rebuilds: [],
   apply(db) {

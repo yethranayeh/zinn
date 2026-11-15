@@ -1,17 +1,12 @@
 import type { Bind, TaskClaimRecord } from "../types.js";
 
-import { getDb } from "../db.js";
+import { getDb, hasSchemaVersion } from "../db.js";
 import { DB_TABLE } from "../constant.js";
+import { TASK_CLAIM_VERSION } from "../migrations/task-claim.js";
 
 /** Whether the database has the claim table. Older schemas, still readable read-only, have no claims */
 function hasClaimTable() {
-  return (
-    getDb()
-      .query<{ found: number }, []>(
-        `SELECT 1 AS found FROM sqlite_schema WHERE type = 'table' AND name = '${DB_TABLE.taskClaim}'`,
-      )
-      .get() != null
-  );
+  return hasSchemaVersion(TASK_CLAIM_VERSION);
 }
 
 /** Returns the claims on any of the given tasks in one query, keyed by task ID */
