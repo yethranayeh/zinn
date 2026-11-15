@@ -1,0 +1,16 @@
+---
+import type { HTMLAttributes } from "astro/types";
+import { twMerge } from "tailwind-merge";
+
+interface Props extends HTMLAttributes<"span"> {
+	/** Any CSS color value, such as `var(--color-cinnabar)` or `#7b1e15`. */
+	color: string;
+}
+
+const { color, class: className, ...attributes } = Astro.props;
+---
+
+<span
+	class={twMerge("block h-3.5 w-6 border border-soot/20", className)}
+	style={`background-color: ${color}`}
+	{...attributes}></span>

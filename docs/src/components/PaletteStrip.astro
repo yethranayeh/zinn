@@ -1,12 +1,14 @@
 ---
-const inks = ["limestone", "bone", "clay", "cinnabar", "bronze", "soot", "pewter"];
+import Swatch from "./ui/swatch/Swatch.astro";
+import { themePalette } from "./ui/swatch/theme-palette";
 ---
 
 <ul class='flex gap-1' aria-label='Zinn palette'>
 	{
-		inks.map((ink) => (
-			<li class='h-3.5 w-6 border border-soot/20' style={`background-color: var(--color-${ink})`} title={ink}>
-				<span class='sr-only'>{ink}</span>
+		themePalette.map((color) => (
+			<li title={color}>
+				<Swatch color={`var(--color-${color})`} />
+				<span class='sr-only'>{color}</span>
 			</li>
 		))
 	}

@@ -1,0 +1,35 @@
+---
+import FoundryLayout from "../layouts/FoundryLayout.astro";
+import ComponentHeading from "../components/ComponentHeading.astro";
+import Specimen from "../components/Specimen.astro";
+import Swatch from "../../src/components/ui/swatch/Swatch.astro";
+
+import { themePalette } from "../../src/components/ui/swatch/theme-palette";
+---
+
+<FoundryLayout title='Swatch' description='Swatch fills a box with one CSS color value.'>
+	<ComponentHeading folder='swatch'>
+		<p>
+			A filled box for any CSS color value. It carries no text, so the surrounding markup names the color. The default
+			box is 24 by 14 pixels with a 1px Soot/20 border, and a class sets another size.
+		</p>
+		<p>The theme palette lists the seven colors in display order.</p>
+	</ComponentHeading>
+
+	<div class='grid gap-4 md:grid-cols-2'>
+		<Specimen label='<Swatch color="var(--color-cinnabar)" />'>
+			<Swatch color='var(--color-cinnabar)' />
+		</Specimen>
+		<Specimen label='The theme palette'>
+			<ul class='flex gap-1'>
+				{
+					themePalette.map((color) => (
+						<li>
+							<Swatch color={`var(--color-${color})`} />
+						</li>
+					))
+				}
+			</ul>
+		</Specimen>
+	</div>
+</FoundryLayout>

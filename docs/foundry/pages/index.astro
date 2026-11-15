@@ -2,6 +2,7 @@
 import colorsCss from "../../src/styles/colors.css?raw";
 import globalCss from "../../src/styles/global.css?raw";
 import FoundryLayout from "../layouts/FoundryLayout.astro";
+import Swatch from "../../src/components/ui/swatch/Swatch.astro";
 import { proposedComponents, uiComponents } from "../ui";
 
 // The palette and typefaces come from their CSS sources.
@@ -68,7 +69,7 @@ const typefaces = [...theme.matchAll(/--font-([\w-]+): "([^"]+)"/g)].map(([, nam
 			{
 				colors.map((color) => (
 					<li class='flex flex-col gap-2'>
-						<span class='h-16 border border-soot/20' style={`background-color: var(--color-${color.name})`} />
+						<Swatch color={`var(--color-${color.name})`} class='h-16 w-full' />
 						<span class='font-mono text-xs'>{color.name}</span>
 						<span class='font-mono text-xs text-muted-foreground'>{color.value}</span>
 						{color.note && <span class='text-sm text-muted-foreground'>{color.note}</span>}
