@@ -121,7 +121,9 @@ async function expectMarkdownTwin(page: string, source: string) {
     .trimStart()
     .replace('import AgentSetup from "../../components/AgentSetup.astro";\n', "")
     .replace('import Aside from "../../components/ui/aside/Aside.astro";\n', "")
+    .replace('import Kbd from "../../components/ui/kbd/Kbd.astro";\n', "")
     .replace(/^\n/, "")
+    .replace(/<Kbd\b[^>]*>([\s\S]*?)<\/Kbd>/g, (_match, label) => `\`${label.trim()}\``)
     .replace("<AgentSetup />\n\n", "")
     .replace(
       /<Aside label='([^']+)'>\n\n([\s\S]*?)\n\n<\/Aside>\n\n/g,
