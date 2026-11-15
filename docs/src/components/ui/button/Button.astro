@@ -13,7 +13,7 @@ type LinkProps = HTMLAttributes<"a"> & { href: string };
 type Props = (ButtonProps | LinkProps) & {
 	variant?: ButtonVariant;
 	size?: ButtonSize;
-	/** Swaps to the inverse colors through a stepped wipe on hover */
+	/** Swaps to the inverse colors through a stepped wipe on hover or keyboard focus */
 	animated?: boolean;
 };
 
