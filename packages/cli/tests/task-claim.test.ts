@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { CLAIM_WORK_LIMIT_MS } from "@zinn-dev/core";
 import { errorDocumentSchema } from "../src/errors";
 import { resultSchemas } from "../src/result-schemas";
-import { latestVersion, MIGRATIONS } from "../../core/src/migrations/registry";
+import { TASK_CLAIM_VERSION } from "../../core/src/migrations/task-claim";
 import { TEST_ENVIRONMENT } from "../../../scripts/test-isolation.ts";
 import { CLI_PATH, runProcessAsync, runZinn, withIsolatedZinnDir, withTestDb } from "../test-helpers";
 
@@ -465,7 +465,7 @@ test("ZINN-585: a database from before claims, opened read-only, reads with clai
     writeFileSync(join(repository, "zinn.local.json"), JSON.stringify({ storage: { directory: "../store" } }));
     await runZinn(["project", "create", "APP"], store);
     await runZinn(["task", "create", "APP", "--title", "Kept"], store);
-    const previousVersion = latestVersion(MIGRATIONS) - 1;
+    const previousVersion = TASK_CLAIM_VERSION - 1;
     withTestDb(store, (db) => {
       db.run("DROP TABLE task_claim");
       db.run(`PRAGMA user_version = ${previousVersion}`);
