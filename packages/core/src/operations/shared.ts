@@ -113,7 +113,8 @@ export function attachTaskKey(task: Task, projectKey?: string): KeyedTask {
 
 /**
  * A claim expires at the end of its lease,
- *  or a day after its holder's last work, whichever comes first
+ *  or a day after its holder's last work, whichever comes first.
+ * getLiveClaimCondition in db/claim.ts repeats this rule in SQL. Change both together.
  */
 export function getClaimExpiry(claim: TaskClaimRecord) {
   return Math.min(claim.renewed_at + claim.lease_ms, claim.worked_at + CLAIM_WORK_LIMIT_MS);

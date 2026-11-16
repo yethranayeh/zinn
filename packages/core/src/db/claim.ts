@@ -3,10 +3,31 @@ import type { Bind, TaskClaimRecord } from "../types.js";
 import { getDb, hasSchemaVersion } from "../db.js";
 import { DB_TABLE } from "../constant.js";
 import { TASK_CLAIM_VERSION } from "../migrations/task-claim.js";
+import { CLAIM_WORK_LIMIT_MS } from "../schemas/task.js";
 
 /** Whether the database has the claim table. Older schemas, still readable read-only, have no claims */
 function hasClaimTable() {
   return hasSchemaVersion(TASK_CLAIM_VERSION);
+}
+
+/**
+ * SQL condition with the bindings: the task under `alias` has a claim that is live at `now`.
+ * Returns `null` on an older schema that would have no claims
+ */
+export function getLiveClaimCondition(alias: string, now: number) {
+  if (!hasClaimTable()) {
+    return null;
+  }
+
+  // The expiry must match `getClaimExpiry` in operations/shared.ts.
+  const sql = `EXISTS (
+      SELECT 1
+      FROM ${DB_TABLE.taskClaim} AS claim
+      WHERE claim.task_id = ${alias}.id
+        AND $claim_now < MIN(claim.renewed_at + claim.lease_ms, claim.worked_at + $claim_work_limit_ms)
+    )`;
+
+  return { sql, bindings: { $claim_now: now, $claim_work_limit_ms: CLAIM_WORK_LIMIT_MS } };
 }
 
 /** Returns the claims on any of the given tasks in one query, keyed by task ID */

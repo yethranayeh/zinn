@@ -598,8 +598,9 @@ export const task = {
   /**
    * Returns the first ready task, or `null` when none is ready.
    * A task is ready when it is active, in a todo or backlog column (or the column `columnName`
-   *  names, unless it is done or cancelled), and every task it depends on is archived or in a
-   *  done or cancelled column. Todo comes before backlog, then priority, deadline and creation.
+   *  names, unless it is done or cancelled), has no live claim, whoever holds it, and every task
+   *  it depends on is archived or in a done or cancelled column. Todo comes before backlog, then
+   *  priority, deadline and creation.
    */
   next: (input: TaskNextInput = {}): TaskWithKey | null => {
     const props = validateTaskInput(taskNextSchema, input);
@@ -610,6 +611,7 @@ export const task = {
       const taskMatch = dbTask.getNext({
         projectId: taskProject?.id,
         columnIds: getTaskListColumnIds(props.columnName, taskProject?.id),
+        now: Date.now(),
       });
 
       if (taskMatch == null) {

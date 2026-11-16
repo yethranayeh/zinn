@@ -749,20 +749,22 @@ Example: zinn task search 'refinement quota' MDR --limit 5`,
     help: `${generateCommandUsage("task next", taskInputs.next)}
 
 Show the next task that is ready to work on.
-A task is ready when it is active, in a todo or backlog column, and every task it depends on is archived or in a done or cancelled column.
-Only dependency relations hold a task back.
+A task is ready when it is active, in a todo or backlog column, has no live claim, and every task it depends on is archived or in a done or cancelled column.
+Only dependency relations hold a task back. A task with a live claim is skipped, including your own.
 Ready tasks in todo columns come before those in backlog columns, whatever their priority.
 Within each, tasks are ordered by priority (urgent first, unset last), then the earliest deadline with undated tasks last, then the oldest task.
 ${projectScopeDescription}
 --column takes ready tasks from one column instead, matching its exact name and ignoring case. Any column but a done or cancelled one can hold them.
 When no task is ready, the command exits 0. With --json, it prints null.
-Two callers can receive the same task. To take it, move it with task move --from, which fails if another caller moved it first.
+To take the task, move it with task move --from, which fails if another caller moved it first. Then show that you are working on it with task claim.
+task next <project> --column <working column> returns in-progress work with no live claim.
 
 Use 'task view' to see the task's description, relations and comments.
 
 Examples:
   zinn task next MDR
-  zinn task next MDR --column Review`,
+  zinn task next MDR --column Review
+  zinn task next MDR --column Doing`,
   },
   view: {
     summary:

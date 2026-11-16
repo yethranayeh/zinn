@@ -1,12 +1,26 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 
 import { column, project, relation, task } from "../index.js";
-import type { TaskCreateInput } from "../index.js";
-import { getDb } from "./db.js";
+import type { Actor, TaskCreateInput } from "../index.js";
+import { getDb, resetDatabaseForTests } from "./db.js";
+import { TASK_CLAIM_VERSION } from "./migrations/task-claim.js";
+import { CLAIM_WORK_LIMIT_MS } from "./schemas/task.js";
 import { removeColumnCategories, withTestHome, withTestStore } from "./testing.js";
 
 const actor = { name: "Task next", email: null, kind: "human" as const };
+const holder: Actor = { name: "Agent", email: null, kind: "agent", sessionId: "session-a" };
 const DAY_MS = 86_400_000;
+const START = Date.UTC(2026, 10, 1);
+const MINUTE_MS = 60_000;
+const LEASE_MS = 30 * MINUTE_MS;
+
+afterEach(() => {
+  setSystemTime();
+});
+
+function at(time: number) {
+  setSystemTime(new Date(time));
+}
 
 function createTask(projectId: string, title: string, fields: Partial<TaskCreateInput> = {}) {
   return task.create({ project_id: projectId, title, description: "", ...fields }, actor);
@@ -253,5 +267,97 @@ test("task next rejects an unknown project", () => {
     }
 
     expect(failure).toMatchObject({ kind: "missing", facts: { entity: "project", key: "NOPE" } });
+  });
+});
+
+test("ZINN-586: task next skips a task with a live claim, with and without a column, and returns it once the lease ran out", () => {
+  withTestStore(() => {
+    at(START);
+    const app = project.create({ key: "APP" }, actor);
+    const claimed = createTask(app.id, "Claimed", { priority: "urgent" });
+    const following = createTask(app.id, "Following", { priority: "low" });
+    task.claim({ taskKey: claimed.key, leaseMs: LEASE_MS }, holder);
+
+    expect(task.next()?.key).toBe(following.key);
+    expect(task.next({ projectKey: app.key, columnName: "Backlog" })?.key).toBe(following.key);
+
+    task.archive(following.key, actor);
+    expect(task.next()).toBeNull();
+    expect(task.next({ columnName: "Backlog" })).toBeNull();
+
+    at(START + LEASE_MS - 1);
+    expect(task.next()).toBeNull();
+
+    at(START + LEASE_MS);
+    expect(task.next()).toMatchObject({ key: claimed.key, claim: { state: "expired" } });
+    expect(task.next({ columnName: "Backlog" })?.key).toBe(claimed.key);
+  });
+});
+
+test("ZINN-586: task next returns a claimed task once a day passed since the holder's last work, whatever the lease", () => {
+  withTestStore(() => {
+    at(START);
+    const app = project.create({ key: "APP" }, actor);
+    const claimed = createTask(app.id, "Claimed");
+    task.claim({ taskKey: claimed.key, leaseMs: LEASE_MS }, holder);
+
+    // Heartbeats keep the lease running but are not work.
+    for (let time = START; time < START + CLAIM_WORK_LIMIT_MS; time += LEASE_MS / 2) {
+      at(time);
+      task.heartbeat(claimed.key, holder);
+      expect(task.next()).toBeNull();
+    }
+
+    at(START + CLAIM_WORK_LIMIT_MS);
+    expect(task.next()?.key).toBe(claimed.key);
+    expect(task.next({ columnName: "Backlog" })?.key).toBe(claimed.key);
+  });
+});
+
+test("ZINN-586: task next on an in-progress column returns only work with no live claim", () => {
+  withTestStore(() => {
+    at(START);
+    const app = project.create({ key: "APP" }, actor);
+    const live = createTask(app.id, "Live", { priority: "urgent", columnName: "Doing" });
+    const abandoned = createTask(app.id, "Abandoned", { priority: "high", columnName: "Doing" });
+    const unclaimed = createTask(app.id, "Never claimed", { priority: "low", columnName: "Doing" });
+    task.claim({ taskKey: live.key, leaseMs: LEASE_MS }, holder);
+    task.claim({ taskKey: abandoned.key, leaseMs: LEASE_MS }, holder);
+    const inProgress = { projectKey: app.key, columnName: "Doing" };
+
+    expect(task.next()).toBeNull();
+    expect(task.next(inProgress)?.key).toBe(unclaimed.key);
+
+    at(START + 2 * LEASE_MS);
+    task.claim({ taskKey: live.key, leaseMs: LEASE_MS }, holder);
+    expect(task.next(inProgress)).toMatchObject({ key: abandoned.key, claim: { state: "expired" } });
+
+    task.claim({ taskKey: abandoned.key, leaseMs: LEASE_MS }, actor);
+    expect(task.next(inProgress)?.key).toBe(unclaimed.key);
+  });
+});
+
+test("ZINN-586: task next skips the caller's own live claim too", () => {
+  withTestStore(() => {
+    const app = project.create({ key: "APP" }, holder);
+    const own = createTask(app.id, "Own", { priority: "urgent" });
+    task.claim({ taskKey: own.key, leaseMs: LEASE_MS }, holder);
+
+    expect(task.next()).toBeNull();
+    expect(task.next({ projectKey: app.key, columnName: "Backlog" })).toBeNull();
+  });
+});
+
+test("ZINN-586: task next answers on an older schema without claims", () => {
+  withTestHome(() => {
+    const app = project.create({ key: "APP" }, actor);
+    const claimed = createTask(app.id, "Claimed", { priority: "urgent", columnName: "Doing" });
+    task.claim({ taskKey: claimed.key, leaseMs: LEASE_MS }, holder);
+    getDb().exec("DROP TABLE task_claim");
+    getDb().exec(`PRAGMA user_version = ${TASK_CLAIM_VERSION - 1}`);
+    resetDatabaseForTests();
+
+    expect(task.next({ columnName: "Doing" })).toMatchObject({ key: claimed.key, claim: null });
+    expect(task.next()).toBeNull();
   });
 });

@@ -365,7 +365,8 @@ test("ZINN-585: every Task JSON carries the claim, matching the result schemas",
     expect(list.map((entry) => entry.claim)).toEqual([claim, null]);
     const search = resultSchemas.TaskList.parse(await json("task", "search", "refine", "APP"));
     expect(search.map((entry) => entry.claim)).toEqual([claim]);
-    expect(resultSchemas.NextTask.parse(await json("task", "next", "APP"))!.claim).toEqual(claim);
+    // task next skips the claimed APP-1.
+    expect(resultSchemas.NextTask.parse(await json("task", "next", "APP"))).toMatchObject({ key: "APP-2", claim: null });
     expect(resultSchemas.TaskDetail.parse(await json("task", "view", "APP-1")).claim).toEqual(claim);
     expect(resultSchemas.TaskDetail.parse(await json("task", "view", "APP-2")).claim).toBeNull();
 

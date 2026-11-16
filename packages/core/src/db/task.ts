@@ -9,6 +9,7 @@ import { CLOSED_COLUMN_CATEGORIES, READY_COLUMN_CATEGORIES } from "../schemas/co
 import { DB_TABLE } from "../constant.js";
 import { COLUMN_CATEGORY_VERSION } from "../migrations/column-category.js";
 import { TASK_DEADLINE_VERSION } from "../migrations/task-deadline.js";
+import { getLiveClaimCondition } from "./claim.js";
 
 function getArchiveCondition(filter: TaskArchiveFilter) {
   switch (filter) {
@@ -357,7 +358,7 @@ const PRIORITY_RANK_SQL = `CASE task.priority
         ELSE ${taskPrioritySchema.options.length}
       END`;
 
-export type TaskNextQuery = { projectId?: string; columnIds?: Array<string> };
+export type TaskNextQuery = { projectId?: string; columnIds?: Array<string>; now: number };
 
 // Older schemas, still readable read-only, have no `due_at` column and so no deadlines to order by.
 function hasDeadlineColumn() {
@@ -371,9 +372,9 @@ const READY_CATEGORY_RANK_SQL = `CASE task_column.category
       END`;
 
 /**
- * Returns the first ready task: open work with no open dependency, in a todo or backlog column
- *  unless `columnIds` names the columns. Orders todo before backlog, then by priority, then the
- *  earliest deadline with undated tasks last, then creation.
+ * Returns the first ready task: open work with no open dependency and no claim live at `now`, in
+ *  a todo or backlog column unless `columnIds` names the columns. Orders todo before backlog, then
+ *  by priority, then the earliest deadline with undated tasks last, then creation.
  * Older schemas without categories have no todo or backlog, so every open task is ready there.
  */
 export function getNext(input: TaskNextQuery) {
@@ -382,7 +383,13 @@ export function getNext(input: TaskNextQuery) {
     getOpenWorkCondition("task", hasCategories),
     `NOT ${getOpenDependencyCondition("task", hasCategories)}`,
   ];
-  const bindings: Record<string, string> = {};
+  const bindings: Record<string, string | number> = {};
+  const liveClaim = getLiveClaimCondition("task", input.now);
+
+  if (liveClaim !== null) {
+    predicates.push(`NOT ${liveClaim.sql}`);
+    Object.assign(bindings, liveClaim.bindings);
+  }
 
   if (hasCategories && input.columnIds === undefined) {
     predicates.push(`task_column.category IN (${toSqlTextList(READY_COLUMN_CATEGORIES)})`);
@@ -406,7 +413,7 @@ export function getNext(input: TaskNextQuery) {
     : "";
 
   return getDb()
-    .query<TaskListRow, Record<string, string>>(`SELECT task.*, project.key AS project_key
+    .query<TaskListRow, Record<string, string | number>>(`SELECT task.*, project.key AS project_key
     FROM ${DB_TABLE.task}
     INNER JOIN ${DB_TABLE.project}
       ON project.id = task.project_id
