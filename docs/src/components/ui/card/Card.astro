@@ -1,16 +1,12 @@
 ---
 import type { HTMLAttributes } from "astro/types";
 import { twMerge } from "tailwind-merge";
-import ReservedGround from "../reserved-ground/ReservedGround.astro";
 
 type Props = HTMLAttributes<"div">;
 
 const { class: className, ...attributes } = Astro.props;
 ---
 
-<div
-	class={twMerge("relative isolate flex flex-col border border-soot bg-limestone space-y-2", className)}
-	{...attributes}>
-	<ReservedGround class='absolute inset-0 -z-10' />
+<div class={twMerge("relative isolate flex flex-col border border-soot bg-limestone", className)} {...attributes}>
 	<slot />
 </div>
