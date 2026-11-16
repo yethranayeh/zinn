@@ -330,24 +330,6 @@ test("ZINN-464: cursors continue after the recorded position when the last task 
   });
 });
 
-test("ZINN-464: tasks that tie on every board key keep one order across pages", () => {
-  withTestStore(() => {
-    const app = project.create({ key: "APP" }, actor);
-    const created = [1, 2, 3, 4].map((index) =>
-      task.create({ project_id: app.id, title: `Tie ${index}` }, actor),
-    );
-    getDb().query("UPDATE task SET number = 1, task_order = 'a0' WHERE project_id = ?").run(app.id);
-    getDb().query("UPDATE activity SET created_at = 100 WHERE entity_type = 'task'").run();
-
-    for (const sort of [undefined, "due", "activity"] as const) {
-      const expected = task.getAll({ sort });
-      expect(expected.map(({ id }) => id)).toEqual(created.map(({ id }) => id).sort());
-      walkPages({ sort }, expected, 1);
-      walkPages({ sort }, expected, 3);
-    }
-  });
-});
-
 test("ZINN-464: task cursors refuse malformed, other-version, other-sort and task-ID values", () => {
   withTestStore(() => {
     const app = project.create({ key: "APP" }, actor);

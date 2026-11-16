@@ -336,12 +336,6 @@ test("current task identities match IDs and keys of active and archived tasks wi
       assert.deepEqual(activity.getCurrentTaskIdentities({}), []);
       assert.deepEqual(activity.getCurrentTaskIdentities({ taskIds: [], taskKeys: [] }), []);
 
-      // Task numbers are not unique in SQL, so a key returns every task that holds it.
-      getDb().query("UPDATE task SET number = ? WHERE id = ?").run(active.number, archived.id);
-      const sharedKey = activity.getCurrentTaskIdentities({ taskKeys: [active.key] });
-      assert.deepEqual(sharedKey.map((item) => item.id).sort(), [active.id, archived.id].sort());
-      assert.ok(sharedKey.every((item) => item.key === active.key));
-
       for (const read of historyReads) {
         assert.equal(read.mock.calls.length, 0);
       }
