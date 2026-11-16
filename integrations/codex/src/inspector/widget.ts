@@ -499,7 +499,7 @@ function renderEdit(task: PresentedTaskDetail, article: HTMLElement) {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       if (!save.disabled) {
-        void saveEdits(task.key, form, changes(), feedback, updateSave);
+        void saveEdits(task, form, changes(), feedback, updateSave);
       }
     });
     container.replaceChildren(form);
@@ -512,7 +512,7 @@ function renderEdit(task: PresentedTaskDetail, article: HTMLElement) {
 }
 
 async function saveEdits(
-  key: string,
+  task: PresentedTaskDetail,
   form: HTMLFormElement,
   edits: TaskEdits,
   feedback: HTMLElement,
@@ -521,6 +521,7 @@ async function saveEdits(
   if (saving || disposed) {
     return;
   }
+  const key = task.key;
   saving = true;
   afterDiscard = undefined;
   discardPrompt.hidden = true;
@@ -532,27 +533,39 @@ async function saveEdits(
   feedback.textContent = `Saving ${key}…`;
   let confirmed = false;
   let uncertain = false;
+  let conflicted = false;
   let message = "";
   try {
-    const response = await app.callServerTool({ name: "edit_task", arguments: { key, ...edits } });
+    const expected: TaskEdits = {
+      title: edits.title === undefined ? undefined : task.title,
+      description: edits.description === undefined ? undefined : (task.description ?? ""),
+      priority: edits.priority === undefined ? undefined : task.priority,
+    };
+    const response = await app.callServerTool({
+      name: "edit_task",
+      arguments: { key, ...edits, expected },
+    });
     if (response.isError || !response.structuredContent) {
       throw new Error("The host did not confirm the save.");
     }
     const result = response.structuredContent as TaskActionRead;
     confirmed = result.kind === "ready";
     uncertain = !confirmed && result.uncertain === true;
+    conflicted = !confirmed && (result.changedFields?.length ?? 0) > 0;
     message = confirmed
       ? result.changed
         ? `Saved ${key}.`
         : `No stored changes for ${key}.`
-      : (result.error ?? `Could not save ${key}.`);
+      : conflicted
+        ? `Save refused because these fields changed since you opened Edit: ${result.changedFields!.join(", ")}. Your draft is kept.`
+        : (result.error ?? `Could not save ${key}.`);
   } catch (error) {
     uncertain = true;
     message = String(error);
   }
 
   try {
-    if (confirmed || uncertain) {
+    if (confirmed || uncertain || conflicted) {
       const response = await app.callServerTool({ name: "inspect_task", arguments: { key } });
       const fresh = response.structuredContent as InspectorRead | undefined;
       if (
@@ -573,8 +586,9 @@ async function saveEdits(
           }
         } else {
           renderTaskContents(form.closest("article")!, fresh.task, fresh.fetchedAt);
-          message +=
-            " Current task read. Review it before explicitly retrying Save. Your draft is kept.";
+          message += conflicted
+            ? " Current task read. Compare it with your draft. Cancel and discard the draft, then reopen Edit to use the current values."
+            : " Current task read. Review it before explicitly retrying Save. Your draft is kept.";
         }
       }
     }

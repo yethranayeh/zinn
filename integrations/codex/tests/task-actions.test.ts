@@ -63,3 +63,20 @@ test("edit options follow configured CLI capabilities and report unavailable met
   expect(await readTaskEditOptions(reader)).toEqual({ kind: "error", error: "Configured CLI unavailable" });
   expect(calls.every(args => args.length === 1 && args[0] === "capabilities")).toBe(true);
 });
+
+test("guarded field saves send literal bases once and preserve conflict fields", async () => {
+  const calls: string[][] = [];
+  const reader: CliReader = {
+    async run<Value>(args: string[]) {
+      calls.push(args);
+      return { ok: false, code: "conflict", error: "Stale draft", changedFields: ["title", "description"] } as CliResult<Value>;
+    },
+    async close() {},
+  };
+  const result = await editTask(settings, "APP-1", {
+    title: "B", description: "New text", priority: "high",
+    expected: { title: "-A", description: "", priority: null },
+  }, reader);
+  expect(result).toMatchObject({ kind: "error", uncertain: false, changedFields: ["title", "description"] });
+  expect(calls).toEqual([["task", "edit", "APP-1", "--title=B", "--expect-title=-A", "--description=New text", "--expect-description=", "--priority=high", "--expect-priority=none"]]);
+});

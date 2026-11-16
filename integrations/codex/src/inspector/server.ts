@@ -37,6 +37,11 @@ const reader = createCliReader(settings);
 const humanActionReader = createHumanActionReader(settings);
 const resourceUri = `ui://zinn/inspector-${INSPECTOR_VERSION}.html`;
 const server = new McpServer({ name: "zinn", version: INSPECTOR_VERSION });
+const taskEditFields = {
+  title: z.string().optional(),
+  description: z.string().optional(),
+  priority: z.string().nullable().optional(),
+};
 registerAppTool(
   server,
   "inspect_task",
@@ -175,9 +180,8 @@ registerAppTool(
     description: "Save changed title, description or priority fields on the selected task.",
     inputSchema: {
       key: z.string(),
-      title: z.string().optional(),
-      description: z.string().optional(),
-      priority: z.string().nullable().optional(),
+      ...taskEditFields,
+      expected: z.strictObject(taskEditFields).optional(),
     },
     annotations: {
       readOnlyHint: false,

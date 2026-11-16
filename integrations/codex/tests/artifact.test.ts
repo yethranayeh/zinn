@@ -589,6 +589,43 @@ test("relocated Node field edits preserve literal and omitted values and record 
     }
 }, 30000);
 
+test("guarded Node field saves refuse stale bases atomically and preserve unrelated changes", async () => {
+    context.cli(["project", "create", "STALE"]);
+    context.cli(["task", "create", "STALE", "--title", "A", "--description", "Original text", "--priority", "high"]);
+    const wrongStore = join(context.directory, "guarded-edit-unselected-store");
+    const actorEnv = Object.fromEntries(actorEnvironmentNames().map(name => [name, `synthetic-${name}`]));
+    const client = await connect(context.config, { ...actorEnv, ZINN_DIR: wrongStore });
+    try {
+        const edit = async (fields: Record<string, unknown>, expected: Record<string, unknown>) =>
+            (await client.callTool({ name: "edit_task", arguments: { key: "STALE-1", ...fields, expected } })).structuredContent as any;
+        const read = () => context.cli(["task", "view", "STALE-1"]);
+        const events = () => context.cli(["activity", "list", "--task", "STALE-1"]).filter((event: any) => event.action === "edit");
+        context.cli(["task", "edit", "STALE-1", "--title", "C"]);
+        const beforeConflict = events().length;
+        expect(await edit({ title: "B", description: "Draft text" }, { title: "A", description: "Original text" }))
+            .toMatchObject({ kind: "error", uncertain: false, changedFields: ["title"], store: context.settings.store });
+        expect(read()).toMatchObject({ title: "C", description: "Original text", priority: "high" });
+        expect(events()).toHaveLength(beforeConflict);
+        expect(await edit({ title: "C" }, { title: "A" })).toMatchObject({ kind: "error", changedFields: ["title"] });
+        expect(events()).toHaveLength(beforeConflict);
+        expect(await edit({ title: "B" }, { title: "C" })).toMatchObject({ kind: "ready", changed: true });
+        context.cli(["task", "edit", "STALE-1", "--priority", "low"]);
+        expect(await edit({ description: "Draft text" }, { description: "Original text" })).toMatchObject({ kind: "ready", changed: true });
+        expect(read()).toMatchObject({ title: "B", description: "Draft text", priority: "low" });
+        expect(await edit({ description: "", priority: null }, { description: "Draft text", priority: "low" }))
+            .toMatchObject({ kind: "ready", changed: true });
+        expect(read()).toMatchObject({ description: null, priority: null });
+        expect(await edit({ description: "Restored", priority: "urgent" }, { description: "", priority: null }))
+            .toMatchObject({ kind: "ready", changed: true });
+        const finalEvent = events()[0];
+        expect(finalEvent).toMatchObject({ actor_kind: "human", actor_session_id: null, actor_thread_id: null, actor_agent: null, actor_model: null, actor_effort: null });
+        expect(finalEvent.actor_client).toEndWith(` ${CODEX_CLIENT}`);
+        expect(existsSync(wrongStore)).toBe(false);
+    } finally {
+        await client.close();
+    }
+}, 30000);
+
 test("relocated Node artifact reports an absent store without creating it", async () => {
     const absent = join(context.directory, "absent-store");
     const config = join(context.directory, "absent-config.json");

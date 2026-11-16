@@ -50,6 +50,7 @@ export type TaskActionRead = {
   changed?: boolean;
   error?: string;
   uncertain?: boolean;
+  changedFields?: string[];
 };
 
 export type TaskEdits = {
@@ -164,7 +165,7 @@ export function createHumanActionReader(settings: Settings): CliReader {
 export async function editTask(
   settings: Settings,
   rawKey: string,
-  edits: TaskEdits,
+  edits: TaskEdits & { expected?: TaskEdits },
   reader: CliReader,
   signal?: AbortSignal,
 ): Promise<TaskActionRead> {
@@ -179,6 +180,9 @@ export async function editTask(
     if (edits[field] !== undefined) {
       args.push(`--${field}=${edits[field] ?? "none"}`);
     }
+    if (edits.expected?.[field] !== undefined) {
+      args.push(`--expect-${field}=${edits.expected[field] ?? "none"}`);
+    }
   }
   const result = await reader.run<PresentedTaskChange>(args, signal);
   if (!result.ok) {
@@ -188,6 +192,7 @@ export async function editTask(
       key,
       error: result.error,
       uncertain: result.code === undefined,
+      changedFields: result.code === "conflict" ? result.changedFields : undefined,
     };
   }
 

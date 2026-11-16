@@ -301,7 +301,7 @@ test.skipIf(process.platform === "win32")("inherited relative stores stay unknow
     }
 });
 test("observer refuses unsupported CLI versions before database verification", () => {
-    for (const [index, version] of ["0.42.0", "0.42.0-dev", "0.43.0", "0.43.1", "0.43.0-dev", "0.44.0-dev", "0.44.0-rc.1", "00.44.0-dev", "unknown"].entries()) {
+    for (const [index, version] of ["0.42.0", "0.42.0-dev", "0.43.0", "0.43.1", "0.43.0-dev", "0.44.0", "0.44.1-dev", "0.45.0-dev", "0.45.0-rc.1", "00.45.0-dev", "unknown"].entries()) {
         const sentinel = join(context.directory, `unexpected-store-open-${index}`);
         const executable = join(context.directory, `old-cli-${index}.mjs`);
         writeFileSync(executable, `import {writeFileSync} from 'node:fs'; if (process.argv[2] === '--version') { console.log(${JSON.stringify(version)}); } else { writeFileSync(${JSON.stringify(sentinel)}, 'unexpected'); }`);
@@ -314,7 +314,7 @@ test("observer refuses unsupported CLI versions before database verification", (
     }
 });
 test("observer verifies references with stable releases and newer canonical development builds", () => {
-    for (const [index, version] of ["0.44.0", "0.44.1-dev", "0.45.0-dev", "1.0.0-dev"].entries()) {
+    for (const [index, version] of ["0.45.0", "0.45.1-dev", "0.46.0-dev", "1.0.0-dev"].entries()) {
         const executable = join(context.directory, `supported-cli-${index}.mjs`);
         writeFileSync(executable, `import {spawnSync} from 'node:child_process';
 if (process.argv[2] === '--version') { console.log(${JSON.stringify(version)}); }

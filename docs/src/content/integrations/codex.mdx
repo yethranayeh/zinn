@@ -12,12 +12,12 @@ This guide covers the Experimental **0.1.0** candidate. Its versioned archive co
 ## Requirements
 
 - Codex desktop on macOS with local plugin marketplaces, lifecycle hooks and MCP Apps conversation panels. See [Compatibility](#compatibility) for the candidate's verification status.
-- Node.js 24.15.0 or newer and Zinn CLI 0.44.0 or newer on the app's `PATH`.
+- Node.js 24.15.0 or newer and Zinn CLI 0.45.0 or newer on the app's `PATH`.
 - An existing Zinn database that the installed CLI can read.
 
 Follow [CLI installation](/docs/installation) to install Zinn. The archive runs with Node and the installed CLI. Bun, Astro, Tailwind and the source checkout are build tools.
 
-A `-dev` CLI build must have a numeric version newer than `0.44.0`.
+A `-dev` CLI build must have a numeric version newer than `0.45.0`.
 
 The inspector and hook verification use ordinary CLI read commands with the host user's permissions. Normal database compatibility rules apply, including backups and automatic upgrades when the CLI opens an older database. Current-schema reads leave task data and activity unchanged. SQLite manages its normal WAL coordination files.
 
@@ -110,13 +110,13 @@ Panel moves and field saves record your normal CLI human identity, with inherite
 
 ### Edit task fields
 
-For an active task, select **Edit**, change its title, description or priority, then select **Save**. Saving sends only changed fields through ordinary `zinn task edit` and reads the task again afterward. **None** clears the priority. An empty description clears its stored value. Priority choices come from the configured CLI. If loading them fails, title and description remain editable while priority stays unchanged. Use **Retry priorities** to try loading the choices again.
+For an active task, select **Edit**, change its title, description or priority, then select **Save**. Saving sends only changed fields through `zinn task edit`, together with their values when you opened Edit, and reads the task again afterward. **None** clears the priority. An empty description clears its stored value. Priority choices come from the configured CLI. If loading them fails, title and description remain editable while priority stays unchanged. Use **Retry priorities** to try loading the choices again.
 
 There is no autosave. **Cancel**, **Refresh** or opening another task requires explicit discard when the draft has changes. Keep the panel open while you work: drafts stay in panel memory, while remembered selection stores only the task key.
 
 Validation, permission and write failures keep the draft. If the host cannot confirm whether a save completed, the panel reads the current task without replaying the write. Review the refreshed task before retrying **Save**. If the follow-up read fails, the draft remains available for explicit recovery.
 
-A supplied field value replaces that field's current value, including a value another client saved after you opened the editor. Refresh before editing when you need the latest contents. A save that changes no stored values adds no activity.
+If another client changes a field you edited, Save refuses the whole edit and names the conflicting fields. Your draft stays open while the panel reads the current task for comparison. There is no automatic retry or merge. To start from the current values, cancel and explicitly discard the draft, then reopen Edit. Changes to fields you left untouched survive and do not block Save. A refused save or a save that changes no stored values adds no activity.
 
 ### Current-chat references
 
@@ -197,7 +197,7 @@ If saving fails, keep the panel open, read its error and review the current task
 
 Version 0.1.0 is an Experimental candidate. Native macOS Desktop certification for this candidate is pending. Native support is tied to the exact app, plugin, Node and CLI versions certified for a release.
 
-The candidate's installed-backend check used `codex-cli 0.167.0-alpha.4.1`, Node `26.13.0` and published Zinn CLI `0.44.0` on macOS. It covered startup, task inspection, human field saves, exact inspector assets, persisted plugin disable, removal and reinstall. Backend tests also run on macOS, Linux and Windows. Native panel rendering and hook behavior require their own host checks. Identity command rewriting uses Unix shell syntax.
+An earlier candidate's installed-backend check used `codex-cli 0.167.0-alpha.4.1`, Node `26.13.0` and published Zinn CLI `0.44.0` on macOS. It covered startup, task inspection, human field saves, exact inspector assets, persisted plugin disable, removal and reinstall. Backend tests also run on macOS, Linux and Windows. Native panel rendering and hook behavior require their own host checks. Identity command rewriting uses Unix shell syntax.
 
 When the host or plugin version changes, recheck native opening, hook trust, references, human Move and Save attribution, selection after reopen, update, disable, removal and rollback before relying on that combination. Zinn maintains the plugin and its compatibility fixes.
 
