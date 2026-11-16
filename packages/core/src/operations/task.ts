@@ -684,6 +684,8 @@ export const task = {
   },
   label: {
     getAll: (taskKey: string) => dbTaskLabel.getAllByTaskId(getTaskByKey(taskKey).id),
+    /** Reads the labels of many tasks at once, keyed by task ID. An unknown ID has no labels. */
+    getAllByTaskIds: (taskIds: ReadonlyArray<string>) => dbTaskLabel.getAllByTaskIds(taskIds),
     add: (input: TaskLabelInput, actor: Actor): TaskChange => {
       const props = validateTaskInput(taskLabelSchema, input);
       return task.edit({ taskKey: props.taskKey, addLabelNames: props.labelNames }, actor);

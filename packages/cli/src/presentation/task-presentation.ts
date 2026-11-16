@@ -45,34 +45,46 @@ export function formatLabelNames(labelNames: Array<string>) {
   return formatTaskLabelNames(labelNames, getLabelColorsByName());
 }
 
-export function presentTask(
-  taskMatch: TaskWithKey,
+/** Shapes many tasks with one label read for all of them */
+export function presentTasks(
+  taskMatches: ReadonlyArray<TaskWithKey>,
   board: ColumnBoard = createColumnBoard(),
-): PresentedTask {
-  const labels = task.label.getAll(taskMatch.key);
-  const projectColumns = board(taskMatch.project_id);
-  const columnMatch = projectColumns.find((boardColumn) => boardColumn.id === taskMatch.column_id)!;
-  const placement = columnPlacement(projectColumns, taskMatch.column_id);
-  return {
-    id: taskMatch.id,
-    key: taskMatch.key,
-    project_id: taskMatch.project_id,
-    status: taskMatch.archived_at == null ? "Active" : "Archived",
-    column: columnMatch.name,
-    column_id: taskMatch.column_id,
-    is_first: placement.is_first,
-    is_last: placement.is_last,
-    column_category: columnMatch.category ?? null,
-    title: taskMatch.title,
-    description: taskMatch.description,
-    priority: taskMatch.priority,
-    due_at: taskMatch.due_at ?? null,
-    labels: labels.map((label) => label.name),
-    label_ids: labels.map((label) => label.id),
-    created_at: taskMatch.created_at,
-    updated_at: taskMatch.updated_at,
-    claim: presentClaim(taskMatch.claim),
-  };
+): Array<PresentedTask> {
+  const labelsByTaskId = task.label.getAllByTaskIds(taskMatches.map((taskMatch) => taskMatch.id));
+
+  return taskMatches.map((taskMatch) => {
+    const labels = labelsByTaskId.get(taskMatch.id)!;
+    const projectColumns = board(taskMatch.project_id);
+    const columnMatch = projectColumns.find(
+      (boardColumn) => boardColumn.id === taskMatch.column_id,
+    )!;
+    const placement = columnPlacement(projectColumns, taskMatch.column_id);
+
+    return {
+      id: taskMatch.id,
+      key: taskMatch.key,
+      project_id: taskMatch.project_id,
+      status: taskMatch.archived_at == null ? "Active" : "Archived",
+      column: columnMatch.name,
+      column_id: taskMatch.column_id,
+      is_first: placement.is_first,
+      is_last: placement.is_last,
+      column_category: columnMatch.category ?? null,
+      title: taskMatch.title,
+      description: taskMatch.description,
+      priority: taskMatch.priority,
+      due_at: taskMatch.due_at ?? null,
+      labels: labels.map((label) => label.name),
+      label_ids: labels.map((label) => label.id),
+      created_at: taskMatch.created_at,
+      updated_at: taskMatch.updated_at,
+      claim: presentClaim(taskMatch.claim),
+    };
+  });
+}
+
+export function presentTask(taskMatch: TaskWithKey, board?: ColumnBoard): PresentedTask {
+  return presentTasks([taskMatch], board)[0]!;
 }
 
 function presentClaim(claim: TaskWithKey["claim"]): PresentedTask["claim"] {

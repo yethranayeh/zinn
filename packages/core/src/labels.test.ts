@@ -153,3 +153,37 @@ test("task lists filter by every requested label without changing their order", 
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("labels of many tasks come back per task ID in one read", () => {
+  const directory = mkdtempSync(join(tmpdir(), "zinn-labels-many-"));
+  try {
+    withStore(directory, () => {
+      const actor = { name: "Test Human", email: null, kind: "human" as const };
+      const app = project.create({ key: "APP" }, actor);
+      const other = project.create({ key: "OTHER" }, actor);
+      for (const name of ["groom", "Bug", "auth"]) {
+        label.create({ name }, actor);
+      }
+
+      const tagged = task.create({ project_id: app.id, title: "Tagged", labelNames: ["groom", "Bug", "auth"] }, actor);
+      const plain = task.create({ project_id: app.id, title: "Plain" }, actor);
+      const elsewhere = task.create({ project_id: other.id, title: "Elsewhere", labelNames: ["Bug"] }, actor);
+      const archived = task.create({ project_id: other.id, title: "Archived", labelNames: ["groom"] }, actor);
+      task.archive(archived.key, actor);
+      const unknownId = "00000000-0000-7000-8000-000000000000";
+
+      const labelsByTaskId = task.label.getAllByTaskIds([tagged.id, plain.id, elsewhere.id, archived.id, unknownId, tagged.id]);
+      const names = (taskId: string) => labelsByTaskId.get(taskId)!.map((entry) => entry.name);
+
+      assert.deepEqual(names(tagged.id), ["auth", "Bug", "groom"]);
+      assert.deepEqual(names(plain.id), []);
+      assert.deepEqual(names(elsewhere.id), ["Bug"]);
+      assert.deepEqual(names(archived.id), ["groom"]);
+      assert.deepEqual(names(unknownId), []);
+      assert.deepEqual(labelsByTaskId.get(tagged.id), task.label.getAll(tagged.key));
+      assert.equal(task.label.getAllByTaskIds([]).size, 0);
+    });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

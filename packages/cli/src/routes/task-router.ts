@@ -91,6 +91,7 @@ import {
   formatTaskList,
   formatTaskTimestamps,
   presentTask,
+  presentTasks,
 } from "../presentation/task-presentation.js";
 
 // A column is changed with task move, so a guessed --status or --column suggests it with the same task keys.
@@ -603,9 +604,8 @@ Examples:
       });
 
       const board = createColumnBoard();
-      output(
-        page.tasks.map((taskMatch) => presentTask(taskMatch, board)),
-        (presentedTasks) => formatTaskList(presentedTasks, { showsStatus: values.all }),
+      output(presentTasks(page.tasks, board), (presentedTasks) =>
+        formatTaskList(presentedTasks, { showsStatus: values.all }),
       );
 
       if (page.nextCursor !== undefined) {
@@ -691,9 +691,8 @@ Example: zinn task list MDR --label cli`,
       });
 
       const board = createColumnBoard();
-      output(
-        result.tasks.map((taskMatch) => presentTask(taskMatch, board)),
-        (presentedTasks) => formatTaskList(presentedTasks, { showsStatus: values.all }),
+      output(presentTasks(result.tasks, board), (presentedTasks) =>
+        formatTaskList(presentedTasks, { showsStatus: values.all }),
       );
 
       if (result.hiddenArchivedCount > 0) {
@@ -1272,7 +1271,7 @@ Example: zinn task release MDR-1`,
       const taskKeys = taskDeleteManySchema.parse(positionals);
       const taskMatches = taskKeys.map((taskKey) => task.getByKey(taskKey));
       const board = createColumnBoard();
-      const presented = taskMatches.map((taskMatch) => presentTask(taskMatch, board));
+      const presented = presentTasks(taskMatches, board);
       const canDelete = await confirmAction(
         `Are you sure you want to delete ${taskMatches.map((match) => match.key).join(", ")}?`,
         values.yes === true,
