@@ -358,6 +358,22 @@ test("ZINN-585: no renewal from another session, a no-op edit, a refused expecte
   });
 });
 
+test("ZINN-585: a guarded move refused for the task's column neither renews nor releases the claim", () => {
+  withClaimStore((taskKey) => {
+    task.claim({ taskKey, leaseMs: LEASE_MS }, agentA);
+    at(START + MINUTE_MS);
+
+    for (const targetColumn of ["Doing", "Done"]) {
+      const failure = expectRefused(taskKey, () =>
+        task.move({ taskKey, targetColumn, fromColumn: "Review" }, agentA),
+      );
+      expect(failure).toMatchObject({ kind: "conflict", facts: { reason: "column_changed" } });
+    }
+
+    expect(claimRows()).toMatchObject([{ renewed_at: START, worked_at: START }]);
+  });
+});
+
 test("ZINN-585: heartbeats stop extending a claim 24 hours after the holder's last work, and work revives it", () => {
   withClaimStore((taskKey) => {
     task.claim({ taskKey, leaseMs: LEASE_MS }, agentA);
@@ -459,7 +475,10 @@ test("ZINN-585: every kind of task result carries the task's claim", () => {
     expect(claimOf(task.getAll())).toEqual(both);
     expect(claimOf(task.getPage({ limit: 1 }).tasks)).toEqual({ [taskKey]: "claimed" });
     expect(claimOf(task.search({ query: "Claimed" }).tasks)).toEqual({ [taskKey]: "claimed" });
-    expect(task.next()).toMatchObject({ key: taskKey, claim: live });
+    expect(task.next()).toMatchObject({ key: other.key, claim: null });
+    at(START + LEASE_MS);
+    expect(task.next()).toMatchObject({ key: taskKey, claim: { state: "expired", actor_session_id: "session-a" } });
+    at(START);
     expect(task.getByKey(taskKey).claim).toMatchObject(live);
     expect(task.create({ project_id: projectId, title: "New" }, alice).claim).toBeNull();
     expect(task.edit({ taskKey, title: "Edited" }, agentA).task.claim).toMatchObject(live);
