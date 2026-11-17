@@ -7,6 +7,8 @@ const repositoryDirectory = join(import.meta.dir, "..");
 const project = process.argv[2];
 const inspectorDirectory = "integrations/opencode/inspector/";
 const codexDirectory = "integrations/codex/";
+// Claude Code plugins type-check against the running engine's declarations: bun run claude-code:check.
+const claudeCodeDirectory = "integrations/claude-code/";
 
 if (
   project !== undefined &&
@@ -24,7 +26,8 @@ const files = listWorkingTreeFiles(repositoryDirectory).filter((path) => {
     project === undefined
       ? !path.startsWith("docs/") &&
         !path.startsWith(inspectorDirectory) &&
-        !path.startsWith(codexDirectory)
+        !path.startsWith(codexDirectory) &&
+        !path.startsWith(claudeCodeDirectory)
       : path.startsWith(project + "/");
   return ownsFile && /\.(?:[cm]?ts|tsx)$/.test(path);
 });

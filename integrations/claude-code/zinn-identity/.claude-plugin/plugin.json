@@ -1,0 +1,28 @@
+{
+	"name": "zinn-identity",
+	"version": "0.1.0",
+	"description": "Declares Claude Code identity to Zinn in the environment of each Bash or Monitor shell: ZINN_SESSION_ID (the conversation), and for the one loop whose call is in flight ZINN_THREAD_ID (a subagent's agentId, unset on the main loop), ZINN_AGENT, ZINN_MODEL, ZINN_EFFORT. When calls of two loops are in flight at once the per-loop four are left unset rather than guessed. Environment only: no tool, no prompt section, no command, no drawing, so it costs no tokens. Never touches AI_AGENT.",
+	"author": {
+		"name": "Zinn"
+	},
+	"userConfig": {
+		"enabled": {
+			"type": "boolean",
+			"title": "Declare identity",
+			"description": "Off registers no hook: no ZINN_* variable is written.",
+			"default": true
+		},
+		"log": {
+			"type": "boolean",
+			"title": "Decision log",
+			"description": "Write each decision as JSONL to the folder below: loop ids, model, effort and which variables were written, never a command or transcript text. ZINN_IDENTITY_LOG=1 turns it on too.",
+			"default": false
+		},
+		"logDir": {
+			"type": "string",
+			"title": "Log folder",
+			"description": "Absolute folder for the decision log. Empty: <home>/.zinn/traces/zinn-identity, where <home> is HOME then USERPROFILE. Never a folder inside the plugin tree (a --plugin-dir session watches it and reloads).",
+			"default": ""
+		}
+	}
+}

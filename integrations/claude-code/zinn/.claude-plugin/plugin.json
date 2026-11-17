@@ -1,0 +1,126 @@
+{
+	"name": "zinn",
+	"version": "0.1.0",
+	"description": "Zinn task keys in the Claude Code transcript and a Zinn pane. Under each reply, a status mark and a short title for every task key it mentions, with a key the store lacks flagged. /zinn-show opens a task, a board or the list of boards. Draws only and reads the store read-only by argv: no tool, no prompt section, no model turn, so it costs no tokens.",
+	"types": "./types/index.d.ts",
+	"author": {
+		"name": "Zinn"
+	},
+	"userConfig": {
+		"enabled": {
+			"type": "boolean",
+			"title": "Decorate keys",
+			"description": "Off draws nothing and does not read the store.",
+			"default": true
+		},
+		"look": {
+			"type": "string",
+			"title": "Look",
+			"description": "suffix: ' · ◐ title' after the key. brackets: ' [◐ title]' after the key. colour: like suffix, key bold, status mark coloured, title dim. under: the text untouched, one legend under it (see legend). off. from-env reads ZINN_MENTIONS_LOOK, else under. Prefer the variable: a /config change writes the user settings.",
+			"options": ["from-env", "suffix", "brackets", "colour", "under", "off"],
+			"default": "from-env"
+		},
+		"legend": {
+			"type": "string",
+			"title": "Legend style",
+			"description": "How the line under a reply is laid out (look under only). spaced: '↳ KEY ◐ title   KEY ○ title'. brackets: '↳ [KEY ◐ title] [KEY ○ title]'. dots: entries separated by ' · '. stacked: one entry per line, keys padded to align (the default). from-env reads ZINN_MENTIONS_LEGEND, else stacked.",
+			"options": ["from-env", "spaced", "brackets", "dots", "stacked"],
+			"default": "from-env"
+		},
+		"maxEntries": {
+			"type": "string",
+			"title": "Entries per legend",
+			"description": "At most this many entries per legend block, then one dim '+N more' line. Applies to every legend style. A whole number: 0 or 1000 and up means no cap. An unknown key is never hidden by the cap. from-env reads ZINN_MENTIONS_MAX_ENTRIES, else 5.",
+			"default": "from-env"
+		},
+		"keyPress": {
+			"type": "string",
+			"title": "Press on a legend key",
+			"description": "What a click on the key of a stacked legend line does (look under, legend stacked). button (the default): the key is a button. link: the key is a Markdown link to the placeholder https://zinn.invalid/KEY, drawn with the raw address in brackets, and a ctrl-click opens that dead address. off: plain text. A press opens the pane on that task, and clicks reach it only in the fullscreen terminal. from-env reads ZINN_MENTIONS_KEY_PRESS, else button.",
+			"options": ["from-env", "off", "button", "link"],
+			"default": "from-env"
+		},
+		"marks": {
+			"type": "string",
+			"title": "Status mark",
+			"description": "shapes: ○ ◐ ◑ ⊘ ● (▪ archived). words: todo, in progress, review, blocked, done. from-env reads ZINN_MENTIONS_MARKS, else shapes.",
+			"options": ["from-env", "shapes", "words"],
+			"default": "from-env"
+		},
+		"titleLength": {
+			"type": "number",
+			"title": "Title length",
+			"description": "Characters of the task title shown after the key (an ellipsis counts as one). 0 shows the status mark only.",
+			"default": 40
+		},
+		"projects": {
+			"type": "string",
+			"title": "Projects",
+			"description": "Comma-separated project keys to decorate (for example ABC,XYZ). Empty decorates every project in the store. A key of another project is neither decorated nor flagged.",
+			"default": ""
+		},
+		"myPrompts": {
+			"type": "string",
+			"title": "My own prompts",
+			"description": "leave (the default): your own prompts are drawn as typed, with no line under them. To turn decoration of your prompts on, choose decorate here, or set the environment variable ZINN_MENTIONS_MY_PROMPTS=decorate before starting Claude Code. from-env reads ZINN_MENTIONS_MY_PROMPTS, else leave. Choosing leave here also keeps the plugin out of your prompts' drawing entirely.",
+			"options": ["from-env", "decorate", "leave"],
+			"default": "from-env"
+		},
+		"tailGuardMs": {
+			"type": "number",
+			"title": "Tail guard (ms)",
+			"description": "Replies only: a key at the very end of a streaming reply is drawn plain until the text has stood still this long (a streaming SAM-2 may become SAM-27). 0 turns it off.",
+			"default": 400
+		},
+		"log": {
+			"type": "boolean",
+			"title": "Timing log",
+			"description": "Write counts and timings (never transcript text) to the folder below. ZINN_MENTIONS_LOG=1 turns it on too.",
+			"default": false
+		},
+		"pollSeconds": {
+			"type": "number",
+			"title": "Live key map: poll (seconds)",
+			"description": "Every this many seconds the plugin runs one CLI call (zinn activity list --limit 1 --json, about 260 ms, no tokens) and reloads the key map only when the newest activity id changed: a write from another session or your own terminal. 0 turns the poll off. A value from 1 to 4 is raised to 5. The plugin also refreshes at once after a zinn write made through this session's Bash tool. That part has no option.",
+			"default": 30
+		},
+		"toastOnChange": {
+			"type": "boolean",
+			"title": "Toast when a key changes column",
+			"description": "A toast such as 'ABC-7 -> Review' when a refresh finds a key in a different board column than before. Reloads from /zinn refresh never toast. Set false to silence.",
+			"default": true
+		},
+		"logDir": {
+			"type": "string",
+			"title": "Log folder",
+			"description": "Absolute folder for the timing log, created on the first write. Empty: <home>/.zinn/traces/zinn, where <home> is HOME then USERPROFILE. Never a folder inside the plugin tree (a --plugin-dir session watches it and reloads) and never one inside a repository.",
+			"default": ""
+		},
+		"statusLine": {
+			"type": "string",
+			"title": "Line under the prompt",
+			"description": "When a line is pinned under the prompt. problems (the default): only while something is wrong (no key map, RESTART NEEDED, the log failed). always: the look, the key count and the timing at all times. off: never. The engine draws a pinned line as a notice with a warning mark, so a line that is always there reads as a fault. /zinn alone says the same in a toast. from-env reads ZINN_MENTIONS_STATUS_LINE.",
+			"options": ["from-env", "problems", "always", "off"],
+			"default": "from-env"
+		},
+		"footerLabel": {
+			"type": "boolean",
+			"title": "Footer label",
+			"description": "One dim word, zinn, among the mode labels at the right of the prompt footer: the sign that the plugin is loaded (zinn ✗ while something is wrong). Off draws no label.",
+			"default": true
+		},
+		"pane": {
+			"type": "boolean",
+			"title": "Zinn pane",
+			"description": "Off registers no /zinn-show command and opens no pane. A press on a legend key then says so in a toast.",
+			"default": true
+		},
+		"layout": {
+			"type": "string",
+			"title": "Pane layout",
+			"description": "How a task's overview is laid out in the pane. table: dense aligned columns, nothing wraps (the default). card: a compact card of five or six rows. sectioned: labelled fields, relations with titles, a longer description. from-env reads ZINN_TASK_PANE_LAYOUT, else table. Prefer the variable or the in-pane switch: a /config change writes the user settings.",
+			"options": ["from-env", "card", "sectioned", "table"],
+			"default": "from-env"
+		}
+	}
+}
