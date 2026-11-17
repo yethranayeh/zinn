@@ -123,12 +123,54 @@ const fieldClass =
 				<Button data-retry-priorities variant='outline' class={`${buttonClass} self-start`} hidden
 					>Retry priorities</Button
 				>
+				<section
+					data-save-error
+					role='alert'
+					tabindex='-1'
+					class='border-l-4 border-cinnabar p-3 text-sm text-cinnabar wrap-anywhere focus-visible:outline-2 focus-visible:outline-current'
+					hidden>
+					<h2 data-save-error-heading class='font-semibold'></h2>
+					<p data-save-error-message class='mt-1'></p>
+					<Button data-review-conflicts variant='outline' class={`${buttonClass} mt-3`} hidden>Review conflicts</Button>
+				</section>
+				<section
+					data-conflict-review
+					aria-label='Review conflicts'
+					class='flex min-w-0 flex-col gap-3 border border-pewter p-3'
+					hidden>
+					<h2 tabindex='-1' class='font-semibold'>Review conflicts</h2>
+					<p>Choose a value for each field. Applying choices updates your draft. Save writes your changes.</p>
+					<div data-conflict-fields class='flex min-w-0 flex-col gap-4'></div>
+					<div class='flex flex-wrap gap-2'>
+						<Button data-apply-conflicts variant='solid' class={buttonClass} disabled>Apply choices</Button>
+						<Button data-close-conflicts variant='outline' class={buttonClass}>Back to editing</Button>
+					</div>
+				</section>
 				<div class='flex flex-wrap gap-2'>
 					<Button type='submit' variant='solid' class={buttonClass}>Save</Button>
 					<Button data-cancel-edit variant='outline' class={buttonClass}>Cancel</Button>
 				</div>
 				<p data-edit-feedback role='status' class={mutedClass}></p>
 			</form>
+		</template>
+		<template id='conflict-field-template'>
+			<fieldset class='min-w-0 border border-pewter p-3'>
+				<legend class='px-1 font-semibold'></legend>
+				<div class='grid min-w-0 grid-cols-1 gap-3 min-[40rem]:grid-cols-2'>
+					<label class='flex min-w-0 flex-col gap-2'>
+						<span class='flex items-center gap-2'>
+							<input type='radio' value='saved' class='size-4 shrink-0 accent-current' />Use saved value
+						</span>
+						<span data-saved-value dir='auto' class='whitespace-pre-wrap wrap-anywhere'></span>
+					</label>
+					<label class='flex min-w-0 flex-col gap-2'>
+						<span class='flex items-center gap-2'>
+							<input type='radio' value='draft' class='size-4 shrink-0 accent-current' />Keep my draft
+						</span>
+						<span data-draft-value dir='auto' class='whitespace-pre-wrap wrap-anywhere'></span>
+					</label>
+				</div>
+			</fieldset>
 		</template>
 		<template id='move-template'>
 			<form class='move-controls flex min-w-0 flex-wrap items-end gap-2'>

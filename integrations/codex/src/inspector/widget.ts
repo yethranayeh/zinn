@@ -10,6 +10,15 @@ import type { PresentedTaskDetail } from "../../../../packages/cli/src/result-sc
 
 import { App, applyDocumentTheme, applyHostStyleVariables } from "@modelcontextprotocol/ext-apps";
 import { INSPECTOR_VERSION, RECENT_POLL_MS } from "../runtime";
+import {
+  EDIT_FIELDS,
+  applyConflictChoices,
+  changedEdits,
+  editValues,
+  type ConflictChoices,
+  type EditField,
+  type EditValues,
+} from "./edit-draft";
 
 const app = new App({ name: "Zinn task inspector", version: INSPECTOR_VERSION });
 const detail = document.querySelector<HTMLElement>("#detail")!;
@@ -416,55 +425,212 @@ function renderEdit(task: PresentedTaskDetail, article: HTMLElement) {
     const feedback = form.querySelector<HTMLElement>("[data-edit-feedback]")!;
     const priorityFeedback = form.querySelector<HTMLElement>("[data-priority-feedback]")!;
     const retryPriorities = form.querySelector<HTMLButtonElement>("[data-retry-priorities]")!;
+    const reviewButton = form.querySelector<HTMLButtonElement>("[data-review-conflicts]")!;
+    const review = form.querySelector<HTMLElement>("[data-conflict-review]")!;
+    const conflictFields = form.querySelector<HTMLElement>("[data-conflict-fields]")!;
+    const applyChoices = form.querySelector<HTMLButtonElement>("[data-apply-conflicts]")!;
+    let base = editValues(task);
+    let conflict: { fields: EditField[]; saved?: EditValues } | undefined;
+    let readingConflict = false;
     let prioritiesReady = false;
     let prioritiesLoading = false;
     title.value = task.title;
     description.value = task.description ?? "";
     priority.add(new Option(task.priority ?? "None", task.priority ?? ""));
     priority.value = task.priority ?? "";
-    function changes(): TaskEdits {
-      const edits: TaskEdits = {};
-      if (title.value !== task.title) {
-        edits.title = title.value;
-      }
-      if (description.value !== (task.description ?? "")) {
-        edits.description = description.value;
-      }
-      if (prioritiesReady && priority.value !== (task.priority ?? "")) {
-        edits.priority = priority.value === "" ? null : priority.value;
-      }
-      return edits;
+
+    function values(): EditValues {
+      return {
+        title: title.value,
+        description: description.value,
+        priority: prioritiesReady ? priority.value || null : base.priority,
+      };
     }
+
+    function changes(): TaskEdits {
+      return changedEdits(base, values());
+    }
+
+    function choices(): ConflictChoices {
+      const result: ConflictChoices = {};
+      for (const field of conflict?.fields ?? []) {
+        const checked = conflictFields.querySelector<HTMLInputElement>(
+          `input[name=conflict-${field}]:checked`,
+        );
+        if (checked?.value === "draft" || checked?.value === "saved") {
+          result[field] = checked.value;
+        }
+      }
+      return result;
+    }
+
+    function displayValue(value: string | null) {
+      return value === null ? "None" : value === "" ? "(empty)" : value;
+    }
+
     draft = { form, changes };
     const updateSave = () => {
-      save.disabled = saving || Object.keys(changes()).length === 0;
+      save.disabled =
+        saving || readingConflict || conflict !== undefined || Object.keys(changes()).length === 0;
       priority.disabled = saving || !prioritiesReady;
       retryPriorities.disabled = saving || prioritiesLoading;
+      reviewButton.disabled = saving || readingConflict;
+      const selectedChoices = choices();
+      applyChoices.disabled =
+        saving || !conflict?.saved || conflict.fields.some((field) => !selectedChoices[field]);
+      const current = values();
+      for (const node of conflictFields.querySelectorAll<HTMLElement>("[data-draft-value]")) {
+        node.textContent = displayValue(current[node.dataset.field as EditField]);
+      }
     };
+
+    function keepConflict(fields: string[], fresh?: PresentedTaskDetail) {
+      conflict = {
+        fields: EDIT_FIELDS.filter((field) => fields.includes(field)),
+        saved: fresh ? editValues(fresh) : undefined,
+      };
+      review.hidden = true;
+      conflictFields.replaceChildren();
+      reviewButton.hidden = false;
+    }
+
+    reviewButton.addEventListener("click", async () => {
+      if (!conflict || readingConflict || saving) {
+        return;
+      }
+
+      if (!conflict.saved) {
+        readingConflict = true;
+        updateSave();
+        try {
+          const response = await app.callServerTool({
+            name: "inspect_task",
+            arguments: { key: task.key },
+          });
+          const fresh = response.structuredContent as InspectorRead | undefined;
+
+          if (
+            response.isError ||
+            fresh?.kind !== "ready" ||
+            fresh.task?.key !== task.key ||
+            !fresh.fetchedAt
+          ) {
+            throw new Error(fresh?.error ?? "Could not read the current task.");
+          }
+
+          if (disposed || draft?.form !== form) {
+            return;
+          }
+
+          conflict.saved = editValues(fresh.task);
+          renderTaskContents(article, fresh.task, fresh.fetchedAt);
+          form.querySelector<HTMLElement>("[data-save-error-message]")!.textContent =
+            "Current values read. Your draft is kept. Choose which values to keep, then apply your choices.";
+        } catch (error) {
+          if (!disposed && draft?.form === form) {
+            form.querySelector<HTMLElement>("[data-save-error-message]")!.textContent =
+              `${String(error)} Your draft is kept. Select Review conflicts to retry the read.`;
+          }
+          return;
+        } finally {
+          readingConflict = false;
+          if (!disposed && draft?.form === form) {
+            updateSave();
+          }
+        }
+      }
+
+      if (disposed || draft?.form !== form) {
+        return;
+      }
+
+      conflictFields.replaceChildren();
+      for (const field of conflict.fields) {
+        const block = template<HTMLFieldSetElement>("conflict-field-template");
+        block.querySelector("legend")!.textContent = field.charAt(0).toUpperCase() + field.slice(1);
+        block.querySelector<HTMLElement>("[data-saved-value]")!.textContent = displayValue(
+          conflict.saved![field],
+        );
+        block.querySelector<HTMLElement>("[data-draft-value]")!.dataset.field = field;
+        for (const radio of block.querySelectorAll<HTMLInputElement>("input")) {
+          radio.name = `conflict-${field}`;
+        }
+        conflictFields.append(block);
+      }
+
+      review.hidden = false;
+      reviewButton.hidden = true;
+      updateSave();
+      review.querySelector<HTMLElement>("h2")!.focus();
+    });
+
+    form.querySelector("[data-close-conflicts]")!.addEventListener("click", () => {
+      review.hidden = true;
+      reviewButton.hidden = false;
+      reviewButton.focus();
+    });
+
+    applyChoices.addEventListener("click", () => {
+      if (applyChoices.disabled || !conflict?.saved) {
+        return;
+      }
+
+      const resolved = applyConflictChoices(base, values(), conflict.saved, choices());
+      base = resolved.base;
+      title.value = resolved.values.title;
+      description.value = resolved.values.description;
+
+      if (
+        ![...priority.options].some((option) => option.value === (resolved.values.priority ?? ""))
+      ) {
+        priority.add(
+          new Option(resolved.values.priority ?? "None", resolved.values.priority ?? ""),
+        );
+      }
+
+      priority.value = resolved.values.priority ?? "";
+      conflict = undefined;
+      conflictFields.replaceChildren();
+      review.hidden = true;
+      reviewButton.hidden = true;
+      form.querySelector<HTMLElement>("[data-save-error]")!.hidden = true;
+      feedback.textContent = Object.keys(changes()).length
+        ? "Conflict choices applied. Review your draft, then Save."
+        : "Saved values adopted. No draft changes to save.";
+      updateSave();
+      title.focus();
+    });
+
     async function loadPriorities() {
       if (prioritiesLoading || saving) {
         return;
       }
+
       prioritiesLoading = true;
       priorityFeedback.textContent = "Loading priorities…";
       updateSave();
+
       try {
         const response = await app.callServerTool({ name: "task_edit_options", arguments: {} });
         if (disposed || draft?.form !== form) {
           return;
         }
+
         const result = response.structuredContent as TaskEditOptionsRead | undefined;
         if (response.isError || result?.kind !== "ready" || !result.priorities) {
           throw new Error(result?.error ?? "Could not read task priority choices.");
         }
+
         priority.replaceChildren(new Option("None", ""));
         for (const value of result.priorities) {
           priority.add(new Option(value.charAt(0).toUpperCase() + value.slice(1), value));
         }
-        if (task.priority !== null && !result.priorities.includes(task.priority)) {
-          priority.add(new Option(task.priority, task.priority));
+
+        if (base.priority !== null && !result.priorities.includes(base.priority)) {
+          priority.add(new Option(base.priority, base.priority));
         }
-        priority.value = task.priority ?? "";
+
+        priority.value = base.priority ?? "";
         prioritiesReady = true;
         priorityFeedback.textContent = "";
         retryPriorities.hidden = true;
@@ -480,6 +646,7 @@ function renderEdit(task: PresentedTaskDetail, article: HTMLElement) {
         }
       }
     }
+
     retryPriorities.addEventListener("click", () => void loadPriorities());
     form.addEventListener("input", updateSave);
     form.addEventListener("change", updateSave);
@@ -496,12 +663,14 @@ function renderEdit(task: PresentedTaskDetail, article: HTMLElement) {
         });
       });
     });
+
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       if (!save.disabled) {
-        void saveEdits(task, form, changes(), feedback, updateSave);
+        void saveEdits(task.key, base, form, changes(), feedback, updateSave, keepConflict);
       }
     });
+
     container.replaceChildren(form);
     article.querySelector<HTMLElement>("[data-move]")!.hidden = true;
     updateSave();
@@ -512,34 +681,43 @@ function renderEdit(task: PresentedTaskDetail, article: HTMLElement) {
 }
 
 async function saveEdits(
-  task: PresentedTaskDetail,
+  key: string,
+  base: EditValues,
   form: HTMLFormElement,
   edits: TaskEdits,
   feedback: HTMLElement,
   updateSave: () => void,
+  keepConflict: (fields: string[], fresh?: PresentedTaskDetail) => void,
 ) {
   if (saving || disposed) {
     return;
   }
-  const key = task.key;
   saving = true;
+  const saveError = form.querySelector<HTMLElement>("[data-save-error]")!;
+  saveError.hidden = true;
   afterDiscard = undefined;
   discardPrompt.hidden = true;
+
   for (const control of form.querySelectorAll<
     HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement
   >("input, textarea, select, button")) {
     control.disabled = true;
   }
+
   feedback.textContent = `Saving ${key}…`;
   let confirmed = false;
   let uncertain = false;
   let conflicted = false;
+  let changedFields: string[] = [];
+  let currentTask: PresentedTaskDetail | undefined;
+  let readFailed = false;
   let message = "";
+
   try {
     const expected: TaskEdits = {
-      title: edits.title === undefined ? undefined : task.title,
-      description: edits.description === undefined ? undefined : (task.description ?? ""),
-      priority: edits.priority === undefined ? undefined : task.priority,
+      title: edits.title === undefined ? undefined : base.title,
+      description: edits.description === undefined ? undefined : base.description,
+      priority: edits.priority === undefined ? undefined : base.priority,
     };
     const response = await app.callServerTool({
       name: "edit_task",
@@ -552,12 +730,13 @@ async function saveEdits(
     confirmed = result.kind === "ready";
     uncertain = !confirmed && result.uncertain === true;
     conflicted = !confirmed && (result.changedFields?.length ?? 0) > 0;
+    changedFields = result.changedFields ?? [];
     message = confirmed
       ? result.changed
         ? `Saved ${key}.`
         : `No stored changes for ${key}.`
       : conflicted
-        ? `Save refused because these fields changed since you opened Edit: ${result.changedFields!.join(", ")}. Your draft is kept.`
+        ? `Saved values changed for: ${changedFields.join(", ")}. Your draft is kept.`
         : (result.error ?? `Could not save ${key}.`);
   } catch (error) {
     uncertain = true;
@@ -585,27 +764,52 @@ async function saveEdits(
             detail.querySelector<HTMLButtonElement>("[data-start-edit]")?.focus();
           }
         } else {
+          currentTask = fresh.task;
           renderTaskContents(form.closest("article")!, fresh.task, fresh.fetchedAt);
           message += conflicted
-            ? " Current task read. Compare it with your draft. Cancel and discard the draft, then reopen Edit to use the current values."
+            ? " Review conflicts to choose which values to keep before saving again."
             : " Current task read. Review it before explicitly retrying Save. Your draft is kept.";
         }
       }
     }
   } catch (error) {
-    message += ` ${String(error)} Your draft is kept. Refresh or retry Save explicitly.`;
+    readFailed = true;
+    message += ` ${String(error)} Your draft is kept.`;
+    message += conflicted
+      ? " Select Review conflicts to retry the read."
+      : " Refresh or retry Save explicitly.";
   } finally {
     saving = false;
     if (!disposed && form.isConnected) {
-      feedback.textContent = message;
+      if (conflicted) {
+        keepConflict(changedFields, currentTask);
+      }
+      if (!confirmed || readFailed) {
+        feedback.textContent = "";
+        saveError.querySelector<HTMLElement>("[data-save-error-heading]")!.textContent = conflicted
+          ? "Save refused"
+          : confirmed
+            ? "Saved, but refresh failed"
+            : uncertain
+              ? "Save not confirmed"
+              : "Save failed";
+        saveError.querySelector<HTMLElement>("[data-save-error-message]")!.textContent = message;
+        saveError.hidden = false;
+      } else {
+        feedback.textContent = message;
+      }
       for (const control of form.querySelectorAll<
         HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement
       >("input, textarea, select, button")) {
         control.disabled = false;
       }
       updateSave();
+      if (!saveError.hidden && document.hasFocus()) {
+        saveError.focus();
+      }
     }
   }
+
   void refreshRecent();
 }
 

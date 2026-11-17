@@ -116,7 +116,7 @@ There is no autosave. **Cancel**, **Refresh** or opening another task requires e
 
 Validation, permission and write failures keep the draft. If the host cannot confirm whether a save completed, the panel reads the current task without replaying the write. Review the refreshed task before retrying **Save**. If the follow-up read fails, the draft remains available for explicit recovery.
 
-If another client changes a field you edited, Save refuses the whole edit and names the conflicting fields. Your draft stays open while the panel reads the current task for comparison. There is no automatic retry or merge. To start from the current values, cancel and explicitly discard the draft, then reopen Edit. Changes to fields you left untouched survive and do not block Save. A refused save or a save that changes no stored values adds no activity.
+If another client changes a field you edited, Save refuses the whole edit and names the conflicting fields. Your draft stays open while the panel reads the current task. Select **Review conflicts**, then choose **Keep my draft** or **Use saved value** for each conflicting field. **Apply choices** updates the draft without writing. Select **Save** when ready. The next save checks the reviewed saved values, so another intervening change refuses again. If reading the current task fails, **Review conflicts** retries the read. There is no automatic retry or merge. Changes to fields you left untouched survive and do not block Save. A refused save or a save that changes no stored values adds no activity.
 
 ### Current-chat references
 
