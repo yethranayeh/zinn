@@ -69,6 +69,17 @@ An up to date database is unchanged when a migration is attempted, which means n
 
 A database with a newer schema can be read, but Zinn refuses changes to it. Use a newer Zinn to change it.
 
+### Column categories after upgrading
+
+Zinn 0.45.0 (schema version 5) gives every existing column a [category](/docs/cli#start-a-project). Columns named Backlog, TODO, In Progress, Doing, Review, Done or Cancelled, in any casing, take the category of the same meaning. Every other column becomes `todo`, so its tasks count as open. Before categories, a board's last column held its closed tasks. A last column with another name, such as Shipped, now holds open tasks until you change its category.
+
+Check each board after upgrading and correct any category that is wrong:
+
+```sh title="Check and correct column categories"
+zinn project column list MDR
+zinn project column edit MDR Shipped --category done --yes
+```
+
 ## Failure logs
 
 A CLI command that fails with a `storage` or `internal` error writes one log file to `logs/` in the selected Zinn directory and names the file in its error. Other errors and successful commands write no log. A log's name follows the same pattern as a backup's, such as `2026-09-29T12-30-05Z-cli-0.32.0-b38178c0.log`.
