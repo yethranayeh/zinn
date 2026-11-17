@@ -23,6 +23,7 @@ import {
   taskStateFilterSchema,
   CLAIM_WORK_LIMIT_MS,
   MIN_CLAIM_LEASE_MS,
+  CoreError,
 } from "@zinn-dev/core";
 
 import { listLimitOption, listLimitDescription, parseListLimit } from "../list-limit.js";
@@ -106,6 +107,35 @@ function suggestTaskMove(args: Array<string>, options: ParseArgsOptionsConfig = 
   const columnWords = typeof guessedColumn === "string" ? [guessedColumn] : [];
 
   return ["task", "move", ...positionals, ...columnWords];
+}
+
+// Project view lists the archived count beside the columns, so "Archived" reads like a move target.
+const archiveTargetNames = ["archive", "archived"];
+
+/** Moves tasks, and points a move to a missing Archived column at task archive. */
+function moveOrPointToArchive(taskKeys: Array<string>, targetColumn: string, fromColumn?: string) {
+  try {
+    return task.moveMany({ taskKeys, targetColumn, fromColumn }, currentActor());
+  } catch (error) {
+    const isMissingArchivedTarget =
+      error instanceof CoreError &&
+      error.kind === "missing" &&
+      error.facts.entity === "column" &&
+      error.facts.key === targetColumn &&
+      archiveTargetNames.includes(targetColumn.toLowerCase());
+    if (!isMissingArchivedTarget) {
+      throw error;
+    }
+
+    throw new CliError(
+      `${error.message}. Archive tasks with zinn task archive ${taskKeys.join(" ")}.`,
+      "not_found",
+      { entity: "column", key: targetColumn, source: "explicit" },
+      undefined,
+      ["task", "archive"],
+      error,
+    );
+  }
 }
 
 const priorityOption = {
@@ -1014,10 +1044,7 @@ Examples:
 
       const taskKeys = positionals.slice(0, -1);
       const targetColumn = positionals.at(-1)!;
-      const moves = task.moveMany(
-        { taskKeys, targetColumn, fromColumn: values.from },
-        currentActor(),
-      );
+      const moves = moveOrPointToArchive(taskKeys, targetColumn, values.from);
       const board = createColumnBoard();
       outputChanges(
         moves,

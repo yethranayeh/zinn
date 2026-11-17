@@ -39,6 +39,54 @@ test("task move rejects a column outside the task's project", async () => {
   });
 });
 
+test("task move to a missing Archived column points to task archive and changes nothing", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "SHELF"], testDir);
+    await runZinn(["task", "create", "SHELF", "--title", "one"], testDir);
+    await runZinn(["task", "create", "SHELF", "--title", "two"], testDir);
+
+    const text = await runZinn(["task", "move", "SHELF-1", "SHELF-2", "archived"], testDir);
+    const json = await runZinn(["--json", "task", "move", "SHELF-1", "SHELF-2", "Archived"], testDir);
+
+    expect(text.code).toBe(1);
+    expect(text.stderr).toContain("zinn task archive SHELF-1 SHELF-2");
+    expect(json.code).toBe(1);
+    expect(errorDocumentSchema.parse(JSON.parse(json.stderr)).error).toMatchObject({
+      code: "not_found",
+      details: { entity: "column", key: "Archived", source: "explicit" },
+    });
+    expect((await runZinn(["task", "list", "SHELF"], testDir)).stdout).toMatch(/^SHELF-1 \| Backlog[^\n]*\nSHELF-2 \| Backlog/);
+  });
+});
+
+test("task move names task archive for a missing Archive column but not for other missing columns", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "BOX"], testDir);
+    await runZinn(["task", "create", "BOX", "--title", "one"], testDir);
+
+    const archive = await runZinn(["task", "move", "BOX-1", "Archive"], testDir);
+    const other = await runZinn(["task", "move", "BOX-1", "To archive"], testDir);
+
+    expect(archive.code).toBe(1);
+    expect(archive.stderr).toContain("zinn task archive BOX-1");
+    expect(other.code).toBe(1);
+    expect(other.stderr).not.toContain("task archive");
+  });
+});
+
+test("task move into a real Archived column moves the task", async () => {
+  await withIsolatedZinnDir(async (testDir) => {
+    await runZinn(["project", "create", "VAULT"], testDir);
+    await runZinn(["project", "column", "create", "--category", "done", "VAULT", "Archived"], testDir);
+    await runZinn(["task", "create", "VAULT", "--title", "kept"], testDir);
+
+    const result = await runZinn(["task", "move", "VAULT-1", "archived"], testDir);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("VAULT-1 | Archived");
+  });
+});
+
 test("task move to the current column is a no-op", async () => {
   await withIsolatedZinnDir(async (testDir) => {
     await runZinn(["project", "create", "STILL", "--name", "Still"], testDir);
