@@ -115,7 +115,6 @@ import { netShare } from "./figures";
 </section>
 
 <script>
-	import { trackEvent } from "../../scripts/analytics";
 	import { print } from "./canvas";
 	import { setupProgress } from "../ui/progress/progress";
 	import { setupDotNumeral } from "./dot-numeral";
@@ -157,13 +156,4 @@ import { netShare } from "./figures";
 	}
 
 	setupBilling();
-
-	for (const link of document.querySelectorAll<HTMLAnchorElement>("[data-site-event]")) {
-		link.addEventListener("click", () => {
-			const event = link.dataset.siteEvent;
-			if (event === "github-click" || event === "npm-click") {
-				trackEvent(event);
-			}
-		});
-	}
 </script>

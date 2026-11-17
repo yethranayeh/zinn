@@ -28,10 +28,22 @@ import { projectLinks } from "../../../../config/site";
 					<div class='mt-6'><PaletteStrip /></div>
 				</div>
 				<div class='flex flex-wrap gap-3 md:justify-end'>
-					<Button href={rexTheme.downloads.dark} download='zinn-dark' variant='solid' size='large'
+					<Button
+						href={rexTheme.downloads.dark}
+						download='zinn-dark'
+						variant='solid'
+						size='large'
+						data-site-event='theme-download'
+						data-site-event-theme='rex-dark'
 						>Download zinn-dark <Icon name='download' /></Button
 					>
-					<Button href={rexTheme.downloads.light} download='zinn-light' variant='outline' size='large'
+					<Button
+						href={rexTheme.downloads.light}
+						download='zinn-light'
+						variant='outline'
+						size='large'
+						data-site-event='theme-download'
+						data-site-event-theme='rex-light'
 						>Download zinn-light <Icon name='download' /></Button
 					>
 					<Button href='#installation' variant='outline' size='large'>Installation</Button>

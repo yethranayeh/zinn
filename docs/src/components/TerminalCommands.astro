@@ -35,6 +35,8 @@ const { label, commands, class: className, showsPrompt = true } = Astro.props;
 			label={`${showsPrompt ? "Copy commands" : "Copy code"}: ${label}`}
 			title={showsPrompt ? "Copy commands" : "Copy code"}
 			success={showsPrompt ? "Commands copied to clipboard." : "Code copied to clipboard."}
+			event='command-copy'
+			eventData={{ target: label.slice(0, 100), kind: showsPrompt ? "command" : "code" }}
 		/>
 	</div>
 </div>

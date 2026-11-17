@@ -18,6 +18,25 @@ export function tasksAt(position: number) {
   return Math.round(10 ** ((taskPowersOfTen * position) / lastPosition));
 }
 
+export type TaskBucket = "1-9" | "10-99" | "100-999" | "1000-9999" | "10000+";
+
+/** Fixed label for the task count at a slider position, used as event data */
+export function tasksBucket(tasks: number): TaskBucket {
+  if (tasks < 10) {
+    return "1-9";
+  }
+  if (tasks < 100) {
+    return "10-99";
+  }
+  if (tasks < 1000) {
+    return "100-999";
+  }
+  if (tasks < 10000) {
+    return "1000-9999";
+  }
+  return "10000+";
+}
+
 export function positionOf(tasks: number) {
   return Math.round((lastPosition * Math.log10(tasks)) / taskPowersOfTen);
 }

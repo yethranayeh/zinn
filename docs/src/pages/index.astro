@@ -167,19 +167,6 @@ const workflowCommands = [
 	</nav>
 </BaseLayout>
 
-<script>
-	import { trackEvent } from "../scripts/analytics";
-
-	for (const link of document.querySelectorAll<HTMLAnchorElement>("[data-site-event]")) {
-		link.addEventListener("click", () => {
-			const event = link.dataset.siteEvent;
-			if (event === "github-click" || event === "npm-click" || event === "twitter-click" || event === "bluesky-click") {
-				trackEvent(event);
-			}
-		});
-	}
-</script>
-
 <style is:global>
 	@supports (animation-timeline: view()) and (view-timeline-name: --workflow-sequence) {
 		@media (prefers-reduced-motion: no-preference) {

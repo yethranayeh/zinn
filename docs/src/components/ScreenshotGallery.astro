@@ -147,6 +147,7 @@ const lightboxId = `${id}-lightbox`;
 <script>
 	import type { ScreenshotAppearance, ScreenshotScene } from "./screenshot-gallery";
 	import { cloudinaryImage, cloudinarySources } from "../images/cloudinary";
+	import { trackEvent } from "../scripts/analytics";
 
 	for (const gallery of document.querySelectorAll<HTMLElement>("[data-screenshot-gallery]")) {
 		const thumbnails = [...gallery.querySelectorAll<HTMLButtonElement>("[data-gallery-scene]")];
@@ -175,6 +176,7 @@ const lightboxId = `${id}-lightbox`;
 		}
 
 		function selectScene(index: number, mode = appearance) {
+			const previous = current;
 			current = (index + scenes.length) % scenes.length;
 			const scene = scenes[current]!;
 			appearance = scene.images[mode] ? mode : (Object.keys(scene.images)[0] as ScreenshotAppearance);
@@ -205,6 +207,10 @@ const lightboxId = `${id}-lightbox`;
 				);
 			});
 			revealThumbnail();
+
+			if (current !== previous) {
+				trackEvent("gallery-scene", { scene: scene.id });
+			}
 		}
 
 		thumbnails.forEach((button, index) => button.addEventListener("click", () => selectScene(index)));

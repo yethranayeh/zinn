@@ -12,6 +12,7 @@ type Props = ComponentProps<typeof Button> & {
 	success: string;
 	stateTarget?: string;
 	event?: WebsiteEvent;
+	eventData?: Record<string, string | number>;
 	feedback?: "label" | "tooltip";
 };
 
@@ -22,6 +23,7 @@ const {
 	success,
 	stateTarget,
 	event,
+	eventData,
 	feedback = "label",
 	size = "default",
 	class: className,
@@ -29,6 +31,9 @@ const {
 } = Astro.props;
 const iconSize = size === "responsive-icon" ? "size-4 md:size-6" : "size-4";
 const labelClass = size === "icon" ? "sr-only" : size === "responsive-icon" ? "md:hidden" : "";
+const eventDataAttributes = Object.fromEntries(
+	Object.entries(eventData ?? {}).map(([key, value]) => [`data-copy-event-${key}`, value])
+);
 ---
 
 <Button
@@ -42,7 +47,8 @@ const labelClass = size === "icon" ? "sr-only" : size === "responsive-icon" ? "m
 	data-copy-success={success}
 	data-copy-state-target={stateTarget}
 	data-copy-feedback={feedback}
-	data-copy-event={event}>
+	data-copy-event={event}
+	{...eventDataAttributes}>
 	<Icon
 		name='copy'
 		class:list={[iconSize, "group-data-copied/copy:hidden", feedback === "label" && "group-data-error/copy:hidden"]}
@@ -63,6 +69,25 @@ const labelClass = size === "icon" ? "sr-only" : size === "responsive-icon" ? "m
 
 <script>
 	import { trackEvent, type WebsiteEvent } from "../scripts/analytics";
+
+	const copyEventPrefix = "data-copy-event-";
+	function readCopyEventData(button: HTMLElement): Record<string, string | number> {
+		const data: Record<string, string | number> = {};
+		for (const name of button.getAttributeNames()) {
+			if (!name.startsWith(copyEventPrefix)) {
+				continue;
+			}
+
+			const key = name.slice(copyEventPrefix.length);
+			const value = button.getAttribute(name);
+
+			if (key !== "" && value !== null) {
+				data[key] = value;
+			}
+		}
+
+		return data;
+	}
 
 	const copyStatusDurationMs = 2500;
 	for (const button of document.querySelectorAll<HTMLButtonElement>("[data-copy-value], [data-copy-url]")) {
@@ -135,7 +160,12 @@ const labelClass = size === "icon" ? "sr-only" : size === "responsive-icon" ? "m
 			button.setAttribute("data-copied", "");
 			announce(button.dataset.copySuccess!);
 			if (button.dataset.copyEvent) {
-				trackEvent(button.dataset.copyEvent as WebsiteEvent);
+				const data = readCopyEventData(button);
+				if (Object.keys(data).length > 0) {
+					trackEvent(button.dataset.copyEvent as WebsiteEvent, data);
+				} else {
+					trackEvent(button.dataset.copyEvent as WebsiteEvent);
+				}
 			}
 		});
 	}

@@ -17,6 +17,8 @@ const { flows, current } = Astro.props;
 				variant='outline'
 				class='min-h-0 px-2.5 py-1.5 text-[10px]/[1.4] tracking-[0.14em] uppercase hover:bg-transparent hover:aria-[pressed=false]:bg-soot/8 aria-pressed:bg-soot aria-pressed:text-soot-foreground'
 				data-flow={flow.id}
+				data-site-event='performance-flow'
+				data-site-event-flow={flow.id}
 				aria-pressed={flow.id === current ? "true" : "false"}>
 				{flow.name}
 			</Button>

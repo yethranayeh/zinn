@@ -25,7 +25,13 @@ import { projectLinks } from "../../../../config/site";
 					<div class='mt-6'><PaletteStrip /></div>
 				</div>
 				<div class='flex flex-wrap gap-3 md:justify-end'>
-					<Button href={opencodeTheme.download} download='zinn.json' variant='solid' size='large'
+					<Button
+						href={opencodeTheme.download}
+						download='zinn.json'
+						variant='solid'
+						size='large'
+						data-site-event='theme-download'
+						data-site-event-theme='opencode'
 						>Download theme <Icon name='download' /></Button
 					>
 					<Button href='#installation' variant='outline' size='large'>Installation</Button>
@@ -55,7 +61,13 @@ import { projectLinks } from "../../../../config/site";
 				</p>
 
 				<div class='mt-6'>
-					<Button href={opencodeTheme.download} download='zinn.json' variant='solid' size='large'
+					<Button
+						href={opencodeTheme.download}
+						download='zinn.json'
+						variant='solid'
+						size='large'
+						data-site-event='theme-download'
+						data-site-event-theme='opencode'
 						>Download zinn.json <Icon name='download' /></Button
 					>
 				</div>

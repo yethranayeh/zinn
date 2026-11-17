@@ -148,5 +148,11 @@ const homepageStructuredData = [website, softwareApplication];
 				consoleimg.load("/console/spider.gif", { size: 150 });
 			}
 		</script>
+
+		<script>
+			import { trackEvent } from "../scripts/analytics";
+			import { setupSiteEvents } from "../scripts/site-events";
+			setupSiteEvents(trackEvent);
+		</script>
 	</body>
 </html>

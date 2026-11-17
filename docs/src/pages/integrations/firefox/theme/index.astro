@@ -26,11 +26,19 @@ const [halftone, lattice] = firefoxTheme.themes;
 					<div class='mt-6'><PaletteStrip /></div>
 				</div>
 				<div class='flex flex-wrap gap-3 md:justify-end'>
-					<Button href={halftone.addonUrl} variant='solid' size='large'
-						>Install Halftone <Icon name='external-link' /></Button
+					<Button
+						href={halftone.addonUrl}
+						variant='solid'
+						size='large'
+						data-site-event='outbound-click'
+						data-site-event-target='mozilla-addons-halftone'>Install Halftone <Icon name='external-link' /></Button
 					>
-					<Button href={lattice.addonUrl} variant='outline' size='large'
-						>Install Lattice <Icon name='external-link' /></Button
+					<Button
+						href={lattice.addonUrl}
+						variant='outline'
+						size='large'
+						data-site-event='outbound-click'
+						data-site-event-target='mozilla-addons-lattice'>Install Lattice <Icon name='external-link' /></Button
 					>
 				</div>
 			</div>
@@ -84,8 +92,18 @@ const [halftone, lattice] = firefoxTheme.themes;
 				<Prose>
 					<ol class='space-y-4'>
 						<li>
-							Open <Link href={halftone.addonUrl}>Zinn Halftone</Link> or{" "}
-							<Link href={lattice.addonUrl}>Zinn Lattice</Link> on Mozilla Add-ons.
+							Open
+							<Link
+								href={halftone.addonUrl}
+								data-site-event='outbound-click'
+								data-site-event-target='mozilla-addons-halftone'>Zinn Halftone</Link
+							>
+							or{" "}
+							<Link
+								href={lattice.addonUrl}
+								data-site-event='outbound-click'
+								data-site-event-target='mozilla-addons-lattice'>Zinn Lattice</Link
+							> on Mozilla Add-ons.
 						</li>
 						<li>Choose Add to Firefox.</li>
 						<li>Open <code>about:addons</code> and select Themes to switch or remove a theme.</li>

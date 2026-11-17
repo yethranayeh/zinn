@@ -28,7 +28,8 @@ const markdownUrl = `${Astro.url.pathname.replace(/\/$/, "")}.md`;
 		<a
 			class='inline-flex min-h-11 min-w-11 items-center justify-center no-underline hover:bg-soot/8 hover:no-underline focus-visible:-outline-offset-3'
 			href={markdownUrl}
-			aria-label='Open Markdown'>
+			aria-label='Open Markdown'
+			data-site-event='markdown-open'>
 			<Icon name='external-link' class='size-4' />
 		</a>
 	</Tooltip>

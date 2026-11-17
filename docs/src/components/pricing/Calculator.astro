@@ -74,8 +74,11 @@ const stop = calculatorStops[defaultStop];
 
 <script>
 	import { groupedNumber, memoryLabel, outputLabel, sizeLabel } from "../../config/pricing-labels";
+	import { trackEvent } from "../../scripts/analytics";
 	import { figures } from "./page-figures";
-	import { figuresAt, tasksAt } from "./calculator-scale";
+	import { figuresAt, tasksAt, tasksBucket } from "./calculator-scale";
+
+	const calculatorEventDebounceMs = 250;
 
 	function setupCalculator() {
 		const container = document.querySelector<HTMLElement>("[data-calc]");
@@ -85,6 +88,25 @@ const stop = calculatorStops[defaultStop];
 		}
 		const out = (name: string) => container.querySelector<HTMLElement>(`[data-calc-out='${name}']`);
 		const tasks = container.querySelector<HTMLElement>("[data-calc-tasks]");
+
+		let calculatorTracked = false;
+		let calculatorEventTimer: ReturnType<typeof setTimeout> | undefined;
+
+		function trackFirstInteraction(count: number): void {
+			if (calculatorTracked) {
+				return;
+			}
+
+			if (calculatorEventTimer !== undefined) {
+				clearTimeout(calculatorEventTimer);
+			}
+
+			calculatorEventTimer = setTimeout(() => {
+				trackEvent("pricing-calculator", { tasks: tasksBucket(count) });
+				calculatorTracked = true;
+				calculatorEventTimer = undefined;
+			}, calculatorEventDebounceMs);
+		}
 
 		function update() {
 			const count = tasksAt(Number(input!.value));
@@ -119,7 +141,10 @@ const stop = calculatorStops[defaultStop];
 			});
 		}
 
-		input.addEventListener("input", update);
+		input.addEventListener("input", () => {
+			update();
+			trackFirstInteraction(tasksAt(Number(input!.value)));
+		});
 	}
 
 	setupCalculator();

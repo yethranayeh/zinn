@@ -653,6 +653,40 @@ test.each([
   expect(markdown.headers.get("Content-Type")).toContain("text/markdown");
 });
 
+test("docs pages tag successful command copies and Markdown opens", async () => {
+  const html = await (await server.fetch("/docs/installation")).text();
+  expect(html).toContain('data-copy-event="command-copy"');
+  expect(html).toMatch(/data-copy-event-target="[^"]+"/);
+  expect(html).toMatch(/data-copy-event-kind="(command|code)"/);
+  expect(html).toContain('data-site-event="markdown-open"');
+});
+
+test("performance flow tabs carry the flow event name and fixed flow data", async () => {
+  const html = await (await server.fetch("/performance")).text();
+  for (const flow of ["read", "write", "install"]) {
+    const tab = html.match(new RegExp(`<button\\b[^>]*data-flow="${flow}"[^>]*>`))?.[0];
+    expect(tab).toBeDefined();
+    expect(tab).toContain('data-site-event="performance-flow"');
+    expect(tab).toContain(`data-site-event-flow="${flow}"`);
+  }
+});
+
+test("theme pages tag downloads and the Firefox page names each Add-ons target", async () => {
+  const opencode = await (await server.fetch(opencodeTheme.path)).text();
+  expect(opencode).toContain('data-site-event="theme-download"');
+  expect(opencode).toContain('data-site-event-theme="opencode"');
+
+  const rex = await (await server.fetch(rexTheme.path)).text();
+  expect(rex).toContain('data-site-event="theme-download"');
+  expect(rex).toContain('data-site-event-theme="rex-dark"');
+  expect(rex).toContain('data-site-event-theme="rex-light"');
+
+  const firefox = await (await server.fetch(firefoxTheme.path)).text();
+  expect(firefox.match(/data-site-event="outbound-click"/g)).toHaveLength(4);
+  expect(firefox.match(/data-site-event-target="mozilla-addons-halftone"/g)).toHaveLength(2);
+  expect(firefox.match(/data-site-event-target="mozilla-addons-lattice"/g)).toHaveLength(2);
+});
+
 test("integration routes expose the gallery, Markdown and canonical theme download", async () => {
   const index = await server.fetch("/integrations");
   expect(index.status).toBe(200);

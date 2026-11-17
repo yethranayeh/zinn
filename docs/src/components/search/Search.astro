@@ -129,6 +129,8 @@ const suggestions = [
 
 <script>
 	import type { PagefindResult } from "./pagefind";
+
+	import { trackEvent } from "../../scripts/analytics";
 	import { loadPagefind, orderResults, sectionsToShow } from "./pagefind";
 
 	const dialog = document.querySelector<HTMLDialogElement>("[data-search]")!;
@@ -251,6 +253,9 @@ const suggestions = [
 			const pages = await Promise.all(search.results.map((result) => result.data()));
 
 			if (thisQuery === latestQuery) {
+				if (pages.length === 0) {
+					trackEvent("search-empty");
+				}
 				showPages(pages.length > 0 ? "" : `No results for “${query}”.`, query, orderResults(query, pages));
 			}
 		} catch {
@@ -262,6 +267,7 @@ const suggestions = [
 
 	function openSearch() {
 		if (!dialog.open) {
+			trackEvent("search-open");
 			dialog.showModal();
 
 			if (!input.value.trim()) {
@@ -351,9 +357,19 @@ const suggestions = [
 
 	// A link to a section of the current page does not reload it, so the dialog has to close itself.
 	results.addEventListener("click", (event) => {
-		const openedHere = !(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey);
+		const link = (event.target as Element).closest<HTMLAnchorElement>("a[data-search-link]");
 
-		if (openedHere && (event.target as Element).closest("a")) {
+		if (!link) {
+			return;
+		}
+
+		if (input.value.trim()) {
+			const position = resultLinks().indexOf(link) + 1;
+			trackEvent("search-result", { page: `${link.pathname}${link.hash}`, position });
+		}
+
+		const openedHere = !(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey);
+		if (openedHere) {
 			dialog.close();
 		}
 	});

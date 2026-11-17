@@ -1,5 +1,6 @@
 import type { Flow, FlowId, FlowNode } from "./flow-data";
 
+import { trackEvent } from "../../scripts/analytics";
 import { flowById } from "./flow-data";
 import { hybridTheme } from "./flow-theme";
 import { GraphCanvas } from "./graph";
@@ -110,6 +111,7 @@ export function mountPerformance(root: HTMLElement): () => void {
       return;
     }
 
+    trackEvent("performance-trace", { flow: flow.id });
     tracing = true;
     traceButton?.setAttribute("disabled", "");
 

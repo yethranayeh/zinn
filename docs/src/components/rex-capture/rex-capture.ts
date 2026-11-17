@@ -1,11 +1,14 @@
 import { rexScenes } from "../../config/rex-theme";
 import { cloudinaryImage, cloudinarySources } from "../../images/cloudinary";
+import { trackEvent } from "../../scripts/analytics";
 import { layoutCaptureAnnotations, setActiveCaptureAnnotation } from "./capture-annotations";
 
 type Appearance = "dark" | "light";
 
 const previewSizes =
   "(min-width: 90rem) 72rem, (min-width: 64rem) calc(100vw - 16rem), (min-width: 48rem) calc(100vw - 10rem), calc(100vw - 5rem)";
+
+const sceneEventDebounceMs = 200;
 
 function initFigure(root: HTMLElement): void {
   const surface = root.querySelector<HTMLElement>("[data-capture-surface]");
@@ -21,8 +24,20 @@ function initFigure(root: HTMLElement): void {
 
   let sceneId = rexScenes[0]!.id;
   let appearance: Appearance = "dark";
+  let sceneEventTimer: ReturnType<typeof setTimeout> | undefined;
 
   const currentScene = () => rexScenes.find((scene) => scene.id === sceneId) ?? rexScenes[0]!;
+
+  function scheduleSceneEvent(id: string): void {
+    if (sceneEventTimer !== undefined) {
+      clearTimeout(sceneEventTimer);
+    }
+
+    sceneEventTimer = setTimeout(() => {
+      trackEvent("gallery-scene", { scene: id });
+      sceneEventTimer = undefined;
+    }, sceneEventDebounceMs);
+  }
 
   function render(): void {
     const scene = currentScene();
@@ -51,6 +66,7 @@ function initFigure(root: HTMLElement): void {
     }
     sceneId = next;
     render();
+    scheduleSceneEvent(next);
   }
 
   for (const tab of tabs) {
