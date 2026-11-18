@@ -1,13 +1,14 @@
 {
 	"name": "@zinn-dev/opencode",
-	"version": "0.5.0-dev",
+	"version": "0.5.0",
 	"type": "module",
-	"description": "Experimental Zinn task inspector for the OpenCode TUI.",
+	"description": "Experimental Zinn task inspector and desktop board summary for OpenCode.",
 	"keywords": [
 		"zinn",
 		"opencode",
 		"opencode-plugin",
 		"tui",
+		"desktop",
 		"kanban",
 		"task-management",
 		"ai-agents",

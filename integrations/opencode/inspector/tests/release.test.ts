@@ -37,7 +37,7 @@ test("the public install examples name the current release version", () => {
   ];
 
   for (const readme of readmes) {
-    expect(readFileSync(readme, "utf8")).toContain(`@zinn-dev/opencode@${version}`);
+    expect(readFileSync(readme, "utf8")).toContain(`@zinn-dev/opencode@^${version}`);
   }
 });
 
