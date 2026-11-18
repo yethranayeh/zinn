@@ -20,7 +20,10 @@ import { inspectorCollage, opencodeInspector } from "../../../../config/opencode
 import { projectLinks } from "../../../../config/site";
 
 const source = `${projectLinks.github}/tree/main/integrations/opencode/inspector`;
-const pluginConfig = `{
+const serverPluginConfig = `{
+	"plugins": ["${opencodeInspector.package}"]
+}`;
+const tuiPluginConfig = `{
 	"plugins": [
 		{
 			"package": "${opencodeInspector.package}",
@@ -63,8 +66,8 @@ const pluginConfig = `{
 					The inspector reads tasks, labels and recorded activity through the local Zinn CLI. It uses the same <a
 						href='/docs/settings'>data directory and settings</a
 					> as the CLI running in that environment. It loads active tasks from the default project, or from every project
-					when no default is set. With a remote OpenCode server, the inspector still runs locally and reads the local CLI's
-					database.
+					when no default is set. With a remote OpenCode server, the TUI inspector still runs locally and reads the local
+					CLI's database. OpenCode Desktop also shows an experimental board summary for the default project.
 				</p>
 
 				<MarkdownH2>Requirements</MarkdownH2>
@@ -78,13 +81,24 @@ const pluginConfig = `{
 				</MarkdownList>
 
 				<MarkdownH2 id='installation'>Install</MarkdownH2>
+				<p>Install the package in two OpenCode configuration files, keeping any existing plugin entries.</p>
 				<p>
-					Add the package to <code>~/.config/opencode/cli.json</code>, keeping any existing plugin entries:
+					Add it to <code>~/.config/opencode/opencode.json</code> for the server and desktop entries:
 				</p>
-				<TerminalCommands label='OpenCode plugin configuration' commands={[pluginConfig]} showsPrompt={false} />
+				<TerminalCommands label='opencode.json' commands={[serverPluginConfig]} showsPrompt={false} />
 				<p>
-					OpenCode loads this TUI-only package through its native <Link href='https://opencode.ai/v2/docs/cli/plugins/'
-						>CLI plugin configuration</Link
+					Add the same package to <code>~/.config/opencode/cli.json</code> with the inspector options:
+				</p>
+				<TerminalCommands label='cli.json' commands={[tuiPluginConfig]} showsPrompt={false} />
+				<p>
+					OpenCode loads the server and desktop entries from <code>opencode.json</code> and the TUI inspector from{" "}
+					<code>cli.json</code>. Both entries use the same spec, so they share one package download. The{" "}
+					<code>cli.json</code> object carries the TUI options. OpenCode applies <code>opencode.json</code> options to the
+					server and desktop entries, not to the TUI inspector.
+				</p>
+				<p>
+					OpenCode loads these entries through its native <Link href='https://opencode.ai/v2/docs/cli/plugins/'
+						>plugin configuration</Link
 					>. Start OpenCode, open a conversation and mention a task key from your database. Select the task to inspect
 					it.
 				</p>
@@ -102,6 +116,18 @@ const pluginConfig = `{
 					in the same dialog, then use back to return. Long relation lists scroll in place. Close the dialog with its
 					close control or <Kbd>Esc</Kbd>. Unknown keys are shown when their project prefix appears among the loaded
 					tasks. Select the ZINN heading to refresh task and label data.
+				</p>
+
+				<MarkdownH2>Desktop board summary</MarkdownH2>
+				<p>
+					OpenCode Desktop shows an experimental board summary for the default project at the bottom of the window. It
+					follows the default project's board and shows when it was last read. The Zinn settings page turns the summary
+					on or off and sets the refresh interval to 30 seconds, 1 minute, 5 minutes or 15 minutes. The default is 1
+					minute.
+				</p>
+				<p>
+					The summary reads the board in the current session's directory. A failed read shows <code>no read</code> with the
+					error instead of keeping the last counts.
 				</p>
 
 				<MarkdownH2 id='options'>Options</MarkdownH2>
@@ -150,21 +176,27 @@ const pluginConfig = `{
 
 				<MarkdownH2>Compatibility</MarkdownH2>
 				<p>
-					Version {opencodeInspector.version} targets OpenCode {opencodeInspector.verifiedVersion} and its OpenTUI 0.7.0 runtime.
-					Keep the inspector's version pinned when updating OpenCode and check the inspector's compatibility guidance before
-					adopting a new host release.
+					Version {opencodeInspector.version} targets OpenCode 2.3.x, verified on {opencodeInspector.verifiedVersion},
+					and its OpenTUI {opencodeInspector.openTuiVersion} runtime. The <code>^0.5.0</code> entry installs 0.5.x patches.
+					Move to a new inspector minor only when its release notes name the OpenCode version it supports.
 				</p>
 
 				<MarkdownH2>Update</MarkdownH2>
 				<p>
-					Replace the version in the package entry with the compatible inspector version you want, then start OpenCode
-					again. OpenCode manages the package download. Keep your existing options in the entry.
+					OpenCode updates the package from the <code>opencode.json</code> entry. In OpenCode Desktop, open Settings › Extensions
+					› Plugins, select Check for updates, then Update on the package. In the terminal, run
+					<code>opencode plugin check</code> and <code>opencode plugin update</code>.
+				</p>
+				<p>
+					Both entries use the same spec, so an update installs the new 0.5.x package for both. Restart OpenCode to load
+					the new TUI inspector and desktop entry. An exact version is skipped by the update check, so keep the
+					<code>^0.5.0</code> range.
 				</p>
 
 				<MarkdownH2>Remove</MarkdownH2>
 				<p>
-					Remove the <code>{opencodeInspector.packageName}</code> entry from <code>cli.json</code>, then start OpenCode
-					again. Your Zinn projects, tasks and activity remain in the database.
+					Remove the package entry from each configuration file where you added it, then start OpenCode again. Your Zinn
+					projects, tasks and activity remain in the database.
 				</p>
 			</Prose>
 

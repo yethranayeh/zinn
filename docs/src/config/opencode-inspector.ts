@@ -6,12 +6,13 @@ const version = latestReleaseVersion("opencode");
 export const opencodeInspector = {
   title: "Zinn task inspector",
   description:
-    "Inspect Zinn tasks mentioned in an OpenCode conversation without leaving the terminal.",
+    "Inspect Zinn tasks in the OpenCode TUI and keep the default project's board summary in OpenCode Desktop.",
   path: "/integrations/opencode/inspector",
   packageName,
   version,
-  package: `${packageName}@${version}`,
-  verifiedVersion: "2.2.0",
+  package: `${packageName}@^${version}`,
+  verifiedVersion: "2.3.2",
+  openTuiVersion: "0.8.4",
   minimumCliVersion: "0.41.0",
 };
 

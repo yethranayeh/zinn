@@ -1,0 +1,14 @@
+---
+version: 0.5.0
+date: "2026-11-18"
+---
+
+### Added
+
+- OpenCode Desktop shows an experimental board summary for the default project, with a Zinn settings page for the summary and its refresh interval. The package now has a server entry and an experimental desktop entry alongside the TUI inspector.
+
+### Changed
+
+- Install `@zinn-dev/opencode@^0.5.0` in `opencode.json` for the server and desktop entries, and in `cli.json` for the TUI inspector options. Both entries use the same package spec, so they share one download and OpenCode's plugin update check can install 0.5.x patches. Put the TUI options in the `cli.json` object. OpenCode applies `opencode.json` options to the server and desktop entries, not to the TUI inspector. See [OpenCode inspector](/integrations/opencode/inspector).
+- The inspector targets OpenCode 2.3.2 and its OpenTUI 0.8.4 runtime.
+- The inspector runs the Zinn CLI with `ZINN_CLIENT` set to `zinn-opencode:inspector/<version>`, appended to any declaration it inherits. See [Client chains](/docs/cli/identity#client-chains).
