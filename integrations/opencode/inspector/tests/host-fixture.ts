@@ -1,8 +1,10 @@
+import type { installConsumer } from "./package-fixture.ts";
+
 import { strict as assert } from "node:assert";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { packInspector, run } from "./package-fixture.ts";
-import type { installConsumer } from "./package-fixture.ts";
+
+import { hostVersion, packInspector, run } from "./package-fixture.ts";
 
 const START_TIMEOUT_MS = 30_000;
 const POLL_MS = 50;
@@ -21,7 +23,11 @@ export async function verifyHost(fixture: ReturnType<typeof packInspector>, cons
   mkdirSync(app);
   const configDirectory = join(fixture.env.XDG_CONFIG_HOME!, "opencode");
   mkdirSync(configDirectory, { recursive: true });
-  writeFileSync(join(configDirectory, "opencode.json"), JSON.stringify({ enabled_providers: [], share: "disabled" }));
+  writeFileSync(join(configDirectory, "opencode.json"), JSON.stringify({
+    enabled_providers: [],
+    share: "disabled",
+    plugins: [{ package: fixture.extracted, options: { rows: 2, current: "glyph" } }],
+  }));
   const env = { ...consumer.env, OPENCODE_DISABLE_AUTOUPDATE: "1", OPENCODE_DISABLE_DEFAULT_PLUGINS: "1", OPENCODE_DISABLE_CLAUDE_CODE: "1", OPENCODE_DISABLE_LSP_DOWNLOAD: "1" };
   let serverOutput = "";
   const server = Bun.spawn([consumer.host, "serve", "--hostname", "127.0.0.1", "--port", "0"], { cwd: app, env, stdout: "pipe", stderr: "pipe" });
@@ -42,6 +48,17 @@ export async function verifyHost(fixture: ReturnType<typeof packInspector>, cons
       assert.ok(response.ok, `${path}: ${response.status} ${text}`);
       return text === "" ? undefined : JSON.parse(text);
     };
+    const waitForPlugin = async (id: string) => {
+      const started = Date.now();
+      while (true) {
+        const response = await request("/api/plugin");
+        const list = Array.isArray(response) ? response : response.data;
+        const found = list.find((plugin: { id?: string }) => plugin.id === id);
+        if (found) return found;
+        assert.ok(Date.now() - started < START_TIMEOUT_MS, `Server did not list plugin ${id}`);
+        await Bun.sleep(POLL_MS);
+      }
+    };
     const original = (await request("/api/session", { title: "Inspector fixture template", location: { directory: app } })).data;
     const root = { ...original, id: `${original.id}_root`, title: "Inspector fixture conversation" };
     const child = { ...original, id: `${original.id}_child`, parentID: root.id, title: "Inspector fixture child" };
@@ -53,9 +70,11 @@ export async function verifyHost(fixture: ReturnType<typeof packInspector>, cons
     run([process.execPath, consumer.releasedCLI, "task", "move", "PKG-3", "Done"], app, env);
     const log = join(fixture.directory, "inspector.log");
     const config = join(configDirectory, "cli.json");
+    const serverConfig = join(configDirectory, "opencode.json");
     const frames: string[] = [];
     const launch = async (plugins: unknown[], mode: "install" | "update" | "remove") => {
       writeFileSync(config, JSON.stringify({ plugins }));
+      writeFileSync(serverConfig, JSON.stringify({ enabled_providers: [], share: "disabled", plugins }));
       writeFileSync(log, "");
       let output = "";
       const tui = Bun.spawn([consumer.host, "--server", base, "--session", root.id, app], {
@@ -108,9 +127,16 @@ export async function verifyHost(fixture: ReturnType<typeof packInspector>, cons
       }
     };
     await launch([{ package: fixture.extracted, options: { rows: 2, current: "glyph" } }], "install");
+    const listed = await waitForPlugin("zinn");
+    assert.equal(listed.state.status, "active");
+    assert.deepEqual(listed.features, { server: true, tui: true, gui: true });
+    const guiResponse = await request(`/api/plugin/gui?id=zinn&directory=${encodeURIComponent(app)}`);
+    const bundle = guiResponse.data ?? guiResponse;
+    assert.ok(bundle.code.includes("zinn.board"), "GUI bundle did not contain the board IPC");
+    assert.deepEqual(bundle.options, { rows: 2, current: "glyph" });
     await launch([{ package: updated.extracted, options: { rows: 2, current: "glyph" } }], "update");
     await launch([], "remove");
-    return { version: "2.2.0", frames };
+    return { version: hostVersion, frames };
   } finally {
     server.kill("SIGTERM");
     await server.exited;

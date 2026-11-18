@@ -40,14 +40,20 @@
 		"prepublishOnly": "bun run build && bun checks/release.ts && bun run typecheck && bun run test"
 	},
 	"peerDependencies": {
-		"@opencode/plugin": "2.2.0",
-		"@opentui/core": "0.7.0",
-		"@opentui/solid": "0.7.0",
-		"effect": "4.0.1",
+		"@opencode/plugin": ">=2.3.2 <3",
+		"@opentui/core": ">=0.8.4 <0.9.0",
+		"@opentui/solid": ">=0.8.4 <0.9.0",
+		"effect": ">=4.0.1 <5",
 		"solid-js": ">=1.9.0"
 	},
 	"peerDependenciesMeta": {
 		"@opencode/plugin": {
+			"optional": true
+		},
+		"@opentui/core": {
+			"optional": true
+		},
+		"@opentui/solid": {
 			"optional": true
 		},
 		"effect": {

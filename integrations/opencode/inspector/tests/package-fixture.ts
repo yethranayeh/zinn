@@ -8,7 +8,7 @@ import { TEST_ENVIRONMENT } from "../../../../scripts/test-isolation.ts";
 
 const repository = resolve(import.meta.dir, "../../../..");
 const integration = "integrations/opencode/inspector/";
-export const hostVersion = "2.2.0";
+export const hostVersion = "2.3.2";
 
 export function run(args: string[], cwd: string, env: Record<string, string | undefined>) {
   const result = Bun.spawnSync(args, { cwd, env, timeout: 120_000 });

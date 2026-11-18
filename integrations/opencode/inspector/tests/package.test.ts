@@ -15,7 +15,7 @@ afterAll(() => {
   }
 });
 
-test("the packed inspector installs independently with exact compatible OpenTUI peers", () => {
+test("the packed inspector installs independently with host-provided OpenTUI peers", () => {
   const manifest = JSON.parse(readFileSync(join(consumer.installed, "package.json"), "utf8"));
   expect(manifest.name).toBe(fixture.manifest.name);
   expect(manifest.version).toBe(fixture.manifest.version);
@@ -31,15 +31,18 @@ test("the packed inspector installs independently with exact compatible OpenTUI 
   expect(gui).toContain("zinn.board");
   expect(existsSync(join(consumer.installed, "pkg/tui.tsx"))).toBe(false);
   expect(manifest.dependencies).toBeUndefined();
-  expect(manifest.peerDependencies["@opencode/plugin"]).toBe("2.2.0");
+  expect(manifest.peerDependencies["@opencode/plugin"]).toBe(">=2.3.2 <3");
   expect(manifest.peerDependenciesMeta["@opencode/plugin"]).toEqual({ optional: true });
-  expect(manifest.peerDependencies["@opentui/core"]).toBe("0.7.0");
-  expect(manifest.peerDependencies["@opentui/solid"]).toBe("0.7.0");
+  expect(manifest.peerDependencies["@opentui/core"]).toBe(">=0.8.4 <0.9.0");
+  expect(manifest.peerDependenciesMeta["@opentui/core"]).toEqual({ optional: true });
+  expect(manifest.peerDependencies["@opentui/solid"]).toBe(">=0.8.4 <0.9.0");
+  expect(manifest.peerDependenciesMeta["@opentui/solid"]).toEqual({ optional: true });
+  expect(manifest.peerDependencies["effect"]).toBe(">=4.0.1 <5");
+  expect(manifest.peerDependenciesMeta["effect"]).toEqual({ optional: true });
+  expect(manifest.peerDependencies["solid-js"]).toBe(">=1.9.0");
   expect(existsSync(join(consumer.consumer, "node_modules/@opencode/plugin"))).toBe(false);
+  expect(existsSync(join(consumer.consumer, "node_modules/@opentui"))).toBe(false);
   expect(fixture.members.some((path) => /test|NOTES|AGENTS|install\.sh|tsconfig|bun\.lock/.test(path))).toBe(false);
-  const inspect = join(consumer.consumer, "dependencies.ts");
-  writeFileSync(inspect, `for (const name of ["@opentui/core", "@opentui/solid"]) { console.log(JSON.parse(await Bun.file(new URL(import.meta.resolve(name + "/package.json"))).text()).version); }`);
-  expect(run([process.execPath, inspect], consumer.consumer, consumer.env).trim().split("\n")).toEqual(["0.7.0", "0.7.0"]);
 });
 
 for (const version of ["0.41.0", "current"]) {
@@ -61,7 +64,7 @@ for (const version of ["0.41.0", "current"]) {
   });
 }
 
-test("OpenCode 2.2.0 loads the extracted artifact, opens picker and detail, and applies update and removal", async () => {
+test("OpenCode 2.3.2 loads the extracted artifact, opens picker and detail, and applies update and removal", async () => {
   const { verifyHost } = await import("./host-fixture.ts");
   consumer.useCLI(consumer.releasedCLI);
   run([process.execPath, consumer.releasedCLI, "project", "create", "PKG", "--json"], consumer.consumer, consumer.env);
@@ -69,6 +72,6 @@ test("OpenCode 2.2.0 loads the extracted artifact, opens picker and detail, and 
     run([process.execPath, consumer.releasedCLI, "task", "create", "PKG", "--title", title, "--json"], consumer.consumer, consumer.env);
   }
   const result = await verifyHost(fixture, consumer);
-  expect(result.version).toBe("2.2.0");
+  expect(result.version).toBe("2.3.2");
   expect(result.frames).toHaveLength(3);
 }, 120_000);
