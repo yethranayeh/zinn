@@ -11,7 +11,7 @@ import { notes } from "./example";
 
 	<aside class='flex flex-col gap-6 lg:sticky lg:top-(--site-header-height) lg:self-start lg:pt-2' data-notes>
 		<p class='font-mono text-xs leading-[1.6] text-muted-foreground' data-blame-init>
-			Press a note's number, or hover the note, to cut its region out of the output.
+			Press a note's number, or hover the note
 		</p>
 
 		{
@@ -31,7 +31,7 @@ import { notes } from "./example";
 					<p class='mb-2 border-l-2 border-bronze bg-soot px-2.5 py-1.5 font-mono text-xs break-words whitespace-pre-wrap text-soot-foreground'>
 						{note.label}
 					</p>
-					<p class='text-base leading-[1.6] text-muted-foreground'>{note.body}</p>
+					<p class='text-base leading-[1.6]'>{note.body}</p>
 				</div>
 			))
 		}

@@ -1,0 +1,10 @@
+## What it answers
+
+People and agents edit the same tasks. For the task as it stands now, blame names the change behind each field and description line, and that change records:
+
+- Who made it: a person, or an agent with the model and effort it ran with.
+- The session and thread, when they are known.
+- The client chain, the programs the change came through, such as the CLI and the Claude Code plugin.
+- When it happened.
+
+Each attribution names an activity ID. `zinn activity view <activity-id>` opens that change in full, and `zinn activity list --task <task-key>` lists every change to the task.

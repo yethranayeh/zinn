@@ -1,6 +1,9 @@
 import type { APIRoute } from "astro";
 
+import answers from "../../components/blame/answers.mdx?raw";
+import rules from "../../components/blame/rules.mdx?raw";
 import { notes, outputLines } from "../../components/blame/example";
+import { markdownBody } from "../../markdown/markdown-body";
 
 const intro =
   "The whole task, attributed. Every field and description line with recorded history points at the edit that set it, and the edit names the person or program behind it.";
@@ -9,7 +12,7 @@ const noteList = notes
   .map((note) => `- **${note.number}** \`${note.label}\` ${note.body}`)
   .join("\n");
 
-const rules = [
+const summaries = [
   [
     "Whole lines, matched exactly",
     "Description attribution compares complete lines, whitespace included. Blank lines are preserved.",
@@ -30,7 +33,7 @@ const rules = [
   .map(([heading, body]) => `### ${heading}\n\n${body}`)
   .join("\n\n");
 
-export const GET: APIRoute = () =>
+export const GET: APIRoute = async () =>
   new Response(
     `# Task blame
 
@@ -47,15 +50,11 @@ ${outputLines.join("\n")}
 
 ${noteList}
 
+${await markdownBody(answers, "docs/blame")}
 ## How it decides
 
-${rules}
+${summaries}
 
-Gaps and mismatched history can leave lines unrecorded. The full rules, including comparison edge cases, are in the [CLI reference](https://zinn.sh/docs/cli/blame#attribution-rules).
-
-## JSON
-
-With \`--json\`, the command returns the [\`TaskBlame\` result](https://zinn.sh/docs/core#task-blame-result). Each reference opens with \`zinn activity view <activity-id>\`.
-`,
+${await markdownBody(rules, "docs/blame")}`,
     { headers: { "Content-Type": "text/markdown; charset=utf-8" } },
   );

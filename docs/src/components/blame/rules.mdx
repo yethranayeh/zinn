@@ -1,17 +1,6 @@
----
-title: Attribution rules
-toc: true
-description: Attribute task content to the recorded edits that set it.
----
+## What it attributes
 
-# Attribution rules
-
-```sh title="Find the recorded authors of current task content"
-zinn task blame MDR-1
-zinn task blame MDR-1 --json
-```
-
-`task blame <task-key>` attributes the current title, column, priority, deadline, label membership, parent, relations and description lines to recorded activity. It reads active and archived tasks. A [reused key](/docs/data#task-key-reuse) selects its current task lifetime. Unknown and deleted keys produce the ordinary missing-task error. For a worked example of the output, see [Task blame](/docs/blame).
+`task blame <task-key>` attributes the current title, column, priority, deadline, label membership, parent, relations and description lines to recorded activity. It reads active and archived tasks. A [reused key](/docs/data#task-key-reuse) selects its current task lifetime. Unknown and deleted keys produce the ordinary missing-task error.
 
 ## Field and membership attribution
 

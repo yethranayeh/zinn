@@ -4,7 +4,10 @@ import Breadcrumbs from "../../components/Breadcrumbs.astro";
 import MarkdownH1 from "../../components/MarkdownH1.astro";
 import MarkdownH2 from "../../components/MarkdownH2.astro";
 import Blame from "../../components/blame/Blame.astro";
-import Link from "../../components/ui/link/Link.astro";
+import Prose from "../../components/Prose.astro";
+import Answers from "../../components/blame/answers.mdx";
+import Rules from "../../components/blame/rules.mdx";
+import { components } from "../../markdown/components";
 
 const rules = [
 	{
@@ -36,13 +39,17 @@ const rules = [
 			<div class='max-w-3xl'>
 				<Breadcrumbs />
 				<MarkdownH1>Task blame</MarkdownH1>
-				<p class='mb-3 text-lg leading-[1.6] text-muted-foreground md:text-xl'>
+				<p class='mb-3 text-lg leading-[1.6] md:text-xl'>
 					The whole task, attributed. Every field and description line with recorded history points at the edit that set
 					it, and the edit names the person or program behind it.
 				</p>
 			</div>
 
 			<Blame />
+
+			<div class='mt-16 border-t border-soot pt-8'>
+				<Prose><Answers components={components} /></Prose>
+			</div>
 
 			<div class='mt-16 max-w-6xl border-t border-soot pt-8' id='how-it-decides'>
 				<MarkdownH2>How it decides</MarkdownH2>
@@ -51,25 +58,15 @@ const rules = [
 						rules.map((rule) => (
 							<div>
 								<h3 class='mb-2 text-base font-semibold'>{rule.heading}</h3>
-								<p class='text-base leading-[1.6] text-muted-foreground'>{rule.body}</p>
+								<p class='text-base text-muted-foreground leading-[1.6]'>{rule.body}</p>
 							</div>
 						))
 					}
 				</div>
-				<p class='mt-8 max-w-3xl text-base leading-[1.6] text-muted-foreground'>
-					Gaps and mismatched history can leave lines unrecorded. The full rules, including comparison edge cases, are
-					in the <Link href='/docs/cli/blame#attribution-rules'>CLI reference</Link>.
-				</p>
 			</div>
 
-			<div class='mt-12 max-w-3xl border-t border-soot pt-6' id='json'>
-				<h2 class='mb-3 text-base font-semibold'>JSON</h2>
-				<p class='text-base leading-[1.6] text-muted-foreground'>
-					With <code class='bg-soot/8 px-1 py-px text-sm'>--json</code>, the command returns the{" "}
-					<Link href='/docs/core#task-blame-result'><code class='bg-soot/8 px-1 py-px text-sm'>TaskBlame</code></Link> result.
-					Each reference opens with{" "}
-					<code class='bg-soot/8 px-1 py-px text-sm'>zinn activity view &lt;activity-id&gt;</code>.
-				</p>
+			<div class='mt-16 border-t border-soot pt-8'>
+				<Prose><Rules components={components} /></Prose>
 			</div>
 		</div>
 	</div>

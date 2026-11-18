@@ -1,5 +1,5 @@
 ---
-import { outputLines } from "./example";
+import { outputLines, task } from "./example";
 
 interface Props {
 	label?: string;
@@ -18,6 +18,7 @@ const { label = "Task blame output" } = Astro.props;
 			role='region'
 			aria-label={label}>
       <code class='block'>
+        <span class='block whitespace-pre'><span class='text-bronze select-none' aria-hidden='true'>$ </span>zinn task blame {task.key}</span>
         {
           outputLines.map((line, index) => (
             <span data-line={index} class='block whitespace-pre' set:text={line === "" ? "\u00a0" : line} />
