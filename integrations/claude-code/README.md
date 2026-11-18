@@ -7,7 +7,7 @@ prompt section or a model turn, so neither costs tokens.
   with a key the store does not have flagged as `✗ not in Zinn`. A task under a live claim says until when it
   is held, in local time: `yours until 14:30` for this session's claim, `held until 14:30` for another's.
   `/zinn-show` opens a pane on a task, a board or the list of boards. A dim `zinn` in the prompt footer says
-  the plugin is loaded.
+  the plugin is loaded, and names the task this session holds: `zinn ◆ ABC-7`.
 - **`zinn-identity`**: declares the session, subagent, model and effort to Zinn in each shell Claude Code
   starts, so Zinn's activity log tells sessions apart. See [actor identity](https://zinn.sh/docs/cli/identity).
 

@@ -109,6 +109,12 @@
 			"description": "One dim word, zinn, among the mode labels at the right of the prompt footer: the sign that the plugin is loaded (zinn ✗ while something is wrong). Off draws no label.",
 			"default": true
 		},
+		"footerClaim": {
+			"type": "boolean",
+			"title": "Claimed task in the footer label",
+			"description": "While this session holds a claim, the footer label names the task: zinn ◆ ABC-7, with +N when it holds more. It comes from the key map the plugin already loads and costs no tokens. Needs the footer label.",
+			"default": true
+		},
 		"pane": {
 			"type": "boolean",
 			"title": "Zinn pane",

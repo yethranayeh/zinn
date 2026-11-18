@@ -124,6 +124,38 @@ export function claimLine(c: Claim | null, me: string | null, now: number): Span
   return out
 }
 
+/** Keys this session holds at `now`, the latest claim first. Empty when `me` is unknown. */
+export function heldKeys(tasks: ReadonlyMap<string, { claim: Claim | null }>, me: string | null, now: number): string[] {
+  const mine = [...tasks].filter(([, t]) => holderOf(t.claim, me, now) === 'mine')
+  mine.sort(([a, x], [b, y]) => (y.claim!.claimedAt ?? 0) - (x.claim!.claimedAt ?? 0) || a.localeCompare(b))
+  return mine.map(([key]) => key)
+}
+
+/** The colours a held key is painted in: the names `/color` takes. The order is part of the mapping. */
+export const HELD_COLORS: readonly string[] = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan']
+
+/** The colour of one key, the same in every session: FNV-1a of the key, modulo the list. */
+export function heldColor(key: string): string {
+  let h = 2166136261
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return HELD_COLORS[(h >>> 0) % HELD_COLORS.length]!
+}
+
+/** What the footer label ends with while this session holds tasks: ` ◆ ZCC-7` in the key's colour, then ` +N` dim. */
+export function footerClaimSpans(held: readonly string[]): { s: string; color?: string }[] {
+  if (held.length === 0) {
+    return []
+  }
+  const out: { s: string; color?: string }[] = [{ s: ` ${HOLDER_MARK.mine} ${held[0]}`, color: heldColor(held[0]!) }]
+  if (held.length > 1) {
+    out.push({ s: ` +${held.length - 1}` })
+  }
+  return out
+}
+
 /** The earliest moment after `now` at which one of these live claims runs out. Null when none will. */
 export function nextExpiry(claims: Iterable<Claim | null>, now: number): number | null {
   let next: number | null = null

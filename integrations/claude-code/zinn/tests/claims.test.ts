@@ -1,6 +1,6 @@
 // Who holds a task: the claim as the CLI prints it, drawn in the legend, the board and the task pane. Pure.
 import { test, expect } from 'claude-code/testing'
-import { claimedAway, claimLine, claimOf, holderOf, legendClaim, nextExpiry, wallTime, type Claim } from '../lib/claims'
+import { claimedAway, claimLine, claimOf, footerClaimSpans, heldColor, HELD_COLORS, holderOf, legendClaim, nextExpiry, wallTime, type Claim } from '../lib/claims'
 import { findMentions, parseTaskList } from '../lib/keys'
 import { HELD_TITLE_MIN, underLines } from '../lib/plan'
 import { lineText } from '../lib/style'
@@ -71,6 +71,13 @@ test('legend: a held entry cuts its title by the claim part, so it is no wider t
   // A short titleMax still leaves the held entry a title.
   const [shortHeld] = legend(20)
   expect(shortHeld).toContain(`○ ${long.slice(0, HELD_TITLE_MIN - 1).trimEnd()}…`)
+})
+
+test('footer: the latest held key in its own colour, the same for a key every time, then +N dim', () => {
+  expect(footerClaimSpans([])).toEqual([])
+  expect(footerClaimSpans(['CLM-1', 'CLM-2', 'CLM-9'])).toEqual([{ s: ' ◆ CLM-1', color: heldColor('CLM-1') }, { s: ' +2' }])
+  expect(HELD_COLORS).toContain(heldColor('CLM-1'))
+  expect(new Set(['ZCC-1', 'ZCC-2', 'ZCC-3', 'ZCC-4', 'ZCC-5', 'ZCC-6', 'ZCC-7', 'ZCC-8'].map(heldColor)).size).toBeGreaterThan(1)
 })
 
 test('wall time: the time alone today, the date with it on another day', () => {

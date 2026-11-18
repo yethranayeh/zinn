@@ -29,7 +29,7 @@ import type { ViewResult } from "../lib/watch";
 import { findMentions, parseTaskList } from "../lib/keys";
 import { parseConfig } from "../lib/config";
 import { planFor, UNDER_INDENT, type ClaimCtx } from "../lib/plan";
-import { claimedAway, claimToastText, nextExpiry } from "../lib/claims";
+import { claimedAway, claimToastText, footerClaimSpans, heldKeys, nextExpiry } from "../lib/claims";
 import { failureReason, toState } from "../lib/state";
 import {
   appendCapped,
@@ -101,6 +101,8 @@ const seen = new Map<string, { text: string; at: number }>();
 const mentioned = new Set<string>();
 // When the armed claim-expiry redraw fires. Null: none armed.
 let expiryAt: number | null = null;
+// Keys this session holds, for the footer label. Kept current wherever the map or the clock changes them.
+let held: string[] = [];
 const t0 = typeof performance !== "undefined" ? performance.now() : 0;
 const now = (): number => (typeof performance !== "undefined" ? performance.now() : 0) - t0;
 const errText = (err: unknown): string =>
@@ -188,6 +190,7 @@ async function loadMap($: Dollar): Promise<string> {
         const p0 = now();
         map = parseTaskList(r.stdout);
         void armExpiry($);
+        void refreshHeld($);
         line = {
           ev: "map",
           ok: true,
@@ -244,8 +247,27 @@ async function armExpiry($: Dollar): Promise<void> {
   $.clock.after(next - at + EXPIRY_REDRAW_MS, () => {
     expiryAt = null;
     $.ui.invalidate("ui.render");
+    void refreshHeld($);
     void armExpiry($);
   });
+}
+
+/** Recomputes the keys this session holds and redraws the footer when they changed. */
+async function refreshHeld($: Dollar): Promise<void> {
+  if (map === null || cfg === null || !cfg.footerLabel || !cfg.footerClaim) {
+    return;
+  }
+  const [me, at] = await Promise.all([$.session.id().catch(() => null), $.clock.now().catch(() => null)]);
+  if (at === null) {
+    return;
+  }
+  const next = heldKeys(map.keys, me, at);
+  const isSame = next.length === held.length && next.every((k, i) => k === held[i]);
+  if (isSame) {
+    return;
+  }
+  held = next;
+  $.ui.invalidate("ui.render");
 }
 
 /** What the legend needs to say who holds a task, read only when a mentioned task has a claim. */
@@ -574,6 +596,7 @@ async function refreshRound($: Dollar, full: boolean, keys: string[]): Promise<v
     if (how === "keys") {
       map = applyViews(prev!, results);
       void armExpiry($);
+      void refreshHeld($);
       mapNote = `${map.keys.size} keys`;
       const at = new Date(await $.clock.now().catch(() => 0)).toISOString();
       await $.state.set(MAP_REF, toState(map, at, ZINN_ARGV, null)).catch(() => undefined);
@@ -792,16 +815,26 @@ export const registerMentions = (on: On, options: PluginOptions): void => {
   // The footer label: one dim `zinn` among the mode labels at the right of the prompt footer (terminal and
   // desktop draw SessionMode; elsewhere this never fires). It is the one always-on sign that Zinn is loaded;
   // `zinn ✗` while there is a fault. Skipped when a label is already there, so several Zinn mods show one.
-  // A throw draws the engine's own footer.
+  // While this session holds a task, the engine's labels are followed by ` ◆ KEY` in the key's colour: a mode
+  // label is a string the engine draws dim, so the coloured part is drawn here. A throw draws the engine's own footer.
   if (options["footerLabel"] !== false) {
-    on("ui.render", { component: "SessionMode" }, ($, e, next) => {
+    on("ui.render", { component: "SessionMode" }, async ($, e, next) => {
       if (cfg === null || !cfg.enabled || hasFooterLabel(e.props.modes)) {
         return next(e);
       }
-      return next({
-        ...e,
-        props: { ...e.props, modes: [...e.props.modes, footerLabelText(hasProblem())] },
-      });
+      const drawn = next({ ...e, props: { ...e.props, modes: [...e.props.modes, footerLabelText(hasProblem())] } });
+      const claim = cfg.footerClaim ? footerClaimSpans(held) : [];
+      if (claim.length === 0) {
+        return drawn;
+      }
+      const { Box, Text } = $.ui.resolve(e);
+      const T = Text as unknown as (p: Record<string, unknown>) => RenderElement;
+      return (
+        <Box flexDirection="row">
+          {await drawn}
+          {claim.map((sp, i) => (sp.color === undefined ? <T key={String(i)} dimColor>{sp.s}</T> : <T key={String(i)} color={sp.color}>{sp.s}</T>))}
+        </Box>
+      );
     });
   }
 

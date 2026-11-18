@@ -106,6 +106,8 @@ export type Config = {
   statusLine: StatusLine
   /** One dim `zinn` among the mode labels at the right of the prompt footer: the sign that the mod is loaded. */
   footerLabel: boolean
+  /** The footer label names the task this session holds. */
+  footerClaim: boolean
 }
 
 export type EnvReads = { look?: string; legend?: string; maxEntries?: string; keyPress?: string; marks?: string; myPrompts?: string; log?: string; statusLine?: string }
@@ -165,5 +167,6 @@ export function parseConfig(options: Readonly<Record<string, unknown>>, env: Env
     toastOnChange: options['toastOnChange'] !== false,
     statusLine: statusLine.value,
     footerLabel: options['footerLabel'] !== false,
+    footerClaim: options['footerClaim'] !== false,
   }
 }

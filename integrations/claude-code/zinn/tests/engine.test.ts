@@ -10,6 +10,7 @@ import { test, expect, mock } from 'claude-code/testing'
 import type { TestBody } from 'claude-code/testing'
 import type { On, PluginOptions } from 'claude-code'
 import { claimJson, HOUR, ROWS } from './fixtures'
+import { heldColor } from '../lib/claims'
 import type { KeyMapState } from '../lib/state'
 import { VERSION } from '../hooks/client'
 
@@ -638,6 +639,53 @@ test('footerLabel false: no label; enabled false: no label either', opts({ look:
   const w = world(on)
   await $.session.start(START)
   expect(await footer($, w)).toEqual(['focus'])
+})
+
+// What the mod draws after the engine's labels: each Text's string and colour, the core's empty Text left out.
+const footerClaim = async ($: Parameters<TestBody>[0]): Promise<{ s: string; color: unknown }[]> => {
+  const out: { s: string; color: unknown }[] = []
+  const walk = (n: unknown): void => {
+    if (typeof n !== 'object' || n === null) { return }
+    const el = n as { type?: unknown; props?: Record<string, unknown>; children?: unknown[] }
+    const kids = el.children ?? (el.props?.['children'] as unknown[] | undefined) ?? []
+    const list = Array.isArray(kids) ? kids : [kids]
+    const text = list.filter(k => typeof k === 'string').join('')
+    if (text !== '') { out.push({ s: text, color: el.props?.['color'] ?? (el.props?.['dimColor'] === true ? 'dim' : undefined) }) }
+    list.forEach(walk)
+  }
+  walk(await $.ui.render({ surface: 'terminal', component: 'SessionMode', requestId: 'footer', props: { modes: ['focus'] } }))
+  return out
+}
+
+test('ZCC-7 footer: the label names the task this session holds, the latest claim first, never another session', opts({ look: 'under' }), async ($, on) => {
+  const at = Date.UTC(2026, 9, 12, 9, 0, 0) // the world's clock
+  const rows = ROWS.map(r => (r.key === 'ZCC-6' ? { ...r, claim: claimJson(SESSION, at + HOUR) } : r.key === 'ZCC-7' ? { ...r, claim: claimJson(SESSION, at + 2 * HOUR) } : r.key === 'ZCC-8' ? { ...r, claim: claimJson('another-session', at + 3 * HOUR) } : r))
+  const w = world(on, { zinn: { exitCode: 0, stdout: JSON.stringify(rows) } })
+  await $.session.start(START)
+  expect(await footer($, w)).toEqual(['focus', 'zinn']) // the engine's labels are unchanged
+  expect(await footerClaim($)).toEqual([{ s: ' ◆ ZCC-7', color: heldColor('ZCC-7') }, { s: ' +1', color: 'dim' }])
+})
+
+test('ZCC-7 footer: a lease that runs out leaves the label, with no store read', opts({ look: 'under' }), async ($, on) => {
+  const at = Date.UTC(2026, 9, 12, 9, 0, 0)
+  const lease = 60_000
+  const rows = ROWS.map(r => (r.key === 'ZCC-6' ? { ...r, claim: claimJson(SESSION, at + lease) } : r))
+  const w = world(on, { zinn: { exitCode: 0, stdout: JSON.stringify(rows) } })
+  await $.session.start(START)
+  expect(await footerClaim($)).toEqual([{ s: ' ◆ ZCC-6', color: heldColor('ZCC-6') }])
+  const runs = w.runs.length
+  await w.clock.advance(lease + 1100)
+  expect(await footerClaim($)).toEqual([])
+  expect(w.runs.slice(runs).filter(a => a[0] === 'zinn' && a[1] === 'task')).toEqual([]) // the activity poll may tick
+})
+
+test('ZCC-7 footerClaim false: the label stays `zinn` while this session holds a task', opts({ look: 'under', footerClaim: false }), async ($, on) => {
+  const at = Date.UTC(2026, 9, 12, 9, 0, 0)
+  const rows = ROWS.map(r => (r.key === 'ZCC-6' ? { ...r, claim: claimJson(SESSION, at + HOUR) } : r))
+  const w = world(on, { zinn: { exitCode: 0, stdout: JSON.stringify(rows) } })
+  await $.session.start(START)
+  expect(await footer($, w)).toEqual(['focus', 'zinn'])
+  expect(await footerClaim($)).toEqual([])
 })
 
 test('enabled false: nothing in the footer', opts({ enabled: false }), async ($, on) => {
