@@ -42,7 +42,7 @@ Give a task a deadline with \`--due\`, then sort by it with \`task list --sort d
 
 Zinn doesn't stop at who changed a task. It takes you back into the conversation that made the change.
 
-[Activity](https://zinn.sh/docs/cli#activity) records the agent and session behind a change, and \`zinn activity list --task <task-key>\` lists the changes to a task. Claude Code and Codex sessions are recorded without setup.
+[Activity](https://zinn.sh/docs/cli/activity) records the agent and session behind a change, and \`zinn activity list --task <task-key>\` lists the changes to a task. Claude Code and Codex sessions are recorded without setup.
 
 The Zinn workflow skill teaches an agent to find its task, keep context in comments, record follow-ups and hand off at the project's review column. [Set it up for your agent](https://zinn.sh/docs/installation#use-with-coding-agents).
 
@@ -58,7 +58,7 @@ Every project lives in one SQLite database, \`~/.zinn/data/zinn.sqlite\` by defa
 
 Zinn is free and MIT licensed. See its [price in bytes and running costs](https://zinn.sh/pricing).
 
-Read the [quick start](https://zinn.sh/docs/quick-start) or [project reference](https://zinn.sh/docs/cli#start-a-project), browse the [Zinn source on GitHub](${projectLinks.github}) or find the [Zinn CLI package on npm](${projectLinks.npm}).
+Read the [quick start](https://zinn.sh/docs/quick-start) or [project reference](https://zinn.sh/docs/cli/projects#start-a-project), browse the [Zinn source on GitHub](${projectLinks.github}) or find the [Zinn CLI package on npm](${projectLinks.npm}).
 
 Read [About Zinn](https://zinn.sh/about), [Contact](https://zinn.sh/contact) and [Privacy](https://zinn.sh/privacy).
 

@@ -12,7 +12,6 @@ import Link from "../components/ui/link/Link.astro";
 
 import { homepage, projectLinks } from "../config/site";
 
-const documentation = "/docs/cli";
 const workflowCommands = [
 	"zinn project create DEMO --name 'Release work'",
 	"zinn task create DEMO \\\n  --title 'Write release notes' \\\n  --priority high",
@@ -107,7 +106,7 @@ const workflowCommands = [
 				Zinn doesn't stop at who changed a task. It takes you back into the conversation that made the change.
 			</p>
 			<p>
-				<Link href='/docs/cli#activity'>Activity</Link> records the agent and session behind a change, and <code
+				<Link href='/docs/cli/activity'>Activity</Link> records the agent and session behind a change, and <code
 					>zinn activity list --task &lt;task-key&gt;</code
 				> lists the changes to a task. Claude Code and Codex sessions are recorded without setup.
 			</p>
@@ -153,7 +152,7 @@ const workflowCommands = [
 				Zinn is free and MIT licensed. See its <Link href='/pricing'>price in bytes and running costs</Link>.
 			</p>
 			<p>
-				Read the <Link href='/docs/quick-start'>quick start</Link> or <Link href={`${documentation}#start-a-project`}
+				Read the <Link href='/docs/quick-start'>quick start</Link> or <Link href='/docs/cli/projects#start-a-project'
 					>project reference</Link
 				>, browse the <Link href={projectLinks.github} data-site-event='github-click'>Zinn source on GitHub</Link> or find
 				the <Link href={projectLinks.npm} data-site-event='npm-click'>Zinn CLI package on npm</Link>.

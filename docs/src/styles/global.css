@@ -28,7 +28,7 @@
 		--site-header-height: calc(var(--site-brand-height) + 1px);
 		--site-content-width: 90rem;
 		--site-gutter: 1.5rem;
-		scroll-padding-top: calc(var(--site-header-height) + 1.5rem);
+		scroll-padding-top: calc(var(--site-header-height) + 24px);
 	}
 
 	@media (width >= theme(--breakpoint-md)) {

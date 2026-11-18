@@ -57,7 +57,7 @@ Task details include status, priority, labels, the first paragraph of the descri
 
 A conversation mark means a task has recorded activity whose session or thread ID matches the current conversation, its root or one of its children. A mention alone does not create a mark. The mark records activity, rather than an assignment or ownership claim.
 
-OpenCode's native shell session ID is recorded by Zinn as a thread ID. An explicit \`ZINN_SESSION_ID\` and \`ZINN_THREAD_ID\` pair takes precedence. The inspector recognizes both routes. See [actor identity](https://zinn.sh/docs/cli#who-am-i) for the CLI contract.
+OpenCode's native shell session ID is recorded by Zinn as a thread ID. An explicit \`ZINN_SESSION_ID\` and \`ZINN_THREAD_ID\` pair takes precedence. The inspector recognizes both routes. See [actor identity](https://zinn.sh/docs/cli/identity#who-am-i) for the CLI contract.
 
 The mark animates while OpenCode reports that conversation as busy. Busy state comes from the host independently of the task's recorded activity. Tasks in Done keep their green treatment.
 

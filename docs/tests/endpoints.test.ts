@@ -572,6 +572,34 @@ test("every sitemap page has a Markdown twin", async () => {
   expect(missing).toEqual([]);
 });
 
+test("every same-site section link on a sitemap page reaches its heading", async () => {
+  const sitemap = await (await server.fetch("/sitemap-0.xml")).text();
+  const pathnames = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(
+    (match) => new URL(match[1]!).pathname,
+  );
+  const pages = new Map<string, Promise<string>>();
+  const pageAt = (pathname: string) => {
+    let page = pages.get(pathname);
+    if (!page) {
+      page = server.fetch(pathname).then((response) => response.text());
+      pages.set(pathname, page);
+    }
+    return page;
+  };
+  const broken: string[] = [];
+  for (const pathname of pathnames) {
+    const html = await pageAt(pathname);
+    const hrefs = [...html.matchAll(/href="((?:https:\/\/zinn\.sh)?\/[^"#]*)#([^"]+)"/g)];
+    for (const [, target, fragment] of hrefs) {
+      const targetPath = target!.replace("https://zinn.sh", "");
+      if (!(await pageAt(targetPath)).includes(`id="${fragment}"`)) {
+        broken.push(`${pathname} -> ${targetPath}#${fragment}`);
+      }
+    }
+  }
+  expect(broken).toEqual([]);
+});
+
 async function expectSocialImage(path: string) {
   const response = await server.fetch(path);
   expect(response.status).toBe(200);
