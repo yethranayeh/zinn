@@ -1,0 +1,47 @@
+---
+title: Confirmations in scripts
+description: Confirm changes in JSON and unattended commands, including project deletion and relation replacement.
+toc: true
+---
+
+import Kbd from "../../../components/ui/kbd/Kbd.astro";
+
+# Confirmations in scripts
+
+## Confirm unattended changes
+
+Project, column, task, label, and comment deletion, and database restore, ask for confirmation. Use `--yes` to skip a prompt.
+
+For a disposable example, first create a task in an isolated store:
+
+```sh title="Prepare a task for the confirmation example"
+mkdir -p ./.zinn-confirmation-example
+ZINN_DIR=./.zinn-confirmation-example zinn project create MDR --name 'Scripting examples'
+ZINN_DIR=./.zinn-confirmation-example zinn task create MDR --title 'Try confirmation'
+```
+
+```sh title="Delete a task without prompting"
+ZINN_DIR=./.zinn-confirmation-example zinn task delete MDR-1 --yes --json
+```
+
+With `--json`, `--yes` is required for commands that ask for confirmation. Without a terminal, the same commands require `--yes` and refuse before asking. Piped input such as `echo y` does not answer the prompt. In a terminal, only `y` or `Y` confirms. Pressing <Kbd variant='terminal'>Enter</Kbd> declines. Declining changes nothing and exits successfully. `task relation delete` does not ask for confirmation and does not accept `--yes`.
+
+## Project deletion
+
+Project deletion has an additional rule: `--yes` skips confirmation only when the project key is typed in the command. A configured default project still requires confirmation and cannot be deleted with `--json`.
+
+## Relation replacement
+
+`task relation create` asks only when replacing existing links. A creation without conflicts does not warrant `--yes`, including with `--json`. Replacement requires `--yes` in JSON or without a terminal. Successful replacement returns the same new-relation JSON shape as creation.
+
+## Discover command help
+
+For the exact command syntax, run root or namespace help, then command help:
+
+```sh title="Discover command help"
+zinn --help
+zinn project --help
+zinn task move --help
+```
+
+The short `-h` form works in the same positions. Help shows usage for the command words before it and runs no command. Running `zinn` without a command shows help. `zinn --version` (or `-v`) prints the CLI version.

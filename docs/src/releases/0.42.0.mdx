@@ -19,7 +19,7 @@ core: 0.31.0
 
 - **Breaking core API:** `task.edit`, `task.label.add`, `task.label.remove` and `task.order` return `{ task, changed }`.
   - `project.edit`, `column.edit`, `column.order`, `label.edit` and `comment.edit` return the corresponding entity field and `changed`. Read the record from that field and use `changed` to distinguish saved changes from no-op requests.
-- JSON results include stored entity IDs, and additional mutation results report `changed`. Consumers validating results against a previous release's schemas must refresh `zinn capabilities --json`. See [Scripting](/docs/scripting).
+- JSON results include stored entity IDs, and additional mutation results report `changed`. Consumers validating results against a previous release's schemas must refresh `zinn capabilities --json`. See [Entity identity](/docs/scripting/json#entity-identity) and [schema compatibility](/docs/scripting/capabilities#version-compatibility).
 - **Breaking text input:** descriptions and comment text are limited to 1 MiB of UTF-8 input. Keep each input and the resulting text of a partial edit within that limit.
   - Oversized input fails without writing changes.
 - Descriptions and comment text normalize CRLF pairs to LF, including append, find and replacement inputs. Other whitespace, including lone carriage returns is preserved.

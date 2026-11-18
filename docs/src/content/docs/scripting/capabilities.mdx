@@ -1,0 +1,92 @@
+---
+title: Command capabilities
+description: Discover CLI inputs, effects and result schemas, then invoke commands from their descriptors.
+toc: true
+---
+
+# Command capabilities
+
+## Discover the command contract
+
+`zinn capabilities --json` describes the installed CLI without reading settings, opening a database, prompting, or using the network. It works when the store is missing or settings are invalid. Without `--json`, it prints a short summary and the command to retrieve the full contract.
+
+The JSON object contains `manifestVersion` (currently `1`), `cli` (package name and version), `invocation`, `commands`, `error`, and `schemas`. Commands follow route order and include the `capabilities` command itself. Each command describes its token-array `path`, `aliases`, summary, input, effects, confirmation, and finite set of results. `aliases` lists complete token paths, such as `[["task", "show"]]` for `task view`, and is `[]` for a command without aliases. Aliases share the canonical command's descriptor and do not add commands to the count.
+
+## Read command descriptors
+
+### Inputs and constraints
+
+`input.options` is keyed by option name. Each option declares its `type`. Omitted `required` and `multiple` mean `false`. String values can carry named placeholders, choices, patterns, and descriptions. Positional `forms` declare ordered names, minimum and maximum occurrences (`null` means no upper bound), and value facts. Choose the form that matches supplied values. `constraints` describes mutual exclusion, requirements, and requests that need at least one input. Optional `notes` explain resolver and domain behavior.
+
+Task command descriptors expose `due` timestamp options on create and edit, `due-since` and `due-until` on list and search, the `due` choice for task-list sorting, and the `starting-after` option on task list, whose kind is `task-cursor` and name is `cursor`. Read option descriptions and constraints from the installed manifest.
+
+A `requiresAny` constraint means that supplying its `input` requires at least one of its `members`. For example, `--show-deleted` requires either `--project` or `--task` on `activity list`.
+
+### Invocation
+
+`invocation` describes router options, help and version precedence, and literal values. Build argv from the command path, command options (use `--name=value` for string values), `--json`, then `--` and positional words when needed. Repeat an option only when `multiple` is `true`. Words after `--` are literal values.
+
+### Results and schemas
+
+`results` selects a JSON success schema: `always`, `booleanOption` (an absent boolean is false), or `positionalCount` (inclusive bounds, counting supplied occurrences, including repeated keys). Each result declares its `mode`, `stream`, and `exitCode`. A result with `findingsExitCode` can also arrive on stdout with that exit code: `zinn doctor` does so when it reports findings. Mode `json` is one JSON document. Mode `json-lines` belongs to a command that runs until stopped, such as `activity list --follow`: it prints one document per line, and each line matches the selected schema.
+
+A descriptor's `schemaRef`, such as `#/schemas/definitions/TaskList`, resolves against the whole manifest. JSON Schema `$ref` values resolve against the extracted `schemas` document, which uses draft-07. All references are local. The finite `Capabilities` definition describes the manifest without embedding another manifest value.
+
+### Effects and confirmations
+
+`effects.domain` describes the operation. `effects.storage: "normal-open"` may create or upgrade storage under the normal open policy, including for reads. `"none"` performs no storage access. Administrative commands declare their own storage operation. `effects.storage` covers the database and backups, not [telemetry records](/docs/data#telemetry), because a failed `whoami` or `capabilities` run writes a record. `confirmation` describes prompts and project-deletion rules.
+
+## Version compatibility
+
+Help stays text even with `--json`. The CLI package release version identifies the command contract. `manifestVersion` describes how to interpret the manifest and changes only when that interpretation becomes incompatible. Development builds can change the contract without changing their version, so use the manifest content rather than its version alone as a cache key.
+
+Result schemas reject additional properties. When updating the CLI, retrieve its manifest again: a schema from an older release can reject fields added by the installed release.
+
+## Invoke a discovered command
+
+For example, with `@zinn-dev/cli` installed in the consumer project and an `APP` project in the selected store, a Node.js script can read the manifest, find the task-list command, and build argv from its positional-form descriptor:
+
+```js title="Discover and invoke task list"
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const entryPoint = fileURLToPath(import.meta.resolve("@zinn-dev/cli"));
+
+function json(args) {
+	const result = spawnSync(process.execPath, [entryPoint, ...args], { encoding: "utf8" });
+	if (result.error) {
+		throw result.error;
+	}
+
+	if (result.status !== 0) {
+		throw new Error(result.stderr);
+	}
+
+	return JSON.parse(result.stdout);
+}
+
+const manifest = json(["capabilities", "--json"]);
+const command = manifest.commands.find(({ path }) => path.join(" ") === "task list");
+const form = command.input.forms[0];
+const values = { "project-key": "APP" };
+const words = form.positionals.flatMap(({ name }) => (values[name] === undefined ? [] : [values[name]]));
+const args = [...command.path, "--json"];
+if (words.length > 0) {
+	args.push(manifest.invocation.optionSeparator, ...words);
+}
+
+const tasks = json(args);
+const result = command.results.find(({ selector }) => selector.kind === "always");
+console.log({ schemaRef: result.schemaRef, tasks });
+```
+
+Use a JSON Schema validator with `manifest.schemas` to validate successful values against the selected definition. Task lists are arrays, including `[]`. Task details are objects. History selects a detail schema with a required `activity` array. Single and bulk mutations can select different schemas, so select the result before validating it.
+
+Save the script as `example.mjs` in the consumer project. Create an isolated store and sample task, then run it:
+
+```sh title="Run the discovery example in an isolated store"
+mkdir -p ./.zinn-scripting-example
+ZINN_DIR=./.zinn-scripting-example zinn project create APP --name 'Scripting examples'
+ZINN_DIR=./.zinn-scripting-example zinn task create APP --title 'Try JSON scripting'
+ZINN_DIR=./.zinn-scripting-example node example.mjs
+```

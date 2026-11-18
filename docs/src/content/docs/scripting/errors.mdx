@@ -1,0 +1,72 @@
+---
+title: Errors and notices
+description: Handle CLI error codes, structured details, diagnostics and invocation refusals.
+toc: true
+---
+
+# Errors and notices
+
+## Handle errors and notices
+
+Without `--json`, handled errors are plain messages on stderr. With `--json`, they are one JSON document. In both modes, stdout stays empty and the command exits with code `1`. `zinn skill install` exits with the skills CLI's exit code instead. `zinn doctor` exits with code `1` and prints its checks on stdout when a check reports a warning or problem (see [Check for problems](/docs/cli/help#check-for-problems)). A JSON error contains a code and message, and may include known details, help, and diagnostics:
+
+```json
+{
+	"error": {
+		"code": "not_found",
+		"message": "...",
+		"details": { "entity": "task", "key": "MDR-999", "source": "explicit" }
+	}
+}
+```
+
+Check the exit status before parsing stdout or stderr. Scripts should use JSON fields such as `code` and `details`. Message, help, and diagnostic wording is for people. Signals, runtime loading failures, and broken output channels are outside the handled-error contract.
+
+## Error codes
+
+The error codes are:
+
+- `invalid_input` for an invalid invocation or settings.
+- `not_found` when a required entity or requested file is absent.
+- `conflict` when current state or database compatibility prevents the request.
+- `storage` for filesystem or SQLite operational failures.
+- `internal` for an unexpected failure.
+
+## Details and diagnostics
+
+Optional `error.details` carries known facts: `argument`, `field` (an array of string or number path segments), `entity`, `key`, `source` (`explicit` or `defaultProject`), `settingsPath`, `reason`, `matchCount`, `candidateIds`, `path`, `databasePath`, `backupDirectory`, `backupPath`, `schemaVersion`, `supportedSchemaVersion`, `expectedColumn`, `actualColumn`, `changedFields`, `claimExpiresAt` (when a task's claim expires, in epoch milliseconds), `logPath`, `exitCode` (the exit code of a program Zinn ran), and `cause` (`message` and optional native `code` or `errcode`). Unknown facts are omitted.
+
+### Help and prior notices
+
+Optional `error.help` retains usage guidance. Prior notices are collected in optional `error.diagnostics`, an array of strings. In text mode, notices are written to stderr as they occur. A successful JSON command writes notices as text to stderr after completion. On failure, prior notices are collected in `error.diagnostics`. This includes database lock waits. [Hooks](/docs/hooks) write their output and warnings to stderr while the command runs, in both modes.
+
+### Failure logs
+
+A `storage` or `internal` error also writes a [failure log](/docs/data#failure-logs). `error.details.logPath` holds the file's path, and in text mode the last line on stderr names it. Both are absent when no log could be written.
+
+## Invocation refusals
+
+Parser and routing refusals identify these cases in `error.details.reason`, with code `invalid_input`:
+
+- `dash_value`: an option value beginning with a dash must be joined to its flag with `=`.
+- `unknown_option`: an option is unknown, whether or not a correction is suggested.
+- `unknown_command`: no command matches in the namespace.
+- `missing_command`: a namespace was supplied without a command.
+- `missing_argument`: a required positional argument, required string option, or string option value is missing.
+- `unexpected_argument`: more positional arguments were supplied than the command accepts.
+
+A checked suggestion to quote a column name uses reason `unquoted_column`. It retains the underlying error code and other details, such as `not_found` with the missing column's `entity` and `key`. Existing recovery reasons, including `confirmation_required`, `older_database`, and `missing_index`, identify their respective refusals. Other validation errors retain their known `argument` or `field` facts. Usage help alone does not imply a reason.
+
+## Claim conflicts
+
+[Task claim](/docs/cli/next#claim-tasks) refusals use code `conflict` with reason `claimed` when someone else holds the claim, `not_claimed` when `task heartbeat` finds no claim, and `claim_limit` when the holder renews a claim 24 hours or more after last changing the task. `claimExpiresAt` is present when the task has a claim.
+
+## Messages and terminal output
+
+Parser and routing errors use the same message in text mode and `error.message`, capped at 1,024 UTF-16 units. Omitted text is marked with an ellipsis, and oversized repair commands are replaced with guidance. `error.help` and structured details retain their complete values.
+
+### Color and debug output
+
+Text output is colored only in a terminal unless `NO_COLOR` disables it. `FORCE_COLOR=0` disables color. Any other nonempty value enables it, including when output is piped. `ZINN_DEBUG=1` prints route details to stderr without changing stdout. Other `ZINN_DEBUG` values do nothing.
+
+For command input conventions, including repeated flags and values beginning with a dash, see [Text values in the CLI reference](/docs/cli/conventions#text-values).

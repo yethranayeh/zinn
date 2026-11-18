@@ -1,180 +1,32 @@
 ---
 title: Scripting and JSON
-description: Use Zinn's JSON output and command manifest in scripts, including errors and confirmations.
+navTitle: Scripting
+description: Use JSON output in scripts and find result contracts, errors, capabilities and confirmation rules.
+toc: true
 ---
 
-import Kbd from "../../components/ui/kbd/Kbd.astro";
+import TopicIndex from "../../components/docs/TopicIndex.astro";
 
 # Scripting and JSON output
 
+## Read JSON
+
 Add `--json` to a command to get JSON instead of text. The flag can appear anywhere in the command except after `--`, where it is a positional value.
+
+These commands use an existing `MDR` project. See [Quick start](/docs/quick-start) to create a project and task.
 
 ```sh title="Read and create tasks as JSON"
 zinn task list MDR --json
 zinn task create MDR --title 'Refine the numbers' --json
 ```
 
-Read commands return the data they list or show. Write commands return the entity they create, change, or delete. Output is one JSON document on stdout; an empty list is `[]`.
+Read commands return the data they list or show. Write commands return the entity they create, change, or delete. Output is one JSON document on stdout. An empty list is `[]`.
 
-`project list --json` returns an array of projects with `id`, `key`, `name`, `description`, and `taskCounts: { "active": 12, "archived": 4 }`. Both counts are nonnegative integers and always present, including zero. Active tasks are unarchived tasks in any column, including Done.
+## Reference
 
-## Entity identity
+- [Result contracts and identity](/docs/scripting/json): stored IDs, task fields, timestamps, claims and related results.
+- [Errors and notices](/docs/scripting/errors): error codes, details, diagnostics and invocation refusals.
+- [Command capabilities](/docs/scripting/capabilities): discover inputs, effects and result schemas, then invoke a command.
+- [Confirmations in scripts](/docs/scripting/confirmations): unattended commands, deletion, relation replacement and help.
 
-Task, project, column, label, comment, and relation objects include their stored UUID as `id`, including nested objects and deletion results. The ID stays the same through edits and renames. Recreating an entity with the same key or name produces a new ID. Keys and names are the readable handles. IDs are returned verbatim, with `id` first in each entity object.
-
-References include the following ID fields:
-
-| Result                                  | Identity fields                                                          |
-| --------------------------------------- | ------------------------------------------------------------------------ |
-| Task, including single and bulk changes | `id`, `project_id`, `column_id`, `label_ids`                             |
-| Relation in a list or task view         | Relation `id`; connected `task` includes `id`, `project_id`, `column_id` |
-| Relation create/delete                  | Relation `id`, `source_task_id`, `target_task_id`                        |
-| Comment, including task view comments   | `id`, `task_id`                                                          |
-| Project, including project view         | `id`                                                                     |
-| Column in project view or column list   | `id`                                                                     |
-| Column create/edit/order/delete         | `id`, `project_id`                                                       |
-| Label                                   | `id`                                                                     |
-
-A task's `column` is its column name. `labels` contains label names, and `label_ids` contains their IDs in matching order. Both arrays are empty when the task has no labels.
-
-Task objects include `is_first` and `is_last`, marking whether the task's column is the first or last column of its board, and `column_category`, the column's [category](/docs/cli/projects#start-a-project). Column results carry the same pair and the column's `category`. Both category fields are `null` when an older database is opened read-only, and may hold a category added by a newer Zinn.
-
-Full task objects include required integer `created_at` and `updated_at` values in epoch milliseconds. This applies to list, search, view, create, edit, move, order, archive, unarchive, label attachment changes and delete results, including bulk results. Related task summaries include `id`, `key`, `project_id`, `column`, `column_id`, `is_first`, `is_last`, `column_category`, `title` and `status`. The [`TaskBlame` result](/docs/core/blame#result-types) identifies related tasks by `id` and `key` only.
-
-Full task objects also include required `due_at`, an integer Unix epoch-millisecond deadline or `null` when unset. It is present in task list, search, view and task mutation results. New task creation activity snapshots record `changes.due_at` as a number or `null`. Deadline edits record the previous and new values as a pair. Use `activity list --changed due_at` to select any deadline change. Existing activity payloads keep their recorded shape.
-
-Full task objects also include required `claim`: `null` when the task has no [claim](/docs/cli/next#claim-tasks), or an object with `state` (`live` or `expired`), `actor_kind`, `actor_name`, `actor_session_id`, `actor_thread_id`, `claimed_at`, `renewed_at`, `worked_at`, `lease_ms` and `expires_at`. The actor fields name the holder and are `null` when absent. `renewed_at` is the last renewal, `worked_at` the holder's last change to the task, and `expires_at` the earlier of the lease's end after `renewed_at` and 24 hours after `worked_at`. Times are integer epoch milliseconds, and `lease_ms` is the lease length in milliseconds. `state` compares `expires_at` with the time the command ran. `claim` is `null` when an older database without claims is opened read-only.
-
-The update time tracks meaningful task changes, including label attachments. Operations that lead to no change, comments, relations, column renames and global label definition edits preserve it. See [task timestamps](/docs/cli/tasks#create-and-read-tasks) for the operations that actually advance it.
-
-In relation create/delete results, `source_task_id` identifies the task named by `source`, and `target_task_id` identifies the task named by `target`. This also applies to symmetric `related` relations.
-
-Use a task's `id` with `activity list --task-id`, or a project's `id` with `activity list --project-id`, to select its history. Activity records have their own event `id` and the affected entity's `entity_id`; recorded `changes` payloads are preserved as written.
-
-## Handle errors and notices
-
-Without `--json`, handled errors are plain messages on stderr. With `--json`, they are one JSON document. In both modes, stdout stays empty and the command exits with code `1`. `zinn skill install` exits with the skills CLI's exit code instead. `zinn doctor` exits with code `1` and prints its checks on stdout when a check reports a warning or problem (see [Check for problems](/docs/cli/help#check-for-problems)). A JSON error contains a code and message, and may include known details, help, and diagnostics:
-
-```json
-{
-	"error": {
-		"code": "not_found",
-		"message": "...",
-		"details": { "entity": "task", "key": "MDR-999", "source": "explicit" }
-	}
-}
-```
-
-The error codes are:
-
-- `invalid_input` for an invalid invocation or settings;
-- `not_found` when a required entity or requested file is absent;
-- `conflict` when current state or database compatibility prevents the request;
-- `storage` for filesystem or SQLite operational failures;
-- `internal` for an unexpected failure.
-
-Optional `error.details` carries known facts: `argument`, `field` (an array of string or number path segments), `entity`, `key`, `source` (`explicit` or `defaultProject`), `settingsPath`, `reason`, `matchCount`, `candidateIds`, `path`, `databasePath`, `backupDirectory`, `backupPath`, `schemaVersion`, `supportedSchemaVersion`, `expectedColumn`, `actualColumn`, `changedFields`, `claimExpiresAt` (when a task's claim expires, in epoch milliseconds), `logPath`, `exitCode` (the exit code of a program Zinn ran), and `cause` (`message` and optional native `code` or `errcode`). Unknown facts are omitted. Optional `error.help` retains usage guidance. Prior notices are collected in optional `error.diagnostics`, an array of strings. In text mode, notices are written to stderr as they occur. A successful JSON command writes notices as text to stderr after completion; on failure, prior notices are collected in `error.diagnostics`. This includes database lock waits. [Hooks](/docs/hooks) write their output and warnings to stderr while the command runs, in both modes.
-
-A `storage` or `internal` error also writes a [failure log](/docs/data#failure-logs). `error.details.logPath` holds the file's path, and in text mode the last line on stderr names it. Both are absent when no log could be written.
-
-Check the exit status before parsing stdout or stderr. Scripts should use JSON fields such as `code` and `details`; message, help, and diagnostic wording is for people. Signals, runtime loading failures, and broken output channels are outside the handled-error contract.
-
-Parser and routing refusals identify these cases in `error.details.reason`, with code `invalid_input`:
-
-- `dash_value`: an option value beginning with a dash must be joined to its flag with `=`.
-- `unknown_option`: an option is unknown, whether or not a correction is suggested.
-- `unknown_command`: no command matches in the namespace.
-- `missing_command`: a namespace was supplied without a command.
-- `missing_argument`: a required positional argument, required string option, or string option value is missing.
-- `unexpected_argument`: more positional arguments were supplied than the command accepts.
-
-A checked suggestion to quote a column name uses reason `unquoted_column`. It retains the underlying error code and other details, such as `not_found` with the missing column's `entity` and `key`. Existing recovery reasons, including `confirmation_required`, `older_database`, and `missing_index`, identify their respective refusals. Other validation errors retain their known `argument` or `field` facts. Usage help alone does not imply a reason.
-
-[Task claim](/docs/cli/next#claim-tasks) refusals use code `conflict` with reason `claimed` when someone else holds the claim, `not_claimed` when `task heartbeat` finds no claim, and `claim_limit` when the holder renews a claim 24 hours or more after last changing the task. `claimExpiresAt` is present when the task has a claim.
-
-Parser and routing errors use the same message in text mode and `error.message`, capped at 1,024 UTF-16 units. Omitted text is marked with an ellipsis, and oversized repair commands are replaced with guidance. `error.help` and structured details retain their complete values.
-
-Text output is colored only in a terminal unless `NO_COLOR` disables it. `FORCE_COLOR=0` disables color; any other nonempty value enables it, including when output is piped. `ZINN_DEBUG=1` prints route details to stderr without changing stdout. Other `ZINN_DEBUG` values do nothing.
-
-For command input conventions, including repeated flags and values beginning with a dash, see [Text values in the CLI reference](/docs/cli/conventions#text-values).
-
-## Discover the command contract
-
-`zinn capabilities --json` describes the installed CLI without reading settings, opening a database, prompting, or using the network. It works when the store is missing or settings are invalid. Without `--json`, it prints a short summary and the command to retrieve the full contract.
-
-The JSON object contains `manifestVersion` (currently `1`), `cli` (package name and version), `invocation`, `commands`, `error`, and `schemas`. Commands follow route order and include the `capabilities` command itself. Each command describes its token-array `path`, `aliases`, summary, input, effects, confirmation, and finite set of results. `aliases` lists complete token paths, such as `[["task", "show"]]` for `task view`, and is `[]` for a command without aliases. Aliases share the canonical command's descriptor and do not add commands to the count.
-
-- `input.options` is keyed by option name. Each option declares its `type`; omitted `required` and `multiple` mean `false`. String values can carry named placeholders, choices, patterns, and descriptions. Positional `forms` declare ordered names, minimum and maximum occurrences (`null` means no upper bound), and value facts. Choose the form that matches supplied values. `constraints` describes mutual exclusion, requirements, and requests that need at least one input. Optional `notes` explain resolver and domain behavior.
-- Task command descriptors expose `due` timestamp options on create and edit, `due-since` and `due-until` on list and search, the `due` choice for task-list sorting, and the `starting-after` option on task list, whose kind is `task-cursor` and name is `cursor`. Read option descriptions and constraints from the installed manifest.
-- `invocation` describes router options, help and version precedence, and literal values. Build argv from the command path, command options (use `--name=value` for string values), `--json`, then `--` and positional words when needed. Repeat an option only when `multiple` is `true`; words after `--` are literal values.
-- `results` selects a JSON success schema: `always`, `booleanOption` (an absent boolean is false), or `positionalCount` (inclusive bounds, counting supplied occurrences, including repeated keys). Each result declares its `mode`, `stream`, and `exitCode`. A result with `findingsExitCode` can also arrive on stdout with that exit code: `zinn doctor` does so when it reports findings. Mode `json` is one JSON document. Mode `json-lines` belongs to a command that runs until stopped, such as `activity list --follow`: it prints one document per line, and each line matches the selected schema.
-- A descriptor's `schemaRef`, such as `#/schemas/definitions/TaskList`, resolves against the whole manifest. JSON Schema `$ref` values resolve against the extracted `schemas` document, which uses draft-07. All references are local. The finite `Capabilities` definition describes the manifest without embedding another manifest value.
-- `effects.domain` describes the operation. `effects.storage: "normal-open"` may create or upgrade storage under the normal open policy, including for reads; `"none"` performs no storage access. Administrative commands declare their own storage operation. `effects.storage` covers the database and backups, not [telemetry records](/docs/data#telemetry), because a failed `whoami` or `capabilities` run writes a record. `confirmation` describes prompts and project-deletion rules.
-
-A `requiresAny` constraint means that supplying its `input` requires at least one of its `members`. For example, `--show-deleted` requires either `--project` or `--task` on `activity list`.
-
-Help stays text even with `--json`. The CLI package release version identifies the command contract; `manifestVersion` describes how to interpret the manifest and changes only when that interpretation becomes incompatible. Development builds can change the contract without changing their version, so use the manifest content rather than its version alone as a cache key.
-
-Result schemas reject additional properties. When updating the CLI, retrieve its manifest again: a schema from an older release can reject fields added by the installed release.
-
-For example, with `@zinn-dev/cli` installed in the consumer project and an `APP` project in the selected store, a Node.js script can read the manifest, find the task-list command, and build argv from its positional-form descriptor:
-
-```js title="Discover and invoke task list"
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
-
-const entryPoint = fileURLToPath(import.meta.resolve("@zinn-dev/cli"));
-
-function json(args) {
-	const result = spawnSync(process.execPath, [entryPoint, ...args], { encoding: "utf8" });
-	if (result.error) {
-		throw result.error;
-	}
-
-	if (result.status !== 0) {
-		throw new Error(result.stderr);
-	}
-
-	return JSON.parse(result.stdout);
-}
-
-const manifest = json(["capabilities", "--json"]);
-const command = manifest.commands.find(({ path }) => path.join(" ") === "task list");
-const form = command.input.forms[0];
-const values = { "project-key": "APP" };
-const words = form.positionals.flatMap(({ name }) => (values[name] === undefined ? [] : [values[name]]));
-const args = [...command.path, "--json"];
-if (words.length > 0) {
-	args.push(manifest.invocation.optionSeparator, ...words);
-}
-
-const tasks = json(args);
-const result = command.results.find(({ selector }) => selector.kind === "always");
-console.log({ schemaRef: result.schemaRef, tasks });
-```
-
-Use a JSON Schema validator with `manifest.schemas` to validate successful values against the selected definition. Task lists are arrays, including `[]`; task details are objects. History selects a detail schema with a required `activity` array. Single and bulk mutations can select different schemas, so select the result before validating it.
-
-## Confirmations in scripts
-
-Project, column, task, label, and comment deletion, and database restore, ask for confirmation. Use `--yes` to skip a prompt:
-
-```sh title="Delete a task without prompting"
-zinn task delete MDR-1 --yes --json
-```
-
-With `--json`, `--yes` is required for commands that ask for confirmation. Without a terminal, the same commands require `--yes` and refuse before asking. Piped input such as `echo y` does not answer the prompt. In a terminal, only `y` or `Y` confirms; pressing <Kbd>Enter</Kbd> declines. Declining changes nothing and exits successfully. `task relation delete` does not ask for confirmation and does not accept `--yes`.
-
-Project deletion has an additional rule: `--yes` skips confirmation only when the project key is typed in the command. A configured default project still requires confirmation and cannot be deleted with `--json`.
-
-`task relation create` asks only when replacing existing links. A creation without conflicts does not warrant `--yes`, including with `--json`. Replacement requires `--yes` in JSON or without a terminal. Successful replacement returns the same new-relation JSON shape as creation.
-
-For the exact command syntax, run root or namespace help, then command help:
-
-```sh title="Discover command help"
-zinn --help
-zinn project --help
-zinn task move --help
-```
-
-The short `-h` form works in the same positions. Help shows usage for the command words before it and runs no command. Running `zinn` without a command shows help; `zinn --version` (or `-v`) prints the CLI version.
+<TopicIndex label='All scripting topics' />

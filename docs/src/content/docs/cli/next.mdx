@@ -58,7 +58,7 @@ zinn task claim MDR-1 --lease 2h --force
 
 `task release <task-key>` removes your claim. A task without a claim is left unchanged and the command exits `0`. Someone else's claim fails with reason `claimed`.
 
-Each command prints the task. With `--json`, it returns the task object with `changed`, like the other single-task write commands. `changed` is `false` when `task release` finds no claim. Task objects carry the claim in `claim` (see [Entity identity](/docs/scripting#entity-identity)), and claim failures carry its expiry in `claimExpiresAt` (see [Handle errors and notices](/docs/scripting#handle-errors-and-notices)).
+Each command prints the task. With `--json`, it returns the task object with `changed`, like the other single-task write commands. `changed` is `false` when `task release` finds no claim. Task objects carry the claim in `claim` (see [Claim fields](/docs/scripting/json#claims)), and claim failures carry its expiry in `claimExpiresAt` (see [Claim conflicts](/docs/scripting/errors#claim-conflicts)).
 
 ### Claim holders
 

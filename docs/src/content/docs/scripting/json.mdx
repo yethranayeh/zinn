@@ -1,0 +1,54 @@
+---
+title: Result contracts and identity
+description: Read CLI result fields, stored entity IDs, task state and timestamps.
+toc: true
+---
+
+# Result contracts and identity
+
+## Project results
+
+`project list --json` returns an array of projects with `id`, `key`, `name`, `description`, and `taskCounts: { "active": 12, "archived": 4 }`. Both counts are nonnegative integers and always present, including zero. Active tasks are unarchived tasks in any column, including Done.
+
+## Entity identity
+
+Task, project, column, label, comment, and relation objects include their stored UUID as `id`, including nested objects and deletion results. The ID stays the same through edits and renames. Recreating an entity with the same key or name produces a new ID. Keys and names are the readable handles. IDs are returned verbatim, with `id` first in each entity object.
+
+References include the following ID fields:
+
+- **Task, including single and bulk changes:** `id`, `project_id`, `column_id`, `label_ids`.
+- **Relation in a list or task view:** relation `id`. Connected `task` includes `id`, `project_id`, `column_id`.
+- **Relation create/delete:** relation `id`, `source_task_id`, `target_task_id`.
+- **Comment, including task view comments:** `id`, `task_id`.
+- **Project, including project view:** `id`.
+- **Column in project view or column list:** `id`.
+- **Column create/edit/order/delete:** `id`, `project_id`.
+- **Label:** `id`.
+
+## Task fields
+
+A task's `column` is its column name. `labels` contains label names, and `label_ids` contains their IDs in matching order. Both arrays are empty when the task has no labels.
+
+### Column position and category
+
+Task objects include `is_first` and `is_last`, marking whether the task's column is the first or last column of its board, and `column_category`, the column's [category](/docs/cli/projects#start-a-project). Column results carry the same pair and the column's `category`. Both category fields are `null` when an older database is opened read-only, and may hold a category added by a newer Zinn.
+
+### Timestamps
+
+Full task objects include required integer `created_at` and `updated_at` values in epoch milliseconds. This applies to list, search, view, create, edit, move, order, archive, unarchive, label attachment changes and delete results, including bulk results. Related task summaries include `id`, `key`, `project_id`, `column`, `column_id`, `is_first`, `is_last`, `column_category`, `title` and `status`. The [`TaskBlame` result](/docs/core/blame#result-types) identifies related tasks by `id` and `key` only.
+
+Full task objects also include required `due_at`, an integer Unix epoch-millisecond deadline or `null` when unset. It is present in task list, search, view and task mutation results. New task creation activity snapshots record `changes.due_at` as a number or `null`. Deadline edits record the previous and new values as a pair. Use `activity list --changed due_at` to select any deadline change. Existing activity payloads keep their recorded shape.
+
+### Claims
+
+Full task objects also include required `claim`: `null` when the task has no [claim](/docs/cli/next#claim-tasks), or an object with `state` (`live` or `expired`), `actor_kind`, `actor_name`, `actor_session_id`, `actor_thread_id`, `claimed_at`, `renewed_at`, `worked_at`, `lease_ms` and `expires_at`. The actor fields name the holder and are `null` when absent. `renewed_at` is the last renewal, `worked_at` the holder's last change to the task, and `expires_at` the earlier of the lease's end after `renewed_at` and 24 hours after `worked_at`. Times are integer epoch milliseconds, and `lease_ms` is the lease length in milliseconds. `state` compares `expires_at` with the time the command ran. `claim` is `null` when an older database without claims is opened read-only.
+
+### Update times
+
+The update time tracks meaningful task changes, including label attachments. Operations that lead to no change, comments, relations, column renames and global label definition edits preserve it. See [task timestamps](/docs/cli/tasks#create-and-read-tasks) for the operations that actually advance it.
+
+## Relation and activity identities
+
+In relation create/delete results, `source_task_id` identifies the task named by `source`, and `target_task_id` identifies the task named by `target`. This also applies to symmetric `related` relations.
+
+Use a task's `id` with `activity list --task-id`, or a project's `id` with `activity list --project-id`, to select its history. Activity records have their own event `id` and the affected entity's `entity_id`. Recorded `changes` payloads are preserved as written.
