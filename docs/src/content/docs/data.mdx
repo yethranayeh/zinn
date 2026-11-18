@@ -71,7 +71,7 @@ A database with a newer schema can be read, but Zinn refuses changes to it. Use 
 
 ### Column categories after upgrading
 
-Zinn 0.45.0 (schema version 5) gives every existing column a [category](/docs/cli#start-a-project). Columns named Backlog, TODO, In Progress, Doing, Review, Done or Cancelled, in any casing, take the category of the same meaning. Every other column becomes `todo`, so its tasks count as open. Before categories, a board's last column held its closed tasks. A last column with another name, such as Shipped, now holds open tasks until you change its category.
+Zinn 0.45.0 (schema version 5) gives every existing column a [category](/docs/cli/projects#start-a-project). Columns named Backlog, TODO, In Progress, Doing, Review, Done or Cancelled, in any casing, take the category of the same meaning. Every other column becomes `todo`, so its tasks count as open. Before categories, a board's last column held its closed tasks. A last column with another name, such as Shipped, now holds open tasks until you change its category.
 
 Check each board after upgrading and correct any category that is wrong:
 
@@ -108,7 +108,7 @@ A record is one line. Its keys are camelCase, and a fact Zinn does not know is l
 - `v` is the record format, currently `1`.
 - `startedAt` is the start of the run as a UTC time with milliseconds, and `durationMs` is how long it ran in whole milliseconds.
 - `exitCode` is `0` or `1`.
-- `actor` holds facts read from the environment, never from git. `kind` is `human` or `agent`. A detected agent adds `name` and `source`, such as `env:AI_AGENT`. `sessionId`, `threadId`, `agent`, `model` and `effort` appear when declared, as for [activity](/docs/cli#who-am-i). `client` is always present and holds the [client chain](/docs/cli#client-chains).
+- `actor` holds facts read from the environment, never from git. `kind` is `human` or `agent`. A detected agent adds `name` and `source`, such as `env:AI_AGENT`. `sessionId`, `threadId`, `agent`, `model` and `effort` appear when declared, as for [activity](/docs/cli/identity#who-am-i). `client` is always present and holds the [client chain](/docs/cli/identity#client-chains).
 - `command` holds the canonical `route`, such as `task view`, and `alias` when an alias was typed, such as `task show`. `help` is `true` only when a help flag was written. When no command matched, `route` is absent and `command` holds `namespace`, the nearest namespace (empty for the root), and `unmatchedWord`, the first word that matched no command. `unmatchedWord` is left out when that word starts with a dash.
 - `options` lists every option written before `--`, known or not, including `--json`. Each entry has the option's `name` and never its value. `valueForm` is `joined` when the value was written after `=`, `next` when a string option took the following word, and `none` for a flag. It is left out when the words alone cannot tell, such as an unknown option written without `=`. A word such as `-later` counts as one option named `-l`. A word gets an entry only when its name has an option's shape: after its dashes, a letter or digit followed by letters, digits, `_` or `-`.
 - `positionals` is the number of positional words the command received, including words after `--`. It is left out when no command matched, when help was requested, and when the arguments could not be parsed.

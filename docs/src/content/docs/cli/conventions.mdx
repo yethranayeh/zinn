@@ -1,0 +1,121 @@
+---
+title: Shared input rules
+toc: true
+description: Text values, edit behavior, repeated flags and bulk changes shared by CLI commands.
+---
+
+# Shared input rules
+
+## Editing conventions
+
+Edit commands change only the fields you supply, whereas omitted fields keep their current values. At least one edit field is required. After input normalization, a valid edit that leaves all values unchanged succeeds without writing changes, updating modification timestamps, or recording activity.
+
+Move, order, archive, unarchive, and task-label attachment commands also succeed without changes when the requested state is already satisfied. This does not apply to creation: creating an existing relation, for example, is an error.
+
+Edit, move, order, archive, unarchive and task-label attachment commands include `changed` in their `--json` results. It is `false` when the requested state was already satisfied, and a note is printed on stderr. A real change sets `changed` to `true` and prints no note. For label attachments, changing any of the requested labels counts as a change.
+
+### Names and descriptions
+
+Names and titles are trimmed and cannot be blank or contain line breaks or control characters, such as tabs.
+
+Project, task, and label descriptions may contain multiple lines. Omitted descriptions on creation, empty strings, and whitespace-only strings are stored as `null`. Note that non-blank descriptions and comment text normalize CRLF line endings to LF, preserving all other whitespace, including lone carriage returns. Use `--description ''` on an edit to clear a description. JSON returns the full text or `null`.
+
+### Append and replace text
+
+To change part of a description, or of a comment's text, `--append` and `--replacing` modify how `--description` (or `--text` on `task comment edit`) is applied to the stored text:
+
+```sh title="Edit descriptions"
+zinn task edit MDR-1 --description 'Bring waffles.' --append
+zinn task edit MDR-1 --description 'new sentence' --replacing 'old sentence'
+zinn project edit MDR --description database --replacing board --all
+```
+
+Flags:
+
+- `--append` adds the text as a new paragraph,
+- `--replacing <old>` replaces the one place where `<old>` appears, matching exactly and respecting case.
+- `--all` replaces every match.
+
+A command with no match, or with several matches and no `--all`, fails without changing anything.
+`--description ''` (or `--text ''`) with `--replacing` deletes the match. `--append` and `--replacing` cannot be combined.
+
+Append text and both the old and new text in a replacement use the same CRLF-to-LF normalization.
+
+Descriptions and comment text have a limit of 1 MiB (1,048,576 UTF-8 bytes). Full text is checked **before** normalization, and partial edits check the resulting text. Exceeding the limit fails without writing changes.
+
+## Text values
+
+A value that begins with a dash, such as a Markdown bullet, must be joined to its flag with `=`. Otherwise the command fails without changing anything:
+
+```sh title="Edit a description with a leading dash"
+zinn task edit MDR-1 --description='- Bring waffles.' --append
+```
+
+### Read text from a file or stdin
+
+For multi-line text, such as Markdown, read it from a file or from stdin instead. `--description-file <path>` on `project`, `task` and `label` `create` and `edit`, and `--text-file <path>` on `task comment create` and `edit`, take the text from a file. A path of `-` reads stdin. With a heredoc and a quoted delimiter (`'EOF'`) in bash or zsh, the shell passes `$`, backticks, quotes and leading dashes as written:
+
+```sh title="Edit multi-line text"
+zinn task edit MDR-1 --description-file - <<'EOF'
+- Bring waffles.
+- Count the `numbers` for $5 and "Kier".
+EOF
+zinn task comment create MDR-1 --text-file notes.md
+```
+
+To read only part of a file, pipe the slice into `-`. `tail` and `sed` cover the common cases:
+
+```sh title="Read part of a file"
+tail -n 20 build.log | zinn task comment create MDR-1 --text-file -
+sed -n '40,80p' notes.md | zinn task edit MDR-1 --description-file -
+sed -n '/^--- FAIL/,/^--- PASS/p' test.log | zinn task comment create MDR-1 --text-file -
+```
+
+### Input requirements
+
+Process substitution such as `<(tail -n 20 build.log)` is not a regular file and is refused, so pass the slice through a pipe.
+
+- A command takes one `-`, and refuses it when stdin is a terminal.
+- The path must be a regular file or `-`. A directory or another special file, such as a named pipe, is refused before anything is read.
+- The text must be UTF-8. A leading byte order mark is dropped. Other encodings, such as UTF-16, and text containing a NUL character fail.
+- Trailing line breaks are dropped, as `$(cat file)` does, so the stored text ends with the last character of the last line.
+- Empty or blank input fails. To clear a description, use `--description ''`.
+- The 1 MiB limit applies to the text Zinn reads, not the size of the source file. A slice that fits is accepted even when the source file is larger. Input over the limit fails before it is stored.
+- The inline flag and its file flag cannot be combined. `--append` and `--replacing` work with either. The `--replacing <old>` text stays inline.
+- A failed read changes nothing.
+
+On Windows PowerShell 5.1, pass a file rather than a pipe: piping to a program converts non-ASCII text to `?` before Zinn receives it.
+
+## Words and repeated flags
+
+`--` ends the options. Every word after the first `--` is considered a plain word, even a secondary instance of `--` or anything else that starts with a dash. Flags after it, such as `--json`, are not read. A trailing `--` changes nothing:
+
+```sh title="End option parsing with double dash"
+zinn project column create MDR -- -later
+zinn task search -- -flag
+```
+
+Parser and routing error messages are capped at 1,024 UTF-16 units. Short repair commands preserve the original values. Longer repairs give guidance and mark the full command as omitted, so apply the correction to your original input.
+
+### Repeated flags
+
+A flag can be given once.
+Only these flags repeat:
+
+- `--label` on `task create`, `task list` and `task search`,
+- `--depends-on` and `--related` on `task create`,
+- `--add-label` and `--remove-label` on `task edit`,
+- `--action` and `--changed` on `activity list`.
+
+Any other flag given twice, `--json` and `--yes` included, **fails** without changing anything.
+A help flag is the _exception_: the first one shows help and the rest of the line is ignored, so `-h --help` works and help is given whenever needed! No problem!
+
+## Changing tasks in bulk
+
+`task move`, `task order`, `task archive`, `task unarchive` and `task delete` accept multiple task keys, so several tasks can be changed in one command:
+
+- Tasks are changed in the order given.
+- If any task fails, for example because of an unknown key, none change.
+- A task already in the requested state is unchanged, with a note on stderr. Move, archive and unarchive also accept a repeated key. Order and delete require distinct keys, ignoring case.
+- With `--json`, one task prints an object and several print an array. Move, order, archive and unarchive include a `changed` field, which is `false` when the task was already in the requested state. Delete results omit `changed`.
+- Delete resolves every key before asking for one confirmation naming all selected tasks. An unknown or repeated key refuses the whole command before confirmation.

@@ -1,0 +1,56 @@
+---
+title: Labels
+toc: true
+description: Create global labels and attach them to tasks.
+---
+
+# Labels
+
+Labels are global and reusable across projects.
+
+## Create and edit labels
+
+```sh title="Create and edit labels"
+zinn label create urgent --color red --description 'Needs attention soon'
+zinn label create review
+zinn label edit review --color green
+zinn label list
+zinn label view urgent
+```
+
+## Adding to tasks
+
+```sh title="Add and remove task labels"
+zinn task create MDR --title 'Check the numbers' --label urgent --label review
+zinn task label add MDR-1 urgent review
+zinn task label remove MDR-1 review
+zinn task edit MDR-1 --add-label review --remove-label urgent
+```
+
+## Names and values
+
+Repeat `--label`, `--add-label`, or `--remove-label` for several labels. Each value is one name, so commas are part of the name. Quote names containing spaces: `--label 'needs review'`.
+
+Label names follow the shared [name and title rules](/docs/cli/conventions#editing-conventions), preserve their stored casing, and match case-insensitively. Changing only the casing is allowed. Names that differ only in case _cannot_ coexist.
+
+Label colors default to white. Available colors are _red_, _green_, _yellow_, _blue_, _magenta_, _cyan_, _white_, and _gray_.
+
+`--json` includes each label's color as a value.
+
+## Edit label definitions
+
+`label edit` accepts name, color, and description. `label create` and `label edit` take `--description-file` for a description from a file or stdin (see [Text values](/docs/cli/conventions#text-values)). Renaming preserves every task attachment because attachments refer to the label's internal ID. Updating a label definition does not affect attached tasks' timestamps.
+
+`label edit` takes `--expect-name`, `--expect-description`, `--expect-description-file` and `--expect-color`, the values you read before editing. They work as in [Edit tasks](/docs/cli/editing#edit-tasks), which explains the failure and how to expect an empty description.
+
+`label create`, `label edit`, `label list`, and `label delete` show a preview of the descriptions. `label view <name>` shows the full description, which preserves line breaks and whitespace. `label view --json` returns one object with `id`, `name`, `color`, and the `description` in full.
+
+Task creation and edits apply content and label changes together, or roll back together on failure.
+Changing a task's label attachments updates that task's modification timestamp. Archived tasks can also have their labels edited.
+
+`--json` lists a task's labels as names in `labels`, with their IDs in `label_ids` in the same order. See [Entity identity](/docs/scripting#entity-identity) for the ID fields on task and nested results.
+
+## Delete a label
+
+`zinn label delete urgent` asks for confirmation, then deletes the definition and removes it from every task. Declining confirmation leaves the label and its attachments unchanged. `--yes` skips the confirmation (see [Confirmations](/docs/scripting#confirmations-in-scripts)).
+Use `task label remove` to remove a label attachment from one task instead. Task/project deletion cleans up label attachments, but does not affect labels themselves.

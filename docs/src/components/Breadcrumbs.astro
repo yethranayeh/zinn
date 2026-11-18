@@ -1,22 +1,17 @@
 ---
-import { sectionNames } from "../config/routes";
+import { getCollection } from "astro:content";
+import { getBreadcrumbItems, type BreadcrumbItem } from "../config/routes";
+import { twMerge } from "tailwind-merge";
 
 interface Props {
 	/** Overrides the trail derived from the URL path. */
-	items?: { name: string; path: string }[];
+	items?: BreadcrumbItem[];
+	class?: string;
 }
 
-// Pages inside a known section get `Section / Page`. The section index and other pages get no trail.
-const [section, ...rest] = Astro.url.pathname.split("/").filter(Boolean);
-const sectionName = section === undefined ? undefined : sectionNames[section];
-const derived =
-	sectionName !== undefined && rest.length > 0 && Astro.locals.pageTitle !== undefined
-		? [
-				{ name: sectionName, path: `/${section}/` },
-				{ name: Astro.locals.pageTitle, path: Astro.url.pathname }
-			]
-		: [];
-const { items = derived } = Astro.props;
+const { items: suppliedItems, class: className } = Astro.props;
+const items =
+	suppliedItems ?? getBreadcrumbItems(Astro.url.pathname, Astro.locals.pageTitle, await getCollection("prose"));
 const breadcrumbList = {
 	"@context": "https://schema.org",
 	"@type": "BreadcrumbList",
@@ -32,7 +27,7 @@ const breadcrumbList = {
 {
 	items.length > 0 && (
 		<>
-			<nav class='mb-8 font-mono text-xs' aria-label='Breadcrumb'>
+			<nav class={twMerge("mb-8 font-mono text-xs", className)} aria-label='Breadcrumb'>
 				<ol class='flex flex-wrap items-center gap-x-2 gap-y-1'>
 					{items.map((item, index) => {
 						const isCurrent = index === items.length - 1;

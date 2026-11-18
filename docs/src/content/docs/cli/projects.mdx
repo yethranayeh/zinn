@@ -1,0 +1,110 @@
+---
+title: Projects and columns
+toc: true
+description: Create projects and manage columns, categories and board order.
+---
+
+# Projects and columns
+
+## Start a project
+
+Create a project with a key and optionally provide a name and description:
+
+```sh title="Create a project"
+zinn project create MDR --name 'Macrodata Refinement' --description 'Refine macrodata'
+```
+
+Project keys are stored in uppercase. An omitted name defaults to the key.
+
+Descriptions print in full with `project view`. See [Editing conventions](/docs/cli/conventions#editing-conventions) for name validation and description storage and clearing, and [Text values](/docs/cli/conventions#text-values) for `--description-file`.
+
+### Column categories
+
+Each project starts with _Backlog_, _TODO_, _Doing_, _Review_, _Done_ and _Cancelled_ columns.
+
+Every column has a category, which says what its tasks are to Zinn whatever the column is called or where it sits: `backlog`, `todo`, `in_progress`, `review`, `done` or `cancelled`. The default columns take the category of the same meaning. Tasks in `done` and `cancelled` columns are closed: they no longer hold back tasks that depend on them. [`task next`](/docs/cli/next#next-ready-task) hands out tasks from `todo` columns, then `backlog` columns. Renaming or moving a column keeps its category.
+
+### List projects and columns
+
+You can list projects or inspect a project's columns with:
+
+```sh title="List projects and columns"
+zinn project list
+zinn project view MDR
+zinn project column list MDR
+```
+
+`project list` shows each project's active and archived task counts, including zeros. Active means unarchived, in any column, including Done. Parents and subtasks each count once in their owning project.
+
+`project view` shows the project's description and task counts. Use `zinn task list <project-key>` to read its tasks.
+
+`project view` and `project column list` accept an omitted project key when [defaultProject](/docs/settings) is configured.
+
+`project column list` counts unarchived tasks. With `--json`, it returns `[{ "id": "<column-id>", "name": "Backlog", "is_first": true, "is_last": false, "category": "backlog", "taskCount": 3 }, ...]`.
+
+### Edit a project
+
+Edit a project:
+
+```sh title="Edit a project"
+zinn project edit MDR --name 'Macrodata Refinement (Morning Shift)'
+zinn project edit MDR --description 'Meet the quarterly quota'
+zinn project edit MDR --description ''
+```
+
+Provide `--name`, a description (`--description` or `--description-file`), or both.
+The project key can be omitted when [defaultProject](/docs/settings) is configured.
+See [Text values](/docs/cli/conventions#text-values) for values that begin with a dash and multi-line text.
+
+`--expect-name`, `--expect-description` and `--expect-description-file` give the values you read before editing. They work as in [Edit tasks](/docs/cli/editing#edit-tasks), which explains the failure and how to expect an empty description.
+
+## Manage columns
+
+Add another column at the end of the board, with its category:
+
+```sh title="Add a column"
+zinn project column create MDR Boardlog --category backlog
+```
+
+`--category` is required. Without it, or with an unknown value, the command fails and lists the valid values.
+
+Rename a column or change its category:
+
+```sh title="Edit a column"
+zinn project column edit MDR Doing --name Refining
+zinn project column edit MDR Shipped --category done --yes
+```
+
+Provide `--name`, `--category` or both. Column names follow the shared [name and title rules](/docs/cli/conventions#editing-conventions) and match case-insensitively. Names must be unique within the project. Changing only the casing is allowed. Renaming keeps tasks in the column.
+
+Changing the category of a column that holds tasks, active or archived, asks for confirmation, since it changes which of them count as closed. Use `--yes` to skip the prompt, which `--json` and runs without a terminal require. An empty column changes without a prompt.
+
+### Order columns
+
+Change a column's position on the board:
+
+```sh title="Order columns"
+zinn project column order MDR Review first
+zinn project column order MDR Review previous
+zinn project column order MDR Review next
+zinn project column order MDR Review last
+zinn project column order MDR Review before Refining
+zinn project column order MDR Review after Done
+```
+
+Directions follow board order: `first` is the start of the board and `last` is its end.
+Moving a column to the position it already has, or before or after itself, does nothing. Tasks stay in their columns.
+
+### Delete columns and projects
+
+Delete an empty column:
+
+```sh title="Delete a column"
+zinn project column delete MDR Review
+```
+
+Deletion asks for confirmation. Use `--yes` to skip the prompt, including with `--json`. The column must hold no active or archived tasks. Use `task move` or `task delete` to clear tasks from the column. Archived tasks must be unarchived before moving.
+
+New tasks enter the first column unless `--column` flag specifies a different column. A project may have no columns. Add one with `project column create` before creating tasks.
+
+`zinn project delete MDR` asks for confirmation, then permanently deletes the project and all of its columns and tasks. `--yes` skips confirmation when the project key is **typed**. With an _omitted_ key and [defaultProject](/docs/settings), it always asks: `--yes` is ignored with a warning, and without a terminal the command refuses with exit code 1. With `--json`, type the key and pass `--yes` (see [Confirmations](/docs/scripting#confirmations-in-scripts)). Deleting a project releases its key for a future project. See [Task key reuse](/docs/data#task-key-reuse).

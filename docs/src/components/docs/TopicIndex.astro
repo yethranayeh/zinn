@@ -1,0 +1,32 @@
+---
+import { getTopicIndex } from "./topic-index";
+
+interface Props {
+	label?: string;
+}
+
+const { label = "All topics" } = Astro.props;
+const topics = await getTopicIndex(Astro.url.pathname);
+---
+
+<details class='mt-10 border-t border-soot/22 pt-4' data-topic-index data-pagefind-ignore>
+	<summary class='min-h-11 cursor-pointer font-mono text-xs'>{label}</summary>
+	<nav aria-label={label}>
+		<div class='grid gap-x-6 gap-y-6 py-4 font-mono text-xs leading-relaxed sm:grid-cols-2'>
+			{
+				topics.map(({ title, path, headings }) => (
+					<div class='min-w-0'>
+						<a href={path} class='block py-2 font-semibold'>
+							{title}
+						</a>
+						{headings.map(({ slug, text }) => (
+							<a href={`${path}#${slug}`} class='block py-2 pl-3'>
+								{text}
+							</a>
+						))}
+					</div>
+				))
+			}
+		</div>
+	</nav>
+</details>

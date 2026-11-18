@@ -98,19 +98,19 @@ test.each(["CHANGELOG", "Pricing"])(
   },
 );
 
-test("the CLI reference's table of contents is not a result", async () => {
-  const pages = await search("blame");
-  const sections = pages.flatMap((page) => page.sub_results.map((section) => section.url));
-  expect(sections).not.toContain("/docs/cli/#contents");
+test("CLI navigation does not become indexed reading content", async () => {
+  const references = (await search(null)).filter((page) => page.url.startsWith("/docs/cli/"));
+  expect(references.length).toBeGreaterThan(1);
+  for (const page of references) {
+    expect(page.content).not.toContain("On this page");
+    expect(page.content).not.toContain("All CLI topics");
+  }
 });
 
-// "Shared conventions" is only a Contents label. The others each also title one section.
 test.each([
-  ["Shared conventions", 0],
-  ["Command aliases", 1],
-  ["Task relations", 1],
-  ["Who am I?", 1],
-])("the CLI reference indexes %s outside its table of contents %d times", async (label, count) => {
-  const reference = (await search(null)).find((page) => page.url === "/docs/cli/");
-  expect(reference?.content.split(label).length - 1).toBe(count);
+  ["command aliases", "/docs/cli/help/#command-aliases"],
+  ["who am i", "/docs/cli/identity/#who-am-i"],
+])("searching %s reaches its CLI section", async (query, url) => {
+  const sections = (await search(query)).flatMap((page) => page.sub_results.map((section) => section.url));
+  expect(sections).toContain(url);
 });

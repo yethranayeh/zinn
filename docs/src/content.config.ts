@@ -19,6 +19,8 @@ export const collections = {
       title: z.string(),
       description: z.string(),
       lastUpdated: pageDate.optional(),
+      navTitle: z.string().optional(),
+      toc: z.boolean().default(false),
     }),
   }),
   // One file per Zinn release. src/pages/changelog.astro lists them.

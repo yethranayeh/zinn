@@ -5,17 +5,20 @@ import { markdownBody } from "../markdown/markdown-body";
 export const getStaticPaths = (async () => {
   const entries = await getCollection("prose");
 
-  return entries.map((entry) => {
-    const markdown = entry.body ? markdownBody(entry.body) : entry.body;
-    return {
-      params: { slug: entry.id },
-      props: {
-        markdown: entry.data.lastUpdated
-          ? markdown?.replace(/^(# .+)$/m, `$1\n\nLast updated: ${entry.data.lastUpdated}`)
-          : markdown,
-      },
-    };
-  });
+  return Promise.all(
+    entries.map(async (entry) => {
+      const markdown = entry.body ? await markdownBody(entry.body, entry.id) : entry.body;
+
+      return {
+        params: { slug: entry.id },
+        props: {
+          markdown: entry.data.lastUpdated
+            ? markdown?.replace(/^(# .+)$/m, `$1\n\nLast updated: ${entry.data.lastUpdated}`)
+            : markdown,
+        },
+      };
+    }),
+  );
 }) satisfies GetStaticPaths;
 
 // MDX entry bodies arrive trimmed, so end the file with a newline as its source does.

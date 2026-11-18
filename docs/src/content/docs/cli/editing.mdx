@@ -1,0 +1,139 @@
+---
+title: Edit and organize tasks
+toc: true
+description: Edit task content, move and order tasks, archive tasks, and set priorities and deadlines.
+---
+
+# Edit and organize tasks
+
+## Edit tasks
+
+Edit a task's title, description, priority, or labels:
+
+```sh title="Edit tasks"
+zinn task edit MDR-1 --title 'Meet the quarterly refinement quota'
+zinn task edit MDR-1 --description 'Complete refinement before the waffle party'
+zinn task edit MDR-1 --title 'Meet the quarterly refinement quota' --description ''
+```
+
+See [Editing conventions](/docs/cli/conventions#editing-conventions) for title validation, partial edits and clearing descriptions.
+
+Archived tasks can be edited without unarchiving them.
+See [Text values](/docs/cli/conventions#text-values) for values that begin with a dash and multi-line text.
+
+### Check expected values
+
+`--expect-title`, `--expect-description`, `--expect-priority` and `--expect-due` give the value you read before editing. Use them when another agent or person may change the task at the same time:
+
+```sh title="Edit only if the description is still the one you read"
+zinn task edit MDR-1 --description 'Bring waffles and coffee.' --expect-description 'Bring waffles.'
+```
+
+Expected values are spelled as for the edit flags: `--expect-description ''` expects no description, and `--expect-priority none` and `--expect-due none` expect no priority and no deadline. `--expect-description-file <path>` reads the expected text from a file, or from stdin when `<path>` is `-`. An expected value may guard a field the edit does not change, but it is not an edit on its own.
+
+When a stored value differs from the expected one, the edit changes nothing and fails with error code `conflict` and reason `value_changed`. The error's `changedFields` lists the fields that differ, such as `["description"]`. This holds even when the stored value already equals the new one. To change part of a description, `--replacing` is still the tool. With `--expect-description`, it checks the whole stored description first.
+
+## Move and order tasks
+
+Move a task to another column in its project:
+
+```sh title="Move a task"
+zinn task move MDR-1 Doing
+```
+
+A moved task appears at the bottom of its destination column. Moving it to its current column does nothing. Archived tasks must be unarchived before they can be moved.
+
+For multiple tasks, give their keys before the column. They move in input order. Tasks already in that column retain their positions. Each task's column is looked up in its own project:
+
+```sh title="Move tasks in bulk"
+zinn task move MDR-1 MDR-2 APP-4 Doing
+```
+
+See [Changing tasks in bulk](/docs/cli/conventions#changing-tasks-in-bulk).
+
+### Move only from an expected column
+
+`--from` moves a task only if it is still in the given column. Use it to take a task that another agent or person may be taking at the same time:
+
+```sh title="Take a task only if nobody else has"
+zinn task move MDR-1 Doing --from TODO
+```
+
+When the task has left that column, the move changes nothing and fails with error code `conflict` and reason `column_changed`. The error's `expectedColumn` and `actualColumn` name both columns. This holds even when the task is already in the target column, so of several callers taking the same task, exactly one succeeds. With several task keys, one task outside the column fails the whole move.
+
+### Order tasks
+
+Change a task's position within its current column:
+
+```sh title="Order tasks"
+zinn task order MDR-2 top
+zinn task order MDR-2 up
+zinn task order MDR-2 down
+zinn task order MDR-2 bottom
+zinn task order MDR-2 before MDR-1
+zinn task order MDR-2 after MDR-1
+zinn task order MDR-2 MDR-3 top
+```
+
+The task being reordered and the target of `before` or `after` must be active tasks in the same column.
+
+For several tasks, ordering is the same as ordering the first task as requested, then each next task after the one before it. Tasks form a block in the given order. Each step that already satisfies its placement leaves that task unchanged and records no activity and other tasks retain their relative order. All source tasks must be distinct active tasks in the same project and column, and the target cannot be among them. `up` and `down` take one task.
+
+## Archive and delete tasks
+
+Active tasks are shown by default. Archive one or more tasks to hide them from active lists, then list archived tasks or all tasks:
+
+```sh title="Archive and list tasks"
+zinn task archive MDR-1
+zinn task archive MDR-2 MDR-3
+zinn task list MDR --archived
+zinn task list MDR --all
+```
+
+`--archived` and `--all` cannot be used together.
+
+Unarchiving puts a task at the bottom of its previous column:
+
+```sh title="Unarchive tasks"
+zinn task unarchive MDR-1
+zinn task unarchive MDR-2 MDR-3
+```
+
+Archive or unarchive multiple tasks by giving several keys. Unarchived tasks land in the order given. See [Changing tasks in bulk](/docs/cli/conventions#changing-tasks-in-bulk).
+
+Delete tasks permanently with `zinn task delete MDR-1 MDR-2`. Active and archived tasks from any project can be deleted together. It asks for one confirmation before performing the action, unless `--yes` is used (see [Confirmations](/docs/scripting#confirmations-in-scripts)). See [Changing tasks in bulk](/docs/cli/conventions#changing-tasks-in-bulk) for validation and JSON results. See [Task key reuse](/docs/data#task-key-reuse) for what happens to task numbers.
+
+## Task priority
+
+Priority is optional: `low`, `medium`, `high`, or `urgent`. Priority values, including `none`, are case-insensitive. Stored values and JSON use lowercase. New tasks have no assigned priority by default.
+
+Text priority markers are `-` (unassigned), `L` (low), `M` (medium), `H` (high), and `U` (urgent).
+
+```sh title="Set task priority"
+zinn task create MDR --title 'Review the numbers' --priority high
+zinn task edit MDR-1 --priority urgent
+zinn task edit MDR-1 --priority none
+```
+
+Use `none` to clear priority. Priority does not affect board ordering.
+
+## Task deadlines
+
+Set one exact deadline when creating or editing a task:
+
+```sh title="Set, clear and filter task deadlines"
+zinn task create MDR --title 'Review the refinement report' --due 2026-10-25T15:30:00.123Z
+zinn task list MDR --due-since 2026-10-25T00:00:00Z --due-until 2026-10-25T18:00:00+02:00 --sort due
+zinn task search refinement MDR --due-until 2026-10-25T18:00:00+02:00
+zinn task edit MDR-1 --due none
+```
+
+`--due` accepts integer Unix epoch milliseconds or a complete timestamp with seconds and an explicit `Z` or numeric UTC offset, such as `2026-10-25T17:00:00+02:00`. Fractional seconds may have one to three digits. Integer values range from `-8640000000000000` to `8640000000000000`, inclusive. Date-only values, timestamps without an offset, relative dates, impossible dates, leap seconds, `24:00`, and fractions longer than three digits are rejected.
+
+Use `--due none` to clear a deadline. The word is case-insensitive. Omitting `--due` leaves a new task undated and leaves an edited task unchanged. Repeating the current deadline or clearing an unset deadline does not update the task or record activity.
+
+### Filter by deadline
+
+`--due-since` and `--due-until` select deadlines inclusively on task list and search. Use either bound alone or both together. Equal bounds select that exact millisecond. An upper bound before the lower bound is invalid. Undated tasks do not match a supplied bound. Deadline bounds intersect the other filters and apply before `--limit`. Search keeps its existing relevance order, including task-key matches. Due sorting is available on task list only. It does not change board order or the default list and search order.
+
+Task text shows deadlines in local time with a UTC offset, seconds, and any nonzero milliseconds. Full task JSON objects include `due_at` as integer epoch milliseconds or `null` when unset. Activity text uses the same precision for deadline changes. Event timestamps keep their existing precision.

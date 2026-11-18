@@ -1,0 +1,90 @@
+---
+title: Help and diagnostics
+toc: true
+description: Inspect command help, aliases, database health and the installed agent skill.
+---
+
+# Help and diagnostics
+
+## Check for problems
+
+`zinn doctor` checks the settings and database Zinn would use, and the installed [agent skill](/docs/installation#skill), and suggests a fix for each finding. It does not change anything. SQLite may perform its normal file housekeeping while it reads the database.
+
+```sh title="Check the store"
+zinn doctor
+zinn doctor --json
+```
+
+### Health checks
+
+The checks, in order:
+
+- `settings`: every settings file Zinn reads is usable.
+- `store_folder`: the selected store folder exists. A default folder that does not exist yet is fine, because Zinn creates it on the first change.
+- `database`: the database can be read and its schema version is one this Zinn supports. A missing database is fine, and an older one is upgraded by the next change or by `zinn migrate`.
+- `integrity`: SQLite's integrity check passes.
+- `foreign_keys`: every row link points to an existing row.
+- `search_index`: the [search index](/docs/cli/tasks#search-tasks) matches the tasks and comments it was built from.
+- `agent_skill`: the skill installed at `~/.agents/skills/zinn/SKILL.md` was reviewed for the same CLI version as the skill bundled with this CLI. No installed skill is fine.
+
+The `search_index` and `agent_skill` findings are warnings. Their remedies are `zinn reindex` and `zinn skill install`. Every other finding is a problem. Database findings suggest [restoring a backup](/docs/data#restore-a-database), or upgrading Zinn when the database has a newer schema version (see [Upgrade a database](/docs/data#upgrade-a-database)).
+
+A check that cannot run because an earlier one failed is left out. After a `settings` problem only `settings` and `agent_skill` are listed. `integrity` and `foreign_keys` run when the database has tables, and `search_index` runs only when the database has the current schema version.
+
+The checks print on stdout. The command exits with code `0` when every check is ok and `1` when any is a warning or problem. Invalid arguments are a normal error: nothing on stdout and the error on stderr, or an error document with `--json`.
+
+### Diagnostic results
+
+With `--json`, `zinn doctor` prints `{ "ok": boolean, "checks": [...] }`. `ok` is `true` only when every listed check is ok. Each check has an `id`, a `status` of `ok`, `warning` or `problem`, a `message`, and a `remedy`, which is `null` for an ok check. Read `ok` or the exit code, because message wording is for people. A search index warning looks like this inside `checks`:
+
+```json
+{
+	"id": "search_index",
+	"status": "warning",
+	"message": "The search index differs from the tasks. Tasks without an entry: 1. Entries out of date: 0. Entries for no task or repeating one: 0",
+	"remedy": "Rebuild the search index with `zinn reindex`"
+}
+```
+
+## Agent skill
+
+`zinn skill install` installs the [Zinn workflow skill](/docs/installation#skill) bundled with this CLI. It runs `npx --yes skills add <skill folder> -g -y` with the skill folder inside the CLI's package, and passes the [skills CLI](https://github.com/vercel-labs/skills)'s output and exit code through:
+
+```sh title="Install the agent skill"
+zinn skill install
+zinn skill install --json
+```
+
+With `--json`, stdout gets `{ "source": "<skill folder>" }`, and the skills CLI's output is reported as notices: on stderr after the result, or in `error.diagnostics` when the install fails. A failure's `error.details` holds the skill folder as `path` and the skills CLI's `exitCode`.
+
+## Command aliases
+
+These aliases work in every namespace that has the primary command, with the same arguments, options and confirmations:
+
+| Primary command | Alias    |
+| --------------- | -------- |
+| `view`          | `show`   |
+| `list`          | `ls`     |
+| `delete`        | `rm`     |
+| `create`        | `new`    |
+| `edit`          | `update` |
+
+For example, `zinn task show APP-1` runs `zinn task view APP-1`, and `zinn task comment new APP-1 --text 'Verified'` creates a comment. Alias words used as values stay values: `zinn task list rm` lists tasks in project `rm`.
+
+A command's help names its full alias command. Root and namespace help use primary command names. [Command discovery](/docs/scripting#discover-the-command-contract) includes alias paths in each command descriptor.
+
+## Help
+
+Use root help to discover commands and namespace help to find what each command does, including nested commands. Open a command's help for its arguments and behavior:
+
+```sh title="Show command help"
+zinn --help
+zinn project --help
+zinn project column --help
+zinn task --help
+zinn task move --help
+```
+
+The short `-h` form works in the same positions. `--help` shows help for the command words before it and runs nothing. The rest of the line is ignored.
+
+Running `zinn` without a command shows help. Use `zinn --version` (or `-v`) to print the CLI version.

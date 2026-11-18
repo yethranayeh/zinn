@@ -1,0 +1,126 @@
+---
+title: Activity
+toc: true
+description: Read, filter and follow recorded changes to projects and tasks.
+---
+
+# Activity
+
+import Kbd from "../../../components/ui/kbd/Kbd.astro";
+
+Zinn records changes to tasks, projects, columns, labels, relations, and comments, including who made them.
+
+Deleting a project records one project deletion rather than separate deletion activity for every cascaded row.
+Each removed cross-project relation records `relation_delete` activity on its surviving task, including archived tasks, without changing that task's `updated_at`.
+
+## List activity
+
+```sh title="List activity"
+zinn activity list
+zinn activity list --limit 10
+```
+
+`--limit` caps the newest matching events and must be an integer from `1` through `9007199254740991`. Reorders and both affected-task events from relation changes are included.
+
+### Continue toward older events
+
+Use `--starting-after <activity-id>` to continue toward older events, while excluding the cursor event. It accepts the same full IDs and unique prefixes as `activity view`. The cursor event need not match the filters. Keep the same filters when continuing. Without `--limit`, the command returns every remaining match.
+
+When another matching event exists after a capped page, stderr gives a command to continue with the last returned event's full ID. The command retains the filters and output mode. This hint also appears with `--json`, whose stdout remains an array of full activity records. Scripts can continue with the last event's ID whenever a page contains exactly the requested limit. An empty array marks exhaustion.
+
+## Follow new activity
+
+```sh title="Follow matching changes"
+zinn activity list --follow --changed column=Review
+```
+
+`--follow` prints activity as any client commits it and runs until stopped. It prints only events committed after it starts, oldest first in commit order. The other filters apply to followed activity as they do to a listing. `--follow` cannot be used with `--limit` or `--starting-after`.
+
+<Kbd>Ctrl</Kbd>+<Kbd>C</Kbd> ends a following session. It also ends successfully once the reader of its output has
+closed it, as in `zinn activity list --follow | head -1`, when it writes the next event. It ends with a `conflict` error
+that names the database when its schema changes, including a restore, migration or reindex, or when its file is replaced
+or removed. Run the command again to follow from that point.
+
+## Filter by time
+
+```sh title="Select an activity time range"
+zinn activity list --since 2026-10-25T00:00:00Z --until 2026-10-25T12:00:00Z
+```
+
+`--since` and `--until` select events on or after the lower bound and on or before the upper bound, using their recorded `created_at`. Use either flag alone or both together. Equal bounds select events at exactly that millisecond. `--until` must be at or after `--since`. All supplied filters must match before `--limit` applies.
+
+Time values accept integer epoch milliseconds or `YYYY-MM-DDTHH:mm:ss` followed by `Z` for UTC or a numeric offset such as `+01:00`. Optional fractional seconds have 1 to 3 digits, so `.1`, `.12` and `.123` mean 100, 120 and 123 milliseconds. For example, `2026-10-25T12:00:00.123Z` and `2026-10-25T13:00:00.123+01:00` select the same instant on every computer. Integer inputs always mean milliseconds and must be between `-8640000000000000` and `8640000000000000`, inclusive. Use `--since=-1` for a negative value.
+
+This is a bounded subset of [RFC 3339](https://www.rfc-editor.org/rfc/rfc3339.html#section-5.6). Times require seconds and an explicit offset. Impossible dates, leap seconds, `24:00` and fractions longer than 3 digits are rejected.
+
+## Select a task or project
+
+```sh title="Select project or task history"
+zinn activity list --project MDR
+zinn activity list --project MDR --show-deleted
+zinn activity list --project-id 019abcdf-1234-7000-8000-123456abcdef
+zinn activity list --task MDR-1
+zinn activity list --task MDR-1 --show-deleted
+zinn activity list --task-id 019abcdf-1234-7000-8000-123456abcdef
+```
+
+`--task` selects the existing active or archived task by readable key. If that task is missing, the command fails and points to `--show-deleted`.
+
+`--project` selects the existing project's activity, including its columns and active, archived, and deleted tasks. If that project is missing, the command fails and points to `--show-deleted`. Task comments, label attachments, and reorders are included. Global label-definition events are excluded. A relation between projects includes only the selected project's task event. A relation within the project includes both task events.
+
+Add `--show-deleted` to a readable-key selector to include every recorded existing or deleted identity sharing that key. With `--project`, this expands project identities. Explicitly deleted tasks are already included for each selected project.
+
+`--task-id` and `--project-id` each select one exact identity, including after deletion, using a full case-insensitive UUID in canonical hyphenated or compact 32-hex form. ID prefixes are rejected. `--project`, `--project-id`, `--task`, and `--task-id` are mutually exclusive. `--show-deleted` requires `--project` or `--task`.
+
+Deleted history and exact ID selection include the original project-deletion event when its snapshot contains the selected task. A valid exact ID or history query without recorded matches returns an empty list.
+
+## Filter by actor and client
+
+```sh title="Select a session or client"
+zinn activity list --session conversation-id
+zinn activity list --client zinn-opencode:panel
+zinn activity list --session conversation-id --thread child-thread-id
+```
+
+`--session` and `--thread` match the complete stored IDs exactly, including case and whitespace. All supplied filters must match, and `--limit` applies after filtering. Rows without the requested identity do not match. No matches return empty output, or `[]` with `--json`, and exit successfully. Session activity records committed changes.
+
+`--client <name>` matches a client anywhere in the recorded chain, including case. Zinn splits the chain on whitespace and takes each token's name before its first `/`. A name matches exactly or when followed by `:`, so `--client zinn-opencode` selects `zinn-opencode/0.3.0` and `zinn-opencode:panel/0.3.0`. Use `--client zinn-opencode:panel` to select the panel. `--client zinn` does not match `zinn-opencode`. Other filters must also match before the limit applies.
+
+## Filter by changes
+
+```sh title="Select actions and changed fields"
+zinn activity list --action comment_create --action comment_edit
+zinn activity list --action edit --changed description
+zinn activity list --task MDR-1 --changed due_at
+zinn activity list --changed column=Review
+zinn activity list --changed priority=high --changed labels=bug
+zinn activity list --changed column=Review --changed column=Done --limit 10
+```
+
+`--action <action>` matches the recorded action, such as `edit`, `move`, `comment_create`, `comment_edit` or `comment_delete`. Action names use the same spelling and case as activity JSON. Repeat `--action` to match any listed action. Action and field filters must match the same event.
+
+`--changed <field>` matches a change to a task's `column`, `priority`, `labels`, `title`, `description` or `due_at`. Labels match additions and removals. Initial task creation fields also match, including an unassigned priority or description and an unset deadline. Initial labels match when at least one label is recorded. Use `--action edit --changed description` to select description edits. `due_at` matches any deadline change and does not take a value.
+
+`--changed <field>=<value>` matches a recorded change to `column`, `priority`, or `labels`, ignoring value case. Column and priority match their new values. Labels match an added label. Initial values on task creation also match. Use `--changed priority=none` for creation without a priority or a change that clears it. Column and label names match as recorded in the event, including after renaming or deletion.
+
+Repeat `--changed` for several filters. Filters for the same field match any of them, including a value-free filter alongside one with a value. For example, `--changed column=Review --changed column=Done` selects events entering either column. Different fields must match the same event, so `--changed priority=high --changed labels=bug` selects events that both set high priority and add bug. Other supplied filters must also match, before `--limit` applies. Unknown fields fail and name the accepted fields.
+
+Task creation snapshots include `due_at` as an integer epoch-millisecond value or `null`. A deadline edit records its previous and new values, with `null` for an unset deadline. Older activity payloads keep their recorded shape.
+
+## View records and JSON
+
+```sh title="View one activity record"
+zinn activity view 019abcdf-1234-7
+```
+
+Activity text uses local dates and times with a UTC offset. `activity list` uses the shortest globally unique left prefixes of at least eight hexadecimal digits for event IDs.
+
+`activity view` accepts a full UUID or a unique prefix of at least eight hexadecimal digits for convenience. The match ignores case and accepts both the full hyphenated or compact forms. Prefixes must be unique across all activity. An ambiguous prefix lists candidate IDs and requires more characters. Use a full ID for reliable reference results. Using prefixes may result in unreliable results over time as history grows.
+
+`activity view` preserves full recorded text and line breaks, including unknown change fields.
+
+With `--json`, list returns an array of [activity records](/docs/core#activity-records) and view returns one. With `--follow --json`, list prints each record as one JSON object on its own line.
+
+With `--show-deleted`, readable keys can include different identities after a project is deleted and recreated. Group JSON records by (`entity_type`, `entity_id`) to keep their histories distinct, or use `--task-id` or `--project-id` for one identity.
+
+Hooks receive these same records on stdin, with the task's key added as `task_key`. See [Hooks](/docs/hooks).

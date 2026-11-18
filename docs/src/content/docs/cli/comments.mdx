@@ -1,0 +1,40 @@
+---
+title: Task comments
+toc: true
+description: Create, read, edit and delete task comments.
+---
+
+# Task comments
+
+## Create and list comments
+
+Add and list comments on a task:
+
+```sh title="Create and list comments"
+zinn task comment create MDR-1 --text 'Ready for review'
+zinn task comment list MDR-1
+```
+
+Comments receive keys per task like `MDR-1#1`.
+
+After creating or editing a comment, the text echo is limited to its first line and 80 terminal columns, including an ellipsis when text is omitted. Emoji and combining characters stay intact. `--json` keeps the full text.
+
+## View and edit a comment
+
+View, edit or delete a comment using its key:
+
+```sh title="View, edit, and delete a comment"
+zinn task comment view 'MDR-1#1'
+zinn task comment edit 'MDR-1#1' --text Approved
+zinn task comment delete 'MDR-1#1'
+```
+
+`task comment create` and `task comment edit` take `--text-file` instead of `--text` to read the text from a file or stdin (see [Text values](/docs/cli/conventions#text-values)).
+
+`task comment edit` takes `--expect-text` or `--expect-text-file`, the text you read before editing. It works as in [Edit tasks](/docs/cli/editing#edit-tasks), which explains the failure.
+
+`task comment view` shows the current text in full, keeping its line breaks, including on archived tasks. With `--json`, it returns one object with `id`, `key`, `task_id`, `text`, `created_at` and `updated_at`.
+
+## Delete a comment
+
+Deletion asks for confirmation, unless `--yes` is used (see [Confirmations](/docs/scripting#confirmations-in-scripts)). Comments can be added to archived tasks. Comment mutations are recorded in the activity log without changing the task's modification timestamp.

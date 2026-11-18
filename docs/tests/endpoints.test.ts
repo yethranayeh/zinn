@@ -122,7 +122,8 @@ async function expectMarkdownTwin(page: string, source: string) {
     .trimStart()
     .replace('import AgentSetup from "../../components/AgentSetup.astro";\n', "")
     .replace('import Aside from "../../components/ui/aside/Aside.astro";\n', "")
-    .replace('import Kbd from "../../components/ui/kbd/Kbd.astro";\n', "")
+    .replace(/^import Kbd from "[^"]+";\n/m, "")
+    .replace(/^import TopicIndex from "[^"]+";\n/m, "")
     .replace(/^\n/, "")
     .replace(/<Kbd\b[^>]*>([\s\S]*?)<\/Kbd>/g, (_match, label) => `\`${label.trim()}\``)
     .replace("<AgentSetup />\n\n", "")
@@ -139,7 +140,23 @@ async function expectMarkdownTwin(page: string, source: string) {
   if (lastUpdated) {
     expectedMarkdown = expectedMarkdown.replace(/^(# .+)$/m, `$1\n\nLast updated: ${lastUpdated}`);
   }
-  expect(markdown).toBe(expectedMarkdown);
+  expectedMarkdown = expectedMarkdown.replace(/\]\((\/[^)\s#]*)(#[^)\s]*)?\)/g,
+    (match, path, fragment = "") => {
+      if (path.split("/").at(-1)!.includes(".")) {
+        return match;
+      }
+      const target = path.replace(/\/$/, "");
+      return `](${target === "" ? "/index.md" : `${target}.md`}${fragment})`;
+    });
+  const topicIndex = expectedMarkdown.match(/<TopicIndex(?:\s+label=(["'])(.*?)\1)?\s*\/>/);
+  if (topicIndex) {
+    const [before, after] = expectedMarkdown.split(topicIndex[0]);
+    expect(markdown).toStartWith(before!);
+    expect(markdown).toEndWith(after!);
+    expect(markdown).not.toContain("<TopicIndex");
+  } else {
+    expect(markdown).toBe(expectedMarkdown);
+  }
   expect(markdown).toStartWith("# ");
   expect(markdown).not.toContain("layout:");
   return markdown;
@@ -318,6 +335,11 @@ test.each(docsSources)(
     expect(html).toContain(`rel="alternate" type="text/markdown" href="/${page}.md"`);
     expect(html).toContain(`rel="canonical" href="https://zinn.sh/${page}/"`);
     const markdown = await expectMarkdownTwin(page, source);
+    const sourceText = await Bun.file(join(contentDirectory, source)).text();
+    const article = html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/)![1]!;
+    const hasContents = /^toc: true$/m.test(sourceText) && /<h[23]\b/.test(article);
+    expect(html.includes("data-section-link")).toBe(hasContents);
+    expect(html).toContain("data-reading-page");
     // Shell blocks keep one prompt per command; other code blocks preserve their text without a prompt.
     const fences = [...markdown.matchAll(/^```([^\s`]+)(?: title="([^"]+)")?\n([\s\S]*?)^```$/gm)];
     const blocks = [

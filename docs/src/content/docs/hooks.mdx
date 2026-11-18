@@ -95,7 +95,7 @@ for (const line of require("node:fs").readFileSync(0, "utf8").split("\n")) {
 
 A hook that exits without reading all of its stdin is fine.
 
-[Task claims](/docs/cli#claim-tasks) record the actions `claim`, `claim_take`, `claim_heartbeat` and `claim_release`, and that section lists the changes each one records. Archiving a claimed task, or moving it into a done or cancelled column, runs hooks once with two records: first `claim_release`, with `changes.cause` set to `archive` or `closed`, then the archive or move. Other changes by the holder renew a claim without a claim record, and an expiring claim runs no hooks.
+[Task claims](/docs/cli/next#claim-tasks) record the actions `claim`, `claim_take`, `claim_heartbeat` and `claim_release`, and that section lists the changes each one records. Archiving a claimed task, or moving it into a done or cancelled column, runs hooks once with two records: first `claim_release`, with `changes.cause` set to `archive` or `closed`, then the archive or move. Other changes by the holder renew a claim without a claim record, and an expiring claim runs no hooks.
 
 ## Failures
 
@@ -107,4 +107,4 @@ Zinn sets `ZINN_HOOKS=0` in every hook's environment. A `zinn` command that a ho
 
 A hook that wants its own writes to trigger hooks can remove the variable for that call, and must then guard against loops itself.
 
-Changes written from a hook are recorded with the actor inherited from the environment, unless the hook sets the `ZINN_*` actor variables. See [Who am I?](/docs/cli#who-am-i) for them.
+Changes written from a hook are recorded with the actor inherited from the environment, unless the hook sets the `ZINN_*` actor variables. See [Who am I?](/docs/cli/identity#who-am-i) for them.

@@ -1,0 +1,117 @@
+---
+import type { MarkdownHeading } from "astro";
+import ContentsLinks from "./ContentsLinks.astro";
+
+interface Props {
+	headings: MarkdownHeading[];
+	mobile?: boolean;
+}
+
+const { headings, mobile = false } = Astro.props;
+---
+
+{
+	mobile ? (
+		<details class='group shrink-0 lg:hidden' data-page-contents data-pagefind-ignore>
+			<summary
+				aria-label='On this page'
+				class='flex min-h-12 cursor-pointer list-none items-center gap-3 font-mono text-xs [&::-webkit-details-marker]:hidden'>
+				<span class='sm:hidden'>Contents</span>
+				<span class='hidden sm:inline'>On this page</span>
+				<span aria-hidden='true' class='group-open:hidden'>
+					+
+				</span>
+				<span aria-hidden='true' class='hidden group-open:inline'>
+					−
+				</span>
+			</summary>
+			<nav
+				aria-label='On this page'
+				class='absolute top-full right-0 left-0 max-h-[60svh] overflow-y-auto overscroll-contain border-b border-soot/22 bg-limestone px-(--site-gutter) py-4'>
+				<ContentsLinks headings={headings} />
+			</nav>
+		</details>
+	) : (
+		<aside class='hidden min-w-0 lg:block' data-pagefind-ignore>
+			<nav
+				aria-label='On this page'
+				class='sticky top-[calc(var(--site-header-height)_+_var(--reading-rail-height)_+_2rem)] max-h-[calc(100svh_-_var(--site-header-height)_-_var(--reading-rail-height)_-_4rem)] overflow-y-auto overscroll-contain'>
+				<p class='mb-4 border-b border-soot/22 pb-3 font-mono text-xs text-muted-foreground'>On this page</p>
+				<ContentsLinks headings={headings} />
+			</nav>
+		</aside>
+	)
+}
+
+<script>
+	const reading = document.querySelector<HTMLElement>("[data-reading-page]");
+	const rail = document.querySelector<HTMLElement>("[data-reading-rail]");
+	const links = [...document.querySelectorAll<HTMLAnchorElement>("[data-section-link]")];
+	const targets = [...new Set(links.map((link) => document.getElementById(link.hash.slice(1))))].filter(
+		(target): target is HTMLElement => target !== null
+	);
+	const header = document.querySelector<HTMLElement>("body > header");
+	const disclosure = document.querySelector<HTMLDetailsElement>("[data-page-contents]");
+	let scheduled = false;
+
+	function updateCurrent() {
+		scheduled = false;
+		const railHeight = rail?.getBoundingClientRect().height ?? 0;
+		reading?.style.setProperty("--reading-rail-height", `${railHeight}px`);
+		// The gap matches the document's scroll padding.
+		const line = (header?.getBoundingClientRect().height ?? 0) + railHeight + 24;
+		let current = targets[0];
+		for (const target of targets) {
+			if (target.getBoundingClientRect().top <= line + 1) {
+				current = target;
+			} else {
+				break;
+			}
+		}
+		if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1) {
+			current = targets.at(-1) ?? current;
+		}
+		for (const link of links) {
+			if (current !== undefined && link.hash.slice(1) === current.id) {
+				link.setAttribute("aria-current", "location");
+			} else {
+				link.removeAttribute("aria-current");
+			}
+		}
+	}
+
+	function scheduleCurrent() {
+		if (scheduled) {
+			return;
+		}
+		scheduled = true;
+		requestAnimationFrame(updateCurrent);
+	}
+
+	for (const link of links) {
+		link.addEventListener("click", () => {
+			if (disclosure?.open) {
+				disclosure.open = false;
+				const target = document.getElementById(link.hash.slice(1));
+				if (target) {
+					target.tabIndex = -1;
+					target.focus({ preventScroll: true });
+				}
+			}
+		});
+	}
+	disclosure?.addEventListener("keydown", (event) => {
+		if (event.key === "Escape") {
+			disclosure.open = false;
+			disclosure.querySelector("summary")?.focus({ preventScroll: true });
+		}
+	});
+	updateCurrent();
+	window.addEventListener("scroll", scheduleCurrent, { passive: true });
+	window.addEventListener("resize", scheduleCurrent);
+	window.addEventListener("load", scheduleCurrent);
+	if (rail) {
+		new ResizeObserver(scheduleCurrent).observe(rail);
+	}
+	document.fonts.ready.then(scheduleCurrent);
+</script>

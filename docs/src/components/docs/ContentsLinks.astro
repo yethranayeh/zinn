@@ -1,0 +1,24 @@
+---
+import type { MarkdownHeading } from "astro";
+
+interface Props {
+	headings: MarkdownHeading[];
+}
+
+const { headings } = Astro.props;
+---
+
+<ul class='space-y-1 font-mono text-xs leading-relaxed'>
+	{
+		headings.map(({ depth, slug, text }) => (
+			<li class:list={[depth === 3 && "pl-4"]}>
+				<a
+					href={`#${slug}`}
+					data-section-link
+					class='block border-l-2 border-transparent px-3 py-2 text-muted-foreground hover:bg-soot/8 hover:text-soot hover:no-underline focus-visible:-outline-offset-2 aria-[current=location]:border-cinnabar aria-[current=location]:text-soot aria-[current=location]:font-semibold'>
+					{text}
+				</a>
+			</li>
+		))
+	}
+</ul>

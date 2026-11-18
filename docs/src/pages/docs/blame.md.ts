@@ -51,7 +51,7 @@ ${noteList}
 
 ${rules}
 
-Gaps and mismatched history can leave lines unrecorded. The full rules, including comparison edge cases, are in the [CLI reference](https://zinn.sh/docs/cli#task-blame).
+Gaps and mismatched history can leave lines unrecorded. The full rules, including comparison edge cases, are in the [CLI reference](https://zinn.sh/docs/cli/blame#attribution-rules).
 
 ## JSON
 

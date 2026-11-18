@@ -1,28 +1,68 @@
 ---
-import PageLayout from "./PageLayout.astro";
+import type { MarkdownHeading } from "astro";
+import { getCollection } from "astro:content";
+
+import BaseLayout from "./BaseLayout.astro";
 import Prose from "../components/Prose.astro";
 import Breadcrumbs from "../components/Breadcrumbs.astro";
 import Chip from "../components/ui/chip/Chip.astro";
+import PageContents from "../components/docs/PageContents.astro";
 
 import { toIsoDate } from "../config/page-date";
+import { getBreadcrumbItems } from "../config/routes";
 
 interface Props {
 	title: string;
 	description: string;
 	lastUpdated?: string;
+	headings: MarkdownHeading[];
+	toc?: boolean;
 }
 
-const { title, description, lastUpdated } = Astro.props;
+const { title, description, lastUpdated, headings, toc = false } = Astro.props;
+const sections = toc ? headings.filter(({ depth }) => depth === 2 || depth === 3) : [];
+const items = getBreadcrumbItems(Astro.url.pathname, title, await getCollection("prose"));
+const hasContents = sections.length > 0;
+const hasBreadcrumbs = items.length > 0 || hasContents;
 ---
 
-<PageLayout title={title} description={description}>
-	<Breadcrumbs />
-	<Prose><slot /></Prose>
-	{
-		lastUpdated && (
-			<Chip>
-				Last updated: <time datetime={toIsoDate(lastUpdated)}>{lastUpdated}</time>
-			</Chip>
-		)
-	}
-</PageLayout>
+<BaseLayout title={title} description={description}>
+	<div
+		data-reading-page
+		class:list={[
+			"flex flex-1 flex-col [&_h1]:scroll-mt-(--reading-rail-height) [&_h2]:scroll-mt-(--reading-rail-height) [&_h3]:scroll-mt-(--reading-rail-height)",
+			hasBreadcrumbs ? "[--reading-rail-height:3rem]" : "[--reading-rail-height:0px]"
+		]}>
+		{
+			hasBreadcrumbs && (
+				<div data-reading-rail class='sticky top-(--site-header-height) z-10 border-b border-soot/22 bg-limestone'>
+					<div class='site-container relative flex min-h-12 items-center justify-between gap-x-4' data-pagefind-ignore>
+						<Breadcrumbs
+							items={items}
+							class='mb-0 min-w-0 py-2 [&_ol]:flex-nowrap [&_li]:shrink-0 [&_li:last-child]:min-w-0 [&_li:last-child]:shrink [&_li:last-child_a]:truncate'
+						/>
+						{hasContents && <PageContents headings={sections} mobile />}
+					</div>
+				</div>
+			)
+		}
+		<div
+			class:list={[
+				"site-container grid grid-cols-1 gap-x-10 py-8 md:py-12",
+				hasContents && "lg:grid-cols-[minmax(0,48rem)_minmax(12rem,1fr)]",
+				!hasBreadcrumbs && "my-auto"
+			]}>
+			<article class='min-w-0 w-full max-w-3xl'>
+				<Prose class='[&>div:first-child]:gap-y-4'><slot /></Prose>
+				{
+					lastUpdated && (
+						<Chip>
+							Last updated: <time datetime={toIsoDate(lastUpdated)}>{lastUpdated}</time>
+						</Chip>
+					)
+				}
+			</article>
+			{hasContents && <PageContents headings={sections} />}
+		</div>
+	</div>
+</BaseLayout>

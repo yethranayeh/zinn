@@ -1,0 +1,129 @@
+---
+title: Create and find tasks
+toc: true
+description: Create, list, inspect and search tasks, with filtering, sorting and continuation.
+---
+
+# Create and find tasks
+
+## Create and read tasks
+
+Create a task with a title and an optional description. Titles follow the shared [name and title rules](/docs/cli/conventions#editing-conventions). New tasks enter the project's first column:
+
+```sh title="Create tasks"
+zinn task create MDR --title 'Refine 75% of the numbers'
+zinn task create MDR --title 'Review the employee handbook' --description 'Prepare for a 75% Dance Experience'
+```
+
+The project key can be omitted when [defaultProject](/docs/settings) is configured. `--description-file` reads the description from a file or stdin (see [Text values](/docs/cli/conventions#text-values)).
+
+`--column <name>` starts the task at the bottom of a specific column. The column name matching is case insensitive:
+
+```sh title="Create a task in a column"
+zinn task create MDR --title 'Compile the Lexington letters' --column Doing
+```
+
+### List and filter tasks
+
+Tasks are created with keys such as `MDR-1`. Task numbers increase in creation order within each project. List active tasks, optionally limited to one project:
+
+```sh title="List tasks"
+zinn task list
+zinn task list MDR
+zinn task list --all-projects
+```
+
+```sh title="Filter tasks"
+zinn task list MDR --label CLI --label Groom
+zinn task list MDR --column Doing
+zinn task list MDR --state open
+zinn task list --column Done --all
+```
+
+`task list --state open` leaves out tasks in done and cancelled columns, and `--state closed` lists only those. `--state all` is the default. A column's category decides its state, not its name or position. `--state` combines with every other filter, including `--archived`, `--all` and `--column`.
+
+```sh title="Limit and sort tasks"
+zinn task list MDR --limit 10
+zinn task list MDR --sort activity --limit 10
+zinn task list MDR --due-since 2026-10-25T00:00:00Z --sort due
+```
+
+`task list`, `task search` and `activity list` accept `--limit <n>`, a decimal integer from `1` through `9007199254740991`. The cap applies after all filters and preserves the existing order. Omit it to return every match. With `--json`, each command returns an array.
+
+### Continue a task list
+
+`task list --starting-after <cursor>` continues after the last listed task in the selected sort order. The cursor is an opaque token. Copy it from the continuation command that `task list` prints on stderr when more tasks remain. A task ID is refused.
+
+Continuation survives edits, moves, archiving, relabelling, deadline changes and deletion of the last listed task. Filters may change while `--sort` stays the same. A cursor made for another sort or another version is refused with a hint and a suggested `task list` command. No snapshot is kept between commands, so other tasks changing in between can cause repeats or skips. Ties in the order break by task ID.
+
+When more matching tasks remain after `--limit`, stderr gives a shell-quoted continuation command in text and JSON modes.
+
+### Sort tasks
+
+`task list --sort activity` lists tasks by their newest recorded activity, including task changes, comments and relations. Tasks without recorded activity use their update time. Newest comes first, and equal times keep board order. Filters apply before sorting, and `--limit` caps the sorted result. Without `--sort`, board order is preserved. Sorting changes only the order in text and JSON.
+
+`task list --sort due` lists deadlines from earliest to latest. Tasks without a deadline come last. Equal deadlines and undated tasks keep board order. Sorting does not change task positions. See [Task deadlines](/docs/cli/editing#task-deadlines) for filters and input rules.
+
+### View a task and its history
+
+```sh title="View a task and its history"
+zinn task view MDR-1
+zinn task view MDR-1 --history
+```
+
+Task lists are previews, so they _omit_ descriptions, but `task view` prints the full description.
+
+`task view` includes the task's creation and update times in local time with a UTC offset. Full task JSON objects include `created_at` and `updated_at` as stored integer epoch milliseconds across list, search, view, creation, updates and deletion, including bulk results. Edits, label attachment changes, moves, reorders, archiving and unarchiving advance the update time when they change the task. Comments, relations, column renames, global label-definition edits and operations that lead to no changes leave it untouched.
+
+An omitted project key uses [defaultProject](/docs/settings), or every project when none is configured. `--all-projects` overrides the default.
+
+`task view --history` includes the inspected task's recorded activity, newest first by time, then event ID. Reorders and comment changes are included. Use `activity view <activity-id>` for full recorded changes. See [Activity](/docs/cli/activity#activity) for timestamps, event IDs, and record fields.
+
+With `--history --json`, the task gains an `activity` array of full activity records. It returns `[]` when no events are recorded. Without `--history`, this field is _omitted_.
+
+If a project is deleted and recreated with the same key, `task view --history` shows only the _current_ task's history. `activity list --task <key> --show-deleted` also includes history for **deleted tasks** that previously had that same key.
+
+Repeat `--label <name>` to require every specified label. Matching ignores case.
+
+Use `--column <name>` to filter by an exact column name, ignoring case, within one project or across projects. Column, label, and archive filters apply together. No matches is a successful empty result (`[]` with `--json`).
+
+## Search tasks
+
+Search task titles, descriptions, and comments, optionally in one project:
+
+```sh title="Search tasks"
+zinn task search refine
+zinn task search refine --all-projects
+zinn task search 'quarterly quota' MDR
+zinn task search MDR-1
+zinn task search auth --all --limit 5
+zinn task search auth MDR --label cli
+zinn task search auth MDR --column Review
+zinn task search refinement --due-until 2026-10-25T17:00:00+02:00
+```
+
+Each query matches the start of a word, ignoring case and accents, so `cafe` finds "Café" and `auth` finds "Authentication". Every word must match somewhere in the task: its title, its description, or any of its comments. A comment match lists the task the comment belongs to.
+
+The query comes first, then the optional project key. An omitted key uses [defaultProject](/docs/settings), or every project when none is configured. `--all-projects` overrides the default.
+
+If the project key does not exist, the error includes the search usage line to clarify the argument order. With `--json`, this guidance is in `error.help`.
+
+If the whole query is an existing task key, such as `mdr-1`, that task comes first. Other results follow by relevance, with title matches weighted highest. Equally relevant tasks are ordered by project key, then task number.
+
+An exact task-key query overrides the configured default project. A project key supplied after the query still filters the search.
+
+Search defaults to active tasks. `--archived` searches archived tasks and `--all` searches both. A note on stderr reports hidden archived matches. `--limit <n>` caps the results.
+
+`--label` works as it does for `task list`: repeat it to require every specified label. `--column` matches an exact column name, ignoring case, in the selected project or across projects. Label and column filtering happen before `--limit` and before archived matches are counted.
+
+With `--json`, search returns an array of tasks like `task list` does. A search with no results succeeds. A query that begins with a dash goes after `--` (see [Words and repeated flags](/docs/cli/conventions#words-and-repeated-flags)).
+
+### Rebuild the search index
+
+Search uses an index that Zinn keeps up to date as tasks and comments change. `zinn reindex` rebuilds it from the tasks and their comments, archived tasks included:
+
+```sh title="Rebuild the task search index"
+zinn reindex
+```
+
+Only the index changes, completely or not at all, so no backup is saved. With `--json`, it prints `{ "databasePath": "...", "taskCount": 12 }`. The command fails without changing anything when there is no database yet, or when Zinn refuses changes to the database, such as one with a newer schema version (see [Upgrade the database](/docs/data#upgrade-a-database)).
