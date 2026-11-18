@@ -15,7 +15,8 @@ import { parseTaskList } from '../lib/keys'
 import { planText, type Plan } from '../lib/plan'
 import { paintPlan, colourCode, stripAnsi, type Depth, type Rgb256 } from '../lib/paint'
 import { THEMES } from '../lib/themes'
-import { COLUMN_COLOR, THEME_COLORS, type Span } from '../lib/style'
+import { CATEGORY_LOOK, NAME_LOOK } from '../lib/columns'
+import { THEME_COLORS, type Span } from '../lib/style'
 import type { Look, Marks } from '../lib/config'
 import { PROMPT, ROWS, SAMPLE, SAMPLE_KNOWN, SAMPLE_UNKNOWN } from './fixtures'
 
@@ -97,7 +98,8 @@ for (const markdown of [true, false]) {
 
 test('colour gate findings: which meanings share one colour code, per theme and depth (printed, not failed)', async () => {
   const meanings: [string, string][] = [
-    ...Object.entries(COLUMN_COLOR).filter(([c]) => c !== 'Backlog').map(([c, k]): [string, string] => [`mark ${c}`, k]),
+    ...Object.entries(CATEGORY_LOOK).filter(([c]) => c !== 'backlog').map(([c, l]): [string, string] => [`mark ${c}`, l.color]),
+    ['mark Blocked', NAME_LOOK['Blocked']!.color],
     ['mark archived', 'subtle'], ['unknown ✗', 'error'], ['inline code', 'permission'],
   ]
   const lines: string[] = []

@@ -33,7 +33,7 @@ type Dollar = EngineInterface
 const PANE = 'zinn-show'
 const COMMAND = 'zinn-show'
 /** Bump when an entry's fields change: a session that reloads the plugin then reads an older value as empty. */
-const VIEW_SHAPE = 'view-2'
+const VIEW_SHAPE = 'view-3'
 const view = atom({ plugin: 'zinn', key: 'view' } as const, EMPTY, { shape: VIEW_SHAPE })
 /** Rows asked of the inline seat per layout (a request. The dock ignores it). */
 const ROWS_WANTED: Record<Layout, number> = { card: 8, sectioned: 23, table: 11 }

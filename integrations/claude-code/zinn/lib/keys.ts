@@ -8,15 +8,24 @@
 // those would teach the eye to ignore the flag. The cost: a hallucinated *project*
 // (FOO-12 with no FOO board) is not caught.
 
-/** One task as `zinn task list --all --json` prints it (0.37.0. Same shape at 0.39.0). Only the fields read here. */
-export type ZinnTaskRow = {
-  key: string
-  status?: string // 'Active' | 'Archived' (lifecycle, not the board column)
-  column?: string // the board column: the status a person means
-  title?: string
-}
+import { categoryOf, posOf, type ColumnRef } from './columns'
 
-export type KeyInfo = { key: string; column: string; title: string; isArchived: boolean }
+export type KeyInfo = ColumnRef & { key: string; title: string; isArchived: boolean }
+
+/** One row of `zinn task list --all --json` or one `zinn task view KEY --json` as a KeyInfo. Null when it has no key. */
+export function keyInfoOf(row: unknown): KeyInfo | null {
+  if (typeof row !== 'object' || row === null) {
+    return null
+  }
+  const r = row as Record<string, unknown>
+  if (typeof r['key'] !== 'string') {
+    return null
+  }
+  return {
+    key: r['key'], column: typeof r['column'] === 'string' ? r['column'] : '', category: categoryOf(r['column_category']), pos: posOf(r),
+    title: typeof r['title'] === 'string' ? r['title'] : '', isArchived: r['status'] === 'Archived',
+  }
+}
 
 export type KeyMap = {
   keys: ReadonlyMap<string, KeyInfo>
@@ -36,19 +45,15 @@ export function parseTaskList(stdout: string): KeyMap {
   const projects = new Set<string>()
   let archived = 0
   for (const row of data as unknown[]) {
-    if (typeof row !== 'object' || row === null) {
+    const info = keyInfoOf(row)
+    if (info === null || !KEY_EXACT.test(info.key)) {
       continue
     }
-    const r = row as ZinnTaskRow
-    if (typeof r.key !== 'string' || !KEY_EXACT.test(r.key)) {
-      continue
-    }
-    const isArchived = r.status === 'Archived'
-    if (isArchived) {
+    if (info.isArchived) {
       archived++
     }
-    keys.set(r.key, { key: r.key, column: typeof r.column === 'string' ? r.column : '', title: typeof r.title === 'string' ? r.title : '', isArchived })
-    projects.add(projectOf(r.key))
+    keys.set(info.key, info)
+    projects.add(projectOf(info.key))
   }
   return { keys, projects, archived }
 }

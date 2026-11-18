@@ -2,7 +2,7 @@
 // `claude plugin test` runs them. No model call, no store.
 import { test, expect } from 'claude-code/testing'
 import { findMentions, parseTaskList, type KeyMap } from '../lib/keys'
-import { cutTitle, decoFor, decoText, markFor, rewriteText, titleEchoed, UNKNOWN_MARK } from '../lib/decorate'
+import { cutTitle, decoFor, decoText, markColor, markFor, rewriteText, titleEchoed, UNKNOWN_MARK } from '../lib/decorate'
 import { classify, drawBlock, inline } from '../lib/markdown'
 import { keyWidth, KEY_FLOOR_WIDTH, planFor, planText, toBlocks, underLine, underKeys, underLines, UNDER_INDENT } from '../lib/plan'
 import { lineText, type Span } from '../lib/style'
@@ -388,4 +388,19 @@ test('ZCC-2 client chain: the inherited chain trimmed, one space, then the part 
   expect(clientChain(null, token)).toBe(token)
   expect(clientChain(' \t ', token)).toBe(token)
   expect(clientChain(' rex/0.9  zinn-opencode:inspector/0.5.0 ', token)).toBe(`rex/0.9  zinn-opencode:inspector/0.5.0 ${token}`)
+})
+
+test('ZCC-5 marks in the legend: the category wins over the name; position when there is neither; colour follows the mark', async () => {
+  const map = parseTaskList(JSON.stringify([
+    { key: 'CAT-1', status: 'Active', column: 'Doing', column_category: 'in_progress', is_first: false, is_last: false, title: 't' },
+    { key: 'CAT-2', status: 'Active', column: 'Done', column_category: 'cancelled', is_first: false, is_last: true, title: 't' },
+    { key: 'CAT-3', status: 'Active', column: 'Blocked', column_category: 'todo', is_first: false, is_last: false, title: 't' },
+    { key: 'CAT-4', status: 'Active', column: 'Erledigt', is_first: false, is_last: true, title: 't' },
+    { key: 'CAT-5', status: 'Active', column: 'Somewhere', title: 't' },
+  ]))
+  const info = (k: string) => map.keys.get(k)!
+  const keys = ['CAT-1', 'CAT-2', 'CAT-3', 'CAT-4', 'CAT-5']
+  expect(keys.map(k => markFor(info(k), 'shapes'))).toEqual(['◐', '⊗', '○', '●', '·'])
+  expect(keys.map(k => markColor(info(k)))).toEqual(['warning', 'inactive', 'inactive', 'success', undefined])
+  expect(markFor(info('CAT-2'), 'words')).toBe('done') // words name the column as the board does
 })

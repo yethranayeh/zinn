@@ -1,7 +1,8 @@
 // The pane's spans and marks. Pure. Colours are Claude Code theme keys only, never hex or 256-colour values,
 // and every meaning also carries as a character or bold/dim, so the pane reads with colour off.
-import { ARCHIVED_SHAPE, SHAPES } from '../decorate'
-import { COLUMN_COLOR, type ThemeColor } from '../style'
+import { lookOf, type Category, type ColumnPos } from '../columns'
+import { ARCHIVED_SHAPE } from '../decorate'
+import type { ThemeColor } from '../style'
 
 export type SpanStyle = { color?: ThemeColor; dimColor?: boolean; bold?: boolean; italic?: boolean }
 export type Span = { s: string; style: SpanStyle }
@@ -11,33 +12,13 @@ export const dim = (s: string): Span => sp(s, { dimColor: true })
 export const bold = (s: string): Span => sp(s, { bold: true })
 export const spansText = (spans: readonly Span[]): string => spans.map(x => x.s).join('')
 
-/** Where a column sits on its board, as the CLI reports it (`is_first`, `is_last`). */
-export type ColumnPos = { isFirst: boolean; isLast: boolean }
-
-/**
- * The mark of a column. By name first (the transcript legend's table). A column with another name is judged by
- * where it sits: the first one is not started, the last one is done, any other is in flight.
- * `?` only when neither the name nor the position is known.
- */
-export function markOf(column: string, isArchived: boolean, pos?: ColumnPos): Span {
+/** The mark of a column (lib/columns.ts). `?` when neither its category, its name nor its position is known. */
+export function markOf(column: string, isArchived: boolean, c?: { category?: Category | null } & ColumnPos): Span {
   if (isArchived) {
     return sp(ARCHIVED_SHAPE, { color: 'subtle' })
   }
-  const m = SHAPES[column]
-  if (m !== undefined) {
-    const c = COLUMN_COLOR[column]
-    return sp(m, c === undefined ? {} : { color: c })
-  }
-  if (pos === undefined) {
-    return sp('?')
-  }
-  if (pos.isFirst) {
-    return sp('○', { color: 'inactive' })
-  }
-  if (pos.isLast) {
-    return sp('●', { color: 'success' })
-  }
-  return sp('◐', { color: 'warning' })
+  const look = lookOf({ column, category: c?.category ?? null, pos: c === undefined ? null : { isFirst: c.isFirst, isLast: c.isLast } })
+  return look === null ? sp('?') : sp(look.shape, { color: look.color })
 }
 
 /** Cuts to `max` characters, an ellipsis counting as one. `max` <= 0 returns ''. */

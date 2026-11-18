@@ -8,7 +8,7 @@ import { findMentions } from './keys'
 import { DEFAULT_LEGEND, DEFAULT_MAX_ENTRIES, type Config, type Legend, type Look } from './config'
 import { decoFor, markAndTitle, rewriteText, SEPARATOR, UNKNOWN_MARK, type Deco } from './decorate'
 import { drawBlock, drawPlain } from './markdown'
-import { DIM, KEY_STYLE, markColor, pushSpan, UNKNOWN_KEY_STYLE, UNKNOWN_MARK_STYLE, type Span } from './style'
+import { DIM, KEY_STYLE, pushSpan, UNKNOWN_KEY_STYLE, UNKNOWN_MARK_STYLE, type Span } from './style'
 
 export type PlanBlock = { t: 'md'; text: string } | { t: 'spans'; lines: Span[][] }
 
@@ -60,8 +60,7 @@ export function colourSpans(d: Deco, marks: Config['marks']): Span[] {
   const out: Span[] = []
   pushSpan(out, SEPARATOR, DIM)
   if (d.kind === 'unknown') { pushSpan(out, UNKNOWN_MARK, UNKNOWN_MARK_STYLE); return out }
-  const c = markColor(d.column, d.isArchived)
-  pushSpan(out, d.mark, c ? { color: c } : DIM)
+  pushSpan(out, d.mark, d.color ? { color: d.color } : DIM)
   if (d.title !== null) {
     pushSpan(out, markAndTitle('', d.title, marks), DIM)
   }
@@ -94,8 +93,7 @@ function entrySpans(text: string, m: Mention, cfg: Pick<Config, 'marks' | 'title
   }
   pushSpan(out, m.key, KEY_STYLE)
   pushSpan(out, gap + ' ', {})
-  const c = markColor(d.column, d.isArchived)
-  pushSpan(out, d.mark, c ? { color: c } : DIM)
+  pushSpan(out, d.mark, d.color ? { color: d.color } : DIM)
   if (d.title !== null) {
     pushSpan(out, markAndTitle('', d.title, cfg.marks), DIM)
   }

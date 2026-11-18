@@ -22,32 +22,7 @@ export type Span = { s: string; style: SpanStyle }
 export type ThemeColor = 'success' | 'warning' | 'error' | 'inactive' | 'subtle' | 'suggestion' | 'permission'
 export const THEME_COLORS: readonly ThemeColor[] = ['success', 'warning', 'error', 'inactive', 'subtle', 'suggestion', 'permission']
 
-/**
- * Glyph colour per board column. Chosen against the engine's own six theme tables (lib/themes.ts):
- * - `claude` is not used: in the ANSI themes it is redBright, the same as `error` (dark-ansi), so
- *   "In Progress" would look like "Blocked". `warning` is yellow in every theme.
- * - `suggestion` equals `permission` in every theme, and `permission` is the colour the engine gives
- *   inline code. So a KEY is never coloured `suggestion`: it would look like code. Review's glyph uses it
- *   (a glyph is not code-shaped).
- * - `inactive` equals `subtle` in both ANSI themes: TODO and archived then differ by glyph only (○ vs ▪).
- */
-export const COLUMN_COLOR: Readonly<Record<string, ThemeColor>> = {
-  'Backlog': 'inactive',
-  'TODO': 'inactive',
-  'In Progress': 'warning',
-  'Review': 'suggestion',
-  'Blocked': 'error',
-  'Done': 'success',
-}
-
-export function markColor(column: string, isArchived: boolean): ThemeColor | undefined {
-  if (isArchived) {
-    return 'subtle'
-  }
-  return COLUMN_COLOR[column]
-}
-
-/** The known key in an own-drawn block: bold, no colour (see COLUMN_COLOR on why not `suggestion`). */
+/** The known key in an own-drawn block: bold, no colour (see CATEGORY_LOOK in lib/columns.ts on why not `suggestion`). */
 export const KEY_STYLE: SpanStyle = { bold: true }
 /** A key of a known project that the store does not have: bold plus the error colour, and the ✗ mark after it. */
 export const UNKNOWN_KEY_STYLE: SpanStyle = { bold: true, color: 'error' }

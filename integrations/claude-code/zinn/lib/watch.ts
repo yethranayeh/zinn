@@ -10,7 +10,7 @@
 // FULL refresh. The cost of that rule is an occasional needless 260 ms CLI call. The cost of the opposite
 // is a legend that lies. The classifier never decides to ignore a command it cannot read, if the command
 // holds a zinn write.
-import { projectOf, type KeyInfo, type KeyMap } from './keys'
+import { keyInfoOf, projectOf, type KeyInfo, type KeyMap } from './keys'
 
 export type Verdict =
   /** Not a zinn write (or no zinn at all): nothing to do. */
@@ -240,11 +240,12 @@ export type ViewResult =
 export function readView(key: string, r: { exitCode: number; stdout: string; stderr: string }): ViewResult {
   if (r.exitCode === 0) {
     try {
-      const row = JSON.parse(r.stdout) as { key?: unknown; status?: unknown; column?: unknown; title?: unknown }
-      if (typeof row !== 'object' || row === null || row.key !== key || typeof row.column !== 'string' || typeof row.title !== 'string') {
+      const row = JSON.parse(r.stdout) as { key?: unknown; column?: unknown; title?: unknown }
+      const info = keyInfoOf(row)
+      if (info === null || row.key !== key || typeof row.column !== 'string' || typeof row.title !== 'string') {
         return { kind: 'unknown', why: 'unexpected view shape' }
       }
-      return { kind: 'row', info: { key, column: row.column, title: row.title, isArchived: row.status === 'Archived' } }
+      return { kind: 'row', info }
     } catch { return { kind: 'unknown', why: 'view is not JSON' } }
   }
   try {

@@ -1,5 +1,6 @@
 // One task as `zinn task view KEY --json` prints it, reduced to what the pane draws. Pure: nothing here
 // imports the engine module.
+import { categoryOf, type Category } from '../columns'
 
 export type RelationType = 'related' | 'dependency' | 'duplicate' | 'subtask'
 
@@ -10,7 +11,9 @@ export type Relation = {
   verb: string
   key: string
   column: string
-  /** Where that column sits on its board (the CLI's `is_first` / `is_last`), for a column the mark table does not name. */
+  /** That column's category, null when the store gives none the mod knows. */
+  category: Category | null
+  /** Where that column sits on its board (the CLI's `is_first` / `is_last`), for a column without a category. */
   isFirst: boolean
   isLast: boolean
   title: string
@@ -32,6 +35,7 @@ export type TaskView = {
   /** 'Active' | 'Archived' (the lifecycle, not the board column). */
   status: string
   column: string
+  category: Category | null
   isFirst: boolean
   isLast: boolean
   priority: string
@@ -93,7 +97,7 @@ export function parseTask(stdout: string): TaskView {
         continue
       }
       relations.push({
-        type: str(rel['type']), direction, verb: verbOf(str(rel['type']), direction), key: t['key'], column: str(t['column']),
+        type: str(rel['type']), direction, verb: verbOf(str(rel['type']), direction), key: t['key'], column: str(t['column']), category: categoryOf(t['column_category']),
         isFirst: t['is_first'] === true, isLast: t['is_last'] === true, title: str(t['title']), isArchived: t['status'] === 'Archived',
       })
     }
@@ -113,6 +117,7 @@ export function parseTask(stdout: string): TaskView {
     title: str(r['title']),
     status: str(r['status']),
     column: str(r['column']),
+    category: categoryOf(r['column_category']),
     isFirst: r['is_first'] === true,
     isLast: r['is_last'] === true,
     priority: str(r['priority']),

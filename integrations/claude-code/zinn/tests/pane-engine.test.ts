@@ -139,7 +139,7 @@ test('/zinn-show KEY: argv only, the pane opens with no Esc handling, the answer
   expect(w.runs).toEqual([['zinn', 'task', 'view', 'ZCC-8', '--json']])
   expect(w.opens).toEqual([{ id: 'zinn-show', title: 'ZCC-8', focus: true }]) // no closeOnEscape
   expect(names(w)).toEqual(['task:ZCC-8:ready'])
-  expect((w.raw() as { shape?: string }).shape).toBe('view-2') // kept under the shape tag
+  expect((w.raw() as { shape?: string }).shape).toBe('view-3') // kept under the shape tag
   expect(w.toasts).toEqual([])
 })
 
@@ -170,7 +170,7 @@ test('no argument, nothing selected: the list of boards, one read; a press opens
   await ui.unmount()
   const board = await mount($)
   const b = text(await board.drawn())
-  for (const must of ['Claude Code mods', '14 open', '7 done', 'Backlog', 'TODO', 'In Progress', 'Done', 'Task detail pane', 'back to boards', 'all tasks']) expect(b).toContain(must)
+  for (const must of ['Claude Code mods', '14 open', '7 closed', 'Backlog', 'TODO', 'In Progress', 'Done', 'Task detail pane', 'back to boards', 'all tasks']) expect(b).toContain(must)
   expect(b).not.toContain('"boards"]') // no `p: boards` button: the list is already one step back
   await board.press({ key: 'open:ZCC-8' })
   expect(names(w)).toEqual(['projects:*:ready', 'board:ZCC:ready', 'task:ZCC-8:ready'])

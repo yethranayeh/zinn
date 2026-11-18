@@ -2,7 +2,8 @@
 // description, a task's comments. Pure: hooks/pane.tsx turns rows into elements. They follow the `table`
 // layout, which reads like the CLI's output: cells split by a dim bar, nothing wraps but prose, everything is
 // cut to the width.
-import { doneCount, openCount, type BoardColumn, type BoardTask, type BoardView, type ProjectRow } from './board'
+import { categoryWord, isBacklog, isClosed } from '../columns'
+import { closedCount, openCount, type BoardColumn, type BoardTask, type BoardView, type ProjectRow } from './board'
 import { commentWord, type Item, type Row } from './layouts'
 import { bold, cut, dim, fmtDate, markOf, priorityLetter, sp, type Span } from './style'
 import { DESCRIPTION_MAX, type TaskView } from './task'
@@ -17,25 +18,27 @@ const rule = (w: number): Row => ({ kind: 'line', spans: [dim('─'.repeat(Math.
 const pressable = (item: Item): Row => ({ kind: 'rel', lead: [dim(item.n > 0 ? LEAD_DIGIT : LEAD_PLAIN)], item })
 
 /** Rows a cut column shows before `a` is pressed. A column in flight is never cut: it is what the board is for. */
-export const FIRST_ROWS = 10
-export const LAST_ROWS = 5
+export const BACKLOG_ROWS = 10
+export const CLOSED_ROWS = 5
 
-/** The last column reads newest first (what was just finished). Every other column keeps its board order. */
+/** A closed column (lib/columns.ts) reads newest first: what was just finished. Every other column keeps its board order. */
 function shown(col: BoardColumn, showAll: boolean): { tasks: BoardTask[]; hidden: number } {
-  const all = col.isLast ? [...col.tasks].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)) : col.tasks
-  const cap = showAll ? all.length : col.isLast ? LAST_ROWS : col.isFirst ? FIRST_ROWS : all.length
+  const closed = isClosed(col)
+  const all = closed ? [...col.tasks].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)) : col.tasks
+  const cap = showAll ? all.length : closed ? CLOSED_ROWS : isBacklog(col) ? BACKLOG_ROWS : all.length
   return { tasks: all.slice(0, cap), hidden: Math.max(0, all.length - cap) }
 }
 
 /**
- * One board: a header, then each column in board order with its tasks as pressable rows.
- * The nine digit keys go to the tasks in flight first (neither the first nor the last column), then to the
- * first column, then to the last: on a board with a long backlog the digits still reach the work under way.
+ * One board: a header, then each column in board order with its tasks as pressable rows. A column whose name
+ * does not say its category carries the category word, so a category set wrong is visible.
+ * The nine digit keys go to the tasks in flight first (neither backlog nor closed), then to the backlog, then to
+ * the closed columns: on a board with a long backlog the digits still reach the work under way.
  */
 export function boardRows(b: BoardView, ctx: Ctx & { showAll: boolean }): Row[] {
   const w = Math.max(20, ctx.width)
   const rows: Row[] = []
-  const head: Span[] = [bold(b.key), dim(BAR), sp(cut(b.name, 40)), dim(BAR), sp(`${openCount(b)} open`), dim(BAR), sp(`${doneCount(b)} done`)]
+  const head: Span[] = [bold(b.key), dim(BAR), sp(cut(b.name, 40)), dim(BAR), sp(`${openCount(b)} open`), dim(BAR), sp(`${closedCount(b)} closed`)]
   if (b.archivedCount > 0) {
     head.push(dim(BAR), dim(`${b.archivedCount} archived`))
   }
@@ -44,7 +47,7 @@ export function boardRows(b: BoardView, ctx: Ctx & { showAll: boolean }): Row[] 
   const cols = b.columns.map(col => ({ col, ...shown(col, ctx.showAll) }))
   // Digits, in the order of who needs them: in flight, then the first column, then the last.
   const digits = new Map<string, number>()
-  const rank = (c: BoardColumn): number => (c.isLast ? 2 : c.isFirst ? 1 : 0)
+  const rank = (c: BoardColumn): number => (isClosed(c) ? 2 : isBacklog(c) ? 1 : 0)
   for (const c of [...cols].sort((x, y) => rank(x.col) - rank(y.col))) {
     for (const t of c.tasks) if (digits.size < 9) {
       digits.set(t.key, digits.size + 1)
@@ -54,7 +57,9 @@ export function boardRows(b: BoardView, ctx: Ctx & { showAll: boolean }): Row[] 
   for (const { col, tasks, hidden } of cols) {
     const mark = markOf(col.name, false, col)
     const count = dim(` ${col.tasks.length}`)
-    rows.push({ kind: 'line', spans: col.tasks.length === 0 ? [mark, sp(' '), dim(col.name || '(no column)'), count] : [mark, sp(' '), bold(col.name || '(no column)'), count] })
+    const name = col.name || '(no column)'
+    const word = col.category !== null && categoryWord(col.category) !== name.toLowerCase() ? [dim(` (${categoryWord(col.category)})`)] : []
+    rows.push({ kind: 'line', spans: [mark, sp(' '), col.tasks.length === 0 ? dim(name) : bold(name), ...word, count] })
     for (const t of tasks) {
       // lead (5) + key + bar (3) + priority (1) + bar (3)
       const room = w - (5 + kw + 3 + 1 + 3)

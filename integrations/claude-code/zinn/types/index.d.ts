@@ -7,9 +7,14 @@
 // `view`: what the pane has open (the top of the stack is drawn) and the layout in force. It is kept under a
 // shape tag, so a session that still holds a value of an older build reads it as empty after a reload.
 
+/** A column's category (Zinn 0.45.0 and later). */
+export type ZinnColumnCategory = 'backlog' | 'todo' | 'in_progress' | 'review' | 'done' | 'cancelled'
+
 export type ZinnKeysEntry = {
   /** The board column as the store names it. */
   column: string
+  /** Null when the store gives none of the known values. */
+  category: ZinnColumnCategory | null
   /** The full title, uncut. */
   title: string
   isArchived: boolean
@@ -37,6 +42,7 @@ export type ZinnTaskRelation = {
   verb: string
   key: string
   column: string
+  category: ZinnColumnCategory | null
   isFirst: boolean
   isLast: boolean
   title: string
@@ -54,6 +60,7 @@ export type ZinnTaskView = {
   title: string
   status: string
   column: string
+  category: ZinnColumnCategory | null
   isFirst: boolean
   isLast: boolean
   priority: string
@@ -77,6 +84,7 @@ export type ZinnBoardTask = {
 
 export type ZinnBoardColumn = {
   name: string
+  category: ZinnColumnCategory | null
   isFirst: boolean
   isLast: boolean
   tasks: ZinnBoardTask[]

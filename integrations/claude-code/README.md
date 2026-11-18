@@ -11,8 +11,10 @@ prompt section or a model turn, so neither costs tokens.
 
 ## Requirements
 
-- Claude Code with mods (plugins with a hooks module). Tested with 2.1.326.
-- The Zinn CLI on `PATH` as `zinn`. Tested with 0.45.0. The plugins read the store through it.
+- Claude Code with mods (plugins with a hooks module). Tested with 2.1.327.
+- The Zinn CLI on `PATH` as `zinn`. Tested with 0.45.0. The plugins read the store through it. Marks follow
+  each column's category, which needs 0.45.0 or later. With an older CLI they follow the column's name or its
+  place on the board.
 
 ## Install
 

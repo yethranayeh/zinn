@@ -1,6 +1,7 @@
 // One board (`zinn project view KEY --json` for the columns in their order, plus
 // `zinn task list KEY --json` for the active tasks) and the list of boards (`zinn project list --json`),
 // reduced to what the pane draws. Pure: nothing here imports the engine module.
+import { categoryOf, isClosed, type Category } from "../columns";
 import { num, str, strings } from "./task";
 
 export type BoardTask = {
@@ -14,6 +15,8 @@ export type BoardTask = {
 
 export type BoardColumn = {
   name: string;
+  /** Null when the store gives none the mod knows. */
+  category: Category | null;
   isFirst: boolean;
   isLast: boolean;
   /** In board order, as the CLI lists them. */
@@ -54,6 +57,7 @@ export function parseBoard(projectStdout: string, tasksStdout: string): BoardVie
     }
     const col: BoardColumn = {
       name: c["name"],
+      category: categoryOf(c["category"]),
       isFirst: c["is_first"] === true,
       isLast: c["is_last"] === true,
       tasks: [],
@@ -69,7 +73,7 @@ export function parseBoard(projectStdout: string, tasksStdout: string): BoardVie
     const name = str(t["column"]);
     let col = byName.get(name);
     if (col === undefined) {
-      col = { name, isFirst: t["is_first"] === true, isLast: t["is_last"] === true, tasks: [] };
+      col = { name, category: categoryOf(t["column_category"]), isFirst: t["is_first"] === true, isLast: t["is_last"] === true, tasks: [] };
       columns.push(col);
       byName.set(name, col);
     }
@@ -114,6 +118,7 @@ export function parseProjects(stdout: string): ProjectRow[] {
 }
 
 export const openCount = (b: BoardView): number =>
-  b.columns.reduce((n, c) => n + (c.isLast ? 0 : c.tasks.length), 0);
-export const doneCount = (b: BoardView): number =>
-  b.columns.reduce((n, c) => n + (c.isLast ? c.tasks.length : 0), 0);
+  b.columns.reduce((n, c) => n + (isClosed(c) ? 0 : c.tasks.length), 0);
+/** Tasks in done or cancelled columns (lib/columns.ts isClosed). */
+export const closedCount = (b: BoardView): number =>
+  b.columns.reduce((n, c) => n + (isClosed(c) ? c.tasks.length : 0), 0);

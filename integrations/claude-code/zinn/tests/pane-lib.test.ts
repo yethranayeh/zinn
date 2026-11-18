@@ -1,14 +1,14 @@
 // The pane's pure parts, run host-free through the same runner.
 import { test, expect } from 'claude-code/testing'
-import { BARE, BOARD_TASKS, DUE, LONG, NOT_FOUND, PROJECT, PROJECTS, T0, TASK } from './pane-fixtures'
+import { BARE, BOARD_TASKS, CATEGORY_PROJECT, CATEGORY_TASKS, DUE, LONG, NOT_FOUND, PROJECT, PROJECTS, T0, TASK } from './pane-fixtures'
 import { COMMENTS_KEPT, COMMENT_MAX, failureOf, failureReason, firstParagraph, parseTask, projectOf } from '../lib/pane/task'
 import { candidateKeys, MAX_TRIES, parseArgs, resolveTarget } from '../lib/pane/resolve'
 import { layoutRows, rowText, type Row } from '../lib/pane/layouts'
 import { LAYOUTS } from '../lib/pane/resolve'
 import { parseConfig } from '../lib/pane/config'
 import { back, EMPTY, entryName, loadingBoard, loadingProjects, loadingTask, onTop, push, settle } from '../lib/pane/model'
-import { doneCount, openCount, parseBoard, parseProjects } from '../lib/pane/board'
-import { boardIsCut, boardRows, commentRows, descriptionRows, FIRST_ROWS, LAST_ROWS, projectRows } from '../lib/pane/views'
+import { closedCount, openCount, parseBoard, parseProjects } from '../lib/pane/board'
+import { boardIsCut, boardRows, commentRows, descriptionRows, BACKLOG_ROWS, CLOSED_ROWS, projectRows } from '../lib/pane/views'
 import { fmtDate, markOf, priorityLetter } from '../lib/pane/style'
 
 const board = () => parseBoard(JSON.stringify(PROJECT), JSON.stringify(BOARD_TASKS))
@@ -114,7 +114,7 @@ test('every layout shows every field', async () => {
   }
 })
 
-test('a due date shows in every layout; a column the mark table does not name is marked by where it sits', async () => {
+test('a due date shows in every layout; without a category, a column the name table does not name is marked by where it sits', async () => {
   const t = parseTask(JSON.stringify(DUE))
   for (const l of LAYOUTS) expect(layoutRows(l, t, { width: 100 }).map(rowText).join('\n')).toContain('2026-11-20')
   expect(markOf('Doing', false, { isFirst: false, isLast: false }).s).toBe('◐')
@@ -189,7 +189,7 @@ test('history across kinds: a board and a task of one key are two entries; a set
 test('parseBoard: the columns in the project\'s order, an empty one kept; archived rows and junk dropped; counts', async () => {
   const b = board()
   expect(b.columns.map(c => `${c.name}:${c.tasks.length}`)).toEqual(['Backlog:12', 'TODO:0', 'In Progress:2', 'Done:7'])
-  expect([b.key, b.name, b.archivedCount, openCount(b), doneCount(b)]).toEqual(['ZCC', 'Claude Code mods', 1, 14, 7])
+  expect([b.key, b.name, b.archivedCount, openCount(b), closedCount(b)]).toEqual(['ZCC', 'Claude Code mods', 1, 14, 7])
   const odd = parseBoard(JSON.stringify(PROJECT), JSON.stringify([{ key: 'ZCC-1', status: 'Archived', column: 'Done' }, null, { key: 'ZCC-2', status: 'Active', column: 'Elsewhere', is_last: true }]))
   expect(odd.columns.map(c => `${c.name}:${c.tasks.length}`)).toEqual(['Backlog:0', 'TODO:0', 'In Progress:0', 'Done:0', 'Elsewhere:1']) // nothing listed is dropped
   expect(() => parseBoard('[]', '[]')).toThrow()
@@ -202,8 +202,8 @@ test('boardRows: a cut first and last column, in flight never cut; done newest f
   const b = board()
   const rows = boardRows(b, { width: 100, showAll: false })
   const text = rows.map(rowText).join('\n')
-  expect(text).toContain('ZCC │ Claude Code mods │ 14 open │ 7 done │ 1 archived')
-  expect(rows.filter(r => r.kind === 'rel')).toHaveLength(FIRST_ROWS + 2 + LAST_ROWS)
+  expect(text).toContain('ZCC │ Claude Code mods │ 14 open │ 7 closed │ 1 archived')
+  expect(rows.filter(r => r.kind === 'rel')).toHaveLength(BACKLOG_ROWS + 2 + CLOSED_ROWS)
   expect(text).toContain('… 2 more')
   expect(boardIsCut(b)).toBe(true)
   // In flight first (ZCC-8, ZCC-6), then the backlog in board order.
@@ -241,4 +241,35 @@ test('projectRows: one pressable row per board, aligned; description and comment
   expect(com.indexOf('ZCC-8#2 │ 2026-10-13') < com.indexOf('ZCC-8#1 │ 2026-10-12')).toBe(true) // newest first
   expect(com).toContain('Agent picked `table`.')
   expect(commentRows(parseTask(JSON.stringify(BARE)), { width: 80 }).map(rowText).join('\n')).toContain('no comments')
+})
+
+test('ZCC-5 board by category: closed columns counted, cut and sorted wherever they sit; the category word where the name does not say it', async () => {
+  const b = parseBoard(JSON.stringify(CATEGORY_PROJECT), JSON.stringify(CATEGORY_TASKS))
+  expect([openCount(b), closedCount(b)]).toEqual([3, 8])
+  const rows = boardRows(b, { width: 100, showAll: false })
+  const lines = rows.map(rowText)
+  const head = (name: string) => lines.find(l => l.includes(name) && !l.includes('│'))!
+  expect([head('Backlog'), head('Blocked'), head('Doing'), head('Erledigt'), head('Cancelled')].map(l => l[0])).toEqual(['○', '○', '◐', '●', '⊗'])
+  expect(head('Blocked')).toContain('todo')
+  expect(head('Erledigt')).toContain('done')
+  expect(head('Doing')).toContain('in progress')
+  expect(head('Backlog')).not.toContain('backlog')
+  expect(head('Cancelled')).not.toContain('(cancelled)')
+  // Erledigt is closed though not last: cut to the newest few, newest first.
+  const erledigt = rows.flatMap(r => (r.kind === 'rel' && /^CAT-1\d$/.test(r.item.target.key) ? [r.item.target.key] : []))
+  expect(erledigt).toEqual(['CAT-15', 'CAT-14', 'CAT-13', 'CAT-12', 'CAT-11'])
+  // Digits: in flight (Blocked is todo, Doing), then the backlog, then the closed columns.
+  const d = digits(rows)
+  expect([d['CAT-2'], d['CAT-3'], d['CAT-1']]).toEqual([1, 2, 3])
+})
+
+test('ZCC-5 marks by category: the category wins over the name and the position; an unknown category falls back', async () => {
+  expect(markOf('Done', false, { category: 'cancelled', isFirst: false, isLast: false }).s).toBe('⊗')
+  expect(markOf('Blocked', false, { category: 'todo', isFirst: false, isLast: false }).s).toBe('○')
+  expect(markOf('Cancelled', false, { category: 'cancelled', isFirst: false, isLast: true }).s).toBe('⊗')
+  expect(markOf('Erledigt', false, { category: 'done', isFirst: false, isLast: false }).s).toBe('●')
+  expect(markOf('Done', false, { category: null, isFirst: false, isLast: false }).s).toBe('●')
+  const t = parseTask(JSON.stringify({ ...TASK, column: 'Doing', column_category: 'later' }))
+  expect([t.category, markOf(t.column, false, t).s]).toEqual([null, '◐'])
+  expect(parseTask(JSON.stringify(TASK)).relations.map(r => r.category)).toEqual(['in_progress', 'backlog', 'review'])
 })

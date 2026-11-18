@@ -1,9 +1,10 @@
 // The key map as the plain data this plugin publishes in `$.state` (plugin zinn, key `map`). Pure. The
 // contract other plugins read is declared in types/index.d.ts, and hooks/mentions.tsx checks at compile
 // time that the shape built here and the declared one are the same type.
+import type { Category } from './columns'
 import type { KeyMap } from './keys'
 
-export type KeyEntry = { column: string; title: string; isArchived: boolean }
+export type KeyEntry = { column: string; category: Category | null; title: string; isArchived: boolean }
 
 export type KeyMapState = {
   /** `loading` until the first load settles. `failed` keeps the last error and no keys. */
@@ -26,7 +27,7 @@ export function toState(map: KeyMap | null, at: string | null, argv: readonly st
     return { status: error === null ? 'loading' : 'failed', keys: {}, projects: [], archived: 0, loadedAt: at, argv: [...argv], error }
   }
   const keys: Record<string, KeyEntry> = {}
-  for (const [k, v] of map.keys) keys[k] = { column: v.column, title: v.title, isArchived: v.isArchived }
+  for (const [k, v] of map.keys) keys[k] = { column: v.column, category: v.category, title: v.title, isArchived: v.isArchived }
   return { status: 'ready', keys, projects: [...map.projects].sort(), archived: map.archived, loadedAt: at, argv: [...argv], error: null }
 }
 

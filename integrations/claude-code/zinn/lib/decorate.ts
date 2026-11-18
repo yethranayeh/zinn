@@ -2,20 +2,12 @@
 // are left to the pane), and the text-rewrite looks. Pure.
 import type { KeyInfo, Mention } from './keys'
 import type { Config, Look, Marks } from './config'
+import { lookOf } from './columns'
+import type { ThemeColor } from './style'
 
-/**
- * Status marks per board column. `shapes`: single-cell geometric shapes, no emoji (an emoji's width
- * differs per terminal). `words`: the column in lower case, readable without a legend and without colour.
- */
-export const SHAPES: Readonly<Record<string, string>> = {
-  'Backlog': '○',
-  'TODO': '○',
-  'In Progress': '◐',
-  'Review': '◑',
-  'Blocked': '⊘',
-  'Done': '●',
-}
+/** `shapes`: the column's mark (lib/columns.ts). `words`: the column in lower case, readable without a legend and without colour. */
 export const ARCHIVED_SHAPE = '▪'
+/** The mark of a column the mod knows nothing about. */
 export const OTHER_SHAPE = '·'
 export const UNKNOWN_MARK = '✗ not in Zinn'
 export const SEPARATOR = ' · '
@@ -27,7 +19,12 @@ export function markFor(info: KeyInfo, marks: Marks): string {
   if (info.isArchived) {
     return ARCHIVED_SHAPE
   }
-  return SHAPES[info.column] ?? OTHER_SHAPE
+  return lookOf(info)?.shape ?? OTHER_SHAPE
+}
+
+/** The theme key a mark is painted in. None for a column the mod knows nothing about. */
+export function markColor(info: KeyInfo): ThemeColor | undefined {
+  return info.isArchived ? 'subtle' : lookOf(info)?.color
 }
 
 /** At most `max` characters (code points), the last one an ellipsis when cut. Whitespace collapsed. 0 -> ''. */
@@ -91,7 +88,7 @@ export function titleEchoed(text: string, m: Mention, title: string): boolean {
 
 /** What one mention's decoration carries, independent of the look. */
 export type Deco =
-  | { kind: 'known'; key: string; mark: string; title: string | null; column: string; isArchived: boolean }
+  | { kind: 'known'; key: string; mark: string; color: ThemeColor | undefined; title: string | null }
   | { kind: 'unknown'; key: string }
 
 /**
@@ -105,7 +102,7 @@ export function decoFor(text: string, m: Mention, cfg: Pick<Config, 'marks' | 't
   }
   const cut = cutTitle(m.info.title, cfg.titleMax)
   const title = cut === '' || (!keepEchoedTitle && titleEchoed(text, m, m.info.title)) ? null : cut
-  return { kind: 'known', key: m.key, mark: markFor(m.info, cfg.marks), title, column: m.info.column, isArchived: m.info.isArchived }
+  return { kind: 'known', key: m.key, mark: markFor(m.info, cfg.marks), color: markColor(m.info), title }
 }
 
 /** `◐ title` (shapes) or `in progress: title` (words). The mark alone when there is no title. */
