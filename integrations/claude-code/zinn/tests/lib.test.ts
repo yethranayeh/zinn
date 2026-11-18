@@ -400,7 +400,7 @@ test('ZCC-5 marks in the legend: the category wins over the name; position when 
   ]))
   const info = (k: string) => map.keys.get(k)!
   const keys = ['CAT-1', 'CAT-2', 'CAT-3', 'CAT-4', 'CAT-5']
-  expect(keys.map(k => markFor(info(k), 'shapes'))).toEqual(['◐', '⊗', '○', '●', '·'])
+  expect(keys.map(k => markFor(info(k), 'shapes'))).toEqual(['◐', '✕', '○', '●', '·'])
   expect(keys.map(k => markColor(info(k)))).toEqual(['warning', 'inactive', 'inactive', 'success', undefined])
   expect(markFor(info('CAT-2'), 'words')).toBe('done') // words name the column as the board does
 })

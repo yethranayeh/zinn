@@ -249,7 +249,7 @@ test('ZCC-5 board by category: closed columns counted, cut and sorted wherever t
   const rows = boardRows(b, { width: 100, showAll: false })
   const lines = rows.map(rowText)
   const head = (name: string) => lines.find(l => l.includes(name) && !l.includes('│'))!
-  expect([head('Backlog'), head('Blocked'), head('Doing'), head('Erledigt'), head('Cancelled')].map(l => l[0])).toEqual(['○', '○', '◐', '●', '⊗'])
+  expect([head('Backlog'), head('Blocked'), head('Doing'), head('Erledigt'), head('Cancelled')].map(l => l[0])).toEqual(['○', '○', '◐', '●', '✕'])
   expect(head('Blocked')).toContain('todo')
   expect(head('Erledigt')).toContain('done')
   expect(head('Doing')).toContain('in progress')
@@ -264,9 +264,9 @@ test('ZCC-5 board by category: closed columns counted, cut and sorted wherever t
 })
 
 test('ZCC-5 marks by category: the category wins over the name and the position; an unknown category falls back', async () => {
-  expect(markOf('Done', false, { category: 'cancelled', isFirst: false, isLast: false }).s).toBe('⊗')
+  expect(markOf('Done', false, { category: 'cancelled', isFirst: false, isLast: false }).s).toBe('✕')
   expect(markOf('Blocked', false, { category: 'todo', isFirst: false, isLast: false }).s).toBe('○')
-  expect(markOf('Cancelled', false, { category: 'cancelled', isFirst: false, isLast: true }).s).toBe('⊗')
+  expect(markOf('Cancelled', false, { category: 'cancelled', isFirst: false, isLast: true }).s).toBe('✕')
   expect(markOf('Erledigt', false, { category: 'done', isFirst: false, isLast: false }).s).toBe('●')
   expect(markOf('Done', false, { category: null, isFirst: false, isLast: false }).s).toBe('●')
   const t = parseTask(JSON.stringify({ ...TASK, column: 'Doing', column_category: 'later' }))

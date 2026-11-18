@@ -26,7 +26,7 @@ export const CATEGORY_LOOK = {
   in_progress: { shape: '◐', color: 'warning' },
   review: { shape: '◑', color: 'suggestion' },
   done: { shape: '●', color: 'success' },
-  cancelled: { shape: '⊗', color: 'inactive' },
+  cancelled: { shape: '✕', color: 'inactive' },
 } as const satisfies Record<string, ColumnLook>
 
 /** The column categories the CLI reports. */
