@@ -3,7 +3,9 @@ import Icon from "./ui/icon/Icon.astro";
 import CopyButton from "./CopyButton.astro";
 import Tooltip from "./ui/tooltip/Tooltip.astro";
 
-const markdownUrl = `${Astro.url.pathname.replace(/\/$/, "")}.md`;
+import { markdownTwinPath } from "../markdown/twin-path";
+
+const markdownUrl = markdownTwinPath(Astro.url.pathname);
 ---
 
 <div

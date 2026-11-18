@@ -7,7 +7,6 @@ import mdx from "@astrojs/mdx";
 import { satteri } from "@astrojs/markdown-satteri";
 
 import { commandBlocks } from "./src/markdown/command-blocks.mjs";
-import { pagefindIgnoreContents } from "./src/markdown/pagefind-ignore-contents.mjs";
 
 const prototypesDir = new URL("./src/prototypes/", import.meta.url);
 
@@ -38,7 +37,7 @@ export default defineConfig({
 	prefetch: { prefetchAll: true, defaultStrategy: "hover" },
 	integrations: [
 		sitemap({ filter: (page) => !page.endsWith(".md") }),
-		mdx({ processor: satteri({ hastPlugins: [commandBlocks, pagefindIgnoreContents] }) }),
+		mdx({ processor: satteri({ hastPlugins: [commandBlocks] }) }),
 		devPrototypes
 	],
 	markdown: { syntaxHighlight: false },

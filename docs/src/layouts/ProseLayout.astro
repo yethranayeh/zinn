@@ -31,7 +31,7 @@ const hasBreadcrumbs = items.length > 0 || hasContents;
 		data-reading-page
 		class:list={[
 			"flex flex-1 flex-col [&_h1]:scroll-mt-(--reading-rail-height) [&_h2]:scroll-mt-(--reading-rail-height) [&_h3]:scroll-mt-(--reading-rail-height)",
-			hasBreadcrumbs ? "[--reading-rail-height:3rem]" : "[--reading-rail-height:0px]"
+			hasBreadcrumbs ? "[--reading-rail-height:calc(3rem_+_1px)]" : "[--reading-rail-height:0px]"
 		]}>
 		{
 			hasBreadcrumbs && (

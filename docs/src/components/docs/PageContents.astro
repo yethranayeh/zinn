@@ -44,7 +44,6 @@ const { headings, mobile = false } = Astro.props;
 }
 
 <script>
-	const reading = document.querySelector<HTMLElement>("[data-reading-page]");
 	const rail = document.querySelector<HTMLElement>("[data-reading-rail]");
 	const links = [...document.querySelectorAll<HTMLAnchorElement>("[data-section-link]")];
 	const targets = [...new Set(links.map((link) => document.getElementById(link.hash.slice(1))))].filter(
@@ -57,7 +56,6 @@ const { headings, mobile = false } = Astro.props;
 	function updateCurrent() {
 		scheduled = false;
 		const railHeight = rail?.getBoundingClientRect().height ?? 0;
-		reading?.style.setProperty("--reading-rail-height", `${railHeight}px`);
 		// The gap matches the document's scroll padding.
 		const line = (header?.getBoundingClientRect().height ?? 0) + railHeight + 24;
 		let current = targets[0];
@@ -68,7 +66,10 @@ const { headings, mobile = false } = Astro.props;
 				break;
 			}
 		}
-		if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1) {
+		// A page that fits the window stays on its first section until scrolled
+		const isScrolled = window.scrollY > 0;
+		const isAtBottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1;
+		if (isScrolled && isAtBottom) {
 			current = targets.at(-1) ?? current;
 		}
 		for (const link of links) {

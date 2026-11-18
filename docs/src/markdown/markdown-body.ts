@@ -1,4 +1,5 @@
 import { getTopicIndex } from "../components/docs/topic-index";
+import { markdownTwinPath } from "./twin-path";
 
 // HTML controls are omitted. Content indexes, notes and key labels keep their text.
 export async function markdownBody(body: string, pageId: string) {
@@ -13,7 +14,7 @@ export async function markdownBody(body: string, pageId: string) {
         ].join("\n"),
       )
       .join("\n");
-    body = body.replace(topicIndex[0], `## ${topicIndex[2] ?? "All topics"}\n\n${links}`);
+    body = body.replace(topicIndex[0], () => `## ${topicIndex[2] ?? "All topics"}\n\n${links}`);
   }
   return body
     .replace(/^import AgentSetup from ["'][^"']+["'];\r?\n/m, "")
@@ -37,7 +38,6 @@ export async function markdownBody(body: string, pageId: string) {
       if (path.split("/").at(-1)!.includes(".")) {
         return match;
       }
-      const page = path.replace(/\/$/, "");
-      return `](${page === "" ? "/index.md" : `${page}.md`}${fragment})`;
+      return `](${markdownTwinPath(path)}${fragment})`;
     });
 }
