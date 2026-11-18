@@ -34,7 +34,7 @@ A descriptor's `schemaRef`, such as `#/schemas/definitions/TaskList`, resolves a
 
 ### Effects and confirmations
 
-`effects.domain` describes the operation. `effects.storage: "normal-open"` may create or upgrade storage under the normal open policy, including for reads. `"none"` performs no storage access. Administrative commands declare their own storage operation. `effects.storage` covers the database and backups, not [telemetry records](/docs/data#telemetry), because a failed `whoami` or `capabilities` run writes a record. `confirmation` describes prompts and project-deletion rules.
+`effects.domain` describes the operation. `effects.storage: "normal-open"` may create or upgrade storage under the normal open policy, including for reads. `"none"` performs no storage access. Administrative commands declare their own storage operation. `effects.storage` covers the database and backups, not [telemetry records](/docs/data/telemetry), because a failed `whoami` or `capabilities` run writes a record. `confirmation` describes prompts and project-deletion rules.
 
 ## Version compatibility
 

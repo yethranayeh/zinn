@@ -190,7 +190,7 @@ const recordBytesShown = Math.round(telemetryCost.recordBytes / 10) * 10;
 export const telemetryNote = {
   text: `Each task command also appends about ${sizeLabel(recordBytesShown)} to a local usage record, up to ${telemetryCost.maxMegabytes} MB and kept ${telemetryCost.maxAgeDays} days.`,
   linkLabel: "Telemetry settings",
-  href: "/docs/data#telemetry",
+  href: "/docs/data/telemetry",
   after: "turn it off.",
 };
 

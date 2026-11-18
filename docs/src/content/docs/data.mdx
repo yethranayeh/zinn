@@ -1,13 +1,17 @@
 ---
 title: Data and backups
-description: Learn where Zinn stores data and how database backups, restores, schema upgrades, failure logs, and local telemetry records work.
+navTitle: Data
+toc: true
+description: Find the local store, back up and restore the database, manage upgrades and inspect failure logs.
 ---
 
 import Aside from "../../components/ui/aside/Aside.astro";
 
 # Data and backups
 
-Zinn stores every project in one local SQLite database. The default database is `~/.zinn/data/zinn.sqlite`. The backups of the database are stored in `~/.zinn/backups/`, [failure logs](#failure-logs) in `~/.zinn/logs/`, and [local telemetry records](#telemetry) in `~/.zinn/telemetry/`.
+## Store files and paths
+
+Zinn stores every project in one local SQLite database. The default database is `~/.zinn/data/zinn.sqlite`. The backups of the database are stored in `~/.zinn/backups/`, [failure logs](#failure-logs) in `~/.zinn/logs/`, and [local telemetry records](/docs/data/telemetry) in `~/.zinn/telemetry/`.
 
 `ZINN_DIR` or a settings file can select another Zinn directory. See [Settings](/docs/settings) for directory selection and precedence.
 
@@ -15,7 +19,7 @@ Reported database paths, and the paths of backups Zinn saves, are **absolute** w
 
 <Aside label='Keep the database on a local filesystem'>
 
-Keep the active Zinn directory outside network shares such as SMB and synchronized folders such as OneDrive or Dropbox. SQLite's [WAL mode](https://sqlite.org/wal.html) coordinates processes on the same machine through shared memory; file synchronization does not coordinate database transactions.
+Keep the active Zinn directory outside network shares such as SMB and synchronized folders such as OneDrive or Dropbox. SQLite's [WAL mode](https://sqlite.org/wal.html) coordinates processes on the same machine through shared memory. File synchronization does not coordinate database transactions.
 
 </Aside>
 
@@ -43,7 +47,7 @@ Restore the whole database from a backup saved by `zinn backup` or an upgrade:
 zinn restore ~/.zinn/backups/2026-09-29T12-30-05Z-cli-0.32.0-b38178c0.sqlite
 ```
 
-Restore asks for confirmation unless `--yes` is used. It saves the current database first, then applies the restore completely or not at all. Restoring to a missing database creates it. With `--json`, it returns `databasePath`, `previousVersion`, `restoredVersion`, and `backupPath`; `backupPath` is `null` if the destination database was missing or empty. See [Confirmations in scripts](/docs/scripting/confirmations#confirm-unattended-changes) for confirmation behavior in unattended commands.
+Restore asks for confirmation unless `--yes` is used. It saves the current database first, then applies the restore completely or not at all. Restoring to a missing database creates it. With `--json`, it returns `databasePath`, `previousVersion`, `restoredVersion`, and `backupPath`. `backupPath` is `null` if the destination database was missing or empty. See [Confirmations in scripts](/docs/scripting/confirmations#confirm-unattended-changes) for confirmation behavior in unattended commands.
 
 A backup with an older schema version is restored at that version, then Zinn upgrades it under the normal upgrade policy. Restore works regardless of the version of the destination database, so you can return to an older Zinn and restore a backup saved by an upgrade. Missing, damaged, unmarked, non-Zinn, or newer-schema backups are **refused** without changing the database. So is a backup path that leads to the database itself, and a backup file that is deleted, replaced or overwritten after restore checked it. Any later failure rolls back the restore and retains the saved backup. If the destination database is damaged, restore leaves it unchanged and prints recovery steps.
 
@@ -57,7 +61,7 @@ Deleting a task does not make its number available again within that project. De
 
 ## Upgrade a database
 
-A newer Zinn upgrades an older database completely or not at all, saving a backup first. A published release upgrades an older database on first use. A source build upgrades only a separate database selected with `ZINN_DIR`; other older databases open read-only until explicitly migrated.
+A newer Zinn upgrades an older database completely or not at all, saving a backup first. A published release upgrades an older database on first use. A source build upgrades only a separate database selected with `ZINN_DIR`. Other older databases open read-only until explicitly migrated.
 
 To upgrade explicitly, run:
 
@@ -90,83 +94,10 @@ Arguments keep their values, so a log can contain private work such as a task's 
 
 Writing a log keeps the newest 10 logs and removes older ones. Other files in `logs/` stay. Zinn writes logs only inside an existing Zinn directory. When a log cannot be written, the command reports its error without a path.
 
-## Telemetry
+## Related documentation
 
-Zinn keeps local usage records. They are **on** by default, but nothing leaves your machine. Each recorded run appends one line of JSON to a record file in `telemetry/` in the selected Zinn directory. A record file is named `YYYY-MM-DD-NNNN.jsonl`, for the UTC date on which the run started and a sequence number, such as `2026-11-07-0001.jsonl`. Zinn creates `telemetry/` inside a Zinn directory that exists and never creates the Zinn directory for a record.
+[Telemetry](/docs/data/telemetry) describes local usage records, their fields, retention and controls.
 
-While telemetry is on, Zinn records every run, whether it succeeds or fails, including help requests and a bare `zinn`. Two kinds of run leave no record:
-
-- `--version` or `-v` as the only argument.
-- A successful `whoami`, `capabilities`, `info` or `doctor`, including a `doctor` that reports findings. A failed run of these commands, and a request for their help, is recorded.
-
-Recording never changes a command's output or exit code. When a record cannot be written, Zinn skips it, and the `ZINN_DEBUG=1` output names the problem on a line starting with `::telemetry`.
-
-### Record fields
-
-A record is one line. Its keys are camelCase, and a fact Zinn does not know is left out instead of setting it as `null`. Zinn can add fields without changing `v`.
-
-- `v` is the record format, currently `1`.
-- `startedAt` is the start of the run as a UTC time with milliseconds, and `durationMs` is how long it ran in whole milliseconds.
-- `exitCode` is `0` or `1`.
-- `actor` holds facts read from the environment, never from git. `kind` is `human` or `agent`. A detected agent adds `name` and `source`, such as `env:AI_AGENT`. `sessionId`, `threadId`, `agent`, `model` and `effort` appear when declared, as for [activity](/docs/cli/identity#who-am-i). `client` is always present and holds the [client chain](/docs/cli/identity#client-chains).
-- `command` holds the canonical `route`, such as `task view`, and `alias` when an alias was typed, such as `task show`. `help` is `true` only when a help flag was written. When no command matched, `route` is absent and `command` holds `namespace`, the nearest namespace (empty for the root), and `unmatchedWord`, the first word that matched no command. `unmatchedWord` is left out when that word starts with a dash.
-- `options` lists every option written before `--`, known or not, including `--json`. Each entry has the option's `name` and never its value. `valueForm` is `joined` when the value was written after `=`, `next` when a string option took the following word, and `none` for a flag. It is left out when the words alone cannot tell, such as an unknown option written without `=`. A word such as `-later` counts as one option named `-l`. A word gets an entry only when its name has an option's shape: after its dashes, a letter or digit followed by letters, digits, `_` or `-`.
-- `positionals` is the number of positional words the command received, including words after `--`. It is left out when no command matched, when help was requested, and when the arguments could not be parsed.
-- `error` appears only on a failure. It holds the error `code`, and when known the `reason`, the `argument`, and the `suggestedRoute`, the command Zinn suggested. See [Handle errors and notices](/docs/scripting/errors#handle-errors-and-notices). `logFileName` is the file name of the [failure log](#failure-logs) this run wrote. That log may have been removed since, because Zinn keeps the newest 10.
-- `version` is the CLI version. `runtime` holds the `name` (`Node` or `Bun`) and `version` of the runtime. `platform` and `arch` are Node's `process.platform` and `process.arch`.
-- `stdinIsTerminal` and `stdoutIsTerminal` say whether each stream was a terminal, and `parentPid` is the parent process id.
-
-For example, a failed `task list` run by an agent looks like this. A record is a single line, shown here over several lines:
-
-```json
-{
-	"v": 1,
-	"startedAt": "2026-11-07T09:22:10.170Z",
-	"durationMs": 38,
-	"exitCode": 1,
-	"actor": {
-		"kind": "agent",
-		"name": "claude-code",
-		"source": "env:AI_AGENT",
-		"sessionId": "3f2a9c",
-		"model": "claude-sonnet-5-5",
-		"client": "zinn-cli/0.44.0 rex/0.9"
-	},
-	"command": { "route": "task list", "help": false },
-	"options": [
-		{ "name": "--limit", "valueForm": "next" },
-		{ "name": "--json", "valueForm": "none" }
-	],
-	"positionals": 1,
-	"error": {
-		"code": "storage",
-		"reason": "not_database",
-		"logFileName": "2026-11-07T09-22-10Z-cli-0.44.0-321ef00d.log"
-	},
-	"version": "0.44.0",
-	"runtime": { "name": "Node", "version": "24.4.0" },
-	"platform": "darwin",
-	"arch": "arm64",
-	"stdinIsTerminal": false,
-	"stdoutIsTerminal": false,
-	"parentPid": 4242
-}
-```
-
-Records never hold option values, positional words, task, project or column keys or names, messages, help text, diagnostics, paths, the working directory or the hostname. The one typed word a record can keep is `command.unmatchedWord`. Option names are kept as typed, and the actor facts are the values the environment declares. A one-word value that starts with a dash can't be told from a flag, so `--sk-abc123` written without a string option before it or `--` is recorded as an option name, and as `error.argument` when Zinn refuses it. A word without an option's shape, such as a quoted `--my search words`, gets no `options` entry, and `error.argument` keeps only the part before its first space or `=`.
-
-### Retention
-
-`telemetry.maxAgeDays` sets how many days records are kept and defaults to 90. `telemetry.maxMegabytes` limits the record files' total size and defaults to 100, with one megabyte being 1,048,576 bytes. See [Settings](/docs/settings#control-local-telemetry).
-
-A record file takes records up to a tenth of the size limit, and the next run then starts a new one. A run that starts a new file first deletes the files older than `telemetry.maxAgeDays`, then the oldest remaining files until the rest total less than the limit. Only that run deletes anything, so the folder can briefly hold older files. A file's age comes from its name, and only regular files named like `2026-11-07-0001.jsonl` are counted or deleted. Other files in the folder stay.
-
-### Clear or turn off records
-
-Delete a record file or the whole `telemetry/` folder at any time. Zinn creates the folder again when it writes the next record. `zinn backup` copies only the database, and `zinn restore` replaces only the database, so both leave `telemetry/` alone.
-
-Setting `telemetry.mode` to `off`, or `DO_NOT_TRACK` to `1`, stops new records and keeps existing files. See [Settings](/docs/settings#control-local-telemetry).
-
-## Core library compatibility
+### Core library compatibility
 
 Core has client-specific database operation rules. See [Core library compatibility](/docs/core/storage#database-compatibility).

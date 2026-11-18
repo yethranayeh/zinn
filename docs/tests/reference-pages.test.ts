@@ -16,9 +16,8 @@ const entries = await Promise.all((await readdir(directory, { recursive: true })
 const hubs = new Map(entries.filter(({ body }) => body.includes("<TopicIndex"))
   .map(({ path }) => [path, entries.filter((entry) => entry.path.startsWith(`${path}/`))
     .map((entry) => entry.path)]));
-const parents = new Map([...hubs].flatMap(([hub, topics]) => topics.map((topic) => [topic, hub])));
-const topics = [...parents.keys()];
-const pages = [...new Set([...hubs.keys(), ...topics])];
+const entryPaths = new Set(entries.map(({ path }) => path));
+const pages = entries.filter(({ body }) => /^toc: true$/m.test(body)).map(({ path }) => path);
 const responses = new Map<string, Promise<string>>();
 
 function htmlAt(path: string) {
@@ -34,11 +33,15 @@ function htmlAt(path: string) {
   return result;
 }
 
-test.each(topics)("%s has its parent hub in the visible breadcrumb", async (path) => {
+test.each(pages)("%s follows its content hierarchy in the visible breadcrumb", async (path) => {
   const html = await htmlAt(path);
   const breadcrumb = html.match(/<nav\b[^>]*aria-label="Breadcrumb"[^>]*>([\s\S]*?)<\/nav>/)?.[1];
   const links = [...breadcrumb!.matchAll(/href="([^"]+)"/g)].map((match) => match[1]);
-  expect(links).toEqual(["/docs/", `${parents.get(path)}/`, `${path}/`]);
+  const segments = path.split("/").filter(Boolean);
+  const ancestors = segments
+    .map((_, index) => `/${segments.slice(0, index + 1).join("/")}`)
+    .filter((ancestor) => entryPaths.has(ancestor));
+  expect(links).toEqual(ancestors.map((ancestor) => `${ancestor}/`));
 });
 
 test.each(pages)("%s links every section from both contents controls", async (path) => {

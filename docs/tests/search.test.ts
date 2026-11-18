@@ -57,6 +57,7 @@ test.each([
   ["backup", "/docs/data/"],
   ["hooks", "/docs/hooks/"],
   ["--json", "/docs/scripting/"],
+  ["telemetry", "/docs/data/telemetry/"],
 ])("searching %s ranks %s first", async (query, url) => {
   const [first] = orderResults(query, await search(query));
   expect(first?.url).toBe(url);
@@ -67,11 +68,10 @@ test("a result links to the heading that matched", async () => {
   expect(core?.sub_results.map((section) => section.url)).toContain("/docs/core/blame/#read-attribution");
 });
 
-// The query names a section heading on /docs/data, which Pagefind ranks second for it behind Settings.
 test("a query naming a section heading leads with that page", async () => {
-  const [first, second] = orderResults("telemetry", await search("telemetry"));
+  const [first] = orderResults("task key reuse", await search("task key reuse"));
   expect(first?.url).toBe("/docs/data/");
-  expect(second?.url).toBe("/docs/settings/");
+  expect(first?.sub_results.map((section) => section.url)).toContain("/docs/data/#task-key-reuse");
 });
 
 test("the index holds public HTML pages only", async () => {
