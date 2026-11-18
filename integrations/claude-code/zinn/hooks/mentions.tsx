@@ -43,6 +43,7 @@ import {
 } from "../lib/log";
 import { restartVerdict, versionCheckApplies } from "../lib/version";
 import { showKey } from "./pane";
+import { VERSION, zinnEnv } from "./client";
 import {
   applyViews,
   changedColumns,
@@ -58,7 +59,6 @@ type Equal<A, B> =
 const CONTRACT_MATCHES: Equal<KeyMapState, ZinnKeysMap> = true;
 void CONTRACT_MATCHES;
 
-const VERSION = "0.1.0"; // the same as .claude-plugin/plugin.json. The check fails when the two differ
 const ZINN_ARGV = ["zinn", "task", "list", "--all", "--json"] as const;
 const ACTIVITY_ARGV = ["zinn", "activity", "list", "--limit", "1", "--json"] as const;
 const COMMAND = "zinn";
@@ -168,7 +168,10 @@ async function loadMap($: Dollar): Promise<string> {
   let error: string | null = null;
   let line: Record<string, unknown>;
   try {
-    const r = await $.process.run([...ZINN_ARGV], { timeoutMs: 5000 });
+    const r = await $.process.run([...ZINN_ARGV], {
+      timeoutMs: 5000,
+      env: await zinnEnv($, "mentions"),
+    });
     const ms = Math.round(now() - a);
     if (r.exitCode !== 0 || r.isStdoutTruncated) {
       error = failureReason(r);
@@ -463,7 +466,10 @@ async function draw(
 /** Runs `zinn activity list --limit 1 --json`; the newest id, or null when it cannot be read. */
 async function activityHead($: Dollar): Promise<string | null> {
   try {
-    const r = await $.process.run([...ACTIVITY_ARGV], { timeoutMs: 5000 });
+    const r = await $.process.run([...ACTIVITY_ARGV], {
+      timeoutMs: 5000,
+      env: await zinnEnv($, "mentions"),
+    });
     return r.exitCode === 0 && !r.isStdoutTruncated ? newestActivityId(r.stdout) : null;
   } catch {
     return null;
@@ -496,7 +502,10 @@ async function refreshRound($: Dollar, full: boolean, keys: string[]): Promise<v
     for (const key of keys) {
       let res: ViewResult;
       try {
-        const r = await $.process.run(["zinn", "task", "view", key, "--json"], { timeoutMs: 5000 });
+        const r = await $.process.run(["zinn", "task", "view", key, "--json"], {
+          timeoutMs: 5000,
+          env: await zinnEnv($, "mentions"),
+        });
         res = readView(key, r);
       } catch (err) {
         res = { kind: "unknown", why: errText(err) };

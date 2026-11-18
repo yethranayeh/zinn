@@ -12,6 +12,7 @@ import { footerLabelText, hasFooterLabel, logDirFor, logFileFor, pinnedStatus, s
 import { paintPlan, stripAnsi } from '../lib/paint'
 import { THEMES } from '../lib/themes'
 import { restartVerdict, versionCheckApplies } from '../lib/version'
+import { clientChain, clientToken } from '../lib/client'
 import { ROWS } from './fixtures'
 
 const MAP: KeyMap = parseTaskList(JSON.stringify(ROWS))
@@ -378,4 +379,13 @@ test('version check: a PATH mismatch stops the terminal mod; Claude Desktop skip
   expect(versionCheckApplies('claude-desktop')).toBe(false)
   expect(versionCheckApplies('cli')).toBe(true)
   expect(versionCheckApplies(undefined)).toBe(true)
+})
+
+test('ZCC-2 client chain: the inherited chain trimmed, one space, then the part token', () => {
+  const token = clientToken('pane', '1.2.3')
+  expect(token).toBe('zinn-claude-code:pane/1.2.3')
+  expect(clientChain(undefined, token)).toBe(token)
+  expect(clientChain(null, token)).toBe(token)
+  expect(clientChain(' \t ', token)).toBe(token)
+  expect(clientChain(' rex/0.9  zinn-opencode:inspector/0.5.0 ', token)).toBe(`rex/0.9  zinn-opencode:inspector/0.5.0 ${token}`)
 })

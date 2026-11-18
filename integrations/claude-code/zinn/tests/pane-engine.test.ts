@@ -5,16 +5,17 @@
 import { test, expect } from 'claude-code/testing'
 import type { On, PluginOptions } from 'claude-code'
 import { BARE, BOARD_TASKS, NOT_FOUND, PROJECT, PROJECTS, TASK } from './pane-fixtures'
+import { VERSION } from '../hooks/client'
 
 declare const console: { log: (...args: unknown[]) => void }
 
 const SURFACES = ['terminal', 'desktop'] as const
 type Zinn = { exitCode: number; stdout: string; stderr?: string } | 'throw'
 type Seen = { kind: string; key: string; state: string; error?: string | null; tab?: string; showAll?: boolean }
-type World = { runs: string[][]; toasts: string[]; opens: { id: string; title?: string; focus?: true; closeOnEscape?: true }[]; registered: string[]; immediate: boolean[]; closes: string[]; selection: { text: string } | undefined; view: () => { stack: Seen[]; layout: string | null } | undefined; raw: () => unknown; seed: (value: unknown) => void; locked: boolean }
+type World = { runs: string[][]; toasts: string[]; opens: { id: string; title?: string; focus?: true; closeOnEscape?: true }[]; registered: string[]; immediate: boolean[]; closes: string[]; selection: { text: string } | undefined; view: () => { stack: Seen[]; layout: string | null } | undefined; raw: () => unknown; seed: (value: unknown) => void; locked: boolean; envs: (Record<string, string> | undefined)[] }
 
 function world(on: On, o: { task?: Zinn; board?: Zinn; projects?: Zinn; selection?: string; env?: Record<string, string>; placed?: boolean } = {}): World {
-  const w: World = { runs: [], toasts: [], opens: [], registered: [], immediate: [], closes: [], selection: o.selection === undefined ? undefined : { text: o.selection }, view: () => undefined, raw: () => undefined, seed: () => undefined, locked: false }
+  const w: World = { runs: [], toasts: [], opens: [], registered: [], immediate: [], closes: [], selection: o.selection === undefined ? undefined : { text: o.selection }, view: () => undefined, raw: () => undefined, seed: () => undefined, locked: false, envs: [] }
   // The test is the state store. The mod keeps its value under a shape tag (`{ shape, value }`, the engine's Shaped).
   let stored: unknown
   let version = 0
@@ -56,6 +57,7 @@ function world(on: On, o: { task?: Zinn; board?: Zinn; projects?: Zinn; selectio
       return answer({ exitCode: 0, stdout: '[]' })
     }
     w.runs.push(argv)
+    w.envs.push(e.init?.env)
     if (w.locked) {
       return answer({ exitCode: 1, stdout: '', stderr: '{"error":{"code":"storage","message":"database is locked"}}' })
     }
@@ -112,6 +114,14 @@ test('session.start registers /zinn-show, nothing else, and reads no store', opt
   expect(w.registered).toEqual(['zinn-show'])
   expect(w.immediate).toEqual([true]) // runs mid-turn, so a press does not wait for the turn
   expect(w.runs).toEqual([])
+})
+
+test('ZCC-2 /zinn-show declares the pane in ZINN_CLIENT after the inherited chain', opts({}), async ($, on) => {
+  const w = world(on, { env: { ZINN_CLIENT: ' rex/0.9 ' } })
+  await $.session.start(START)
+  await $.command.run(RUN('ZCC'))
+  expect(w.runs.length).toBeGreaterThan(1)
+  expect(w.envs).toEqual(w.runs.map(() => ({ ZINN_CLIENT: `rex/0.9 zinn-claude-code:pane/${VERSION}` })))
 })
 
 test('pane off: no /zinn-show is registered', opts({ pane: false }), async ($, on) => {

@@ -11,6 +11,7 @@ import type { TestBody } from 'claude-code/testing'
 import type { On, PluginOptions } from 'claude-code'
 import { ROWS } from './fixtures'
 import type { KeyMapState } from '../lib/state'
+import { VERSION } from '../hooks/client'
 
 declare const console: { log: (...args: unknown[]) => void }
 
@@ -20,11 +21,11 @@ const SESSION = 'b7e1c0de-0000-4000-8000-000000000006'
 const MAP_NAME = { plugin: 'zinn', key: 'map' } as const
 
 type Zinn = { exitCode: number; stdout: string; stderr?: string; isStdoutTruncated?: boolean } | 'throw'
-type World = { drawn: string[]; summaries: (boolean | null)[]; runs: string[][]; status: string[]; toasts: string[]; registered: string[]; files: Map<string, string>; clock: ReturnType<typeof mock.clock>; zinn: Zinn[]; map: () => KeyMapState | undefined; modes: string[] }
+type World = { drawn: string[]; summaries: (boolean | null)[]; runs: string[][]; status: string[]; toasts: string[]; registered: string[]; files: Map<string, string>; clock: ReturnType<typeof mock.clock>; zinn: Zinn[]; map: () => KeyMapState | undefined; modes: string[]; envs: { argv: string[]; env: Record<string, string> | undefined }[] }
 
 function world(on: On, o: { installed?: string; zinn?: Zinn | Zinn[]; env?: Record<string, string> } = {}): World {
   const queue = Array.isArray(o.zinn) ? [...o.zinn] : [o.zinn ?? { exitCode: 0, stdout: JSON.stringify(ROWS) }]
-  const w: World = { drawn: [], summaries: [], runs: [], status: [], toasts: [], registered: [], files: new Map(), clock: undefined as never, zinn: queue, map: () => undefined, modes: [] }
+  const w: World = { drawn: [], summaries: [], runs: [], status: [], toasts: [], registered: [], files: new Map(), clock: undefined as never, zinn: queue, map: () => undefined, modes: [], envs: [] }
   w.clock = mock.clock(on, { now: Date.UTC(2026, 9, 12, 9, 0, 0) })
   mock.env(on, o.env ?? {})
   // The kit's Engine `$` has no `state` noun (tsc TS2339, runtime TypeError), but `state.get` and
@@ -44,6 +45,7 @@ function world(on: On, o: { installed?: string; zinn?: Zinn | Zinn[]; env?: Reco
   on('process.run', async (_$, e) => {
     const argv = [...e.argv]
     w.runs.push(argv)
+    w.envs.push({ argv, env: e.init?.env })
     const res = (r: { exitCode: number; stdout: string; stderr?: string; isStdoutTruncated?: boolean }) => ({ value: { exitCode: r.exitCode, stdout: r.stdout, stderr: r.stderr ?? '', isStdoutTruncated: r.isStdoutTruncated ?? false, isStderrTruncated: false } })
     if (argv[0] === 'claude') {
       return res({ exitCode: 0, stdout: `${o.installed ?? RUNNING} (Claude Code)\n` })
@@ -102,6 +104,25 @@ test('session.start: two processes, both by argv; the map is published in $.stat
   expect(w.status).toEqual(['']) // nothing is pinned while all is well (0.2.0); `statusLine: always` is the old line
   expect(w.files.size).toBe(0) // the log is off by default
 })
+
+// ZCC-2: the inherited chain, then the plugin's token. Only ZINN_CLIENT is set over the host's environment.
+const TOKEN = `zinn-claude-code:mentions/${VERSION}`
+const CLIENT_CASES: [string, Record<string, string>, string][] = [
+  ['no inherited chain', {}, TOKEN],
+  ['an inherited chain', { ZINN_CLIENT: 'rex/0.9' }, `rex/0.9 ${TOKEN}`],
+  ['a padded inherited chain', { ZINN_CLIENT: '  rex/0.9 other/1  ' }, `rex/0.9 other/1 ${TOKEN}`],
+  ['a whitespace-only inherited chain', { ZINN_CLIENT: '  ' }, TOKEN],
+]
+for (const [name, env, chain] of CLIENT_CASES) {
+  test(`ZCC-2 ZINN_CLIENT with ${name}: every zinn run declares the plugin, claude --version declares nothing`, opts({}), async ($, on) => {
+    const w = world(on, { env })
+    await $.session.start(START)
+    const zinnRuns = w.envs.filter(r => r.argv[0] === 'zinn')
+    expect(zinnRuns.map(r => r.argv[1]).sort()).toEqual(['activity', 'task'])
+    expect(zinnRuns.map(r => r.env)).toEqual(zinnRuns.map(() => ({ ZINN_CLIENT: chain })))
+    expect(w.envs.filter(r => r.argv[0] === 'claude').map(r => r.env)).toEqual([undefined])
+  })
+}
 
 test('suffix: the text reaching the engine, on both surfaces; unknown key flagged; FOO-12 (no FOO board) not caught', opts({ look: 'suffix' }), async ($, on) => {
   const w = world(on)

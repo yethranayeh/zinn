@@ -22,6 +22,7 @@ import { LAYOUTS, parseArgs, resolveTarget, type Layout } from '../lib/pane/reso
 import { failureOf, parseTask, projectOf } from '../lib/pane/task'
 import { sp, type Span } from '../lib/pane/style'
 import { boardIsCut, boardRows, commentRows, descriptionRows, projectRows } from '../lib/pane/views'
+import { zinnEnv } from './client'
 
 // The state contract (types/index.d.ts) and the shape lib/pane/model.ts builds must be the same type.
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false
@@ -49,7 +50,7 @@ type Ran = { ok: true; stdout: string } | { ok: false; code: string | null; erro
 /** One `zinn` run by argv. Never throws: a failure is a value with the envelope's `code` and one line. */
 async function zinn($: Dollar, argv: string[]): Promise<Ran> {
   try {
-    const r = await $.process.run(['zinn', ...argv], { timeoutMs: 5000 })
+    const r = await $.process.run(['zinn', ...argv], { timeoutMs: 5000, env: await zinnEnv($, 'pane') })
     if (r.exitCode !== 0 || r.isStdoutTruncated) {
       const f = failureOf(r)
       return { ok: false, code: f.code, error: f.reason }

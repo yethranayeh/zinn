@@ -6,6 +6,7 @@ import type { On } from 'claude-code'
 import { ROWS } from './fixtures'
 import type { KeyMapState } from '../lib/state'
 import { classify } from '../lib/watch'
+import { VERSION } from '../hooks/client'
 
 const SESSION = 'b7e1c0de-0000-4000-8000-000000000007'
 const RUNNING = '2.1.296'
@@ -15,7 +16,7 @@ const CORE = { result: { stdout: 'core said this', stderr: '', interrupted: fals
 
 type Run = { exitCode: number; stdout: string; stderr?: string }
 type Live = {
-  runs: string[][]; toasts: string[]; toolsSeen: string[]; map: () => KeyMapState | undefined; clock: ReturnType<typeof mock.clock>
+  runs: string[][]; envs: (Record<string, string> | undefined)[]; toasts: string[]; toolsSeen: string[]; map: () => KeyMapState | undefined; clock: ReturnType<typeof mock.clock>
   activity: { id: string }; view: Record<string, Run>
 }
 
@@ -25,7 +26,7 @@ const activityRuns = (w: Live): number => w.runs.filter(a => a[1] === 'activity'
 const viewOf = (key: string, column: string): Run => ({ exitCode: 0, stdout: JSON.stringify({ key, status: 'Active', column, title: 'Keep the key map live' }) })
 
 function world(on: On): Live {
-  const w: Live = { runs: [], toasts: [], toolsSeen: [], map: () => undefined, clock: undefined as never, activity: { id: 'a-1' }, view: {} }
+  const w: Live = { runs: [], envs: [], toasts: [], toolsSeen: [], map: () => undefined, clock: undefined as never, activity: { id: 'a-1' }, view: {} }
   w.clock = mock.clock(on, { now: Date.UTC(2026, 9, 19, 9, 0, 0) })
   mock.env(on, {})
   let published: KeyMapState | undefined
@@ -41,6 +42,7 @@ function world(on: On): Live {
   on('process.run', async (_$, e) => {
     const argv = [...e.argv]
     w.runs.push(argv)
+    w.envs.push(e.init?.env)
     const res = (r: Run) => ({ value: { exitCode: r.exitCode, stdout: r.stdout, stderr: r.stderr ?? '', isStdoutTruncated: false, isStderrTruncated: false } })
     if (argv[0] === 'claude') {
       return res({ exitCode: 0, stdout: `${RUNNING} (Claude Code)\n` })
@@ -135,6 +137,18 @@ test('the hook returns before the refresh runs (the host is not held)', BASE, as
   expect(viewRuns(w).length).toBe(0) // the timer has not fired yet
   await settle(w)
   expect(viewRuns(w).length).toBe(1)
+})
+
+test('ZCC-2 every zinn run of the live map, the key refresh included, declares the plugin in ZINN_CLIENT', BASE, async ($, on) => {
+  const w = world(on)
+  w.view['ZCC-7'] = viewOf('ZCC-7', 'Review')
+  await $.session.start(START)
+  await $.tool.call({ tool: 'Bash', command: 'zinn task move ZCC-7 Review', description: 'move' } as never)
+  await settle(w)
+  expect(viewRuns(w).length).toBe(1)
+  const zinnRuns = w.runs.flatMap((argv, i) => (argv[0] === 'zinn' ? [w.envs[i]] : []))
+  expect(zinnRuns.length).toBeGreaterThan(2)
+  expect(zinnRuns.every(env => env?.['ZINN_CLIENT'] === `zinn-claude-code:mentions/${VERSION}`)).toBe(true)
 })
 
 test('a deleted task leaves the map; an unreadable view falls back to a full reload', BASE, async ($, on) => {
