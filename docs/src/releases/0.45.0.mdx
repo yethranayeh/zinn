@@ -7,7 +7,7 @@ core: 0.34.0
 
 ### Added
 
-- `task claim <task-key> --lease <duration>` marks a task as being worked on by you for `1m` through `24h`. `task next` skips live claims, `task heartbeat` renews one, and `task release` removes it. A claim expires with its lease or 24 hours after your last change to the task, and `--force` takes over a live claim. Task objects gain a `claim` field. See [CLI](/docs/cli/next#claim-tasks) and [Core](/docs/core#task-claims).
+- `task claim <task-key> --lease <duration>` marks a task as being worked on by you for `1m` through `24h`. `task next` skips live claims, `task heartbeat` renews one, and `task release` removes it. A claim expires with its lease or 24 hours after your last change to the task, and `--force` takes over a live claim. Task objects gain a `claim` field. See [CLI](/docs/cli/next#claim-tasks) and [Core](/docs/core/writing#task-claims).
   - **Schema version 6:** the claim table is new. A published release upgrades an existing database on first use after saving a backup, and `zinn migrate` runs the upgrade on request. An older Zinn can read the upgraded database but refuses changes to it.
 - `task next` shows the next ready task: active, in a todo or backlog column, with every dependency archived or in a done or cancelled column. Todo tasks come first, then priority, earliest deadline and oldest task. `--column` narrows the choice, and `--json` prints `null` when nothing is ready. See [CLI](/docs/cli/next#next-ready-task).
 - Edit commands take `--expect-*` flags for the values read before the edit, and core's edit methods take the same check as `expected`. A differing value fails with `conflict` and names the changed fields, so one of several concurrent editors succeeds. See [CLI](/docs/cli/editing#edit-tasks).
@@ -22,7 +22,7 @@ core: 0.34.0
 ### Changed
 
 - **Breaking CLI and core API:** every column has a category: `backlog`, `todo`, `in_progress`, `review`, `done` or `cancelled`. Tasks in `done` and `cancelled` columns are closed, and column names are colored by category. `project column create` requires `--category`, and core's `column.create` requires `category`: add it to scripts that create columns. `project column edit` and `column.edit` take `--category` or `category`, ask for confirmation when the column holds tasks, and `--json` column results add `category` while task results add `column_category`. The upgrade gives Backlog, TODO, In Progress, Doing, Review, Done and Cancelled the matching category, and every other column `todo`. See [CLI](/docs/cli/projects#start-a-project).
-- A process that keeps the database open refuses its next change after another process changes the schema version, and reads keep working until it restarts. Core throws a `CoreError` with kind `conflict`. See [Core](/docs/core#database-compatibility).
+- A process that keeps the database open refuses its next change after another process changes the schema version, and reads keep working until it restarts. Core throws a `CoreError` with kind `conflict`. See [Core](/docs/core/storage#database-compatibility).
 
 ### Removed
 

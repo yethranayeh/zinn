@@ -18,15 +18,15 @@ core: 0.32.0
 - `project column delete` deletes an empty column after confirmation. A project can have no columns, and creating a task in it fails until a column is added. Core adds `column.delete` and `column.getByName`.
 - `project list` shows each project's active and archived task counts. JSON entries include `taskCounts`, and core adds `project.getAllWithTaskCounts`.
 - Parser and routing failures report `error.details.reason`, such as `unknown_option` or `missing_argument`. `zinn capabilities --json` lists every value. See [Scripting](/docs/scripting).
-- Core exports `isSqliteErrorCode` and `isSqliteErrorFamily`, which match SQLite result codes and narrow the error to `SqliteError`. See [Core](/docs/core).
+- Core exports `isSqliteErrorCode` and `isSqliteErrorFamily`, which match SQLite result codes and narrow the error to `SqliteError`. See [Core](/docs/core/storage#sqlite-errors).
 
 ### Changed
 
 - A published release upgrades databases at schema version 1 or 2 to version 3 on first use, after saving a backup.
 - **Breaking store initialization:** only `project create` and `label create` create a database when the store has none. Other commands fail with `not_found`, `details.entity: "database"` and `details.databasePath`, exit with code `1` and write nothing.
-  - Core operations other than `project.create` and `label.create` throw a `CoreError` with kind `missing` and entity `database`. See [Core](/docs/core).
+  - Core operations other than `project.create` and `label.create` throw a `CoreError` with kind `missing` and entity `database`. See [Core](/docs/core/storage#open-the-database).
 - **Breaking relations:** a task pair holds one relation across all types and directions. `task relation create` names the conflicting links and asks before replacing them, and `--yes` replaces them without asking, including with `--json`. `task create` refuses two relation types for the same target.
-  - Core callers pass `replace` to `relation.create`, with the IDs from `relation.getConflicts` or `true`, or receive a conflict. See [Core](/docs/core).
+  - Core callers pass `replace` to `relation.create`, with the IDs from `relation.getConflicts` or `true`, or receive a conflict. See [Core](/docs/core/writing#task-relations).
 - **Breaking core API:** `activity.getAll` returns `{ events, hasMore }` instead of an array and accepts `startingAfter`. Read the records from `events`. `activity list --json` still prints an array.
 - **Breaking limits:** `--limit` on `task list`, `task search` and `activity list` accepts an integer from `1` through `11871`. Scripts that passed a larger value must lower it. `task list` and `activity list` can continue with `--starting-after`.
 - Full task objects in every `--json` result include `created_at`, `updated_at` and `due_at`. Consumers validating results against a previous release's schemas must refresh `zinn capabilities --json`. See [Scripting](/docs/scripting).

@@ -1,0 +1,83 @@
+---
+title: Task attribution
+description: Read recorded field and description attribution and the TaskBlame result.
+toc: true
+---
+
+# Task attribution
+
+## Read attribution
+
+`task.blame(taskKey)` returns a `TaskBlame` for the current active or archived task. It resolves the key once and reads the task, current memberships and ID-scoped history in one database snapshot. A [reused key](/docs/data#task-key-reuse) selects only the current task lifetime. Unknown and deleted keys throw the ordinary missing-task `CoreError`. For the command and a worked example, see [Task blame](/docs/blame).
+
+This example extends [Core setup](/docs/core#configure-the-library), using its `task` import and `createdTask` value in the same configured process and isolated store.
+
+```ts title="Read task attribution"
+import type { TaskBlame } from "@zinn-dev/core";
+
+const blame: TaskBlame = task.blame(createdTask.key);
+console.log(blame.fields.title.value);
+console.log(blame.fields.title.attribution?.actor_session_id ?? null);
+for (const line of blame.description) {
+	console.log(line.line, line.text, line.attribution?.id ?? null);
+}
+```
+
+The result contains `task: { id, key }`, blamed `fields`, current `relations`, and numbered `description` lines. Core exports `TaskBlame`, `TaskBlamedValue<T>` and `TaskAttribution`. See [Task blame result](/docs/core/blame#result-types) for the complete shape. Attribution projects the recorded event ID, time and actor fields exactly as stored. Use `activity.getById(attribution.id)` to inspect its full event.
+
+## Fields and memberships
+
+Creation can attribute initial values. A scalar value recorded later is attributable only when its latest recorded new value matches the current value. Labels are one membership collection, including removals and label deletion, attributable only when the recorded creation and membership changes add up to the current number of labels. Current column and label names accompany the original membership attribution. Parent assignment or removal follows outgoing `subtask` events. Every current relation also carries its creation attribution, including parents and children, in the existing relation order.
+
+## Description lines
+
+To attribute description lines, core compares each recorded description with the previous one, line by line. Lines that are unchanged keep the attribution they had. Lines that an edit inserts or replaces receive that edit's attribution, and deleted lines disappear. The comparison keeps the shared lines at the start and the end in place, then matches the longest sequence of remaining lines that both versions share in the same order. When an edit could be read more than one way, it treats a line as removed before treating it as added. Each edit has a fixed search budget, enough for about 2,500 replaced lines. Past it, lines not yet matched receive that edit's attribution, so a heavily reordered description reads as rewritten. Whitespace and internal blank lines are compared exactly. A terminal newline ends the last line without adding an empty one, and changing only that newline preserves attribution. Null or empty descriptions return an empty array.
+
+## Missing history
+
+The replay follows per-task activity ID order. Missing or unrecognized history yields `null` attribution. When an edit's recorded old description does not match the description carried from earlier records, unchanged old lines start unattributed while the lines that edit introduces receive its attribution. A later description record that does not hold both the old and new text discards the carried line attribution, so later edits cannot inherit it. If the final recorded description disagrees with the current text, all current lines are unattributed. The operation records no activity and does not mutate task data.
+
+## Result types
+
+```ts title="Task blame result shape"
+type TaskAttribution = {
+	id: string;
+	created_at: number;
+	actor_name: string | null;
+	actor_email: string | null;
+	actor_kind: ActorKind;
+	actor_source: string | null;
+	actor_session_id: string | null;
+	actor_thread_id: string | null;
+	actor_agent: string | null;
+	actor_model: string | null;
+	actor_effort: string | null;
+	actor_client: string | null;
+};
+type TaskBlamedValue<T> = { value: T; attribution: TaskAttribution | null };
+type TaskBlame = {
+	task: { id: string; key: string };
+	fields: {
+		title: TaskBlamedValue<string>;
+		column: TaskBlamedValue<{ id: string; name: string }>;
+		priority: TaskBlamedValue<TaskPriority | null>;
+		due_at: TaskBlamedValue<number | null>;
+		labels: TaskBlamedValue<Array<{ id: string; name: string }>>;
+		parent: TaskBlamedValue<{ id: string; key: string } | null>;
+	};
+	relations: Array<{
+		id: string;
+		type: TaskRelationType;
+		direction: "outgoing" | "incoming" | null;
+		task: { id: string; key: string };
+		attribution: TaskAttribution | null;
+	}>;
+	description: Array<{
+		line: number;
+		text: string;
+		attribution: TaskAttribution | null;
+	}>;
+};
+```
+
+`TaskAttribution` contains only the listed recorded event fields, without a changes payload. Timestamps are integer Unix epoch milliseconds. Labels use the existing label name order. Relations use creation time ascending, then relation ID ascending. `direction` is relative to the inspected task and is `null` for symmetric `related` links. Description line numbers start at one.

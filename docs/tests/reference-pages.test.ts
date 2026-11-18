@@ -6,11 +6,19 @@ const baseUrl = process.env.SITE_TEST_URL;
 if (!baseUrl) {
   throw new Error("Run bun run --cwd docs test to start the local Cloudflare server.");
 }
-const directory = join(import.meta.dir, "../src/content/docs/cli");
-const topics = (await readdir(directory))
+const directory = join(import.meta.dir, "../src/content");
+const entries = await Promise.all((await readdir(directory, { recursive: true }))
   .filter((file) => file.endsWith(".mdx"))
-  .map((file) => `/docs/cli/${file.replace(/\.mdx$/, "")}`);
-const pages = ["/docs/cli", ...topics];
+  .map(async (file) => ({
+    path: `/${file.replace(/\.mdx$/, "").replace(/\/index$/, "")}`,
+    body: await Bun.file(join(directory, file)).text(),
+  })));
+const hubs = new Map(entries.filter(({ body }) => body.includes("<TopicIndex"))
+  .map(({ path }) => [path, entries.filter((entry) => entry.path.startsWith(`${path}/`))
+    .map((entry) => entry.path)]));
+const parents = new Map([...hubs].flatMap(([hub, topics]) => topics.map((topic) => [topic, hub])));
+const topics = [...parents.keys()];
+const pages = [...new Set([...hubs.keys(), ...topics])];
 const responses = new Map<string, Promise<string>>();
 
 function htmlAt(path: string) {
@@ -26,11 +34,11 @@ function htmlAt(path: string) {
   return result;
 }
 
-test.each(topics)("%s has its CLI parent in the visible breadcrumb", async (path) => {
+test.each(topics)("%s has its parent hub in the visible breadcrumb", async (path) => {
   const html = await htmlAt(path);
   const breadcrumb = html.match(/<nav\b[^>]*aria-label="Breadcrumb"[^>]*>([\s\S]*?)<\/nav>/)?.[1];
   const links = [...breadcrumb!.matchAll(/href="([^"]+)"/g)].map((match) => match[1]);
-  expect(links).toEqual(["/docs/", "/docs/cli/", `${path}/`]);
+  expect(links).toEqual(["/docs/", `${parents.get(path)}/`, `${path}/`]);
 });
 
 test.each(pages)("%s links every section from both contents controls", async (path) => {
@@ -41,11 +49,12 @@ test.each(pages)("%s links every section from both contents controls", async (pa
   expect(links).toEqual([...sections, ...sections]);
 });
 
-test("the CLI hub indexes its current topic pages and sections in HTML and Markdown", async () => {
-  const hub = await htmlAt("/docs/cli");
+test.each([...hubs.keys()])("%s indexes its current topic pages and sections in HTML and Markdown", async (path) => {
+  const hub = await htmlAt(path);
   const index = hub.match(/<details\b[^>]*data-topic-index[^>]*>([\s\S]*?)<\/details>/)![1]!;
+  const label = index.match(/<summary\b[^>]*>([^<]+)<\/summary>/)![1]!.trim();
   const entries = await Promise.all(
-    topics.map(async (path) => {
+    hubs.get(path)!.map(async (path) => {
       const html = await htmlAt(path);
       const article = html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/)![1]!;
       const title = article.match(/<h1\b[^>]*>([^<]+)<\/h1>/)![1]!.trim();
@@ -66,8 +75,8 @@ test("the CLI hub indexes its current topic pages and sections in HTML and Markd
   );
   expect(visible).toEqual(expected);
 
-  const markdown = await (await fetch(new URL("/docs/cli.md", baseUrl))).text();
-  const markdownIndex = markdown.split("## All CLI topics\n")[1]!;
+  const markdown = await (await fetch(new URL(`${path}.md`, baseUrl))).text();
+  const markdownIndex = markdown.split(`## ${label}\n`)[1]!;
   const markdownLinks = [...markdownIndex.matchAll(/\[([^\]]+)\]\(([^)]+)\)/g)].map((match) => ({
     title: match[1]!,
     path: match[2]!.replace(/\.md(?=#|$)/, ""),

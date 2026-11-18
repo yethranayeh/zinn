@@ -63,8 +63,8 @@ test.each([
 });
 
 test("a result links to the heading that matched", async () => {
-  const core = (await search("blame")).find((page) => page.url === "/docs/core/");
-  expect(core?.sub_results.map((section) => section.url)).toContain("/docs/core/#task-blame");
+  const core = (await search("blame")).find((page) => page.url === "/docs/core/blame/");
+  expect(core?.sub_results.map((section) => section.url)).toContain("/docs/core/blame/#read-attribution");
 });
 
 // The query names a section heading on /docs/data, which Pagefind ranks second for it behind Settings.

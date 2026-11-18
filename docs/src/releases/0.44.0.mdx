@@ -8,17 +8,17 @@ core: 0.33.0
 ### Added
 
 - Zinn records local usage by default. Each run appends a line to a record file under `telemetry/` in the Zinn directory, and records never leave the machine. See [Data and backups](/docs/data) and [Settings](/docs/settings#control-local-telemetry).
-- `task blame <task-key>` and core's `task.blame(taskKey)` attribute current task fields, labels, relations and description lines to recorded activity, including actor and session identity. Unchanged lines keep their attribution, and incomplete history shows as unrecorded. See [CLI](/docs/blame) and [core](/docs/core#task-blame).
+- `task blame <task-key>` and core's `task.blame(taskKey)` attribute current task fields, labels, relations and description lines to recorded activity, including actor and session identity. Unchanged lines keep their attribution, and incomplete history shows as unrecorded. See [CLI](/docs/blame) and [core](/docs/core/blame#read-attribution).
 - Activity records include `actor_client`, the chain of programs behind a change. `whoami`, activity output and `activity list --client <name>` expose and filter it, and library callers can set `Actor.client` and use `parseClientChain`. See [Client chains](/docs/cli/identity#client-chains).
   - **Schema version 4:** the nullable field is new. A published release upgrades the database on first use after saving a backup. Existing events keep a null client, and an older Zinn can read the upgraded database but refuses changes to it.
-- `activity.getCurrentTaskIdentities({ taskIds, taskKeys })` and `activity.getDeletedTaskIdentities({ taskIds, taskKeys })` resolve task IDs and keys to ID, key, title and status without reading history. The deleted form adds `deleted` and reads task and project deletions together. See [Core](/docs/core).
+- `activity.getCurrentTaskIdentities({ taskIds, taskKeys })` and `activity.getDeletedTaskIdentities({ taskIds, taskKeys })` resolve task IDs and keys to ID, key, title and status without reading history. The deleted form adds `deleted` and reads task and project deletions together. See [Core](/docs/core/activity#resolve-task-identities).
 - A `storage` or `internal` failure writes a log under `logs/` with the stack, cause chain, run, store and arguments. `error.details.logPath` and the last stderr line name it, and the newest 10 logs are kept. See [Scripting](/docs/scripting).
 - `zinn --help` lists what Zinn can do and the command or flag for each, from deadlines to long lists and activity. See [CLI](/docs/cli).
 - `task search` accepts `--column <name>` to filter by exact column name, ignoring case, with the existing text, label, deadline and archive filters. See [CLI](/docs/cli).
 
 ### Changed
 
-- **Breaking CLI:** `task list --starting-after` takes the cursor printed by the continuation command instead of a task ID. A script that passes a task ID must switch to that cursor. `task.getPage` and `activity.getAll` return `nextCursor`, and continuation survives changes to the last listed task. See [Core](/docs/core) and [CLI](/docs/cli).
+- **Breaking CLI:** `task list --starting-after` takes the cursor printed by the continuation command instead of a task ID. A script that passes a task ID must switch to that cursor. `task.getPage` and `activity.getAll` return `nextCursor`, and continuation survives changes to the last listed task. See [Core task pagination](/docs/core/reading#page-through-tasks), [Core activity pagination](/docs/core/activity#read-and-page-through-activity) and [CLI](/docs/cli).
 - Column names are colored by board position: the first column is gray and the last is green, and `--json` task, relation and column results add `is_first` and `is_last`. See [CLI](/docs/cli) and [Scripting](/docs/scripting).
 - `activity list` reads only the history and tasks a page needs. On 50,000 events, project pages list in under a third of the time and global pages in under half, and `activity.getAll` gains the same way.
 - `activity list` without a project or task checks reused task keys and deleted tasks across the database, so `--limit`, `--starting-after` and filters no longer change whether a row names a deleted task or adds its ID.
@@ -26,7 +26,7 @@ core: 0.33.0
 
 ### Fixed
 
-- **Breaking core API:** `getStorage()` returns a fresh snapshot and resolves the database destination, and `getBackupStorage()` resolves the backup folder for operations that write one. Keep a snapshot for the operation instead of relying on object identity. A dangling `backups` link now fails only `zinn backup`, `zinn migrate`, `zinn restore` or an automatic upgrade, and `backup.restore` accepts a `BackupStorage` snapshot. See [Core](/docs/core) and [Data and backups](/docs/data).
+- **Breaking core API:** `getStorage()` returns a fresh snapshot and resolves the database destination, and `getBackupStorage()` resolves the backup folder for operations that write one. Keep a snapshot for the operation instead of relying on object identity. A dangling `backups` link now fails only `zinn backup`, `zinn migrate`, `zinn restore` or an automatic upgrade, and `backup.restore` accepts a `BackupStorage` snapshot. See [Core](/docs/core/storage#capture-storage-destinations) and [Data and backups](/docs/data).
 - Backups on macOS and Linux sync their directory entries before reporting success, so a sync failure stops an upgrade or restore before it changes the database. See [Data and backups](/docs/data).
 
 ### Security

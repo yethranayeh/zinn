@@ -1,0 +1,29 @@
+---
+title: Actors and clients
+description: Supply actor identity and record or parse calling client chains.
+toc: true
+---
+
+# Actors and clients
+
+Pass an explicit `Actor` to every mutation, as shown in [Core setup](/docs/core#configure-the-library).
+
+## Actor clients
+
+Library callers may supply `Actor.client` as a string or `null`. Core preserves the supplied string exactly in `actor_client` on every recorded activity event. Omitting it stores `null`. Events recorded before schema version 4 also have a `null` client after migration.
+
+Clients can follow Zinn's [client chain convention](/docs/core/actors#client-chain-convention) when constructing their value. Core supplies no client token of its own.
+
+## Parse a client chain
+
+`parseClientChain(client)` returns an array of `{ name, version }` objects in chain order. It splits on whitespace and separates each token at its first `/`. Tokens without `/` have a `null` version. Null or blank input returns an empty array. Names and versions preserve case and arbitrary text, including any further slashes in a version. Parsing does not validate tokens or change the stored string.
+
+## Client chain convention
+
+Zinn's preferred convention for its own clients and integrations is:
+
+- Use space-separated `name/version` tokens, without parenthesized comments. Names use lowercase letters, digits and `-`. Versions contain no whitespace or `/`.
+- Name a part of a program as `program:part`, such as `zinn-opencode:panel/0.3.0`. The version belongs to the program.
+- An intermediary appends its own token to its inherited declaration, separated by one space and trimmed. The declared chain reads outermost caller first.
+
+Other programs may declare any text. The `client` activity filter uses whitespace-separated tokens for every chain, so words inside a caller's parenthesized comments can also match.

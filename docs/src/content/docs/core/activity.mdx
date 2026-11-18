@@ -1,0 +1,102 @@
+---
+title: Activity and history
+description: Read, filter, follow and resolve recorded activity through core.
+toc: true
+---
+
+# Activity and history
+
+## Activity records
+
+Core exports the `Activity` type for a recorded event. Its fields are `id`, `created_at` (epoch milliseconds), `actor_name`, `actor_email`, `actor_kind`, `actor_source`, `actor_session_id`, `actor_thread_id`, `actor_agent`, `actor_model`, `actor_effort`, `actor_client`, `entity_type`, `entity_id`, `action`, and `changes` (parsed JSON or `null`).
+
+The `id` identifies the activity event itself. `actor_name` can be `null` for an unnamed agent. Optional actor metadata is `null` when absent. Payloads and IDs are preserved in full, including after deletion. Project deletion events keep the project's `entity_id`, with removed task IDs in `changes.tasks`.
+
+[Hooks](/docs/hooks) receive these same records, with the task's key added as `task_key`.
+
+## Read and page through activity
+
+`activity.getAll` returns `{ events, hasMore, nextCursor? }`. `events` contains full activity records, newest first by timestamp and then event ID. Without a project or task selector it reads across the database. `hasMore` is true only when another event matches after the returned page. Without `limit`, it is false.
+
+`nextCursor` is the last returned event's ID and is present only when `hasMore` is true. Pass `startingAfter` with it to continue toward older events, excluding that event. It accepts the same full IDs and unique prefixes as `activity.getById`. The cursor event need not match the supplied filters. Every filter applies before the page cap, including `changed` and `client`. Omitting `limit` returns every remaining match.
+
+The examples on this page extend [Core setup](/docs/core#configure-the-library). Keep its database configuration in the same process and run with its isolated `ZINN_DIR`.
+
+```ts title="Read the next activity page"
+import { activity } from "@zinn-dev/core";
+
+const firstPage = activity.getAll({ limit: 10 });
+if (firstPage.hasMore) {
+	const nextPage = activity.getAll({
+		limit: 10,
+		startingAfter: firstPage.events.at(-1)!.id
+	});
+	console.log(nextPage.events);
+}
+```
+
+## Follow committed changes
+
+`activity.follow(input)` returns a follower for the activity that other connections commit from then on. It accepts the fields of `activity.getAll` except `limit` and `startingAfter`, which raise an input error when supplied, and throws as `activity.getAll` does for a selection that does not exist. Each `poll()` returns `{ events }` with the matching events committed since the previous call, oldest first in commit order, which is `[]` when nothing new matches. Polling detects commits through SQLite's `PRAGMA data_version`, reads inside one short transaction and keeps none open between calls.
+
+```ts title="Follow moves into Review"
+import { activity } from "@zinn-dev/core";
+
+const follower = activity.follow({ changed: [{ field: "column", value: "Review" }] });
+
+setInterval(() => {
+	const polled = follower.poll();
+	if ("stopped" in polled) {
+		throw new Error(`Following stopped: ${polled.stopped}`);
+	}
+
+	for (const event of polled.events) {
+		console.log(event.entity_id);
+	}
+}, 1000);
+```
+
+A poll returns `{ stopped, databasePath }` once the follower can read no further. `stopped` is `"schema_changed"` when the database's schema marker changes, including a restore, migration or reindex by another connection, and `"file_replaced"` when the database path no longer leads to the file the process opened. After file replacement, restart the hosting process before following again so it opens the replacement database. Core exports `ActivityFollower`, `ActivityFollowInput` and `ActivityFollowStop`.
+
+## Select a time range
+
+Optional numeric `since` and `until` fields filter the stored `created_at`, inclusively, before `limit` applies. Use either bound alone or both together. They accept integer epoch milliseconds between `-8640000000000000` and `8640000000000000`, inclusive. Equal bounds select events at exactly that millisecond. A reversed range raises an input `CoreError` whose `facts.field` is `["until"]`. Historical identity resolution uses the full recorded history before time selection.
+
+## Select a task or project
+
+- `{ taskKey: "APP-1", showDeleted: false }` selects the existing active or archived task. A missing task raises a `CoreError` with kind `missing`. Its `facts` identify entity `task` and the requested key.
+- `{ taskKey: "APP-1", showDeleted: true }` includes every recoverable existing or deleted task identity sharing that key. Omitting `showDeleted` selects only the existing task, as with `false`.
+- `{ taskId: createdTask.id }` selects one exact task identity, including a deleted task. IDs accept full, case-insensitive UUIDs with canonical hyphens or 32 hexadecimal digits. Task ID prefixes are rejected.
+- `{ projectKey: "APP" }` selects the existing project's events, its columns, and all its tasks, including archived and explicitly deleted tasks. A missing project raises a `CoreError` with kind `missing`, entity `project`, and the requested key.
+- `{ projectKey: "APP", showDeleted: true }` includes every recorded existing or deleted project identity sharing that key. Omitting `showDeleted` or setting it to `false` selects only the existing project.
+- `{ projectId: createdProject.id }` selects one exact project identity, including after deletion. Project IDs accept the same full UUID spellings as task IDs, without prefixes.
+
+`projectKey`, `projectId`, `taskKey`, and `taskId` are mutually exclusive. `showDeleted` requires `projectKey` or `taskKey`, including when it is `false`. A valid exact ID or explicit deleted-history query with no recorded matches returns `{ events: [], hasMore: false }`.
+
+Project selection includes task comments, label attachments, reorders, and original project-deletion snapshots. Global label-definition events are excluded. Cross-project relations include only the selected project's task event and within-project relations include both task events.
+
+Task selection includes original project-deletion events whose snapshots contain the selected task IDs. These events retain their project identity and full payloads. `sessionId` and `threadId` match complete, case-sensitive stored values. All supplied filters must match. `limit` applies after filtering.
+
+## Filter by client
+
+`client` selects a client name anywhere in the chain. It splits the stored string on whitespace, takes each token's text before the first `/` and matches that name exactly or with a following `:`. Matching is case-sensitive. For example, `{ client: "zinn-opencode" }` matches both `zinn-opencode/0.3.0` and `zinn-opencode:panel/0.3.0`. Other supplied filters must also match. Events with a null client do not match.
+
+## Filter by recorded changes
+
+`actions` accepts an array of recorded action names, such as `create`, `edit`, `move` or `comment_create`. An event matches any listed action. Action names are case-sensitive and use the `ActivityAction` vocabulary across entity types.
+
+`changed` accepts an array of task field filters. Use `{ field }` to match any change to `column`, `priority`, `labels`, `title` or `description`. Labels match additions and removals. Initial task fields also match, including null priority and description. Initial labels match when at least one label is recorded.
+
+Use `{ field: "due_at" }` to match any recorded deadline change. Do not supply `value` for this field. Task creation snapshots include the initial deadline, including `null` when it is unset. Deadline edits record the previous and new values. Earlier activity payloads retain their recorded shape.
+
+Use `{ field, value }` with `column`, `priority` or `labels` to select recorded new values or added labels. Initial values on task creation also match. String values compare case-insensitively, using the names recorded at the time of the event. Use `{ field: "priority", value: null }` to match an unassigned priority on creation or a change that clears it. String values must be nonempty.
+
+Several filters for the same field match any of them, including a value-free filter alongside one with a value. Different fields must all match in the same event. For example, `activity.getAll({ actions: ["edit"], changed: [{ field: "description" }, { field: "priority", value: "high" }] })` selects edits that change the description and set high priority. Selection and identity filters must also match, and `limit` applies afterwards. The returned records retain their full payloads.
+
+## Resolve task identities
+
+`activity.getTaskIdentities` accepts a task key string or an object containing `taskKey`, `taskId`, and `showDeleted` with the same selection rules. It returns each recoverable task's ID, key, title, and active, archived, or deleted status.
+
+`activity.getCurrentTaskIdentities({ taskIds, taskKeys })` returns the same identity for each existing task, active or archived, that matches one of the given full task IDs or task keys. Both arrays are optional. IDs and keys that match no existing task, including those of deleted tasks, are omitted.
+
+`activity.getDeletedTaskIdentities({ taskIds, taskKeys })` returns the identity of each deleted task that matches one of the given full task IDs or task keys, read from task deletions and project deletions in one history read. The status is `deleted` and the key and title are those recorded at deletion. Both arrays are optional. Existing tasks are omitted.

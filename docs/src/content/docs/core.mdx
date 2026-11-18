@@ -1,9 +1,15 @@
 ---
 title: Core
+navTitle: Core
+toc: true
 description: Use Zinn's core library with an explicitly configured database and actor.
 ---
 
+import TopicIndex from "../../components/docs/TopicIndex.astro";
+
 # Core library
+
+## Install core
 
 `@zinn-dev/core` provides Zinn's shared operations, input schemas, and SQLite storage. Install it in a Node.js project:
 
@@ -12,6 +18,8 @@ npm i @zinn-dev/core
 ```
 
 Core requires Node.js 24.15.0 or newer and also runs on Bun.
+
+## Configure the library
 
 Configure the database before the first operation. Supply an explicit actor to every mutation:
 
@@ -42,294 +50,15 @@ mkdir -p ./.zinn-example
 ZINN_DIR=./.zinn-example node example.ts
 ```
 
-Core opens the database on first use. `project.create` and `label.create` create it when the store has none. Other operations throw a `CoreError` with kind `missing`, entity `database` and the `databasePath`, and create nothing.
-
-By default it shares `~/.zinn/data/zinn.sqlite` with the CLI, but `ZINN_DIR` and settings files can select another location. See [Settings](/docs/settings) for directory selection.
-
-`getStorage()` returns a fresh `Storage` snapshot on each call. Settings and the selected directory are chosen on first use and stay cached. Each snapshot resolves the database destination through the current filesystem links. `getBackupStorage()` resolves the backup folder as well, for an operation that writes a backup. Keep one snapshot throughout an operation. An existing connection retains the destination it opened, including for its errors and search reindexing.
-
-The client supplies its own `release` identity: `source` for development and `published` for prepared release artifacts. Core identifies its own build independently. Core throws errors while the client handles output, prompts, and an optional database-wait callback.
-
-## Actor clients
-
-Library callers may supply `Actor.client` as a string or `null`. Core preserves the supplied string exactly in `actor_client` on every recorded activity event. Omitting it stores `null`. Events recorded before schema version 4 also have a `null` client after migration.
-
-Clients can follow Zinn's [client chain convention](#client-chain-convention) when constructing their value. Core supplies no client token of its own.
-
-`parseClientChain(client)` returns an array of `{ name, version }` objects in chain order. It splits on whitespace and separates each token at its first `/`. Tokens without `/` have a `null` version. Null or blank input returns an empty array. Names and versions preserve case and arbitrary text, including any further slashes in a version. Parsing does not validate tokens or change the stored string.
-
-### Client chain convention
-
-Zinn's preferred convention for its own clients and integrations is:
-
-- Use space-separated `name/version` tokens, without parenthesized comments. Names use lowercase letters, digits and `-`. Versions contain no whitespace or `/`.
-- Name a part of a program as `program:part`, such as `zinn-opencode:panel/0.3.0`. The version belongs to the program.
-- An intermediary appends its own token to its inherited declaration, separated by one space and trimmed. The declared chain reads outermost caller first.
-
-Other programs may declare any text. The `client` activity filter uses whitespace-separated tokens for every chain, so words inside a caller's parenthesized comments can also match.
-
-## Shared behavior
-
-`project.getAllWithTaskCounts()` returns project records with `taskCounts: { active, archived }`. Counts cover existing tasks in each project. Active tasks are unarchived tasks in any column, including Done. Both counts are always present, including zero.
-
-`task.getAll`, `task.search` and `activity.getAll` accept an optional numeric `limit`, an integer from `1` through `Number.MAX_SAFE_INTEGER`, inclusive. The cap applies after all filters and preserves the existing order. Omitting it returns every match. `task.search` counts all hidden archived matches before applying the cap.
-
-`task.getAll({ sort: "activity", limit: 10 })` returns the ten most recently active tasks. Last activity is the newest recorded task event, including comments and relations, or `updated_at` when no events exist. Filters apply before sorting, and the limit applies afterward. Equal times keep board order. Omitting `sort` preserves board order.
-
-`task.getAll` returns an array. `task.getPage` accepts the same task-list filters plus optional `startingAfter` and returns `{ tasks, hasMore, nextCursor? }`. `nextCursor` is an opaque token, present only when `hasMore` is true. Pass it as `startingAfter` to continue.
-
-Both take `state`: `"open"`, `"closed"` or `"all"` (the default). A task is closed when its column's category is `done` or `cancelled`. `state` combines with `archive` and every other filter.
-
-Continuation survives edits, moves, archiving, relabelling, deadline changes and deletion of the last listed task. Filters may change while the sort stays the same. No snapshot is kept between calls, so other tasks changing in between can still cause repeats or skips. The order breaks remaining ties by task ID. Omit `limit` to return every remaining task with `hasMore: false`.
-
-A refused cursor throws a `CoreError` with kind `input` and `field: ["startingAfter"]`. The `reason` is `invalid_cursor` (malformed), `cursor_version` (made by another version), `different_sort` (made for another sort) or `task_id_cursor` (a task ID).
-
-```ts title="Read the next task page"
-const firstPage = task.getPage({ projectKey: "APP", limit: 10 });
-if (firstPage.hasMore) {
-	const nextPage = task.getPage({
-		projectKey: "APP",
-		limit: 10,
-		startingAfter: firstPage.nextCursor
-	});
-	console.log(nextPage.tasks);
-}
-```
-
-Each call reads one current database snapshot. Separate calls do not share a snapshot. Moves, reorders, edits, new activity and other changes can change task positions between pages and cause repeats or skips.
-
-`task.next({ projectKey?, columnName? })` returns the next ready task, or `null` when none is ready. A task is ready when it is active, in a column whose category is `todo` or `backlog`, has no live [claim](#task-claims), and every task it depends on is archived or in a column whose category is `done` or `cancelled`. A task with a live claim is never returned, whoever holds it. Ready tasks in `todo` columns come first, then those in `backlog` columns. Within each, they are ordered by priority (urgent first, unset last), then the earliest `due_at` with undated tasks last, then creation time. `columnName` takes ready tasks from that one column instead, of any category but `done` and `cancelled`. It matches by exact name, ignoring case, as in `task.getAll`. On an older database opened read-only, which has no categories, every column but a board's last holds ready tasks, and no task has a claim. An unknown `projectKey` throws a `CoreError` with kind `missing`.
-
-Names and titles are trimmed and cannot be blank or contain line breaks or control characters.
-
-- Edits change only supplied fields. Valid edits that leave values unchanged preserve modification timestamps and record no activity.
-- `task.edit`, `task.label.add`, `task.label.remove` and `task.order` return a `TaskChange`: `{ task, changed }`. The `task` field contains the resulting task, and `changed` is `false` when the requested state was already satisfied. For several label changes, it is `true` when any attachment changed.
-- `project.edit`, `column.edit`, `label.edit` and `comment.edit` return `ProjectChange`, `ColumnChange`, `LabelChange` and `CommentChange`: `{ project, changed }`, `{ column, changed }`, `{ label, changed }` and `{ comment, changed }`. The object field contains the resulting record; `changed` is `false` when all supplied values already matched.
-- `column.order` also returns a `ColumnChange`. Ordering a task or column to its current position, including before or after itself, returns `changed: false` and records no activity.
-- Every column has a `category`: `backlog`, `todo`, `in_progress`, `review`, `done` or `cancelled` (`columnCategorySchema`). `column.create({ projectKey, name, category }, actor)` requires it, and `column.edit({ projectKey, columnName, name?, category? }, actor)` takes a name, a category or both. Renaming keeps the category. Activity records the category on create and as a `[previous, new]` pair on change. `project.create` adds Backlog (`backlog`), TODO (`todo`), Doing (`in_progress`), Review (`review`), Done (`done`) and Cancelled (`cancelled`). `column.getTaskCountsByProjectKey` gives each column's `taskCount` of unarchived tasks and `archivedTaskCount`. On an older database opened read-only, columns have no `category`.
-- `column.getByName(projectKey, columnName)` returns a column matched case-insensitively and throws if the project or column is missing. `column.delete({ projectKey, columnName }, actor)` returns the deleted column and records its project ID, project key and name in activity. It refuses columns holding any active or archived tasks. A project may have no columns. `task.create` then fails with reason `no_columns` without allocating a task number. Add a column with `column.create` before creating tasks.
-- Descriptions default to `null`. Passing `null` or blank text clears them. Non-blank text input keeps its whitespace.
-- Descriptions and comment text normalize CRLF line endings to LF, including append, find and replacement inputs. All other whitespace, including lone carriage returns, is preserved.
-- Descriptions and comment text are limited to `MAX_TEXT_BYTES`, exported by core: 1 MiB (1,048,576 UTF-8 bytes). Full text is checked before normalization and partial edits check the resulting text. Oversized input fails without writing changes. Editing other fields does not revalidate a stored description.
-- Entity mutations record the actor and activity in the same transaction as the change.
-- After a change commits, core runs the [hooks](/docs/hooks) from the global settings file in the calling process, with its working directory and environment. `ZINN_HOOKS=0` saves changes without running them.
-- Bulk task moves, orders, archives, unarchives and deletes apply in input order and succeed or fail together.
-- `task.edit` takes an optional `expected` object with `title`, `description`, `priority` and `due_at`, validated like the fields they guard. `null` or a blank `description` expects an empty field. When any given value differs from the stored one, the edit fails with kind `conflict`, reason `value_changed`, and a `changedFields` fact listing the differing fields in that order. Nothing is written, also for fields that matched. The check runs inside the write transaction before any partial description edit is applied, so of several callers editing one task from the same values, one succeeds. `expected` alone is not an edit.
-- `comment.edit` (`text`), `project.edit` (`name`, `description`) and `label.edit` (`name`, `description`, `color`) take `expected` the same way. Their check also runs before a label name conflict is checked. `entity` and `key` name the comment, project or label.
-- `task.move` and `task.moveMany` take an optional `fromColumn`. A task that is no longer in that column fails the move with kind `conflict`, reason `column_changed`, and `expectedColumn` and `actualColumn` facts naming the two columns. Nothing is written. The check runs inside the write transaction, so of several callers moving one task from the same column, one succeeds.
-- `task.deleteMany(taskKeys, actor)` returns the deleted tasks in input order, including archived tasks. Task keys must be distinct, ignoring case. Each deletion preserves task activity and records removed relations on the other tasks, including tasks deleted later in the same batch. `task.delete(taskKey, actor)` returns one deleted task.
-- `project.delete(key, actor)` records aggregate project deletion history and one `relation_delete` event per removed cross-project relation on its surviving task, including archived tasks. Surviving task modification timestamps are preserved.
-- `task.orderMany({ taskKeys, direction, targetTaskKey? }, actor)` returns a `TaskChange` per key. It orders the first task as requested, then each next task after the previous one. Multiple tasks must be distinct active tasks in the same project and column. The target cannot be among them. `up` and `down` take one task. A single task ordered before or after itself remains unchanged.
-
-## Task deadlines
-
-Task results include `due_at: number | null`, an exact deadline in integer Unix epoch milliseconds. `task.create` accepts optional `due_at`. Omission or `null` creates an undated task. `task.edit` also accepts `due_at`. Omission preserves the current value and `null` clears it. Repeating the current value or clearing an unset deadline is a no-op that preserves `updated_at` and records no activity.
-
-`timestampSchema`, exported by core, validates integer milliseconds in the JavaScript `Date` range from `-8640000000000000` through `8640000000000000`, inclusive. `activityTimestampSchema` remains exported as an alias to the same schema.
-
-`task.getAll` and `task.search` accept optional `dueSince` and `dueUntil` bounds. Both are inclusive. Use either bound alone or both together. Equal bounds select that exact millisecond, and a reversed range is invalid. A supplied deadline bound excludes tasks whose `due_at` is `null`. Deadline bounds intersect with the other filters before the result limit applies. Search retains its relevance and task-key order.
-
-`task.getAll({ sort: "due" })` sorts by earliest deadline first, puts undated tasks last, and preserves board order for equal deadlines and undated tasks. This is opt-in and does not change task positions. `task.search` has no due sort option.
-
-## Task claims
-
-`task.claim({ taskKey, leaseMs, force? }, actor)`, `task.heartbeat(taskKey, actor)` and `task.release(taskKey, actor)` claim, renew and release a task, as the [CLI claim commands](/docs/cli/next#claim-tasks) do. Each returns a `TaskChange`. `release` returns `changed: false` for a task without a claim.
-
-`taskClaimSchema` validates the claim input, typed as `TaskClaimInput`. `leaseMs` is an integer from `MIN_CLAIM_LEASE_MS` (`60000`, one minute) through `CLAIM_WORK_LIMIT_MS` (`86400000`, 24 hours). `CLAIM_WORK_LIMIT_MS` is also how long a claim lasts after its holder's last change to the task. `force: true` takes over another holder's live claim.
-
-The holder is matched by the actor's `sessionId`, then its `threadId`, then its `kind` and `name`. `task.claim` with an agent actor that has neither `sessionId` nor `threadId` throws a `CoreError` with kind `input` and `field: ["sessionId"]`. Refusals throw kind `conflict` with reason `claimed`, `not_claimed`, `claim_limit` or `archived`, and a `claimExpiresAt` fact in epoch milliseconds when the task has a claim.
-
-Every task result includes `claim`, a `TaskClaim` or `null`. It has `state` (`"live"` or `"expired"`), the holder's `actor_kind`, `actor_name`, `actor_session_id` and `actor_thread_id`, and `claimed_at`, `renewed_at`, `worked_at`, `lease_ms` and `expires_at` in epoch milliseconds. `state` is computed when the task is read. On an older database opened read-only, `claim` is `null`. Claims record the activity actions `claim`, `claim_take`, `claim_heartbeat` and `claim_release` without changing the task's `updated_at`.
-
-## Task relations
-
-`relation.create({ sourceTaskKey, targetTaskKey, relation_type }, actor)` creates a relation. Types are `related`, `dependency`, `duplicate` and `subtask`. A pair has at most one relation across all types and both directions. Directed types preserve their source and target. An exact existing relation is an error.
-
-`relation.getConflicts({ sourceTaskKey, targetTaskKey, relation_type })` validates the requested creation and returns conflicting relation records with `source` and `target` task records. Conflicts include a different parent when creating a subtask. Self-relations, exact repeats and subtask cycles fail before confirmation.
-
-After obtaining approval, pass the returned relation IDs as `replace` to authorize exactly those removals:
-
-```ts title="Replace the approved relations"
-import { relation } from "@zinn-dev/core";
-
-const request = { sourceTaskKey: "APP-1", targetTaskKey: "APP-2", relation_type: "subtask" as const };
-const conflicts = relation.getConflicts(request);
-// Obtain approval in the calling interface before replacing these links.
-const created = relation.create({ ...request, replace: conflicts.map(({ id }) => id) }, actor);
-```
-
-If the conflicting IDs changed before the write, core throws a `CoreError` with kind `conflict` and reason `relation_changed`. `replace: true` explicitly authorizes replacing the current conflicting links without an expected-ID check. Omitting `replace` or passing `false` refuses conflicting links. Every removal and the creation share one transaction and activity timestamp. Failures preserve existing links and activity.
-
-`task.create` accepts `relations: [{ relation_type, targetTaskKey }]`. Identical type and resolved-target requests deduplicate. Different types for one target fail the whole creation without consuming a task number or recording activity.
-
-## Task blame
-
-`task.blame(taskKey)` returns a `TaskBlame` for the current active or archived task. It resolves the key once and reads the task, current memberships and ID-scoped history in one database snapshot. A [reused key](/docs/data#task-key-reuse) selects only the current task lifetime. Unknown and deleted keys throw the ordinary missing-task `CoreError`. For the command and a worked example, see [Task blame](/docs/blame).
-
-```ts title="Read task attribution"
-import type { TaskBlame } from "@zinn-dev/core";
-
-const blame: TaskBlame = task.blame(createdTask.key);
-console.log(blame.fields.title.value);
-console.log(blame.fields.title.attribution?.actor_session_id ?? null);
-for (const line of blame.description) {
-	console.log(line.line, line.text, line.attribution?.id ?? null);
-}
-```
-
-The result contains `task: { id, key }`, blamed `fields`, current `relations`, and numbered `description` lines. Core exports `TaskBlame`, `TaskBlamedValue<T>` and `TaskAttribution`. See [Task blame result](#task-blame-result) for the complete shape. Attribution projects the recorded event ID, time and actor fields exactly as stored. Use `activity.getById(attribution.id)` to inspect its full event.
-
-Creation can attribute initial values. A scalar value recorded later is attributable only when its latest recorded new value matches the current value. Labels are one membership collection, including removals and label deletion, attributable only when the recorded creation and membership changes add up to the current number of labels. Current column and label names accompany the original membership attribution. Parent assignment or removal follows outgoing `subtask` events. Every current relation also carries its creation attribution, including parents and children, in the existing relation order.
-
-To attribute description lines, core compares each recorded description with the previous one, line by line. Lines that are unchanged keep the attribution they had. Lines that an edit inserts or replaces receive that edit's attribution, and deleted lines disappear. The comparison keeps the shared lines at the start and the end in place, then matches the longest sequence of remaining lines that both versions share in the same order. When an edit could be read more than one way, it treats a line as removed before treating it as added. Each edit has a fixed search budget, enough for about 2,500 replaced lines. Past it, lines not yet matched receive that edit's attribution, so a heavily reordered description reads as rewritten. Whitespace and internal blank lines are compared exactly. A terminal newline ends the last line without adding an empty one, and changing only that newline preserves attribution. Null or empty descriptions return an empty array.
-
-The replay follows per-task activity ID order. Missing or unrecognized history yields `null` attribution. When an edit's recorded old description does not match the description carried from earlier records, unchanged old lines start unattributed while the lines that edit introduces receive its attribution. A later description record that does not hold both the old and new text discards the carried line attribution, so later edits cannot inherit it. If the final recorded description disagrees with the current text, all current lines are unattributed. The operation records no activity and does not mutate task data.
-
-### Task blame result
-
-```ts title="Task blame result shape"
-type TaskAttribution = {
-	id: string;
-	created_at: number;
-	actor_name: string | null;
-	actor_email: string | null;
-	actor_kind: ActorKind;
-	actor_source: string | null;
-	actor_session_id: string | null;
-	actor_thread_id: string | null;
-	actor_agent: string | null;
-	actor_model: string | null;
-	actor_effort: string | null;
-	actor_client: string | null;
-};
-type TaskBlamedValue<T> = { value: T; attribution: TaskAttribution | null };
-type TaskBlame = {
-	task: { id: string; key: string };
-	fields: {
-		title: TaskBlamedValue<string>;
-		column: TaskBlamedValue<{ id: string; name: string }>;
-		priority: TaskBlamedValue<TaskPriority | null>;
-		due_at: TaskBlamedValue<number | null>;
-		labels: TaskBlamedValue<Array<{ id: string; name: string }>>;
-		parent: TaskBlamedValue<{ id: string; key: string } | null>;
-	};
-	relations: Array<{
-		id: string;
-		type: TaskRelationType;
-		direction: "outgoing" | "incoming" | null;
-		task: { id: string; key: string };
-		attribution: TaskAttribution | null;
-	}>;
-	description: Array<{
-		line: number;
-		text: string;
-		attribution: TaskAttribution | null;
-	}>;
-};
-```
-
-`TaskAttribution` contains only the listed recorded event fields, without a changes payload. Timestamps are integer Unix epoch milliseconds. Labels use the existing label name order. Relations use creation time ascending, then relation ID ascending. `direction` is relative to the inspected task and is `null` for symmetric `related` links. Description line numbers start at one.
-
-## Activity records
-
-Core exports the `Activity` type for a recorded event. Its fields are `id`, `created_at` (epoch milliseconds), `actor_name`, `actor_email`, `actor_kind`, `actor_source`, `actor_session_id`, `actor_thread_id`, `actor_agent`, `actor_model`, `actor_effort`, `actor_client`, `entity_type`, `entity_id`, `action`, and `changes` (parsed JSON or `null`).
-
-The `id` identifies the activity event itself. `actor_name` can be `null` for an unnamed agent. Optional actor metadata is `null` when absent. Payloads and IDs are preserved in full, including after deletion. Project deletion events keep the project's `entity_id`, with removed task IDs in `changes.tasks`.
-
-[Hooks](/docs/hooks) receive these same records, with the task's key added as `task_key`.
-
-## Activity selection
-
-`activity.getAll` returns `{ events, hasMore, nextCursor? }`. `events` contains full activity records, newest first by timestamp and then event ID. Without a project or task selector it reads across the database. `hasMore` is true only when another event matches after the returned page. Without `limit`, it is false.
-
-`nextCursor` is the last returned event's ID and is present only when `hasMore` is true. Pass `startingAfter` with it to continue toward older events, excluding that event. It accepts the same full IDs and unique prefixes as `activity.getById`. The cursor event need not match the supplied filters. Every filter applies before the page cap, including `changed` and `client`. Omitting `limit` returns every remaining match.
-
-```ts title="Read the next activity page"
-const firstPage = activity.getAll({ limit: 10 });
-if (firstPage.hasMore) {
-	const nextPage = activity.getAll({
-		limit: 10,
-		startingAfter: firstPage.events.at(-1)!.id
-	});
-	console.log(nextPage.events);
-}
-```
-
-`activity.follow(input)` returns a follower for the activity that other connections commit from then on. It accepts the fields of `activity.getAll` except `limit` and `startingAfter`, which raise an input error when supplied, and throws as `activity.getAll` does for a selection that does not exist. Each `poll()` returns `{ events }` with the matching events committed since the previous call, oldest first in commit order, which is `[]` when nothing new matches. Polling detects commits through SQLite's `PRAGMA data_version`, reads inside one short transaction and keeps none open between calls.
-
-```ts title="Follow moves into Review"
-const follower = activity.follow({ changed: [{ field: "column", value: "Review" }] });
-
-setInterval(() => {
-	const polled = follower.poll();
-	if ("stopped" in polled) {
-		throw new Error(`Following stopped: ${polled.stopped}`);
-	}
-
-	for (const event of polled.events) {
-		console.log(event.entity_id);
-	}
-}, 1000);
-```
-
-A poll returns `{ stopped, databasePath }` once the follower can read no further. `stopped` is `"schema_changed"` when the database's schema marker changes, including a restore, migration or reindex by another connection, and `"file_replaced"` when the database path no longer leads to the file the process opened. After file replacement, restart the hosting process before following again so it opens the replacement database. Core exports `ActivityFollower`, `ActivityFollowInput` and `ActivityFollowStop`.
-
-Optional numeric `since` and `until` fields filter the stored `created_at`, inclusively, before `limit` applies. Use either bound alone or both together. They accept integer epoch milliseconds between `-8640000000000000` and `8640000000000000`, inclusive. Equal bounds select events at exactly that millisecond. A reversed range raises an input `CoreError` whose `facts.field` is `["until"]`. Historical identity resolution uses the full recorded history before time selection.
-
-- `{ taskKey: "APP-1", showDeleted: false }` selects the existing active or archived task. A missing task raises a `CoreError` with kind `missing`; its `facts` identify entity `task` and the requested key.
-- `{ taskKey: "APP-1", showDeleted: true }` includes every recoverable existing or deleted task identity sharing that key. Omitting `showDeleted` selects only the existing task, as with `false`.
-- `{ taskId: createdTask.id }` selects one exact task identity, including a deleted task. IDs accept full, case-insensitive UUIDs with canonical hyphens or 32 hexadecimal digits. Task ID prefixes are rejected.
-- `{ projectKey: "APP" }` selects the existing project's events, its columns, and all its tasks, including archived and explicitly deleted tasks. A missing project raises a `CoreError` with kind `missing`, entity `project`, and the requested key.
-- `{ projectKey: "APP", showDeleted: true }` includes every recorded existing or deleted project identity sharing that key. Omitting `showDeleted` or setting it to `false` selects only the existing project.
-- `{ projectId: createdProject.id }` selects one exact project identity, including after deletion. Project IDs accept the same full UUID spellings as task IDs, without prefixes.
-
-`projectKey`, `projectId`, `taskKey`, and `taskId` are mutually exclusive. `showDeleted` requires `projectKey` or `taskKey`, including when it is `false`. A valid exact ID or explicit deleted-history query with no recorded matches returns `{ events: [], hasMore: false }`.
-
-Project selection includes task comments, label attachments, reorders, and original project-deletion snapshots. Global label-definition events are excluded. Cross-project relations include only the selected project's task event and within-project relations include both task events.
-
-Task selection includes original project-deletion events whose snapshots contain the selected task IDs. These events retain their project identity and full payloads. `sessionId` and `threadId` match complete, case-sensitive stored values; all supplied filters must match. `limit` applies after filtering.
-
-`client` selects a client name anywhere in the chain. It splits the stored string on whitespace, takes each token's text before the first `/` and matches that name exactly or with a following `:`. Matching is case-sensitive. For example, `{ client: "zinn-opencode" }` matches both `zinn-opencode/0.3.0` and `zinn-opencode:panel/0.3.0`. Other supplied filters must also match. Events with a null client do not match.
-
-`actions` accepts an array of recorded action names, such as `create`, `edit`, `move` or `comment_create`. An event matches any listed action. Action names are case-sensitive and use the `ActivityAction` vocabulary across entity types.
-
-`changed` accepts an array of task field filters. Use `{ field }` to match any change to `column`, `priority`, `labels`, `title` or `description`. Labels match additions and removals. Initial task fields also match, including null priority and description. Initial labels match when at least one label is recorded.
-
-Use `{ field: "due_at" }` to match any recorded deadline change. Do not supply `value` for this field. Task creation snapshots include the initial deadline, including `null` when it is unset. Deadline edits record the previous and new values. Earlier activity payloads retain their recorded shape.
-
-Use `{ field, value }` with `column`, `priority` or `labels` to select recorded new values or added labels. Initial values on task creation also match. String values compare case-insensitively, using the names recorded at the time of the event. Use `{ field: "priority", value: null }` to match an unassigned priority on creation or a change that clears it. String values must be nonempty.
-
-Several filters for the same field match any of them, including a value-free filter alongside one with a value. Different fields must all match in the same event. For example, `activity.getAll({ actions: ["edit"], changed: [{ field: "description" }, { field: "priority", value: "high" }] })` selects edits that change the description and set high priority. Selection and identity filters must also match, and `limit` applies afterwards. The returned records retain their full payloads.
-
-`activity.getTaskIdentities` accepts a task key string or an object containing `taskKey`, `taskId`, and `showDeleted` with the same selection rules. It returns each recoverable task's ID, key, title, and active, archived, or deleted status.
-
-`activity.getCurrentTaskIdentities({ taskIds, taskKeys })` returns the same identity for each existing task, active or archived, that matches one of the given full task IDs or task keys. Both arrays are optional. IDs and keys that match no existing task, including those of deleted tasks, are omitted.
-
-`activity.getDeletedTaskIdentities({ taskIds, taskKeys })` returns the identity of each deleted task that matches one of the given full task IDs or task keys, read from task deletions and project deletions in one history read. The status is `deleted` and the key and title are those recorded at deletion. Both arrays are optional. Existing tasks are omitted.
-
-## SQLite errors
-
-SQLite failures throw `SqliteError` on both Node.js and Bun. Its `code` is a symbolic name, `errcode` is the numeric extended result code, and `cause` retains the original driver error.
-
-Use `isSqliteErrorCode(error, "SQLITE_BUSY")` for an exact result code and `isSqliteErrorFamily(error, "SQLITE_BUSY")` for the primary code and all its subtypes. For example, `SQLITE_BUSY_SNAPSHOT` matches the **BUSY** family but does not exactly match `SQLITE_BUSY`. The exported `SqliteCode` and `SqlitePrimaryCode` types provide the accepted names.
-
-Both helpers accept `unknown`, narrow matching values to `SqliteError`, and inspect only that error. They do not inspect its cause. An unlisted extended code matches its known primary family. Its `code` falls back to the primary name for display, while exact matching still distinguishes it from the primary result code. A wholly unknown primary code displays as `SQLITE_ERROR` and matches neither helper.
-
-## Database compatibility
-
-`column.inspect({ taskKeys })` reads existing project column names and requested task identities without creating or upgrading storage. `taskKeys` is optional. It returns `{ projects: [{ key, columns }], taskKeys }`. Note that task keys that do not identify an existing task are omitted. Empty databases and databases without a schema version return `null` and unavailable storage raises an error.
-
-Opening a database can upgrade it, even for a read operation. Upgrades save a backup first and apply completely or not at all. Upgrades and restores check that foreign keys reference existing tables and rows before committing.
-
-Each migration step also checks existing foreign-key definitions, including those in tables it does not rebuild. An unexpected change rolls back the upgrade. Intentional changes must match the migration's declared starting and resulting definitions.
-
-- Older databases upgrade automatically when both the core package and client are published releases, or when `ZINN_DIR` explicitly selects a separate database. Source clients otherwise open older databases read-only until an explicit `migrate.run`.
-- Databases newer than core supports open read-only.
-- Databases without a schema version are refused.
-- A process that keeps the database open checks the schema version at the start of each write. When another process has changed it, such as a newer Zinn upgrading the database, the write throws a `CoreError` with kind `conflict` and reason `newer_database` or `older_database` and changes nothing. Reads keep working. Restart the process to write again.
-
-Core backup and restore operations use the selected store independently of the normal database-opening policy. See [Data and backups](/docs/data) for shared storage and restore behavior.
-
-`backup.restore({ path, client, version, storage? })` accepts an optional `BackupStorage` snapshot from `getBackupStorage()`. Pass it when the caller confirms a destination before restoring. Restore uses that captured destination even if the configured symbolic link changes afterward. Without `storage`, restore captures a fresh snapshot when called. Source backups are validated again when restore runs.
+## Reference
+
+- [Reading and pagination](/docs/core/reading): project counts, task filters, cursors and next-ready selection.
+- [Writing and task lifecycle](/docs/core/writing): edit rules, columns, bulk changes, deadlines, claims and relations.
+- [Actors and clients](/docs/core/actors): explicit actors and calling client chains.
+- [Task attribution](/docs/core/blame): recorded field and line origins, with the full result types.
+- [Activity and history](/docs/core/activity): recorded events, selection, following and task identities.
+- [Storage, compatibility and errors](/docs/core/storage): storage snapshots, database opening, upgrades and SQLite errors.
 
 The [public exports](https://github.com/yethranayeh/zinn/blob/main/packages/core/index.ts), [input schemas](https://github.com/yethranayeh/zinn/tree/main/packages/core/src/schemas), and [operation implementations](https://github.com/yethranayeh/zinn/tree/main/packages/core/src/operations) document the available API.
+
+<TopicIndex label='All Core topics' />
