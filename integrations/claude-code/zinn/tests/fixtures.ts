@@ -35,3 +35,14 @@ export const SAMPLE_KNOWN: readonly [string, string, string][] = [
 export const SAMPLE_UNKNOWN: readonly string[] = ['ZCC-99']
 
 export const PROMPT = 'can you pick up ZCC-8 after ZCC-6? and what is ZCC-42'
+
+/** Epoch milliseconds in a lease. */
+export const HOUR = 3_600_000
+/**
+ * A task's `claim` as `zinn task list --all --json` and `zinn task view KEY --json` print it (shape read at
+ * 0.46.0-dev). Every Claude Code agent claims under the same actor name: only the session id tells them apart.
+ */
+export const claimJson = (sessionId: string, expiresAt: number, state: 'live' | 'expired' = 'live') => ({
+  state, actor_kind: 'agent', actor_name: 'claude-code_2-1-327_agent', actor_session_id: sessionId, actor_thread_id: null,
+  claimed_at: expiresAt - 2 * HOUR, renewed_at: expiresAt - 2 * HOUR, worked_at: expiresAt - 2 * HOUR, lease_ms: 2 * HOUR, expires_at: expiresAt,
+})

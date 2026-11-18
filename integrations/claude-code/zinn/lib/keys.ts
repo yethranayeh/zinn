@@ -8,9 +8,10 @@
 // those would teach the eye to ignore the flag. The cost: a hallucinated *project*
 // (FOO-12 with no FOO board) is not caught.
 
+import { claimOf, type Claim } from './claims'
 import { categoryOf, posOf, type ColumnRef } from './columns'
 
-export type KeyInfo = ColumnRef & { key: string; title: string; isArchived: boolean }
+export type KeyInfo = ColumnRef & { key: string; title: string; isArchived: boolean; claim: Claim | null }
 
 /** One row of `zinn task list --all --json` or one `zinn task view KEY --json` as a KeyInfo. Null when it has no key. */
 export function keyInfoOf(row: unknown): KeyInfo | null {
@@ -23,7 +24,7 @@ export function keyInfoOf(row: unknown): KeyInfo | null {
   }
   return {
     key: r['key'], column: typeof r['column'] === 'string' ? r['column'] : '', category: categoryOf(r['column_category']), pos: posOf(r),
-    title: typeof r['title'] === 'string' ? r['title'] : '', isArchived: r['status'] === 'Archived',
+    title: typeof r['title'] === 'string' ? r['title'] : '', isArchived: r['status'] === 'Archived', claim: claimOf(r['claim']),
   }
 }
 

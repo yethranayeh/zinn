@@ -28,7 +28,8 @@ import type { ViewResult } from "../lib/watch";
 
 import { findMentions, parseTaskList } from "../lib/keys";
 import { parseConfig } from "../lib/config";
-import { planFor, UNDER_INDENT } from "../lib/plan";
+import { planFor, UNDER_INDENT, type ClaimCtx } from "../lib/plan";
+import { claimedAway, claimToastText, nextExpiry } from "../lib/claims";
 import { failureReason, toState } from "../lib/state";
 import {
   appendCapped,
@@ -66,6 +67,8 @@ const TICK_MS = 2000;
 const FILE_LINES = 20000;
 const SEEN_MAX = 500;
 const MAP_REF = { plugin: "zinn", key: "map" } as const;
+/** A legend is redrawn this long after the first claim it shows runs out. */
+const EXPIRY_REDRAW_MS = 1000;
 
 type Dollar = EngineInterface;
 type Comp = "AssistantMessage" | "UserMessage";
@@ -94,6 +97,10 @@ let draining: Promise<void> | null = null;
 let lastActivity: string | null = null;
 let polling = false;
 const seen = new Map<string, { text: string; at: number }>();
+// Keys this session's messages named, for the claim toast. Capped like `seen`.
+const mentioned = new Set<string>();
+// When the armed claim-expiry redraw fires. Null: none armed.
+let expiryAt: number | null = null;
 const t0 = typeof performance !== "undefined" ? performance.now() : 0;
 const now = (): number => (typeof performance !== "undefined" ? performance.now() : 0) - t0;
 const errText = (err: unknown): string =>
@@ -180,6 +187,7 @@ async function loadMap($: Dollar): Promise<string> {
       try {
         const p0 = now();
         map = parseTaskList(r.stdout);
+        void armExpiry($);
         line = {
           ev: "map",
           ok: true,
@@ -210,6 +218,43 @@ async function loadMap($: Dollar): Promise<string> {
     .set(MAP_REF, toState(map, error === null ? at : null, ZINN_ARGV, error))
     .catch(() => undefined);
   return JSON.stringify(line);
+}
+
+/**
+ * A claim runs out without a write to the store, so no refresh sees it. Redraw the legends just after the
+ * earliest live claim in the map expires, then arm for the next one.
+ */
+async function armExpiry($: Dollar): Promise<void> {
+  if (map === null) {
+    return;
+  }
+  const at = await $.clock.now().catch(() => null);
+  if (at === null) {
+    return;
+  }
+  const next = nextExpiry([...map.keys.values()].map((i) => i.claim), at);
+  if (next === null) {
+    return;
+  }
+  const armedSooner = expiryAt !== null && expiryAt <= next;
+  if (armedSooner) {
+    return;
+  }
+  expiryAt = next;
+  $.clock.after(next - at + EXPIRY_REDRAW_MS, () => {
+    expiryAt = null;
+    $.ui.invalidate("ui.render");
+    void armExpiry($);
+  });
+}
+
+/** What the legend needs to say who holds a task, read only when a mentioned task has a claim. */
+async function claimCtx($: Dollar, mentions: readonly Mention[]): Promise<ClaimCtx | undefined> {
+  if (!mentions.some((m) => m.info !== null && m.info.claim !== null)) {
+    return undefined;
+  }
+  const [me, at] = await Promise.all([$.session.id().catch(() => null), $.clock.now()]);
+  return { me, now: at };
 }
 
 /** The tail guard (AssistantMessage only): a key touching the end of a streaming block waits. */
@@ -291,6 +336,14 @@ async function handle(comp: Comp, $: Dollar, e: MsgEvent, next: NextFn): Promise
         held = mentions.filter((m) => m.isTail).length;
         mentions = mentions.filter((m) => !m.isTail);
       }
+      for (const m of mentions) {
+        if (m.kind === "known" && !mentioned.has(m.key)) {
+          if (mentioned.size >= SEEN_MAX) {
+            mentioned.delete(mentioned.values().next().value as string);
+          }
+          mentioned.add(m.key);
+        }
+      }
       const plan = planFor({
         text,
         markdown: comp === "AssistantMessage",
@@ -299,6 +352,7 @@ async function handle(comp: Comp, $: Dollar, e: MsgEvent, next: NextFn): Promise
         cfg: c,
         legend: c.legend,
         maxEntries: c.maxEntries,
+        claims: c.look === "under" ? await claimCtx($, mentions) : undefined,
       });
       if (plan.kind === "pass") {
         did = held > 0 ? "held" : "plain";
@@ -519,6 +573,7 @@ async function refreshRound($: Dollar, full: boolean, keys: string[]): Promise<v
     }
     if (how === "keys") {
       map = applyViews(prev!, results);
+      void armExpiry($);
       mapNote = `${map.keys.size} keys`;
       const at = new Date(await $.clock.now().catch(() => 0)).toISOString();
       await $.state.set(MAP_REF, toState(map, at, ZINN_ARGV, null)).catch(() => undefined);
@@ -540,6 +595,11 @@ async function refreshRound($: Dollar, full: boolean, keys: string[]): Promise<v
     const moved = changedColumns(prev, map);
     if (moved.length > 0) {
       $.ui.toast(toastText(moved));
+    }
+    const [me, at] = await Promise.all([$.session.id().catch(() => null), $.clock.now().catch(() => 0)]);
+    const taken = claimedAway(prev.keys, map.keys, mentioned, me, at);
+    if (taken.length > 0) {
+      $.ui.toast(claimToastText(taken));
     }
   }
   setStatus($);

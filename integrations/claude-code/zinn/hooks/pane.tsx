@@ -21,6 +21,7 @@ import { commentWord, layoutRows, type Item, type ItemTarget, type Row } from '.
 import { LAYOUTS, parseArgs, resolveTarget, type Layout } from '../lib/pane/resolve'
 import { failureOf, parseTask, projectOf } from '../lib/pane/task'
 import { sp, type Span } from '../lib/pane/style'
+import type { Claim, ClaimCtx } from '../lib/claims'
 import { boardIsCut, boardRows, commentRows, descriptionRows, projectRows } from '../lib/pane/views'
 import { zinnEnv } from './client'
 
@@ -33,7 +34,7 @@ type Dollar = EngineInterface
 const PANE = 'zinn-show'
 const COMMAND = 'zinn-show'
 /** Bump when an entry's fields change: a session that reloads the plugin then reads an older value as empty. */
-const VIEW_SHAPE = 'view-3'
+const VIEW_SHAPE = 'view-4'
 const view = atom({ plugin: 'zinn', key: 'view' } as const, EMPTY, { shape: VIEW_SHAPE })
 /** Rows asked of the inline seat per layout (a request. The dock ignores it). */
 const ROWS_WANTED: Record<Layout, number> = { card: 8, sectioned: 23, table: 11 }
@@ -59,6 +60,18 @@ async function zinn($: Dollar, argv: string[]): Promise<Ran> {
   } catch (err) {
     return { ok: false, code: null, error: `zinn did not run: ${errText(err)}` }
   }
+}
+
+/**
+ * This session's id and the time, so a claim is drawn as this session's or another's, live or expired. Read only
+ * when one of `claims` is set: a page without a claim costs no call.
+ */
+async function claimCtx($: Dollar, claims: ReadonlyArray<Claim | null>): Promise<ClaimCtx | undefined> {
+  if (claims.every(c => c === null)) {
+    return undefined
+  }
+  const [me, now] = await Promise.all([$.session.id().catch(() => null), $.clock.now()])
+  return { me, now }
 }
 
 type Loaded<E> = { entry: E; code: string | null }
@@ -248,9 +261,9 @@ export const registerPane = (on: On, options: PluginOptions): void => {
       body = [line([sp(`loading ${entryName(top)}…`, { dimColor: true })])]
     } else if (top.kind === 'task') {
       body = top.state === 'failed' || top.task === null ? failedLine(top)
-        : draw(top.tab === 'description' ? descriptionRows(top.task, { width }) : top.tab === 'comments' ? commentRows(top.task, { width }) : layoutRows(layout, top.task, { width }))
+        : draw(top.tab === 'description' ? descriptionRows(top.task, { width }) : top.tab === 'comments' ? commentRows(top.task, { width }) : layoutRows(layout, top.task, { width, claims: await claimCtx($, [top.task.claim]) }))
     } else if (top.kind === 'board') {
-      body = top.state === 'failed' || top.board === null ? failedLine(top) : draw(boardRows(top.board, { width, showAll: top.showAll }))
+      body = top.state === 'failed' || top.board === null ? failedLine(top) : draw(boardRows(top.board, { width, showAll: top.showAll, claims: await claimCtx($, top.board.columns.flatMap(c => c.tasks.map(t => t.claim))) }))
     } else {
       body = top.state === 'failed' || top.projects === null ? failedLine(top) : draw(projectRows(top.projects, { width }))
     }

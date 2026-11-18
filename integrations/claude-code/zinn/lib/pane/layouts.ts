@@ -5,6 +5,7 @@ import type { Relation, TaskView } from './task'
 import { firstParagraph } from './task'
 import { bold, cut, dim, fmtDate, markOf, sp, type Span } from './style'
 import type { Layout } from './resolve'
+import { claimLine, type ClaimCtx } from '../claims'
 
 /** What a press on an item opens: a task, or a project's board. */
 export type ItemTarget = { kind: 'task' | 'board'; key: string }
@@ -18,7 +19,14 @@ export type Row =
   /** A block of Markdown (a description, a comment), drawn by the engine's own Markdown element. */
   | { kind: 'md'; text: string }
 
-export type Ctx = { width: number }
+/** `claims`: who holds the task is drawn only with it (this session's id and the time). */
+export type Ctx = { width: number; claims?: ClaimCtx }
+
+/** The claim line, when the task has a claim. `lead` goes before it. */
+function claimRows(t: TaskView, ctx: Ctx, lead: Span[] = []): Row[] {
+  const spans = ctx.claims === undefined ? null : claimLine(t.claim, ctx.claims.me, ctx.claims.now)
+  return spans === null ? [] : [{ kind: 'line', spans: [...lead, ...spans] }]
+}
 
 
 export const DESC_MAX: Record<Layout, number> = { card: 160, sectioned: 600, table: 240 }
@@ -44,7 +52,7 @@ export function layoutRows(layout: Layout, t: TaskView, ctx: Ctx): Row[] {
 }
 
 /** A. compact card: five or six rows, relations as one wrapped line of keys. */
-function card(t: TaskView, _ctx: Ctx): Row[] {
+function card(t: TaskView, ctx: Ctx): Row[] {
   const rows: Row[] = []
   const meta: Span[] = [taskMark(t), sp(' '), bold(t.key), dim('  '), sp(t.column || '(no column)')]
   if (t.priority) {
@@ -60,6 +68,7 @@ function card(t: TaskView, _ctx: Ctx): Row[] {
     meta.push(dim(' · archived'))
   }
   rows.push({ kind: 'line', spans: meta })
+  rows.push(...claimRows(t, ctx))
   rows.push({ kind: 'line', spans: [bold(t.title)], wrap: true })
   const rels = ordered(t)
   if (rels.length > 0) {
@@ -75,7 +84,7 @@ function card(t: TaskView, _ctx: Ctx): Row[] {
 }
 
 /** B. sectioned detail: labelled fields, relations grouped by meaning with titles, a longer description. */
-function sectioned(t: TaskView, _ctx: Ctx): Row[] {
+function sectioned(t: TaskView, ctx: Ctx): Row[] {
   const rows: Row[] = []
   rows.push({ kind: 'line', spans: [bold(t.key), dim('  '), ...statusLine(t)] })
   rows.push({ kind: 'line', spans: [bold(t.title)], wrap: true })
@@ -88,6 +97,7 @@ function sectioned(t: TaskView, _ctx: Ctx): Row[] {
   rows.push(field('Due', fmtDate(t.dueAt) || '—'))
   rows.push(field('Updated', fmtDate(t.updatedAt) || '—'))
   rows.push(field('Comments', String(t.commentCount)))
+  rows.push(...claimRows(t, ctx, [dim('Claim'.padEnd(10))]))
   const rels = ordered(t)
   rows.push({ kind: 'blank' })
   rows.push({ kind: 'line', spans: [dim('Relations')] })
@@ -114,6 +124,7 @@ function table(t: TaskView, ctx: Ctx): Row[] {
     head.push(dim(' │ '), sp(`due ${fmtDate(t.dueAt)}`))
   }
   rows.push({ kind: 'line', spans: head })
+  rows.push(...claimRows(t, ctx))
   rows.push({ kind: 'line', spans: [bold(cut(t.title, w))] })
   rows.push({ kind: 'line', spans: [dim('─'.repeat(Math.min(w, 60)))] })
   const rels = ordered(t)

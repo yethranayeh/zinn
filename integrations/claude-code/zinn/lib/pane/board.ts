@@ -1,6 +1,7 @@
 // One board (`zinn project view KEY --json` for the columns in their order, plus
 // `zinn task list KEY --json` for the active tasks) and the list of boards (`zinn project list --json`),
 // reduced to what the pane draws. Pure: nothing here imports the engine module.
+import { claimOf, type Claim } from "../claims";
 import { categoryOf, isClosed, type Category } from "../columns";
 import { num, str, strings } from "./task";
 
@@ -11,6 +12,7 @@ export type BoardTask = {
   labels: Array<string>;
   dueAt: number | null;
   updatedAt: number | null;
+  claim: Claim | null;
 };
 
 export type BoardColumn = {
@@ -84,6 +86,7 @@ export function parseBoard(projectStdout: string, tasksStdout: string): BoardVie
       labels: strings(t["labels"]),
       dueAt: num(t["due_at"]),
       updatedAt: num(t["updated_at"]),
+      claim: claimOf(t["claim"]),
     });
   }
   return {

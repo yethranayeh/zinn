@@ -2,8 +2,9 @@
 // it: `tool.call` answers a fixed result, `process.run` answers `zinn` from a function, the clock is the kit's
 // mocked clock. No store, no model, no session. Not covered here: a real session.
 import { test, expect, mock } from 'claude-code/testing'
+import type { TestBody } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { ROWS } from './fixtures'
+import { claimJson, HOUR, ROWS } from './fixtures'
 import type { KeyMapState } from '../lib/state'
 import { classify } from '../lib/watch'
 import { VERSION } from '../hooks/client'
@@ -89,6 +90,12 @@ test('classify: write verbs name their keys', () => {
   expect(classify('zinn task comment add ZCC-7 --text hi')).toEqual({ kind: 'keys', keys: ['ZCC-7'] })
   expect(classify('zinn task label add ZCC-7 Research')).toEqual({ kind: 'keys', keys: ['ZCC-7'] })
   expect(classify('cd /x && zinn task move ZCC-7 Done && zinn task view ZCC-7 --json | jq .')).toEqual({ kind: 'keys', keys: ['ZCC-7'] })
+})
+
+test('classify: claim, heartbeat and release name their key', () => {
+  expect(classify('zinn task claim ZCC-7 --lease 2h')).toEqual({ kind: 'keys', keys: ['ZCC-7'] })
+  expect(classify('zinn task heartbeat ZCC-7')).toEqual({ kind: 'keys', keys: ['ZCC-7'] })
+  expect(classify('zinn task release ZCC-7')).toEqual({ kind: 'keys', keys: ['ZCC-7'] })
 })
 
 test('classify: whole-board writes, unknown verbs and unreadable commands are a full refresh', () => {
@@ -251,6 +258,38 @@ test('toastOnChange true (explicit)', { options: { look: 'under', pollSeconds: 3
   await $.tool.call({ tool: 'Bash', command: 'zinn task move ZCC-7 Review' } as never)
   await settle(w)
   expect(w.toasts).toEqual(['zinn: ZCC-7 -> Review'])
+})
+
+const claimedView = (key: string, sessionId: string): Run => ({ exitCode: 0, stdout: JSON.stringify({ key, status: 'Active', column: 'Blocked', title: 'Keep the key map live', claim: claimJson(sessionId, Date.UTC(2026, 9, 19, 9, 0, 0) + HOUR) }) })
+const mountReply = async ($: Parameters<TestBody>[0], text: string): Promise<void> => {
+  const ui = await $.ui.mount({ plugin: 'zinn', surface: 'terminal', component: 'AssistantMessage', requestId: `claim-${text}`, props: { text, isFirstOfReply: true }, viewport: { columns: 120, rows: 40, isFullscreen: true } })
+  await ui.drawn()
+}
+
+test('ZCC-6 toast: a key this session named, claimed by another session, says so; my own claim does not', BASE, async ($, on) => {
+  const w = world(on)
+  await $.session.start(START)
+  await mountReply($, 'ZCC-7 is next.')
+  w.view['ZCC-7'] = claimedView('ZCC-7', 'another-session')
+  await $.tool.call({ tool: 'Bash', command: 'zinn task edit ZCC-7 --priority high' } as never)
+  await settle(w)
+  expect(w.toasts.filter(t => t.includes('ZCC-7') && t.includes('another session')).length).toBe(1)
+  // A refresh that finds the same holder again says nothing more.
+  await $.tool.call({ tool: 'Bash', command: 'zinn task edit ZCC-7 --priority low' } as never)
+  await settle(w)
+  expect(w.toasts.filter(t => t.includes('another session')).length).toBe(1)
+})
+
+test('ZCC-6 toast: never for this session\'s own claim, nor for a key this session never named', BASE, async ($, on) => {
+  const w = world(on)
+  await $.session.start(START)
+  await mountReply($, 'ZCC-8 is next.')
+  w.view['ZCC-8'] = claimedView('ZCC-8', SESSION)
+  w.view['ZCC-7'] = claimedView('ZCC-7', 'another-session')
+  await $.tool.call({ tool: 'Bash', command: 'zinn task claim ZCC-8 --lease 1h' } as never)
+  await $.tool.call({ tool: 'Bash', command: 'zinn task claim ZCC-7 --lease 1h' } as never)
+  await settle(w)
+  expect(w.toasts.filter(t => t.includes('another session'))).toEqual([])
 })
 
 test('look off or enabled false: the hook does nothing', { options: { look: 'off', pollSeconds: 30 } }, async ($, on) => {

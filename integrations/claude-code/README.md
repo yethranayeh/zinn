@@ -4,8 +4,10 @@ Experimental. Two Claude Code plugins that bring Zinn into a Claude Code session
 prompt section or a model turn, so neither costs tokens.
 
 - **`zinn`**: under each reply, a status mark and a short title for every Zinn task key the reply mentions,
-  with a key the store does not have flagged as `✗ not in Zinn`. `/zinn-show` opens a pane on a task, a
-  board or the list of boards. A dim `zinn` in the prompt footer says the plugin is loaded.
+  with a key the store does not have flagged as `✗ not in Zinn`. A task under a live claim says until when it
+  is held, in local time: `yours until 14:30` for this session's claim, `held until 14:30` for another's.
+  `/zinn-show` opens a pane on a task, a board or the list of boards. A dim `zinn` in the prompt footer says
+  the plugin is loaded.
 - **`zinn-identity`**: declares the session, subagent, model and effort to Zinn in each shell Claude Code
   starts, so Zinn's activity log tells sessions apart. See [actor identity](https://zinn.sh/docs/cli/identity).
 
@@ -13,8 +15,8 @@ prompt section or a model turn, so neither costs tokens.
 
 - Claude Code with mods (plugins with a hooks module). Tested with 2.1.327.
 - The Zinn CLI on `PATH` as `zinn`. Tested with 0.45.0. The plugins read the store through it. Marks follow
-  each column's category, which needs 0.45.0 or later. With an older CLI they follow the column's name or its
-  place on the board.
+  each column's category and claims show, both from 0.45.0. With an older CLI marks follow the column's name
+  or its place on the board.
 
 ## Install
 

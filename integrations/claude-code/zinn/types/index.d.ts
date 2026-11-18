@@ -10,6 +10,16 @@
 /** A column's category (Zinn 0.45.0 and later). */
 export type ZinnColumnCategory = 'backlog' | 'todo' | 'in_progress' | 'review' | 'done' | 'cancelled'
 
+/** Who holds a task (Zinn 0.45.0 and later). Times are epoch milliseconds. */
+export type ZinnClaim = {
+  state: 'live' | 'expired'
+  actorKind: string
+  actorName: string
+  sessionId: string | null
+  claimedAt: number | null
+  expiresAt: number | null
+}
+
 export type ZinnKeysEntry = {
   /** The board column as the store names it. */
   column: string
@@ -71,6 +81,7 @@ export type ZinnTaskView = {
   comments: ZinnTaskComment[]
   dueAt: number | null
   updatedAt: number | null
+  claim: ZinnClaim | null
 }
 
 export type ZinnBoardTask = {
@@ -80,6 +91,7 @@ export type ZinnBoardTask = {
   labels: string[]
   dueAt: number | null
   updatedAt: number | null
+  claim: ZinnClaim | null
 }
 
 export type ZinnBoardColumn = {

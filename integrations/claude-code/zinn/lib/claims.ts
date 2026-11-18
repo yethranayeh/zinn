@@ -1,0 +1,169 @@
+// Who holds a task, from the `claim` object the CLI prints on every task (Zinn 0.45.0 and later). Pure.
+//
+// "Mine" is a claim whose session id is this Claude Code session's id: the value zinn-identity declares as
+// ZINN_SESSION_ID, which a claim records as `actor_session_id`. The actor name cannot tell sessions apart:
+// every Claude Code agent of one version claims under the same name.
+//
+// A claim runs out without any write to the store, so a claim read as live may have expired since. Every
+// drawing judges `expires_at` against the clock.
+import type { Span, ThemeColor } from './style'
+
+export type Claim = {
+  state: 'live' | 'expired'
+  actorKind: string
+  actorName: string
+  sessionId: string | null
+  claimedAt: number | null
+  expiresAt: number | null
+}
+
+/** What a drawing needs to say who holds a task: this session's id (null when unknown) and the time to judge expiry by. */
+export type ClaimCtx = { me: string | null; now: number }
+
+/** Mine, another holder's, or a claim that ran out. */
+export type Holder = 'mine' | 'theirs' | 'expired'
+
+/** The board's mark after a held task's key. A character apart, so they differ with colour off too. */
+export const HOLDER_MARK: Readonly<Record<'mine' | 'theirs', string>> = { mine: '◆', theirs: '◇' }
+/** Another holder's claim is painted in this theme key. Mine stays dim. */
+export const THEIRS_COLOR: ThemeColor = 'warning'
+
+const text = (v: unknown): string => (typeof v === 'string' ? v : '')
+const ms = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+
+/** The `claim` field of one task as the CLI prints it. Null for no claim or a shape the mod does not know. */
+export function claimOf(v: unknown): Claim | null {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) {
+    return null
+  }
+  const c = v as Record<string, unknown>
+  if (c['state'] !== 'live' && c['state'] !== 'expired') {
+    return null
+  }
+  return {
+    state: c['state'],
+    actorKind: text(c['actor_kind']),
+    actorName: text(c['actor_name']),
+    sessionId: typeof c['actor_session_id'] === 'string' ? c['actor_session_id'] : null,
+    claimedAt: ms(c['claimed_at']),
+    expiresAt: ms(c['expires_at']),
+  }
+}
+
+/** Who holds the task at `now`. Null when nobody claimed it. `me` is this session's id, null when unknown. */
+export function holderOf(c: Claim | null, me: string | null, now: number): Holder | null {
+  if (c === null) {
+    return null
+  }
+  const ranOut = c.state === 'expired' || (c.expiresAt !== null && c.expiresAt <= now)
+  if (ranOut) {
+    return 'expired'
+  }
+  return me !== null && c.sessionId === me ? 'mine' : 'theirs'
+}
+
+const pad2 = (n: number): string => String(n).padStart(2, '0')
+
+/** Local wall time: `14:30` on the day of `now`, `2026-11-19 14:30` on any other day. */
+export function wallTime(at: number, now: number): string {
+  const d = new Date(at)
+  const n = new Date(now)
+  const hm = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+  const sameDay = d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate()
+  return sameDay ? hm : `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${hm}`
+}
+
+/** What a claimed task's legend entry ends with: ` · yours until 14:30` (dim) or ` · held until 14:30`. Nothing for an expired claim. */
+export function legendClaim(c: Claim | null, me: string | null, now: number): Span[] {
+  const h = holderOf(c, me, now)
+  if (h === null || h === 'expired') {
+    return []
+  }
+  const until = c!.expiresAt === null ? '' : ` until ${wallTime(c!.expiresAt, now)}`
+  return h === 'mine'
+    ? [{ s: ` · yours${until}`, style: { dimColor: true } }]
+    : [{ s: ` · held${until}`, style: { color: THEIRS_COLOR } }]
+}
+
+/** The board's mark cell for one task: the holder's mark, or a space. Expired claims draw nothing. */
+export function boardMark(c: Claim | null, me: string | null, now: number): Span {
+  const h = holderOf(c, me, now)
+  if (h === 'mine') {
+    return { s: HOLDER_MARK.mine, style: {} }
+  }
+  if (h === 'theirs') {
+    return { s: HOLDER_MARK.theirs, style: { color: THEIRS_COLOR } }
+  }
+  return { s: ' ', style: {} }
+}
+
+/**
+ * The pane's claim line: `◆ this session · claude-code_2-1-327_agent (agent) · since 20:24 · until 22:24`.
+ * An expired claim says `expired` and when. Null when the task has no claim.
+ */
+export function claimLine(c: Claim | null, me: string | null, now: number): Span[] | null {
+  const h = holderOf(c, me, now)
+  if (h === null) {
+    return null
+  }
+  const dim = (s: string): Span => ({ s, style: { dimColor: true } })
+  const out: Span[] =
+    h === 'mine' ? [{ s: `${HOLDER_MARK.mine} this session`, style: {} }]
+      : h === 'theirs' ? [{ s: `${HOLDER_MARK.theirs} another session`, style: { color: THEIRS_COLOR } }]
+        : [dim('expired claim')]
+  const who = [c!.actorName, c!.actorKind === '' ? '' : `(${c!.actorKind})`].filter(Boolean).join(' ')
+  if (who !== '') {
+    out.push(dim(` · ${who}`))
+  }
+  if (c!.claimedAt !== null) {
+    out.push(dim(` · since ${wallTime(c!.claimedAt, now)}`))
+  }
+  if (c!.expiresAt !== null) {
+    out.push(dim(` · ${h === 'expired' ? 'expired' : 'until'} ${wallTime(c!.expiresAt, now)}`))
+  }
+  return out
+}
+
+/** The earliest moment after `now` at which one of these live claims runs out. Null when none will. */
+export function nextExpiry(claims: Iterable<Claim | null>, now: number): number | null {
+  let next: number | null = null
+  for (const c of claims) {
+    if (c !== null && c.state === 'live' && c.expiresAt !== null && c.expiresAt > now && (next === null || c.expiresAt < next)) {
+      next = c.expiresAt
+    }
+  }
+  return next
+}
+
+/**
+ * Keys of `watched` that another session holds in `next` but did not hold in `prev`: newly claimed, taken over
+ * from this session, or passed from one other session to another. Never this session's own claim.
+ */
+export function claimedAway(
+  prev: ReadonlyMap<string, { claim: Claim | null }>,
+  next: ReadonlyMap<string, { claim: Claim | null }>,
+  watched: Iterable<string>,
+  me: string | null,
+  now: number,
+): string[] {
+  const out: string[] = []
+  for (const key of watched) {
+    const b = next.get(key)?.claim ?? null
+    if (holderOf(b, me, now) !== 'theirs') {
+      continue
+    }
+    const a = prev.get(key)?.claim ?? null
+    const sameHolder = holderOf(a, me, now) === 'theirs' && a!.sessionId === b!.sessionId
+    if (!sameHolder) {
+      out.push(key)
+    }
+  }
+  return out
+}
+
+/** `zinn: ABC-7 claimed by another session`, at most `max` keys, then `+N more`. */
+export function claimToastText(keys: readonly string[], max = 3): string {
+  const shown = keys.slice(0, max)
+  const more = keys.length - shown.length
+  return `zinn: ${shown.join(', ')}${more > 0 ? ` +${more} more` : ''} claimed by another session`
+}

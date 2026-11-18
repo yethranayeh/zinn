@@ -39,8 +39,11 @@ const READ_SUB: Record<string, readonly string[]> = {
 const KEYED_SUB = new Set(['task relation', 'task comment', 'task label'])
 /** Whole commands that never change a board. */
 const READ_ONLY_TOP = new Set(['info', 'capabilities', 'backup', 'whoami', '-v', '--version', '-h', '--help', 'help'])
-/** Verbs of `zinn task` that change one or more named tasks. `create` and its alias `new` are not here: the key is not in the argv. `rm` is the alias of `delete`. */
-const KEYED_TASK_VERBS = new Set(['edit', 'move', 'order', 'archive', 'unarchive', 'delete', 'rm'])
+/**
+ * Verbs of `zinn task` that change one or more named tasks, claims included. `create` and its alias `new` are not
+ * here: the key is not in the argv. `rm` is the alias of `delete`.
+ */
+const KEYED_TASK_VERBS = new Set(['edit', 'move', 'order', 'archive', 'unarchive', 'delete', 'rm', 'claim', 'heartbeat', 'release'])
 
 /** The shell, lexed just enough to split segments and see whether anything is uncertain. */
 type Lexed = { segments: string[][]; uncertain: string | null }

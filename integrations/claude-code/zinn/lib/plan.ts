@@ -8,6 +8,7 @@ import { findMentions } from './keys'
 import { DEFAULT_LEGEND, DEFAULT_MAX_ENTRIES, type Config, type Legend, type Look } from './config'
 import { decoFor, markAndTitle, rewriteText, SEPARATOR, UNKNOWN_MARK, type Deco } from './decorate'
 import { drawBlock, drawPlain } from './markdown'
+import { legendClaim, type ClaimCtx } from './claims'
 import { DIM, KEY_STYLE, pushSpan, UNKNOWN_KEY_STYLE, UNKNOWN_MARK_STYLE, type Span } from './style'
 
 export type PlanBlock = { t: 'md'; text: string } | { t: 'spans'; lines: Span[][] }
@@ -75,11 +76,14 @@ export function colourSpans(d: Deco, marks: Config['marks']): Span[] {
  */
 export const UNDER_INDENT = 2
 
+export type { ClaimCtx }
+
 /**
  * One key's entry in the legend: `KEY ◐ title`, or `KEY ✗ not in Zinn`. Styles as in every look.
- * `pad` spaces follow the key (stacked alignment); they carry no style.
+ * `pad` spaces follow the key (stacked alignment); they carry no style. With `claims`, a held task's entry
+ * ends with who holds it until when (lib/claims.ts).
  */
-function entrySpans(text: string, m: Mention, cfg: Pick<Config, 'marks' | 'titleMax'>, pad = 0): Span[] {
+function entrySpans(text: string, m: Mention, cfg: Pick<Config, 'marks' | 'titleMax'>, pad = 0, claims?: ClaimCtx): Span[] {
   const out: Span[] = []
   const d = decoFor(text, m, cfg, true) // the legend always carries the title
   const gap = ' '.repeat(pad)
@@ -96,6 +100,9 @@ function entrySpans(text: string, m: Mention, cfg: Pick<Config, 'marks' | 'title
   pushSpan(out, d.mark, d.color ? { color: d.color } : DIM)
   if (d.title !== null) {
     pushSpan(out, markAndTitle('', d.title, cfg.marks), DIM)
+  }
+  if (claims !== undefined) {
+    for (const sp of legendClaim(m.info?.claim ?? null, claims.me, claims.now)) pushSpan(out, sp.s, sp.style)
   }
   return out
 }
@@ -172,10 +179,10 @@ export function underKeys(mentions: readonly Mention[], legend: Legend = DEFAULT
  * at most UNKNOWN_ON_OVERFLOW unknown entries are named, `+M unknown` counts the rest, so none is dropped
  * silently. Replaces the earlier rule (unknown keys took slots first, the cap grew to fit them).
  */
-export function underLines(text: string, mentions: readonly Mention[], cfg: Pick<Config, 'marks' | 'titleMax'>, legend: Legend = DEFAULT_LEGEND, maxEntries: number = DEFAULT_MAX_ENTRIES): Span[][] {
+export function underLines(text: string, mentions: readonly Mention[], cfg: Pick<Config, 'marks' | 'titleMax'>, legend: Legend = DEFAULT_LEGEND, maxEntries: number = DEFAULT_MAX_ENTRIES, claims?: ClaimCtx): Span[][] {
   const { shown, moreKnown, tailUnknown } = selectEntries(mentions, maxEntries)
   const width = legend === 'stacked' ? keyWidth(shown.map(m => m.key)) : 0
-  const entries = shown.map(m => entrySpans(text, m, cfg, legend === 'stacked' ? width - m.key.length : 0))
+  const entries = shown.map(m => entrySpans(text, m, cfg, legend === 'stacked' ? width - m.key.length : 0, claims))
   const lead = (line: Span[]): void => pushSpan(line, '↳ ', DIM)
   const out: Span[][] = []
   if (legend === 'stacked') {
@@ -240,11 +247,13 @@ export type PlanInput = {
   legend?: Legend
   /** Entries per legend block; absent = DEFAULT_MAX_ENTRIES, 0 = no cap. */
   maxEntries?: number
+  /** Who holds each task, for the legend. Absent: the legend says nothing about claims. */
+  claims?: ClaimCtx
 }
 
 /** The plan for one message. `mentions` must come from `text`, in prose (keys in code are skipped). */
 export function planFor(p: PlanInput): Plan {
-  const { text, markdown, mentions, look, cfg, legend, maxEntries } = p
+  const { text, markdown, mentions, look, cfg, legend, maxEntries, claims } = p
   if (look === 'off' || mentions.length === 0) {
     return { kind: 'pass' }
   }
@@ -252,7 +261,7 @@ export function planFor(p: PlanInput): Plan {
     return { kind: 'rewrite', text: rewriteText(text, mentions, look, cfg, markdown) }
   }
   if (look === 'under') {
-    return { kind: 'under', lines: underLines(text, mentions, cfg, legend, maxEntries), keys: underKeys(mentions, legend, maxEntries) }
+    return { kind: 'under', lines: underLines(text, mentions, cfg, legend, maxEntries, claims), keys: underKeys(mentions, legend, maxEntries) }
   }
   // Decorations are decided on the whole text (the echo check reads around the key), then looked up by
   // key: the block drawer sees block-relative offsets. Deciding them on block offsets would repeat a title the

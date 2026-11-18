@@ -2,13 +2,14 @@
 // description, a task's comments. Pure: hooks/pane.tsx turns rows into elements. They follow the `table`
 // layout, which reads like the CLI's output: cells split by a dim bar, nothing wraps but prose, everything is
 // cut to the width.
+import { boardMark, holderOf, type ClaimCtx } from '../claims'
 import { categoryWord, isBacklog, isClosed } from '../columns'
 import { closedCount, openCount, type BoardColumn, type BoardTask, type BoardView, type ProjectRow } from './board'
 import { commentWord, type Item, type Row } from './layouts'
 import { bold, cut, dim, fmtDate, markOf, priorityLetter, sp, type Span } from './style'
 import { DESCRIPTION_MAX, type TaskView } from './task'
 
-export type Ctx = { width: number }
+export type Ctx = { width: number; claims?: ClaimCtx }
 
 const BAR = ' │ '
 /** A pressable row starts `n: ` when it has a digit. A row without one is indented by the same three cells. */
@@ -54,6 +55,14 @@ export function boardRows(b: BoardView, ctx: Ctx & { showAll: boolean }): Row[] 
     }
   }
   const kw = Math.max(0, ...cols.flatMap(c => c.tasks.map(t => t.key.length)))
+  // A mark cell after the key (◆ this session, ◇ another), only on a board where some task is held.
+  const claims = ctx.claims
+  const isHeld = (t: BoardTask): boolean => {
+    const h = claims === undefined ? null : holderOf(t.claim, claims.me, claims.now)
+    return h === 'mine' || h === 'theirs'
+  }
+  const markCell = cols.some(c => c.tasks.some(isHeld))
+  const mw = markCell ? 2 : 0
   for (const { col, tasks, hidden } of cols) {
     const mark = markOf(col.name, false, col)
     const count = dim(` ${col.tasks.length}`)
@@ -61,11 +70,12 @@ export function boardRows(b: BoardView, ctx: Ctx & { showAll: boolean }): Row[] 
     const word = col.category !== null && categoryWord(col.category) !== name.toLowerCase() ? [dim(` (${categoryWord(col.category)})`)] : []
     rows.push({ kind: 'line', spans: [mark, sp(' '), col.tasks.length === 0 ? dim(name) : bold(name), ...word, count] })
     for (const t of tasks) {
-      // lead (5) + key + bar (3) + priority (1) + bar (3)
-      const room = w - (5 + kw + 3 + 1 + 3)
+      // lead (5) + key + mark cell + bar (3) + priority (1) + bar (3)
+      const room = w - (5 + kw + mw + 3 + 1 + 3)
       const tail = [t.dueAt !== null ? `due ${fmtDate(t.dueAt)}` : '', t.labels.join(', ')].filter(Boolean).join(' · ')
       const fits = tail !== '' && t.title.length + 3 + tail.length <= room
-      const spans: Span[] = [sp(t.key.padEnd(kw), { bold: true }), dim(BAR), sp(priorityLetter(t.priority)), dim(BAR), sp(cut(t.title, room))]
+      const cell: Span[] = markCell ? [sp(' '), boardMark(t.claim, claims!.me, claims!.now)] : []
+      const spans: Span[] = [sp(t.key.padEnd(kw), { bold: true }), ...cell, dim(BAR), sp(priorityLetter(t.priority)), dim(BAR), sp(cut(t.title, room))]
       if (fits) {
         spans.push(dim(BAR), dim(tail))
       }

@@ -9,7 +9,7 @@
 import { test, expect, mock } from 'claude-code/testing'
 import type { TestBody } from 'claude-code/testing'
 import type { On, PluginOptions } from 'claude-code'
-import { ROWS } from './fixtures'
+import { claimJson, HOUR, ROWS } from './fixtures'
 import type { KeyMapState } from '../lib/state'
 import { VERSION } from '../hooks/client'
 
@@ -280,6 +280,37 @@ for (const legend of ['spaced', 'brackets', 'dots', 'stacked'] as const) {
     }
   })
 }
+
+test('ZCC-6 under: a held task says whose and until when; the session id and the clock decide', opts({ look: 'under', maxEntries: '0', keyPress: 'off' }), async ($, on) => {
+  const at = Date.UTC(2026, 9, 12, 9, 0, 0) // the world's clock
+  const rows = ROWS.map(r => (r.key === 'ZCC-6' ? { ...r, claim: claimJson(SESSION, at + HOUR) } : r.key === 'ZCC-8' ? { ...r, claim: claimJson('another-session', at + HOUR) } : r.key === 'ZCC-7' ? { ...r, claim: claimJson('gone', at - 1) } : r))
+  const w = world(on, { zinn: { exitCode: 0, stdout: JSON.stringify(rows) } })
+  await $.session.start(START)
+  const ui = await $.ui.mount({ plugin: 'zinn', surface: 'terminal', component: 'AssistantMessage', requestId: nextId('claim'), props: AM('ZCC-6, ZCC-8 and ZCC-7'), viewport: VIEW })
+  await ui.drawn()
+  const lines = await arrows(ui)
+  expect(lines[0]).toMatch(/^↳ ZCC-6 .* · yours until \d\d:\d\d$/)
+  expect(lines[1]).toMatch(/^↳ ZCC-8 .* · held until \d\d:\d\d$/)
+  expect(lines[2]).not.toContain('until') // its lease ran out: drawn as free
+  expect((await ui.find({ type: 'Text', text: /^ · held until \d\d:\d\d$/ }))?.props['color']).toBe('warning')
+  expect(w.drawn.at(-1)).toBe('ZCC-6, ZCC-8 and ZCC-7')
+})
+
+test('ZCC-6 under: a claim that runs out is redrawn as free, with no store read', opts({ look: 'under', maxEntries: '0', keyPress: 'off' }), async ($, on) => {
+  const at = Date.UTC(2026, 9, 12, 9, 0, 0)
+  const lease = 60_000
+  const rows = ROWS.map(r => (r.key === 'ZCC-8' ? { ...r, claim: claimJson('another-session', at + lease) } : r))
+  const w = world(on, { zinn: { exitCode: 0, stdout: JSON.stringify(rows) } })
+  await $.session.start(START)
+  const ui = await $.ui.mount({ plugin: 'zinn', surface: 'terminal', component: 'AssistantMessage', requestId: nextId('expiry'), props: AM('ZCC-8 is next.'), viewport: VIEW })
+  await ui.drawn()
+  expect((await arrows(ui))[0]).toContain('held until')
+  const runs = w.runs.length
+  await w.clock.advance(lease + 1100)
+  await ui.drawn()
+  expect((await arrows(ui))[0]).not.toContain('until')
+  expect(w.runs.slice(runs).filter(a => a[0] === 'zinn' && a[1] === 'task')).toEqual([])
+})
 
 test('under, legend from the variable (ZINN_MENTIONS_LEGEND=brackets); the option beats it', opts({ look: 'under', maxEntries: '0' }), async ($, on) => {
   const w = world(on, { env: { ZINN_MENTIONS_LEGEND: 'brackets' } })

@@ -1,5 +1,6 @@
 // One task as `zinn task view KEY --json` prints it, reduced to what the pane draws. Pure: nothing here
 // imports the engine module.
+import { claimOf, type Claim } from '../claims'
 import { categoryOf, type Category } from '../columns'
 
 export type RelationType = 'related' | 'dependency' | 'duplicate' | 'subtask'
@@ -49,6 +50,8 @@ export type TaskView = {
   comments: Comment[]
   dueAt: number | null
   updatedAt: number | null
+  /** Who holds the task (lib/claims.ts). Null when nobody claimed it. */
+  claim: Claim | null
 }
 
 /** What the pane keeps of one task. The value lives in `$.state` for the session, so it has a ceiling. */
@@ -129,6 +132,7 @@ export function parseTask(stdout: string): TaskView {
     comments: all.slice(-COMMENTS_KEPT).reverse(),
     dueAt: num(r['due_at']),
     updatedAt: num(r['updated_at']),
+    claim: claimOf(r['claim']),
   }
 }
 

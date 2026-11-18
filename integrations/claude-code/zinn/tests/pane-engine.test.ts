@@ -139,7 +139,7 @@ test('/zinn-show KEY: argv only, the pane opens with no Esc handling, the answer
   expect(w.runs).toEqual([['zinn', 'task', 'view', 'ZCC-8', '--json']])
   expect(w.opens).toEqual([{ id: 'zinn-show', title: 'ZCC-8', focus: true }]) // no closeOnEscape
   expect(names(w)).toEqual(['task:ZCC-8:ready'])
-  expect((w.raw() as { shape?: string }).shape).toBe('view-3') // kept under the shape tag
+  expect((w.raw() as { shape?: string }).shape).toBe('view-4') // kept under the shape tag
   expect(w.toasts).toEqual([])
 })
 
