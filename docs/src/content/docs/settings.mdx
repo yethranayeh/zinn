@@ -1,5 +1,6 @@
 ---
 title: Settings
+toc: true
 description: Choose Zinn's data directory and default project, set how long writes wait, run hooks after changes, control local telemetry, and inspect the selected store.
 ---
 
@@ -22,6 +23,8 @@ The first configured location wins:
 
 If a `ZINN_DIR` is provided, Zinn reads only `settings.json` inside that directory. It does not read the home or codebase settings files. While the selected `settings.json` can set `defaultProject`, `ZINN_DIR` itself selects the directory.
 
+### Read global and local settings
+
 Without `ZINN_DIR`, Zinn looks for `zinn.local.json` from the current directory up to the Git root. Outside a Git repository, it checks only the current directory. It reads the global `~/.zinn/settings.json` too, then merges the local file over it field by field. A local setting overrides the same global setting. You can omit fields in the local setting to inherit global values. The local settings file is not meant to be committed, as it can cause unexpected behavior on others' Zinn setups who install the same repo with the tracked local setting.
 
 <Aside label='Hooks and telemetry limits are global-only'>
@@ -30,11 +33,15 @@ A `zinn.local.json` may set values that apply only to commands run in that codeb
 
 </Aside>
 
+### Resolve directory paths
+
 `storage.directory` is relative to the folder containing the file that sets it. A leading `~` or `~/` expands to your home directory. It names the Zinn directory, which contains `data/zinn.sqlite`, `backups/`, `logs/`, and `telemetry/`.
 
 The selected directory holds one database shared by all its projects. Choose a local directory outside network shares and synchronized folders. See [safe storage and backups](/docs/data).
 
 A folder selected through `ZINN_DIR` or `storage.directory` must already exist. Create it with `mkdir -p <path>` before using it. Creating the first project or label creates the database inside an existing empty folder. With no explicit location, it also creates the default `~/.zinn` folder. Until then, other commands fail with code `not_found` and entity `database` and create no database. In an existing folder, the failed run is still recorded in `telemetry/` unless [telemetry is off](#control-local-telemetry). An empty `ZINN_DIR` is refused. Help, version requests, and `zinn info` work with a missing folder.
+
+### Settings file format
 
 For example, this `zinn.local.json` selects a shared data directory and its default project:
 
@@ -53,6 +60,8 @@ The `$schema` field is optional and gives editors a schema for autocomplete and 
 ## Choose a default project
 
 `defaultProject` names the project used when a command supports omitting its project key. Project keys are matched case-insensitively. An explicitly typed key takes precedence, then `zinn.local.json`, then the global settings file. With `ZINN_DIR`, only the selected directory's `settings.json` can provide the default.
+
+### Commands that use the default
 
 The default applies to `task create`, `task list`, `task search`, `project view`, `project column list`, `project edit`, and `project delete` when their project key is omitted. A `null` value is not accepted. Without a default, `task list` and `task search` cover every project; the other commands require a key. A configured default that names a missing project causes a command that uses it to fail and identify the key and settings file. `--all-projects` makes `task list` and `task search` cover every project even when a default is configured; it works with `--all` or `--archived` and cannot be combined with a typed project key.
 
@@ -115,6 +124,8 @@ zinn info --json
 
 The report includes the selected store directory and source, settings files and their state, default project, telemetry mode and folder, database path and schema state, and CLI, core, and runtime versions. Settings states are `found`, `missing`, `error`, or `not-read` when `ZINN_DIR` selects a different settings file. Database state is `absent`, `empty`, `unmarked`, `current`, `older`, `newer`, or `unavailable`.
 
+### JSON result fields
+
 `zinn info --json` returns one object with stable top-level keys:
 
 - `settingsFiles` lists each inspected settings file with its `path`, `source` (`env`, `global`, or `local`), `state`, and either its parsed `settings` or an `error`. Unread home and codebase files with `ZINN_DIR` have state `not-read` and reason `ZINN_DIR`.
@@ -125,6 +136,8 @@ The report includes the selected store directory and source, settings files and 
 - `versions` contains `cli`, `core`, and `runtime` (`name` and `version`).
 
 `database.path` resolves existing <span class="group"><span class="group-hover:hidden">symbolic</span><span class="hidden sr-hidden group-hover:inline">absolute</span></span> links and relative paths to an absolute destination. `storage.directory` records the configured directory. If database-path resolution fails, the report keeps the requested database path with state `unavailable` and an `error`.
+
+### Example result
 
 For example, when settings and the database can be inspected, the report has this shape:
 
@@ -172,5 +185,7 @@ For example, when settings and the database can be inspected, the report has thi
 	}
 }
 ```
+
+### Inspection errors
 
 When settings are unusable or a database cannot be inspected, `info` reports the errors and exits with code 0. `unavailable` means settings left the store undecided (`path` and `version` are `null`), or the selected file could not be read as a database (`path` is set, `version` is `null`, and `error` explains why). Every `error` is `null` when there is no problem. A settings error is carried on `storage`, `defaultProject`, `telemetry`, and `database` as well as its `settingsFiles` entry, so the same string can appear several times. The fields a settings file could have set are `null`. With `ZINN_DIR`, an unusable selected `settings.json` sets only `defaultProject.error` and `telemetry.error`, since the store is already chosen. SQLite may perform normal file housekeeping and crash recovery while `info` inspects a database. To check the settings and database it reports for problems, run [`zinn doctor`](/docs/cli/help#check-for-problems).

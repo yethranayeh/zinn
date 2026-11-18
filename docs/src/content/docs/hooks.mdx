@@ -1,5 +1,6 @@
 ---
 title: Hooks
+toc: true
 description: Run your own commands after Zinn saves a change, with the change's activity records on stdin.
 ---
 
@@ -39,6 +40,8 @@ After each saved change, once the database commit is done, every hook runs once,
 
 A change can record several activity records, and a hook receives **all of them** in one run. Creating a relation records one for each of the two tasks. Deleting a label records the label and one for each task that lost it.
 
+### Process and output
+
 The command runs through the platform shell (`/bin/sh` on macOS and Linux, `cmd.exe` on Windows) in the caller's working directory and environment. The hook's stdout and stderr both go to Zinn's stderr, so Zinn's stdout, including `--json` output, stays clean.
 
 Zinn waits for the hook process to exit, so a hook can background slow work with `&`. Redirect that child's output, as in `slow-sync >/dev/null 2>&1 &`: a program that reads Zinn's stderr through a pipe otherwise waits until the child closes it.
@@ -46,6 +49,8 @@ Zinn waits for the hook process to exit, so a hook can background slow work with
 ## Read the records
 
 Stdin has one JSON object per line, one for each activity record of the change, in the order recorded. Each object has the fields of an [activity record](/docs/core/activity#activity-records). It adds `task_key`: the task's key, such as `APP-1`, on task records, and `null` on project, column and label records.
+
+### Example activity record
 
 For example, moving a task records a line like this (formatted as wrapped for presentation here, but normally writtenas one line):
 
@@ -76,6 +81,8 @@ For example, moving a task records a line like this (formatted as wrapped for pr
 }
 ```
 
+### React to task moves
+
 This script reacts only to moves:
 
 ```sh title="~/.zinn/hooks/notify-move.sh"
@@ -94,6 +101,8 @@ for (const line of require("node:fs").readFileSync(0, "utf8").split("\n")) {
 ```
 
 A hook that exits without reading all of its stdin is fine.
+
+### Claims and hooks
 
 [Task claims](/docs/cli/next#claim-tasks) record the actions `claim`, `claim_take`, `claim_heartbeat` and `claim_release`, and that section lists the changes each one records. Archiving a claimed task, or moving it into a done or cancelled column, runs hooks once with two records: first `claim_release`, with `changes.cause` set to `archive` or `closed`, then the archive or move. Other changes by the holder renew a claim without a claim record, and an expiring claim runs no hooks.
 

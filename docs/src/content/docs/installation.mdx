@@ -1,5 +1,6 @@
 ---
 title: Install
+toc: true
 description: Install, upgrade and uninstall the Zinn CLI and core library with npm. Zinn runs on Node.js 24.15.0 or newer, and on Bun.
 ---
 
@@ -78,11 +79,15 @@ Save a backup of the database first:
 zinn backup
 ```
 
+### Upgrade the CLI
+
 Then install the latest CLI. It brings the core release it was built with:
 
 ```sh title="Upgrade the CLI"
 npm i -g @zinn-dev/cli@latest
 ```
+
+### Update agent skills
 
 If you installed the agent skill, update it separately:
 
@@ -91,6 +96,8 @@ npx skills update -g
 ```
 
 After switching Node versions or package managers, run `zinn skill install` again instead. The CLI then lives in a new folder, and the command installs the skill from there.
+
+### Upgrade core
 
 In a project that uses core, upgrade it there:
 
