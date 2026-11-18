@@ -81,11 +81,14 @@ export type { ClaimCtx }
 /**
  * One key's entry in the legend: `KEY ◐ title`, or `KEY ✗ not in Zinn`. Styles as in every look.
  * `pad` spaces follow the key (stacked alignment); they carry no style. With `claims`, a held task's entry
- * ends with who holds it until when (lib/claims.ts).
+ * ends with who holds it until when (lib/claims.ts), and its title is cut by that many columns so the entry
+ * is no wider than an unheld one.
  */
 function entrySpans(text: string, m: Mention, cfg: Pick<Config, 'marks' | 'titleMax'>, pad = 0, claims?: ClaimCtx): Span[] {
   const out: Span[] = []
-  const d = decoFor(text, m, cfg, true) // the legend always carries the title
+  const held = claims === undefined ? [] : legendClaim(m.info?.claim ?? null, claims.me, claims.now)
+  const titleMax = heldTitleMax(cfg.titleMax, held.reduce((n, sp) => n + sp.s.length, 0))
+  const d = decoFor(text, m, { ...cfg, titleMax }, true) // the legend always carries the title
   const gap = ' '.repeat(pad)
   if (d.kind === 'unknown') {
     pushSpan(out, m.key, UNKNOWN_KEY_STYLE)
@@ -101,10 +104,21 @@ function entrySpans(text: string, m: Mention, cfg: Pick<Config, 'marks' | 'title
   if (d.title !== null) {
     pushSpan(out, markAndTitle('', d.title, cfg.marks), DIM)
   }
-  if (claims !== undefined) {
-    for (const sp of legendClaim(m.info?.claim ?? null, claims.me, claims.now)) pushSpan(out, sp.s, sp.style)
+  for (const sp of held) {
+    pushSpan(out, sp.s, sp.style)
   }
   return out
+}
+
+/** The fewest title characters a held entry keeps, so a short `titleMax` does not lose the title altogether. */
+export const HELD_TITLE_MIN = 12
+
+/** The title budget of an entry whose claim part takes `claimWidth` columns: `titleMax` less that, down to HELD_TITLE_MIN. */
+export function heldTitleMax(titleMax: number, claimWidth: number): number {
+  if (claimWidth === 0) {
+    return titleMax
+  }
+  return Math.max(titleMax - claimWidth, Math.min(titleMax, HELD_TITLE_MIN))
 }
 
 /** Width of the KEY-000 floor, used when a key cannot be measured by its length (see keyWidth). */

@@ -2,7 +2,7 @@
 import { test, expect } from 'claude-code/testing'
 import { claimedAway, claimLine, claimOf, holderOf, legendClaim, nextExpiry, wallTime, type Claim } from '../lib/claims'
 import { findMentions, parseTaskList } from '../lib/keys'
-import { underLines } from '../lib/plan'
+import { HELD_TITLE_MIN, underLines } from '../lib/plan'
 import { lineText } from '../lib/style'
 import { parseBoard } from '../lib/pane/board'
 import { parseTask } from '../lib/pane/task'
@@ -55,6 +55,22 @@ test('legend: yours (dim) or held (warning) until the local time; expired and fr
   expect(legendClaim(claim('CLM-2'), ME, NOW)[0]!.style).toEqual({ color: 'warning' })
   // Without the claim context (the other looks), nothing about claims.
   expect(lineText(underLines(text, findMentions(text, MAP, { repeat: 'first', code: 'skip', only: null }), { marks: 'shapes', titleMax: 40 }, 'stacked', 0)[0]!)).toBe('↳ CLM-1 ○ Mine')
+})
+
+test('legend: a held entry cuts its title by the claim part, so it is no wider than a free one', () => {
+  const long = 'A title long enough to fill the whole title budget of forty'
+  const rows = [
+    { key: 'CLM-1', status: 'Active', column: 'Backlog', column_category: 'backlog', title: long, claim: claimJson(OTHER, NOW + HOUR) },
+    { key: 'CLM-2', status: 'Active', column: 'Backlog', column_category: 'backlog', title: long, claim: null },
+  ]
+  const text = 'CLM-1 and CLM-2'
+  const legend = (titleMax: number): string[] => underLines(text, findMentions(text, parseTaskList(JSON.stringify(rows)), { repeat: 'first', code: 'skip', only: null }), { marks: 'shapes', titleMax }, 'stacked', 0, { me: ME, now: NOW }).map(lineText)
+  const [held, free] = legend(40)
+  expect(held).toContain(' · held until ')
+  expect(held!.length).toBeLessThanOrEqual(free!.length)
+  // A short titleMax still leaves the held entry a title.
+  const [shortHeld] = legend(20)
+  expect(shortHeld).toContain(`○ ${long.slice(0, HELD_TITLE_MIN - 1).trimEnd()}…`)
 })
 
 test('wall time: the time alone today, the date with it on another day', () => {
