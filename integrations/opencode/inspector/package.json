@@ -1,6 +1,6 @@
 {
 	"name": "@zinn-dev/opencode",
-	"version": "0.5.0",
+	"version": "0.6.0-dev",
 	"type": "module",
 	"description": "Experimental Zinn task inspector and desktop board summary for OpenCode.",
 	"keywords": [
@@ -37,24 +37,17 @@
 		"test": "bun run --cwd ../../.. test --timeout 120000 ./integrations/opencode/inspector/pkg ./integrations/opencode/inspector/tests",
 		"typecheck": "bun ../../../scripts/typecheck.ts integrations/opencode/inspector",
 		"test:package": "bun run --cwd ../../.. test --timeout 120000 ./integrations/opencode/inspector/tests/package.test.ts",
+		"test:release": "bun run --cwd ../../.. test ./integrations/opencode/inspector/tests/install.release.test.ts",
 		"prepack": "bun run build",
-		"prepublishOnly": "bun run build && bun checks/release.ts && bun run typecheck && bun run test"
+		"prepublishOnly": "bun run build && bun checks/release.ts && bun run typecheck && bun run test && bun run test:release"
 	},
 	"peerDependencies": {
 		"@opencode/plugin": ">=2.3.2 <3",
-		"@opentui/core": ">=0.8.4 <0.9.0",
-		"@opentui/solid": ">=0.8.4 <0.9.0",
-		"effect": ">=4.0.1 <5",
-		"solid-js": ">=1.9.0"
+		"effect": ">=4.1.0 <5",
+		"solid-js": "^1.9.12"
 	},
 	"peerDependenciesMeta": {
 		"@opencode/plugin": {
-			"optional": true
-		},
-		"@opentui/core": {
-			"optional": true
-		},
-		"@opentui/solid": {
 			"optional": true
 		},
 		"effect": {
@@ -64,13 +57,14 @@
 	"devDependencies": {
 		"@babel/core": "7.29.7",
 		"@babel/preset-typescript": "7.27.1",
-		"@opencode/plugin": "2.2.0",
-		"@opencode/theme": "2.2.0",
-		"@opentui/core": "0.7.0",
-		"@opentui/solid": "0.7.0",
+		"@npmcli/arborist": "9.4.0",
+		"@opencode/plugin": "2.3.2",
+		"@opencode/theme": "2.3.2",
+		"@opentui/core": "0.8.4",
+		"@opentui/solid": "0.8.4",
 		"babel-preset-solid": "1.9.12",
-		"effect": "4.0.1",
-		"solid-js": "^1.9.0",
+		"effect": "4.1.0",
+		"solid-js": "1.9.17",
 		"vite": "7.3.7",
 		"vite-plugin-solid": "2.11.14"
 	},

@@ -4,6 +4,7 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
+import packageJson from "../../package.json" with { type: "json" };
 
 export type ZinnCli = {
   file: string;
@@ -68,6 +69,13 @@ export const resolveZinn = (): ZinnCli => {
   return { file: node, prefix: [cli] };
 };
 
+const clientName = () => {
+  const inherited = process.env.ZINN_CLIENT?.trim() ?? "";
+  return inherited.length === 0
+    ? `zinn-opencode:inspector-gui/${packageJson.version}`
+    : `${inherited} zinn-opencode:inspector-gui/${packageJson.version}`;
+};
+
 export const runZinn = (zinn: ZinnCli, argv: Array<string>, cwd: string): Promise<string> =>
   new Promise((resolve, reject) => {
     if (!zinn.file) {
@@ -84,6 +92,7 @@ export const runZinn = (zinn: ZinnCli, argv: Array<string>, cwd: string): Promis
       [...zinn.prefix, ...argv],
       {
         cwd: cwd || undefined,
+        env: { ...process.env, ZINN_CLIENT: clientName() },
         encoding: "utf8",
         timeout: 15_000,
         windowsHide: true,

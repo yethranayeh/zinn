@@ -15,7 +15,7 @@ afterAll(() => {
   }
 });
 
-test("the packed inspector installs independently with host-provided OpenTUI peers", () => {
+test("the packed inspector ships without OpenTUI peers and installs independently", () => {
   const manifest = JSON.parse(readFileSync(join(consumer.installed, "package.json"), "utf8"));
   expect(manifest.name).toBe(fixture.manifest.name);
   expect(manifest.version).toBe(fixture.manifest.version);
@@ -33,13 +33,13 @@ test("the packed inspector installs independently with host-provided OpenTUI pee
   expect(manifest.dependencies).toBeUndefined();
   expect(manifest.peerDependencies["@opencode/plugin"]).toBe(">=2.3.2 <3");
   expect(manifest.peerDependenciesMeta["@opencode/plugin"]).toEqual({ optional: true });
-  expect(manifest.peerDependencies["@opentui/core"]).toBe(">=0.8.4 <0.9.0");
-  expect(manifest.peerDependenciesMeta["@opentui/core"]).toEqual({ optional: true });
-  expect(manifest.peerDependencies["@opentui/solid"]).toBe(">=0.8.4 <0.9.0");
-  expect(manifest.peerDependenciesMeta["@opentui/solid"]).toEqual({ optional: true });
-  expect(manifest.peerDependencies["effect"]).toBe(">=4.0.1 <5");
+  expect(manifest.peerDependencies["@opentui/core"]).toBeUndefined();
+  expect(manifest.peerDependenciesMeta["@opentui/core"]).toBeUndefined();
+  expect(manifest.peerDependencies["@opentui/solid"]).toBeUndefined();
+  expect(manifest.peerDependenciesMeta["@opentui/solid"]).toBeUndefined();
+  expect(manifest.peerDependencies["effect"]).toBe(">=4.1.0 <5");
   expect(manifest.peerDependenciesMeta["effect"]).toEqual({ optional: true });
-  expect(manifest.peerDependencies["solid-js"]).toBe(">=1.9.0");
+  expect(manifest.peerDependencies["solid-js"]).toBe("^1.9.12");
   expect(existsSync(join(consumer.consumer, "node_modules/@opencode/plugin"))).toBe(false);
   expect(existsSync(join(consumer.consumer, "node_modules/@opentui"))).toBe(false);
   expect(fixture.members.some((path) => /test|NOTES|AGENTS|install\.sh|tsconfig|bun\.lock/.test(path))).toBe(false);

@@ -10,6 +10,7 @@ import { SettingsView } from "./settings.tsx";
 import { BoardStrip } from "./strip.tsx";
 import { parseBoard, resolveZinn, runZinn, summarize } from "./zinn.ts";
 import { DEFAULT_SETTINGS, Prefs, REFRESH_CHOICES } from "./prefs.ts";
+import { createBoardRefresh } from "./refresh.ts";
 
 const errorText = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 
@@ -23,15 +24,10 @@ export default Plugin.define({
     const [summary, setSummary] = createSignal<BoardSummary | undefined>();
     const [error, setError] = createSignal("");
     const [directory, setDirectory] = createSignal("");
-    let refreshTimer: ReturnType<typeof setInterval> | undefined;
     let syncTimer: ReturnType<typeof setInterval> | undefined;
     let generation = 0;
 
-    const refresh = async () => {
-      if (!settings().summary) {
-        return;
-      }
-
+    const readBoard = async () => {
       const request = ++generation;
       const target = directory();
 
@@ -54,23 +50,22 @@ export default Plugin.define({
       }
     };
 
-    const armRefresh = () => {
-      if (refreshTimer !== undefined) clearInterval(refreshTimer);
-      refreshTimer = undefined;
-      if (!settings().summary) {
-        return;
-      }
-      refreshTimer = setInterval(() => void refresh(), settings().refreshSeconds * 1_000);
-    };
+    const board = createBoardRefresh({
+      summary: () => settings().summary,
+      directory: () => directory(),
+      routed: () => ctx.sessions.current() !== undefined,
+      seconds: () => settings().refreshSeconds,
+      read: readBoard,
+    });
 
     const update = (patch: Partial<Settings>) => {
       const next = { ...settings(), ...patch };
 
       setSettings(next);
       prefs.set(next);
-      armRefresh();
+      board.arm();
 
-      void refresh();
+      void board.refresh();
     };
 
     const sync = () => {
@@ -79,7 +74,8 @@ export default Plugin.define({
 
       if (nextDirectory !== directory()) {
         setDirectory(nextDirectory);
-        void refresh();
+        board.arm();
+        void board.refresh();
       }
 
       const stored = prefs.value;
@@ -100,19 +96,15 @@ export default Plugin.define({
         next.refreshSeconds !== settings().refreshSeconds
       ) {
         setSettings(next);
-        armRefresh();
-        void refresh();
+        board.arm();
+        void board.refresh();
       }
     };
 
     sync();
-    armRefresh();
+    board.arm();
 
     syncTimer = setInterval(sync, 1_000);
-
-    if (directory() === "") {
-      void refresh();
-    }
 
     const strip: Slot = {
       at: "window.bottom",
@@ -136,7 +128,7 @@ export default Plugin.define({
         {
           id: "refresh",
           title: "Refresh the board summary every",
-          description: "How often the strip re-reads Zinn.",
+          description: "How often the strip re-reads Zinn while a session is open. Home and drafts make no reads.",
           keywords: "interval poll sync",
         },
       ],
@@ -144,7 +136,7 @@ export default Plugin.define({
     });
 
     return () => {
-      if (refreshTimer !== undefined) clearInterval(refreshTimer);
+      board.stop();
       if (syncTimer !== undefined) clearInterval(syncTimer);
     };
   },

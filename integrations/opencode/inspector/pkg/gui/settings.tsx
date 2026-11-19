@@ -35,7 +35,7 @@ export function SettingsView(props: {
       >
         <div>
           <div style={{ "font-weight": 500 }}>Refresh the board summary every</div>
-          <div style={{ opacity: 0.7 }}>How often the strip re-reads Zinn.</div>
+          <div style={{ opacity: 0.7 }}>How often the strip re-reads Zinn while a session is open. Home and drafts make no reads.</div>
         </div>
         <div role="group" aria-label="Refresh interval" style={{ display: "flex", gap: "4px" }}>
           <For each={REFRESH_CHOICES}>

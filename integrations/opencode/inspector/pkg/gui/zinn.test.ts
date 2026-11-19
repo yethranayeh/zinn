@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { parseBoard, summarize } from "./zinn.ts";
+import packageJson from "../../package.json" with { type: "json" };
+import { parseBoard, runZinn, summarize } from "./zinn.ts";
 
 describe("parseBoard", () => {
   test("reads the JSON after a warning line", () => {
@@ -32,5 +36,32 @@ describe("summarize", () => {
       columns: [{ name: "Done", count: 1 }],
       readAt: 7,
     });
+  });
+});
+
+describe("runZinn", () => {
+  test("sets the GUI client token on every call", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "zinn-gui-client-"));
+    const script = join(directory, "zinn");
+    writeFileSync(script, "#!/bin/sh\nprintf '%s' \"$ZINN_CLIENT\"\n");
+    chmodSync(script, 0o755);
+    const original = process.env.ZINN_CLIENT;
+
+    try {
+      process.env.ZINN_CLIENT = "rex/0.9";
+      const chained = await runZinn({ file: script, prefix: [] }, [], directory);
+      expect(chained).toBe(`rex/0.9 zinn-opencode:inspector-gui/${packageJson.version}`);
+
+      delete process.env.ZINN_CLIENT;
+      const own = await runZinn({ file: script, prefix: [] }, [], directory);
+      expect(own).toBe(`zinn-opencode:inspector-gui/${packageJson.version}`);
+    } finally {
+      if (original === undefined) {
+        delete process.env.ZINN_CLIENT;
+      } else {
+        process.env.ZINN_CLIENT = original;
+      }
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
