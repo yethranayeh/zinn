@@ -74,6 +74,7 @@ test("homepage preserves product metadata, structured data and install commands"
     ...html.matchAll(/<script type="application\/ld\+json"[^>]*>(.*?)<\/script>/g),
   ].map((match) => JSON.parse(match[1]!));
   expect(structuredData.map((data) => data["@type"])).toEqual(["WebSite", "SoftwareApplication"]);
+  expect(structuredData[1].softwareRequirements).toBe(`Node.js >=${minimumNodeVersion}`);
   for (const data of structuredData) {
     expect(data.name).toBe("Zinn");
     expect(data.url).toBe("https://zinn.sh/");
@@ -440,6 +441,7 @@ test("llms.txt follows the published structure and all local links work", async 
     "comments",
     "JSON",
     "Experimental",
+    `Node.js ${minimumNodeVersion}`,
     "/docs/cli.md",
     "/docs/quick-start.md",
   ]) {

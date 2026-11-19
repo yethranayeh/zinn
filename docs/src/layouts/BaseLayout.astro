@@ -3,7 +3,7 @@ import "../styles/global.css";
 import SiteHeader from "../components/SiteHeader.astro";
 import SiteFooter from "../components/SiteFooter.astro";
 
-import { isProductionSite, projectLinks } from "../config/site";
+import { isProductionSite, minimumNodeVersion, projectLinks } from "../config/site";
 import { markdownTwinPath } from "../markdown/twin-path";
 
 interface Props {
@@ -48,7 +48,7 @@ const softwareApplication = {
 	url: Astro.site?.href,
 	description,
 	applicationCategory: "DeveloperApplication",
-	softwareRequirements: "Node.js >=24.15.0",
+	softwareRequirements: `Node.js >=${minimumNodeVersion}`,
 	isAccessibleForFree: true,
 	license: projectLinks.license,
 	sameAs: [projectLinks.github, projectLinks.npm]
