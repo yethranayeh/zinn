@@ -1,0 +1,79 @@
+name: Prepare Codex marketplace
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Full SHA of a commit on main. Leave blank to build main at dispatch.
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select source commit
+        env:
+          REQUESTED_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          source_commit="${REQUESTED_COMMIT:-$GITHUB_SHA}"
+          if [[ ! "$source_commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Enter a full commit SHA." >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$source_commit" "$GITHUB_SHA"; then
+            echo "The selected commit must be on main." >&2
+            exit 1
+          fi
+          git checkout --detach "$source_commit"
+          mkdir -p "$RUNNER_TEMP/codex-release"
+          git rev-parse HEAD > "$RUNNER_TEMP/codex-release/source-commit.txt"
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+
+      - name: Install build dependencies
+        run: |
+          bun install --frozen-lockfile
+          bun install --cwd integrations/codex --frozen-lockfile
+
+      - name: Build marketplace and archive
+        run: bun run codex:package
+
+      - name: Record release files
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/codex-release"
+          cp integrations/codex/release-dist/zinn-codex-*.tar.gz "$output/"
+          cp integrations/codex/release-dist/zinn-codex-*.tar.gz.sha256 "$output/"
+          (cd "$output" && sha256sum --strict --check zinn-codex-*.tar.gz.sha256)
+          (
+            cd integrations/codex/dist
+            find . -type f -print0 | sort -z | xargs -0 sha256sum
+          ) > "$output/marketplace-files.sha256"
+          read -r archive_sha archive_name < <(cat "$output"/zinn-codex-*.tar.gz.sha256)
+          {
+            printf 'Source commit `%s`\n\n' "$(cat "$output/source-commit.txt")"
+            printf 'Archive `%s`\n\n' "$archive_name"
+            printf 'Archive SHA-256 `%s`\n\n' "$archive_sha"
+            printf 'Build run ID `%s`\n' "$GITHUB_RUN_ID"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload reviewable release
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: codex-marketplace-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/codex-release
+          if-no-files-found: error

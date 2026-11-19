@@ -1,0 +1,121 @@
+name: Publish Codex marketplace
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run:
+        description: Run ID of the reviewed Prepare Codex marketplace build.
+        required: true
+        type: string
+      archive_sha256:
+        description: SHA-256 of the reviewed archive from the build summary.
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    concurrency:
+      group: codex-marketplace-publish
+      cancel-in-progress: false
+    steps:
+      - name: Verify preparation run
+        id: preparation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN: ${{ inputs.build_run }}
+          ARCHIVE_SHA: ${{ inputs.archive_sha256 }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$BUILD_RUN" =~ ^[1-9][0-9]*$ || ! "$ARCHIVE_SHA" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Enter a build run ID and lowercase SHA-256 from the build summary." >&2
+            exit 1
+          fi
+          attempt=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN" --jq '
+            select(
+              .path == ".github/workflows/prepare-codex-marketplace.yml"
+              and .head_branch == "main"
+              and .event == "workflow_dispatch"
+              and .conclusion == "success"
+            ) | .run_attempt
+          ')
+          if [[ ! "$attempt" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Select a successful Prepare Codex marketplace run from main." >&2
+            exit 1
+          fi
+          echo "artifact=codex-marketplace-$attempt" >> "$GITHUB_OUTPUT"
+
+      - name: Download reviewed release
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ steps.preparation.outputs.artifact }}
+          run-id: ${{ inputs.build_run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/codex-release
+
+      - name: Publish reviewed files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN: ${{ inputs.build_run }}
+          ARCHIVE_SHA: ${{ inputs.archive_sha256 }}
+        run: |
+          set -euo pipefail
+          release="$RUNNER_TEMP/codex-release"
+          archives=("$release"/zinn-codex-*.tar.gz)
+          if [[ "${#archives[@]}" != 1 || ! -f "${archives[0]}" ]]; then
+            echo "Expected exactly one release archive." >&2
+            exit 1
+          fi
+          archive="${archives[0]}"
+          printf '%s  %s\n' "$ARCHIVE_SHA" "$archive" | sha256sum --strict --check -
+          source_commit=$(cat "$release/source-commit.txt")
+          if [[ ! "$source_commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "The release artifact is missing its source commit." >&2
+            exit 1
+          fi
+
+          tree="$RUNNER_TEMP/codex-marketplace"
+          mkdir "$tree"
+          tar -xzf "$archive" -C "$tree" --strip-components=1
+          cd "$tree"
+          sha256sum --strict --check "$release/marketplace-files.sha256"
+          test -f .agents/plugins/marketplace.json
+          test -f plugins/zinn/.codex-plugin/plugin.json
+          version=$(jq -er '.version' plugins/zinn/.codex-plugin/plugin.json)
+          mkdir downloads
+          cp "$archive" downloads/
+          printf '%s  %s\n' "$ARCHIVE_SHA" "${archive##*/}" > "downloads/${archive##*/}.sha256"
+          jq -n \
+            --arg version "$version" \
+            --arg sourceCommit "$source_commit" \
+            --arg archiveSha256 "$ARCHIVE_SHA" \
+            --arg buildRun "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN" \
+            '{version: $version, sourceCommit: $sourceCommit, archiveSha256: $archiveSha256, buildRun: $buildRun}' \
+            > release.json
+
+          git init --quiet
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          gh auth setup-git
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          branch=refs/heads/codex-marketplace
+          parent=()
+          if git ls-remote --exit-code origin "$branch"; then
+            git fetch --no-tags --depth=1 origin "$branch"
+            parent=(-p FETCH_HEAD)
+          else
+            status=$?
+            if [[ "$status" != 2 ]]; then
+              exit "$status"
+            fi
+          fi
+          git add --all
+          commit=$(git commit-tree "$(git write-tree)" "${parent[@]}" \
+            -m "Release Codex plugin $version" -m "Source commit: $source_commit")
+          git push origin "$commit:$branch"
