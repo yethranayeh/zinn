@@ -1,0 +1,29 @@
+{
+	"name": "zinn",
+	"description": "Experimental Claude Code plugins for Zinn, the local task tracker.",
+	"owner": {
+		"name": "Zinn"
+	},
+	"plugins": [
+		{
+			"name": "zinn",
+			"source": {
+				"source": "git-subdir",
+				"url": "https://github.com/yethranayeh/zinn.git",
+				"path": "integrations/claude-code/zinn",
+				"sha": "0efb0ecd0af91966739eb0dadd81bd541fb5149f"
+			},
+			"description": "Zinn task keys in the transcript and a Zinn pane. Draws only, costs no tokens."
+		},
+		{
+			"name": "zinn-identity",
+			"source": {
+				"source": "git-subdir",
+				"url": "https://github.com/yethranayeh/zinn.git",
+				"path": "integrations/claude-code/zinn-identity",
+				"sha": "0efb0ecd0af91966739eb0dadd81bd541fb5149f"
+			},
+			"description": "Declares the Claude Code session, subagent, model and effort to Zinn in each shell. Environment only, costs no tokens."
+		}
+	]
+}
