@@ -1,0 +1,20 @@
+{
+  "name": "zinn",
+  "interface": {
+    "displayName": "Zinn"
+  },
+  "plugins": [
+    {
+      "name": "zinn",
+      "source": {
+        "source": "local",
+        "path": "./plugins/zinn"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

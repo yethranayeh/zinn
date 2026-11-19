@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "zinn": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "./launcher.mjs"
+      ],
+      "cwd": "."
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "zinn",
+  "version": "0.1.0",
+  "description": "Experimental local task inspection and execution identity for Codex desktop.",
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "Zinn",
+    "shortDescription": "Inspect local Zinn tasks",
+    "developerName": "Zinn",
+    "websiteURL": "https://zinn.sh/integrations/codex"
+  }
+}

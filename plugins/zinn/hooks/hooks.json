@@ -1,0 +1,55 @@
+{
+  "description": "Observe task references and supply execution identity for direct Zinn commands.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|Agent|collaborationspawn_agent|spawn_agent)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/hook.mjs\"",
+            "timeout": 3,
+            "statusMessage": "Zinn: PreToolUse"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(Bash|Agent|collaborationspawn_agent|spawn_agent)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/hook.mjs\"",
+            "timeout": 3,
+            "statusMessage": "Zinn: PostToolUse"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/hook.mjs\"",
+            "timeout": 3,
+            "statusMessage": "Zinn: SubagentStop"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/hook.mjs\"",
+            "timeout": 3,
+            "statusMessage": "Zinn: Stop"
+          }
+        ]
+      }
+    ]
+  }
+}
