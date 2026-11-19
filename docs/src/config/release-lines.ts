@@ -5,6 +5,7 @@
 export const integrationLines = {
   opencode: { label: "OpenCode", npm: "opencode" },
   "claude-code": { label: "Claude Code", github: "integrations/claude-code" },
+  codex: { label: "Codex", github: "plugins" },
 } as const;
 
 export type IntegrationLine = keyof typeof integrationLines;
