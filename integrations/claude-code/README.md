@@ -30,8 +30,7 @@ Always add the marketplace with `--sparse .claude-plugin`. Each plugin is fetche
 commit of its release, so the marketplace needs only that one folder of the repository. Start a new session
 afterwards.
 
-The two plugins install separately so that `zinn-identity` keeps working when a Claude Code update refuses
-the `zinn` plugin's module.
+The two plugins install separately so that `zinn-identity` keeps working when a Claude Code update refuses the `zinn` plugin's module.
 
 ## Update
 
@@ -45,13 +44,7 @@ claude plugin update zinn-identity@zinn
 
 ## Use
 
-- `/zinn-show ABC-8` opens a task, `/zinn-show ABC` its board, and `/zinn-show` alone the selected key or
-  the list of boards. In the pane, `j` goes back and `q` closes.
-- `/zinn` shows what is loaded. `/zinn refresh` reads the store again.
-- A click on a key under a reply opens it in the pane (fullscreen terminal).
-
-Options are set with `/plugin`, or for one session with the `ZINN_MENTIONS_*` and `ZINN_TASK_PANE_LAYOUT`
-environment variables that each option names.
+`/zinn-show ZCC-20` opens a task in a pane, and `/zinn` shows what is loaded. The [Claude Code guide](https://zinn.sh/integrations/claude-code) covers the pane, every option, the identity variables, updates and removal.
 
 ## Development
 

@@ -32,6 +32,28 @@ type IntegrationEntry = {
 
 const entries: IntegrationEntry[] = [
 	{
+		title: "Zinn for Claude Code",
+		host: "Claude Code",
+		description:
+			"Task keys with their status in Claude's replies, a task and board pane, and session identity for Zinn's activity log.",
+		path: "/integrations/claude-code",
+		action: "View setup"
+	},
+	{
+		title: opencodeInspector.title,
+		host: "OpenCode",
+		description: opencodeInspector.description,
+		path: opencodeInspector.path,
+		action: "View inspector"
+	},
+	{
+		title: "Zinn for Codex",
+		host: "Codex",
+		description: "Local task inspection and optional execution-identity hooks alongside a Codex desktop chat.",
+		path: "/integrations/codex",
+		action: "View setup"
+	},
+	{
 		title: "Zinn theme",
 		host: "OpenCode",
 		description: opencodeTheme.introduction,
@@ -58,20 +80,6 @@ const entries: IntegrationEntry[] = [
 		}
 	},
 	{
-		title: opencodeInspector.title,
-		host: "OpenCode",
-		description: opencodeInspector.description,
-		path: opencodeInspector.path,
-		action: "View inspector"
-	},
-	{
-		title: "Zinn for Codex",
-		host: "Codex",
-		description: "Local task inspection and optional execution-identity hooks alongside a Codex desktop chat.",
-		path: "/integrations/codex",
-		action: "View setup"
-	},
-	{
 		title: "Zinn theme",
 		host: "Firefox",
 		description: firefoxTheme.introduction,
@@ -88,10 +96,10 @@ const entries: IntegrationEntry[] = [
 ];
 ---
 
-<PageLayout title='Integrations' description='Themes and integrations maintained by Zinn.'>
+<PageLayout title='Integrations' description='Integrations and themes maintained by Zinn.'>
 	<MarkdownH1>Integrations</MarkdownH1>
 
-	<p class='max-w-xl text-lg leading-relaxed'>Themes and integrations maintained by Zinn.</p>
+	<p class='max-w-xl text-lg leading-relaxed'>Integrations and themes maintained by Zinn.</p>
 
 	<div class='mt-10 grid gap-5 md:grid-cols-2'>
 		{

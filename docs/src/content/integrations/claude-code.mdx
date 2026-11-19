@@ -1,0 +1,123 @@
+---
+title: Zinn for Claude Code
+description: Install the Zinn plugins for Claude Code, which show task keys with their status in the transcript, open tasks and boards in a pane and declare session identity to Zinn.
+---
+
+# Zinn for Claude Code
+
+Two Experimental Claude Code plugins.
+
+Neither of them add any tools or a prompt section. They are intended to not cost any tokens when enabled.
+
+- **`zinn`** marks every Zinn task key in Claude's replies with its status and title. It also flags keys that are not recgonized in the database. `/zinn-show` opens a task in a pane. A dim `zinn` in the prompt footer shows that the plugin is loaded. That slot is also used to name the task the current session has [claimed](/docs/cli/next#claim-tasks).
+- **`zinn-identity`** declares the Claude Code session, subagent, model and effort to Zinn in every shell Claude Code starts, so the [activity log](/docs/cli/activity) can tell sessions and subagents apart.
+
+The intention to keep them separate is if and when a Claude Code update breaks `zinn` itself. It would be beneificial to have `zinn-identity` keep working regardless.
+
+## Requirements
+
+- Claude Code **2.1.327** or newer. Each plugin declares this minimum.
+- The Zinn CLI on Claude Code's `PATH` as `zinn`. If you just follow [CLI installation](/docs/installation), you will be fine.
+  - Status marks from column categories and claims need CLI **0.45.0** or newer. With an older CLI, marks follow each column's name or its place on the board.
+
+The plugins read your database through the CLI, with the [environment](/docs/settings#choose-the-data-directory) Claude Code started with. `ZINN_DIR` set before starting Claude Code selects the database, as it does for any `zinn` command. Without it, Zinn uses `~/.zinn`. Every read is a CLI read, so the plugins never change tasks and record no activity.
+
+## Install
+
+```sh
+claude plugin marketplace add yethranayeh/zinn --sparse .claude-plugin
+claude plugin install zinn@zinn
+claude plugin install zinn-identity@zinn
+```
+
+Always add the marketplace with `--sparse .claude-plugin`. Each plugin is fetched from its own folder at the commit of its release, so the marketplace needs only that one folder of the repository. Without it, Claude Code keeps a copy of the whole repository. You wouldn't want that.
+
+Start a new session afterwards. You can install either plugin on its own.
+
+## Task keys in replies
+
+The plugin loads the keys of every project in your database when a session starts. A key in a reply then shows its status and title. By default, one legend line per key appears under the reply, and a key the database does not have is marked `✗ not in Zinn`. A claimed task says until when it is held, in local time: `yours until 14:30` for this session's claim, `held until 14:30` for another's. In the fullscreen terminal, a click on a key in the legend opens it in the pane.
+
+The key map stays current on its own. Every 30 seconds the plugin checks whether the database changed, with one CLI call, and reloads only when it did. A `zinn` write that Claude runs through the Bash tool reloads it at once. When a key moves to another column, a toast says so, such as `ZCC-7 -> Review`.
+
+`/zinn` says what is loaded. `/zinn refresh` reloads the key map.
+
+The plugin stops drawing when the running Claude Code is not the installed version, such as after an update while the session was open. It says `RESTART NEEDED` until you start a new session.
+
+## The pane
+
+- `/zinn-show ZCC-8` opens a task.
+- `/zinn-show ZCC` opens the board of project `ZCC`.
+- `/zinn-show` alone opens the task key in your text selection, or the list of boards when nothing is selected.
+
+Add `table`, `card` or `sectioned` to choose the task layout, as in `/zinn-show ZCC-8 card`. The pane's footer lists its keys. Escape does not close the pane: press `q`.
+
+## Options
+
+Set options with `/plugin`, under the plugin's configuration, or if you like torturing yourself, you can start Claude Code with the appropriate option names in the environment variable. Options set to `from-env` read it, but a variable applies to **that session only**. A change through `/plugin` is written to your user settings.
+
+| Option          | Default               | Variable                    | Sets                                                                                                                                                                       |
+| --------------- | --------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`       | `true`                |                             | Off draws nothing and does not read the database.                                                                                                                          |
+| `look`          | `under`               | `ZINN_MENTIONS_LOOK`        | `under` keeps the reply as written and adds a legend. `suffix`, `brackets` and `colour` mark the key in place. `off` draws nothing.                                        |
+| `legend`        | `stacked`             | `ZINN_MENTIONS_LEGEND`      | The legend's form with `look` `under`: `stacked`, `spaced`, `brackets` or `dots`.                                                                                          |
+| `maxEntries`    | `5`                   | `ZINN_MENTIONS_MAX_ENTRIES` | Legend entries per reply before `+N more`. `0` means no limit. Unknown keys are always shown.                                                                              |
+| `keyPress`      | `button`              | `ZINN_MENTIONS_KEY_PRESS`   | What a click on a key in a stacked legend does: `button` opens the pane, `link` draws a link, `off` draws plain text.                                                      |
+| `marks`         | `shapes`              | `ZINN_MENTIONS_MARKS`       | Status as `shapes` or as `words`.                                                                                                                                          |
+| `titleLength`   | `40`                  |                             | Characters of the title shown. `0` shows the status only.                                                                                                                  |
+| `projects`      | every project         |                             | Comma-separated project keys to mark, such as `ZCC,XYZ`. Keys of other projects are neither marked nor flagged.                                                            |
+| `myPrompts`     | `leave`               | `ZINN_MENTIONS_MY_PROMPTS`  | `decorate` marks keys in your own prompts too.                                                                                                                             |
+| `tailGuardMs`   | `400`                 |                             | While a reply streams, a key at its very end stays plain until the text has been still this long, so `ZCC-2` is not marked before it becomes `ZCC-27`. `0` turns this off. |
+| `pollSeconds`   | `30`                  |                             | Seconds between database checks. `0` turns the check off. Values from 1 to 4 count as 5.                                                                                   |
+| `toastOnChange` | `true`                |                             | The toast when a key changes column.                                                                                                                                       |
+| `statusLine`    | `problems`            | `ZINN_MENTIONS_STATUS_LINE` | When a line is pinned under the prompt: `problems`, `always` or `off`.                                                                                                     |
+| `footerLabel`   | `true`                |                             | The `zinn` label in the prompt footer, shown as `zinn ✗` while something is wrong.                                                                                         |
+| `footerClaim`   | `true`                |                             | The claimed task in the footer label, such as `zinn ◆ ZCC-7`.                                                                                                              |
+| `pane`          | `true`                |                             | Off registers no `/zinn-show` and opens no pane.                                                                                                                           |
+| `layout`        | `table`               | `ZINN_TASK_PANE_LAYOUT`     | The pane's task layout: `table`, `card` or `sectioned`.                                                                                                                    |
+| `log`           | `false`               | `ZINN_MENTIONS_LOG`         | Writes counts and timings, never transcript text, to `logDir`. Set the variable to `1`.                                                                                    |
+| `logDir`        | `~/.zinn/traces/zinn` |                             | Absolute folder for that log.                                                                                                                                              |
+
+## Identity in shells
+
+`zinn-identity` sets these variables in the environment of each shell that Claude Code's Bash and Monitor tools start:
+
+- `ZINN_SESSION_ID`: the conversation.
+- `ZINN_THREAD_ID`: the subagent running the command. It is unset for the main conversation.
+- `ZINN_AGENT`, `ZINN_MODEL` and `ZINN_EFFORT`: the agent type, model and effort of the conversation or subagent running the command.
+
+The last four are left unset while commands of two conversations or subagents run at the same time, because the plugin **cannot tell** which one started the shell.
+
+`ZINN_SESSION_ID` is always set. Zinn records these values with every change a `zinn` command makes. See [actor identity](/docs/cli/identity) for how they appear in the activity log.
+
+| Option    | Default                        | Variable            | Sets                                                                                            |
+| --------- | ------------------------------ | ------------------- | ----------------------------------------------------------------------------------------------- |
+| `enabled` | `true`                         |                     | Off sets no variable.                                                                           |
+| `log`     | `false`                        | `ZINN_IDENTITY_LOG` | Writes each decision, never a command or transcript text, to `logDir`. Set the variable to `1`. |
+| `logDir`  | `~/.zinn/traces/zinn-identity` |                     | Absolute folder for that log.                                                                   |
+
+## Update, disable and remove
+
+Updates are manual. To get a new release:
+
+```sh
+claude plugin marketplace update zinn
+claude plugin update zinn@zinn
+claude plugin update zinn-identity@zinn
+```
+
+Start a new session afterwards. A release reaches you only when its version changes.
+
+To stop loading a plugin, run `claude plugin disable zinn@zinn`, and `claude plugin enable zinn@zinn` to load it again. To remove the plugins and the marketplace:
+
+```sh
+claude plugin uninstall zinn@zinn
+claude plugin uninstall zinn-identity@zinn
+claude plugin marketplace remove zinn
+```
+
+Your Zinn database is unaffected. Remove `~/.zinn/traces/zinn` and `~/.zinn/traces/zinn-identity` if you turned on a log. No trace left behind.
+
+## Problems
+
+Report problems through [GitHub Issues](https://github.com/yethranayeh/zinn/issues). Include the plugin versions, the Claude Code version, the Zinn CLI version and your operating system. Keep database files and private task text out of the report.
