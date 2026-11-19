@@ -1,0 +1,16 @@
+---
+version: 0.1.0
+date: "2026-11-19"
+commit: 0efb0ecd0af91966739eb0dadd81bd541fb5149f
+plugins:
+  zinn: 0.1.0
+  zinn-identity: 0.1.0
+---
+
+### Added
+
+- The `zinn` plugin marks each Zinn task key in Claude's replies with its status and title, and flags keys the database does not have. A claimed task says until when it is held. Requires Claude Code 2.1.327 and Zinn CLI 0.45.0 or newer. See [Zinn for Claude Code](/integrations/claude-code).
+- `/zinn-show` opens a task, a board or the list of boards in a pane. `/zinn` says what is loaded, and `/zinn refresh` reloads the key map.
+- The key map follows changes to the database, and a toast names a task that moved to another column. A `zinn` label in the prompt footer shows that the plugin is loaded and names the task this session has claimed.
+- The `zinn-identity` plugin sets `ZINN_SESSION_ID`, `ZINN_THREAD_ID`, `ZINN_AGENT`, `ZINN_MODEL` and `ZINN_EFFORT` in the shells Claude Code starts, so the activity log can tell sessions and subagents apart. See [actor identity](/docs/cli/identity).
+- Install both from GitHub with `claude plugin marketplace add yethranayeh/zinn --sparse .claude-plugin`. Each plugin is fetched at the commit of its release.

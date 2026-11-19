@@ -3,6 +3,7 @@ import type { IntegrationLine } from "./release-lines";
 
 import { getCollection } from "astro:content";
 import { integrationLines } from "./release-lines";
+import { projectLinks } from "./site";
 
 type ReleaseEntry = CollectionEntry<"releases"> | CollectionEntry<"integrationReleases">;
 
@@ -52,21 +53,19 @@ export async function getReleases(): Promise<ChangelogRelease[]> {
         );
       }
 
-      const { label, packageName } = integrationLines[folder];
+      const line = integrationLines[folder];
       const { version, date } = entry.data;
 
       return {
         anchor: releaseAnchor(version, folder),
-        heading: `${label} ${version}`,
-        lineLabel: label,
+        heading: `${line.label} ${version}`,
+        lineLabel: line.label,
         version,
         date,
-        packages: [
-          {
-            label: `@zinn-dev/${packageName} ${version}`,
-            url: npmPackageUrl(packageName, version),
-          },
-        ],
+        packages:
+          "npm" in line
+            ? [{ label: `@zinn-dev/${line.npm} ${version}`, url: npmPackageUrl(line.npm, version) }]
+            : githubPackages(entry, line.github),
         entry,
       };
     },
@@ -80,6 +79,26 @@ export async function getReleases(): Promise<ChangelogRelease[]> {
       zinnFirst(a) - zinnFirst(b) ||
       b.version.localeCompare(a.version, undefined, { numeric: true }),
   );
+}
+
+/** Each plugin of a GitHub release, linked to its folder at the commit the release pins. */
+function githubPackages(
+  entry: CollectionEntry<"integrationReleases">,
+  folder: string,
+): ReleasePackage[] {
+  const { commit, plugins } = entry.data;
+  if (commit === undefined || plugins === undefined) {
+    throw new Error(`src/releases/${entry.id}.mdx needs commit and plugins`);
+  }
+
+  return Object.entries(plugins).map(([name, version]) => ({
+    label: `${name} ${version}`,
+    url: githubTreeUrl(commit, `${folder}/${name}`),
+  }));
+}
+
+export function githubTreeUrl(commit: string, path: string): string {
+  return `${projectLinks.github}/tree/${commit}/${path}`;
 }
 
 function isIntegrationLine(folder: string): folder is IntegrationLine {

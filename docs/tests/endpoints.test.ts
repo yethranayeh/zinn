@@ -176,7 +176,7 @@ test("changelog and its Markdown twin list every release entry, newest first", a
       source.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/) ?? [];
     const field = (key: string) =>
       frontmatter.match(new RegExp(`^${key}: "?([^"\\r\\n]+)"?$`, "m"))?.[1];
-    return { field, notes: notes.trim() };
+    return { field, frontmatter, notes: notes.trim() };
   };
   const releaseFiles = (await readdir(releasesDirectory, { recursive: true })).filter((file) =>
     file.endsWith(".mdx"),
@@ -211,20 +211,33 @@ test("changelog and its Markdown twin list every release entry, newest first", a
       .map(async (file) => {
         const line = file.split("/")[0] as IntegrationLine;
         expect(Object.keys(integrationLines)).toContain(line);
-        const { label, packageName } = integrationLines[line];
-        const { field, notes } = await readRelease(file);
+        const lineInfo = integrationLines[line];
+        const { field, frontmatter, notes } = await readRelease(file);
         const version = field("version")!;
+        // A GitHub line lists each plugin at the release commit, one indented `name: version` line each.
+        const githubPackages = (folder: string) => {
+          const commit = field("commit")!;
+          const pluginBlock = frontmatter.match(/^plugins:\r?\n((?:[ \t]+\S.*\r?\n?)+)/m)?.[1] ?? "";
+          const plugins = [...pluginBlock.matchAll(/^[ \t]+([\w-]+): "?([\d.]+)"?/gm)];
+          expect(commit).toMatch(/^[0-9a-f]{40}$/);
+          expect(plugins.length).toBeGreaterThan(0);
+          return plugins.map(([, name, pluginVersion]) => ({
+            label: `${name} ${pluginVersion}`,
+            url: `https://github.com/yethranayeh/zinn/tree/${commit}/${folder}/${name}`,
+          }));
+        };
         return {
           zinnLine: false,
           version,
           date: field("date")!,
           notes,
-          title: `${label} ${version}`,
+          title: `${lineInfo.label} ${version}`,
           name: undefined,
           anchor: `release-${line}-${version.replaceAll(".", "")}`,
-          packages: [
-            { label: `@zinn-dev/${packageName} ${version}`, url: npmUrl(packageName, version) },
-          ],
+          packages:
+            "npm" in lineInfo
+              ? [{ label: `@zinn-dev/${lineInfo.npm} ${version}`, url: npmUrl(lineInfo.npm, version) }]
+              : githubPackages(lineInfo.github),
         };
       }),
   );

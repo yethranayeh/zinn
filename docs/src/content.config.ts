@@ -44,6 +44,12 @@ export const collections = {
     schema: z.object({
       version: semver,
       date: z.iso.date(),
+      // Lines released from GitHub: the commit the release pins, and each plugin's version in it.
+      commit: z
+        .string()
+        .regex(/^[0-9a-f]{40}$/)
+        .optional(),
+      plugins: z.record(z.string(), semver).optional(),
     }),
   }),
 };
