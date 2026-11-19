@@ -1,6 +1,6 @@
 {
 	"name": "zinn",
-	"version": "0.1.0",
+	"version": "0.2.0-dev",
 	"description": "Zinn task keys in the Claude Code transcript and a Zinn pane. Under each reply, a status mark and a short title for every task key it mentions, with a key the store lacks flagged. /zinn-show opens a task, a board or the list of boards. Draws only and reads the store read-only by argv: no tool, no prompt section, no model turn, so it costs no tokens.",
 	"types": "./types/index.d.ts",
 	"author": {
@@ -84,7 +84,7 @@
 		"pollSeconds": {
 			"type": "number",
 			"title": "Live key map: poll (seconds)",
-			"description": "Every this many seconds the plugin runs one CLI call (zinn activity list --limit 1 --json, about 260 ms, no tokens) and reloads the key map only when the newest activity id changed: a write from another session or your own terminal. 0 turns the poll off. A value from 1 to 4 is raised to 5. The plugin also refreshes at once after a zinn write made through this session's Bash tool. That part has no option.",
+			"description": "Every this many seconds the plugin runs one CLI call (zinn activity list --limit 1 --json, about 260 ms, no tokens) and reloads the key map only when the newest activity id changed: a write from another session or your own terminal. 0 turns the poll off. A value from 1 to 4 is raised to 5. The plugin also refreshes at once after a zinn write made through this session's Bash tool. That part has no option. While the session is idle the gap doubles after each check, up to 10 minutes, and the next turn or tool call checks at once and restores the interval. At the default of 30: about 120 calls per session-hour in use, 9 in the first idle hour and 6 in each idle hour after.",
 			"default": 30
 		},
 		"toastOnChange": {

@@ -2,7 +2,7 @@
 import type { EngineInterface } from "claude-code";
 import { clientChain, clientToken, type ClientPart } from "../lib/client";
 
-const VERSION = "0.1.0"; // the same as .claude-plugin/plugin.json. The check fails when the two differ
+const VERSION = "0.2.0-dev"; // the same as .claude-plugin/plugin.json. The check fails when the two differ
 
 export { VERSION };
 

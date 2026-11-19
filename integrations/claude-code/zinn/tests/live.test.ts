@@ -65,6 +65,7 @@ function world(on: On): Live {
   on('ui.render', async (_$, e) => ({ type: 'Text', props: {}, children: [String((e.props as { text?: string }).text ?? '')] }) as never)
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
   on('session.end', async (_$, e) => ({ sessionId: e.sessionId }))
+  on('turn.start', async (_$, e) => ({ turnId: e.turnId }))
   on('tool.call', async (_$, e) => { w.toolsSeen.push(String((e as { command?: unknown }).command ?? '')); return CORE })
   return w
 }
@@ -204,9 +205,9 @@ test('poll: the id has not changed -> no refresh', BASE, async ($, on) => {
   const base = activityRuns(w)
   await w.clock.advance(30_000)
   await settle(w)
-  await w.clock.advance(30_000)
+  await w.clock.advance(60_000) // the second gap of an unused session
   await settle(w)
-  expect(activityRuns(w)).toBe(base + 2) // one cheap call per interval
+  expect(activityRuns(w)).toBe(base + 2) // one cheap call per check
   expect(listRuns(w)).toBe(lists)
 })
 
@@ -221,6 +222,48 @@ test('poll: the id changed -> one full refresh, and the new id is remembered', B
   await w.clock.advance(30_000)
   await settle(w)
   expect(listRuns(w)).toBe(lists + 1) // same id again: nothing
+})
+
+const MINUTE = 60_000
+
+test('ZCC-22 poll: an unused session doubles the gap after each check, up to 10 minutes', BASE, async ($, on) => {
+  const w = world(on)
+  await $.session.start(START)
+  const base = activityRuns(w)
+  const at = async (minutes: number) => { await w.clock.advance(minutes * MINUTE); await settle(w); return activityRuns(w) - base }
+  // Checks at 0.5, 1.5, 3.5, 7.5, 15.5, 25.5, 35.5, 45.5 and 55.5 minutes.
+  expect(await at(4)).toBe(3)
+  expect(await at(56)).toBe(9)
+  expect(await at(60)).toBe(15) // every 10 minutes from here on
+})
+
+test('ZCC-22 poll: the next turn after a slowdown checks once at once, then every 30 s', BASE, async ($, on) => {
+  const w = world(on)
+  await $.session.start(START)
+  await w.clock.advance(20 * MINUTE)
+  await settle(w)
+  const lists = listRuns(w)
+  const slowed = activityRuns(w)
+  w.activity.id = 'a-2'
+  await $.turn.start({ text: 'what next', turnId: 't-1' })
+  await settle(w)
+  expect(activityRuns(w)).toBe(slowed + 1)
+  expect(listRuns(w)).toBe(lists + 1) // the catch-up saw the change
+  await w.clock.advance(30_000)
+  await settle(w)
+  expect(activityRuns(w)).toBe(slowed + 2)
+})
+
+test('ZCC-22 poll: a tool call of any kind keeps the normal interval', BASE, async ($, on) => {
+  const w = world(on)
+  await $.session.start(START)
+  const base = activityRuns(w)
+  for (let i = 0; i < 20; i++) {
+    await w.clock.advance(30_000)
+    await settle(w)
+    await $.tool.call({ tool: 'Read', file_path: '/tmp/x' } as never)
+  }
+  expect(activityRuns(w)).toBe(base + 20) // every 30 s for 10 minutes
 })
 
 test('pollSeconds 0: no timer and no activity call at all', { options: { look: 'under', pollSeconds: 0 } }, async ($, on) => {

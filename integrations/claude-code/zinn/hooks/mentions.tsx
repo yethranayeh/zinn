@@ -69,6 +69,8 @@ const SEEN_MAX = 500;
 const MAP_REF = { plugin: "zinn", key: "map" } as const;
 /** A legend is redrawn this long after the first claim it shows runs out. */
 const EXPIRY_REDRAW_MS = 1000;
+/** The longest gap the idle poll grows to. */
+const IDLE_MAX_GAP_MS = 10 * 60_000;
 
 type Dollar = EngineInterface;
 type Comp = "AssistantMessage" | "UserMessage";
@@ -96,6 +98,11 @@ let wantKeys = new Set<string>();
 let draining: Promise<void> | null = null;
 let lastActivity: string | null = null;
 let polling = false;
+// The poll slows while the session is idle: each check without a sign of use doubles the gap to the next.
+let pollOn = false;
+let pollPeriodMs = 0;
+let pollGapMs = 0;
+let sinceCheckMs = 0;
 const seen = new Map<string, { text: string; at: number }>();
 // Keys this session's messages named, for the claim toast. Capped like `seen`.
 const mentioned = new Set<string>();
@@ -676,6 +683,19 @@ async function pollTick($: Dollar): Promise<void> {
   }
 }
 
+/** A turn or a tool call: back to the normal interval, with one check at once when a tick went unchecked. */
+function markUse($: Dollar): void {
+  if (!pollOn) {
+    return;
+  }
+  pollGapMs = pollPeriodMs;
+  const mapIsBehind = sinceCheckMs >= pollPeriodMs;
+  if (mapIsBehind) {
+    sinceCheckMs = 0;
+    void pollTick($).catch(() => undefined);
+  }
+}
+
 async function readEnv($: Dollar): Promise<EnvReads> {
   // `$.env.get` takes a literal name (validate lists the variables a module reads).
   const none = (): undefined => undefined;
@@ -753,6 +773,21 @@ export const registerMentions = (on: On, options: PluginOptions): void => {
     await flush($, [JSON.stringify({ ev: "end", own: stats(ownTimes), decorated })]).catch(
       () => undefined,
     );
+    return next(e);
+  });
+
+  // Signs of use for the poll. Observe-only: every turn and tool call, the main loop's and each subagent's,
+  // passes as it came.
+  on("tool.call", async ($, e, next) => {
+    markUse($);
+    return next(e);
+  });
+  on("turn.start", async ($, e, next) => {
+    markUse($);
+    return next(e);
+  });
+  on("turn.complete", async ($, e, next) => {
+    markUse($);
     return next(e);
   });
 
@@ -923,8 +958,21 @@ export async function startMentions(
     void flush($).catch(() => undefined);
   });
   // The poll. Off with pollSeconds 0, when decorations are off, and when the mod stopped itself (RESTART NEEDED).
-  if (cfg.enabled && cfg.look !== "off" && cfg.pollSeconds > 0) {
-    $.clock.every(cfg.pollSeconds * 1000, () => {
+  // The timer ticks every pollSeconds. A tick checks once the current gap has passed, and each check
+  // doubles the gap, up to IDLE_MAX_GAP_MS, until a sign of use resets it.
+  pollOn = cfg.enabled && cfg.look !== "off" && cfg.pollSeconds > 0;
+  pollPeriodMs = cfg.pollSeconds * 1000;
+  pollGapMs = pollPeriodMs;
+  sinceCheckMs = 0;
+  if (pollOn) {
+    const maxGapMs = Math.max(pollPeriodMs, IDLE_MAX_GAP_MS);
+    $.clock.every(pollPeriodMs, () => {
+      sinceCheckMs += pollPeriodMs;
+      if (sinceCheckMs < pollGapMs) {
+        return;
+      }
+      sinceCheckMs = 0;
+      pollGapMs = Math.min(pollGapMs * 2, maxGapMs);
       void pollTick($).catch(() => undefined);
     });
   }
