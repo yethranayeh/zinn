@@ -5,6 +5,9 @@
 	"author": {
 		"name": "Zinn"
 	},
+	"engines": {
+		"claude-code": ">=2.1.327"
+	},
 	"userConfig": {
 		"enabled": {
 			"type": "boolean",

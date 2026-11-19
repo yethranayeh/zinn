@@ -13,25 +13,34 @@ prompt section or a model turn, so neither costs tokens.
 
 ## Requirements
 
-- Claude Code with mods (plugins with a hooks module). Tested with 2.1.327.
+- Claude Code 2.1.327 or newer, with mods (plugins with a hooks module).
 - The Zinn CLI on `PATH` as `zinn`. Tested with 0.45.0. The plugins read the store through it. Marks follow
   each column's category and claims show, both from 0.45.0. With an older CLI marks follow the column's name
   or its place on the board.
 
 ## Install
 
-From a clone of this repository:
-
 ```sh
-claude plugin marketplace add ./integrations/claude-code
+claude plugin marketplace add yethranayeh/zinn --sparse .claude-plugin
 claude plugin install zinn@zinn
 claude plugin install zinn-identity@zinn
 ```
 
-Start a new session afterwards. To try a plugin for one session without installing it:
+Always add the marketplace with `--sparse .claude-plugin`. Each plugin is fetched from its own folder at the
+commit of its release, so the marketplace needs only that one folder of the repository. Start a new session
+afterwards.
+
+The two plugins install separately so that `zinn-identity` keeps working when a Claude Code update refuses
+the `zinn` plugin's module.
+
+## Update
+
+Updates are manual. To get a new release:
 
 ```sh
-claude --plugin-dir ./integrations/claude-code/zinn
+claude plugin marketplace update zinn
+claude plugin update zinn@zinn
+claude plugin update zinn-identity@zinn
 ```
 
 ## Use
@@ -50,3 +59,17 @@ environment variables that each option names.
 `claude plugin test` and a type check against the running Claude Code's declarations. Claude Code writes
 those declarations when a session loads its plugin-authoring skill, so load that skill once after a Claude
 Code update. A running session hot-reloads a plugin loaded with `--plugin-dir` when its files change.
+
+To use the plugins from a clone, as they are on your branch:
+
+```sh
+claude plugin marketplace add ./integrations/claude-code
+claude plugin install zinn@zinn-dev
+claude plugin install zinn-identity@zinn-dev
+```
+
+To try a plugin for one session without installing it:
+
+```sh
+claude --plugin-dir ./integrations/claude-code/zinn
+```

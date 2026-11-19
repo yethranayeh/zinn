@@ -1,5 +1,5 @@
 {
-	"name": "zinn",
+	"name": "zinn-dev",
 	"description": "Experimental Claude Code plugins for Zinn, the local task tracker.",
 	"owner": {
 		"name": "Zinn"
