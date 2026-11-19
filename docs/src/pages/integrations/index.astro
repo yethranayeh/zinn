@@ -11,99 +11,18 @@ import Chip from "../../components/ui/chip/Chip.astro";
 import Icon from "../../components/ui/icon/Icon.astro";
 import MarkdownH1 from "../../components/MarkdownH1.astro";
 
-import { cloudinaryImage } from "../../images/cloudinary";
-import { opencodeInspector } from "../../config/opencode-inspector";
-import { opencodeScenes, opencodeTheme } from "../../config/opencode-theme";
-import { rexScenes, rexTheme } from "../../config/rex-theme";
-import { firefoxTheme } from "../../config/firefox-theme";
-
-const opencodePreview = opencodeScenes.find((scene) => scene.id === "code")!;
-const rexPreview = rexScenes.find((scene) => scene.id === "shell")!;
-const firefoxPreview = firefoxTheme.themes[0]!;
-
-type IntegrationEntry = {
-	title: string;
-	host: string;
-	description: string;
-	path: string;
-	action: string;
-	image?: { src: string; alt: string; width: number; height: number; banner?: boolean };
-};
-
-const entries: IntegrationEntry[] = [
-	{
-		title: "Zinn for Claude Code",
-		host: "Claude Code",
-		description:
-			"Task keys with their status in Claude's replies, a task and board pane, and session identity for Zinn's activity log.",
-		path: "/integrations/claude-code",
-		action: "View setup"
-	},
-	{
-		title: opencodeInspector.title,
-		host: "OpenCode",
-		description: opencodeInspector.description,
-		path: opencodeInspector.path,
-		action: "View inspector"
-	},
-	{
-		title: "Zinn for Codex",
-		host: "Codex",
-		description: "Local task inspection and optional execution-identity hooks alongside a Codex desktop chat.",
-		path: "/integrations/codex",
-		action: "View setup"
-	},
-	{
-		title: "Zinn theme",
-		host: "OpenCode",
-		description: opencodeTheme.introduction,
-		path: opencodeTheme.path,
-		action: "View theme",
-		image: {
-			src: cloudinaryImage(opencodePreview.images.dark!, 1280),
-			alt: "The Zinn theme displaying code and tables in OpenCode",
-			width: 2840,
-			height: 1640
-		}
-	},
-	{
-		title: "Zinn theme",
-		host: "Rex",
-		description: rexTheme.introduction,
-		path: rexTheme.path,
-		action: "View theme",
-		image: {
-			src: cloudinaryImage(rexPreview.images.dark!, 1280),
-			alt: "The Zinn theme showing a shell session in Rex",
-			width: 3248,
-			height: 1900
-		}
-	},
-	{
-		title: "Zinn theme",
-		host: "Firefox",
-		description: firefoxTheme.introduction,
-		path: firefoxTheme.path,
-		action: "View theme",
-		image: {
-			src: firefoxPreview.image,
-			alt: firefoxPreview.imageAlt,
-			width: 680,
-			height: 92,
-			banner: true
-		}
-	}
-];
+import { integrationsHub } from "../../config/integrations-hub";
+import { integrations } from "../../config/integrations";
 ---
 
-<PageLayout title='Integrations' description='Integrations and themes maintained by Zinn.'>
-	<MarkdownH1>Integrations</MarkdownH1>
+<PageLayout title={integrationsHub.title} description={integrationsHub.description}>
+	<MarkdownH1>{integrationsHub.title}</MarkdownH1>
 
-	<p class='max-w-xl text-lg leading-relaxed'>Integrations and themes maintained by Zinn.</p>
+	<p class='max-w-xl text-lg leading-relaxed'>{integrationsHub.description}</p>
 
 	<div class='mt-10 grid gap-5 md:grid-cols-2'>
 		{
-			entries.map((entry) => (
+			integrations.map((entry) => (
 				<a class='group block no-underline hover:no-underline' href={entry.path}>
 					<Card class='h-full'>
 						{entry.image && (

@@ -1,5 +1,23 @@
 import type { APIRoute } from "astro";
+
+import { integrationsHub } from "../config/integrations-hub";
+import { integrations } from "../config/integrations";
 import { projectLinks } from "../config/site";
+import { markdownTwinPath } from "../markdown/twin-path";
+
+const integrationLinks = [
+  integrationsHub,
+  ...integrations.map(({ path, host, label, discovery }) => ({
+    path,
+    title: discovery.title ?? label ?? host,
+    description: discovery.description,
+  })),
+]
+  .map(
+    ({ path, title, description }) =>
+      `- [${title}](https://zinn.sh${markdownTwinPath(path)}): ${description}`,
+  )
+  .join("\n");
 
 export const GET: APIRoute = () =>
   new Response(
@@ -30,13 +48,7 @@ When to use Zinn: track development work locally, carry task scope and progress 
 
 ## Project information
 
-- [Integrations](https://zinn.sh/integrations.md): Integrations and themes maintained by Zinn.
-- [Claude Code integration](https://zinn.sh/integrations/claude-code.md): Plugin installation from GitHub, task keys in replies, the task pane, options, identity variables, update and removal.
-- [OpenCode task inspector](https://zinn.sh/integrations/opencode/inspector.md): Native package setup, task marks, compatibility, update and removal.
-- [Codex integration](https://zinn.sh/integrations/codex.md): Local task inspector, source build, explicit database selection, hook trust, identity and privacy settings.
-- [OpenCode theme](https://zinn.sh/integrations/opencode/theme.md): Screenshots, download and setup for the Zinn theme in light and dark.
-- [Rex theme](https://zinn.sh/integrations/rex/theme.md): Screenshots, download and setup for the Zinn theme in Rex, in light and dark.
-- [Firefox theme](https://zinn.sh/integrations/firefox/theme.md): Light and dark themes in two textures, installed from Mozilla Add-ons.
+${integrationLinks}
 - [About Zinn](https://zinn.sh/about.md): Scope, Experimental status, source and license.
 - [Contact](https://zinn.sh/contact.md): Public issue reporting and support information.
 - [Privacy](https://zinn.sh/privacy.md): Website hosting and analytics, local CLI data and external links.

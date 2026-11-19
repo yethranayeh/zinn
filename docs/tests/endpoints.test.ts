@@ -9,6 +9,8 @@ import {
   storageNote,
 } from "../src/components/pricing/figures";
 import { firefoxTheme } from "../src/config/firefox-theme";
+import { integrationsHub } from "../src/config/integrations-hub";
+import { integrations } from "../src/config/integrations";
 import { opencodeInspector } from "../src/config/opencode-inspector";
 import { opencodeScenes, opencodeTheme } from "../src/config/opencode-theme";
 import { rexScenes, rexTheme } from "../src/config/rex-theme";
@@ -25,6 +27,7 @@ import {
 import { integrationLines, type IntegrationLine } from "../src/config/release-lines";
 import { agentSetupPrompt, installCommand, minimumNodeVersion } from "../src/config/site";
 import { splitShellCommands, startsWithShebang } from "../src/markdown/shell-commands";
+import { markdownTwinPath } from "../src/markdown/twin-path";
 import { expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -734,6 +737,34 @@ test("theme pages tag downloads and the Firefox page names each Add-ons target",
   expect(firefox.match(/data-site-event="outbound-click"/g)).toHaveLength(4);
   expect(firefox.match(/data-site-event-target="mozilla-addons-halftone"/g)).toHaveLength(2);
   expect(firefox.match(/data-site-event-target="mozilla-addons-lattice"/g)).toHaveLength(2);
+});
+
+test("the integration gallery, Markdown index and llms.txt list the same detail pages in order", async () => {
+  const hubMarkdownPath = markdownTwinPath(integrationsHub.path);
+  const responses = await Promise.all([
+    server.fetch(integrationsHub.path),
+    server.fetch(hubMarkdownPath),
+    server.fetch("/llms.txt"),
+  ]);
+  expect(responses.map((response) => response.status)).toEqual([200, 200, 200]);
+  const [html, markdown, discovery] = await Promise.all(responses.map((response) => response.text()));
+
+  const detailPaths = integrations.map(({ path }) => path);
+  const isIntegrationDetail = (path: string) => path.startsWith(`${integrationsHub.path}/`);
+  const main = html!.match(/<main\b[^>]*>([\s\S]*?)<\/main>/)?.[1] ?? "";
+  const galleryPaths = [...main.matchAll(/<a\b[^>]*href="([^"]+)"/g)]
+    .map((match) => match[1]!)
+    .filter(isIntegrationDetail);
+  // Each section starts its link paragraph with the detail page, followed by any downloads.
+  const markdownPaths = [...markdown!.matchAll(/^\[[^\]]+\]\(https:\/\/zinn\.sh([^\)]+)\)/gm)]
+    .map((match) => match[1]!)
+    .filter(isIntegrationDetail);
+  const discoveryPaths = [...discovery!.matchAll(/^- \[[^\]]+\]\(https:\/\/zinn\.sh([^\)]+)\)/gm)]
+    .map((match) => match[1]!)
+    .filter((path) => path === hubMarkdownPath || isIntegrationDetail(path));
+  expect(galleryPaths).toEqual(detailPaths);
+  expect(markdownPaths).toEqual(detailPaths);
+  expect(discoveryPaths).toEqual([hubMarkdownPath, ...detailPaths.map(markdownTwinPath)]);
 });
 
 test("integration routes expose the gallery, Markdown and canonical theme download", async () => {
