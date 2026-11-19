@@ -66,12 +66,12 @@ export const integrations: IntegrationEntry[] = [
     action: "View setup",
     markdown: {
       links: (url) =>
-        `[View Codex setup](${url}) for the source build, database selection, hook trust, privacy, compatibility and removal.`,
+        `[View Codex setup](${url}) for GitHub installation, database selection, hook trust, privacy, compatibility and removal.`,
     },
     discovery: {
       title: "Codex integration",
       description:
-        "Local task inspector, source build, explicit database selection, hook trust, identity and privacy settings.",
+        "Plugin installation from GitHub, local task inspection, database selection, hook trust, identity and privacy settings.",
     },
   },
   {

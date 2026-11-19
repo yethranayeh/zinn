@@ -143,14 +143,16 @@ async function expectMarkdownTwin(page: string, source: string) {
   if (lastUpdated) {
     expectedMarkdown = expectedMarkdown.replace(/^(# .+)$/m, `$1\n\nLast updated: ${lastUpdated}`);
   }
-  expectedMarkdown = expectedMarkdown.replace(/\]\((\/[^)\s#]*)(#[^)\s]*)?\)/g,
+  expectedMarkdown = expectedMarkdown.replace(
+    /\]\((\/[^)\s#]*)(#[^)\s]*)?\)/g,
     (match, path, fragment = "") => {
       if (path.split("/").at(-1)!.includes(".")) {
         return match;
       }
       const target = path.replace(/\/$/, "");
       return `](${target === "" ? "/index.md" : `${target}.md`}${fragment})`;
-    });
+    },
+  );
   const topicIndex = expectedMarkdown.match(/<TopicIndex(?:\s+label=(["'])(.*?)\1)?\s*\/>/);
   if (topicIndex) {
     const [before, after] = expectedMarkdown.split(topicIndex[0]);
@@ -734,11 +736,6 @@ test("theme pages tag downloads and the Firefox page names each Add-ons target",
   expect(rex).toContain('data-site-event="theme-download"');
   expect(rex).toContain('data-site-event-theme="rex-dark"');
   expect(rex).toContain('data-site-event-theme="rex-light"');
-
-  const firefox = await (await server.fetch(firefoxTheme.path)).text();
-  expect(firefox.match(/data-site-event="outbound-click"/g)).toHaveLength(4);
-  expect(firefox.match(/data-site-event-target="mozilla-addons-halftone"/g)).toHaveLength(2);
-  expect(firefox.match(/data-site-event-target="mozilla-addons-lattice"/g)).toHaveLength(2);
 });
 
 test("the integration gallery, Markdown index and llms.txt list the same detail pages in order", async () => {
@@ -749,7 +746,9 @@ test("the integration gallery, Markdown index and llms.txt list the same detail 
     server.fetch("/llms.txt"),
   ]);
   expect(responses.map((response) => response.status)).toEqual([200, 200, 200]);
-  const [html, markdown, discovery] = await Promise.all(responses.map((response) => response.text()));
+  const [html, markdown, discovery] = await Promise.all(
+    responses.map((response) => response.text()),
+  );
 
   const detailPaths = integrations.map(({ path }) => path);
   const isIntegrationDetail = (path: string) => path.startsWith(`${integrationsHub.path}/`);

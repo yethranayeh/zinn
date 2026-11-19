@@ -25,22 +25,6 @@ const [halftone, lattice] = firefoxTheme.themes;
 					<p class='max-w-md text-lg leading-relaxed'>{firefoxTheme.introduction}</p>
 					<div class='mt-6'><PaletteStrip /></div>
 				</div>
-				<div class='flex flex-wrap gap-3 md:justify-end'>
-					<Button
-						href={halftone.addonUrl}
-						variant='solid'
-						size='large'
-						data-site-event='outbound-click'
-						data-site-event-target='mozilla-addons-halftone'>Install Halftone <Icon name='external-link' /></Button
-					>
-					<Button
-						href={lattice.addonUrl}
-						variant='outline'
-						size='large'
-						data-site-event='outbound-click'
-						data-site-event-target='mozilla-addons-lattice'>Install Lattice <Icon name='external-link' /></Button
-					>
-				</div>
 			</div>
 		</section>
 
@@ -55,7 +39,17 @@ const [halftone, lattice] = firefoxTheme.themes;
 					firefoxTheme.themes.map((theme, index) => (
 						<article id={theme.id} class='grid gap-5 md:grid-cols-[1fr_1.5fr] md:items-center md:gap-12'>
 							<div>
-								<h3 class='text-2xl leading-tight tracking-tight md:text-3xl'>{theme.name}</h3>
+								<h3 class='text-2xl leading-tight tracking-tight md:text-3xl'>
+									<a
+										class='inline-flex items-center gap-2'
+										href={theme.addonUrl}
+										target='_blank'
+										rel='noopener'
+										data-site-event='outbound-click'
+										data-site-event-target={`mozilla-addons-${theme.id}`}>
+										{theme.name} <Icon name='external-link' class='size-[0.6em]' />
+									</a>
+								</h3>
 								<p class='mt-3 max-w-sm text-lg leading-relaxed'>{theme.description}</p>
 							</div>
 							<figure>
@@ -92,12 +86,12 @@ const [halftone, lattice] = firefoxTheme.themes;
 				<Prose>
 					<ol class='space-y-4'>
 						<li>
-							Open
+							Open{" "}
 							<Link
 								href={halftone.addonUrl}
 								data-site-event='outbound-click'
 								data-site-event-target='mozilla-addons-halftone'>Zinn Halftone</Link
-							>
+							>{" "}
 							or{" "}
 							<Link
 								href={lattice.addonUrl}
