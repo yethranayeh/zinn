@@ -112,6 +112,8 @@ export type Config = {
   claimNotices: boolean
   /** After a main-loop turn that ran a tool, renew this session's claims that have less than half their lease left. */
   renewClaims: boolean
+  /** When the session ends (not for a /clear or a resume), release the claims this session holds. Off unless asked. */
+  releaseClaims: boolean
 }
 
 export type EnvReads = { look?: string; legend?: string; maxEntries?: string; keyPress?: string; marks?: string; myPrompts?: string; log?: string; statusLine?: string }
@@ -174,5 +176,6 @@ export function parseConfig(options: Readonly<Record<string, unknown>>, env: Env
     footerClaim: options['footerClaim'] !== false,
     claimNotices: options['claimNotices'] !== false,
     renewClaims: options['renewClaims'] !== false,
+    releaseClaims: options['releaseClaims'] === true,
   }
 }

@@ -7,11 +7,13 @@
  * Reads the store by argv:
  *  `zinn task list --all --json`, at session.start and on `/zinn refresh`
  *
- * Its one write to a Zinn store is `zinn task heartbeat KEY` for this session's own claims (option renewClaims).
+ * Its writes to a Zinn store are `zinn task heartbeat KEY` (option renewClaims) and `zinn task release KEY` (option
+ * releaseClaims, off by default), both for this session's own claims.
  * Nothing under ~/.claude/
  */
 import type {
   EngineInterface,
+  NextBudget,
   On,
   PluginOptions,
   SessionStartInput,
@@ -39,10 +41,12 @@ import {
   claimToastText,
   dueAlerts,
   endNoticeText,
+  endsWork,
   footerClaimSpans,
   heldKeys,
   nextAlertAt,
   nextExpiry,
+  releaseTimeoutMs,
   renewalsDue,
   renewFailText,
 } from "../lib/claims";
@@ -67,9 +71,11 @@ import {
   classify,
   newestActivityId,
   readHeartbeat,
+  readRelease,
   readView,
   toastText,
   type HeartbeatResult,
+  type ReleaseResult,
 } from "../lib/watch";
 
 // The state contract (types/index.d.ts) and the shape lib/state.ts builds must be the same type.
@@ -89,8 +95,8 @@ const MAP_REF = { plugin: "zinn", key: "map" } as const;
 const EXPIRY_REDRAW_MS = 1000;
 /** A claim notice is given this long after its moment, so a timer that fires early finds it due. */
 const ALERT_SLACK_MS = 20;
-/** How long one heartbeat may run. */
-const HEARTBEAT_TIMEOUT_MS = 5000;
+/** How long one claim write (a heartbeat or a release) may run. */
+const CLAIM_WRITE_TIMEOUT_MS = 5000;
 /** The longest gap the idle poll grows to. */
 const IDLE_MAX_GAP_MS = 10 * 60_000;
 
@@ -336,16 +342,14 @@ async function giveAlerts($: Dollar): Promise<void> {
   await armAlerts($);
 }
 
-/** Names the claims this session still holds as it ends. Never throws. */
-async function noticeHeldAtEnd($: Dollar, sessionId: string): Promise<void> {
-  alertTimer?.cancel();
-  alertTimer = null;
+/** Names the claims this session still holds as it ends, leaving out the `settled` ones. Never throws. */
+async function noticeHeldAtEnd($: Dollar, sessionId: string, settled: ReadonlySet<string>): Promise<void> {
   if (map === null || cfg === null || !cfg.claimNotices || !cfg.enabled) {
     return;
   }
   try {
     const at = await $.clock.now();
-    const keys = heldKeys(map.keys, sessionId, at);
+    const keys = heldKeys(map.keys, sessionId, at).filter((key) => !settled.has(key));
     if (keys.length > 0) {
       $.ui.log(endNoticeText(keys, map.keys, at));
     }
@@ -737,6 +741,39 @@ async function foldViews($: Dollar, base: KeyMap, results: ReadonlyMap<string, V
   await $.state.set(MAP_REF, toState(map, at, ZINN_ARGV, null)).catch(() => undefined);
 }
 
+/** The environment of a claim write. Claude Code's own process has no session variable, so the write names the session itself. */
+async function claimEnv($: Dollar, sessionId: string): Promise<{ ZINN_CLIENT: string; ZINN_SESSION_ID: string }> {
+  return { ...(await zinnEnv($, "claims")), ZINN_SESSION_ID: sessionId };
+}
+
+/** Runs `zinn task heartbeat KEY` or `zinn task release KEY` as this session, logs how it went and reads the answer. Never throws. */
+async function runClaimWrite(
+  $: Dollar,
+  verb: "heartbeat" | "release",
+  key: string,
+  env: Record<string, string>,
+  timeoutMs: number,
+): Promise<HeartbeatResult | ReleaseResult> {
+  const a = now();
+  let res: HeartbeatResult | ReleaseResult;
+  try {
+    const r = await $.process.run(["zinn", "task", verb, key, "--json"], { timeoutMs, env });
+    res = verb === "heartbeat" ? readHeartbeat(key, r) : readRelease(key, r);
+  } catch (err) {
+    res = { kind: "failed", why: errText(err) };
+  }
+  pending.push(
+    JSON.stringify({
+      ev: verb,
+      key,
+      ms: Math.round(now() - a),
+      result: res.kind,
+      reason: res.kind === "refused" ? res.reason : res.kind === "failed" ? res.why : undefined,
+    }),
+  );
+  return res;
+}
+
 /**
  * Renews this session's own claims with less than half their lease left (option renewClaims), one heartbeat per
  * key, judged from the map this module already holds. The answer carries the new expiry, so no read follows. A
@@ -756,30 +793,10 @@ async function renewClaims($: Dollar): Promise<void> {
     if (due.length === 0) {
       return;
     }
-    // Claude Code's own process has no session variable, so the write names the session itself.
-    const env = { ...(await zinnEnv($, "claims")), ZINN_SESSION_ID: me };
+    const env = await claimEnv($, me);
     const renewed = new Map<string, ViewResult>();
     for (const key of due) {
-      const a = now();
-      let res: HeartbeatResult;
-      try {
-        const r = await $.process.run(["zinn", "task", "heartbeat", key, "--json"], {
-          timeoutMs: HEARTBEAT_TIMEOUT_MS,
-          env,
-        });
-        res = readHeartbeat(key, r);
-      } catch (err) {
-        res = { kind: "failed", why: errText(err) };
-      }
-      pending.push(
-        JSON.stringify({
-          ev: "heartbeat",
-          key,
-          ms: Math.round(now() - a),
-          result: res.kind,
-          reason: res.kind === "refused" ? res.reason : res.kind === "failed" ? res.why : undefined,
-        }),
-      );
+      const res = await runClaimWrite($, "heartbeat", key, env, CLAIM_WRITE_TIMEOUT_MS);
       if (res.kind === "renewed") {
         renewed.set(key, { kind: "row", info: res.info });
       } else if (res.kind === "refused") {
@@ -796,6 +813,45 @@ async function renewClaims($: Dollar): Promise<void> {
   } finally {
     renewing = false;
   }
+}
+
+/**
+ * Releases the claims this session holds as it ends (option releaseClaims, and only for a session that is done with
+ * its work), one `zinn task release` per key, all at once. Each may run only as long as the end's time limit leaves,
+ * so a release the limit cuts off is left to the lease. Never throws. Resolves the keys the store answered for.
+ */
+async function releaseClaimsAtEnd(
+  $: Dollar,
+  sessionId: string,
+  reason: string,
+  budget: NextBudget,
+): Promise<ReadonlySet<string>> {
+  const settled = new Set<string>();
+  if (map === null || cfg === null || !cfg.enabled || !cfg.releaseClaims || !endsWork(reason)) {
+    return settled;
+  }
+  try {
+    const keys = heldKeys(map.keys, sessionId, await $.clock.now());
+    if (keys.length === 0) {
+      return settled;
+    }
+    const env = await claimEnv($, sessionId);
+    const timeoutMs = releaseTimeoutMs(budget.remainingMs, CLAIM_WRITE_TIMEOUT_MS);
+    if (timeoutMs === null) {
+      return settled;
+    }
+    const results = await Promise.all(
+      keys.map(async (key) => ({ key, res: await runClaimWrite($, "release", key, env, timeoutMs) })),
+    );
+    for (const { key, res } of results) {
+      if (res.kind !== "failed") {
+        settled.add(key);
+      }
+    }
+  } catch (err) {
+    pending.push(JSON.stringify({ ev: "release", ok: false, error: errText(err) }));
+  }
+  return settled;
 }
 
 function drain($: Dollar): Promise<void> {
@@ -932,7 +988,10 @@ function homeDir($: Dollar): Promise<string | null> {
 
 export const registerMentions = (on: On, options: PluginOptions): void => {
   on("session.end", async ($, e, next) => {
-    await noticeHeldAtEnd($, e.sessionId);
+    alertTimer?.cancel();
+    alertTimer = null;
+    const settled = await releaseClaimsAtEnd($, e.sessionId, e.reason, next.budget);
+    await noticeHeldAtEnd($, e.sessionId, settled);
     await flush($, [JSON.stringify({ ev: "end", own: stats(ownTimes), decorated })]).catch(
       () => undefined,
     );

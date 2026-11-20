@@ -288,6 +288,15 @@ export function readHeartbeat(key: string, r: { exitCode: number; stdout: string
   return { kind: 'failed', why: `exit ${r.exitCode}` }
 }
 
+/** The result of `zinn task release KEY --json`. A task that had no claim counts as released. */
+export type ReleaseResult = { kind: 'released' } | Exclude<HeartbeatResult, { kind: 'renewed' }>
+
+/** Reads a release's answer: it prints the task and the error envelope as a heartbeat does. */
+export function readRelease(key: string, r: { exitCode: number; stdout: string; stderr: string }): ReleaseResult {
+  const answer = readHeartbeat(key, r)
+  return answer.kind === 'renewed' ? { kind: 'released' } : answer
+}
+
 /** A copy of the map with `results` folded in. `unknown` results must be handled by the caller first. */
 export function applyViews(map: KeyMap, results: ReadonlyMap<string, ViewResult>): KeyMap {
   const keys = new Map(map.keys)

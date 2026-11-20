@@ -1,6 +1,6 @@
 // Who holds a task: the claim as the CLI prints it, drawn in the legend, the board and the task pane. Pure.
 import { test, expect } from 'claude-code/testing'
-import { alertsFor, alertText, claimedAway, claimLine, claimOf, dueAlerts, endNoticeText, footerClaimSpans, heldColor, HELD_COLORS, holderOf, leaseOf, legendClaim, nextAlertAt, nextExpiry, renewalsDue, renewFailText, wallTime, warnLeadMs, WARN_LEAD_MAX_MS, type Claim } from '../lib/claims'
+import { alertsFor, alertText, claimedAway, claimLine, claimOf, dueAlerts, endNoticeText, endsWork, END_RESERVE_MS, footerClaimSpans, heldColor, HELD_COLORS, holderOf, leaseOf, legendClaim, nextAlertAt, nextExpiry, releaseTimeoutMs, renewalsDue, renewFailText, wallTime, warnLeadMs, WARN_LEAD_MAX_MS, type Claim } from '../lib/claims'
 import { findMentions, parseTaskList } from '../lib/keys'
 import { HELD_TITLE_MIN, underLines } from '../lib/plan'
 import { lineText } from '../lib/style'
@@ -9,7 +9,7 @@ import { parseTask } from '../lib/pane/task'
 import { layoutRows, rowText } from '../lib/pane/layouts'
 import { boardRows } from '../lib/pane/views'
 import { LAYOUTS } from '../lib/pane/resolve'
-import { readHeartbeat } from '../lib/watch'
+import { readHeartbeat, readRelease } from '../lib/watch'
 import { claimJson, HOUR } from './fixtures'
 import { PROJECT, TASK } from './pane-fixtures'
 
@@ -216,4 +216,37 @@ test('renewFailText names the key for every refusal', () => {
   for (const reason of ['claimed', 'claim_limit', 'not_claimed', 'not_found']) {
     expect(renewFailText('CLM-1', { reason, message: 'm' })).toContain('CLM-1')
   }
+})
+
+// ZCC-26: which session ends release claims, how long a release may run, and how a release's answer reads.
+test('endsWork: an exit, a logout and a finished or killed -p run release, a /clear and a resume do not', () => {
+  for (const reason of ['prompt_input_exit', 'logout', 'other']) {
+    expect(endsWork(reason)).toBe(true)
+  }
+  for (const reason of ['clear', 'resume', 'a reason the engine adds later', '']) {
+    expect(endsWork(reason)).toBe(false)
+  }
+})
+
+test('releaseTimeoutMs: what the bound leaves after the reserve, never past the cap, nothing when no time is left', () => {
+  const cap = 5000
+  expect(releaseTimeoutMs(1500, cap)).toBe(1500 - END_RESERVE_MS)
+  expect(releaseTimeoutMs(1500.9, cap)).toBe(Math.floor(1500.9 - END_RESERVE_MS))
+  expect(releaseTimeoutMs(10_000, cap)).toBe(cap)
+  expect(releaseTimeoutMs(Infinity, cap)).toBe(cap) // nothing meters the bound
+  expect(releaseTimeoutMs(END_RESERVE_MS, cap)).toBeNull()
+  expect(releaseTimeoutMs(END_RESERVE_MS + 1, cap)).toBe(1)
+  expect(releaseTimeoutMs(0, cap)).toBeNull()
+})
+
+test('readRelease: released whether or not a claim was there, a refusal by reason, or no answer', () => {
+  const task = { key: 'CLM-1', status: 'Active', column: 'TODO', title: 't', claim: null }
+  for (const changed of [true, false]) {
+    expect(readRelease('CLM-1', { exitCode: 0, stdout: JSON.stringify({ ...task, changed }), stderr: '' })).toEqual({ kind: 'released' })
+  }
+  const stderr = JSON.stringify({ error: { code: 'conflict', message: 'm', details: { entity: 'task', key: 'CLM-1', reason: 'claimed', claimExpiresAt: NOW } } })
+  expect(readRelease('CLM-1', { exitCode: 1, stdout: '', stderr })).toEqual({ kind: 'refused', reason: 'claimed', message: 'm' })
+  expect(readRelease('CLM-1', { exitCode: 127, stdout: '', stderr: 'zinn: command not found' }).kind).toBe('failed')
+  expect(readRelease('CLM-1', { exitCode: 0, stdout: 'not json', stderr: '' }).kind).toBe('failed')
+  expect(readRelease('CLM-2', { exitCode: 0, stdout: JSON.stringify(task), stderr: '' }).kind).toBe('failed') // another task's answer
 })

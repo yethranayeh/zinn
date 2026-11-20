@@ -8,9 +8,9 @@
 // (colour.test.ts) paints the plans. Only a live run shows the terminal.
 import { test, expect, mock } from 'claude-code/testing'
 import type { TestBody } from 'claude-code/testing'
-import type { On, PluginOptions } from 'claude-code'
+import type { On, PluginOptions, SessionEndReason } from 'claude-code'
 import { claimJson, HOUR, ROWS } from './fixtures'
-import { heldColor } from '../lib/claims'
+import { END_RESERVE_MS, heldColor } from '../lib/claims'
 import type { KeyMapState } from '../lib/state'
 import { VERSION } from '../hooks/client'
 
@@ -22,11 +22,13 @@ const SESSION = 'b7e1c0de-0000-4000-8000-000000000006'
 const MAP_NAME = { plugin: 'zinn', key: 'map' } as const
 
 type Zinn = { exitCode: number; stdout: string; stderr?: string; isStdoutTruncated?: boolean } | 'throw'
-type World = { drawn: string[]; summaries: (boolean | null)[]; runs: string[][]; status: string[]; toasts: string[]; registered: string[]; files: Map<string, string>; clock: ReturnType<typeof mock.clock>; zinn: Zinn[]; map: () => KeyMapState | undefined; modes: string[]; envs: { argv: string[]; env: Record<string, string> | undefined }[]; logs: string[]; notified: string[]; surfaces: string[]; heartbeat: Record<string, Zinn> }
+// 'hang': the release runs until its timeout on the mock clock, then rejects, as the engine's killed child does.
+type Release = Zinn | 'hang'
+type World = { drawn: string[]; summaries: (boolean | null)[]; runs: string[][]; status: string[]; toasts: string[]; registered: string[]; files: Map<string, string>; clock: ReturnType<typeof mock.clock>; zinn: Zinn[]; map: () => KeyMapState | undefined; modes: string[]; envs: { argv: string[]; env: Record<string, string> | undefined; timeoutMs: number | undefined }[]; logs: string[]; notified: string[]; surfaces: string[]; heartbeat: Record<string, Zinn>; release: Record<string, Release>; releaseHoldMs: number }
 
 function world(on: On, o: { installed?: string; zinn?: Zinn | Zinn[]; env?: Record<string, string> } = {}): World {
   const queue = Array.isArray(o.zinn) ? [...o.zinn] : [o.zinn ?? { exitCode: 0, stdout: JSON.stringify(ROWS) }]
-  const w: World = { drawn: [], summaries: [], runs: [], status: [], toasts: [], registered: [], files: new Map(), clock: undefined as never, zinn: queue, map: () => undefined, modes: [], envs: [], logs: [], notified: [], surfaces: ['terminal'], heartbeat: {} }
+  const w: World = { drawn: [], summaries: [], runs: [], status: [], toasts: [], registered: [], files: new Map(), clock: undefined as never, zinn: queue, map: () => undefined, modes: [], envs: [], logs: [], notified: [], surfaces: ['terminal'], heartbeat: {}, release: {}, releaseHoldMs: 0 }
   w.clock = mock.clock(on, { now: Date.UTC(2026, 9, 12, 9, 0, 0) })
   mock.env(on, o.env ?? {})
   // The kit's Engine `$` has no `state` noun (tsc TS2339, runtime TypeError), but `state.get` and
@@ -49,7 +51,7 @@ function world(on: On, o: { installed?: string; zinn?: Zinn | Zinn[]; env?: Reco
   on('process.run', async (_$, e) => {
     const argv = [...e.argv]
     w.runs.push(argv)
-    w.envs.push({ argv, env: e.init?.env })
+    w.envs.push({ argv, env: e.init?.env, timeoutMs: e.init?.timeoutMs })
     const res = (r: { exitCode: number; stdout: string; stderr?: string; isStdoutTruncated?: boolean }) => ({ value: { exitCode: r.exitCode, stdout: r.stdout, stderr: r.stderr ?? '', isStdoutTruncated: r.isStdoutTruncated ?? false, isStderrTruncated: false } })
     if (argv[0] === 'claude') {
       return res({ exitCode: 0, stdout: `${o.installed ?? RUNNING} (Claude Code)\n` })
@@ -63,6 +65,21 @@ function world(on: On, o: { installed?: string; zinn?: Zinn | Zinn[]; env?: Reco
         throw new Error('spawn zinn ENOENT')
       }
       return res(h)
+    }
+    if (argv[0] === 'zinn' && argv[2] === 'release') {
+      const key = argv[3]!
+      const answer = w.release[key] ?? { exitCode: 0, stdout: JSON.stringify({ ...ROWS.find(r => r.key === key), claim: null, changed: true }) }
+      if (w.releaseHoldMs > 0) {
+        await w.clock.sleep(w.releaseHoldMs)
+      }
+      if (answer === 'hang') {
+        await w.clock.sleep(e.init?.timeoutMs ?? 30_000)
+        throw new Error('timed out')
+      }
+      if (answer === 'throw') {
+        throw new Error('spawn zinn ENOENT')
+      }
+      return res(answer)
     }
     if (argv[0] === 'zinn') {
       const z = (w.zinn.length > 1 ? w.zinn.shift() : w.zinn[0])!
@@ -932,6 +949,130 @@ test('ZCC-25 renewal: zinn that does not run gives no toast', opts({ look: 'unde
   await turn($, w)
   expect(heartbeats(w).length).toBeGreaterThan(0)
   expect(w.toasts).toEqual([])
+})
+
+// ZCC-26: a session that is done releases the claims it holds, when asked. The world's clock stands still until a test moves it.
+const releases = (w: World): string[][] => w.runs.filter(a => a[0] === 'zinn' && a[2] === 'release')
+const releaseKeys = (w: World): string[] => releases(w).map(a => a[3]!).sort()
+/** The store as it reads when these keys are held by this session and those by another one. */
+const holding = (mine: string[], theirs: string[] = []) => ({
+  zinn: {
+    exitCode: 0,
+    stdout: JSON.stringify(ROWS.map(r => (mine.includes(r.key) ? { ...r, claim: claimJson(SESSION, WORLD_NOW + HOUR) } : theirs.includes(r.key) ? { ...r, claim: claimJson('another-session', WORLD_NOW + HOUR) } : r))),
+  },
+})
+const endFor = (reason: SessionEndReason) => ({ reason, sessionId: SESSION, resume: { id: SESSION } }) as const
+// Typed by the engine's reasons, so a reason it adds fails the type check until this says what it does.
+const RELEASES_AT_END: Record<SessionEndReason, boolean> = { prompt_input_exit: true, logout: true, other: true, clear: false, resume: false }
+
+for (const reason of Object.keys(RELEASES_AT_END) as SessionEndReason[]) {
+  for (const isOn of [true, false]) {
+    test(`ZCC-26 session end (${reason}) with releaseClaims ${isOn}: ${isOn && RELEASES_AT_END[reason] ? 'releases what this session holds, as this session' : 'writes nothing and names the claims still held'}`, opts({ look: 'under', releaseClaims: isOn }), async ($, on) => {
+      const w = world(on, holding(['ZCC-6', 'ZCC-7'], ['ZCC-8']))
+      await $.session.start(START)
+      await $.session.end(endFor(reason))
+      if (isOn && RELEASES_AT_END[reason]) {
+        expect(releaseKeys(w)).toEqual(['ZCC-6', 'ZCC-7'])
+        const env = w.envs.find(x => x.argv[2] === 'release')!.env!
+        expect(env['ZINN_SESSION_ID']).toBe(SESSION)
+        expect(env['ZINN_CLIENT']).toBe(`zinn-claude-code:claims/${VERSION}`)
+        expect(w.logs).toEqual([]) // nothing is still held
+        return
+      }
+      expect(releases(w)).toEqual([])
+      expect(w.logs).toHaveLength(1)
+      expect(w.logs[0]).toContain('ZCC-6')
+      expect(w.logs[0]).toContain('ZCC-7')
+      expect(w.logs[0]).not.toContain('ZCC-8')
+    })
+  }
+}
+
+test('ZCC-26 releaseClaims is off unless asked', opts({ look: 'under' }), async ($, on) => {
+  const w = world(on, holding(['ZCC-6']))
+  await $.session.start(START)
+  await $.session.end(SESSION_END)
+  expect(releases(w)).toEqual([])
+  expect(w.logs).toHaveLength(1)
+})
+
+test('ZCC-26 session end: every held claim is released at once, never another session\'s', opts({ look: 'under', releaseClaims: true }), async ($, on) => {
+  const w = world(on, holding(['ZCC-6', 'ZCC-7', 'ZCC-5'], ['ZCC-8']))
+  w.releaseHoldMs = 100
+  await $.session.start(START)
+  let isEnded = false
+  const ending = $.session.end(SESSION_END).then(() => { isEnded = true })
+  await w.clock.settle()
+  expect(releaseKeys(w)).toEqual(['ZCC-5', 'ZCC-6', 'ZCC-7']) // all started before the first answered
+  expect(isEnded).toBe(false)
+  await w.clock.advance(100)
+  await ending
+  expect(releaseKeys(w)).toEqual(['ZCC-5', 'ZCC-6', 'ZCC-7'])
+  expect(w.logs).toEqual([])
+})
+
+test('ZCC-26 session end: a release the time limit cuts off is left to the lease, and the others and the log still finish', opts({ look: 'under', releaseClaims: true, log: true }), async ($, on) => {
+  const w = world(on, holding(['ZCC-6', 'ZCC-7']))
+  w.release['ZCC-7'] = 'hang'
+  await $.session.start(START)
+  const ending = $.session.end(SESSION_END)
+  await w.clock.settle()
+  const cut = w.envs.find(x => x.argv[2] === 'release' && x.argv[3] === 'ZCC-7')!.timeoutMs!
+  expect(cut).toBeGreaterThan(0) // a release is bounded by what the limit leaves, minus the reserve
+  expect(cut).toBeLessThanOrEqual(10_000 - END_RESERVE_MS) // the kit's hook budget is 10 s
+  await w.clock.advance(cut)
+  await ending
+  expect(releaseKeys(w)).toEqual(['ZCC-6', 'ZCC-7']) // no second try
+  expect(w.logs).toHaveLength(1)
+  expect(w.logs[0]).toContain('ZCC-7')
+  expect(w.logs[0]).not.toContain('ZCC-6')
+  const lines = records(w)
+  expect(lines.filter(r => r['ev'] === 'release').map(r => [r['key'], r['result']]).sort()).toEqual([['ZCC-6', 'released'], ['ZCC-7', 'failed']])
+  expect(lines.some(r => r['ev'] === 'end')).toBe(true)
+})
+
+test('ZCC-26 session end: a claim that already ran out is not released', opts({ look: 'under', releaseClaims: true }), async ($, on) => {
+  const lease = 30 * MINUTE
+  const claims: Record<string, object> = {
+    'ZCC-6': claimJson(SESSION, WORLD_NOW - MINUTE, 'expired'),
+    'ZCC-7': claimJson(SESSION, WORLD_NOW + lease, 'live', lease),
+    'ZCC-5': claimJson(SESSION, WORLD_NOW + 2 * HOUR),
+  }
+  const w = world(on, { zinn: { exitCode: 0, stdout: JSON.stringify(ROWS.map(r => (r.key in claims ? { ...r, claim: claims[r.key] } : r))) } })
+  await $.session.start(START)
+  await w.clock.advance(lease + MINUTE) // ZCC-7 runs out while the session works
+  await $.session.end(SESSION_END)
+  expect(releaseKeys(w)).toEqual(['ZCC-5'])
+  expect(w.logs).toEqual([])
+})
+
+test('ZCC-26 session end: a refusal means the claim is no longer this session\'s, a run that gives no answer leaves it named', opts({ look: 'under', releaseClaims: true }), async ($, on) => {
+  const w = world(on, holding(['ZCC-6', 'ZCC-7', 'ZCC-5']))
+  w.release['ZCC-6'] = refusal('claimed')
+  w.release['ZCC-7'] = 'throw'
+  await $.session.start(START)
+  await $.session.end(SESSION_END)
+  expect(releaseKeys(w)).toEqual(['ZCC-5', 'ZCC-6', 'ZCC-7'])
+  expect(w.logs).toHaveLength(1)
+  expect(w.logs[0]).toContain('ZCC-7')
+  expect(w.logs[0]).not.toContain('ZCC-6')
+  expect(w.logs[0]).not.toContain('ZCC-5')
+})
+
+test('ZCC-26 releaseClaims does not need the notices, and enabled false stops it', opts({ look: 'under', releaseClaims: true, claimNotices: false }), async ($, on) => {
+  const w = world(on, holding(['ZCC-6']))
+  w.release['ZCC-6'] = 'throw'
+  await $.session.start(START)
+  await $.session.end(SESSION_END)
+  expect(releaseKeys(w)).toEqual(['ZCC-6'])
+  expect(w.logs).toEqual([]) // still held, but the notices are off
+})
+
+test('ZCC-26 enabled false: no release', opts({ look: 'under', releaseClaims: true, enabled: false }), async ($, on) => {
+  const w = world(on, holding(['ZCC-6']))
+  await $.session.start(START)
+  await $.session.end(SESSION_END)
+  expect(releases(w)).toEqual([])
 })
 
 test('enabled false: nothing in the footer', opts({ enabled: false }), async ($, on) => {

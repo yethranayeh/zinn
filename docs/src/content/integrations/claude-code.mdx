@@ -28,7 +28,7 @@ Both plugins work in [Code Mode](https://code.claude.com/docs/en/code-mode). Cla
 - The Zinn CLI on Claude Code's `PATH` as `zinn`. If you just follow [CLI installation](/docs/installation), you will be fine.
   - Status marks from column categories and claims need CLI **0.45.0** or newer. With an older CLI, marks follow each column's name or its place on the board.
 
-The plugins read your database through the CLI, with the [environment](/docs/settings#choose-the-data-directory) Claude Code started with. `ZINN_DIR` set before starting Claude Code selects the database, as it does for any `zinn` command. Without it, Zinn uses `~/.zinn`. Every read is a CLI read. The one write is `zinn` renewing this session's own claims, which the activity log records.
+The plugins read your database through the CLI, with the [environment](/docs/settings#choose-the-data-directory) Claude Code started with. `ZINN_DIR` set before starting Claude Code selects the database, as it does for any `zinn` command. Without it, Zinn uses `~/.zinn`. Every read is a CLI read. The writes are `zinn` renewing this session's own claims and, if you turn on `releaseClaims`, releasing them as the session ends. The activity log records both.
 
 ## Install
 
@@ -83,6 +83,7 @@ Set options with `/plugin`, under the plugin's configuration, or if you like tor
 | `footerClaim`   | `true`                |                             | The claimed task in the footer label, such as `zinn ◆ ZCC-7`.                                                                                                              |
 | `claimNotices`  | `true`                |                             | Toasts before this session's claim runs out and when it has, and a notice after `/clear` naming claims still held.                                                         |
 | `renewClaims`   | `true`                |                             | After a turn that ran a tool, renews this session's claims with under half their lease left. No calls while idle, at most 4 per claim per hour in use on a 30m lease.      |
+| `releaseClaims` | `false`               |                             | Releases the claims this session still holds when it ends, but not for `/clear` or a resume. One `zinn task release` per claim at the end and no calls at any other time.  |
 | `pane`          | `true`                |                             | Off registers no `/zinn-show` and opens no pane.                                                                                                                           |
 | `layout`        | `table`               | `ZINN_TASK_PANE_LAYOUT`     | The pane's task layout: `table`, `card` or `sectioned`.                                                                                                                    |
 | `log`           | `false`               | `ZINN_MENTIONS_LOG`         | Writes counts and timings, never transcript text, to `logDir`. Set the variable to `1`.                                                                                    |

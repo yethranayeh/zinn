@@ -287,6 +287,24 @@ export function renewFailText(key: string, refusal: RenewRefusal): string {
   return `zinn: could not renew the claim on ${key} (${refusal.message.slice(0, 120)}). ${stop}`
 }
 
+/** Session end reasons that finish the work: a plain exit, a logout, and a `-p` run that is done or got a signal. */
+const RELEASING_END_REASONS: ReadonlySet<string> = new Set(['prompt_input_exit', 'logout', 'other'])
+
+/** Whether a session ending for this reason is done with its claims. A `clear` and a `resume` go on with the work. */
+export const endsWork = (reason: string): boolean => RELEASING_END_REASONS.has(reason)
+
+/** Kept back from what is left of the session end's time limit, for the notice and the log after the releases. */
+export const END_RESERVE_MS = 300
+
+/**
+ * How long one release may run, given what is left of the session end's time limit and the longest a claim write
+ * may take. Null when the reserve leaves no time. `remainingMs` is Infinity where nothing limits the time.
+ */
+export function releaseTimeoutMs(remainingMs: number, capMs: number): number | null {
+  const allowed = Math.floor(Math.min(remainingMs - END_RESERVE_MS, capMs))
+  return allowed > 0 ? allowed : null
+}
+
 /** The earliest moment after `now` at which one of these live claims runs out. Null when none will. */
 export function nextExpiry(claims: Iterable<Claim | null>, now: number): number | null {
   let next: number | null = null

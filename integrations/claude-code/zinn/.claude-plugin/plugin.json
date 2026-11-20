@@ -1,7 +1,7 @@
 {
 	"name": "zinn",
 	"version": "0.2.0-dev",
-	"description": "Zinn task keys in the Claude Code transcript and a Zinn pane. Under each reply, a status mark and a short title for every task key it mentions, with a key the store lacks flagged. /zinn-show opens a task, a board or the list of boards. Reads the store by argv, and renews this session's own claims after turns that ran a tool: no tool, no prompt section, no model turn, so it costs no tokens.",
+	"description": "Zinn task keys in the Claude Code transcript and a Zinn pane. Under each reply, a status mark and a short title for every task key it mentions, with a key the store lacks flagged. /zinn-show opens a task, a board or the list of boards. Reads the store by argv, renews this session's own claims after turns that ran a tool and, when asked, releases them as the session ends: no tool, no prompt section, no model turn, so it costs no tokens.",
 	"types": "./types/index.d.ts",
 	"author": {
 		"name": "Zinn"
@@ -129,6 +129,12 @@
 			"title": "Renew this session's claims",
 			"description": "After a turn that ran a tool, each claim this session holds with less than half its lease left is renewed with zinn task heartbeat KEY, one CLI call (no tokens). A claim that has run out is never renewed, so its notice still shows. When the CLI refuses (another session holds the task, the claim saw no change to the task for 24 hours, or it has no claim any more), one toast says so and that task is not renewed again this session. While idle: no calls. While in use, per held claim: at most 4 calls per session-hour on a 30m lease, 1 on a 2h lease. Each renewal is a write, so the next database check also reloads the key map once. Off makes no write.",
 			"default": true
+		},
+		"releaseClaims": {
+			"type": "boolean",
+			"title": "Release this session's claims at the end",
+			"description": "When the session ends for any reason but /clear or a resume, each claim this session still holds is released with zinn task release KEY: one CLI call per held claim, all at once at the end of the session and none at any other time (no tokens). The end of a session has a short time limit shared with every plugin, so a release it cuts off is left to the lease. Off (the default) makes no write.",
+			"default": false
 		},
 		"pane": {
 			"type": "boolean",
