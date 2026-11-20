@@ -4,10 +4,11 @@
  * This module and ./pane.tsx are the only code that calls `$`, hooks `on(...)` or builds elements.
  * Zero tokens: `ui.render` only. No tool, no prompt section, no `session.append`
  *
- * Reads the store by argv, read-only:
+ * Reads the store by argv:
  *  `zinn task list --all --json`, at session.start and on `/zinn refresh`
  *
- * Writes nothing to a Zinn store and nothing under ~/.claude/
+ * Its one write to a Zinn store is `zinn task heartbeat KEY` for this session's own claims (option renewClaims).
+ * Nothing under ~/.claude/
  */
 import type {
   EngineInterface,
@@ -42,6 +43,8 @@ import {
   heldKeys,
   nextAlertAt,
   nextExpiry,
+  renewalsDue,
+  renewFailText,
 } from "../lib/claims";
 import { failureReason, toState } from "../lib/state";
 import {
@@ -63,8 +66,10 @@ import {
   changedColumns,
   classify,
   newestActivityId,
+  readHeartbeat,
   readView,
   toastText,
+  type HeartbeatResult,
 } from "../lib/watch";
 
 // The state contract (types/index.d.ts) and the shape lib/state.ts builds must be the same type.
@@ -84,6 +89,8 @@ const MAP_REF = { plugin: "zinn", key: "map" } as const;
 const EXPIRY_REDRAW_MS = 1000;
 /** A claim notice is given this long after its moment, so a timer that fires early finds it due. */
 const ALERT_SLACK_MS = 20;
+/** How long one heartbeat may run. */
+const HEARTBEAT_TIMEOUT_MS = 5000;
 /** The longest gap the idle poll grows to. */
 const IDLE_MAX_GAP_MS = 10 * 60_000;
 
@@ -129,6 +136,10 @@ let held: string[] = [];
 let alertTimer: Timer | null = null;
 const alertsDone = new Set<string>();
 let startedAt = 0;
+// Claim renewal: whether the main loop's current turn ran a tool, a round in flight, and keys no longer renewed.
+let toolRan = false;
+let renewing = false;
+const renewStopped = new Set<string>();
 const t0 = typeof performance !== "undefined" ? performance.now() : 0;
 const now = (): number => (typeof performance !== "undefined" ? performance.now() : 0) - t0;
 const errText = (err: unknown): string =>
@@ -685,13 +696,7 @@ async function refreshRound($: Dollar, full: boolean, keys: string[]): Promise<v
       results.set(key, res);
     }
     if (how === "keys") {
-      map = applyViews(prev!, results);
-      void armExpiry($);
-      void refreshHeld($);
-      void armAlerts($);
-      mapNote = `${map.keys.size} keys`;
-      const at = new Date(await $.clock.now().catch(() => 0)).toISOString();
-      await $.state.set(MAP_REF, toState(map, at, ZINN_ARGV, null)).catch(() => undefined);
+      await foldViews($, prev!, results);
     }
   }
   if (how === "full") {
@@ -719,6 +724,78 @@ async function refreshRound($: Dollar, full: boolean, keys: string[]): Promise<v
   }
   setStatus($);
   $.ui.invalidate("ui.render");
+}
+
+/** Folds task rows into `base` as the new map, then re-arms what follows the map and publishes it. */
+async function foldViews($: Dollar, base: KeyMap, results: ReadonlyMap<string, ViewResult>): Promise<void> {
+  map = applyViews(base, results);
+  void armExpiry($);
+  void refreshHeld($);
+  void armAlerts($);
+  mapNote = `${map.keys.size} keys`;
+  const at = new Date(await $.clock.now().catch(() => 0)).toISOString();
+  await $.state.set(MAP_REF, toState(map, at, ZINN_ARGV, null)).catch(() => undefined);
+}
+
+/**
+ * Renews this session's own claims with less than half their lease left (option renewClaims), one heartbeat per
+ * key, judged from the map this module already holds. The answer carries the new expiry, so no read follows. A
+ * refusal gives one toast and ends renewing that key. A run that gives no answer is logged only. Never throws.
+ */
+async function renewClaims($: Dollar): Promise<void> {
+  if (renewing || map === null || cfg === null || !cfg.enabled || !cfg.renewClaims) {
+    return;
+  }
+  renewing = true;
+  try {
+    const [me, at] = await Promise.all([$.session.id().catch(() => null), $.clock.now().catch(() => null)]);
+    if (me === null || at === null) {
+      return;
+    }
+    const due = renewalsDue(map.keys, me, at, renewStopped);
+    if (due.length === 0) {
+      return;
+    }
+    // Claude Code's own process has no session variable, so the write names the session itself.
+    const env = { ...(await zinnEnv($, "claims")), ZINN_SESSION_ID: me };
+    const renewed = new Map<string, ViewResult>();
+    for (const key of due) {
+      const a = now();
+      let res: HeartbeatResult;
+      try {
+        const r = await $.process.run(["zinn", "task", "heartbeat", key, "--json"], {
+          timeoutMs: HEARTBEAT_TIMEOUT_MS,
+          env,
+        });
+        res = readHeartbeat(key, r);
+      } catch (err) {
+        res = { kind: "failed", why: errText(err) };
+      }
+      pending.push(
+        JSON.stringify({
+          ev: "heartbeat",
+          key,
+          ms: Math.round(now() - a),
+          result: res.kind,
+          reason: res.kind === "refused" ? res.reason : res.kind === "failed" ? res.why : undefined,
+        }),
+      );
+      if (res.kind === "renewed") {
+        renewed.set(key, { kind: "row", info: res.info });
+      } else if (res.kind === "refused") {
+        renewStopped.add(key);
+        $.ui.toast(renewFailText(key, res));
+      }
+    }
+    if (renewed.size > 0 && map !== null) {
+      await foldViews($, map, renewed);
+      $.ui.invalidate("ui.render");
+    }
+  } catch (err) {
+    pending.push(JSON.stringify({ ev: "heartbeat", ok: false, error: errText(err) }));
+  } finally {
+    renewing = false;
+  }
 }
 
 function drain($: Dollar): Promise<void> {
@@ -862,18 +939,34 @@ export const registerMentions = (on: On, options: PluginOptions): void => {
     return next(e);
   });
 
-  // Signs of use for the poll. Observe-only: every turn and tool call, the main loop's and each subagent's,
-  // passes as it came.
+  // Signs of use for the poll, and the turns that renew claims. Observe-only: every turn and tool call, the main
+  // loop's and each subagent's, passes as it came. A main-loop turn that saw a tool call renews claims as it ends.
   on("tool.call", async ($, e, next) => {
     markUse($);
+    toolRan = true;
     return next(e);
   });
   on("turn.start", async ($, e, next) => {
     markUse($);
+    if (e.agentId === undefined) {
+      toolRan = false;
+    }
     return next(e);
   });
   on("turn.complete", async ($, e, next) => {
     markUse($);
+    const isMainToolTurn = e.agentId === undefined && toolRan;
+    if (isMainToolTurn) {
+      toolRan = false;
+      try {
+        // After the hook has returned, so the turn's end is not held.
+        $.clock.after(0, () => {
+          void renewClaims($).catch(() => undefined);
+        });
+      } catch {
+        /* no renewal this turn */
+      }
+    }
     return next(e);
   });
 

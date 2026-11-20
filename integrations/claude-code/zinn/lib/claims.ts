@@ -241,6 +241,52 @@ export function endNoticeText(
   return `zinn: this session still holds ${shown.join(', ')}${more > 0 ? ` +${more} more` : ''}`
 }
 
+/** A claim this session holds is renewed once less than this share of its lease is left. */
+export const RENEW_BELOW_LEASE_SHARE = 0.5
+
+/**
+ * Keys of claims this session holds that are due a heartbeat at `now`: live, with less than half the lease left.
+ * A claim that has run out is never due, since a heartbeat would revive it. Keys in `stopped` and claims without a
+ * lease are left out. Empty when `me` is unknown.
+ */
+export function renewalsDue(
+  tasks: ReadonlyMap<string, { claim: Claim | null; leaseMs: number | null }>,
+  me: string | null,
+  now: number,
+  stopped: ReadonlySet<string>,
+): string[] {
+  const out: string[] = []
+  for (const [key, t] of tasks) {
+    const c = t.claim
+    if (stopped.has(key) || t.leaseMs === null || holderOf(c, me, now) !== 'mine' || c!.expiresAt === null) {
+      continue
+    }
+    const isPastHalf = c!.expiresAt - now < t.leaseMs * RENEW_BELOW_LEASE_SHARE
+    if (isPastHalf) {
+      out.push(key)
+    }
+  }
+  return out.sort()
+}
+
+/** Why a heartbeat was refused: the CLI's `details.reason`, else its error `code`. */
+export type RenewRefusal = { reason: string; message: string }
+
+/** The toast for a refused heartbeat. The plugin stops renewing that key afterwards. */
+export function renewFailText(key: string, refusal: RenewRefusal): string {
+  const stop = 'This session no longer renews it'
+  if (refusal.reason === 'claimed') {
+    return `zinn: ${key} is claimed by another session. ${stop}`
+  }
+  if (refusal.reason === 'claim_limit') {
+    return `zinn: the claim on ${key} saw no change to the task for too long. Only a change to the task renews it now`
+  }
+  if (refusal.reason === 'not_claimed') {
+    return `zinn: ${key} has no claim to renew any more. ${stop}`
+  }
+  return `zinn: could not renew the claim on ${key} (${refusal.message.slice(0, 120)}). ${stop}`
+}
+
 /** The earliest moment after `now` at which one of these live claims runs out. Null when none will. */
 export function nextExpiry(claims: Iterable<Claim | null>, now: number): number | null {
   let next: number | null = null

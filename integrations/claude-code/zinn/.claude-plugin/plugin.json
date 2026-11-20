@@ -1,7 +1,7 @@
 {
 	"name": "zinn",
 	"version": "0.2.0-dev",
-	"description": "Zinn task keys in the Claude Code transcript and a Zinn pane. Under each reply, a status mark and a short title for every task key it mentions, with a key the store lacks flagged. /zinn-show opens a task, a board or the list of boards. Draws only and reads the store read-only by argv: no tool, no prompt section, no model turn, so it costs no tokens.",
+	"description": "Zinn task keys in the Claude Code transcript and a Zinn pane. Under each reply, a status mark and a short title for every task key it mentions, with a key the store lacks flagged. /zinn-show opens a task, a board or the list of boards. Reads the store by argv, and renews this session's own claims after turns that ran a tool: no tool, no prompt section, no model turn, so it costs no tokens.",
 	"types": "./types/index.d.ts",
 	"author": {
 		"name": "Zinn"
@@ -122,6 +122,12 @@
 			"type": "boolean",
 			"title": "Notices about this session's claims",
 			"description": "A toast a few minutes before a claim this session holds runs out (5 minutes, or a tenth of a lease shorter than 50 minutes), a notice when one has run out, and after /clear a notice naming the claims the cleared conversation still holds. In a session with no screen, the same warning is a native notification. It comes from the key map the plugin already loads, makes no write and costs no tokens.",
+			"default": true
+		},
+		"renewClaims": {
+			"type": "boolean",
+			"title": "Renew this session's claims",
+			"description": "After a turn that ran a tool, each claim this session holds with less than half its lease left is renewed with zinn task heartbeat KEY, one CLI call (no tokens). A claim that has run out is never renewed, so its notice still shows. When the CLI refuses (another session holds the task, the claim saw no change to the task for 24 hours, or it has no claim any more), one toast says so and that task is not renewed again this session. While idle: no calls. While in use, per held claim: at most 4 calls per session-hour on a 30m lease, 1 on a 2h lease. Each renewal is a write, so the next database check also reloads the key map once. Off makes no write.",
 			"default": true
 		},
 		"pane": {

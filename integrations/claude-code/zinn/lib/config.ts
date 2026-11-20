@@ -110,6 +110,8 @@ export type Config = {
   footerClaim: boolean
   /** A toast before this session's claim runs out and when it has, and a notice at session end naming claims still held. */
   claimNotices: boolean
+  /** After a main-loop turn that ran a tool, renew this session's claims that have less than half their lease left. */
+  renewClaims: boolean
 }
 
 export type EnvReads = { look?: string; legend?: string; maxEntries?: string; keyPress?: string; marks?: string; myPrompts?: string; log?: string; statusLine?: string }
@@ -171,5 +173,6 @@ export function parseConfig(options: Readonly<Record<string, unknown>>, env: Env
     footerLabel: options['footerLabel'] !== false,
     footerClaim: options['footerClaim'] !== false,
     claimNotices: options['claimNotices'] !== false,
+    renewClaims: options['renewClaims'] !== false,
   }
 }

@@ -1,6 +1,6 @@
 // Who holds a task: the claim as the CLI prints it, drawn in the legend, the board and the task pane. Pure.
 import { test, expect } from 'claude-code/testing'
-import { alertsFor, alertText, claimedAway, claimLine, claimOf, dueAlerts, endNoticeText, footerClaimSpans, heldColor, HELD_COLORS, holderOf, leaseOf, legendClaim, nextAlertAt, nextExpiry, wallTime, warnLeadMs, WARN_LEAD_MAX_MS, type Claim } from '../lib/claims'
+import { alertsFor, alertText, claimedAway, claimLine, claimOf, dueAlerts, endNoticeText, footerClaimSpans, heldColor, HELD_COLORS, holderOf, leaseOf, legendClaim, nextAlertAt, nextExpiry, renewalsDue, renewFailText, wallTime, warnLeadMs, WARN_LEAD_MAX_MS, type Claim } from '../lib/claims'
 import { findMentions, parseTaskList } from '../lib/keys'
 import { HELD_TITLE_MIN, underLines } from '../lib/plan'
 import { lineText } from '../lib/style'
@@ -9,6 +9,7 @@ import { parseTask } from '../lib/pane/task'
 import { layoutRows, rowText } from '../lib/pane/layouts'
 import { boardRows } from '../lib/pane/views'
 import { LAYOUTS } from '../lib/pane/resolve'
+import { readHeartbeat } from '../lib/watch'
 import { claimJson, HOUR } from './fixtures'
 import { PROJECT, TASK } from './pane-fixtures'
 
@@ -174,4 +175,45 @@ test('notice texts: the key and the local time', () => {
   expect(text).toContain(`CLM-1 (until ${hm(NOW + HOUR)})`)
   expect(text).toContain('+2 more')
   expect(text).not.toContain('CLM-4')
+})
+
+
+// ZCC-25: which of this session's claims a turn with tools renews, and how a heartbeat's answer reads.
+test('renewalsDue: only this session\'s live claims with less than half the lease left', () => {
+  const lease = 30 * 60_000
+  const tasks = held([
+    row('CLM-1', claimJson(ME, NOW + lease / 2 - 1, 'live', lease)),
+    row('CLM-2', claimJson(ME, NOW + lease / 2, 'live', lease)),
+    row('CLM-3', claimJson(OTHER, NOW + 60_000, 'live', lease)),
+    row('CLM-4', claimJson(ME, NOW - 1, 'live', lease)),
+    row('CLM-5', claimJson(ME, NOW + 60_000, 'expired', lease)),
+    row('CLM-6', null),
+    row('CLM-7', claimJson(ME, NOW + 60_000, 'live', lease)),
+  ])
+  expect(renewalsDue(tasks, ME, NOW, new Set())).toEqual(['CLM-1', 'CLM-7'])
+  expect(renewalsDue(tasks, ME, NOW, new Set(['CLM-7']))).toEqual(['CLM-1'])
+  expect(renewalsDue(tasks, null, NOW, new Set())).toEqual([])
+  const { lease_ms: _, ...noLease } = claimJson(ME, NOW + 60_000, 'live', lease)
+  expect(renewalsDue(held([row('CLM-8', noLease)]), ME, NOW, new Set())).toEqual([])
+})
+
+test('readHeartbeat: the renewed task, a refusal by reason or code, or no answer', () => {
+  const task = { key: 'CLM-1', status: 'Active', column: 'TODO', title: 't', claim: claimJson(ME, NOW + HOUR), changed: true }
+  const ok = readHeartbeat('CLM-1', { exitCode: 0, stdout: JSON.stringify(task), stderr: '' })
+  expect(ok.kind).toBe('renewed')
+  expect(ok.kind === 'renewed' ? ok.info.claim?.expiresAt : null).toBe(NOW + HOUR)
+  for (const reason of ['claimed', 'claim_limit', 'not_claimed']) {
+    const stderr = JSON.stringify({ error: { code: 'conflict', message: 'm', details: { entity: 'task', key: 'CLM-1', reason } } })
+    expect(readHeartbeat('CLM-1', { exitCode: 1, stdout: '', stderr })).toEqual({ kind: 'refused', reason, message: 'm' })
+  }
+  const notFound = JSON.stringify({ error: { code: 'not_found', message: 'gone', details: { entity: 'task' } } })
+  expect(readHeartbeat('CLM-1', { exitCode: 1, stdout: '', stderr: notFound })).toEqual({ kind: 'refused', reason: 'not_found', message: 'gone' })
+  expect(readHeartbeat('CLM-1', { exitCode: 127, stdout: '', stderr: 'zinn: command not found' }).kind).toBe('failed')
+  expect(readHeartbeat('CLM-1', { exitCode: 0, stdout: 'not json', stderr: '' }).kind).toBe('failed')
+})
+
+test('renewFailText names the key for every refusal', () => {
+  for (const reason of ['claimed', 'claim_limit', 'not_claimed', 'not_found']) {
+    expect(renewFailText('CLM-1', { reason, message: 'm' })).toContain('CLM-1')
+  }
 })

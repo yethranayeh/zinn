@@ -28,7 +28,7 @@ Both plugins work in [Code Mode](https://code.claude.com/docs/en/code-mode). Cla
 - The Zinn CLI on Claude Code's `PATH` as `zinn`. If you just follow [CLI installation](/docs/installation), you will be fine.
   - Status marks from column categories and claims need CLI **0.45.0** or newer. With an older CLI, marks follow each column's name or its place on the board.
 
-The plugins read your database through the CLI, with the [environment](/docs/settings#choose-the-data-directory) Claude Code started with. `ZINN_DIR` set before starting Claude Code selects the database, as it does for any `zinn` command. Without it, Zinn uses `~/.zinn`. Every read is a CLI read, so the plugins never change tasks and record no activity.
+The plugins read your database through the CLI, with the [environment](/docs/settings#choose-the-data-directory) Claude Code started with. `ZINN_DIR` set before starting Claude Code selects the database, as it does for any `zinn` command. Without it, Zinn uses `~/.zinn`. Every read is a CLI read. The one write is `zinn` renewing this session's own claims, which the activity log records.
 
 ## Install
 
@@ -44,7 +44,7 @@ Start a new session afterwards. You can install either plugin on its own.
 
 ## Task keys in replies
 
-The plugin loads the keys of every project in your database when a session starts. A key in a reply then shows its status and title. By default, one legend line per key appears under the reply, and a key the database does not have is marked `✗ not in Zinn`. A claimed task says until when it is held, in local time: `yours until 14:30` for this session's claim, `held until 14:30` for another's. In the fullscreen terminal, a click on a key in the legend opens it in the pane. A few minutes before this session's claim runs out, a toast says so, and another when it has run out. After `/clear`, a notice names the claims the cleared conversation still holds.
+The plugin loads the keys of every project in your database when a session starts. A key in a reply then shows its status and title. By default, one legend line per key appears under the reply, and a key the database does not have is marked `✗ not in Zinn`. A claimed task says until when it is held, in local time: `yours until 14:30` for this session's claim, `held until 14:30` for another's. In the fullscreen terminal, a click on a key in the legend opens it in the pane. After a turn that ran a tool, the plugin renews this session's claims with `zinn task heartbeat` once less than half the lease is left. A few minutes before this session's claim runs out, a toast says so, and another when it has run out. After `/clear`, a notice names the claims the cleared conversation still holds.
 
 The key map stays current on its own. Every 30 seconds the plugin checks whether the database changed, with one CLI call, and reloads only when it did. A `zinn` write that Claude runs through the Bash tool reloads it at once. When a key moves to another column, a toast says so, such as `ZCC-7 -> Review`.
 
@@ -82,6 +82,7 @@ Set options with `/plugin`, under the plugin's configuration, or if you like tor
 | `footerLabel`   | `true`                |                             | The `zinn` label in the prompt footer, shown as `zinn ✗` while something is wrong.                                                                                         |
 | `footerClaim`   | `true`                |                             | The claimed task in the footer label, such as `zinn ◆ ZCC-7`.                                                                                                              |
 | `claimNotices`  | `true`                |                             | Toasts before this session's claim runs out and when it has, and a notice after `/clear` naming claims still held.                                                         |
+| `renewClaims`   | `true`                |                             | After a turn that ran a tool, renews this session's claims with under half their lease left. No calls while idle, at most 4 per claim per hour in use on a 30m lease.      |
 | `pane`          | `true`                |                             | Off registers no `/zinn-show` and opens no pane.                                                                                                                           |
 | `layout`        | `table`               | `ZINN_TASK_PANE_LAYOUT`     | The pane's task layout: `table`, `card` or `sectioned`.                                                                                                                    |
 | `log`           | `false`               | `ZINN_MENTIONS_LOG`         | Writes counts and timings, never transcript text, to `logDir`. Set the variable to `1`.                                                                                    |

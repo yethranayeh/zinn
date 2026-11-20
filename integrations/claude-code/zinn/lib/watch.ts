@@ -261,6 +261,33 @@ export function readView(key: string, r: { exitCode: number; stdout: string; std
   return { kind: 'unknown', why: `exit ${r.exitCode}` }
 }
 
+/** The result of `zinn task heartbeat KEY --json`. */
+export type HeartbeatResult =
+  /** Renewed: the task as the CLI printed it, with the new expiry. */
+  | { kind: 'renewed'; info: KeyInfo }
+  /** The CLI refused, by its error envelope's reason or code. */
+  | { kind: 'refused'; reason: string; message: string }
+  /** No answer to read: zinn did not run, or printed something else. */
+  | { kind: 'failed'; why: string }
+
+/** Reads a heartbeat's answer: the task on exit 0, as `task view` prints it, else the error envelope on stderr. */
+export function readHeartbeat(key: string, r: { exitCode: number; stdout: string; stderr: string }): HeartbeatResult {
+  if (r.exitCode === 0) {
+    const view = readView(key, r)
+    return view.kind === 'row' ? { kind: 'renewed', info: view.info } : { kind: 'failed', why: view.kind === 'unknown' ? view.why : 'no task' }
+  }
+  try {
+    const env = JSON.parse(r.stderr) as { error?: { code?: unknown; message?: unknown; details?: { reason?: unknown } } }
+    const code = env.error?.code
+    if (typeof code === 'string') {
+      const reason = env.error?.details?.reason
+      const message = env.error?.message
+      return { kind: 'refused', reason: typeof reason === 'string' ? reason : code, message: typeof message === 'string' ? message : code }
+    }
+  } catch { /* fall through */ }
+  return { kind: 'failed', why: `exit ${r.exitCode}` }
+}
+
 /** A copy of the map with `results` folded in. `unknown` results must be handled by the caller first. */
 export function applyViews(map: KeyMap, results: ReadonlyMap<string, ViewResult>): KeyMap {
   const keys = new Map(map.keys)

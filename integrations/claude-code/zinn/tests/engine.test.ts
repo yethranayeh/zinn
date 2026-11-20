@@ -22,11 +22,11 @@ const SESSION = 'b7e1c0de-0000-4000-8000-000000000006'
 const MAP_NAME = { plugin: 'zinn', key: 'map' } as const
 
 type Zinn = { exitCode: number; stdout: string; stderr?: string; isStdoutTruncated?: boolean } | 'throw'
-type World = { drawn: string[]; summaries: (boolean | null)[]; runs: string[][]; status: string[]; toasts: string[]; registered: string[]; files: Map<string, string>; clock: ReturnType<typeof mock.clock>; zinn: Zinn[]; map: () => KeyMapState | undefined; modes: string[]; envs: { argv: string[]; env: Record<string, string> | undefined }[]; logs: string[]; notified: string[]; surfaces: string[] }
+type World = { drawn: string[]; summaries: (boolean | null)[]; runs: string[][]; status: string[]; toasts: string[]; registered: string[]; files: Map<string, string>; clock: ReturnType<typeof mock.clock>; zinn: Zinn[]; map: () => KeyMapState | undefined; modes: string[]; envs: { argv: string[]; env: Record<string, string> | undefined }[]; logs: string[]; notified: string[]; surfaces: string[]; heartbeat: Record<string, Zinn> }
 
 function world(on: On, o: { installed?: string; zinn?: Zinn | Zinn[]; env?: Record<string, string> } = {}): World {
   const queue = Array.isArray(o.zinn) ? [...o.zinn] : [o.zinn ?? { exitCode: 0, stdout: JSON.stringify(ROWS) }]
-  const w: World = { drawn: [], summaries: [], runs: [], status: [], toasts: [], registered: [], files: new Map(), clock: undefined as never, zinn: queue, map: () => undefined, modes: [], envs: [], logs: [], notified: [], surfaces: ['terminal'] }
+  const w: World = { drawn: [], summaries: [], runs: [], status: [], toasts: [], registered: [], files: new Map(), clock: undefined as never, zinn: queue, map: () => undefined, modes: [], envs: [], logs: [], notified: [], surfaces: ['terminal'], heartbeat: {} }
   w.clock = mock.clock(on, { now: Date.UTC(2026, 9, 12, 9, 0, 0) })
   mock.env(on, o.env ?? {})
   // The kit's Engine `$` has no `state` noun (tsc TS2339, runtime TypeError), but `state.get` and
@@ -57,6 +57,13 @@ function world(on: On, o: { installed?: string; zinn?: Zinn | Zinn[]; env?: Reco
     if (argv[1] === 'activity') {
       return res({ exitCode: 0, stdout: '[]' })
     } // ZCC-7 poll baseline: live.test.ts covers it
+    if (argv[0] === 'zinn' && argv[2] === 'heartbeat') {
+      const h = w.heartbeat[argv[3]!] ?? { exitCode: 1, stdout: '', stderr: '{"error":{"code":"storage","message":"boom"}}' }
+      if (h === 'throw') {
+        throw new Error('spawn zinn ENOENT')
+      }
+      return res(h)
+    }
     if (argv[0] === 'zinn') {
       const z = (w.zinn.length > 1 ? w.zinn.shift() : w.zinn[0])!
       if (z === 'throw') {
@@ -79,6 +86,9 @@ function world(on: On, o: { installed?: string; zinn?: Zinn | Zinn[]; env?: Reco
   })
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
   on('session.end', async (_$, e) => ({ sessionId: e.sessionId }))
+  on('turn.start', async (_$, e) => ({ turnId: e.turnId }))
+  on('turn.complete', async (_$, e) => ({ text: e.answer }))
+  on('tool.call', async () => ({ result: { stdout: '', stderr: '', interrupted: false } as never, text: '' }))
   return w
 }
 
@@ -815,6 +825,113 @@ test('ZCC-24 claimNotices false: no toast, no notification and no notice at the 
   expect(w.toasts).toEqual([])
   expect(w.notified).toEqual([])
   expect(w.logs).toEqual([])
+})
+
+// ZCC-25: a main-loop turn that ran a tool renews this session's claims with less than half the lease left.
+const LEASE = 30 * MINUTE
+const heartbeats = (w: World): string[][] => w.runs.filter(a => a[0] === 'zinn' && a[2] === 'heartbeat')
+const renewedRow = (expiresAt: number) => ({ exitCode: 0, stdout: JSON.stringify({ ...ROWS.find(r => r.key === 'ZCC-6')!, claim: claimJson(SESSION, expiresAt, 'live', LEASE), changed: true }) })
+const refusal = (reason: string) => ({ exitCode: 1, stdout: '', stderr: JSON.stringify({ error: { code: 'conflict', message: 'refused', details: { entity: 'task', key: 'ZCC-6', reason } } }) })
+let turnSeq = 0
+async function turn($: Parameters<TestBody>[0], w: World, o: { tool?: boolean; agentId?: string } = {}): Promise<void> {
+  const turnId = `t-${++turnSeq}`
+  const loop = o.agentId === undefined ? {} : { agentId: o.agentId }
+  await $.turn.start({ text: 'go', turnId, ...loop })
+  if (o.tool !== false) {
+    await $.tool.call({ tool: 'Read', file_path: '/tmp/x', ...loop } as never)
+  }
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId, reason: 'answer', ...loop })
+  for (let i = 0; i < 5; i++) await w.clock.advance(10)
+}
+const held30 = () => ({ zinn: claimedRows(claimJson(SESSION, WORLD_NOW + LEASE, 'live', LEASE)) })
+
+test('ZCC-25 renewal: a tool turn under half the lease renews once, with the session and the client token', opts({ look: 'under', keyPress: 'off' }), async ($, on) => {
+  const w = world(on, held30())
+  await $.session.start(START)
+  await w.clock.advance(16 * MINUTE)
+  const renewedUntil = WORLD_NOW + 16 * MINUTE + LEASE
+  w.heartbeat['ZCC-6'] = renewedRow(renewedUntil)
+  await turn($, w)
+  expect(heartbeats(w)).toEqual([['zinn', 'task', 'heartbeat', 'ZCC-6', '--json']])
+  const env = w.envs.find(x => x.argv[2] === 'heartbeat')!.env!
+  expect(env['ZINN_SESSION_ID']).toBe(SESSION)
+  expect(env['ZINN_CLIENT']).toBe(`zinn-claude-code:claims/${VERSION}`)
+  // The answer moved the expiry: the legend, and the notice timer, follow it with no read.
+  const ui = await $.ui.mount({ plugin: 'zinn', surface: 'terminal', component: 'AssistantMessage', requestId: nextId('renew'), props: AM('ZCC-6 now'), viewport: VIEW })
+  await ui.drawn()
+  expect((await arrows(ui))[0]).toContain(hm(renewedUntil))
+  await w.clock.advance(14 * MINUTE) // past the old warning moment, 27 minutes in
+  expect(w.toasts).toEqual([])
+  await turn($, w) // more than half the new lease left: nothing
+  expect(heartbeats(w)).toHaveLength(1)
+  await w.clock.advance(12 * MINUTE)
+  expect(w.toasts).toEqual([])
+  await w.clock.advance(MINUTE) // 43 minutes in is the new warning moment
+  expect(w.toasts).toHaveLength(1)
+  expect(w.toasts[0]).toContain(hm(renewedUntil))
+})
+
+test('ZCC-25 renewal: nothing with more than half the lease left, after a turn without tools, or after a subagent\'s turn', opts({ look: 'under' }), async ($, on) => {
+  const w = world(on, held30())
+  w.heartbeat['ZCC-6'] = renewedRow(WORLD_NOW + HOUR)
+  await $.session.start(START)
+  await w.clock.advance(10 * MINUTE)
+  await turn($, w)
+  expect(heartbeats(w)).toEqual([])
+  await w.clock.advance(6 * MINUTE)
+  await turn($, w, { tool: false })
+  await turn($, w, { agentId: 'sub-1' })
+  expect(heartbeats(w)).toEqual([])
+  await turn($, w) // control: the main loop's next tool turn renews
+  expect(heartbeats(w)).toHaveLength(1)
+})
+
+test('ZCC-25 renewal: a claim that ran out is never renewed, and its notice shows', opts({ look: 'under' }), async ($, on) => {
+  const w = world(on, held30())
+  w.heartbeat['ZCC-6'] = renewedRow(WORLD_NOW + HOUR)
+  await $.session.start(START)
+  await w.clock.advance(LEASE + MINUTE)
+  await turn($, w)
+  expect(heartbeats(w)).toEqual([])
+  expect(w.toasts.some(t => t.includes('ZCC-6') && t.includes('expired'))).toBe(true)
+})
+
+test('ZCC-25 renewClaims false: no heartbeat', opts({ look: 'under', renewClaims: false }), async ($, on) => {
+  const w = world(on, held30())
+  w.heartbeat['ZCC-6'] = renewedRow(WORLD_NOW + HOUR)
+  await $.session.start(START)
+  await w.clock.advance(16 * MINUTE)
+  await turn($, w)
+  expect(heartbeats(w)).toEqual([])
+})
+
+for (const reason of ['claimed', 'claim_limit', 'not_claimed']) {
+  test(`ZCC-25 renewal refused (${reason}): one toast, and the key is not renewed again`, opts({ look: 'under' }), async ($, on) => {
+    const w = world(on, held30())
+    w.heartbeat['ZCC-6'] = refusal(reason)
+    await $.session.start(START)
+    await w.clock.advance(16 * MINUTE)
+    await turn($, w)
+    expect(heartbeats(w)).toHaveLength(1)
+    expect(w.toasts).toHaveLength(1)
+    expect(w.toasts[0]).toContain('ZCC-6')
+    await w.clock.advance(MINUTE)
+    await turn($, w)
+    expect(heartbeats(w)).toHaveLength(1)
+    expect(w.toasts).toHaveLength(1)
+  })
+}
+
+test('ZCC-25 renewal: zinn that does not run gives no toast', opts({ look: 'under' }), async ($, on) => {
+  const w = world(on, held30())
+  w.heartbeat['ZCC-6'] = 'throw'
+  await $.session.start(START)
+  await w.clock.advance(16 * MINUTE)
+  await turn($, w)
+  await w.clock.advance(MINUTE)
+  await turn($, w)
+  expect(heartbeats(w).length).toBeGreaterThan(0)
+  expect(w.toasts).toEqual([])
 })
 
 test('enabled false: nothing in the footer', opts({ enabled: false }), async ($, on) => {

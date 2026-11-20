@@ -1,7 +1,7 @@
 // The client chain a `zinn` run declares in ZINN_CLIENT (https://zinn.sh/docs/core#client-chain-convention)
 
 /** A part of this plugin that runs the CLI. */
-export type ClientPart = "mentions" | "pane";
+export type ClientPart = "mentions" | "pane" | "claims";
 
 export function clientToken(part: ClientPart, version: string): string {
   return `zinn-claude-code:${part}/${version}`;
