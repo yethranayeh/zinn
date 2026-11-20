@@ -61,6 +61,12 @@
 		outline: 2px solid currentColor;
 		outline-offset: 2px;
 	}
+
+	/* Text fragment highlights match the palette text selection uses */
+	::target-text {
+		background-color: var(--color-soot);
+		color: var(--color-limestone);
+	}
 }
 
 @layer components {
