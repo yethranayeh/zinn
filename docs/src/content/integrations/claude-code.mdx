@@ -3,6 +3,8 @@ title: Zinn for Claude Code
 description: Install the Zinn plugins for Claude Code, which show task keys with their status in the transcript, open tasks and boards in a pane and declare session identity to Zinn.
 ---
 
+import Aside from "../../components/ui/aside/Aside.astro";
+
 # Zinn for Claude Code
 
 Two Experimental Claude Code plugins.
@@ -13,6 +15,12 @@ Neither of them add any tools or a prompt section. They are intended to not cost
 - **`zinn-identity`** declares the Claude Code session, subagent, model and effort to Zinn in every shell Claude Code starts, so the [activity log](/docs/cli/activity) can tell sessions and subagents apart.
 
 The intention to keep them separate is if and when a Claude Code update breaks `zinn` itself. It would be beneificial to have `zinn-identity` keep working regardless.
+
+<Aside label='Code Mode is an experimental Claude Code feature'>
+
+Both plugins work in [Code Mode](https://code.claude.com/docs/en/code-mode). Claude writes scripts that call its tools in bulk. Scripts that start a shell get the same identity, in parallel calls, subagents and background scripts too. A `zinn` write from a script updates task keys at once. Tested with Claude Code **2.1.329**.
+
+</Aside>
 
 ## Requirements
 
