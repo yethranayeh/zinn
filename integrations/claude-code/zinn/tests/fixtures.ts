@@ -42,7 +42,7 @@ export const HOUR = 3_600_000
  * A task's `claim` as `zinn task list --all --json` and `zinn task view KEY --json` print it (shape read at
  * 0.46.0-dev). Every Claude Code agent claims under the same actor name: only the session id tells them apart.
  */
-export const claimJson = (sessionId: string, expiresAt: number, state: 'live' | 'expired' = 'live') => ({
+export const claimJson = (sessionId: string, expiresAt: number, state: 'live' | 'expired' = 'live', leaseMs = 2 * HOUR) => ({
   state, actor_kind: 'agent', actor_name: 'claude-code_2-1-327_agent', actor_session_id: sessionId, actor_thread_id: null,
-  claimed_at: expiresAt - 2 * HOUR, renewed_at: expiresAt - 2 * HOUR, worked_at: expiresAt - 2 * HOUR, lease_ms: 2 * HOUR, expires_at: expiresAt,
+  claimed_at: expiresAt - 2 * HOUR, renewed_at: expiresAt - leaseMs, worked_at: expiresAt - leaseMs, lease_ms: leaseMs, expires_at: expiresAt,
 })

@@ -118,6 +118,12 @@
 			"description": "While this session holds a claim, the footer label names the task: zinn ◆ ABC-7, with +N when it holds more. It comes from the key map the plugin already loads and costs no tokens. Needs the footer label.",
 			"default": true
 		},
+		"claimNotices": {
+			"type": "boolean",
+			"title": "Notices about this session's claims",
+			"description": "A toast a few minutes before a claim this session holds runs out (5 minutes, or a tenth of a lease shorter than 50 minutes), a notice when one has run out, and after /clear a notice naming the claims the cleared conversation still holds. In a session with no screen, the same warning is a native notification. It comes from the key map the plugin already loads, makes no write and costs no tokens.",
+			"default": true
+		},
 		"pane": {
 			"type": "boolean",
 			"title": "Zinn pane",

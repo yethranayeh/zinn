@@ -108,6 +108,8 @@ export type Config = {
   footerLabel: boolean
   /** The footer label names the task this session holds. */
   footerClaim: boolean
+  /** A toast before this session's claim runs out and when it has, and a notice at session end naming claims still held. */
+  claimNotices: boolean
 }
 
 export type EnvReads = { look?: string; legend?: string; maxEntries?: string; keyPress?: string; marks?: string; myPrompts?: string; log?: string; statusLine?: string }
@@ -168,5 +170,6 @@ export function parseConfig(options: Readonly<Record<string, unknown>>, env: Env
     statusLine: statusLine.value,
     footerLabel: options['footerLabel'] !== false,
     footerClaim: options['footerClaim'] !== false,
+    claimNotices: options['claimNotices'] !== false,
   }
 }

@@ -156,6 +156,91 @@ export function footerClaimSpans(held: readonly string[]): { s: string; color?: 
   return out
 }
 
+/** A claim is warned about this long before it runs out. */
+export const WARN_LEAD_MAX_MS = 5 * 60_000
+/** A lease shorter than 50 minutes is warned at this share of it before it runs out: 3 minutes for a 30 minute lease. */
+export const WARN_LEAD_LEASE_SHARE = 0.1
+
+/** The `lease_ms` of a task's `claim` object as the CLI prints it. Null when absent or not a number. */
+export function leaseOf(v: unknown): number | null {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) {
+    return null
+  }
+  const lease = ms((v as Record<string, unknown>)['lease_ms'])
+  return lease !== null && lease > 0 ? lease : null
+}
+
+/** How long before expiry a claim of this lease is warned about. A lease the CLI did not give gets the longest lead. */
+export function warnLeadMs(leaseMs: number | null): number {
+  return leaseMs === null ? WARN_LEAD_MAX_MS : Math.min(WARN_LEAD_MAX_MS, leaseMs * WARN_LEAD_LEASE_SHARE)
+}
+
+/** A claim runs out soon (`expiring`) or has run out (`expired`). `at` is the moment it falls due. */
+export type ClaimAlert = { kind: 'expiring' | 'expired'; key: string; expiresAt: number; at: number }
+
+/** One alert, once: it is named by its kind, key and expiry, so a renewed claim is warned about again. */
+export const alertId = (a: Pick<ClaimAlert, 'kind' | 'key' | 'expiresAt'>): string => `${a.kind}:${a.key}:${a.expiresAt}`
+
+/**
+ * The alerts for this session's own claims, soonest first: a warning ahead of each claim that is still live,
+ * and a notice for one that has run out. An expiry before `since` is not news, so it gets no notice. Alerts
+ * named in `done` are left out. Empty when `me` is unknown.
+ */
+export function alertsFor(
+  tasks: ReadonlyMap<string, { claim: Claim | null; leaseMs: number | null }>,
+  me: string | null,
+  now: number,
+  since: number,
+  done: ReadonlySet<string>,
+): ClaimAlert[] {
+  const out: ClaimAlert[] = []
+  for (const [key, t] of tasks) {
+    const c = t.claim
+    if (me === null || c === null || c.sessionId !== me || c.expiresAt === null) {
+      continue
+    }
+    const ranOut = c.state === 'expired' || c.expiresAt <= now
+    const candidates: ClaimAlert[] = []
+    if (!ranOut) {
+      candidates.push({ kind: 'expiring', key, expiresAt: c.expiresAt, at: c.expiresAt - warnLeadMs(t.leaseMs) })
+    }
+    if (!ranOut || c.expiresAt >= since) {
+      candidates.push({ kind: 'expired', key, expiresAt: c.expiresAt, at: c.expiresAt })
+    }
+    out.push(...candidates.filter((a) => !done.has(alertId(a))))
+  }
+  return out.sort((a, b) => a.at - b.at || a.key.localeCompare(b.key))
+}
+
+/** The alerts already due at `now`. */
+export const dueAlerts = (alerts: readonly ClaimAlert[], now: number): ClaimAlert[] => alerts.filter((a) => a.at <= now)
+
+/** The moment the next alert not yet due falls due. Null when there is none. */
+export function nextAlertAt(alerts: readonly ClaimAlert[], now: number): number | null {
+  const later = alerts.filter((a) => a.at > now)
+  return later.length === 0 ? null : Math.min(...later.map((a) => a.at))
+}
+
+/** `zinn: this session's claim on ABC-7 expires at 14:30`, or `expired at 14:30`. */
+export function alertText(a: ClaimAlert, now: number): string {
+  return `zinn: this session's claim on ${a.key} ${a.kind === 'expiring' ? 'expires' : 'expired'} at ${wallTime(a.expiresAt, now)}`
+}
+
+/** What the person reads as the session ends while it still holds tasks, at most `max` of them, then `+N more`. */
+export function endNoticeText(
+  held: readonly string[],
+  tasks: ReadonlyMap<string, { claim: Claim | null }>,
+  now: number,
+  max = 3,
+): string {
+  const shown = held.slice(0, max).map((key) => {
+    const at = tasks.get(key)?.claim?.expiresAt ?? null
+    return at === null ? key : `${key} (until ${wallTime(at, now)})`
+  })
+  const more = held.length - shown.length
+  return `zinn: this session still holds ${shown.join(', ')}${more > 0 ? ` +${more} more` : ''}`
+}
+
 /** The earliest moment after `now` at which one of these live claims runs out. Null when none will. */
 export function nextExpiry(claims: Iterable<Claim | null>, now: number): number | null {
   let next: number | null = null

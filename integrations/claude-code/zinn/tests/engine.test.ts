@@ -22,11 +22,11 @@ const SESSION = 'b7e1c0de-0000-4000-8000-000000000006'
 const MAP_NAME = { plugin: 'zinn', key: 'map' } as const
 
 type Zinn = { exitCode: number; stdout: string; stderr?: string; isStdoutTruncated?: boolean } | 'throw'
-type World = { drawn: string[]; summaries: (boolean | null)[]; runs: string[][]; status: string[]; toasts: string[]; registered: string[]; files: Map<string, string>; clock: ReturnType<typeof mock.clock>; zinn: Zinn[]; map: () => KeyMapState | undefined; modes: string[]; envs: { argv: string[]; env: Record<string, string> | undefined }[] }
+type World = { drawn: string[]; summaries: (boolean | null)[]; runs: string[][]; status: string[]; toasts: string[]; registered: string[]; files: Map<string, string>; clock: ReturnType<typeof mock.clock>; zinn: Zinn[]; map: () => KeyMapState | undefined; modes: string[]; envs: { argv: string[]; env: Record<string, string> | undefined }[]; logs: string[]; notified: string[]; surfaces: string[] }
 
 function world(on: On, o: { installed?: string; zinn?: Zinn | Zinn[]; env?: Record<string, string> } = {}): World {
   const queue = Array.isArray(o.zinn) ? [...o.zinn] : [o.zinn ?? { exitCode: 0, stdout: JSON.stringify(ROWS) }]
-  const w: World = { drawn: [], summaries: [], runs: [], status: [], toasts: [], registered: [], files: new Map(), clock: undefined as never, zinn: queue, map: () => undefined, modes: [], envs: [] }
+  const w: World = { drawn: [], summaries: [], runs: [], status: [], toasts: [], registered: [], files: new Map(), clock: undefined as never, zinn: queue, map: () => undefined, modes: [], envs: [], logs: [], notified: [], surfaces: ['terminal'] }
   w.clock = mock.clock(on, { now: Date.UTC(2026, 9, 12, 9, 0, 0) })
   mock.env(on, o.env ?? {})
   // The kit's Engine `$` has no `state` noun (tsc TS2339, runtime TypeError), but `state.get` and
@@ -42,6 +42,9 @@ function world(on: On, o: { installed?: string; zinn?: Zinn | Zinn[]; env?: Reco
   on('session.id', async () => ({ value: SESSION }))
   on('ui.status', async (_$, e) => { w.status.push(e.text === undefined ? '' : String(e.text)); return { value: undefined } }) // '' = the line was cleared
   on('ui.toast', async (_$, e) => { w.toasts.push(String(e.text)); return { value: undefined } })
+  on('ui.log', async (_$, e) => { w.logs.push(String(e.text)); return { value: undefined } })
+  on('ui.notify', async (_$, e) => { w.notified.push(String(e.text)); return { value: { isSent: true as const, channel: 'client' as const } } })
+  on('session.surfaces', async () => ({ value: w.surfaces as never }))
   on('command.register', async (_$, e) => { w.registered.push(e.name); return { value: { command: e.name } } })
   on('process.run', async (_$, e) => {
     const argv = [...e.argv]
@@ -686,6 +689,132 @@ test('ZCC-7 footerClaim false: the label stays `zinn` while this session holds a
   await $.session.start(START)
   expect(await footer($, w)).toEqual(['focus', 'zinn'])
   expect(await footerClaim($)).toEqual([])
+})
+
+// ZCC-24: notices about this session's own claims. The world's clock stands still until a test advances it.
+const WORLD_NOW = Date.UTC(2026, 9, 12, 9, 0, 0)
+const MINUTE = 60_000
+const hm = (ms: number): string => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` }
+const claimedRows = (claim: object | null) => ({ exitCode: 0, stdout: JSON.stringify(ROWS.map(r => (r.key === 'ZCC-6' ? { ...r, claim } : r))) })
+const SESSION_END = { reason: 'other', sessionId: SESSION, resume: { id: SESSION } } as const
+const taskReads = (w: World, from: number): string[][] => w.runs.slice(from).filter(a => a[0] === 'zinn' && a[1] === 'task')
+
+test('ZCC-24 notices: a toast before this session\'s claim runs out, one when it has, each once, with no store read', opts({ look: 'under' }), async ($, on) => {
+  const lease = 30 * MINUTE
+  const expiresAt = WORLD_NOW + lease
+  const w = world(on, { zinn: claimedRows(claimJson(SESSION, expiresAt, 'live', lease)) })
+  await $.session.start(START)
+  const runs = w.runs.length
+  await w.clock.advance(lease - 3 * MINUTE - 1000) // a tenth of the lease is 3 minutes
+  expect(w.toasts).toEqual([])
+  await w.clock.advance(2000)
+  expect(w.toasts).toHaveLength(1)
+  expect(w.toasts[0]).toContain('ZCC-6')
+  expect(w.toasts[0]).toContain(hm(expiresAt))
+  expect(w.toasts[0]).toContain('expires')
+  await w.clock.advance(3 * MINUTE)
+  expect(w.toasts).toHaveLength(2)
+  expect(w.toasts[1]).toContain('expired')
+  expect(w.toasts[1]).toContain('ZCC-6')
+  await w.clock.advance(HOUR)
+  expect(w.toasts).toHaveLength(2)
+  expect(taskReads(w, runs)).toEqual([])
+  expect(w.notified).toEqual([]) // a terminal draws the toast
+})
+
+test('ZCC-24 notices: a lease of 50 minutes or more is warned 5 minutes ahead', opts({ look: 'under' }), async ($, on) => {
+  const expiresAt = WORLD_NOW + 2 * HOUR
+  const w = world(on, { zinn: claimedRows(claimJson(SESSION, expiresAt)) })
+  await $.session.start(START)
+  await w.clock.advance(2 * HOUR - 5 * MINUTE - 1000)
+  expect(w.toasts).toEqual([])
+  await w.clock.advance(2000)
+  expect(w.toasts).toHaveLength(1)
+})
+
+test('ZCC-24 notices: another session\'s claim and a claim nobody holds give nothing', opts({ look: 'under' }), async ($, on) => {
+  const w = world(on, { zinn: claimedRows(claimJson('another-session', WORLD_NOW + 10 * MINUTE, 'live', 30 * MINUTE)) })
+  await $.session.start(START)
+  await w.clock.advance(HOUR)
+  expect(w.toasts).toEqual([])
+  await $.session.end(SESSION_END)
+  expect(w.logs).toEqual([])
+})
+
+test('ZCC-24 notices: a claim that ran out before the session began is no news', opts({ look: 'under' }), async ($, on) => {
+  const w = world(on, { zinn: claimedRows(claimJson(SESSION, WORLD_NOW - MINUTE, 'expired')) })
+  await $.session.start(START)
+  await w.clock.advance(HOUR)
+  expect(w.toasts).toEqual([])
+})
+
+test('ZCC-24 notices: a renewed claim is warned about at its new expiry, not the old one', opts({ look: 'under' }), async ($, on) => {
+  const lease = 30 * MINUTE
+  const first = WORLD_NOW + lease
+  const w = world(on, { zinn: [claimedRows(claimJson(SESSION, first, 'live', lease)), claimedRows(claimJson(SESSION, first + 20 * MINUTE, 'live', lease))] })
+  await $.session.start(START)
+  await w.clock.advance(10 * MINUTE)
+  await $.command.run(RUN('refresh')) // the heartbeat moved the expiry; the reload reads it
+  w.toasts.length = 0
+  await w.clock.advance(20 * MINUTE) // the old warning moment (27 minutes in) passes
+  expect(w.toasts).toEqual([])
+  await w.clock.advance(20 * MINUTE) // 47 minutes in is the new warning moment
+  expect(w.toasts).toHaveLength(1)
+  expect(w.toasts[0]).toContain(hm(first + 20 * MINUTE))
+})
+
+test('ZCC-24 notices: a claim released before its warning gives nothing', opts({ look: 'under' }), async ($, on) => {
+  const lease = 30 * MINUTE
+  const w = world(on, { zinn: [claimedRows(claimJson(SESSION, WORLD_NOW + lease, 'live', lease)), claimedRows(null)] })
+  await $.session.start(START)
+  await $.command.run(RUN('refresh'))
+  w.toasts.length = 0
+  await w.clock.advance(HOUR)
+  expect(w.toasts).toEqual([])
+})
+
+test('ZCC-24 notices: a session with no screen raises the warning as a native notification too', opts({ look: 'under' }), async ($, on) => {
+  const lease = 30 * MINUTE
+  const w = world(on, { zinn: claimedRows(claimJson(SESSION, WORLD_NOW + lease, 'live', lease)) })
+  w.surfaces = []
+  await $.session.start(START)
+  await w.clock.advance(lease - MINUTE)
+  expect(w.notified).toHaveLength(1)
+  expect(w.notified[0]).toContain('ZCC-6')
+  expect(w.toasts).toEqual([w.notified[0]!])
+})
+
+test('ZCC-24 session end: names the claims this session still holds, never another session\'s', opts({ look: 'under' }), async ($, on) => {
+  const rows = ROWS.map(r => (r.key === 'ZCC-6' ? { ...r, claim: claimJson(SESSION, WORLD_NOW + HOUR) } : r.key === 'ZCC-7' ? { ...r, claim: claimJson(SESSION, WORLD_NOW + 2 * HOUR) } : r.key === 'ZCC-8' ? { ...r, claim: claimJson('another-session', WORLD_NOW + HOUR) } : r))
+  const w = world(on, { zinn: { exitCode: 0, stdout: JSON.stringify(rows) } })
+  await $.session.start(START)
+  await $.session.end(SESSION_END)
+  expect(w.logs).toHaveLength(1)
+  expect(w.logs[0]).toContain('ZCC-6')
+  expect(w.logs[0]).toContain('ZCC-7')
+  expect(w.logs[0]).not.toContain('ZCC-8')
+  expect(w.logs[0]).toContain(hm(WORLD_NOW + HOUR))
+})
+
+test('ZCC-24 session end: a claim that ran out is not held, so nothing is named', opts({ look: 'under' }), async ($, on) => {
+  const lease = 30 * MINUTE
+  const w = world(on, { zinn: claimedRows(claimJson(SESSION, WORLD_NOW + lease, 'live', lease)) })
+  await $.session.start(START)
+  await w.clock.advance(lease + 1000)
+  await $.session.end(SESSION_END)
+  expect(w.logs).toEqual([])
+})
+
+test('ZCC-24 claimNotices false: no toast, no notification and no notice at the end', opts({ look: 'under', claimNotices: false }), async ($, on) => {
+  const lease = 30 * MINUTE
+  const w = world(on, { zinn: claimedRows(claimJson(SESSION, WORLD_NOW + lease, 'live', lease)) })
+  w.surfaces = []
+  await $.session.start(START)
+  await w.clock.advance(lease - MINUTE)
+  await $.session.end(SESSION_END)
+  expect(w.toasts).toEqual([])
+  expect(w.notified).toEqual([])
+  expect(w.logs).toEqual([])
 })
 
 test('enabled false: nothing in the footer', opts({ enabled: false }), async ($, on) => {

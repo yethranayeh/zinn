@@ -16,6 +16,7 @@ import type {
   SessionStartInput,
   RenderElement,
   RenderInput,
+  Timer,
 } from "claude-code";
 import type { ZinnKeysMap } from "../types/index";
 import type { KeyMap, Mention } from "../lib/keys";
@@ -29,7 +30,19 @@ import type { ViewResult } from "../lib/watch";
 import { findMentions, parseTaskList } from "../lib/keys";
 import { parseConfig } from "../lib/config";
 import { planFor, UNDER_INDENT, type ClaimCtx } from "../lib/plan";
-import { claimedAway, claimToastText, footerClaimSpans, heldKeys, nextExpiry } from "../lib/claims";
+import {
+  alertId,
+  alertsFor,
+  alertText,
+  claimedAway,
+  claimToastText,
+  dueAlerts,
+  endNoticeText,
+  footerClaimSpans,
+  heldKeys,
+  nextAlertAt,
+  nextExpiry,
+} from "../lib/claims";
 import { failureReason, toState } from "../lib/state";
 import {
   appendCapped,
@@ -69,6 +82,8 @@ const SEEN_MAX = 500;
 const MAP_REF = { plugin: "zinn", key: "map" } as const;
 /** A legend is redrawn this long after the first claim it shows runs out. */
 const EXPIRY_REDRAW_MS = 1000;
+/** A claim notice is given this long after its moment, so a timer that fires early finds it due. */
+const ALERT_SLACK_MS = 20;
 /** The longest gap the idle poll grows to. */
 const IDLE_MAX_GAP_MS = 10 * 60_000;
 
@@ -110,6 +125,10 @@ const mentioned = new Set<string>();
 let expiryAt: number | null = null;
 // Keys this session holds, for the footer label. Kept current wherever the map or the clock changes them.
 let held: string[] = [];
+// The claim notices: the timer to the next one, those already given, and when this load began.
+let alertTimer: Timer | null = null;
+const alertsDone = new Set<string>();
+let startedAt = 0;
 const t0 = typeof performance !== "undefined" ? performance.now() : 0;
 const now = (): number => (typeof performance !== "undefined" ? performance.now() : 0) - t0;
 const errText = (err: unknown): string =>
@@ -198,6 +217,7 @@ async function loadMap($: Dollar): Promise<string> {
         map = parseTaskList(r.stdout);
         void armExpiry($);
         void refreshHeld($);
+        void armAlerts($);
         line = {
           ev: "map",
           ok: true,
@@ -257,6 +277,70 @@ async function armExpiry($: Dollar): Promise<void> {
     void refreshHeld($);
     void armExpiry($);
   });
+}
+
+/**
+ * The notices about this session's own claims (option claimNotices). One timer waits for the next one, read from
+ * the map this module already holds, and every new map re-reads it. Nothing is written and no command runs.
+ */
+async function armAlerts($: Dollar): Promise<void> {
+  if (map === null || cfg === null || !cfg.claimNotices || !cfg.enabled) {
+    alertTimer?.cancel();
+    alertTimer = null;
+    return;
+  }
+  const [me, at] = await Promise.all([$.session.id().catch(() => null), $.clock.now().catch(() => null)]);
+  // The timer is replaced in one synchronous step, so two overlapping calls leave one timer.
+  alertTimer?.cancel();
+  alertTimer = null;
+  if (at === null || map === null) {
+    return;
+  }
+  const next = nextAlertAt(alertsFor(map.keys, me, at, startedAt, alertsDone), at);
+  if (next === null) {
+    return;
+  }
+  alertTimer = $.clock.after(next - at + ALERT_SLACK_MS, () => {
+    alertTimer = null;
+    void giveAlerts($).catch(() => undefined);
+  });
+}
+
+/** Tells the person about every claim notice now due, once each, then waits for the next. */
+async function giveAlerts($: Dollar): Promise<void> {
+  if (map !== null && cfg !== null && cfg.claimNotices) {
+    const [me, at] = await Promise.all([$.session.id().catch(() => null), $.clock.now()]);
+    const due = dueAlerts(alertsFor(map.keys, me, at, startedAt, alertsDone), at);
+    // Nothing draws in a session with no screen, so a native notification carries the same words.
+    const hasScreen = (await $.session.surfaces().catch(() => [])).length > 0;
+    for (const a of due) {
+      alertsDone.add(alertId(a));
+      const text = alertText(a, at);
+      $.ui.toast(text);
+      if (!hasScreen) {
+        await $.ui.notify(text).catch(() => undefined);
+      }
+    }
+  }
+  await armAlerts($);
+}
+
+/** Names the claims this session still holds as it ends. Never throws. */
+async function noticeHeldAtEnd($: Dollar, sessionId: string): Promise<void> {
+  alertTimer?.cancel();
+  alertTimer = null;
+  if (map === null || cfg === null || !cfg.claimNotices || !cfg.enabled) {
+    return;
+  }
+  try {
+    const at = await $.clock.now();
+    const keys = heldKeys(map.keys, sessionId, at);
+    if (keys.length > 0) {
+      $.ui.log(endNoticeText(keys, map.keys, at));
+    }
+  } catch {
+    /* the session ends without the notice */
+  }
 }
 
 /** Recomputes the keys this session holds and redraws the footer when they changed. */
@@ -604,6 +688,7 @@ async function refreshRound($: Dollar, full: boolean, keys: string[]): Promise<v
       map = applyViews(prev!, results);
       void armExpiry($);
       void refreshHeld($);
+      void armAlerts($);
       mapNote = `${map.keys.size} keys`;
       const at = new Date(await $.clock.now().catch(() => 0)).toISOString();
       await $.state.set(MAP_REF, toState(map, at, ZINN_ARGV, null)).catch(() => undefined);
@@ -770,6 +855,7 @@ function homeDir($: Dollar): Promise<string | null> {
 
 export const registerMentions = (on: On, options: PluginOptions): void => {
   on("session.end", async ($, e, next) => {
+    await noticeHeldAtEnd($, e.sessionId);
     await flush($, [JSON.stringify({ ev: "end", own: stats(ownTimes), decorated })]).catch(
       () => undefined,
     );
@@ -899,6 +985,7 @@ export async function startMentions(
 ): Promise<void> {
   cfg = parseConfig(options, await readEnv($));
   homeP = null;
+  startedAt = await $.clock.now().catch(() => 0);
   const sessionId = await $.session.id().catch(() => "nosession");
   logPath = cfg.log
     ? logFileFor(

@@ -1,6 +1,6 @@
 // Who holds a task: the claim as the CLI prints it, drawn in the legend, the board and the task pane. Pure.
 import { test, expect } from 'claude-code/testing'
-import { claimedAway, claimLine, claimOf, footerClaimSpans, heldColor, HELD_COLORS, holderOf, legendClaim, nextExpiry, wallTime, type Claim } from '../lib/claims'
+import { alertsFor, alertText, claimedAway, claimLine, claimOf, dueAlerts, endNoticeText, footerClaimSpans, heldColor, HELD_COLORS, holderOf, leaseOf, legendClaim, nextAlertAt, nextExpiry, wallTime, warnLeadMs, WARN_LEAD_MAX_MS, type Claim } from '../lib/claims'
 import { findMentions, parseTaskList } from '../lib/keys'
 import { HELD_TITLE_MIN, underLines } from '../lib/plan'
 import { lineText } from '../lib/style'
@@ -122,4 +122,56 @@ test('toast keys: a watched key another session newly holds or took over; never 
   expect(claimedAway(free, later, ['CLM-9', 'CLM-8', 'CLM-7'], ME, NOW)).toEqual(['CLM-9', 'CLM-8']) // CLM-7: same holder, renewed
   expect(claimedAway(free, later, ['CLM-7'], ME, NOW)).toEqual([])
   expect(claimedAway(later, free, ['CLM-9', 'CLM-8'], ME, NOW)).toEqual([]) // released, or claimed by me
+})
+
+// ZCC-24: the notices about this session's own claims.
+test('warning lead: 5 minutes, or a tenth of a lease shorter than 50 minutes', () => {
+  expect(warnLeadMs(2 * HOUR)).toBe(WARN_LEAD_MAX_MS)
+  expect(warnLeadMs(50 * 60_000)).toBe(WARN_LEAD_MAX_MS)
+  expect(warnLeadMs(30 * 60_000)).toBe(3 * 60_000)
+  expect(warnLeadMs(60_000)).toBe(6000)
+  expect(warnLeadMs(null)).toBe(WARN_LEAD_MAX_MS)
+  expect(leaseOf(claimJson(ME, NOW, 'live', 30 * 60_000))).toBe(30 * 60_000)
+  expect(leaseOf({ state: 'live' })).toBeNull()
+  expect(leaseOf(null)).toBeNull()
+})
+
+const held = (rows: object[]) => parseTaskList(JSON.stringify(rows)).keys
+const row = (key: string, claim: object | null) => ({ key, title: 't', column: 'TODO', claim })
+
+test('alerts: this session\'s live claim warns ahead and then expires; another session\'s never does', () => {
+  const lease = 30 * 60_000
+  const tasks = held([row('CLM-1', claimJson(ME, NOW + lease, 'live', lease)), row('CLM-2', claimJson(OTHER, NOW + lease, 'live', lease))])
+  const alerts = alertsFor(tasks, ME, NOW, NOW, new Set())
+  expect(alerts.map(a => [a.kind, a.key, a.at])).toEqual([['expiring', 'CLM-1', NOW + lease - 3 * 60_000], ['expired', 'CLM-1', NOW + lease]])
+  expect(dueAlerts(alerts, NOW)).toEqual([])
+  expect(nextAlertAt(alerts, NOW)).toBe(NOW + lease - 3 * 60_000)
+  expect(dueAlerts(alerts, NOW + lease - 3 * 60_000).map(a => a.kind)).toEqual(['expiring'])
+  expect(nextAlertAt(alerts, NOW + lease)).toBeNull()
+  expect(alertsFor(tasks, null, NOW, NOW, new Set())).toEqual([]) // this session's id unknown: nothing is mine
+})
+
+test('alerts: one already given is left out, a renewed expiry is a new alert, a lapse before the start is no news', () => {
+  const lease = 30 * 60_000
+  const [first] = alertsFor(held([row('CLM-1', claimJson(ME, NOW + lease, 'live', lease))]), ME, NOW, NOW, new Set())
+  const done = new Set([`expiring:CLM-1:${NOW + lease}`])
+  expect(alertsFor(held([row('CLM-1', claimJson(ME, NOW + lease, 'live', lease))]), ME, NOW, NOW, done).map(a => a.kind)).toEqual(['expired'])
+  expect(alertsFor(held([row('CLM-1', claimJson(ME, NOW + 2 * lease, 'live', lease))]), ME, NOW, NOW, done).map(a => a.kind)).toEqual(['expiring', 'expired'])
+  expect(first!.kind).toBe('expiring')
+  const lapsed = held([row('CLM-1', claimJson(ME, NOW - 60_000, 'expired'))])
+  expect(alertsFor(lapsed, ME, NOW, NOW, new Set())).toEqual([])
+  expect(alertsFor(lapsed, ME, NOW, NOW - 120_000, new Set()).map(a => [a.kind, a.at])).toEqual([['expired', NOW - 60_000]])
+  // Read as live but already past its expiry by the clock: not a warning.
+  expect(alertsFor(held([row('CLM-1', claimJson(ME, NOW - 1))]), ME, NOW, NOW - 60_000, new Set()).map(a => a.kind)).toEqual(['expired'])
+})
+
+test('notice texts: the key and the local time', () => {
+  const [a] = alertsFor(held([row('CLM-1', claimJson(ME, NOW + HOUR))]), ME, NOW, NOW, new Set())
+  expect(alertText(a!, NOW)).toContain('CLM-1')
+  expect(alertText(a!, NOW)).toContain(hm(NOW + HOUR))
+  const tasks = held([1, 2, 3, 4, 5].map(n => row(`CLM-${n}`, claimJson(ME, NOW + n * HOUR))))
+  const text = endNoticeText([...tasks.keys()], tasks, NOW)
+  expect(text).toContain(`CLM-1 (until ${hm(NOW + HOUR)})`)
+  expect(text).toContain('+2 more')
+  expect(text).not.toContain('CLM-4')
 })
