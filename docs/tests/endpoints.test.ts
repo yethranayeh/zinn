@@ -198,6 +198,7 @@ test("changelog and its Markdown twin list every release entry, newest first", a
           name: field("name"),
           // Published links point at these anchors.
           anchor: `release-${version.replaceAll(".", "")}`,
+          lineLabel: "Zinn",
           packages: [
             { label: `CLI ${cli}`, url: npmUrl("cli", cli) },
             { label: `Core ${core}`, url: npmUrl("core", core) },
@@ -234,6 +235,7 @@ test("changelog and its Markdown twin list every release entry, newest first", a
           title: `${lineInfo.label} ${version}`,
           name: undefined,
           anchor: `release-${line}-${version.replaceAll(".", "")}`,
+          lineLabel: lineInfo.label,
           packages:
             "npm" in lineInfo
               ? [{ label: `@zinn-dev/${lineInfo.npm} ${version}`, url: npmUrl(lineInfo.npm, version) }]
@@ -241,12 +243,14 @@ test("changelog and its Markdown twin list every release entry, newest first", a
         };
       }),
   );
-  // Zinn releases come before integration releases from the same day.
+  // Zinn releases come before integration releases from the same day, and releases that tie on
+  // date and version fall back to the order of their line labels.
   const releases = [...zinnReleases, ...integrationReleases].sort(
     (a, b) =>
       b.date.localeCompare(a.date) ||
       Number(b.zinnLine) - Number(a.zinnLine) ||
-      b.version.localeCompare(a.version, undefined, { numeric: true }),
+      b.version.localeCompare(a.version, undefined, { numeric: true }) ||
+      a.lineLabel.localeCompare(b.lineLabel),
   );
   expect(zinnReleases.length).toBeGreaterThan(0);
   expect(integrationReleases.length).toBeGreaterThan(0);

@@ -24,7 +24,8 @@ export interface ChangelogRelease {
   entry: ReleaseEntry;
 }
 
-/** Newest first. Zinn releases come before integration releases from the same day. */
+/** Newest first. Zinn releases come before integration releases from the same day, and releases
+ * that tie on date and version fall back to the order of their line labels. */
 export async function getReleases(): Promise<ChangelogRelease[]> {
   const zinnReleases = (await getCollection("releases")).map((entry): ChangelogRelease => {
     const { version, name, date, cli, core } = entry.data;
@@ -77,7 +78,8 @@ export async function getReleases(): Promise<ChangelogRelease[]> {
     (a, b) =>
       b.date.localeCompare(a.date) ||
       zinnFirst(a) - zinnFirst(b) ||
-      b.version.localeCompare(a.version, undefined, { numeric: true }),
+      b.version.localeCompare(a.version, undefined, { numeric: true }) ||
+      a.lineLabel.localeCompare(b.lineLabel),
   );
 }
 
