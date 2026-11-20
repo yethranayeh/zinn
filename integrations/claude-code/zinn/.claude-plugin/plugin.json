@@ -133,7 +133,7 @@
 		"releaseClaims": {
 			"type": "boolean",
 			"title": "Release this session's claims at the end",
-			"description": "When the session ends for any reason but /clear or a resume, each claim this session still holds is released with zinn task release KEY: one CLI call per held claim, all at once at the end of the session and none at any other time (no tokens). The end of a session has a short time limit shared with every plugin, so a release it cuts off is left to the lease. Off (the default) makes no write.",
+			"description": "When the session ends for any reason, /clear and a resume included, each claim this session still holds is released with zinn task release KEY: one CLI call per held claim, all at once at the end of the session and none at any other time (no tokens). The end of a session has a short time limit shared with every plugin, so a release it cuts off is left to the lease. Off (the default) makes no write.",
 			"default": false
 		},
 		"pane": {

@@ -1,6 +1,6 @@
 // Who holds a task: the claim as the CLI prints it, drawn in the legend, the board and the task pane. Pure.
 import { test, expect } from 'claude-code/testing'
-import { alertsFor, alertText, claimedAway, claimLine, claimOf, dueAlerts, endNoticeText, endsWork, END_RESERVE_MS, footerClaimSpans, heldColor, HELD_COLORS, holderOf, leaseOf, legendClaim, nextAlertAt, nextExpiry, releaseTimeoutMs, renewalsDue, renewFailText, wallTime, warnLeadMs, WARN_LEAD_MAX_MS, type Claim } from '../lib/claims'
+import { alertsFor, alertText, claimedAway, claimLine, claimOf, dueAlerts, endNoticeText, END_RESERVE_MS, footerClaimSpans, heldColor, HELD_COLORS, holderOf, leaseOf, legendClaim, nextAlertAt, nextExpiry, releaseTimeoutMs, renewalsDue, renewFailText, wallTime, warnLeadMs, WARN_LEAD_MAX_MS, type Claim } from '../lib/claims'
 import { findMentions, parseTaskList } from '../lib/keys'
 import { HELD_TITLE_MIN, underLines } from '../lib/plan'
 import { lineText } from '../lib/style'
@@ -218,16 +218,7 @@ test('renewFailText names the key for every refusal', () => {
   }
 })
 
-// ZCC-26: which session ends release claims, how long a release may run, and how a release's answer reads.
-test('endsWork: an exit, a logout and a finished or killed -p run release, a /clear and a resume do not', () => {
-  for (const reason of ['prompt_input_exit', 'logout', 'other']) {
-    expect(endsWork(reason)).toBe(true)
-  }
-  for (const reason of ['clear', 'resume', 'a reason the engine adds later', '']) {
-    expect(endsWork(reason)).toBe(false)
-  }
-})
-
+// ZCC-26: how long a release may run, and how a release's answer reads.
 test('releaseTimeoutMs: what the bound leaves after the reserve, never past the cap, nothing when no time is left', () => {
   const cap = 5000
   expect(releaseTimeoutMs(1500, cap)).toBe(1500 - END_RESERVE_MS)

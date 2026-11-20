@@ -963,7 +963,7 @@ const holding = (mine: string[], theirs: string[] = []) => ({
 })
 const endFor = (reason: SessionEndReason) => ({ reason, sessionId: SESSION, resume: { id: SESSION } }) as const
 // Typed by the engine's reasons, so a reason it adds fails the type check until this says what it does.
-const RELEASES_AT_END: Record<SessionEndReason, boolean> = { prompt_input_exit: true, logout: true, other: true, clear: false, resume: false }
+const RELEASES_AT_END: Record<SessionEndReason, boolean> = { prompt_input_exit: true, logout: true, other: true, clear: true, resume: true }
 
 for (const reason of Object.keys(RELEASES_AT_END) as SessionEndReason[]) {
   for (const isOn of [true, false]) {

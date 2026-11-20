@@ -41,7 +41,6 @@ import {
   claimToastText,
   dueAlerts,
   endNoticeText,
-  endsWork,
   footerClaimSpans,
   heldKeys,
   nextAlertAt,
@@ -816,18 +815,17 @@ async function renewClaims($: Dollar): Promise<void> {
 }
 
 /**
- * Releases the claims this session holds as it ends (option releaseClaims, and only for a session that is done with
- * its work), one `zinn task release` per key, all at once. Each may run only as long as the end's time limit leaves,
+ * Releases the claims this session holds as it ends for any reason, /clear and a resume included (option
+ * releaseClaims), one `zinn task release` per key, all at once. Each may run only as long as the end's time limit leaves,
  * so a release the limit cuts off is left to the lease. Never throws. Resolves the keys the store answered for.
  */
 async function releaseClaimsAtEnd(
   $: Dollar,
   sessionId: string,
-  reason: string,
   budget: NextBudget,
 ): Promise<ReadonlySet<string>> {
   const settled = new Set<string>();
-  if (map === null || cfg === null || !cfg.enabled || !cfg.releaseClaims || !endsWork(reason)) {
+  if (map === null || cfg === null || !cfg.enabled || !cfg.releaseClaims) {
     return settled;
   }
   try {
@@ -990,7 +988,7 @@ export const registerMentions = (on: On, options: PluginOptions): void => {
   on("session.end", async ($, e, next) => {
     alertTimer?.cancel();
     alertTimer = null;
-    const settled = await releaseClaimsAtEnd($, e.sessionId, e.reason, next.budget);
+    const settled = await releaseClaimsAtEnd($, e.sessionId, next.budget);
     await noticeHeldAtEnd($, e.sessionId, settled);
     await flush($, [JSON.stringify({ ev: "end", own: stats(ownTimes), decorated })]).catch(
       () => undefined,

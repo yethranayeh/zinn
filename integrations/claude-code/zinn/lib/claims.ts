@@ -287,12 +287,6 @@ export function renewFailText(key: string, refusal: RenewRefusal): string {
   return `zinn: could not renew the claim on ${key} (${refusal.message.slice(0, 120)}). ${stop}`
 }
 
-/** Session end reasons that finish the work: a plain exit, a logout, and a `-p` run that is done or got a signal. */
-const RELEASING_END_REASONS: ReadonlySet<string> = new Set(['prompt_input_exit', 'logout', 'other'])
-
-/** Whether a session ending for this reason is done with its claims. A `clear` and a `resume` go on with the work. */
-export const endsWork = (reason: string): boolean => RELEASING_END_REASONS.has(reason)
-
 /** Kept back from what is left of the session end's time limit, for the notice and the log after the releases. */
 export const END_RESERVE_MS = 300
 
