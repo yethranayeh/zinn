@@ -54,7 +54,7 @@ zinn task release MDR-1
 zinn task claim MDR-1 --lease 2h --force
 ```
 
-`task heartbeat <task-key>` renews your claim with the lease it already has. It never creates a claim: a task without one fails with reason `not_claimed`, and someone else's claim fails with reason `claimed`.
+`task heartbeat <task-key>` renews your claim with the lease it already has. It never creates a claim: a task without one fails with reason `not_claimed`, and someone else's claim fails with reason `claimed`. Your own expired claim renews, unless someone claimed the task since.
 
 `task release <task-key>` removes your claim. A task without a claim is left unchanged and the command exits `0`. Someone else's claim fails with reason `claimed`.
 

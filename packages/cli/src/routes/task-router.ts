@@ -1251,6 +1251,7 @@ Examples:
 Renew your claim on a task with its current lease.
 It fails when the task has no claim or someone else holds it.
 It also fails ${formatDurationInput(CLAIM_WORK_LIMIT_MS)} after you last changed the task. After that, only a change to the task renews the claim.
+Your own expired claim renews, unless someone claimed the task since.
 
 Example: zinn task heartbeat MDR-1`,
   },
