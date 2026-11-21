@@ -22,5 +22,14 @@ export const Prefs = Schema.Struct({
   refreshSeconds: Schema.Number,
 });
 
-export const refreshLabel = (seconds: number) =>
-  seconds < 60 ? `${seconds} s` : `${seconds / 60} min`;
+const SECONDS_PER_MINUTE = 60;
+
+export const refreshLabel = (seconds: number) => {
+  if (seconds < SECONDS_PER_MINUTE) {
+    return `${seconds} seconds`;
+  }
+
+  const minutes = seconds / SECONDS_PER_MINUTE;
+
+  return minutes === 1 ? "1 minute" : `${minutes} minutes`;
+};

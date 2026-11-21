@@ -1,56 +1,58 @@
 /** @jsxImportSource solid-js */
 import type { Ui } from "@opencode/plugin/gui";
 import type { Settings } from "./prefs.ts";
-import { For } from "solid-js";
 
 import { REFRESH_CHOICES, refreshLabel } from "./prefs.ts";
 
+const refreshOptions = REFRESH_CHOICES.map((seconds) => ({
+  value: String(seconds),
+  label: refreshLabel(seconds),
+}));
+
 export function SettingsView(props: {
   ui: Ui;
+  title: string;
   settings: () => Settings;
   update: (patch: Partial<Settings>) => void;
 }) {
+  const SettingsLayout = props.ui.SettingsLayout;
+  const SettingsSection = props.ui.SettingsSection;
+  const SettingsRow = props.ui.SettingsRow;
+  const Select = props.ui.Select;
   const Switch = props.ui.Switch;
-  const Button = props.ui.Button;
 
   return (
-    <div style={{ display: "flex", "flex-direction": "column", gap: "20px" }}>
-      <div data-action="summary">
-        <Switch
-          label="Show board summary"
-          description="The task total, per-column counts and last read, under the window content."
-          checked={props.settings().summary}
-          onChange={(checked: boolean) => props.update({ summary: checked })}
-        />
-      </div>
+    <SettingsLayout
+      title={props.title}
+      description="Customize the board summary under the window content."
+    >
+      <SettingsSection>
+        <SettingsRow
+          id="summary"
+          title="Show board summary"
+          description="The task total, per-column counts and last read under the window content."
+        >
+          <Switch
+            label="Show board summary"
+            hideLabel
+            checked={props.settings().summary}
+            onChange={(checked: boolean) => props.update({ summary: checked })}
+          />
+        </SettingsRow>
 
-      <div
-        data-action="refresh"
-        style={{
-          display: "flex",
-          "align-items": "center",
-          "justify-content": "space-between",
-          gap: "16px",
-        }}
-      >
-        <div>
-          <div style={{ "font-weight": 500 }}>Refresh the board summary every</div>
-          <div style={{ opacity: 0.7 }}>How often the strip re-reads Zinn while a session is open. Home and drafts make no reads.</div>
-        </div>
-        <div role="group" aria-label="Refresh interval" style={{ display: "flex", gap: "4px" }}>
-          <For each={REFRESH_CHOICES}>
-            {(seconds) => (
-              <Button
-                size="small"
-                variant={props.settings().refreshSeconds === seconds ? "neutral" : "ghost"}
-                onClick={() => props.update({ refreshSeconds: seconds })}
-              >
-                {refreshLabel(seconds)}
-              </Button>
-            )}
-          </For>
-        </div>
-      </div>
-    </div>
+        <SettingsRow
+          id="refresh"
+          title="Refresh the board summary every"
+          description="How often the strip re-reads Zinn while a session is open. Home and drafts make no reads."
+        >
+          <Select
+            label="Refresh interval"
+            options={refreshOptions}
+            value={String(props.settings().refreshSeconds)}
+            onChange={(value) => props.update({ refreshSeconds: Number(value) })}
+          />
+        </SettingsRow>
+      </SettingsSection>
+    </SettingsLayout>
   );
 }

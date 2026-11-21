@@ -138,7 +138,9 @@ export default Plugin.define({
           keywords: "interval poll sync",
         },
       ],
-      render: () => <SettingsView ui={ctx.ui} settings={settings} update={update} />,
+      render: () => (
+        <SettingsView ui={ctx.ui} title="Zinn" settings={settings} update={update} />
+      ),
     });
 
     return () => {
