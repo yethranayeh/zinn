@@ -9,6 +9,7 @@ import type { Ctx, Loaded, Scan, TaskSummary } from "./types.ts";
 import {
   For,
   Show,
+  batch,
   createEffect,
   createMemo,
   createSignal,
@@ -46,6 +47,7 @@ import {
 import { inspectorTheme } from "./theme.ts";
 import {
   BOARD_TTL_MS,
+  activeTaskMap,
   errorText,
   flaggedFor,
   loadKeyMap,
@@ -66,6 +68,10 @@ export function Sidebar(props: {
   const [map, setMap] = createSignal<Loaded<Map<string, TaskSummary>>>({
     ok: false,
     error: "Zinn unavailable",
+  });
+  const activeMap = createMemo(() => {
+    const loaded = map();
+    return loaded.ok ? activeTaskMap(loaded.value) : undefined;
   });
   const [loading, setLoading] = createSignal(true);
   const [probeDue, setProbeDue] = createSignal(0);
@@ -92,26 +98,29 @@ export function Sidebar(props: {
       log(props.ctx, "board keys failed", { reason, error: result.error });
     }
 
-    setMap(result);
-    setLoading(false);
-    if (result.ok) {
-      const now = Date.now();
-      const zinnCommands = untrack(() => scan().zinnCommands);
-      lastBoardReadAt = now;
-      lastBoardReadZinn = zinnCommands;
-      if (
-        shouldProbe({
-          force,
-          zinnCommands,
-          lastProbeZinn,
-          msSinceProbe: now - lastProbeAt,
-        })
-      ) {
-        lastProbeAt = now;
-        lastProbeZinn = zinnCommands;
-        setProbeDue((n) => n + 1);
+    // One update, so a new key set and a due probe round start together.
+    batch(() => {
+      setMap(result);
+      setLoading(false);
+      if (result.ok) {
+        const now = Date.now();
+        const zinnCommands = untrack(() => scan().zinnCommands);
+        lastBoardReadAt = now;
+        lastBoardReadZinn = zinnCommands;
+        if (
+          shouldProbe({
+            force,
+            zinnCommands,
+            lastProbeZinn,
+            msSinceProbe: now - lastProbeAt,
+          })
+        ) {
+          lastProbeAt = now;
+          lastProbeZinn = zinnCommands;
+          setProbeDue((n) => n + 1);
+        }
       }
-    }
+    });
   };
 
   // Merge overlapping refresh requests into one read.
@@ -314,8 +323,8 @@ export function Sidebar(props: {
   });
 
   const createdKeys = createMemo<ReadonlySet<string>>(() => {
-    const loaded = map();
-    if (!loaded.ok) {
+    const active = activeMap();
+    if (active === undefined) {
       return new Set<string>();
     }
 
@@ -323,7 +332,7 @@ export function Sidebar(props: {
     const out = new Set<string>();
 
     for (const key of flagged) {
-      if (loaded.value.has(key)) {
+      if (active.has(key)) {
         out.add(key);
       }
     }
@@ -521,6 +530,7 @@ export function Sidebar(props: {
     const loaded = map();
     published = {
       map: loaded.ok ? loaded.value : undefined,
+      activeMap: activeMap(),
       known: scan().known,
       sessionID: props.sessionID,
     };
@@ -534,7 +544,7 @@ export function Sidebar(props: {
     if (!loaded.ok) {
       return truncate(loaded.error, 32);
     }
-    const count = loaded.value.size;
+    const count = activeMap()?.size ?? 0;
     return `${count} ${count === 1 ? "task" : "tasks"}`;
   });
   const failure = createMemo(() => {

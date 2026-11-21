@@ -247,6 +247,9 @@ export function parseTaskList(raw: string): Loaded<Map<string, TaskSummary>> {
   }
   return { ok: true, value: map };
 }
+export function activeTaskMap(tasks: ReadonlyMap<string, TaskSummary>): Map<string, TaskSummary> {
+  return new Map([...tasks].filter(([, task]) => task.status === "Active"));
+}
 export const LABEL_HEX = {
   red: "#cd3131",
   green: "#0dbc79",
@@ -366,7 +369,7 @@ export let keyMapInflight: Promise<Loaded<Map<string, TaskSummary>>> | undefined
 export function loadKeyMap(): Promise<Loaded<Map<string, TaskSummary>>> {
   if (!keyMapCache) {
     void loadLabelColors();
-    const pending = runZinn(["task", "list", "--json"]).then((result) => {
+    const pending = runZinn(["task", "list", "--all", "--json"]).then((result) => {
       if (!result.ok) {
         return result;
       }

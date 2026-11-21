@@ -5,6 +5,7 @@ import { mentionCounts } from "./scan.ts";
 
 export type PanelSnapshot = {
   map: Map<string, TaskSummary> | undefined;
+  activeMap: Map<string, TaskSummary> | undefined;
   known: readonly Mention[];
   sessionID: string;
 };
@@ -66,7 +67,7 @@ export function registerCommands(ctx: Ctx): void {
       slashName: "zinn",
       run() {
         const panel = activePanel;
-        if (!panel?.map) {
+        if (!panel?.activeMap) {
           ctx.ui.toast.show({
             variant: "warning",
             title: "Zinn",
@@ -74,7 +75,7 @@ export function registerCommands(ctx: Ctx): void {
           });
           return;
         }
-        const map = panel.map;
+        const map = panel.activeMap;
         openPicker(
           ctx,
           "Zinn | all tasks",

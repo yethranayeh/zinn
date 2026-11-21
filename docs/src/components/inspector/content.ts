@@ -27,7 +27,7 @@ export const sectionId = (section: InspectorSection): string =>
   section.id ?? section.heading.toLowerCase().replaceAll(" ", "-");
 
 export const inspectorIntroduction =
-  "The inspector reads tasks, labels and recorded activity through the local Zinn CLI. It uses the same [data directory and settings](/docs/settings) as the CLI running in that environment. It loads active tasks from the default project, or from every project when no default is set. With a remote OpenCode server, the TUI inspector still runs locally and reads the local CLI's database. OpenCode Desktop also shows an experimental board summary for the default project.";
+  "The inspector reads tasks, labels and recorded activity through the local Zinn CLI. It uses the same [data directory and settings](/docs/settings) as the CLI running in that environment. It loads tasks from the default project, or from every project when no default is set, including archived tasks mentioned in the chat. The task count includes only active tasks. With a remote OpenCode server, the TUI inspector still runs locally and reads the local CLI's database. OpenCode Desktop also shows an experimental board summary for the default project.";
 
 export const inspectorSections: InspectorSection[] = [
   {
@@ -86,7 +86,7 @@ export const inspectorSections: InspectorSection[] = [
     blocks: [
       {
         kind: "paragraph",
-        text: "Run `/zinn` to find a loaded active task. The command palette also offers **Zinn: task keys in this chat** and **Zinn: pick a task from the board**.",
+        text: "Mentioned archived tasks are recognized and their details open. Run `/zinn` to find a loaded active task. The command palette also offers **Zinn: task keys in this chat** and **Zinn: pick a task from the board**.",
       },
       {
         kind: "paragraph",

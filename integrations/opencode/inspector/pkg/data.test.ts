@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import cliPackageJson from "../../../../packages/cli/package.json" with { type: "json" };
 import inspectorPackageJson from "../package.json" with { type: "json" };
-import { parseTaskList, runZinn, zinnErrorReason } from "./data.ts";
+import { activeTaskMap, parseTaskList, runZinn, zinnErrorReason } from "./data.ts";
 
 const CLI_CLIENT = `zinn-cli/${cliPackageJson.version}`;
 const INSPECTOR_CLIENT = `zinn-opencode:inspector/${inspectorPackageJson.version}`;
@@ -104,6 +104,19 @@ test("a read that passes its timeout fails instead of hanging", async () => {
 test("whoami reports an inherited declaration before the inspector client", async () => {
   setEnvironment("ZINN_CLIENT", "rex/0.9");
   expect(await whoamiClient()).toBe(`${CLI_CLIENT} rex/0.9 ${INSPECTOR_CLIENT}`);
+});
+test("the active projection keeps active tasks and drops archived ones", () => {
+  const parsed = parseTaskList(
+    JSON.stringify([
+      { key: "APP-1", title: "Active", status: "Active" },
+      { key: "APP-2", title: "Archived", status: "Archived" },
+    ]),
+  );
+  expect(parsed.ok).toBe(true);
+  if (!parsed.ok) {
+    return;
+  }
+  expect([...activeTaskMap(parsed.value).keys()]).toEqual(["APP-1"]);
 });
 test("the task list keeps each task's column category", () => {
   const parsed = parseTaskList(

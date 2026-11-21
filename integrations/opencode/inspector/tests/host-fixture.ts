@@ -1,7 +1,7 @@
 import type { installConsumer } from "./package-fixture.ts";
 
 import { strict as assert } from "node:assert";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { hostVersion, packInspector, run } from "./package-fixture.ts";
@@ -14,6 +14,22 @@ async function until(predicate: () => boolean, failure: () => string) {
     assert.ok(Date.now() - started < START_TIMEOUT_MS, failure());
     await Bun.sleep(POLL_MS);
   }
+}
+
+const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+
+/** Puts a `zinn` wrapper first on PATH that records each CLI call before running it. */
+function recordCalls(consumer: ReturnType<typeof installConsumer>, directory: string): string {
+  const calls = join(directory, "zinn-calls.log");
+  writeFileSync(calls, "");
+  const wrapper = join(directory, "bin", "zinn");
+  mkdirSync(join(directory, "bin"), { recursive: true });
+  writeFileSync(
+    wrapper,
+    `#!/bin/sh\nprintf '%s\\n' "$*" >> ${shellQuote(calls)}\nexec ${shellQuote(process.execPath)} ${shellQuote(consumer.releasedCLI)} "$@"\n`,
+  );
+  chmodSync(wrapper, 0o755);
+  return calls;
 }
 
 /** Loads an extracted package through the host's own TUI loader in an isolated PTY. */
@@ -62,13 +78,17 @@ export async function verifyHost(fixture: ReturnType<typeof packInspector>, cons
     const original = (await request("/api/session", { title: "Inspector fixture template", location: { directory: app } })).data;
     const root = { ...original, id: `${original.id}_root`, title: "Inspector fixture conversation" };
     const child = { ...original, id: `${original.id}_child`, parentID: root.id, title: "Inspector fixture child" };
-    const message = { id: "msg_inspector_fixture", type: "user", time: { created: Date.now() }, text: "Inspect PKG-1, PKG-2 and PKG-3" };
+    const message = { id: "msg_inspector_fixture", type: "user", time: { created: Date.now() }, text: "Inspect PKG-1, PKG-2, PKG-3, PKG-4 and PKG-999" };
     await request("/api/experimental/session/import", { info: root, messages: [message], location: { directory: app } });
     await request("/api/experimental/session/import", { info: child, messages: [], location: { directory: app } });
+    run([process.execPath, consumer.releasedCLI, "task", "create", "PKG", "--title", "Archived reference", "--json"], app, env);
+    run([process.execPath, consumer.releasedCLI, "task", "archive", "PKG-4"], app, env);
     run([process.execPath, consumer.releasedCLI, "task", "comment", "create", "PKG-1", "--text", "Child activity"], app, { ...env, OPENCODE_SESSION_ID: child.id });
     run([process.execPath, consumer.releasedCLI, "task", "comment", "create", "PKG-3", "--text", "Root activity"], app, { ...env, ZINN_SESSION_ID: root.id });
     run([process.execPath, consumer.releasedCLI, "task", "move", "PKG-3", "Done"], app, env);
+    run([process.execPath, consumer.releasedCLI, "task", "comment", "create", "PKG-4", "--text", "Archived child activity"], app, { ...env, OPENCODE_SESSION_ID: child.id });
     const log = join(fixture.directory, "inspector.log");
+    const calls = recordCalls(consumer, fixture.directory);
     const config = join(configDirectory, "cli.json");
     const serverConfig = join(configDirectory, "opencode.json");
     const frames: string[] = [];
@@ -76,6 +96,7 @@ export async function verifyHost(fixture: ReturnType<typeof packInspector>, cons
       writeFileSync(config, JSON.stringify({ plugins }));
       writeFileSync(serverConfig, JSON.stringify({ enabled_providers: [], share: "disabled", plugins }));
       writeFileSync(log, "");
+      writeFileSync(calls, "");
       let output = "";
       const tui = Bun.spawn([consumer.host, "--server", base, "--session", root.id, app], {
         cwd: app, env: { ...env, OPENCODE_SERVER_PASSWORD: password, ZINN_INSPECTOR_LOG: log, TERM: "xterm-256color" },
@@ -106,12 +127,23 @@ export async function verifyHost(fixture: ReturnType<typeof packInspector>, cons
           await until(() => output.includes("⧗") && readFileSync(log, "utf8").includes("activity probes settled"), () => "Family activity glyph did not render");
           const settledLine = readFileSync(log, "utf8").split("\n").find((line) => line.includes("activity probes settled"))!;
           const matches = JSON.parse(settledLine.slice(settledLine.indexOf("{"))).matches as string[];
-          assert.ok(matches.includes("PKG-1") && matches.includes("PKG-3"), "Root and child task activity was not recognized");
+          assert.ok(matches.includes("PKG-1") && matches.includes("PKG-3") && matches.includes("PKG-4"), "Root and child task activity was not recognized");
           assert.ok(!matches.includes("PKG-2"), "Unrelated task received a conversation mark");
+          await until(() => readFileSync(log, "utf8").includes(" scan "), () => "The scan was not logged");
+          const scanLine = readFileSync(log, "utf8").split("\n").filter((line) => line.includes(" scan ")).at(-1)!;
+          const scan = JSON.parse(scanLine.slice(scanLine.indexOf("{")));
+          assert.equal(scan.known, 4, "The archived reference was not loaded as a known task");
+          assert.deepEqual(scan.unknownKeys, ["PKG-999"], "A genuinely missing key was not kept unknown");
+          await until(() => output.includes("Archived reference"), () => `The archived row did not render: ${output.slice(-2000)}`);
+          const activityCalls = readFileSync(calls, "utf8").split("\n").filter((line) => line.startsWith("activity list"));
+          assert.ok(activityCalls.length > 0, "The mount made no activity read");
+          assert.equal(new Set(activityCalls).size, activityCalls.length, `The mount repeated an activity read: ${activityCalls.join(" | ")}`);
           tui.terminal!.write("/zinn");
           await Bun.sleep(250);
           tui.terminal!.write("\r");
           await until(() => readFileSync(log, "utf8").includes("picker opened"), () => `Task picker did not open: ${output.slice(-1000)}`);
+          const boardPicker = readFileSync(log, "utf8").split("\n").find((line) => line.includes("picker opened"))!;
+          assert.equal(JSON.parse(boardPicker.slice(boardPicker.indexOf("{"))).options, 3, "Board picker included archived tasks");
           tui.terminal!.write("\r");
           await until(() => readFileSync(log, "utf8").includes('"kind":"ready"'), () => `Task detail did not settle: ${readFileSync(log, "utf8")}`);
           await until(
