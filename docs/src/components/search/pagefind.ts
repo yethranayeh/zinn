@@ -1,16 +1,26 @@
 // The parts of Pagefind's browser API that search uses. The npm package only types its build API.
+/** An element with an id, at the word position where its text starts in the page content */
+interface PagefindAnchor {
+  element: string;
+  id: string;
+  text: string;
+  location: number;
+}
+
 interface PagefindSection {
   title: string;
   url: string;
   excerpt: string;
   locations: number[];
-  anchor?: { id: string };
+  anchor?: PagefindAnchor;
 }
 
 export interface PagefindResult {
   url: string;
+  content: string;
   excerpt: string;
   meta: { title: string };
+  anchors: PagefindAnchor[];
   sub_results: PagefindSection[];
 }
 
@@ -221,21 +231,46 @@ export function matchedPhrase(excerpt: string): string | null {
   return text.slice(words[start]!.start, words[last]!.end);
 }
 
+const headingElement = /^h[1-6]$/;
+
+/** The number of words in the page content before a character offset */
+function wordsBefore(content: string, offset: number) {
+  return content.slice(0, offset).match(/\S+/g)?.length ?? 0;
+}
+
 /**
- * The result URL with a text directive for the matched phrase, so the destination scrolls to
- * and highlights it. Only anchors keep a fallback, so a page URL without one is left alone
+ * Whether a browser would mark the phrase inside the section. A text directive marks the first
+ * match on the page even when it sits in another section, so the phrase must occur once, in the
+ * section's body. A phrase in the heading is refused too, since the indexed heading carries a
+ * period the page does not.
  */
-export function withTextFragment(url: string, excerpt: string): string {
-  const hash = url.indexOf("#");
-  if (hash < 0 || hash === url.length - 1) {
-    return url;
+function markedInSection(page: PagefindResult, anchor: PagefindAnchor, phrase: string) {
+  const at = page.content.indexOf(phrase);
+  const occursOnce = at >= 0 && page.content.indexOf(phrase, at + 1) < 0;
+  if (!occursOnce) {
+    return false;
   }
 
-  const phrase = matchedPhrase(excerpt);
-  if (!phrase) {
-    return url;
+  const position = wordsBefore(page.content, at);
+  const bodyStart = anchor.location + (anchor.text.match(/\S+/g)?.length ?? 0);
+  const nextHeading = page.anchors.find(
+    (other) => headingElement.test(other.element) && other.location > anchor.location,
+  );
+  const sectionEnd = nextHeading?.location ?? Number.POSITIVE_INFINITY;
+
+  return position >= bodyStart && position < sectionEnd;
+}
+
+/**
+ * The section URL with a text directive for the matched phrase, so the destination scrolls to and
+ * highlights it. The anchor stays in front of it, so a phrase the page no longer has lands on the section.
+ */
+export function sectionUrl(page: PagefindResult, section: PagefindSection): string {
+  const phrase = matchedPhrase(section.excerpt);
+  if (!section.anchor || !phrase || !markedInSection(page, section.anchor, phrase)) {
+    return section.url;
   }
 
-  // encodeURIComponent leaves dashes bare, and the directive syntax reserves them
-  return `${url}:~:text=${encodeURIComponent(phrase).replaceAll("-", "%2D")}`;
+  // matchedPhrase refuses dashes, the one directive delimiter encodeURIComponent leaves bare
+  return `${section.url}:~:text=${encodeURIComponent(phrase)}`;
 }

@@ -596,6 +596,14 @@ test("every sitemap page has a Markdown twin", async () => {
   expect(missing).toEqual([]);
 });
 
+/** Page text as a browser matches a text directive against it, without tags and with whitespace collapsed */
+function pageText(html: string) {
+  return html
+    .replace(/<(script|style)[\s\S]*?<\/\1>/g, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ");
+}
+
 test("every same-site section link on a sitemap page reaches its heading", async () => {
   const sitemap = await (await server.fetch("/sitemap-0.xml")).text();
   const pathnames = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(
@@ -617,12 +625,26 @@ test("every same-site section link on a sitemap page reaches its heading", async
     for (const [, target, rawFragment] of hrefs) {
       const targetPath = target!.replace("https://zinn.sh", "");
       // A text directive follows the element anchor and is not part of the id
-      const fragment = rawFragment!.split(":~:")[0]!;
+      const [fragment, directive] = rawFragment!.split(":~:");
       if (!fragment) {
         continue;
       }
-      if (!(await pageAt(targetPath)).includes(`id="${fragment}"`)) {
+      const targetHtml = await pageAt(targetPath);
+      const anchorAt = targetHtml.indexOf(`id="${fragment}"`);
+      if (anchorAt < 0) {
         broken.push(`${pathname} -> ${targetPath}#${fragment}`);
+        continue;
+      }
+      if (!directive) {
+        continue;
+      }
+      // The browser marks the first match on the page, so the phrase must occur once, inside the section
+      const phrase = decodeURIComponent(directive.replace(/^text=/, ""));
+      const nextHeading = targetHtml.slice(anchorAt).search(/<h[1-6][^>]*\sid="/);
+      const sectionHtml = targetHtml.slice(anchorAt, nextHeading < 0 ? undefined : anchorAt + nextHeading);
+      const occurrences = (text: string) => text.split(phrase).length - 1;
+      if (occurrences(pageText(targetHtml)) !== 1 || occurrences(pageText(sectionHtml)) !== 1) {
+        broken.push(`${pathname} -> ${targetPath}#${fragment}:~:${directive}`);
       }
     }
   }

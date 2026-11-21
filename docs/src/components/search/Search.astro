@@ -131,7 +131,7 @@ const suggestions = [
 	import type { PagefindResult } from "./pagefind";
 
 	import { trackEvent } from "../../scripts/analytics";
-	import { loadPagefind, orderResults, sectionsToShow, withTextFragment } from "./pagefind";
+	import { loadPagefind, orderResults, sectionUrl, sectionsToShow } from "./pagefind";
 
 	const dialog = document.querySelector<HTMLDialogElement>("[data-search]")!;
 	const openButton = document.querySelector<HTMLButtonElement>("[data-search-open]")!;
@@ -164,18 +164,11 @@ const suggestions = [
 
 	function renderPage(page: PagefindResult, query: string) {
 		const sections = sectionsToShow(page, query);
-		const item = fillLink(
-			pageTemplate,
-			withTextFragment(page.url, page.excerpt),
-			page.meta.title,
-			sections.length > 0 ? "" : page.excerpt
-		);
+		const item = fillLink(pageTemplate, page.url, page.meta.title, sections.length > 0 ? "" : page.excerpt);
 		const list = item.querySelector<HTMLUListElement>("[data-search-sections]")!;
 
 		for (const section of sections) {
-			list.append(
-				fillLink(sectionTemplate, withTextFragment(section.url, section.excerpt), section.title, section.excerpt)
-			);
+			list.append(fillLink(sectionTemplate, sectionUrl(page, section), section.title, section.excerpt));
 		}
 
 		return item;
