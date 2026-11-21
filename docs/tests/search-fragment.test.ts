@@ -13,7 +13,7 @@ test("words before the match are added when the sentence ends too soon", () => {
 });
 
 test("a phrase carrying directive syntax is refused", () => {
-  expect(matchedPhrase("Edit a task’s <mark>title,</mark> description, priority, or labels:")).toBeNull();
+  expect(matchedPhrase("Edit a task's <mark>title,</mark> description, priority, or labels:")).toBeNull();
   expect(matchedPhrase("$ zinn task create MDR <mark>--title</mark> 'Refine")).toBeNull();
   expect(matchedPhrase("Search covers <mark>titles,</mark> descriptions and comments")).toBeNull();
   expect(matchedPhrase("A <mark>well-known</mark> snapshot is saved locally.")).toBeNull();

@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 // The site shows quotes and apostrophes as written, so sources use the straight forms
 const curlyQuotes = /[‘’“”]/;
-const sourceFolders = ["src/content", "src/releases", "src/pages"];
+const sourceFolders = ["src/content", "src/releases", "src/pages", "src/components"];
 const sourceExtensions = [".mdx", ".md", ".astro", ".ts"];
 
 const sourceFiles = (await Promise.all(sourceFolders.map(async (folder) => {

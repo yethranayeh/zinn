@@ -10,19 +10,21 @@ export type InspectorInline = string;
 
 export type InspectorProseBlock =
   | { kind: "paragraph"; text: InspectorInline }
-  | { kind: "list"; items: InspectorInline[] }
+  | { kind: "list"; items: Array<InspectorInline> }
   | { kind: "code"; label: string; language: string; code: string }
-  | { kind: "table"; columns: InspectorInline[]; rows: InspectorInline[][] };
+  | { kind: "table"; columns: Array<InspectorInline>; rows: Array<InspectorInline>[] };
 
-export type InspectorBlock =
-  | InspectorProseBlock
-  | { kind: "figure"; figure: AnnotatedFigureData };
+export type InspectorBlock = InspectorProseBlock | { kind: "figure"; figure: AnnotatedFigureData };
 
 export interface InspectorSection {
   heading: string;
   id?: string;
   blocks: InspectorBlock[];
 }
+
+// Give plain-word headings the same slug-based ID that the other pages generate
+export const sectionId = (section: InspectorSection): string =>
+  section.id ?? section.heading.toLowerCase().replaceAll(" ", "-");
 
 export const inspectorIntroduction =
   "The inspector reads tasks, labels and recorded activity through the local Zinn CLI. It uses the same [data directory and settings](/docs/settings) as the CLI running in that environment. It loads active tasks from the default project, or from every project when no default is set. With a remote OpenCode server, the TUI inspector still runs locally and reads the local CLI's database. OpenCode Desktop also shows an experimental board summary for the default project.";

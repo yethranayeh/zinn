@@ -256,7 +256,8 @@ const suggestions = [
 				if (pages.length === 0) {
 					trackEvent("search-empty");
 				}
-				showPages(pages.length > 0 ? "" : `No results for “${query}”.`, query, orderResults(query, pages));
+
+				showPages(pages.length > 0 ? "" : `No results for "${query}".`, query, orderResults(query, pages));
 			}
 		} catch {
 			if (thisQuery === latestQuery) {

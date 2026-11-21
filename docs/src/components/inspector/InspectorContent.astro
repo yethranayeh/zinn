@@ -6,14 +6,15 @@ import Prose from "../Prose.astro";
 import AnnotatedFigure from "./AnnotatedFigure.astro";
 import ProseBlock from "./ProseBlock.astro";
 
+import { sectionId } from "./content";
+
 interface Props {
 	sections: InspectorSection[];
 }
 
 const { sections } = Astro.props;
 
-const isProseBlock = (block: InspectorBlock): block is InspectorProseBlock =>
-	block.kind !== "figure";
+const isProseBlock = (block: InspectorBlock): block is InspectorProseBlock => block.kind !== "figure";
 const isFigureBlock = (block: InspectorBlock): block is Extract<InspectorBlock, { kind: "figure" }> =>
 	block.kind === "figure";
 ---
@@ -23,7 +24,7 @@ const isFigureBlock = (block: InspectorBlock): block is Extract<InspectorBlock, 
 		<section>
 			<div class='max-w-3xl'>
 				<Prose>
-					<MarkdownH2 id={section.id}>{section.heading}</MarkdownH2>
+					<MarkdownH2 id={sectionId(section)}>{section.heading}</MarkdownH2>
 					{section.blocks.filter(isProseBlock).map((block) => (
 						<ProseBlock block={block} />
 					))}
