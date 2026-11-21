@@ -6,10 +6,28 @@ import { isRecord, runZinn } from "./data.ts";
 export const PROBE_CONCURRENCY = 8;
 // Activity older than this does not mark a task as this session's current work.
 export const ACTIVITY_MARK_TTL_MS = 10 * 60_000;
+// Longest a probe round can wait when no zinn command or forced read starts one.
+export const PROBE_RECHECK_MS = 10 * 60_000;
 export let activityProbesSupported = true;
 
 export function isRecentActivity(at: number | null, now = Date.now()): boolean {
   return at !== null && now - at <= ACTIVITY_MARK_TTL_MS;
+}
+
+// A plain board read is not an event: probe only for a forced read, a zinn command, or the window.
+export function shouldProbe(input: {
+  force: boolean;
+  zinnCommands: number;
+  lastProbeZinn: number;
+  msSinceProbe: number;
+}): boolean {
+  if (input.force) {
+    return true;
+  }
+  if (input.zinnCommands !== input.lastProbeZinn) {
+    return true;
+  }
+  return input.msSinceProbe >= PROBE_RECHECK_MS;
 }
 
 // Session and thread filters are separate reads because the CLI combines them with AND.

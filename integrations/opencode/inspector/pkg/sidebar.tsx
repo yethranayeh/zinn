@@ -32,6 +32,7 @@ import {
   probeSessions,
   runPool,
   sessionRunning,
+  shouldProbe,
 } from "./session.ts";
 import {
   PRIORITY_COLUMNS,
@@ -66,15 +67,17 @@ export function Sidebar(props: {
     error: "Zinn unavailable",
   });
   const [loading, setLoading] = createSignal(true);
-  const [boardSeq, setBoardSeq] = createSignal(0);
+  const [probeDue, setProbeDue] = createSignal(0);
   let alive = true;
   let probeCycle = 0;
   const [baselineReady, setBaselineReady] = createSignal(false);
   let lastIdleID: string | undefined;
   let lastBoardReadAt = 0;
   let lastBoardReadZinn = 0;
+  let lastProbeAt = 0;
+  let lastProbeZinn = 0;
 
-  const apply = (result: Loaded<Map<string, TaskSummary>>, reason: string) => {
+  const apply = (result: Loaded<Map<string, TaskSummary>>, reason: string, force: boolean) => {
     if (!alive) {
       return;
     }
@@ -87,10 +90,23 @@ export function Sidebar(props: {
 
     setMap(result);
     setLoading(false);
-    setBoardSeq((n) => n + 1);
     if (result.ok) {
-      lastBoardReadAt = Date.now();
-      lastBoardReadZinn = untrack(() => scan().zinnCommands);
+      const now = Date.now();
+      const zinnCommands = untrack(() => scan().zinnCommands);
+      lastBoardReadAt = now;
+      lastBoardReadZinn = zinnCommands;
+      if (
+        shouldProbe({
+          force,
+          zinnCommands,
+          lastProbeZinn,
+          msSinceProbe: now - lastProbeAt,
+        })
+      ) {
+        lastProbeAt = now;
+        lastProbeZinn = zinnCommands;
+        setProbeDue((n) => n + 1);
+      }
     }
   };
 
@@ -144,7 +160,7 @@ export function Sidebar(props: {
         return;
       }
       const result = await refreshKeyMap(forceLabels);
-      apply(result, reason);
+      apply(result, reason, force);
     })().finally(() => {
       if (refreshInflight === run) {
         refreshInflight = undefined;
@@ -177,7 +193,7 @@ export function Sidebar(props: {
       lastIdleID = newestIdleID(props.ctx.data.session.message.list(props.sessionID));
       setBaselineReady(true);
       const result = await loadKeyMap();
-      apply(result, "mount");
+      apply(result, "mount", true);
     })();
   });
 
@@ -312,7 +328,7 @@ export function Sidebar(props: {
       log(props.ctx, "current-session probe set", { sessions });
     }
     const keys = visibleKnown().map((row) => row.key);
-    const sig = `${sessionsSig}|${boardSeq()}|${keys.join(",")}`;
+    const sig = `${sessionsSig}|${probeDue()}|${keys.join(",")}`;
     if (sig === lastProbeSig) {
       return;
     }

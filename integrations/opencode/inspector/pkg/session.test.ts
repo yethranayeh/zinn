@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { TEST_ENVIRONMENT } from "../../../../scripts/test-isolation.ts";
-import { ACTIVITY_MARK_TTL_MS, isRecentActivity, probeAnySession, probeSessions, probeSessionTask, runPool, sessionRunning } from "./session.ts";
+import { ACTIVITY_MARK_TTL_MS, PROBE_RECHECK_MS, isRecentActivity, probeAnySession, probeSessions, probeSessionTask, runPool, sessionRunning, shouldProbe } from "./session.ts";
 type Context = Parameters<typeof probeSessions>[0];
 const directory = mkdtempSync(join(tmpdir(), "zinn-panel-session-"));
 const store = join(directory, "store");
@@ -226,4 +226,13 @@ test("the mark window includes activity exactly at the threshold", () => {
   expect(isRecentActivity(now - ACTIVITY_MARK_TTL_MS, now)).toBe(true);
   expect(isRecentActivity(now - ACTIVITY_MARK_TTL_MS - 1, now)).toBe(false);
   expect(isRecentActivity(null, now)).toBe(false);
+});
+
+test("the probe gate needs a forced read, a zinn command or the recheck window", () => {
+  const quiet = { force: false, zinnCommands: 2, lastProbeZinn: 2, msSinceProbe: 0 };
+  expect(shouldProbe({ ...quiet, force: true })).toBe(true);
+  expect(shouldProbe({ ...quiet, zinnCommands: 3 })).toBe(true);
+  expect(shouldProbe({ ...quiet, msSinceProbe: PROBE_RECHECK_MS })).toBe(true);
+  expect(shouldProbe({ ...quiet, msSinceProbe: PROBE_RECHECK_MS - 1 })).toBe(false);
+  expect(shouldProbe(quiet)).toBe(false);
 });
