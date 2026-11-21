@@ -91,12 +91,13 @@ const homepageStructuredData = [website, softwareApplication];
 					<script type='application/ld+json' is:inline set:html={JSON.stringify(data).replaceAll("<", "\\u003c")} />
 				))
 		}
+		{/* A prerendered page carries no user activation, so it drops a text fragment directive */}
 		<script type='speculationrules' is:inline>
 			{
 				"prerender": [
 					{
 						"source": "document",
-						"where": { "selector_matches": "a" },
+						"where": { "selector_matches": "a:not([href*=':~:text='])" },
 						"eagerness": "moderate"
 					}
 				]

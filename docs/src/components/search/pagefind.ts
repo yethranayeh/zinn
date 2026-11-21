@@ -142,3 +142,100 @@ export function sectionsToShow(page: PagefindResult, query: string): Array<Pagef
     )
     .slice(0, maxSectionsPerPage);
 }
+
+const maxDirectiveWords = 8;
+const minDirectiveWords = 4;
+const maxWordsBeforeMatch = 6;
+
+/** Characters that end or split a text directive, or that mark code and lead-ins */
+const directiveBreakers = /[,;&:$-]/;
+
+/** A word that ends a sentence, so the phrase stops after it */
+const sentenceEnd = /[.!?]$/;
+
+/** A word that closes a sentence or introduces what follows, so the phrase starts after it */
+const clauseBoundary = /[.!?:]$/;
+
+/** A capital usually starts the next sentence or block */
+const capitalStart = /^[A-Z]/;
+
+/** The excerpt as text, with the mark elements removed and the marks' text left in place */
+function excerptText(excerpt: string) {
+  return excerpt.replace(/<[^>]+>/g, "");
+}
+
+/**
+ * The phrase a text directive points at: the words around the first match, cut before any
+ * character the directive syntax reserves and at a sentence end
+ */
+export function matchedPhrase(excerpt: string): string | null {
+  const firstMark = excerpt.indexOf("<mark>");
+  if (firstMark < 0) {
+    return null;
+  }
+
+  // The match position sits in the text with the tags removed, so count the text before it the same way
+  const matchAt = excerptText(excerpt.slice(0, firstMark)).length;
+  const text = excerptText(excerpt);
+  const words = [...text.matchAll(/\S+/g)].map((word) => ({
+    text: word[0],
+    start: word.index!,
+    end: word.index! + word[0].length,
+  }));
+  const first = words.findIndex((word) => word.end > matchAt);
+
+  if (first < 0 || directiveBreakers.test(words[first]!.text)) {
+    return null;
+  }
+
+  let last = first;
+  if (!sentenceEnd.test(words[first]!.text)) {
+    while (last - first + 1 < maxDirectiveWords && last + 1 < words.length) {
+      const next = words[last + 1]!;
+      if (directiveBreakers.test(next.text) || capitalStart.test(next.text)) {
+        break;
+      }
+
+      last += 1;
+      if (sentenceEnd.test(next.text)) {
+        break;
+      }
+    }
+  }
+
+  // Start at the sentence the match sits in, so the phrase reads as a sentence and repeats less
+  let start = first;
+  for (let step = 0; step < maxWordsBeforeMatch && start > 0; step++) {
+    const previous = words[start - 1]!;
+    if (directiveBreakers.test(previous.text) || clauseBoundary.test(previous.text)) {
+      break;
+    }
+
+    start -= 1;
+  }
+
+  if (last - start + 1 < minDirectiveWords) {
+    return null;
+  }
+
+  return text.slice(words[start]!.start, words[last]!.end);
+}
+
+/**
+ * The result URL with a text directive for the matched phrase, so the destination scrolls to
+ * and highlights it. Only anchors keep a fallback, so a page URL without one is left alone
+ */
+export function withTextFragment(url: string, excerpt: string): string {
+  const hash = url.indexOf("#");
+  if (hash < 0 || hash === url.length - 1) {
+    return url;
+  }
+
+  const phrase = matchedPhrase(excerpt);
+  if (!phrase) {
+    return url;
+  }
+
+  // encodeURIComponent leaves dashes bare, and the directive syntax reserves them
+  return `${url}:~:text=${encodeURIComponent(phrase).replaceAll("-", "%2D")}`;
+}

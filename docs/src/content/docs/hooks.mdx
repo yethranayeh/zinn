@@ -30,7 +30,7 @@ Add a `hooks` object to the global settings file, `~/.zinn/settings.json`, or to
 
 <Aside label='Hooks are global-only'>
 
-Zinn reads `hooks` only from the global settings file. Hooks run commands, and a `zinn.local.json` can be committed with a repository, so a hook there could run commands on someone else's machine. A `hooks` key in `zinn.local.json` is a settings error: normal commands stop with an error naming the file, `zinn info` reports the file as an error, and the hook never runs. See [Settings](/docs/settings) for how settings files are read.
+Zinn reads `hooks` only from the global settings file. Hooks run commands, and a `zinn.local.json` can be committed with a repository, so a hook there could run commands on someone else's machine. A `hooks` key in `zinn.local.json` is a settings error: normal commands stop with an error naming the file, `zinn info` reports the file as an error, and the hook never runs. See [Settings](/docs/settings#global-only:~:text=Settings%20that%20apply%20across%20every%20codebase) for how settings files are read.
 
 </Aside>
 

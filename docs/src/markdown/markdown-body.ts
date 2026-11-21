@@ -38,6 +38,8 @@ export async function markdownBody(body: string, pageId: string) {
       if (path.split("/").at(-1)!.includes(".")) {
         return match;
       }
-      return `](${markdownTwinPath(path)}${fragment})`;
+      // A text fragment directive cannot apply to a Markdown twin, so keep only the anchor
+      const anchor = fragment.split(":~:")[0].replace(/^#$/, "");
+      return `](${markdownTwinPath(path)}${anchor})`;
     });
 }

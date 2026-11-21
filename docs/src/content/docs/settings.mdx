@@ -27,7 +27,7 @@ If a `ZINN_DIR` is provided, Zinn reads only `settings.json` inside that directo
 
 Without `ZINN_DIR`, Zinn looks for `zinn.local.json` from the current directory up to the Git root. Outside a Git repository, it checks only the current directory. It reads the global `~/.zinn/settings.json` too, then merges the local file over it field by field. A local setting overrides the same global setting. You can omit fields in the local setting to inherit global values. The local settings file is not meant to be committed, as it can cause unexpected behavior on others' Zinn setups who install the same repo with the tracked local setting.
 
-<Aside label='Hooks and telemetry limits are global-only'>
+<Aside label='Hooks and telemetry limits are global-only' id='global-only'>
 
 A `zinn.local.json` may set values that apply only to commands run in that codebase. Settings that apply across every codebase, or that run commands, are read only from the global settings file. So `hooks`, `telemetry.maxMegabytes` and `telemetry.maxAgeDays` cannot be set locally. A file that sets one stops normal commands with a settings error.
 
@@ -37,7 +37,7 @@ A `zinn.local.json` may set values that apply only to commands run in that codeb
 
 `storage.directory` is relative to the folder containing the file that sets it. A leading `~` or `~/` expands to your home directory. It names the Zinn directory, which contains `data/zinn.sqlite`, `backups/`, `logs/`, and `telemetry/`.
 
-The selected directory holds one database shared by all its projects. Choose a local directory outside network shares and synchronized folders. See [safe storage and backups](/docs/data).
+The selected directory holds one database shared by all its projects. Choose a local directory outside network shares and synchronized folders. See [safe storage and backups](/docs/data#local-database:~:text=outside%20network%20shares%20such%20as%20SMB).
 
 A folder selected through `ZINN_DIR` or `storage.directory` must already exist. Create it with `mkdir -p <path>` before using it. Creating the first project or label creates the database inside an existing empty folder. With no explicit location, it also creates the default `~/.zinn` folder. Until then, other commands fail with code `not_found` and entity `database` and create no database. In an existing folder, the failed run is still recorded in `telemetry/` unless [telemetry is off](#control-local-telemetry). An empty `ZINN_DIR` is refused. Help, version requests, and `zinn info` work with a missing folder.
 

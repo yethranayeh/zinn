@@ -131,7 +131,7 @@ async function expectMarkdownTwin(page: string, source: string) {
     .replace(/<Kbd\b[^>]*>([\s\S]*?)<\/Kbd>/g, (_match, label) => `\`${label.trim()}\``)
     .replace("<AgentSetup />\n\n", "")
     .replace(
-      /<Aside label='([^']+)'>\n\n([\s\S]*?)\n\n<\/Aside>\n\n/g,
+      /<Aside\b[^>]*label='([^']+)'[^>]*>\n\n([\s\S]*?)\n\n<\/Aside>\n\n/g,
       (_match, label, content) => {
         const quoted = content
           .split("\n")
@@ -150,7 +150,8 @@ async function expectMarkdownTwin(page: string, source: string) {
         return match;
       }
       const target = path.replace(/\/$/, "");
-      return `](${target === "" ? "/index.md" : `${target}.md`}${fragment})`;
+      const anchor = fragment.split(":~:")[0].replace(/^#$/, "");
+      return `](${target === "" ? "/index.md" : `${target}.md`}${anchor})`;
     },
   );
   const topicIndex = expectedMarkdown.match(/<TopicIndex(?:\s+label=(["'])(.*?)\1)?\s*\/>/);
@@ -613,8 +614,13 @@ test("every same-site section link on a sitemap page reaches its heading", async
   for (const pathname of pathnames) {
     const html = await pageAt(pathname);
     const hrefs = [...html.matchAll(/href="((?:https:\/\/zinn\.sh)?\/[^"#]*)#([^"]+)"/g)];
-    for (const [, target, fragment] of hrefs) {
+    for (const [, target, rawFragment] of hrefs) {
       const targetPath = target!.replace("https://zinn.sh", "");
+      // A text directive follows the element anchor and is not part of the id
+      const fragment = rawFragment!.split(":~:")[0]!;
+      if (!fragment) {
+        continue;
+      }
       if (!(await pageAt(targetPath)).includes(`id="${fragment}"`)) {
         broken.push(`${pathname} -> ${targetPath}#${fragment}`);
       }
