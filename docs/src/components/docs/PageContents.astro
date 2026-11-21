@@ -1,9 +1,10 @@
 ---
 import type { MarkdownHeading } from "astro";
 import ContentsLinks from "./ContentsLinks.astro";
+import FurtherReading from "./FurtherReading.astro";
 
 interface Props {
-	headings: MarkdownHeading[];
+	headings: Array<MarkdownHeading>;
 	mobile?: boolean;
 }
 
@@ -22,7 +23,7 @@ const { headings, mobile = false } = Astro.props;
 					+
 				</span>
 				<span aria-hidden='true' class='hidden group-open:inline'>
-					−
+					-
 				</span>
 			</summary>
 			<nav
@@ -33,17 +34,20 @@ const { headings, mobile = false } = Astro.props;
 		</details>
 	) : (
 		<aside class='hidden min-w-0 lg:block' data-pagefind-ignore>
-			<nav
-				aria-label='On this page'
-				class='sticky top-[calc(var(--site-header-height)_+_var(--reading-rail-height)_+_2rem)] max-h-[calc(100svh_-_var(--site-header-height)_-_var(--reading-rail-height)_-_4rem)] overflow-y-auto overscroll-contain'>
-				<p class='mb-4 border-b border-soot/22 pb-3 font-mono text-xs text-muted-foreground'>On this page</p>
-				<ContentsLinks headings={headings} />
-			</nav>
+			<div class='sticky top-[calc(var(--site-header-height)_+_var(--reading-rail-height)_+_2rem)] max-h-[calc(100svh_-_var(--site-header-height)_-_var(--reading-rail-height)_-_4rem)] overflow-y-auto overscroll-contain'>
+				<nav aria-label='On this page'>
+					<p class='mb-4 border-b border-soot/22 pb-3 font-mono text-xs text-muted-foreground'>On this page</p>
+					<ContentsLinks headings={headings} />
+				</nav>
+				<FurtherReading />
+			</div>
 		</aside>
 	)
 }
 
 <script>
+	import { readingSectionEvent } from "./reading-section";
+
 	const rail = document.querySelector<HTMLElement>("[data-reading-rail]");
 	const links = [...document.querySelectorAll<HTMLAnchorElement>("[data-section-link]")];
 	const targets = [...new Set(links.map((link) => document.getElementById(link.hash.slice(1))))].filter(
@@ -53,15 +57,29 @@ const { headings, mobile = false } = Astro.props;
 	const disclosure = document.querySelector<HTMLDetailsElement>("[data-page-contents]");
 	let scheduled = false;
 
+	// The h2 section the reader is in, empty above the first one, for parts that follow it.
+	function publishSection(reached: HTMLElement | undefined) {
+		const index = reached === undefined ? -1 : targets.indexOf(reached);
+		const section = targets.slice(0, index + 1).findLast((target) => target.localName === "h2")?.id ?? "";
+
+		if (document.documentElement.dataset.readingSection === section) {
+			return;
+		}
+
+		document.documentElement.dataset.readingSection = section;
+		document.dispatchEvent(new CustomEvent(readingSectionEvent, { detail: section }));
+	}
+
 	function updateCurrent() {
 		scheduled = false;
 		const railHeight = rail?.getBoundingClientRect().height ?? 0;
 		// The gap matches the document's scroll padding.
 		const line = (header?.getBoundingClientRect().height ?? 0) + railHeight + 24;
-		let current = targets[0];
+		let reached: HTMLElement | undefined;
+
 		for (const target of targets) {
 			if (target.getBoundingClientRect().top <= line + 1) {
-				current = target;
+				reached = target;
 			} else {
 				break;
 			}
@@ -69,9 +87,14 @@ const { headings, mobile = false } = Astro.props;
 		// A page that fits the window stays on its first section until scrolled
 		const isScrolled = window.scrollY > 0;
 		const isAtBottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1;
+
 		if (isScrolled && isAtBottom) {
-			current = targets.at(-1) ?? current;
+			reached = targets.at(-1) ?? reached;
 		}
+
+		const current = reached ?? targets[0];
+		publishSection(reached);
+
 		for (const link of links) {
 			if (current !== undefined && link.hash.slice(1) === current.id) {
 				link.setAttribute("aria-current", "location");

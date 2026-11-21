@@ -4,7 +4,9 @@
 	"type": "module",
 	"scripts": {
 		"dev": "bun --bun astro dev --host 127.0.0.1",
-		"build": "bun --bun astro build && bunx pagefind",
+		"build": "bun --bun astro build && bunx pagefind && bun run steerdown:emit",
+		"steerdown:emit": "test ! -f steerdown.graph.json || steerdown emit --html dist",
+		"steerdown": "steerdown build dist --exclude changelog/ --scope integrations/codex --scope integrations/claude-code --scope integrations/opencode/inspector --scope integrations/opencode/theme --scope integrations/rex/theme --scope integrations/firefox/theme",
 		"check": "bun --bun astro check",
 		"test": "PUBLIC_SITE_ENV=production bun run build && bun run foundry:build && bun tests/run.ts",
 		"deploy": "bun run test && bunx wrangler deploy",
@@ -27,6 +29,7 @@
 		"@tailwindcss/vite": "^4.3.3",
 		"pagefind": "1.6.0",
 		"satori": "0.60.0",
+		"steerdown": "0.1.1",
 		"typescript": "^5",
 		"wrangler": "4.147.0"
 	}

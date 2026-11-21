@@ -67,6 +67,15 @@
 		background-color: var(--color-soot);
 		color: var(--color-limestone);
 	}
+
+	/*
+		The sentence a further reading link comes from.
+		A separate rule, so a browser that rejects one selector keeps the other.
+	*/
+	::highlight(further-reading-origin) {
+		background-color: var(--color-soot);
+		color: var(--color-limestone);
+	}
 }
 
 @layer components {

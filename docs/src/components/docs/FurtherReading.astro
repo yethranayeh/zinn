@@ -1,0 +1,109 @@
+<section aria-labelledby='further-reading-heading' class='mt-8' data-further-reading hidden>
+	<p id='further-reading-heading' class='mb-4 border-b border-soot/22 pb-3 font-mono text-xs text-muted-foreground'>
+		Further reading
+	</p>
+
+	<ul class='space-y-1 font-mono text-xs leading-relaxed' data-further-reading-list></ul>
+
+	<template data-further-reading-item>
+		<li>
+			<a
+				class='block border-l-2 border-transparent px-3 py-2 text-soot hover:bg-soot/8 hover:no-underline focus-visible:-outline-offset-2'>
+				<span class='block text-muted-foreground' data-further-reading-label></span>
+				<span data-further-reading-heading></span>
+			</a>
+		</li>
+	</template>
+</section>
+
+<script>
+	import type { SteerdownPage, SuggestedLink } from "steerdown/browser";
+	import { loadPage, originRange } from "steerdown/browser";
+	import { currentReadingSection, readingSectionEvent } from "./reading-section";
+
+	const relationLabels: Record<string, string> = {
+		prerequisite: "Read before",
+		next_step: "Read next",
+		detail: "Detail",
+		alternative: "Another way"
+	};
+	const originHighlight = "further-reading-origin";
+	// The aside holding this list shows from Tailwind's lg breakpoint
+	const wideScreen = window.matchMedia("(min-width: 64rem)");
+
+	const root = document.querySelector<HTMLElement>("[data-further-reading]");
+	const list = root?.querySelector<HTMLUListElement>("[data-further-reading-list]");
+	const itemTemplate = root?.querySelector<HTMLTemplateElement>("[data-further-reading-item]");
+	let page: SteerdownPage | undefined;
+	let shownSection: string | undefined;
+	let highlightRequest = 0;
+
+	function clearOrigin() {
+		highlightRequest++;
+		CSS.highlights.delete(originHighlight);
+	}
+
+	async function showOrigin(section: string, link: SuggestedLink) {
+		const request = ++highlightRequest;
+		const range = await originRange(section, link);
+
+		if (request !== highlightRequest || range === undefined) {
+			return;
+		}
+
+		CSS.highlights.set(originHighlight, new Highlight(range as unknown as Range));
+	}
+
+	function linkItem(section: string, link: SuggestedLink) {
+		const item = itemTemplate!.content.firstElementChild!.cloneNode(true) as HTMLLIElement;
+		const anchor = item.querySelector("a")!;
+		const relation = relationLabels[link.relation] ?? link.relation;
+
+		anchor.href = link.url;
+		item.querySelector("[data-further-reading-label]")!.textContent = `${relation} · ${link.pageTitle}`;
+		item.querySelector("[data-further-reading-heading]")!.textContent = link.heading || link.pageTitle;
+
+		for (const show of ["mouseenter", "focus"]) {
+			anchor.addEventListener(show, () => void showOrigin(section, link));
+		}
+
+		for (const hide of ["mouseleave", "blur"]) {
+			anchor.addEventListener(hide, clearOrigin);
+		}
+
+		return item;
+	}
+
+	function render(section: string) {
+		if (page === undefined || root === null || list === null || list === undefined || section === shownSection) {
+			return;
+		}
+
+		shownSection = section;
+		clearOrigin();
+
+		const links = page.links(section);
+		list.replaceChildren(...links.map((link) => linkItem(section, link)));
+		root.hidden = links.length === 0;
+	}
+
+	async function start() {
+		try {
+			page = await loadPage();
+		} catch {
+			// Pages without suggested links have no data file, and dev builds emit none.
+			return;
+		}
+
+		render(currentReadingSection() ?? "");
+		document.addEventListener(readingSectionEvent, (event) => render((event as CustomEvent<string>).detail));
+	}
+
+	if (root !== null) {
+		if (wideScreen.matches) {
+			void start();
+		} else {
+			wideScreen.addEventListener("change", () => void start(), { once: true });
+		}
+	}
+</script>

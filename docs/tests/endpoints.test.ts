@@ -34,6 +34,7 @@ import { agentSetupPrompt, installCommand, minimumNodeVersion } from "../src/con
 import { splitShellCommands, startsWithShebang } from "../src/markdown/shell-commands";
 import { markdownTwinPath } from "../src/markdown/twin-path";
 import { expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
@@ -653,6 +654,44 @@ test("every same-site section link on a sitemap page reaches its heading", async
       }
     }
   }
+  expect(broken).toEqual([]);
+});
+
+// The graph of steerdown's judgments is kept out of the repository. Builds without it emit no further reading data.
+const hasSteerdownGraph = existsSync(join(docsDirectory, "steerdown.graph.json"));
+
+test.skipIf(!hasSteerdownGraph)("every page with a table of contents has further reading data whose links reach their headings", async () => {
+  const sitemap = await (await server.fetch("/sitemap-0.xml")).text();
+  const pathnames = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(
+    (match) => new URL(match[1]!).pathname,
+  );
+  const missing: string[] = [];
+  const broken: string[] = [];
+  let pagesWithContents = 0;
+  for (const pathname of pathnames) {
+    const html = await (await server.fetch(pathname)).text();
+    if (!html.includes("data-further-reading")) {
+      continue;
+    }
+    pagesWithContents++;
+    // steerdown emit writes a page's data at the page's path under /steerdown, as index.json.
+    const dataPath = `/steerdown${pathname}index.json`;
+    const response = await server.fetch(dataPath);
+    if (response.status !== 200 || !(response.headers.get("Content-Type") ?? "").includes("application/json")) {
+      missing.push(dataPath);
+      continue;
+    }
+    const data = (await response.json()) as { targets: Array<[string, string, string]> };
+    for (const [url] of data.targets) {
+      const [targetPath, fragment] = url.split("#");
+      const targetHtml = await (await server.fetch(targetPath!)).text();
+      if (fragment && !targetHtml.includes(`id="${fragment}"`)) {
+        broken.push(`${pathname} -> ${url}`);
+      }
+    }
+  }
+  expect(pagesWithContents).toBeGreaterThan(0);
+  expect(missing).toEqual([]);
   expect(broken).toEqual([]);
 });
 
