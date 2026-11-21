@@ -1,6 +1,12 @@
 import type { Plugin } from "@opencode/plugin/tui";
 
 export type Ctx = Plugin.Context;
+export type TaskClaim = {
+  state: "live" | "expired";
+  sessionId: string | null;
+  threadId: string | null;
+  expiresAt: number | null;
+};
 export type TaskSummary = {
   key: string;
   title: string;
@@ -9,6 +15,7 @@ export type TaskSummary = {
   columnCategory: string | null;
   priority: string | null;
   labels: string[];
+  claim: TaskClaim | null;
 };
 export type Relation = {
   type: string;

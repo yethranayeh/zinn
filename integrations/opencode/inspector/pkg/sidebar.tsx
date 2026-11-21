@@ -21,7 +21,7 @@ import { clearPanel, publishPanel } from "./commands.ts";
 import { Overflow, RailLine, Row } from "./components.tsx";
 import { openDetail, openPicker } from "./dialogs.tsx";
 
-import { columnGlyph, rowTone, stableRows, truncate } from "./rows.ts";
+import { claimHolder, columnGlyph, rowTone, stableRows, truncate } from "./rows.ts";
 import { mentionCounts, newestIdleID, scanSession } from "./scan.ts";
 import {
   PROBE_CONCURRENCY,
@@ -301,18 +301,7 @@ export function Sidebar(props: {
     }
   });
 
-  // Expire marks without waiting for a turn or a remount.
-  createEffect(() => {
-    const marked = mineKeyMap();
-    const now = clock();
-    const hasRecent = [...marked.values()].some((at) => isRecentActivity(at, now));
-    if (hasRecent && markTimer === undefined) {
-      markTimer = setInterval(() => setClock(Date.now()), MARK_CLOCK_INTERVAL_MS);
-    } else if (!hasRecent && markTimer !== undefined) {
-      clearInterval(markTimer);
-      markTimer = undefined;
-    }
-  });
+  const sessions = createMemo(() => probeSessions(props.ctx, props.sessionID));
 
   createEffect(() => {
     if (!activityProbesSupported) {
@@ -321,11 +310,11 @@ export function Sidebar(props: {
     if (props.options.current === "off") {
       return;
     }
-    const sessions = probeSessions(props.ctx, props.sessionID);
-    const sessionsSig = sessions.join(",");
+    const sessionIDs = sessions();
+    const sessionsSig = sessionIDs.join(",");
     if (sessionsSig !== lastSessionsSig) {
       lastSessionsSig = sessionsSig;
-      log(props.ctx, "current-session probe set", { sessions });
+      log(props.ctx, "current-session probe set", { sessions: sessionIDs });
     }
     const keys = visibleKnown().map((row) => row.key);
     const sig = `${sessionsSig}|${probeDue()}|${keys.join(",")}`;
@@ -351,7 +340,7 @@ export function Sidebar(props: {
       pending,
       PROBE_CONCURRENCY,
       async (key) => {
-        const probe = await probeAnySession(sessions, key);
+        const probe = await probeAnySession(sessionIDs, key);
         if (!alive || cycle !== probeCycle) {
           return;
         }
@@ -391,7 +380,7 @@ export function Sidebar(props: {
       log(
         props.ctx,
         "Zinn rejected the activity session filter. The current-session mark requires Zinn 0.41.0 or newer.",
-        { sessions },
+        { sessions: sessionIDs },
       );
     });
   });
@@ -403,6 +392,7 @@ export function Sidebar(props: {
     const created = createdKeys();
     const mineKeys = mineKeyMap();
     const now = clock();
+    const family = new Set(sessions());
     const candidates = scan().known.map((mention): DisplayRow => {
       const summary = loaded.ok ? loaded.value.get(mention.key) : undefined;
       const isCreated = created.has(mention.key);
@@ -410,6 +400,7 @@ export function Sidebar(props: {
       const category = summary?.columnCategory ?? null;
       const priority = summary?.priority ?? null;
       const labels = summary?.labels ?? [];
+      const claim = summary?.claim ?? null;
       const at = mineKeys.get(mention.key);
       const mine = at !== undefined && isRecentActivity(at, now);
       return {
@@ -424,9 +415,27 @@ export function Sidebar(props: {
         unknown: false,
         created: isCreated,
         mine,
+        claim,
+        holder: claimHolder(claim, family, now),
       };
     });
     return stableRows(knownRowCache, candidates);
+  });
+  // Expire marks without waiting for a turn or a remount.
+  createEffect(() => {
+    const marked = mineKeyMap();
+    const now = clock();
+    const hasRecent = [...marked.values()].some((at) => isRecentActivity(at, now));
+    // A claim only draws a mark under the glyph option.
+    const hasClaim =
+      props.options.current === "glyph" && knownRows().some((row) => row.holder !== null);
+    const keepsClock = hasRecent || hasClaim;
+    if (keepsClock && markTimer === undefined) {
+      markTimer = setInterval(() => setClock(Date.now()), MARK_CLOCK_INTERVAL_MS);
+    } else if (!keepsClock && markTimer !== undefined) {
+      clearInterval(markTimer);
+      markTimer = undefined;
+    }
   });
   const unknownRows = createMemo<DisplayRow[]>(() => {
     const candidates = scan().unknown.map(
@@ -438,6 +447,8 @@ export function Sidebar(props: {
         unknown: true,
         created: false,
         mine: false,
+        claim: null,
+        holder: null,
         priority: null,
         labels: [],
         column: "",

@@ -129,3 +129,104 @@ test("a task list without a column category leaves it unset", () => {
   expect(parsed.value.get("APP-1")?.columnCategory).toBeNull();
   expect(parsed.value.get("APP-2")?.columnCategory).toBeNull();
 });
+test("a task list keeps a live claim's holder identity and expiry", () => {
+  const parsed = parseTaskList(
+    JSON.stringify([
+      {
+        key: "APP-1",
+        title: "One",
+        claim: {
+          state: "live",
+          actor_session_id: "ses_root",
+          actor_thread_id: "ses_child",
+          expires_at: 1_795_296_216_313,
+        },
+      },
+    ]),
+  );
+  expect(parsed.ok).toBe(true);
+  if (!parsed.ok) {
+    return;
+  }
+  expect(parsed.value.get("APP-1")?.claim).toEqual({
+    state: "live",
+    sessionId: "ses_root",
+    threadId: "ses_child",
+    expiresAt: 1_795_296_216_313,
+  });
+});
+test("a missing claim is null", () => {
+  const parsed = parseTaskList(JSON.stringify([{ key: "APP-1", title: "One", claim: null }]));
+  expect(parsed.ok).toBe(true);
+  if (!parsed.ok) {
+    return;
+  }
+  expect(parsed.value.get("APP-1")?.claim).toBeNull();
+});
+test("a malformed claim is dropped", () => {
+  const parsed = parseTaskList(
+    JSON.stringify([
+      { key: "APP-1", title: "One", claim: { state: "pending" } },
+      { key: "APP-2", title: "Two", claim: "live" },
+      { key: "APP-3", title: "Three", claim: { state: 1 } },
+      { key: "APP-4", title: "Four", claim: [] },
+    ]),
+  );
+  expect(parsed.ok).toBe(true);
+  if (!parsed.ok) {
+    return;
+  }
+  for (const key of ["APP-1", "APP-2", "APP-3", "APP-4"]) {
+    expect(parsed.value.get(key)?.claim).toBeNull();
+  }
+});
+test("an expired claim keeps its state", () => {
+  const parsed = parseTaskList(
+    JSON.stringify([
+      {
+        key: "APP-1",
+        title: "One",
+        claim: { state: "expired", actor_session_id: "ses_root", expires_at: 1_795_296_216_313 },
+      },
+    ]),
+  );
+  expect(parsed.ok).toBe(true);
+  if (!parsed.ok) {
+    return;
+  }
+  expect(parsed.value.get("APP-1")?.claim).toEqual({
+    state: "expired",
+    sessionId: "ses_root",
+    threadId: null,
+    expiresAt: 1_795_296_216_313,
+  });
+});
+test("a task list without a claim field still parses", () => {
+  const parsed = parseTaskList(JSON.stringify([{ key: "APP-1", title: "One" }]));
+  expect(parsed.ok).toBe(true);
+  if (!parsed.ok) {
+    return;
+  }
+  expect(parsed.value.get("APP-1")?.claim).toBeNull();
+});
+test("a non-numeric claim expiry leaves the expiry unset", () => {
+  const parsed = parseTaskList(
+    JSON.stringify([
+      {
+        key: "APP-1",
+        title: "One",
+        claim: { state: "live", actor_session_id: "ses_root", expires_at: "soon" },
+      },
+    ]),
+  );
+  expect(parsed.ok).toBe(true);
+  if (!parsed.ok) {
+    return;
+  }
+  expect(parsed.value.get("APP-1")?.claim).toEqual({
+    state: "live",
+    sessionId: "ses_root",
+    threadId: null,
+    expiresAt: null,
+  });
+});

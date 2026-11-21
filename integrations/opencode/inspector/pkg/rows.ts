@@ -1,4 +1,4 @@
-import type { Excerpt } from "./types.ts";
+import type { Excerpt, TaskClaim } from "./types.ts";
 
 export function flatten(text: string): string {
   return text.replace(/\s+/g, " ").trim();
@@ -77,6 +77,7 @@ export function columnGlyph(column: string, category: string | null): string {
   return COLUMN_GLYPH[column] ?? "";
 }
 export type RowTone = "normal" | "done" | "created" | "blocked" | "warning";
+export type Holder = "mine" | "theirs";
 export type DisplayRow = {
   key: string;
   title: string;
@@ -85,11 +86,52 @@ export type DisplayRow = {
   unknown: boolean;
   created: boolean;
   mine: boolean;
+  claim: TaskClaim | null;
+  holder: Holder | null;
   priority: string | null;
   labels: string[];
   column: string;
   category: string | null;
 };
+// A claim expires without a store write, so the clock decides as well as the state.
+export function claimHolder(
+  claim: TaskClaim | null,
+  sessions: ReadonlySet<string>,
+  now: number,
+): Holder | null {
+  if (claim === null || claim.state !== "live") {
+    return null;
+  }
+
+  if (claim.expiresAt !== null && claim.expiresAt <= now) {
+    return null;
+  }
+
+  if (
+    (claim.sessionId !== null && sessions.has(claim.sessionId)) ||
+    (claim.threadId !== null && sessions.has(claim.threadId))
+  ) {
+    return "mine";
+  }
+
+  return "theirs";
+}
+function sameClaim(a: TaskClaim | null, b: TaskClaim | null): boolean {
+  if (a === b) {
+    return true;
+  }
+
+  if (a === null || b === null) {
+    return false;
+  }
+
+  return (
+    a.state === b.state &&
+    a.sessionId === b.sessionId &&
+    a.threadId === b.threadId &&
+    a.expiresAt === b.expiresAt
+  );
+}
 export function sameDisplayRow(a: DisplayRow, b: DisplayRow): boolean {
   if (a === b) {
     return true;
@@ -106,6 +148,8 @@ export function sameDisplayRow(a: DisplayRow, b: DisplayRow): boolean {
     a.unknown === b.unknown &&
     a.created === b.created &&
     a.mine === b.mine &&
+    a.holder === b.holder &&
+    sameClaim(a.claim, b.claim) &&
     sameLabels(a.labels, b.labels)
   );
 }

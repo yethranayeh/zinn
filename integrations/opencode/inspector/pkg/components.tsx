@@ -15,7 +15,7 @@ import {
   PRIORITY_COLOR,
   labelColors,
 } from "./data.ts";
-import { RAIL_COLUMNS, SESSION_GLYPH, priorityLetter } from "./options.ts";
+import { CLAIM_GLYPH, RAIL_COLUMNS, SESSION_GLYPH, priorityLetter } from "./options.ts";
 import { isDoneColumn, truncate } from "./rows.ts";
 import { TINT_ALPHA_STRONG, TINT_ALPHA_SUBTLE, inspectorTheme, toneColor } from "./theme.ts";
 
@@ -94,8 +94,18 @@ export function Row(props: {
   const glyph = () => props.current === "glyph";
   const done = () => isDoneColumn(props.row.column, props.row.category);
   const mark = () => {
-    if (glyph() && props.row.mine) {
-      return props.markGlyph ?? SESSION_GLYPH;
+    if (glyph()) {
+      if (props.markGlyph !== undefined) {
+        return props.markGlyph;
+      }
+
+      if (props.row.holder !== null) {
+        return CLAIM_GLYPH[props.row.holder];
+      }
+
+      if (props.row.mine) {
+        return SESSION_GLYPH;
+      }
     }
 
     if (props.row.created) {
@@ -113,8 +123,22 @@ export function Row(props: {
     return "│";
   };
   const markColor = () => {
-    if (glyph() && props.row.mine) {
-      return theme().accent;
+    if (glyph()) {
+      if (props.markGlyph !== undefined) {
+        return theme().accent;
+      }
+
+      if (props.row.holder === "mine") {
+        return theme().accent;
+      }
+
+      if (props.row.holder === "theirs") {
+        return theme().warning;
+      }
+
+      if (props.row.mine) {
+        return theme().accent;
+      }
     }
 
     if (props.row.created) {

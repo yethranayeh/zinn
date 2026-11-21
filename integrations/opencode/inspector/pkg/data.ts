@@ -1,4 +1,12 @@
-import type { Ctx, DetailState, Loaded, Relation, TaskDetail, TaskSummary } from "./types.ts";
+import type {
+  Ctx,
+  DetailState,
+  Loaded,
+  Relation,
+  TaskClaim,
+  TaskDetail,
+  TaskSummary,
+} from "./types.ts";
 
 import { appendFileSync } from "node:fs";
 import { createSignal } from "solid-js";
@@ -139,6 +147,25 @@ export async function runZinn(
     clearTimeout(timer);
   }
 }
+export function parseClaim(value: unknown): TaskClaim | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const state = asString(value["state"]);
+  if (state !== "live" && state !== "expired") {
+    return null;
+  }
+
+  const expiresAt = value["expires_at"];
+  return {
+    state,
+    sessionId: asString(value["actor_session_id"]) ?? null,
+    threadId: asString(value["actor_thread_id"]) ?? null,
+    expiresAt:
+      typeof expiresAt === "number" && Number.isFinite(expiresAt) ? expiresAt : null,
+  };
+}
 export function parseTaskList(raw: string): Loaded<Map<string, TaskSummary>> {
   let data: unknown;
 
@@ -170,6 +197,7 @@ export function parseTaskList(raw: string): Loaded<Map<string, TaskSummary>> {
       columnCategory: asString(item["column_category"]) ?? null,
       priority: asString(item["priority"]) ?? null,
       labels: asStringArray(item["labels"]),
+      claim: parseClaim(item["claim"]),
     });
   }
   return { ok: true, value: map };

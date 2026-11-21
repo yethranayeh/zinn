@@ -1,9 +1,12 @@
+import type { Holder } from "./rows.ts";
+
 export const SECTION_ROWS = 5;
 // Reserve two columns for status glyphs that terminals can render wide.
 export const MARKER_COLUMNS = 2;
 export const PRIORITY_COLUMNS = 1;
 export const RAIL_COLUMNS = 1;
 export const SESSION_GLYPH = "⧗";
+export const CLAIM_GLYPH: Record<Holder, string> = { mine: "◆", theirs: "◇" };
 export const RUNNING_FRAMES = ["■", "□", "▪", "▫"];
 export const RUNNING_INTERVAL = 300;
 export const SCROLLBAR_COLUMNS = 1;

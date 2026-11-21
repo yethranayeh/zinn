@@ -1,6 +1,14 @@
 import { expect, test } from "bun:test";
-import { columnGlyph, rowTone, sameDisplayRow, stableRows } from "./rows.ts";
+import { claimHolder, columnGlyph, rowTone, sameDisplayRow, stableRows } from "./rows.ts";
 type Row = Parameters<typeof stableRows>[1][number];
+type Claim = NonNullable<Row["claim"]>;
+const claim = (over: Partial<Claim> = {}): Claim => ({
+  state: "live",
+  sessionId: "ses_root",
+  threadId: "ses_child",
+  expiresAt: 1_800_000_000_000,
+  ...over,
+});
 const row = (over: Partial<Row> = {}): Row => ({
   key: "ZTP-1",
   title: "Fix the calibration",
@@ -9,6 +17,8 @@ const row = (over: Partial<Row> = {}): Row => ({
   unknown: false,
   created: false,
   mine: false,
+  claim: null,
+  holder: null,
   priority: "high",
   labels: ["spike", "ui"],
   column: "In Progress",
@@ -36,6 +46,10 @@ test("compares every visible row value", () => {
     ["unknown", { unknown: true }],
     ["created", { created: true }],
     ["mine", { mine: true }],
+    ["claim", { claim: claim() }],
+    ["claim state", { claim: claim({ state: "expired" }) }],
+    ["claim expiry", { claim: claim({ expiresAt: 1_800_000_000_001 }) }],
+    ["holder", { holder: "mine" }],
   ];
   for (const [name, patch] of fields) {
     check(`a changed ${name} compares unequal`, !sameDisplayRow(base, { ...base, ...patch }), "");
@@ -43,6 +57,11 @@ test("compares every visible row value", () => {
   check("labels compare element-wise, not by reference", sameDisplayRow(row({ labels: ["a", "b"] }), row({ labels: ["a", "b"] })), "");
   check("a shorter labels list compares unequal", !sameDisplayRow(row({ labels: ["a", "b"] }), row({ labels: ["a"] })), "");
   check("labels in a different order compare unequal (the panel renders the order)", !sameDisplayRow(row({ labels: ["a", "b"] }), row({ labels: ["b", "a"] })), "");
+  check("a rebuilt claim with the same fields compares equal", sameDisplayRow(row({ claim: claim() }), row({ claim: claim() })), "");
+  check("a changed claim expiry compares unequal", !sameDisplayRow(row({ claim: claim() }), row({ claim: claim({ expiresAt: 1_800_000_000_001 }) })), "");
+  check("a changed claim session compares unequal", !sameDisplayRow(row({ claim: claim() }), row({ claim: claim({ sessionId: "ses_other" }) })), "");
+  check("a changed claim thread compares unequal", !sameDisplayRow(row({ claim: claim() }), row({ claim: claim({ threadId: "ses_other" }) })), "");
+  check("a null claim and a claim compare unequal", !sameDisplayRow(row(), row({ claim: claim() })), "");
 });
 test("retains unchanged row identity and prunes removed keys", () => {
   const cache = new Map<string, Row>();
@@ -99,6 +118,9 @@ test("detects changes to every field defined by a row", () => {
     else if (Array.isArray(value)) {
       mutated[key] = ["other"] as never;
     }
+    else if (value === null) {
+      mutated[key] = {} as never;
+    }
     else {
       continue;
     }
@@ -107,6 +129,19 @@ test("detects changes to every field defined by a row", () => {
     }
   }
   check("every DisplayRow field participates in the comparison", missed.length === 0, `missed=${missed.join(",")}`);
+});
+test("reads the claim holder from the conversation family", () => {
+  const now = 1_799_999_999_000;
+  const family = new Set(["ses_root", "ses_child"]);
+  check("no claim has no holder", claimHolder(null, family, now) === null, "");
+  check("an expired claim by state has no holder", claimHolder(claim({ state: "expired" }), family, now) === null, "");
+  check("a claim past its expiry has no holder", claimHolder(claim({ expiresAt: now - 1 }), family, now) === null, "");
+  check("a claim exactly at its expiry has no holder", claimHolder(claim({ expiresAt: now }), family, now) === null, "");
+  check("a claim with no expiry reads its live state", claimHolder(claim({ expiresAt: null }), family, now) === "mine", "");
+  check("a live claim on this session is mine", claimHolder(claim({ sessionId: "ses_root", threadId: null }), family, now) === "mine", "");
+  check("a live claim on this family's thread is mine", claimHolder(claim({ sessionId: null, threadId: "ses_child" }), family, now) === "mine", "");
+  check("a live claim with ids outside the family is theirs", claimHolder(claim({ sessionId: "ses_other", threadId: "ses_other_child" }), family, now) === "theirs", "");
+  check("a live claim with no identity is theirs", claimHolder(claim({ sessionId: null, threadId: null }), family, now) === "theirs", "");
 });
 test("reads the done treatment from the column category", () => {
   check("a renamed done column keeps the done tone", rowTone("Shipped", "done", false, false) === "done", "");
