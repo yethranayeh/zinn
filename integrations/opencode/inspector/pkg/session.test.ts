@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { TEST_ENVIRONMENT } from "../../../../scripts/test-isolation.ts";
-import { probeAnySession, probeSessions, probeSessionTask, runPool, sessionRunning } from "./session.ts";
+import { ACTIVITY_MARK_TTL_MS, isRecentActivity, probeAnySession, probeSessions, probeSessionTask, runPool, sessionRunning } from "./session.ts";
 type Context = Parameters<typeof probeSessions>[0];
 const directory = mkdtempSync(join(tmpdir(), "zinn-panel-session-"));
 const store = join(directory, "store");
@@ -45,18 +45,18 @@ afterAll(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 test("native activity associates a task without description metadata with its session", async () => {
-  expect(await probeSessionTask("ses_child", "PANEL-1")).toEqual({ mine: true, unsupported: false });
-  expect(await probeSessionTask("ses_root", "PANEL-1")).toEqual({ mine: false, unsupported: false });
-  expect(await probeSessionTask("SES_CHILD", "PANEL-1")).toEqual({ mine: false, unsupported: false });
+  expect(await probeSessionTask("ses_child", "PANEL-1")).toEqual({ at: expect.any(Number), unsupported: false });
+  expect(await probeSessionTask("ses_root", "PANEL-1")).toEqual({ at: null, unsupported: false });
+  expect(await probeSessionTask("SES_CHILD", "PANEL-1")).toEqual({ at: null, unsupported: false });
 });
 test("a misleading description footer does not associate another session's task", async () => {
-  expect(await probeSessionTask("ses_root", "PANEL-2")).toEqual({ mine: false, unsupported: false });
-  expect(await probeSessionTask("ses_other", "PANEL-2")).toEqual({ mine: true, unsupported: false });
+  expect(await probeSessionTask("ses_root", "PANEL-2")).toEqual({ at: null, unsupported: false });
+  expect(await probeSessionTask("ses_other", "PANEL-2")).toEqual({ at: expect.any(Number), unsupported: false });
 });
 test("a later native write associates an already existing task", async () => {
-  expect((await probeSessionTask("ses_later", "PANEL-1")).mine).toBe(false);
+  expect((await probeSessionTask("ses_later", "PANEL-1")).at).toBeNull();
   command("ses_later", ["task", "comment", "create", "PANEL-1", "--text", "Verified the result"]);
-  expect((await probeSessionTask("ses_later", "PANEL-1")).mine).toBe(true);
+  expect((await probeSessionTask("ses_later", "PANEL-1")).at).toBeNumber();
 });
 test("session-family attribution includes a child's native writes and excludes unrelated sessions", async () => {
   const context = {
@@ -64,8 +64,8 @@ test("session-family attribution includes a child's native writes and excludes u
   } as unknown as Context;
   const sessions = probeSessions(context, "ses_root");
   expect(sessions).toEqual(["ses_root", "ses_child"]);
-  expect(await probeAnySession(sessions, "PANEL-1")).toEqual({ mine: true, unsupported: false });
-  expect(await probeAnySession(sessions, "PANEL-2")).toEqual({ mine: false, unsupported: false });
+  expect(await probeAnySession(sessions, "PANEL-1")).toEqual({ at: expect.any(Number), unsupported: false });
+  expect(await probeAnySession(sessions, "PANEL-2")).toEqual({ at: null, unsupported: false });
 });
 test("missing family APIs retain the open session", () => {
   const context = { data: { session: {} } } as unknown as Context;
@@ -74,14 +74,14 @@ test("missing family APIs retain the open session", () => {
 test("probes reject malformed data and activity attributed to another session", async () => {
   for (const payload of ["null", "{}", "not json", '[{"actor_session_id":"ses_other"}]']) {
     writeFileSync(executable, `#!/bin/sh\nprintf '%s' ${quote(payload)}\n`);
-    expect(await probeSessionTask("ses_root", "PANEL-1")).toEqual({ mine: false, unsupported: false });
+    expect(await probeSessionTask("ses_root", "PANEL-1")).toEqual({ at: null, unsupported: false });
   }
 });
 test("a refused session filter is distinguished from ordinary read failures", async () => {
   writeFileSync(executable, '#!/bin/sh\nprintf \'%s\' \'{"error":{"code":"invalid_input"}}\' >&2\nexit 2\n');
-  expect(await probeSessionTask("ses_root", "PANEL-1")).toEqual({ mine: false, unsupported: true });
+  expect(await probeSessionTask("ses_root", "PANEL-1")).toEqual({ at: null, unsupported: true });
   writeFileSync(executable, '#!/bin/sh\nprintf \'%s\' \'{"error":{"code":"not_found"}}\' >&2\nexit 1\n');
-  expect(await probeSessionTask("ses_root", "PANEL-1")).toEqual({ mine: false, unsupported: false });
+  expect(await probeSessionTask("ses_root", "PANEL-1")).toEqual({ at: null, unsupported: false });
 });
 test("the probe pool limits in-flight reads and stops a superseded cycle", async () => {
   const started: number[] = [];
@@ -149,12 +149,12 @@ test("native OpenCode thread activity marks root and child tasks without an iden
   const child = create("ses_native_child", "Native child activity");
   const override = create("ses_native_other", "Explicit identity wins", { ZINN_SESSION_ID: "ses_explicit_root", ZINN_THREAD_ID: "ses_explicit_child" });
   const family = ["ses_native_root", "ses_native_child"];
-  expect(await probeAnySession(family, root)).toEqual({ mine: true, unsupported: false });
-  expect(await probeAnySession(family, child)).toEqual({ mine: true, unsupported: false });
-  expect(await probeAnySession(family, "PANEL-2")).toEqual({ mine: false, unsupported: false });
-  expect((await probeSessionTask("ses_native_other", override)).mine).toBe(false);
-  expect((await probeSessionTask("ses_explicit_root", override)).mine).toBe(true);
-  expect((await probeSessionTask("ses_explicit_child", override)).mine).toBe(true);
+  expect(await probeAnySession(family, root)).toEqual({ at: expect.any(Number), unsupported: false });
+  expect(await probeAnySession(family, child)).toEqual({ at: expect.any(Number), unsupported: false });
+  expect(await probeAnySession(family, "PANEL-2")).toEqual({ at: null, unsupported: false });
+  expect((await probeSessionTask("ses_native_other", override)).at).toBeNull();
+  expect((await probeSessionTask("ses_explicit_root", override)).at).toBeNumber();
+  expect((await probeSessionTask("ses_explicit_child", override)).at).toBeNumber();
 });
 
 test("probes use separate bounded session and thread filters", async () => {
@@ -163,9 +163,9 @@ test("probes use separate bounded session and thread filters", async () => {
 import {appendFileSync} from "node:fs";
 const args=process.argv.slice(2);
 appendFileSync(${JSON.stringify(recorded)}, JSON.stringify(args)+"\\n");
-console.log(JSON.stringify(args.includes("--thread") ? [{actor_thread_id:"ses_native",actor_session_id:"ses_different"}] : []));
+console.log(JSON.stringify(args.includes("--thread") ? [{actor_thread_id:"ses_native",actor_session_id:"ses_different",created_at:Date.now()}] : []));
 `);
-  expect(await probeSessionTask("ses_native", "PANEL-1")).toEqual({ mine: true, unsupported: false });
+  expect(await probeSessionTask("ses_native", "PANEL-1")).toEqual({ at: expect.any(Number), unsupported: false });
   const calls = (await Bun.file(recorded).text()).trim().split("\n").map((line) => JSON.parse(line) as string[]);
   expect(calls).toHaveLength(2);
   for (const [index, args] of calls.entries()) {
@@ -178,4 +178,52 @@ console.log(JSON.stringify(args.includes("--thread") ? [{actor_thread_id:"ses_na
     expect(args).toContain("--json");
     expect(args).not.toContain(otherFlag);
   }
+});
+
+test("the probe returns the newest activity time for the task", async () => {
+  const record = (createdAt: number) =>
+    `#!/bin/sh\nprintf '%s' ${quote(JSON.stringify([{ actor_session_id: "ses_root", created_at: createdAt }]))}\n`;
+  const recent = Date.now() - 5 * 60_000;
+  const stale = Date.now() - 15 * 60_000;
+  writeFileSync(executable, record(recent));
+  expect(await probeSessionTask("ses_root", "PANEL-1")).toEqual({ at: recent, unsupported: false });
+  writeFileSync(executable, record(stale));
+  expect(await probeSessionTask("ses_root", "PANEL-1")).toEqual({ at: stale, unsupported: false });
+  expect(isRecentActivity(recent)).toBe(true);
+  expect(isRecentActivity(stale)).toBe(false);
+});
+
+test("the newer of the session and thread reads supplies the activity time", async () => {
+  const stale = Date.now() - 15 * 60_000;
+  const recent = Date.now() - 5 * 60_000;
+  writeFileSync(executable, `#!${process.execPath}
+const args = process.argv.slice(2);
+const rows = args.includes("--thread")
+  ? [{ actor_thread_id: "ses_root", created_at: ${recent} }]
+  : [{ actor_session_id: "ses_root", created_at: ${stale} }];
+console.log(JSON.stringify(rows));
+`);
+  expect(await probeSessionTask("ses_root", "PANEL-1")).toEqual({ at: recent, unsupported: false });
+});
+
+test("the family's newest activity time wins across sessions", async () => {
+  const older = Date.now() - 20 * 60_000;
+  const newer = Date.now() - 4 * 60_000;
+  writeFileSync(executable, `#!${process.execPath}
+const args = process.argv.slice(2);
+const flag = args.includes("--session") ? "--session" : "--thread";
+const field = flag === "--session" ? "actor_session_id" : "actor_thread_id";
+const sid = args[args.indexOf(flag) + 1];
+const at = sid === "ses_older" ? ${older} : ${newer};
+console.log(JSON.stringify([{ [field]: sid, created_at: at }]));
+`);
+  expect(await probeAnySession(["ses_older", "ses_newer"], "PANEL-1")).toEqual({ at: newer, unsupported: false });
+});
+
+test("the mark window includes activity exactly at the threshold", () => {
+  const now = 1_800_000_000_000;
+  expect(isRecentActivity(now, now)).toBe(true);
+  expect(isRecentActivity(now - ACTIVITY_MARK_TTL_MS, now)).toBe(true);
+  expect(isRecentActivity(now - ACTIVITY_MARK_TTL_MS - 1, now)).toBe(false);
+  expect(isRecentActivity(null, now)).toBe(false);
 });

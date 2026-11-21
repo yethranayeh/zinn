@@ -4,16 +4,24 @@ import { isRecord, runZinn } from "./data.ts";
 
 // Bound concurrent CLI reads across visible tasks.
 export const PROBE_CONCURRENCY = 8;
+// Activity older than this does not mark a task as this session's current work.
+export const ACTIVITY_MARK_TTL_MS = 10 * 60_000;
 export let activityProbesSupported = true;
+
+export function isRecentActivity(at: number | null, now = Date.now()): boolean {
+  return at !== null && now - at <= ACTIVITY_MARK_TTL_MS;
+}
+
 // Session and thread filters are separate reads because the CLI combines them with AND.
 export async function probeSessionTask(
   sessionID: string,
   key: string,
 ): Promise<{
-  mine: boolean;
+  at: number | null;
   unsupported: boolean;
 }> {
   let unsupported = false;
+  let newest: number | null = null;
   const filters = [
     { flag: "--session", field: "actor_session_id" },
     { flag: "--thread", field: "actor_thread_id" },
@@ -44,12 +52,22 @@ export async function probeSessionTask(
       continue;
     }
 
-    if (Array.isArray(data) && data.some((row) => isRecord(row) && row[field] === sessionID)) {
-      return { mine: true, unsupported: false };
+    if (!Array.isArray(data)) {
+      continue;
+    }
+
+    const newestRow = data.find((row) => isRecord(row) && row[field] === sessionID);
+    if (!isRecord(newestRow)) {
+      continue;
+    }
+
+    const createdAt = newestRow["created_at"];
+    if (typeof createdAt === "number" && (newest === null || createdAt > newest)) {
+      newest = createdAt;
     }
   }
 
-  return { mine: false, unsupported };
+  return { at: newest, unsupported: newest === null && unsupported };
 }
 // Child-session writes belong to the same chat family.
 export function probeSessions(ctx: Ctx, sessionID: string): string[] {
@@ -83,22 +101,21 @@ export async function probeAnySession(
   sessions: readonly string[],
   key: string,
 ): Promise<{
-  mine: boolean;
+  at: number | null;
   unsupported: boolean;
 }> {
   let unsupported = false;
+  let newest: number | null = null;
 
   for (const sid of sessions) {
     const probe = await probeSessionTask(sid, key);
-    if (probe.unsupported) {
-      unsupported = true;
-      continue;
-    }
-    if (probe.mine) {
-      return { mine: true, unsupported: false };
+    unsupported ||= probe.unsupported;
+    if (probe.at !== null && (newest === null || probe.at > newest)) {
+      newest = probe.at;
     }
   }
-  return { mine: false, unsupported };
+
+  return { at: newest, unsupported: newest === null && unsupported };
 }
 
 // Superseded cycles stop scheduling reads already waiting for a lane.

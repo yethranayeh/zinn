@@ -59,7 +59,7 @@ for (const version of ["0.41.0", "current"]) {
     const probe = join(consumer.consumer, "contracts.ts");
     writeFileSync(probe, `import {probeAnySession} from ${JSON.stringify(join(consumer.installed, "dist/session.js"))};\nconsole.log(JSON.stringify(await Promise.all(${JSON.stringify([explicit.key, native.key, unrelated.key])}.map(key => probeAnySession(["ses_root", "ses_child"], key)))));\n`);
     expect(JSON.parse(run([process.execPath, probe], consumer.consumer, env))).toEqual([
-      { mine: true, unsupported: false }, { mine: true, unsupported: false }, { mine: false, unsupported: false },
+      { at: expect.any(Number), unsupported: false }, { at: expect.any(Number), unsupported: false }, { at: null, unsupported: false },
     ]);
   });
 }

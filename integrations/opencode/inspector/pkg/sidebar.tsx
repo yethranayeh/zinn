@@ -27,6 +27,7 @@ import {
   PROBE_CONCURRENCY,
   activityProbesSupported,
   disableActivityProbes,
+  isRecentActivity,
   probeAnySession,
   probeSessions,
   runPool,
@@ -50,6 +51,9 @@ import {
   refreshKeyMap,
   shouldReadBoard,
 } from "./data.ts";
+
+// Re-render the mark's expiry while the panel is idle.
+const MARK_CLOCK_INTERVAL_MS = 30 * 1000;
 
 export function Sidebar(props: {
   ctx: Ctx;
@@ -269,9 +273,30 @@ export function Sidebar(props: {
     return out;
   });
 
-  const [mineKeyMap, setMineKeyMap] = createSignal<ReadonlyMap<string, boolean>>(new Map());
+  const [mineKeyMap, setMineKeyMap] = createSignal<ReadonlyMap<string, number>>(new Map());
+  const [clock, setClock] = createSignal(Date.now());
   let lastProbeSig = "";
   let lastSessionsSig = "";
+  let markTimer: ReturnType<typeof setInterval> | undefined;
+
+  onCleanup(() => {
+    if (markTimer !== undefined) {
+      clearInterval(markTimer);
+    }
+  });
+
+  // Expire marks without waiting for a turn or a remount.
+  createEffect(() => {
+    const marked = mineKeyMap();
+    const now = clock();
+    const hasRecent = [...marked.values()].some((at) => isRecentActivity(at, now));
+    if (hasRecent && markTimer === undefined) {
+      markTimer = setInterval(() => setClock(Date.now()), MARK_CLOCK_INTERVAL_MS);
+    } else if (!hasRecent && markTimer !== undefined) {
+      clearInterval(markTimer);
+      markTimer = undefined;
+    }
+  });
 
   createEffect(() => {
     if (!activityProbesSupported) {
@@ -292,20 +317,19 @@ export function Sidebar(props: {
       return;
     }
     lastProbeSig = sig;
-    // Activity matches persist for this session family. Recheck only unmarked tasks.
+    // Recheck tasks without a recent mark, including expired ones.
     const marked = untrack(() => mineKeyMap());
-    const pending = keys.filter((key) => marked.get(key) !== true);
+    const now = Date.now();
+    const pending = keys.filter((key) => {
+      const at = marked.get(key);
+      return at === undefined || !isRecentActivity(at, now);
+    });
     const cycle = ++probeCycle;
     if (pending.length === 0) {
       return;
     }
     // Keep existing marks while new reads settle, avoiding transient blank states.
-    const settled = new Map<string, boolean>();
-    for (const [key, value] of marked) {
-      if (value === true) {
-        settled.set(key, true);
-      }
-    }
+    const settled = new Map<string, number>(marked);
     let degraded = false;
     void runPool(
       pending,
@@ -319,25 +343,31 @@ export function Sidebar(props: {
           degraded = true;
           return;
         }
-        if (probe.mine) {
-          if (settled.get(key) === true) {
-            return;
+        let changed = false;
+        if (probe.at === null) {
+          if (settled.has(key)) {
+            settled.delete(key);
+            changed = true;
           }
-          settled.set(key, true);
-        } else {
-          if (settled.get(key) !== true) {
-            return;
-          }
-          settled.delete(key);
+        } else if (settled.get(key) !== probe.at) {
+          settled.set(key, probe.at);
+          changed = true;
         }
-        setMineKeyMap(new Map(settled));
+        if (changed) {
+          setMineKeyMap(new Map(settled));
+        }
+        setClock(Date.now());
       },
       () => !alive || cycle !== probeCycle,
     ).then(() => {
       if (!alive || cycle !== probeCycle) {
         return;
       }
-      log(props.ctx, "activity probes settled", { matches: [...settled.keys()] });
+      const settledAt = Date.now();
+      const matches = [...settled]
+        .filter(([, at]) => isRecentActivity(at, settledAt))
+        .map(([key]) => key);
+      log(props.ctx, "activity probes settled", { matches });
       if (!degraded) {
         return;
       }
@@ -356,6 +386,7 @@ export function Sidebar(props: {
     const loaded = map();
     const created = createdKeys();
     const mineKeys = mineKeyMap();
+    const now = clock();
     const candidates = scan().known.map((mention): DisplayRow => {
       const summary = loaded.ok ? loaded.value.get(mention.key) : undefined;
       const isCreated = created.has(mention.key);
@@ -363,7 +394,8 @@ export function Sidebar(props: {
       const category = summary?.columnCategory ?? null;
       const priority = summary?.priority ?? null;
       const labels = summary?.labels ?? [];
-      const mine = mineKeys.get(mention.key) === true;
+      const at = mineKeys.get(mention.key);
+      const mine = at !== undefined && isRecentActivity(at, now);
       return {
         key: mention.key,
         title: summary?.title ?? "",
