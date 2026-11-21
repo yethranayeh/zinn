@@ -43,6 +43,12 @@ export const opencodeInspector = {
       behavior:
         'Accepts `"off"` or `"glyph"`. `"glyph"` marks tasks with recorded activity from this conversation family.',
     },
+    {
+      name: "renewClaims",
+      default: "true",
+      behavior:
+        "Renews the claims this conversation holds after a turn that ran a tool, on by default, with about four calls per hour per held claim in use on a 30 minute lease and none while idle.",
+    },
   ] satisfies InspectorOption[],
 };
 

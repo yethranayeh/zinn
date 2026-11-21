@@ -141,6 +141,19 @@ export const inspectorSections: InspectorSection[] = [
     ],
   },
   {
+    heading: "Claim renewal",
+    blocks: [
+      {
+        kind: "paragraph",
+        text: "After a turn that runs at least one tool, the inspector renews every live [claim](/docs/cli/next#claim-tasks) held by the conversation it shows, including claims held by its subagents, whether or not the chat mentions the task. It runs `zinn task heartbeat` as the [claim's holder](/docs/cli/identity#who-am-i). A turn that only writes text does not renew, and opening the panel does not renew.",
+      },
+      {
+        kind: "paragraph",
+        text: "A claim renews once at least half its lease has passed since its last renewal, so a claim receives at most two heartbeats per lease, about four calls per hour per held claim on a 30 minute lease. An expired claim is not renewed, so a lapse stays visible, and a claim is also not renewed when another holder has taken it or when 24 hours pass without a change to the task. There is no timer, so an idle conversation makes no calls, and renewal adds no board read: it uses the task list the inspector already loaded. Renewal runs only while the conversation is shown in the TUI inspector's sidebar. A conversation in another tab, OpenCode Desktop or `opencode run` does not renew.",
+      },
+    ],
+  },
+  {
     heading: "Compatibility",
     blocks: [
       {
