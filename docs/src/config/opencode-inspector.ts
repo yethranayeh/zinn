@@ -3,6 +3,19 @@ import { latestReleaseVersion } from "./latest-release";
 
 const packageName = "@zinn-dev/opencode";
 const version = latestReleaseVersion("opencode");
+const [versionMajor, versionMinor] = version.split(".");
+// Install the latest minor line, so a patch release does not rewrite the install spec.
+const installRange = `^${versionMajor}.${versionMinor}.0`;
+const installLine = `${versionMajor}.${versionMinor}.x`;
+const verifiedVersion = "2.3.2";
+const [openCodeMajor, openCodeMinor] = verifiedVersion.split(".");
+const openCodeRange = `${openCodeMajor}.${openCodeMinor}.x`;
+
+export interface InspectorOption {
+  name: string;
+  default: string;
+  behavior: string;
+}
 
 export const opencodeInspector = {
   title: "Zinn task inspector",
@@ -11,10 +24,37 @@ export const opencodeInspector = {
   path: "/integrations/opencode/inspector",
   packageName,
   version,
-  package: `${packageName}@^${version}`,
-  verifiedVersion: "2.3.2",
+  installRange,
+  installLine,
+  package: `${packageName}@${installRange}`,
+  verifiedVersion,
+  openCodeRange,
   openTuiVersion: "0.8.4",
   minimumCliVersion: "0.41.0",
+  options: [
+    {
+      name: "rows",
+      default: "1",
+      behavior: "Accepts `1` or `2`. `2` includes column, priority and labels.",
+    },
+    {
+      name: "current",
+      default: '"off"',
+      behavior:
+        'Accepts `"off"` or `"glyph"`. `"glyph"` marks tasks with recorded activity from this conversation family.',
+    },
+  ] satisfies InspectorOption[],
+};
+
+const exampleOptions = { rows: 2, current: "glyph" };
+
+export const inspectorPluginConfig = {
+  server: JSON.stringify({ plugins: [opencodeInspector.package] }, null, "\t"),
+  tui: JSON.stringify(
+    { plugins: [{ package: opencodeInspector.package, options: exampleOptions }] },
+    null,
+    "\t",
+  ),
 };
 
 export interface InspectorCollageState {

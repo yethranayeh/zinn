@@ -8,10 +8,15 @@ import {
   questions,
   storageNote,
 } from "../src/components/pricing/figures";
+import { inspectorSections } from "../src/components/inspector/content";
 import { firefoxTheme } from "../src/config/firefox-theme";
 import { integrationsHub } from "../src/config/integrations-hub";
 import { integrations } from "../src/config/integrations";
-import { opencodeInspector } from "../src/config/opencode-inspector";
+import {
+  desktopBottomSlot,
+  inspectorPluginConfig,
+  opencodeInspector,
+} from "../src/config/opencode-inspector";
 import { opencodeScenes, opencodeTheme } from "../src/config/opencode-theme";
 import { rexScenes, rexTheme } from "../src/config/rex-theme";
 import {
@@ -959,4 +964,41 @@ test("inspector integration page carries the setup guide and its Markdown twin",
   expect(text).toContain("opencode.json");
   expect(text).toContain("cli.json");
   expect(text).toContain("ZINN_THREAD_ID");
+  const pageText = visibleText(html);
+  const plainTail = (value: string) => value.split("`").at(-1)!.trim();
+  const escapeHtml = (value: string) =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  for (const section of inspectorSections) {
+    expect(pageText).toContain(section.heading);
+    expect(text).toContain(`## ${section.heading}`);
+  }
+  for (const option of opencodeInspector.options) {
+    expect(html).toContain(`<code>${escapeHtml(option.name)}</code>`);
+    expect(html).toContain(`<code>${escapeHtml(option.default)}</code>`);
+    expect(text).toContain(`\`${option.name}\``);
+    expect(text).toContain(`\`${option.default}\``);
+    expect(pageText).toContain(plainTail(option.behavior));
+    expect(text).toContain(option.behavior);
+  }
+  for (const annotation of desktopBottomSlot.annotations) {
+    expect(html).toContain(annotation.label);
+    expect(html).toContain(annotation.text);
+    expect(text).toContain(`**${annotation.label}.** ${annotation.text}`);
+  }
+  for (const config of [inspectorPluginConfig.server, inspectorPluginConfig.tui]) {
+    expect(html).toContain(escapeHtml(config));
+    expect(text).toContain(config);
+  }
+  for (const range of [
+    opencodeInspector.installRange,
+    opencodeInspector.installLine,
+    opencodeInspector.openCodeRange,
+  ]) {
+    expect(pageText).toContain(range);
+    expect(text).toContain(range);
+  }
 });

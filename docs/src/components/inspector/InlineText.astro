@@ -1,0 +1,28 @@
+---
+import Kbd from "../ui/kbd/Kbd.astro";
+import Link from "../ui/link/Link.astro";
+import { parseInline } from "./inline";
+
+interface Props {
+	text: string;
+}
+
+const { text } = Astro.props;
+const tokens = parseInline(text);
+---
+
+{
+	tokens.map((token) =>
+		token.kind === "text" ? (
+			token.value
+		) : token.kind === "code" ? (
+			<code>{token.value}</code>
+		) : token.kind === "strong" ? (
+			<strong>{token.value}</strong>
+		) : token.kind === "link" ? (
+			<Link href={token.href}>{token.text}</Link>
+		) : (
+			<Kbd>{token.value}</Kbd>
+		),
+	)
+}

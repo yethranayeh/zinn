@@ -1,0 +1,70 @@
+---
+import type { InspectorProseBlock } from "./content";
+
+import MarkdownList from "../MarkdownList.astro";
+import Table from "../ui/table/Table.astro";
+import TableCell from "../ui/table/TableCell.astro";
+import TableHead from "../ui/table/TableHead.astro";
+import TableRow from "../ui/table/TableRow.astro";
+import TerminalCommands from "../TerminalCommands.astro";
+import InlineText from "./InlineText.astro";
+
+interface Props {
+	block: InspectorProseBlock;
+}
+
+const { block } = Astro.props;
+---
+
+{
+	block.kind === "paragraph" && (
+		<p>
+			<InlineText text={block.text} />
+		</p>
+	)
+}
+
+{
+	block.kind === "list" && (
+		<MarkdownList>
+			{block.items.map((item) => (
+				<li>
+					<InlineText text={item} />
+				</li>
+			))}
+		</MarkdownList>
+	)
+}
+
+{
+	block.kind === "code" && (
+		<TerminalCommands label={block.label} commands={[block.code]} showsPrompt={false} />
+	)
+}
+
+{
+	block.kind === "table" && (
+		<Table>
+			<thead>
+				<tr>
+					{block.columns.map((column) => (
+						<TableHead>
+							<InlineText text={column} />
+						</TableHead>
+					))}
+				</tr>
+			</thead>
+			<tbody>
+				{block.rows.map((row) => (
+					<TableRow>
+						{row.map((cell) => (
+							<TableCell>
+								<InlineText text={cell} />
+							</TableCell>
+						))}
+					</TableRow>
+				))}
+			</tbody>
+		</Table>
+	)
+}
