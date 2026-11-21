@@ -43,6 +43,9 @@ beforeAll(() => {
     if (runsZinn) {
       spawnEnvironments.push((options?.env ?? {}) as Record<string, string | undefined>);
     }
+    if (runsZinn && process.env["ZINN_DATA_TEST_SLEEP"] === "1") {
+      return spawn(["sleep", "5"], options);
+    }
     return spawn(runsZinn ? [process.execPath, cli, ...cmd.slice(1)] : cmd, options);
   }) as typeof Bun.spawn);
   restoreSpawn = () => mock.mockRestore();
@@ -55,6 +58,7 @@ afterEach(() => {
   setEnvironment("ZINN_DIR", originalEnv.ZINN_DIR);
   setEnvironment("ZINN_CLIENT", originalEnv.ZINN_CLIENT);
   delete process.env["ZINN_DATA_TEST_MARKER"];
+  delete process.env["ZINN_DATA_TEST_SLEEP"];
 });
 afterAll(() => {
   restoreSpawn?.();
@@ -86,6 +90,16 @@ test("an inherited declaration is trimmed and other environment variables pass t
 test("whoami reports the CLI and inspector clients when nothing is inherited", async () => {
   setEnvironment("ZINN_CLIENT", undefined);
   expect(await whoamiClient()).toBe(`${CLI_CLIENT} ${INSPECTOR_CLIENT}`);
+});
+test("a read that passes its timeout fails instead of hanging", async () => {
+  setEnvironment("ZINN_DATA_TEST_SLEEP", "1");
+  const started = Date.now();
+  const result = await runZinn(["task", "list", "--json"], 100);
+  expect(result.ok).toBe(false);
+  if (!result.ok) {
+    expect(result.error).toContain("timed out");
+  }
+  expect(Date.now() - started).toBeLessThan(2_000);
 });
 test("whoami reports an inherited declaration before the inspector client", async () => {
   setEnvironment("ZINN_CLIENT", "rex/0.9");

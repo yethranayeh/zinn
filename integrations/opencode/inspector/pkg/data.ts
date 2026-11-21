@@ -77,7 +77,11 @@ export function zinnErrorMessage(stderr: string): string | undefined {
   }
   return trimmed.split("\n")[0];
 }
-export async function runZinn(args: string[]): Promise<Loaded<string>> {
+export const CLI_READ_TIMEOUT_MS = 15_000;
+export async function runZinn(
+  args: string[],
+  timeoutMs = CLI_READ_TIMEOUT_MS,
+): Promise<Loaded<string>> {
   const cmd = ["zinn", ...args];
   const inheritedClient = process.env["ZINN_CLIENT"]?.trim() ?? "";
   const client =
@@ -95,12 +99,28 @@ export async function runZinn(args: string[]): Promise<Loaded<string>> {
     return { ok: false, error: `cannot run zinn: ${errorText(error)}` };
   }
 
+  let timedOut = false;
+  let settled = false;
+  const timer = setTimeout(() => {
+    if (settled) {
+      return;
+    }
+    timedOut = true;
+    try {
+      proc.kill();
+    } catch {}
+  }, timeoutMs);
+
   try {
     const [stdout, stderr, exitCode] = await Promise.all([
       new Response(proc.stdout).text(),
       new Response(proc.stderr).text(),
       proc.exited,
     ]);
+    settled = true;
+    if (timedOut) {
+      return { ok: false, error: `zinn read timed out after ${timeoutMs} ms` };
+    }
     if (exitCode !== 0) {
       return {
         ok: false,
@@ -110,7 +130,13 @@ export async function runZinn(args: string[]): Promise<Loaded<string>> {
     }
     return { ok: true, value: stdout };
   } catch (error) {
+    settled = true;
+    if (timedOut) {
+      return { ok: false, error: `zinn read timed out after ${timeoutMs} ms` };
+    }
     return { ok: false, error: `zinn read failed: ${errorText(error)}` };
+  } finally {
+    clearTimeout(timer);
   }
 }
 export function parseTaskList(raw: string): Loaded<Map<string, TaskSummary>> {
