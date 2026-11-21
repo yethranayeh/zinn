@@ -18,22 +18,35 @@ describe("parseBoard", () => {
 
 describe("summarize", () => {
   test("counts by column in the board's order", () => {
-    const tasks = [{ column: "Backlog" }, { column: "Doing" }, { column: "Backlog" }];
+    const tasks = [
+      { column: "Backlog", column_category: "backlog" },
+      { column: "Doing", column_category: "in_progress" },
+      { column: "Backlog", column_category: "backlog" },
+    ];
 
     expect(summarize(tasks, 123)).toEqual({
       total: 3,
       columns: [
-        { name: "Backlog", count: 2 },
-        { name: "Doing", count: 1 },
+        { name: "Backlog", count: 2, category: "backlog" },
+        { name: "Doing", count: 1, category: "in_progress" },
       ],
       readAt: 123,
     });
   });
 
   test("counts a task with no column in the total", () => {
-    expect(summarize([{ column: "" }, { column: "Done" }], 7)).toEqual({
-      total: 2,
-      columns: [{ name: "Done", count: 1 }],
+    expect(
+      summarize(
+        [
+          { column: "" },
+          { column: "Done", column_category: "done" },
+          { column: "Done" },
+        ],
+        7,
+      ),
+    ).toEqual({
+      total: 3,
+      columns: [{ name: "Done", count: 2, category: "done" }],
       readAt: 7,
     });
   });

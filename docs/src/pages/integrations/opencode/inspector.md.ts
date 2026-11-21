@@ -60,9 +60,9 @@ Task details include status, priority, labels, the first paragraph of the descri
 
 ## Desktop board summary
 
-OpenCode Desktop shows an experimental board summary for the default project at the bottom of the window. It follows the default project's board and shows when it was last read. The Zinn settings page turns the summary on or off and sets the refresh interval to 30 seconds, 1 minute, 5 minutes or 15 minutes. The default is 1 minute.
+OpenCode Desktop shows an experimental board summary for the default project at the bottom of the window. It follows the default project's board with the task total, the count in each column the board uses, and when it was last read. The seal wordmark opens the Zinn documentation. The Zinn settings page turns the summary on or off and sets the refresh interval to 30 seconds, 1 minute, 5 minutes or 15 minutes. The default is 1 minute.
 
-The summary reads the board in the current session's directory. A failed read shows \`no read\` with the error instead of keeping the last counts.
+The summary reads the board in the current session's directory. A failed read keeps the last counts and marks the stamp \`no read\`, with the error on hover. Home and drafts make no reads, so the strip keeps the last counts. With no prior read, it says \`no session\`.
 
 ## Options
 

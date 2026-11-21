@@ -3,7 +3,7 @@ import { Schema } from "effect";
 
 export type BoardSummary = {
   total: number;
-  columns: Array<{ name: string; count: number }>;
+  columns: Array<{ name: string; count: number; category: string }>;
   readAt: number;
 };
 

@@ -119,7 +119,7 @@ export const parseBoard = (raw: string): Array<Record<string, unknown>> => {
 };
 
 export const summarize = (tasks: Array<Record<string, unknown>>, readAt: number): BoardSummary => {
-  const counts = new Map<string, number>();
+  const counts = new Map<string, { count: number; category: string }>();
 
   for (const task of tasks) {
     const column = String(task.column ?? "");
@@ -127,12 +127,22 @@ export const summarize = (tasks: Array<Record<string, unknown>>, readAt: number)
       continue;
     }
 
-    counts.set(column, (counts.get(column) ?? 0) + 1);
+    const category = String(task.column_category ?? "");
+    const entry = counts.get(column) ?? { count: 0, category: "" };
+    entry.count += 1;
+    if (!entry.category && category) {
+      entry.category = category;
+    }
+    counts.set(column, entry);
   }
 
   return {
     total: tasks.length,
-    columns: [...counts].map(([name, count]) => ({ name, count })),
+    columns: [...counts].map(([name, entry]) => ({
+      name,
+      count: entry.count,
+      category: entry.category,
+    })),
     readAt,
   };
 };

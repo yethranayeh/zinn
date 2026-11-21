@@ -44,8 +44,7 @@ export default Plugin.define({
           return;
         }
 
-        // A failed read is not a reason to show the last counts as current
-        setSummary(undefined);
+        // A failed read keeps the last counts. The stamp says no read.
         setError(errorText(cause));
       }
     };
@@ -109,7 +108,14 @@ export default Plugin.define({
     const strip: Slot = {
       at: "window.bottom",
       order: -1000,
-      render: () => <BoardStrip summary={summary} error={error} />,
+      render: () => (
+        <BoardStrip
+          summary={summary}
+          error={error}
+          ready={() => ctx.sessions.current() !== undefined && directory() !== ""}
+          onOpenDocs={() => ctx.system.openExternal("https://zinn.sh/docs")}
+        />
+      ),
     };
 
     ctx.add(Slot, () => (settings().summary ? strip : undefined));
