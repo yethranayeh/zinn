@@ -13,6 +13,8 @@ import { createSignal } from "solid-js";
 import packageJson from "../package.json" with { type: "json" };
 
 type BunProc = Bun.Subprocess<"ignore", "pipe", "pipe">;
+/** Child environment overrides. A null removes the variable from the child. */
+export type ChildEnvironment = Record<string, string | null>;
 
 const INSPECTOR_CLIENT = `zinn-opencode:inspector/${packageJson.version}`;
 
@@ -33,6 +35,9 @@ export function asStringArray(value: unknown): string[] {
     }
   }
   return out;
+}
+export function asFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 export function errorText(error: unknown): string {
   if (error instanceof Error) {
@@ -63,6 +68,20 @@ export function zinnErrorCode(stderr: string): string | undefined {
     return undefined;
   }
 }
+export function zinnErrorReason(stderr: string): string | undefined {
+  const trimmed = stderr.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    const body = isRecord(parsed) ? parsed["error"] : undefined;
+    const details = isRecord(body) ? body["details"] : undefined;
+    return isRecord(details) ? asString(details["reason"]) : undefined;
+  } catch {
+    return undefined;
+  }
+}
 export function zinnErrorMessage(stderr: string): string | undefined {
   const trimmed = stderr.trim();
   if (!trimmed) {
@@ -86,14 +105,39 @@ export function zinnErrorMessage(stderr: string): string | undefined {
   return trimmed.split("\n")[0];
 }
 export const CLI_READ_TIMEOUT_MS = 15_000;
+/**
+ * The child's environment: the inherited one, the overrides on top, and null removing a variable.
+ * ZINN_CLIENT is set by `runZinn`, so an inherited value cannot win.
+ */
+export function buildChildEnvironment(
+  inherited: Record<string, string | undefined>,
+  overrides: ChildEnvironment,
+): Record<string, string> {
+  const child: Record<string, string> = {};
+  for (const [name, value] of Object.entries(inherited)) {
+    if (value !== undefined) {
+      child[name] = value;
+    }
+  }
+  for (const [name, value] of Object.entries(overrides)) {
+    if (value === null) {
+      delete child[name];
+      continue;
+    }
+    child[name] = value;
+  }
+  return child;
+}
 export async function runZinn(
   args: string[],
   timeoutMs = CLI_READ_TIMEOUT_MS,
+  environment: ChildEnvironment = {},
 ): Promise<Loaded<string>> {
   const cmd = ["zinn", ...args];
   const inheritedClient = process.env["ZINN_CLIENT"]?.trim() ?? "";
   const client =
     inheritedClient.length === 0 ? INSPECTOR_CLIENT : `${inheritedClient} ${INSPECTOR_CLIENT}`;
+  const env = buildChildEnvironment(process.env, { ...environment, ZINN_CLIENT: client });
   let proc: BunProc;
 
   try {
@@ -101,7 +145,7 @@ export async function runZinn(
       stdout: "pipe",
       stderr: "pipe",
       stdin: "ignore",
-      env: { ...process.env, ZINN_CLIENT: client },
+      env,
     });
   } catch (error) {
     return { ok: false, error: `cannot run zinn: ${errorText(error)}` };
@@ -134,6 +178,7 @@ export async function runZinn(
         ok: false,
         error: zinnErrorMessage(stderr) ?? `zinn exited with code ${exitCode}`,
         code: zinnErrorCode(stderr),
+        reason: zinnErrorReason(stderr),
       };
     }
     return { ok: true, value: stdout };
@@ -157,13 +202,13 @@ export function parseClaim(value: unknown): TaskClaim | null {
     return null;
   }
 
-  const expiresAt = value["expires_at"];
   return {
     state,
     sessionId: asString(value["actor_session_id"]) ?? null,
     threadId: asString(value["actor_thread_id"]) ?? null,
-    expiresAt:
-      typeof expiresAt === "number" && Number.isFinite(expiresAt) ? expiresAt : null,
+    renewedAt: asFiniteNumber(value["renewed_at"]),
+    leaseMs: asFiniteNumber(value["lease_ms"]),
+    expiresAt: asFiniteNumber(value["expires_at"]),
   };
 }
 export function parseTaskList(raw: string): Loaded<Map<string, TaskSummary>> {

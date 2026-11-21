@@ -22,7 +22,8 @@ import { Overflow, RailLine, Row } from "./components.tsx";
 import { openDetail, openPicker } from "./dialogs.tsx";
 
 import { claimHolder, columnGlyph, rowTone, stableRows, truncate } from "./rows.ts";
-import { mentionCounts, newestIdleID, scanSession } from "./scan.ts";
+import { renewDueClaims } from "./renew.ts";
+import { mentionCounts, newestIdleID, scanSession, turnEnded } from "./scan.ts";
 import {
   PROBE_CONCURRENCY,
   activityProbesSupported,
@@ -76,6 +77,9 @@ export function Sidebar(props: {
   let lastBoardReadZinn = 0;
   let lastProbeAt = 0;
   let lastProbeZinn = 0;
+  // Kept with the panel, so a due claim renews once and a refused key stays quiet at later turns.
+  const renewedLocally = new Map<string, number>();
+  const stoppedClaims = new Set<string>();
 
   const apply = (result: Loaded<Map<string, TaskSummary>>, reason: string, force: boolean) => {
     if (!alive) {
@@ -174,6 +178,34 @@ export function Sidebar(props: {
     void refresh("header click", true, true);
   };
 
+  // A second turn can end while the first renewal round is still waiting on the CLI. Join that round.
+  let renewInflight: Promise<void> | undefined;
+  const renew = (
+    tasks: ReadonlyMap<string, TaskSummary>,
+    family: ReadonlySet<string>,
+  ): Promise<void> => {
+    if (!alive) {
+      return Promise.resolve();
+    }
+    if (renewInflight !== undefined) {
+      return renewInflight;
+    }
+    const run = renewDueClaims({
+      ctx: props.ctx,
+      tasks,
+      family,
+      localRenewals: renewedLocally,
+      stopped: stoppedClaims,
+      alive: () => alive,
+    }).finally(() => {
+      if (renewInflight === run) {
+        renewInflight = undefined;
+      }
+    });
+    renewInflight = run;
+    return run;
+  };
+
   onMount(() => {
     log(props.ctx, "sidebar mounted", { session: props.sessionID });
     onCleanup(() => {
@@ -201,12 +233,21 @@ export function Sidebar(props: {
     if (!baselineReady()) {
       return;
     }
-    const newest = newestIdleID(props.ctx.data.session.message.list(props.sessionID));
-    if (newest === undefined || newest === lastIdleID) {
+    const turn = turnEnded(props.ctx.data.session.message.list(props.sessionID), lastIdleID);
+    if (turn === undefined) {
       return;
     }
-    lastIdleID = newest;
-    void refresh("turn ended", false);
+    lastIdleID = turn.id;
+    void refresh("turn ended", false).then(() => {
+      if (!alive || !turn.ranTool || !props.options.renewClaims) {
+        return;
+      }
+      const loaded = untrack(() => map());
+      if (!loaded.ok) {
+        return;
+      }
+      void renew(loaded.value, new Set(untrack(() => sessions())));
+    });
   });
 
   const running = () => sessionRunning(props.ctx, props.sessionID);

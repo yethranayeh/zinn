@@ -28,15 +28,23 @@ export type CurrentMark = "off" | "glyph";
 export type InspectorOptions = {
   rows: 1 | 2;
   current: CurrentMark;
+  renewClaims: boolean;
 };
-export const DEFAULT_OPTIONS: InspectorOptions = { rows: 1, current: "off" };
+export const DEFAULT_OPTIONS: InspectorOptions = { rows: 1, current: "off", renewClaims: true };
 export function readCurrentMark(value: unknown): CurrentMark {
   return value === "glyph" ? "glyph" : "off";
+}
+export function readRenewClaims(value: unknown): boolean {
+  return value !== false;
 }
 export function readOptions(options: unknown): InspectorOptions {
   if (typeof options !== "object" || options === null) {
     return DEFAULT_OPTIONS;
   }
   const bag = options as Record<string, unknown>;
-  return { rows: bag["rows"] === 2 ? 2 : 1, current: readCurrentMark(bag["current"]) };
+  return {
+    rows: bag["rows"] === 2 ? 2 : 1,
+    current: readCurrentMark(bag["current"]),
+    renewClaims: readRenewClaims(bag["renewClaims"]),
+  };
 }

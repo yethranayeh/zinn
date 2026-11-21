@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import cliPackageJson from "../../../../packages/cli/package.json" with { type: "json" };
 import inspectorPackageJson from "../package.json" with { type: "json" };
-import { parseTaskList, runZinn } from "./data.ts";
+import { parseTaskList, runZinn, zinnErrorReason } from "./data.ts";
 
 const CLI_CLIENT = `zinn-cli/${cliPackageJson.version}`;
 const INSPECTOR_CLIENT = `zinn-opencode:inspector/${inspectorPackageJson.version}`;
@@ -139,6 +139,8 @@ test("a task list keeps a live claim's holder identity and expiry", () => {
           state: "live",
           actor_session_id: "ses_root",
           actor_thread_id: "ses_child",
+          renewed_at: 1_795_296_216_000,
+          lease_ms: 1_800_000,
           expires_at: 1_795_296_216_313,
         },
       },
@@ -152,6 +154,8 @@ test("a task list keeps a live claim's holder identity and expiry", () => {
     state: "live",
     sessionId: "ses_root",
     threadId: "ses_child",
+    renewedAt: 1_795_296_216_000,
+    leaseMs: 1_800_000,
     expiresAt: 1_795_296_216_313,
   });
 });
@@ -198,6 +202,8 @@ test("an expired claim keeps its state", () => {
     state: "expired",
     sessionId: "ses_root",
     threadId: null,
+    renewedAt: null,
+    leaseMs: null,
     expiresAt: 1_795_296_216_313,
   });
 });
@@ -227,6 +233,70 @@ test("a non-numeric claim expiry leaves the expiry unset", () => {
     state: "live",
     sessionId: "ses_root",
     threadId: null,
+    renewedAt: null,
+    leaseMs: null,
     expiresAt: null,
   });
+});
+test("a malformed claim renewal time or lease leaves both unset", () => {
+  const parsed = parseTaskList(
+    JSON.stringify([
+      {
+        key: "APP-1",
+        title: "One",
+        claim: {
+          state: "live",
+          actor_session_id: "ses_root",
+          renewed_at: "yesterday",
+          lease_ms: true,
+        },
+      },
+    ]),
+  );
+  expect(parsed.ok).toBe(true);
+  if (!parsed.ok) {
+    return;
+  }
+  expect(parsed.value.get("APP-1")?.claim).toEqual({
+    state: "live",
+    sessionId: "ses_root",
+    threadId: null,
+    renewedAt: null,
+    leaseMs: null,
+    expiresAt: null,
+  });
+});
+test("the error reason is read from the CLI envelope", () => {
+  const envelope = JSON.stringify({
+    error: {
+      code: "conflict",
+      details: {
+        entity: "task",
+        key: "APP-1",
+        reason: "claimed",
+        claimExpiresAt: 1_795_296_216_313,
+      },
+      message: "APP-1 is claimed by opencode (session ses_a)",
+    },
+  });
+  expect(zinnErrorReason(envelope)).toBe("claimed");
+});
+test("a plain failure carries no reason", () => {
+  expect(
+    zinnErrorReason(
+      JSON.stringify({ error: { code: "not_found", message: "APP-1 was not found" } }),
+    ),
+  ).toBeUndefined();
+  expect(zinnErrorReason("not json")).toBeUndefined();
+  expect(zinnErrorReason("")).toBeUndefined();
+});
+test("a refused heartbeat carries its reason on the result", async () => {
+  expect((await runZinn(["project", "create", "ERR"])).ok).toBe(true);
+  expect((await runZinn(["task", "create", "ERR", "--title", "No claim"])).ok).toBe(true);
+  const result = await runZinn(["task", "heartbeat", "ERR-1", "--json"]);
+  expect(result.ok).toBe(false);
+  if (!result.ok) {
+    expect(result.code).toBe("conflict");
+    expect(result.reason).toBe("not_claimed");
+  }
 });

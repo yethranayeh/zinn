@@ -5,6 +5,8 @@ export type TaskClaim = {
   state: "live" | "expired";
   sessionId: string | null;
   threadId: string | null;
+  renewedAt: number | null;
+  leaseMs: number | null;
   expiresAt: number | null;
 };
 export type TaskSummary = {
@@ -51,6 +53,7 @@ export type Loaded<T> =
       ok: false;
       error: string;
       code?: string;
+      reason?: string;
     };
 export type Mention = {
   key: string;

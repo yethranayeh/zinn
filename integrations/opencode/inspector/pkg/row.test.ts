@@ -6,6 +6,8 @@ const claim = (over: Partial<Claim> = {}): Claim => ({
   state: "live",
   sessionId: "ses_root",
   threadId: "ses_child",
+  renewedAt: 1_799_999_999_000,
+  leaseMs: 1_800_000,
   expiresAt: 1_800_000_000_000,
   ...over,
 });
@@ -48,6 +50,8 @@ test("compares every visible row value", () => {
     ["mine", { mine: true }],
     ["claim", { claim: claim() }],
     ["claim state", { claim: claim({ state: "expired" }) }],
+    ["claim renewal", { claim: claim({ renewedAt: 1_799_999_998_000 }) }],
+    ["claim lease", { claim: claim({ leaseMs: 3_600_000 }) }],
     ["claim expiry", { claim: claim({ expiresAt: 1_800_000_000_001 }) }],
     ["holder", { holder: "mine" }],
   ];
@@ -59,6 +63,8 @@ test("compares every visible row value", () => {
   check("labels in a different order compare unequal (the panel renders the order)", !sameDisplayRow(row({ labels: ["a", "b"] }), row({ labels: ["b", "a"] })), "");
   check("a rebuilt claim with the same fields compares equal", sameDisplayRow(row({ claim: claim() }), row({ claim: claim() })), "");
   check("a changed claim expiry compares unequal", !sameDisplayRow(row({ claim: claim() }), row({ claim: claim({ expiresAt: 1_800_000_000_001 }) })), "");
+  check("a changed claim renewal compares unequal", !sameDisplayRow(row({ claim: claim() }), row({ claim: claim({ renewedAt: 1_799_999_998_000 }) })), "");
+  check("a changed claim lease compares unequal", !sameDisplayRow(row({ claim: claim() }), row({ claim: claim({ leaseMs: 3_600_000 }) })), "");
   check("a changed claim session compares unequal", !sameDisplayRow(row({ claim: claim() }), row({ claim: claim({ sessionId: "ses_other" }) })), "");
   check("a changed claim thread compares unequal", !sameDisplayRow(row({ claim: claim() }), row({ claim: claim({ threadId: "ses_other" }) })), "");
   check("a null claim and a claim compare unequal", !sameDisplayRow(row(), row({ claim: claim() })), "");

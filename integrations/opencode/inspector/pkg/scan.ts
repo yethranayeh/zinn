@@ -262,6 +262,64 @@ export function newestIdleID(
   const last = messages[messages.length - 1];
   return last !== undefined && last.type === "idle" ? last.id : undefined;
 }
+export type TurnMessage = {
+  readonly id: string;
+  readonly type: string;
+  readonly text?: unknown;
+  readonly content?: ReadonlyArray<unknown>;
+};
+export type TurnEnd = {
+  id: string;
+  ranTool: boolean;
+};
+/** Whether the turn that `idleID` ends ran a tool. Only the messages after the previous idle belong to it. */
+export function turnRanTool(messages: ReadonlyArray<TurnMessage>, idleID: string): boolean {
+  let inTurn = false;
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message === undefined) {
+      continue;
+    }
+
+    if (message.type === "idle") {
+      if (message.id === idleID) {
+        inTurn = true;
+        continue;
+      }
+      if (inTurn) {
+        break;
+      }
+      continue;
+    }
+
+    if (!inTurn || message.type !== "assistant") {
+      continue;
+    }
+
+    for (const part of message.content ?? []) {
+      if (isRecord(part) && part["type"] === "tool") {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+/**
+ * The turn that ended since `previousIdleID`, or undefined when no new idle message arrived.
+ * A panel baseline passes the idle message it opened on, so mounting never reads as a turn.
+ */
+export function turnEnded(
+  messages: ReadonlyArray<TurnMessage>,
+  previousIdleID: string | undefined,
+): TurnEnd | undefined {
+  const id = newestIdleID(messages);
+  if (id === undefined || id === previousIdleID) {
+    return undefined;
+  }
+  return { id, ranTool: turnRanTool(messages, id) };
+}
 
 export function mentionCounts(mentions: readonly Mention[]): ReadonlyMap<string, number> {
   return new Map(mentions.map((mention) => [mention.key, mention.count]));

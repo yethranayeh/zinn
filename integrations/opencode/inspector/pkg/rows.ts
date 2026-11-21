@@ -129,6 +129,8 @@ function sameClaim(a: TaskClaim | null, b: TaskClaim | null): boolean {
     a.state === b.state &&
     a.sessionId === b.sessionId &&
     a.threadId === b.threadId &&
+    a.renewedAt === b.renewedAt &&
+    a.leaseMs === b.leaseMs &&
     a.expiresAt === b.expiresAt
   );
 }
