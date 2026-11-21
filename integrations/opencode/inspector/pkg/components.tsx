@@ -16,7 +16,7 @@ import {
   labelColors,
 } from "./data.ts";
 import { RAIL_COLUMNS, SESSION_GLYPH, priorityLetter } from "./options.ts";
-import { truncate } from "./rows.ts";
+import { isDoneColumn, truncate } from "./rows.ts";
 import { TINT_ALPHA_STRONG, TINT_ALPHA_SUBTLE, inspectorTheme, toneColor } from "./theme.ts";
 
 export function Overflow(props: {
@@ -92,7 +92,7 @@ export function Row(props: {
   const keyColor = toneColor(props.ctx, () => props.row.tone);
   const metaColor = () => theme().textMuted;
   const glyph = () => props.current === "glyph";
-  const done = () => props.row.column === "Done";
+  const done = () => isDoneColumn(props.row.column, props.row.category);
   const mark = () => {
     if (glyph() && props.row.mine) {
       return props.markGlyph ?? SESSION_GLYPH;

@@ -59,11 +59,21 @@ export function excerptAround(
   };
 }
 export const COLUMN_GLYPH: Record<string, string | undefined> = {
-  Done: "✔",
   Blocked: "✖",
   "In Progress": "▸",
 };
-export function columnGlyph(column: string): string {
+const DONE_GLYPH = "✔";
+/** Column category decides the done state. Older CLIs and read-only older databases send none. */
+export function isDoneColumn(column: string, category: string | null): boolean {
+  if (category === null) {
+    return column === "Done";
+  }
+  return category === "done";
+}
+export function columnGlyph(column: string, category: string | null): string {
+  if (isDoneColumn(column, category)) {
+    return DONE_GLYPH;
+  }
   return COLUMN_GLYPH[column] ?? "";
 }
 export type RowTone = "normal" | "done" | "created" | "blocked" | "warning";
@@ -78,6 +88,7 @@ export type DisplayRow = {
   priority: string | null;
   labels: string[];
   column: string;
+  category: string | null;
 };
 export function sameDisplayRow(a: DisplayRow, b: DisplayRow): boolean {
   if (a === b) {
@@ -89,6 +100,7 @@ export function sameDisplayRow(a: DisplayRow, b: DisplayRow): boolean {
     a.title === b.title &&
     a.priority === b.priority &&
     a.column === b.column &&
+    a.category === b.category &&
     a.glyph === b.glyph &&
     a.tone === b.tone &&
     a.unknown === b.unknown &&
@@ -138,14 +150,19 @@ export function stableRows(
 
   return out;
 }
-export function rowTone(column: string, unknown: boolean, created: boolean): RowTone {
+export function rowTone(
+  column: string,
+  category: string | null,
+  unknown: boolean,
+  created: boolean,
+): RowTone {
   if (unknown) {
     return "warning";
   }
   if (created) {
     return "created";
   }
-  if (column === "Done") {
+  if (isDoneColumn(column, category)) {
     return "done";
   }
   if (column === "Blocked") {

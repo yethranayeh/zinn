@@ -141,6 +141,7 @@ export function parseTaskList(raw: string): Loaded<Map<string, TaskSummary>> {
       title,
       status: asString(item["status"]) ?? "",
       column: asString(item["column"]) ?? "",
+      columnCategory: asString(item["column_category"]) ?? null,
       priority: asString(item["priority"]) ?? null,
       labels: asStringArray(item["labels"]),
     });

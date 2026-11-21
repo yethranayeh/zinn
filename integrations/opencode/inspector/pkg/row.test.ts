@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { sameDisplayRow, stableRows } from "./rows.ts";
+import { columnGlyph, rowTone, sameDisplayRow, stableRows } from "./rows.ts";
 type Row = Parameters<typeof stableRows>[1][number];
 const row = (over: Partial<Row> = {}): Row => ({
   key: "ZTP-1",
@@ -12,6 +12,7 @@ const row = (over: Partial<Row> = {}): Row => ({
   priority: "high",
   labels: ["spike", "ui"],
   column: "In Progress",
+  category: "in_progress",
   ...over,
 });
 function check(label: string, ok: boolean, detail = "") {
@@ -29,6 +30,7 @@ test("compares every visible row value", () => {
     ["title", { title: "something else" }],
     ["priority", { priority: "urgent" }],
     ["column", { column: "Done" }],
+    ["category", { category: "done" }],
     ["glyph", { glyph: "✔" }],
     ["tone", { tone: "done" }],
     ["unknown", { unknown: true }],
@@ -105,4 +107,16 @@ test("detects changes to every field defined by a row", () => {
     }
   }
   check("every DisplayRow field participates in the comparison", missed.length === 0, `missed=${missed.join(",")}`);
+});
+test("reads the done treatment from the column category", () => {
+  check("a renamed done column keeps the done tone", rowTone("Shipped", "done", false, false) === "done", "");
+  check("a renamed done column keeps the done glyph", columnGlyph("Shipped", "done") === "✔", "");
+  check("a Done-named column with another category keeps the normal tone", rowTone("Done", "review", false, false) === "normal", "");
+  check("a Done-named column with another category gets no done glyph", columnGlyph("Done", "review") === "", "");
+  check("a cancelled column keeps the normal tone", rowTone("Dropped", "cancelled", false, false) === "normal", "");
+  check("a cancelled column gets no done glyph", columnGlyph("Dropped", "cancelled") === "", "");
+  check("a missing category falls back to the Done name for the tone", rowTone("Done", null, false, false) === "done", "");
+  check("a missing category falls back to the Done name for the glyph", columnGlyph("Done", null) === "✔", "");
+  check("a missing category leaves other names alone", rowTone("Shipped", null, false, false) === "normal" && columnGlyph("Shipped", null) === "", "");
+  check("other glyphs still follow the column name", columnGlyph("Blocked", "backlog") === "✖" && columnGlyph("In Progress", "in_progress") === "▸", "");
 });

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import cliPackageJson from "../../../../packages/cli/package.json" with { type: "json" };
 import inspectorPackageJson from "../package.json" with { type: "json" };
-import { runZinn } from "./data.ts";
+import { parseTaskList, runZinn } from "./data.ts";
 
 const CLI_CLIENT = `zinn-cli/${cliPackageJson.version}`;
 const INSPECTOR_CLIENT = `zinn-opencode:inspector/${inspectorPackageJson.version}`;
@@ -90,4 +90,28 @@ test("whoami reports the CLI and inspector clients when nothing is inherited", a
 test("whoami reports an inherited declaration before the inspector client", async () => {
   setEnvironment("ZINN_CLIENT", "rex/0.9");
   expect(await whoamiClient()).toBe(`${CLI_CLIENT} rex/0.9 ${INSPECTOR_CLIENT}`);
+});
+test("the task list keeps each task's column category", () => {
+  const parsed = parseTaskList(
+    JSON.stringify([{ key: "APP-1", title: "One", column: "Shipped", column_category: "done" }]),
+  );
+  expect(parsed.ok).toBe(true);
+  if (!parsed.ok) {
+    return;
+  }
+  expect(parsed.value.get("APP-1")?.columnCategory).toBe("done");
+});
+test("a task list without a column category leaves it unset", () => {
+  const parsed = parseTaskList(
+    JSON.stringify([
+      { key: "APP-1", title: "One", column: "Done" },
+      { key: "APP-2", title: "Two", column: "Done", column_category: null },
+    ]),
+  );
+  expect(parsed.ok).toBe(true);
+  if (!parsed.ok) {
+    return;
+  }
+  expect(parsed.value.get("APP-1")?.columnCategory).toBeNull();
+  expect(parsed.value.get("APP-2")?.columnCategory).toBeNull();
 });

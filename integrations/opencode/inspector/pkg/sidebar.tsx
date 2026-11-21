@@ -360,6 +360,7 @@ export function Sidebar(props: {
       const summary = loaded.ok ? loaded.value.get(mention.key) : undefined;
       const isCreated = created.has(mention.key);
       const column = summary?.column ?? "";
+      const category = summary?.columnCategory ?? null;
       const priority = summary?.priority ?? null;
       const labels = summary?.labels ?? [];
       const mine = mineKeys.get(mention.key) === true;
@@ -369,8 +370,9 @@ export function Sidebar(props: {
         priority,
         labels,
         column,
-        glyph: isCreated ? "+" : columnGlyph(summary?.column ?? ""),
-        tone: rowTone(column, false, isCreated),
+        category,
+        glyph: isCreated ? "+" : columnGlyph(column, category),
+        tone: rowTone(column, category, false, isCreated),
         unknown: false,
         created: isCreated,
         mine,
@@ -391,6 +393,7 @@ export function Sidebar(props: {
         priority: null,
         labels: [],
         column: "",
+        category: null,
       }),
     );
     return stableRows(unknownRowCache, candidates);

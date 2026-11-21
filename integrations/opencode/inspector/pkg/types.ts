@@ -6,6 +6,7 @@ export type TaskSummary = {
   title: string;
   status: string;
   column: string;
+  columnCategory: string | null;
   priority: string | null;
   labels: string[];
 };
