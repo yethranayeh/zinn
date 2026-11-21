@@ -29,7 +29,7 @@
 		"@tailwindcss/vite": "^4.3.3",
 		"pagefind": "1.6.0",
 		"satori": "0.60.0",
-		"steerdown": "0.1.1",
+		"steerdown": "0.2.0",
 		"typescript": "^5",
 		"wrangler": "4.147.0"
 	}

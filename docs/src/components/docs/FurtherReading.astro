@@ -17,9 +17,9 @@
 </section>
 
 <script>
-	import type { SteerdownPage, SuggestedLink } from "steerdown/browser";
-	import { loadPage, originRange } from "steerdown/browser";
-	import { currentReadingSection, readingSectionEvent } from "./reading-section";
+	import type { PageSentence, SteerdownPage, SuggestedLink } from "steerdown/browser";
+	import { loadPage, originRange, readSentences } from "steerdown/browser";
+	import { currentReadingSection } from "./reading-section";
 
 	const relationLabels: Record<string, string> = {
 		prerequisite: "Read before",
@@ -30,33 +30,44 @@
 	const originHighlight = "further-reading-origin";
 	// The aside holding this list shows from Tailwind's lg breakpoint
 	const wideScreen = window.matchMedia("(min-width: 64rem)");
+	// The reading band runs from the text's visible top to this fraction of the viewport height
+	const readingBandBottom = 0.6;
+	// The links follow the reader once scrolling has paused this long, in milliseconds
+	const scrollSettleDelay = 150;
+
+	/** A link to show and the Range of the sentence it grows out of, found when needed. */
+	type ShownLink = { link: SuggestedLink; key: string; origin: () => Promise<Range | undefined> };
 
 	const root = document.querySelector<HTMLElement>("[data-further-reading]");
 	const list = root?.querySelector<HTMLUListElement>("[data-further-reading-list]");
 	const itemTemplate = root?.querySelector<HTMLTemplateElement>("[data-further-reading-item]");
 	let page: SteerdownPage | undefined;
-	let shownSection: string | undefined;
+	let sentences: Array<PageSentence> = [];
+	let sentenceOrder = new Map<PageSentence, number>();
+	let shownKeys = "";
 	let highlightRequest = 0;
+	let settleTimer: number | undefined;
 
 	function clearOrigin() {
 		highlightRequest++;
 		CSS.highlights.delete(originHighlight);
 	}
 
-	async function showOrigin(section: string, link: SuggestedLink) {
+	async function showOrigin(shown: ShownLink) {
 		const request = ++highlightRequest;
-		const range = await originRange(section, link);
+		const range = await shown.origin();
 
 		if (request !== highlightRequest || range === undefined) {
 			return;
 		}
 
-		CSS.highlights.set(originHighlight, new Highlight(range as unknown as Range));
+		CSS.highlights.set(originHighlight, new Highlight(range));
 	}
 
-	function linkItem(section: string, link: SuggestedLink) {
+	function linkItem(shown: ShownLink) {
 		const item = itemTemplate!.content.firstElementChild!.cloneNode(true) as HTMLLIElement;
 		const anchor = item.querySelector("a")!;
+		const { link } = shown;
 		const relation = relationLabels[link.relation] ?? link.relation;
 
 		anchor.href = link.url;
@@ -64,7 +75,7 @@
 		item.querySelector("[data-further-reading-heading]")!.textContent = link.heading || link.pageTitle;
 
 		for (const show of ["mouseenter", "focus"]) {
-			anchor.addEventListener(show, () => void showOrigin(section, link));
+			anchor.addEventListener(show, () => void showOrigin(shown));
 		}
 
 		for (const hide of ["mouseleave", "blur"]) {
@@ -74,17 +85,79 @@
 		return item;
 	}
 
-	function render(section: string) {
-		if (page === undefined || root === null || list === null || list === undefined || section === shownSection) {
+	type Band = { top: number; bottom: number };
+
+	/** Where the text shows from, below the sticky header and breadcrumb rail. */
+	function visibleTextTop() {
+		return document.querySelector("[data-reading-rail]")?.getBoundingClientRect().bottom ?? 0;
+	}
+
+	/** The reading band in viewport pixels. At the end of the page it reaches the bottom, since the text there cannot scroll up into it. */
+	function readingBand(): Band {
+		const isAtPageEnd = scrollY + innerHeight >= document.documentElement.scrollHeight - 1;
+		return { top: visibleTextTop(), bottom: isAtPageEnd ? innerHeight : innerHeight * readingBandBottom };
+	}
+
+	function screenBand(): Band {
+		return { top: visibleTextTop(), bottom: innerHeight };
+	}
+
+	function isInBand(sentence: PageSentence, band: Band) {
+		const box = sentence.range.getBoundingClientRect();
+		const hasBox = box.height > 0;
+		return hasBox && box.bottom > band.top && box.top < band.bottom;
+	}
+
+	function rankedInBand(steerdownPage: SteerdownPage, band: Band) {
+		return steerdownPage.rank(sentences, (sentence) => (isInBand(sentence, band) ? 1 : 0));
+	}
+
+	/**
+	 * The links of the sentences in the reading band, else of any sentence on screen, in page order.
+	 * When nothing on screen has a link, the section's default links.
+	 */
+	function linksToShow(steerdownPage: SteerdownPage): Array<ShownLink> {
+		const inReadingBand = rankedInBand(steerdownPage, readingBand());
+		const ranked = inReadingBand.length > 0 ? inReadingBand : rankedInBand(steerdownPage, screenBand());
+
+		if (ranked.length > 0) {
+			ranked.sort((first, second) => sentenceOrder.get(first.sentence)! - sentenceOrder.get(second.sentence)!);
+			return ranked.map((link) => ({
+				link,
+				key: `${link.url} ${link.sentence.anchor} ${link.sentence.position}`,
+				origin: async () => link.sentence.range
+			}));
+		}
+
+		const section = currentReadingSection() ?? "";
+		return steerdownPage.links(section).map((link) => ({
+			link,
+			key: `${link.url} ${section}`,
+			origin: () => originRange(section, link)
+		}));
+	}
+
+	function render() {
+		if (page === undefined || root === null || list === null || list === undefined) {
 			return;
 		}
 
-		shownSection = section;
-		clearOrigin();
+		const shown = linksToShow(page);
+		const keys = shown.map((link) => link.key).join("\n");
 
-		const links = page.links(section);
-		list.replaceChildren(...links.map((link) => linkItem(section, link)));
-		root.hidden = links.length === 0;
+		if (keys === shownKeys) {
+			return;
+		}
+
+		shownKeys = keys;
+		clearOrigin();
+		list.replaceChildren(...shown.map(linkItem));
+		root.hidden = shown.length === 0;
+	}
+
+	function renderWhenSettled() {
+		window.clearTimeout(settleTimer);
+		settleTimer = window.setTimeout(render, scrollSettleDelay);
 	}
 
 	async function start() {
@@ -95,8 +168,11 @@
 			return;
 		}
 
-		render(currentReadingSection() ?? "");
-		document.addEventListener(readingSectionEvent, (event) => render((event as CustomEvent<string>).detail));
+		sentences = await readSentences();
+		sentenceOrder = new Map(sentences.map((sentence, index) => [sentence, index]));
+		render();
+		window.addEventListener("scroll", renderWhenSettled, { passive: true });
+		window.addEventListener("resize", renderWhenSettled, { passive: true });
 	}
 
 	if (root !== null) {
