@@ -1,3 +1,4 @@
+import type { AnnotatedFigureData } from "../components/inspector/annotated-figure";
 import { latestReleaseVersion } from "./latest-release";
 
 const packageName = "@zinn-dev/opencode";
@@ -148,4 +149,67 @@ export const inspectorCollage = {
       ],
     },
   ] satisfies InspectorCollagePart[],
+};
+
+const desktopAssets = {
+  bottomSlot:
+    "https://res.cloudinary.com/drwbqceye/image/upload/v1795272929/desktop-bottom-slot_nrtl5n.png",
+};
+
+export const desktopBottomSlot: AnnotatedFigureData = {
+  src: desktopAssets.bottomSlot,
+  width: 2784,
+  height: 1734,
+  alt: "OpenCode Desktop with the Zinn bottom slot showing the demo board's task counts",
+  caption: "The Zinn bottom slot in OpenCode Desktop, reading the demo board.",
+  annotations: [
+    {
+      label: "Wordmark",
+      text: "The ZINN wordmark. It opens the Zinn documentation.",
+      x: 112,
+      y: 1526,
+      width: 126,
+      height: 59,
+    },
+    {
+      label: "Task total",
+      text: "The active tasks in the default project.",
+      x: 238,
+      y: 1526,
+      width: 192,
+      height: 59,
+    },
+    {
+      label: "Column counts",
+      text: "One cell for each column with tasks, in board order. Backlog and cancelled ones are dimmed.",
+      x: 430,
+      y: 1526,
+      width: 700,
+      height: 59,
+    },
+    {
+      label: "Category ink",
+      text: "Columns with the done category are colored green.",
+      x: 1130,
+      y: 1526,
+      width: 348,
+      height: 59,
+    },
+    {
+      label: "Hatched spacer",
+      text: "The elastic seam between the counts and the read stamp. It absorbs the space the columns leave.",
+      x: 1478,
+      y: 1526,
+      width: 984,
+      height: 59,
+    },
+    {
+      label: "Read stamp",
+      text: "The last time the board was read. A failed read says no read and keeps the last counts.",
+      x: 2462,
+      y: 1526,
+      width: 208,
+      height: 59,
+    },
+  ],
 };

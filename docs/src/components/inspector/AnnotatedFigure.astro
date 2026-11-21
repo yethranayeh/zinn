@@ -1,0 +1,54 @@
+---
+import type { AnnotatedFigureData } from "./annotated-figure";
+
+interface Props extends AnnotatedFigureData {
+	class?: string;
+}
+
+const { src, width, height, alt, caption, annotations, class: className } = Astro.props;
+const percent = (value: number, total: number) => `${((value / total) * 100).toFixed(3)}%`;
+---
+
+<figure class:list={["isolate", className]}>
+	<div class='border border-pewter bg-soot p-3 text-soot-foreground scheme-dark md:p-7'>
+		<div class='relative' style={`aspect-ratio: ${width} / ${height}`}>
+			<img
+				class='absolute inset-0 size-full'
+				src={src}
+				width={width}
+				height={height}
+				alt={alt}
+				loading='lazy'
+				decoding='async'
+			/>
+			{
+				annotations.map((annotation, index) => (
+					<span
+						class='pointer-events-none absolute border border-bronze max-sm:hidden'
+						style={`left: ${percent(annotation.x, width)}; top: ${percent(annotation.y, height)}; width: ${percent(annotation.width, width)}; height: ${percent(annotation.height, height)};`}
+						aria-hidden='true'>
+						<span class='absolute bottom-full left-0 mb-1 grid size-5 place-items-center bg-bronze font-mono text-[10px] leading-none text-soot'>
+							{index + 1}
+						</span>
+					</span>
+				))
+			}
+		</div>
+		<ol class='mt-5 grid gap-x-8 gap-y-4 border-t border-pewter/60 pt-5 sm:grid-cols-2'>
+			{
+				annotations.map((annotation, index) => (
+					<li class='flex gap-3'>
+						<span class='mt-0.5 grid size-6 shrink-0 place-items-center border border-bronze/60 font-mono text-[11px] text-bronze'>
+							{index + 1}
+						</span>
+						<div class='min-w-0'>
+							<p class='font-mono text-[10px] tracking-widest text-bone uppercase'>{annotation.label}</p>
+							<p class='mt-1 text-sm leading-snug text-soot-muted-foreground'>{annotation.text}</p>
+						</div>
+					</li>
+				))
+			}
+		</ol>
+	</div>
+	<figcaption class='mt-3 font-mono text-[11px] text-muted-foreground'>{caption}</figcaption>
+</figure>

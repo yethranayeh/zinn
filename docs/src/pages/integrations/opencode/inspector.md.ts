@@ -60,9 +60,20 @@ Task details include status, priority, labels, the first paragraph of the descri
 
 ## Desktop board summary
 
-OpenCode Desktop shows an experimental board summary for the default project at the bottom of the window. It follows the default project's board with the task total, the count in each column the board uses, and when it was last read. The seal wordmark opens the Zinn documentation. The Zinn settings page turns the summary on or off and sets the refresh interval to 30 seconds, 1 minute, 5 minutes or 15 minutes. The default is 1 minute.
+OpenCode Desktop shows a board summary in the bottom slot. It follows the default project's board with the active task total, the count in each column with tasks, and when the board was last read. Columns with **done** category are colored green. Backlog and cancelled ones are dimmed.
 
-The summary reads the board in the current session's directory. A failed read keeps the last counts and marks the stamp \`no read\`, with the error on hover. Home and drafts make no reads, so the strip keeps the last counts. With no prior read, it says \`no session\`.
+![OpenCode Desktop with the Zinn bottom slot showing the demo board's task counts](https://res.cloudinary.com/drwbqceye/image/upload/v1795272929/desktop-bottom-slot_nrtl5n.png)
+
+The strip reads the board in the current session's directory. A successful read stamps \`synced HH:MM\`. A failed read keeps the last counts and stamps \`no read\`, with the error on hover.
+
+The ZINN wordmark opens the Zinn documentation. The Zinn settings page turns the strip on or off and sets the refresh interval to 30 seconds, 1 minute, 5 minutes or 15 minutes. The default is 1 minute.
+
+1. **Wordmark.** The ZINN wordmark. It opens the Zinn documentation.
+2. **Task total.** The active tasks in the default project.
+3. **Column counts.** One cell for each column with tasks, in board order. Backlog and cancelled ones are dimmed.
+4. **Category ink.** Columns with the done category are colored green.
+5. **Hatched spacer.** The elastic seam between the counts and the read stamp. It absorbs the space the columns leave.
+6. **Read stamp.** The last time the board was read. A failed read says no read and keeps the last counts.
 
 ## Options
 

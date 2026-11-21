@@ -2,6 +2,7 @@
 import BaseLayout from "../../../../layouts/BaseLayout.astro";
 import Button from "../../../../components/ui/button/Button.astro";
 import Breadcrumbs from "../../../../components/Breadcrumbs.astro";
+import AnnotatedFigure from "../../../../components/inspector/AnnotatedFigure.astro";
 import Icon from "../../../../components/ui/icon/Icon.astro";
 import InspectorCollage from "../../../../components/InspectorCollage.astro";
 import Kbd from "../../../../components/ui/kbd/Kbd.astro";
@@ -16,7 +17,7 @@ import TableRow from "../../../../components/ui/table/TableRow.astro";
 import Prose from "../../../../components/Prose.astro";
 import TerminalCommands from "../../../../components/TerminalCommands.astro";
 
-import { inspectorCollage, opencodeInspector } from "../../../../config/opencode-inspector";
+import { desktopBottomSlot, inspectorCollage, opencodeInspector } from "../../../../config/opencode-inspector";
 import { projectLinks } from "../../../../config/site";
 
 const source = `${projectLinks.github}/tree/main/integrations/opencode/inspector`;
@@ -120,17 +121,27 @@ const tuiPluginConfig = `{
 
 				<MarkdownH2>Desktop board summary</MarkdownH2>
 				<p>
-					OpenCode Desktop shows an experimental board summary for the default project at the bottom of the window. It
-					follows the default project's board with the task total, the count in each column the board uses, and when it
-					was last read. The seal wordmark opens the Zinn documentation. The Zinn settings page turns the summary on or
-					off and sets the refresh interval to 30 seconds, 1 minute, 5 minutes or 15 minutes. The default is 1 minute.
+					OpenCode Desktop shows a board summary in the bottom slot. It follows the default project's board with the
+					active task total, the count in each column with tasks, and when the board was last read. Columns with <strong
+						>done</strong
+					> category are colored green. Backlog and cancelled ones are dimmed.
 				</p>
 				<p>
-					The summary reads the board in the current session's directory. A failed read keeps the last counts and marks
-					the stamp <code>no read</code>, with the error on hover. Home and drafts make no reads, so the strip keeps the
-					last counts. With no prior read, it says <code>no session</code>.
+					The strip reads the board in the current session's directory. A successful read stamps <code
+						>synced HH:MM</code
+					>. A failed read keeps the last counts and stamps <code>no read</code>, with the error on hover.
 				</p>
+				<p>
+					The ZINN wordmark opens the Zinn documentation. The Zinn settings page turns the strip on or off and sets the
+					refresh interval to 30 seconds, 1 minute, 5 minutes or 15 minutes. The default is 1 minute.
+				</p>
+			</Prose>
+		</div>
 
+		<AnnotatedFigure {...desktopBottomSlot} class='my-12 md:my-16' />
+
+		<div class='max-w-3xl'>
+			<Prose>
 				<MarkdownH2 id='options'>Options</MarkdownH2>
 				<Table>
 					<thead>
