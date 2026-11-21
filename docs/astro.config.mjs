@@ -29,6 +29,8 @@ const devPrototypes = {
 	}
 };
 
+const asTyped = { smartPunctuation: false };
+
 export default defineConfig({
 	site: "https://zinn.sh",
 	output: "static",
@@ -37,9 +39,9 @@ export default defineConfig({
 	prefetch: { prefetchAll: true, defaultStrategy: "hover" },
 	integrations: [
 		sitemap({ filter: (page) => !page.endsWith(".md") }),
-		mdx({ processor: satteri({ hastPlugins: [commandBlocks] }) }),
+		mdx({ processor: satteri({ hastPlugins: [commandBlocks], features: asTyped }) }),
 		devPrototypes
 	],
-	markdown: { syntaxHighlight: false },
+	markdown: { syntaxHighlight: false, processor: satteri({ features: asTyped }) },
 	vite: { plugins: [tailwindcss()] }
 });

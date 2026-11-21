@@ -23,13 +23,13 @@ ${opencodeScenes
 
 ## Installation
 
-Download the theme file and add it to OpenCode’s themes directory.
+Download the theme file and add it to OpenCode's themes directory.
 
 1. [Download zinn.json](https://zinn.sh${opencodeTheme.download}) and save it in \`~/.config/opencode/themes/\`.
 2. Open \`/themes\` in OpenCode.
 3. Select \`zinn\`.
 
-OpenCode uses the filename as the theme name. Keep it \`zinn.json\` and choose light, dark or system mode in OpenCode’s settings.
+OpenCode uses the filename as the theme name. Keep it \`zinn.json\` and choose light, dark or system mode in OpenCode's settings.
 
 \`\`\`sh
 ${opencodeTheme.commands.join("\n")}
