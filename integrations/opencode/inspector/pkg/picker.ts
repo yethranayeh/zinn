@@ -5,7 +5,6 @@ import { truncate } from "./rows.ts";
 
 export type PickerOption = {
   title: string;
-  description?: string;
   value: string;
 };
 export function pickerOptions(
@@ -26,15 +25,13 @@ export function pickerOptions(
     }
 
     const glyph = columnGlyph(summary.column, summary.columnCategory, summary.status);
-    const option: PickerOption = {
-      title: `${key} ${glyph} ${truncate(summary.title, 64)}`,
+    // The CLI's `none` keyword clears the priority, so it counts as unassigned.
+    const priority = summary.priority === "none" ? null : summary.priority;
+    const priorityCell = taskPriorityCell(priority, { full: false });
+    out.push({
+      title: `${key} ${glyph} ${priorityCell.text} ${truncate(summary.title, 64)}`,
       value: key,
-    };
-    const priority = summary.priority;
-    if (priority !== null && priority.length > 0 && priority !== "none") {
-      option.description = taskPriorityCell(priority, { full: false }).text;
-    }
-    out.push(option);
+    });
   }
   return out;
 }

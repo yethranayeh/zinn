@@ -13,16 +13,17 @@ const summary = (over: Partial<TaskSummary> = {}): TaskSummary => ({
   claim: null,
   ...over,
 });
-test("shows a known task as key, glyph, title", () => {
+test("shows a known task as key, glyph, priority and title", () => {
   const options = pickerOptions(["ZTP-1"], new Map([["ZTP-1", summary()]]), false);
-  expect(options).toHaveLength(1);
-  expect(options[0]?.title).toBe("ZTP-1 ◐ Fix the calibration");
-  expect(options[0]?.description).toBe("H");
-  expect(options[0]?.value).toBe("ZTP-1");
-  const titleAt = options[0]?.title.indexOf("Fix the calibration") ?? -1;
-  const glyphAt = options[0]?.title.indexOf("◐") ?? -1;
+  expect(options).toEqual([{ title: "ZTP-1 ◐ H Fix the calibration", value: "ZTP-1" }]);
+
+  const title = options[0]?.title ?? "";
+  const glyphAt = title.indexOf("◐");
+  const priorityAt = title.indexOf("H");
+  const titleAt = title.indexOf("Fix the calibration");
   expect(glyphAt).toBeGreaterThan(-1);
-  expect(glyphAt).toBeLessThan(titleAt);
+  expect(priorityAt).toBeGreaterThan(glyphAt);
+  expect(titleAt).toBeGreaterThan(priorityAt);
 });
 test("uses the column name when the category is missing", () => {
   const tasks = new Map([
@@ -31,8 +32,8 @@ test("uses the column name when the category is missing", () => {
   ]);
   const options = pickerOptions(["ZTP-1", "ZTP-2"], tasks, false);
   expect(options.map((option) => option.title)).toEqual([
-    "ZTP-1 ● Fix the calibration",
-    "ZTP-2 ○ Fix the calibration",
+    "ZTP-1 ● H Fix the calibration",
+    "ZTP-2 ○ H Fix the calibration",
   ]);
 });
 test("the column category decides the glyph before the name", () => {
@@ -45,23 +46,26 @@ test("the column category decides the glyph before the name", () => {
   ]);
   const options = pickerOptions(["ZTP-1", "ZTP-2"], tasks, false);
   expect(options.map((option) => option.title)).toEqual([
-    "ZTP-1 ◐ Fix the calibration",
-    "ZTP-2 ● Ship the release",
+    "ZTP-1 ◐ H Fix the calibration",
+    "ZTP-2 ● H Ship the release",
   ]);
 });
-test("shows the priority letter as the description", () => {
+test("shows the priority letter next to the state glyph", () => {
   const tasks = new Map([
     ["ZTP-1", summary({ priority: "urgent" })],
     ["ZTP-2", summary({ key: "ZTP-2", priority: "low" })],
   ]);
   const options = pickerOptions(["ZTP-1", "ZTP-2"], tasks, false);
-  expect(options.map((option) => option.description)).toEqual(["U", "L"]);
+  expect(options.map((option) => option.title)).toEqual([
+    "ZTP-1 ◐ U Fix the calibration",
+    "ZTP-2 ◐ L Fix the calibration",
+  ]);
 });
-test("omits the description without a priority", () => {
+test("shows the empty marker without a priority", () => {
   for (const priority of [null, "", "none"]) {
     const tasks = new Map([["ZTP-1", summary({ priority })]]);
     const options = pickerOptions(["ZTP-1"], tasks, false);
-    expect(options[0]?.description).toBeUndefined();
+    expect(options[0]?.title).toBe("ZTP-1 ◐ - Fix the calibration");
     expect(options[0]).not.toHaveProperty("description");
   }
 });
@@ -70,7 +74,7 @@ test("shows an archived task with the archived glyph", () => {
     ["ZTP-1", summary({ status: "Archived", column: "Done", columnCategory: "done" })],
   ]);
   const options = pickerOptions(["ZTP-1"], tasks, false);
-  expect(options[0]?.title).toBe("ZTP-1 ▪ Fix the calibration");
+  expect(options[0]?.title).toBe("ZTP-1 ▪ H Fix the calibration");
 });
 test("shows an unknown key as not in store", () => {
   const options = pickerOptions(["ZTP-9"], undefined, true);
