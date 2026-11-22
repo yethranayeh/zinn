@@ -12,15 +12,19 @@ export function pickerOptions(
   map: Map<string, TaskSummary> | undefined,
   includeUnknown: boolean,
 ): PickerOption[] {
+  const shown = keys.filter((key) => map?.get(key) !== undefined || includeUnknown);
+  let keyWidth = 0;
+  for (const key of shown) {
+    keyWidth = Math.max(keyWidth, key.length);
+  }
+
   const out: PickerOption[] = [];
-  for (const key of keys) {
+  for (const key of shown) {
     const summary = map?.get(key);
+    const keyCell = key.padEnd(keyWidth);
 
     if (!summary) {
-      if (!includeUnknown) {
-        continue;
-      }
-      out.push({ title: `${key} ${MISSING_GLYPH} not in store`, value: key });
+      out.push({ title: `${keyCell} | ${MISSING_GLYPH} not in store`, value: key });
       continue;
     }
 
@@ -29,7 +33,7 @@ export function pickerOptions(
     const priority = summary.priority === "none" ? null : summary.priority;
     const priorityCell = taskPriorityCell(priority, { full: false });
     out.push({
-      title: `${key} ${glyph} ${priorityCell.text} ${truncate(summary.title, 64)}`,
+      title: `${keyCell} | ${glyph} ${priorityCell.text} | ${truncate(summary.title, 64)}`,
       value: key,
     });
   }
