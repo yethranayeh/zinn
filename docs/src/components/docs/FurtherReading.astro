@@ -11,9 +11,10 @@
 	<template data-further-reading-item>
 		<li>
 			<a
-				class='block border-l-2 border-transparent px-3 py-2 text-soot hover:bg-soot/8 hover:no-underline focus-visible:-outline-offset-2'>
-				<span class='block text-muted-foreground' data-further-reading-label></span>
-				<span data-further-reading-heading></span>
+				class='grid grid-cols-[1rem_1fr] gap-x-2 border-l-2 border-transparent px-3 py-2 text-soot hover:bg-soot/8 hover:no-underline focus-visible:-outline-offset-2'>
+				<span class='col-start-1 row-start-1 text-clay' data-further-reading-number></span>
+				<span class='col-start-2 row-start-1' data-further-reading-heading></span>
+				<span class='col-start-2 text-muted-foreground' data-further-reading-page hidden></span>
 			</a>
 		</li>
 	</template>
@@ -24,12 +25,6 @@
 	import { loadPage, originRange, readSentences } from "steerdown/browser";
 	import { currentReadingSection } from "./reading-section";
 
-	const relationLabels: Record<string, string> = {
-		prerequisite: "Read before",
-		next_step: "Read next",
-		detail: "Detail",
-		alternative: "Another way"
-	};
 	const originHighlight = "further-reading-origin";
 	// The aside holding this list shows from Tailwind's lg breakpoint
 	const wideScreen = window.matchMedia("(min-width: 64rem)");
@@ -37,56 +32,162 @@
 	const readingBandBottom = 0.6;
 	// The links follow the reader once scrolling has paused this long, in milliseconds
 	const scrollSettleDelay = 150;
+	// Text rectangles whose tops sit within this many pixels of a line's bottom belong to that line
+	const lineOverlapTolerance = 2;
+	// Brackets closer than this many pixels vertically share a lane
+	const bracketGap = 2;
+	// Horizontal room between overlapping brackets in the gutter, in pixels
+	const laneWidth = 10;
 
-	/** A link to show and the Range of the sentence it grows out of, found when needed. */
-	type ShownLink = { link: SuggestedLink; key: string; origin: () => Promise<Range | undefined> };
+	/** A link to show, the Range of the sentence it grows out of, and a key shared by the links from that sentence. */
+	type ShownLink = { link: SuggestedLink; key: string; sentenceKey: string; range: Range | undefined };
+
+	/** A sentence's lines as vertical extents relative to the bracket layer. */
+	type Line = { top: number; bottom: number };
 
 	const root = document.querySelector<HTMLElement>("[data-further-reading]");
 	const list = root?.querySelector<HTMLUListElement>("[data-further-reading-list]");
 	const itemTemplate = root?.querySelector<HTMLTemplateElement>("[data-further-reading-item]");
 	const unavailable = root?.querySelector<HTMLParagraphElement>("[data-further-reading-unavailable]");
+	const bracketLayer = document.querySelector<HTMLElement>("[data-further-reading-marks]");
 	let page: SteerdownPage | undefined;
 	let sentences: Array<PageSentence> = [];
 	let sentenceOrder = new Map<PageSentence, number>();
 	let shownKeys = "";
-	let highlightRequest = 0;
+	let shownLinks: Array<ShownLink> = [];
+	// The bracket drawn for each sentence, by sentence key
+	const brackets = new Map<string, HTMLElement>();
+	let renderRequest = 0;
 	let settleTimer: number | undefined;
 
 	function clearOrigin() {
-		highlightRequest++;
 		CSS.highlights.delete(originHighlight);
 	}
 
-	async function showOrigin(shown: ShownLink) {
-		const request = ++highlightRequest;
-		const range = await shown.origin();
-
-		if (request !== highlightRequest || range === undefined) {
+	function showOrigin(range: Range | undefined) {
+		if (range === undefined) {
 			return;
 		}
 
 		CSS.highlights.set(originHighlight, new Highlight(range));
 	}
 
-	function linkItem(shown: ShownLink) {
+	/** The sentences of the shown links that have a Range, in page order, numbered from 1. */
+	function numbering(shown: Array<ShownLink>) {
+		const keys = [...new Set(shown.filter(({ range }) => range !== undefined).map(({ sentenceKey }) => sentenceKey))];
+		return new Map(keys.map((key, index) => [key, index + 1]));
+	}
+
+	/** Marks the sentence's bracket active and highlights the sentence while its link is hovered or focused. */
+	function setActive(shown: ShownLink, isActive: boolean) {
+		brackets.get(shown.sentenceKey)?.toggleAttribute("data-active", isActive);
+
+		if (isActive) {
+			showOrigin(shown.range);
+		} else {
+			clearOrigin();
+		}
+	}
+
+	function linkItem(shown: ShownLink, numbers: Map<string, number>) {
 		const item = itemTemplate!.content.firstElementChild!.cloneNode(true) as HTMLLIElement;
 		const anchor = item.querySelector("a")!;
+		const pageTitle = item.querySelector<HTMLElement>("[data-further-reading-page]")!;
 		const { link } = shown;
-		const relation = relationLabels[link.relation] ?? link.relation;
 
 		anchor.href = link.url;
-		item.querySelector("[data-further-reading-label]")!.textContent = `${relation} · ${link.pageTitle}`;
+		item.querySelector("[data-further-reading-number]")!.textContent = String(numbers.get(shown.sentenceKey) ?? "");
 		item.querySelector("[data-further-reading-heading]")!.textContent = link.heading || link.pageTitle;
 
+		if (link.heading !== "" && link.heading !== link.pageTitle) {
+			pageTitle.textContent = link.pageTitle;
+			pageTitle.hidden = false;
+		}
+
 		for (const show of ["mouseenter", "focus"]) {
-			anchor.addEventListener(show, () => void showOrigin(shown));
+			anchor.addEventListener(show, () => setActive(shown, true));
 		}
 
 		for (const hide of ["mouseleave", "blur"]) {
-			anchor.addEventListener(hide, clearOrigin);
+			anchor.addEventListener(hide, () => setActive(shown, false));
 		}
 
 		return item;
+	}
+
+	/** The sentence's lines relative to the bracket layer, with pieces on one line merged. */
+	function lineBoxes(range: Range, layerTop: number) {
+		const rects = [...range.getClientRects()]
+			.filter(({ height, width }) => height > 0 && width > 0)
+			.sort((a, b) => a.top - b.top);
+		const lines: Array<Line> = [];
+
+		for (const rect of rects) {
+			const box = { top: rect.top - layerTop, bottom: rect.bottom - layerTop };
+			const last = lines.at(-1);
+
+			if (last !== undefined && box.top < last.bottom - lineOverlapTolerance) {
+				last.bottom = Math.max(last.bottom, box.bottom);
+			} else {
+				lines.push(box);
+			}
+		}
+
+		return lines;
+	}
+
+	/** A bracket open to the text, with its number to the left. The active bracket takes the heading's ink and a bolder number. */
+	function bracketElement(number: number) {
+		const bracket = document.createElement("div");
+		const label = document.createElement("span");
+
+		bracket.className =
+			"group/bracket absolute w-1.5 border-y-[1.5px] border-l-[1.5px] border-clay data-active:border-y-2 data-active:border-l-2 data-active:border-soot";
+		label.className =
+			"absolute -top-0.5 right-[calc(100%+0.3rem)] font-mono text-[0.6875rem] leading-none text-clay group-data-active/bracket:font-semibold group-data-active/bracket:text-soot";
+		label.textContent = String(number);
+		bracket.append(label);
+		return bracket;
+	}
+
+	/** A numbered bracket in the article's gutter per sentence. Brackets that share vertical space move to further lanes. */
+	function drawBrackets() {
+		brackets.clear();
+
+		if (bracketLayer === null) {
+			return;
+		}
+
+		const layerTop = bracketLayer.getBoundingClientRect().top;
+		const laneBottoms: Array<number> = [];
+		const nodes: Array<HTMLElement> = [];
+
+		for (const [sentenceKey, number] of numbering(shownLinks)) {
+			const range = shownLinks.find((shown) => shown.sentenceKey === sentenceKey)?.range;
+			const lines = range === undefined ? [] : lineBoxes(range, layerTop);
+
+			if (lines.length === 0) {
+				continue;
+			}
+
+			const top = lines[0].top;
+			const bottom = lines.at(-1)!.bottom;
+			let lane = laneBottoms.findIndex((laneBottom) => laneBottom < top - bracketGap);
+
+			if (lane === -1) {
+				lane = laneBottoms.length;
+			}
+
+			laneBottoms[lane] = bottom;
+			const bracket = bracketElement(number);
+			bracket.style.top = `${top}px`;
+			bracket.style.height = `${bottom - top}px`;
+			bracket.style.left = `calc(-1.25rem - ${lane * laneWidth}px)`;
+			brackets.set(sentenceKey, bracket);
+			nodes.push(bracket);
+		}
+
+		bracketLayer.replaceChildren(...nodes);
 	}
 
 	type Band = { top: number; bottom: number };
@@ -120,7 +221,7 @@
 	 * The links of the sentences in the reading band, else of any sentence on screen, in page order.
 	 * When nothing on screen has a link, the section's default links.
 	 */
-	function linksToShow(steerdownPage: SteerdownPage): Array<ShownLink> {
+	async function linksToShow(steerdownPage: SteerdownPage): Promise<Array<ShownLink>> {
 		const inReadingBand = rankedInBand(steerdownPage, readingBand());
 		const ranked = inReadingBand.length > 0 ? inReadingBand : rankedInBand(steerdownPage, screenBand());
 
@@ -129,24 +230,35 @@
 			return ranked.map((link) => ({
 				link,
 				key: `${link.url} ${link.sentence.anchor} ${link.sentence.position}`,
-				origin: async () => link.sentence.range
+				sentenceKey: `${link.sentence.anchor} ${link.sentence.position}`,
+				range: link.sentence.range
 			}));
 		}
 
 		const section = currentReadingSection() ?? "";
-		return steerdownPage.links(section).map((link) => ({
-			link,
-			key: `${link.url} ${section}`,
-			origin: () => originRange(section, link)
-		}));
+		return Promise.all(
+			steerdownPage.links(section).map(async (link) => ({
+				link,
+				key: `${link.url} ${section}`,
+				sentenceKey: `${section} ${link.origin?.position ?? link.url}`,
+				range: await originRange(section, link)
+			}))
+		);
 	}
 
-	function render() {
+	async function render() {
 		if (page === undefined || root === null || list === null || list === undefined) {
 			return;
 		}
 
-		const shown = linksToShow(page);
+		// A newer render supersedes this one while its Ranges resolve
+		const request = ++renderRequest;
+		const shown = await linksToShow(page);
+
+		if (request !== renderRequest) {
+			return;
+		}
+
 		const keys = shown.map((link) => link.key).join("\n");
 
 		if (keys === shownKeys) {
@@ -154,14 +266,17 @@
 		}
 
 		shownKeys = keys;
+		shownLinks = shown;
 		clearOrigin();
-		list.replaceChildren(...shown.map(linkItem));
+		const numbers = numbering(shown);
+		list.replaceChildren(...shown.map((link) => linkItem(link, numbers)));
+		drawBrackets();
 		root.hidden = shown.length === 0;
 	}
 
 	function renderWhenSettled() {
 		window.clearTimeout(settleTimer);
-		settleTimer = window.setTimeout(render, scrollSettleDelay);
+		settleTimer = window.setTimeout(() => void render(), scrollSettleDelay);
 	}
 
 	async function start() {
@@ -176,9 +291,11 @@
 
 		sentences = await readSentences();
 		sentenceOrder = new Map(sentences.map((sentence, index) => [sentence, index]));
-		render();
+		await render();
 		window.addEventListener("scroll", renderWhenSettled, { passive: true });
 		window.addEventListener("resize", renderWhenSettled, { passive: true });
+		// Brackets follow the text's layout, so a resize redraws them at once
+		window.addEventListener("resize", drawBrackets, { passive: true });
 	}
 
 	if (root !== null) {

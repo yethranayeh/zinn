@@ -52,7 +52,17 @@ const hasBreadcrumbs = items.length > 0 || hasContents;
 				hasContents && "lg:grid-cols-[minmax(0,48rem)_minmax(12rem,1fr)]",
 				!hasBreadcrumbs && "my-auto"
 			]}>
-			<article class='min-w-0 w-full max-w-3xl'>
+			<article class:list={["min-w-0 w-full max-w-3xl", hasContents && "relative"]}>
+				{
+					hasContents && (
+						<div
+							class='pointer-events-none absolute inset-0 max-lg:hidden'
+							data-further-reading-marks
+							data-pagefind-ignore
+							aria-hidden='true'
+						/>
+					)
+				}
 				<Prose class='[&>div:first-child]:gap-y-4'><slot /></Prose>
 				{
 					lastUpdated && (
