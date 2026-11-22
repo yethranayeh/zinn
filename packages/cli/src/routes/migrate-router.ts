@@ -3,7 +3,12 @@ import type { Command } from "../types.js";
 
 import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
-import { migrate, MigrationRefusedError, getBackupStorage } from "@zinn-dev/core";
+import {
+  migrate,
+  MigrationPauseCleanupError,
+  MigrationRefusedError,
+  getBackupStorage,
+} from "@zinn-dev/core";
 
 import { generateCommandUsage, noInput } from "../input.js";
 import { reportLockWait } from "../database.js";
@@ -42,7 +47,9 @@ export const migrateCommand = {
       );
     } catch (error) {
       // A refusal attempted nothing, so only a failed upgrade points at the backups.
-      if (!(error instanceof MigrationRefusedError)) {
+      if (
+        !(error instanceof MigrationRefusedError || error instanceof MigrationPauseCleanupError)
+      ) {
         diagnostic(
           `The database is unchanged. Backups taken before each upgrade attempt are kept in ${backupDirectory}.`,
         );
@@ -57,5 +64,6 @@ Upgrade an existing database to the latest schema version.
 
 A backup is saved first, in the same place as \`zinn backup\`, and the upgrade is applied completely or not at all.
 Does nothing when the database is already up to date.
+Use this command to retry a paused automatic upgrade after fixing the cause of the failure.
 Fails, leaving the database as it is, when there is no database with data yet, when it has no schema version, or when it is newer than this Zinn.`,
 } satisfies Command;

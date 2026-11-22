@@ -10,12 +10,132 @@ import { backupFiles, createDatabase, databaseSnapshot, runZinn, withIsolatedZin
 import { errorDocumentSchema } from "../src/errors";
 import { latestVersion, MIGRATIONS } from "../../core/src/migrations/registry";
 import { createBaseline } from "../../core/src/migrations/baseline";
+import { upgradeSchema } from "../../core/src/migrations/runner";
+import { taskKeyIndexMigration } from "../../core/src/migrations/task-key-index";
+import { seedBaseline } from "../../core/src/migrations/testing";
 import { openDatabase } from "../../core/src/sqlite/bun";
 
 // ? End-to-end tests: each case spawns the real bin, so `ZINN_DIR` is passed
 // ? per-spawn rather than set on `process.env`.
 
 const CURRENT_SCHEMA_VERSION = latestVersion(MIGRATIONS);
+
+/** The task-key migration rejects this schema when the optional duplicate is present. */
+function createBeforeTaskKeyIndex(store: string, duplicate = false) {
+  const databasePath = join(store, "data", "zinn.sqlite");
+  mkdirSync(dirname(databasePath), { recursive: true });
+  const db = openDatabase(databasePath);
+  try {
+    seedBaseline(db);
+    upgradeSchema(db, MIGRATIONS.filter(({ version }) => version < taskKeyIndexMigration.version));
+    if (duplicate) {
+      db.exec(`INSERT INTO task (id, project_id, column_id, number, title, created_at, updated_at)
+        VALUES ('duplicate', 'p1', 'c1', 2, 'Duplicate', 11, 11)`);
+    }
+  } finally {
+    db.close();
+  }
+  return databasePath;
+}
+
+test("ZINN-508: ordinary opens pause after a failed automatic upgrade and explicit migrate retries", async () => {
+  await withIsolatedZinnDir(async (root) => {
+    const store = join(root, "store");
+    const databasePath = createBeforeTaskKeyIndex(store, true);
+    const before = databaseSnapshot(store);
+    const alias = join(root, "alias");
+    symlinkSync(store, alias, "dir");
+
+    const first = await runZinn(["project", "list", "--json"], store);
+    expect(first.code).toBe(1);
+    expect(first.stderr).toContain("APP-2");
+    expect(backupFiles(store)).toHaveLength(1);
+
+    for (const location of [store, alias]) {
+      const paused = await runZinn(["project", "list", "--json"], location);
+      expect(paused.code).toBe(1);
+      expect(paused.stdout).toBe("");
+      const { error } = errorDocumentSchema.parse(JSON.parse(paused.stderr));
+      expect(error).toMatchObject({
+        code: "conflict",
+        details: {
+          entity: "database",
+          reason: "migration_paused",
+          databasePath,
+          schemaVersion: taskKeyIndexMigration.version - 1,
+          supportedSchemaVersion: CURRENT_SCHEMA_VERSION,
+        },
+      });
+      expect(error.message).toContain("zinn migrate");
+    }
+    expect(backupFiles(store)).toHaveLength(1);
+    expect(databaseSnapshot(store)).toEqual(before);
+    expect((await runZinn(["info", "--json"], store)).code).toBe(0);
+    expect((await runZinn(["backup", "--json"], store)).code).toBe(0);
+
+    const failedRetry = await runZinn(["migrate", "--json"], store);
+    expect(failedRetry.code).toBe(1);
+    expect(failedRetry.stderr).toContain("APP-2");
+    expect((await runZinn(["project", "list"], store)).stderr).toContain("zinn migrate");
+    expect(backupFiles(store)).toHaveLength(3);
+
+    const db = openDatabase(databasePath);
+    try {
+      db.exec("UPDATE task SET number = 4 WHERE id = 'duplicate'");
+    } finally {
+      db.close();
+    }
+    const retry = await runZinn(["migrate", "--json"], store);
+    expect(retry.code).toBe(0);
+    expect(JSON.parse(retry.stdout)).toMatchObject({ changed: true, finalVersion: CURRENT_SCHEMA_VERSION });
+    expect((await runZinn(["project", "list", "--json"], store)).code).toBe(0);
+    expect(backupFiles(store)).toHaveLength(4);
+    expect(existsSync(`${databasePath}.migration.json`)).toBe(false);
+  });
+});
+
+test.each(["restore", "replace"] as const)("ZINN-508: a database %s resets the pause at the same schema", async (operation) => {
+  await withIsolatedZinnDir(async (root) => {
+    const store = join(root, "store");
+    const databasePath = createBeforeTaskKeyIndex(store, true);
+    const replacement = createBeforeTaskKeyIndex(join(root, "replacement"));
+    const first = await runZinn(["project", "list"], store);
+    expect(first.code).toBe(1);
+    expect(first.stderr).toContain("APP-2");
+
+    if (operation === "restore") {
+      const backup = openDatabase(replacement);
+      try {
+        backup.exec("PRAGMA foreign_keys = OFF");
+        backup.exec("UPDATE comment SET task_id = 'missing' WHERE id = 'm1'");
+        const before = databaseSnapshot(store);
+        const snapshotCount = backupFiles(store).length;
+        const failed = await runZinn(["restore", replacement, "--yes"], store);
+        expect(failed.code).toBe(1);
+        expect(backupFiles(store)).toHaveLength(snapshotCount + 1);
+        expect(databaseSnapshot(store)).toEqual(before);
+        expect((await runZinn(["project", "list"], store)).stderr).toContain("zinn migrate");
+        backup.exec("UPDATE comment SET task_id = 't1' WHERE id = 'm1'");
+      } finally {
+        backup.close();
+      }
+      const restored = await runZinn(["restore", replacement, "--yes", "--json"], store);
+      expect(restored.code).toBe(0);
+      expect(JSON.parse(restored.stdout)).toMatchObject({
+        previousVersion: taskKeyIndexMigration.version - 1,
+        restoredVersion: taskKeyIndexMigration.version - 1,
+      });
+      expect(existsSync(`${databasePath}.migration.json`)).toBe(false);
+    } else {
+      renameSync(replacement, databasePath);
+    }
+
+    const kept = backupFiles(store);
+    expect((await runZinn(["project", "list", "--json"], store)).code).toBe(0);
+    expect(backupFiles(store)).toHaveLength(kept.length + 1);
+    expect(backupFiles(store)).toEqual(expect.arrayContaining(kept));
+  });
+});
 
 test("backup saves a copy of the database named with the UTC time and CLI version", async () => {
   await withIsolatedZinnDir(async (dir) => {

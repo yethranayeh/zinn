@@ -38,6 +38,7 @@ export type FailureFacts = {
     | "unmarked_database"
     | "newer_database"
     | "older_database"
+    | "migration_paused"
     | "invalid_backup"
     | "busy"
     | "disk_full"

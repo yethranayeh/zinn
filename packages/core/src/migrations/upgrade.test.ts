@@ -43,6 +43,8 @@ const READ_ONLY_DIRECTORY_MODE = 0o500;
 const WRITABLE_DIRECTORY_MODE = 0o700;
 const PLENTY_OF_SPACE: FreeSpace = { availableBytes: 2 ** 40, blockBytes: 4096, device: 1 };
 const NO_SPACE: FreeSpace = { availableBytes: 0, blockBytes: 4096, device: 1 };
+// Each pass reads the database, backup and temporary filesystem once.
+const SPACE_READS_PER_CHECK = 3;
 const CHILD_TABLES = ["task_relations", "task_label", "comment"];
 // SQLite's long-standing default page limit, which lifts the limit the full-disk case sets.
 const DEFAULT_MAX_PAGE_COUNT = 1073741823;
@@ -347,23 +349,57 @@ test("too little space for the remaining work stops the upgrade after the backup
     seedBaseline(db);
     const before = snapshot(db);
     const step = migration(2, rebuildTask, ["task"]);
-    // Each check reads the database, backup and temporary directories once, then compares.
-    const READS_PER_CHECK = 3;
     let reads = 0;
     const readFreeSpace = () => {
       reads++;
-      return reads <= READS_PER_CHECK ? PLENTY_OF_SPACE : NO_SPACE;
+      return reads <= SPACE_READS_PER_CHECK ? PLENTY_OF_SPACE : NO_SPACE;
     };
 
     expect(() => upgradeDatabase(db, options(db, { migrations: [step], readFreeSpace }))).toThrow(
       expect.objectContaining({ kind: "storage", facts: expect.objectContaining({ reason: "disk_full" }) }),
     );
-    expect(reads).toBe(2 * READS_PER_CHECK);
+    expect(reads).toBe(2 * SPACE_READS_PER_CHECK);
     expect(step.calls.count).toBe(0);
     expect(snapshot(db)).toEqual(before);
     expect(backups(db)).toHaveLength(1);
     expectBackupHolds(join(backupDirectory(db), backups(db)[0]!), before);
     expectHealthy(db);
+  });
+});
+
+test("an automatic upgrade can retry after a failure before the snapshot", () => {
+  withDatabase((db) => {
+    seedBaseline(db);
+    expect(() => upgradeDatabase(db, options(db, { automatic: true, readFreeSpace: () => NO_SPACE })))
+      .toThrow(expect.objectContaining({ facts: expect.objectContaining({ reason: "disk_full" }) }));
+    expect(backups(db)).toHaveLength(0);
+
+    expect(upgradeDatabase(db, options(db, { automatic: true })).status).toBe("upgraded");
+    expect(backups(db)).toHaveLength(1);
+    expect(existsSync(`${databasePath(db)}.migration.json`)).toBe(false);
+  });
+});
+
+test("a post-snapshot space failure pauses automatic upgrades to the same or a higher schema", () => {
+  withDatabase((db) => {
+    seedBaseline(db);
+    const before = snapshot(db);
+    const step = migration(2);
+    let reads = 0;
+    const readFreeSpace = () => reads++ < SPACE_READS_PER_CHECK ? PLENTY_OF_SPACE : NO_SPACE;
+    expect(() => upgradeDatabase(db, options(db, { automatic: true, migrations: [step], readFreeSpace })))
+      .toThrow(expect.objectContaining({ facts: expect.objectContaining({ reason: "disk_full" }) }));
+    expect(backups(db)).toHaveLength(1);
+
+    for (const migrations of [[step], [step, migration(3)]]) {
+      expect(() => upgradeDatabase(db, options(db, { automatic: true, migrations })))
+        .toThrow(expect.objectContaining({
+          facts: expect.objectContaining({ reason: "migration_paused", supportedSchemaVersion: migrations.length + 1 }),
+        }));
+    }
+    expect(backups(db)).toHaveLength(1);
+    expect(snapshot(db)).toEqual(before);
+    expectBackupHolds(join(backupDirectory(db), backups(db)[0]!), before);
   });
 });
 
@@ -670,6 +706,83 @@ async function withDatabaseAsync(check: (db: Database) => Promise<void>) {
     rmSync(directory, { recursive: true, force: true });
   }
 }
+
+test.each([false, true])("a waiting upgrader honors the pause only if the killed process published its backup (%p)", async (published) => {
+  const module = (name: string) => JSON.stringify(new URL(name, import.meta.url).pathname);
+  const script = `
+    import { mock } from "bun:test";
+    import * as fs from "node:fs";
+    const original = { ...fs };
+    mock.module("node:fs", () => ({
+      ...original,
+      renameSync(from, to) {
+        if (String(to).endsWith(".sqlite")) {
+          if (process.env.TEST_PUBLISH_BACKUP === "true") {
+            original.renameSync(from, to);
+          }
+          console.log("at snapshot publication");
+          Bun.sleepSync(10000);
+          return;
+        }
+        original.renameSync(from, to);
+      },
+    }));
+    const { openDatabase } = await import(${module("../sqlite/bun.ts")});
+    const { upgradeDatabase } = await import(${module("./upgrade.ts")});
+    const db = openDatabase(process.env.TEST_DB_PATH);
+    upgradeDatabase(db, {
+      automatic: true,
+      backup: { directory: process.env.TEST_BACKUP_DIR, client: "test", version: "1.2.3" },
+      migrations: [{ version: 2, name: "interrupted", rebuilds: [], apply() {} }],
+    });
+    db.close();
+  `;
+
+  await withDatabaseAsync(async (db) => {
+    seedBaseline(db);
+    const before = snapshot(db);
+    const child = Bun.spawn([process.execPath, "--eval", script], {
+      env: {
+        ZINN_DIR: dirname(databasePath(db)),
+        TEST_DB_PATH: databasePath(db),
+        TEST_BACKUP_DIR: backupDirectory(db),
+        TEST_PUBLISH_BACKUP: String(published),
+      },
+      stdout: "pipe",
+      stderr: "inherit",
+    });
+    const reader = child.stdout.getReader();
+
+    try {
+      expect(new TextDecoder().decode((await reader.read()).value)).toContain("at snapshot publication");
+      const waits: Array<LockWait> = [];
+      const step = migration(2);
+      const retry = () => upgradeDatabase(db, options(db, {
+        automatic: true,
+        migrations: [step],
+        onWait(wait) {
+          waits.push(wait);
+          child.kill("SIGKILL");
+        },
+      }));
+      if (published) {
+        expect(retry).toThrow(expect.objectContaining({ facts: expect.objectContaining({ reason: "migration_paused" }) }));
+        expect(snapshot(db)).toEqual(before);
+      } else {
+        expect(retry().status).toBe("upgraded");
+        expect(readSchemaVersion(db)).toBe(2);
+      }
+      expect(waits).toHaveLength(1);
+      const completed = backups(db).filter((file) => file.endsWith(".sqlite"));
+      expect(completed).toHaveLength(1);
+      expectBackupHolds(join(backupDirectory(db), completed[0]!), before);
+    } finally {
+      reader.releaseLock();
+      child.kill("SIGKILL");
+      await child.exited;
+    }
+  });
+});
 
 test("a caller that waited for another process's upgrade rechecks the version and makes no backup", async () => {
   // Another process holds the lock, finishes an upgrade to version 2, then commits.

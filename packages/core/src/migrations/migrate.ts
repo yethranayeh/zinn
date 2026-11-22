@@ -24,9 +24,9 @@ export type MigrateResult = {
   backupPath: string | null;
 };
 
-export type MigrateOptions = Omit<UpgradeOptions, "backup"> & {
+export type MigrateOptions = Omit<UpgradeOptions, "backup" | "automatic"> & {
   /** Where snapshots go, and the client and version that name the running code. */
-  backup: UpgradeOptions["backup"] & BackupCreateInput;
+  backup: BackupCreateInput & { directory: string };
 };
 
 function generateNewerDatabaseError(

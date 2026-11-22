@@ -168,6 +168,7 @@ export { migrate } from "./src/operations/migrate.js";
 export { reindex } from "./src/operations/reindex.js";
 export { TextEditMatchError } from "./src/operations/shared.js";
 export { MigrationRefusedError } from "./src/migrations/migrate.js";
+export { MigrationPauseCleanupError } from "./src/migrations/upgrade.js";
 export { RestoreRefusedError } from "./src/migrations/restore.js";
 export { assertWritable, configureDatabase } from "./src/db.js";
 export { ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./src/migrations/open-policy.js";

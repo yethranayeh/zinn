@@ -4,6 +4,7 @@
  * Before A writes anything, a second connection, B, snapshots the file into the backup directory.
  */
 import type { BackupCreateInput } from "../db/backup.js";
+import type { ResolvedPath } from "../database-path.js";
 import type { Database } from "../sqlite/database.js";
 import type { Migration } from "./registry.js";
 import type { FreeSpace } from "./space.js";
@@ -13,6 +14,7 @@ import { mkdirSync } from "node:fs";
 import * as dbBackup from "../db/backup.js";
 import { CoreError } from "../errors.js";
 import { isSqliteErrorFamily } from "../sqlite/database.js";
+import { checkAutomaticUpgrade, readPauseRecord, removePause } from "./pause.js";
 import { assertMigrationOrder, latestVersion, MIGRATIONS } from "./registry.js";
 import {
   applyPendingMigrations,
@@ -157,11 +159,51 @@ export function withMigrationLock<T>(
 
 export type UpgradeOptions = LockOptions & {
   /** Where the snapshot goes, and the client named in its file name. */
-  backup: BackupCreateInput & { directory: string };
+  backup: BackupCreateInput & { directory: string | (() => string) };
+  /** Only an ordinary database open honors and records an automatic upgrade pause. */
+  automatic?: boolean;
   migrations?: ReadonlyArray<Migration>;
   /** Reads a filesystem's free space. Tests pass their own, so no test fills the disk. */
   readFreeSpace?: (path: string) => FreeSpace | null;
 };
+
+/**
+ * The database change committed.
+ * Its pause record could not be cleared.
+ */
+export class MigrationPauseCleanupError extends CoreError {
+  override name = "MigrationPauseCleanupError";
+}
+
+export function clearCommittedPause(
+  db: Database,
+  databasePath: ResolvedPath,
+  lock: LockOptions,
+  record: string | null,
+) {
+  if (record === null) {
+    return;
+  }
+
+  try {
+    // Reacquire the lock after commit and leave any intervening attempt's record alone
+    withMigrationLock(
+      db,
+      databasePath,
+      { ...lock, operation: "clearing the upgrade pause" },
+      () => {
+        removePause(databasePath, record);
+      },
+    );
+  } catch (cause) {
+    throw new MigrationPauseCleanupError(
+      `The database change at ${databasePath} committed. Zinn could not clear its automatic upgrade pause`,
+      "storage",
+      { entity: "database", databasePath },
+      { cause },
+    );
+  }
+}
 
 export type UpgradeResult = {
   /** "newer": this build is older than the database, which it leaves untouched. */
@@ -182,7 +224,7 @@ export type UpgradeResult = {
  * An older one gets a free-space check, a snapshot through a separate connection while db
  *  holds the lock without writing, a second free-space check for the remaining work,
  *  then every pending migration and the version bump in the same transaction.
- * Any failure rolls back the transaction and is thrown as it was,
+ * Failures through commit roll back the transaction and are thrown as they were,
  * while a finished snapshot is kept, and nothing is retried.
  * Foreign keys are set back on every path.
  * Refuses an unmarked database (version 0) before making a backup.
@@ -191,6 +233,7 @@ export function upgradeDatabase(
   db: Database,
   {
     backup,
+    automatic = false,
     migrations = MIGRATIONS,
     readFreeSpace: readFree = readFreeSpace,
     ...lock
@@ -200,9 +243,9 @@ export function upgradeDatabase(
 
   const databasePath = requireDatabaseFile(db, "schema upgrade");
   const targetVersion = latestVersion(migrations);
-  const spacePaths = spacePathsFor(databasePath, backup.directory);
+  let completedPause: string | null = null;
 
-  return withForeignKeysOff(db, () =>
+  const result = withForeignKeysOff(db, () =>
     withMigrationLock(db, databasePath, lock, (): UpgradeResult => {
       // Another caller may have upgraded the database while this one waited for the lock.
       const version = readSchemaVersion(db);
@@ -224,18 +267,32 @@ export function upgradeDatabase(
 
       assertUpgradable(version, migrations);
 
+      const attempt = automatic
+        ? checkAutomaticUpgrade(databasePath, version, targetVersion)
+        : undefined;
+      const directory =
+        typeof backup.directory === "function" ? backup.directory() : backup.directory;
+      const spacePaths = spacePathsFor(databasePath, directory);
+
       // The free space of a missing directory is unknown, which would stop the upgrade.
-      mkdirSync(backup.directory, { recursive: true });
+      mkdirSync(directory, { recursive: true });
       const before = estimateRequiredFree(measureSpace(db, migrations), { includeBackup: true });
       assertFreeSpace(spacePaths, before, readFree);
 
       // db holds the write lock and has written nothing, so the snapshot is the database as it is.
-      const { path: backupPath } = dbBackup.create(databasePath, backup.directory, backup);
+      const { path: backupPath } = dbBackup.create(
+        databasePath,
+        directory,
+        backup,
+        attempt?.beforePublish,
+      );
+      attempt?.confirmed(backupPath);
 
       const after = estimateRequiredFree(measureSpace(db, migrations), { includeBackup: false });
       assertFreeSpace(spacePaths, after, readFree);
 
       const changed = applyPendingMigrations(db, migrations, version);
+      completedPause = readPauseRecord(databasePath);
       return {
         status: "upgraded",
         databasePath,
@@ -246,4 +303,6 @@ export function upgradeDatabase(
       };
     }),
   );
+  clearCommittedPause(db, databasePath, lock, completedPause);
+  return result;
 }

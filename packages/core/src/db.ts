@@ -196,15 +196,15 @@ function settle(connection: Database, prepared: Prepared, storage: Storage): typ
         return settle(connection, reclassified, storage);
       }
     case "upgrade": {
-      const { backupDirectory } = getBackupStorage(storage);
       const { status, previousVersion } = upgradeDatabase(connection, {
         backup: {
-          directory: backupDirectory,
+          directory: () => getBackupStorage(storage).backupDirectory,
           client: policy.client,
           version: policy.version,
         },
         migrations: MIGRATIONS,
         onWait: policy.onWait,
+        automatic: true,
       });
 
       // Another process may have upgraded it beyond this build while this one waited.
@@ -253,6 +253,10 @@ export function getDb(access: DatabaseAccess = {}) {
       }
 
       if (err instanceof UnmarkedDatabaseError || err instanceof MissingDatabaseError) {
+        throw err;
+      }
+
+      if (err instanceof CoreError && err.facts.reason === "migration_paused") {
         throw err;
       }
 

@@ -71,6 +71,7 @@ export const errorDetailsSchema = z.strictObject({
       "unmarked_database",
       "newer_database",
       "older_database",
+      "migration_paused",
       "invalid_backup",
       "busy",
       "locked",
@@ -162,6 +163,10 @@ export function recoveryHint(
 ): { suffix: string; suggestedRoute?: Array<string> } | undefined {
   if (error instanceof ReadOnlyDatabaseError && error.reason === "older") {
     return { suffix: ". Run `zinn migrate` to upgrade it.", suggestedRoute: ["migrate"] };
+  }
+
+  if (error instanceof CoreError && error.facts.reason === "migration_paused") {
+    return { suffix: ". Run `zinn migrate` to retry.", suggestedRoute: ["migrate"] };
   }
 
   if (error instanceof TextEditMatchError && error.matchCount > 1) {

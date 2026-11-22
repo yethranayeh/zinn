@@ -1,11 +1,12 @@
 import type { ResolvedPath } from "../database-path.js";
 
-import { closeSync, fsyncSync, mkdirSync, openSync, renameSync, rmSync } from "node:fs";
+import { mkdirSync, renameSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 import { openResolvedDatabase } from "#sqlite";
 
 import { applyConnectionSettings } from "../connection.js";
+import { syncDirectory, syncToDisk } from "../fs-sync.js";
 import { createOutputFileName, readOutputFileName } from "../output-file-name.js";
 import { attachSuppressed } from "../sqlite/database.js";
 
@@ -27,32 +28,6 @@ export type BackupCreateInput = {
  */
 const PARTIAL_BACKUP_SUFFIX = ".partial";
 const BACKUP_FILE_EXTENSION = ".sqlite";
-
-function syncToDisk(path: string, flags: "r" | "r+" = "r+") {
-  // Windows file flushes need a writable descriptor.
-  const descriptor = openSync(path, flags);
-
-  try {
-    fsyncSync(descriptor);
-  } catch (error) {
-    try {
-      closeSync(descriptor);
-    } catch (closeError) {
-      attachSuppressed(error, closeError);
-    }
-
-    throw error;
-  }
-
-  closeSync(descriptor);
-}
-
-function syncDirectory(directory: string) {
-  // Windows has no directory fsync through node:fs.
-  if (process.platform !== "win32") {
-    syncToDisk(directory, "r");
-  }
-}
 
 /** Creates the backup directory and syncs the parent entries that make it reachable. */
 function ensureDirectory(directory: string) {
@@ -116,6 +91,7 @@ export function create(
   databasePath: ResolvedPath,
   directory: string,
   { client, version }: BackupCreateInput,
+  beforePublish?: (path: string) => void,
 ) {
   ensureDirectory(directory);
   const path = join(directory, createOutputFileName({ client, version }, BACKUP_FILE_EXTENSION));
@@ -124,8 +100,14 @@ export function create(
   try {
     vacuumInto(databasePath, partialPath);
     syncToDisk(partialPath);
+    beforePublish?.(path);
   } catch (error) {
-    rmSync(partialPath, { force: true });
+    try {
+      rmSync(partialPath, { force: true });
+    } catch (cleanupError) {
+      attachSuppressed(error, cleanupError);
+    }
+
     throw error;
   }
 

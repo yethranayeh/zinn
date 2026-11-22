@@ -38,7 +38,8 @@ import {
   requireDatabaseFile,
   spacePathsFor,
 } from "./space.js";
-import { withMigrationLock } from "./upgrade.js";
+import { clearCommittedPause, withMigrationLock } from "./upgrade.js";
+import { readPauseRecord } from "./pause.js";
 import { CoreError, isMissingFileError } from "../errors.js";
 
 /** The name the backup is attached under while it is copied. */
@@ -545,6 +546,7 @@ export function restoreBackup(
   attachSource(db, checked);
 
   let result: RestoreResult;
+  let restoredPause: string | null = null;
 
   try {
     result = withForeignKeysOff(db, () =>
@@ -567,6 +569,7 @@ export function restoreBackup(
         }
 
         replaceDatabaseContents(db, restoredVersion);
+        restoredPause = readPauseRecord(databasePath);
 
         return { databasePath, previousVersion, restoredVersion, backupPath };
       }),
@@ -582,6 +585,7 @@ export function restoreBackup(
   }
 
   detachSource(db);
+  clearCommittedPause(db, databasePath, lock, restoredPause);
   return result;
 }
 
