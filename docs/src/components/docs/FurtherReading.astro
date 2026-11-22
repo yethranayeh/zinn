@@ -4,6 +4,9 @@
 	</p>
 
 	<ul class='space-y-1 font-mono text-xs leading-relaxed' data-further-reading-list></ul>
+	<p class='px-3 font-mono text-xs text-muted-foreground' data-further-reading-unavailable hidden>
+		Further reading is unavailable.
+	</p>
 
 	<template data-further-reading-item>
 		<li>
@@ -41,6 +44,7 @@
 	const root = document.querySelector<HTMLElement>("[data-further-reading]");
 	const list = root?.querySelector<HTMLUListElement>("[data-further-reading-list]");
 	const itemTemplate = root?.querySelector<HTMLTemplateElement>("[data-further-reading-item]");
+	const unavailable = root?.querySelector<HTMLParagraphElement>("[data-further-reading-unavailable]");
 	let page: SteerdownPage | undefined;
 	let sentences: Array<PageSentence> = [];
 	let sentenceOrder = new Map<PageSentence, number>();
@@ -164,7 +168,9 @@
 		try {
 			page = await loadPage();
 		} catch {
-			// Pages without suggested links have no data file, and dev builds emit none.
+			// Every page that renders this list has a data file in a full build, so a failed load means the data is missing, as under astro dev.
+			unavailable!.hidden = false;
+			root!.hidden = false;
 			return;
 		}
 
