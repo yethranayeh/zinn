@@ -306,6 +306,46 @@ test("ZINN-585: task release deletes the holder's claim, does nothing without on
   });
 });
 
+test("ZINN-606: only the holder can release an expired claim", async () => {
+  await withClaimStore(async (dir) => {
+    const claimed = await runZinn(["task", "claim", "APP-1", "--lease", "30m"], dir, SESSION_A);
+    expect(claimed.code).toBe(0);
+    backdateClaim(dir, HOUR_MS);
+    const view = await runZinn(["task", "view", "APP-1", "--json"], dir);
+    expect(view.code).toBe(0);
+    const { claim } = resultSchemas.TaskDetail.parse(JSON.parse(view.stdout));
+    expect(claim).toMatchObject({ state: "expired", actor_session_id: SESSION_A.ZINN_SESSION_ID });
+    const before = writes(dir);
+
+    const other = await runZinn(["task", "release", "APP-1", "--json"], dir, SESSION_B);
+    expect(other.code).toBe(1);
+    expect(other.stdout).toBe("");
+    expect(parseFailure(other.stderr)).toMatchObject({
+      code: "conflict",
+      details: { key: "APP-1", reason: "claimed", claimExpiresAt: claim!.expires_at },
+    });
+    expect(writes(dir)).toEqual(before);
+
+    const released = await runZinn(["task", "release", "APP-1", "--json"], dir, SESSION_A);
+    expect(released.code).toBe(0);
+    expect(released.stderr).toBe("");
+    expect(resultSchemas.TaskChange.parse(JSON.parse(released.stdout))).toMatchObject({
+      key: "APP-1", changed: true, claim: null,
+    });
+    expect(writes(dir)).toEqual({
+      claims: [],
+      events: [...before.events, {
+        action: "claim_release",
+        actor_session_id: SESSION_A.ZINN_SESSION_ID,
+        changes: {
+          actor_kind: "agent", actor_name: SESSION_A.AI_AGENT, actor_session_id: SESSION_A.ZINN_SESSION_ID,
+          actor_thread_id: null, claimed_at: claim!.claimed_at, expires_at: claim!.expires_at, cause: "release",
+        },
+      }],
+    });
+  });
+});
+
 test("ZINN-585: a day without work refuses heartbeat and a repeated claim with claim_limit", async () => {
   await withClaimStore(async (dir) => {
     await runZinn(["task", "claim", "APP-1", "--lease", "24h"], dir, SESSION_A);

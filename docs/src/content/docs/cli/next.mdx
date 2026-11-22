@@ -56,7 +56,7 @@ zinn task claim MDR-1 --lease 2h --force
 
 `task heartbeat <task-key>` renews your claim with the lease it already has. It never creates a claim: a task without one fails with reason `not_claimed`, and someone else's claim fails with reason `claimed`. Your own expired claim renews, unless someone claimed the task since.
 
-`task release <task-key>` removes your claim. A task without a claim is left unchanged and the command exits `0`. Someone else's claim fails with reason `claimed`.
+`task release <task-key>` removes your own live or expired claim. Someone else's claim fails with error code `conflict` and reason `claimed`, even after expiry. A task without a claim is left unchanged and the command exits `0`.
 
 Each command prints the task. With `--json`, it returns the task object with `changed`, like the other single-task write commands. `changed` is `false` when `task release` finds no claim. Task objects carry the claim in `claim` (see [Claim fields](/docs/scripting/json#claims)), and claim failures carry its expiry in `claimExpiresAt` (see [Claim conflicts](/docs/scripting/errors#claim-conflicts)).
 
@@ -70,7 +70,7 @@ Your claim renews when you run `task heartbeat`, claim the task again, or make a
 
 A claim expires early if its lease ends, or 24 hours later after the last change at the latest. `task heartbeat` and a repeated `task claim` renew the lease. Still they are not technically a **change** to the task, so on their own they keep a claim for at most 24 hours after your last change. After that, both fail with reason `claim_limit`. A change to the task renews the claim again, as long as nobody has replaced it.
 
-An expired claim stays on the task until someone replaces or releases it. Archiving a task releases its claim, and so does moving it into a column whose category is `done` or `cancelled`. Moving it into a `review` column keeps the claim. Deleting a task or its project deletes its claim too.
+An expired claim stays on the task. Another eligible holder can replace it with `task claim`, or its holder can remove it with `task release`. Archiving a task releases its claim, and so does moving it into a column whose category is `done` or `cancelled`. Moving it into a `review` column keeps the claim. Deleting a task or its project deletes its claim too.
 
 `task view` shows a claim with its holder and when its lease ends, also once it expired. Task rows in lists show the holder of a live claim.
 

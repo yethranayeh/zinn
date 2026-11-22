@@ -1270,8 +1270,9 @@ Example: zinn task heartbeat MDR-1`,
     },
     help: `${generateCommandUsage("task release", taskInputs.heartbeat)}
 
-Release your claim on a task.
-Releasing a task without a claim does not do anything. Someone else's claim is a conflict.
+Release your claim on a task, even after it expires.
+Someone else's claim is a conflict, even after it expires. Use task claim to replace an expired claim held by someone else.
+Releasing a task without a claim does not do anything.
 With --json, changed is false when the task had no claim.
 
 Example: zinn task release MDR-1`,
