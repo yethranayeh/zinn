@@ -37,7 +37,7 @@ Opening a database can upgrade it, even for a read operation. Upgrades save a ba
 Each migration step also checks existing foreign-key definitions, including those in tables it does not rebuild. An unexpected change rolls back the upgrade. Intentional changes must match the migration's declared starting and resulting definitions.
 
 - Older databases upgrade automatically when both the core package and client are published releases, or when `ZINN_DIR` explicitly selects a separate database. Source clients otherwise open older databases read-only until an explicit `migrate.run`.
-- If an automatic upgrade saves a backup and then fails or is interrupted before committing, later automatic opens throw a `CoreError` with kind `conflict` and reason `migration_paused`. Call `migrate.run` to retry. A successful migration or restore clears the pause.
+- If an automatic upgrade saves a backup and then fails or is interrupted before committing, the failing open throws an `AutomaticUpgradePausedError` whose `cause` is the failure. Later automatic opens throw a `CoreError` with kind `conflict` and reason `migration_paused`. Call `migrate.run` to retry. A successful migration or restore clears the pause.
 - Databases newer than core supports open read-only.
 - Databases without a schema version are refused.
 - A process that keeps the database open checks the schema version at the start of each write. When another process has changed it, such as a newer Zinn upgrading the database, the write throws a `CoreError` with kind `conflict` and reason `newer_database` or `older_database` and changes nothing. Reads keep working. Restart the process to write again.

@@ -63,7 +63,7 @@ A checked suggestion to quote a column name uses reason `unquoted_column`. It re
 
 ## Paused upgrades
 
-When an automatic upgrade is paused, Zinn returns code `conflict` with reason `migration_paused`. The details include `databasePath`, `schemaVersion` and `supportedSchemaVersion` for the running build. See [database upgrades](/docs/data#upgrade-a-database) for how to retry.
+When an automatic upgrade is paused, Zinn returns code `conflict` with reason `migration_paused`. The details include `databasePath`, `schemaVersion` and `supportedSchemaVersion` for the running build. When the file where Zinn keeps the pause is not one it can read, `path` names that file. The attempt that fails and starts the pause returns its own error, with `zinn migrate` in its message. See [database upgrades](/docs/data#upgrade-a-database) for how to retry.
 
 ## Messages and terminal output
 
