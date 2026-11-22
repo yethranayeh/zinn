@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { DEFAULT_OPTIONS, readOptions } from "./options.ts";
+import { DEFAULT_OPTIONS, priorityLetter, readOptions } from "./options.ts";
 
 test("claim renewal is on by default", () => {
   expect(DEFAULT_OPTIONS.renewClaims).toBe(true);
@@ -16,4 +16,14 @@ test("only an explicit false turns claim renewal off", () => {
 test("claim renewal does not follow the current mark", () => {
   expect(readOptions({ current: "off" }).renewClaims).toBe(true);
   expect(readOptions({ current: "glyph", renewClaims: false }).renewClaims).toBe(false);
+});
+test("a task without a priority shows the empty cell marker", () => {
+  expect(priorityLetter(null)).toBe("-");
+  expect(priorityLetter("")).toBe("-");
+});
+test("a priority maps to its letter", () => {
+  expect(priorityLetter("urgent")).toBe("U");
+  expect(priorityLetter("high")).toBe("H");
+  expect(priorityLetter("medium")).toBe("M");
+  expect(priorityLetter("low")).toBe("L");
 });

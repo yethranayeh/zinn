@@ -18,9 +18,11 @@ export const PRIORITY_LETTER: Record<string, string | undefined> = {
   medium: "M",
   low: "L",
 };
+// A task row's cell for an unassigned priority, matching the CLI.
+const EMPTY_PRIORITY_MARKER = "-";
 export function priorityLetter(priority: string | null): string {
   if (!priority) {
-    return "";
+    return EMPTY_PRIORITY_MARKER;
   }
   return PRIORITY_LETTER[priority] ?? "";
 }
