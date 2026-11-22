@@ -1,0 +1,163 @@
+---
+import ComponentHeading from "../../components/ComponentHeading.astro";
+import Specimen from "../../components/Specimen.astro";
+import FoundryLayout from "../../layouts/FoundryLayout.astro";
+import HoverCard from "../../proposed/hover-card/HoverCard.astro";
+
+const quickStart = { href: "https://zinn.sh/docs/quick-start/", title: "Quick start", detail: "Zinn documentation" };
+const installation = {
+	href: "https://zinn.sh/docs/installation/",
+	title: "Installation",
+	detail: "Zinn documentation"
+};
+const settings = { href: "https://zinn.sh/docs/settings/", title: "Settings" };
+const longLinks = [
+	{
+		href: "https://zinn.sh/docs/cli/",
+		title:
+			"Every command a person or an agent can run against a board, from creating a task to moving it between columns",
+		detail: "Command reference for the command line, including every option and its JSON output"
+	},
+	{
+		href: "https://zinn.sh/docs/data/",
+		title:
+			"Where Zinn keeps the database, how to back it up and how to move it to another machine without losing history",
+		detail: "Data"
+	}
+];
+---
+
+<FoundryLayout
+	title='HoverCard'
+	description='HoverCard opens a small card of links attached to its trigger on hover, focus or click.'>
+	<ComponentHeading folder='hover-card'>
+		<p>
+			A small trigger that opens a card of links attached to it. Use it when a mark in running text, such as a footnote
+			number, leads to a few places to read next. For a text hint without links, use Tooltip.
+		</p>
+		<p>
+			Hover, keyboard focus or a click opens the card. A click only opens it, so touch can open it too. The card touches
+			the trigger, so the pointer moves into it without closing it. It closes 300 ms after the pointer leaves both, when
+			focus moves outside them, or on Escape, which returns focus to the trigger. One card is open at a time.
+		</p>
+		<p>
+			The card opens above the trigger and flips below when the room above is less than its height. That room runs to
+			the top of the viewport, or to the bottom edge of the element named by <code>boundary</code>, such as a sticky
+			header.
+		</p>
+		<p>
+			<code>label</code> is the trigger's accessible name and says what opens. <code>hitArea</code> extends the trigger's
+			hit area past its drawn size, for a small trigger. Each link has a <code>title</code> and an optional muted <code
+				>detail</code
+			>. The card is as wide as its content, up to 22rem.
+		</p>
+	</ComponentHeading>
+
+	<section class='flex flex-col gap-4' aria-labelledby='placement'>
+		<h2 id='placement' class='text-xl font-semibold'>Placement</h2>
+		<div class='grid gap-4 md:grid-cols-2'>
+			<Specimen label='Room above: opens above' block>
+				<div class='flex min-h-48 flex-col justify-end'>
+					<p class='max-w-[44ch] leading-8'>
+						Every task keeps its history, so a closed task stays readable long after it ships.
+						<HoverCard label='Further reading from this sentence, 2 links' links={[quickStart, installation]} hitArea>
+							1
+						</HoverCard>
+					</p>
+				</div>
+			</Specimen>
+
+			<Specimen label='boundary="#hover-card-boundary": flips below' block>
+				<div class='flex min-h-48 flex-col'>
+					<div id='hover-card-boundary' class='border-b border-soot/20 pb-2 font-mono text-xs text-muted-foreground'>
+						Top boundary
+					</div>
+					<p class='max-w-[44ch] pt-2 leading-8'>
+						A claim expires on its own, so a session that stops never blocks the work for long.
+						<HoverCard
+							label='Further reading from this sentence, 2 links'
+							links={[quickStart, installation]}
+							boundary='#hover-card-boundary'
+							hitArea>
+							2
+						</HoverCard>
+					</p>
+				</div>
+			</Specimen>
+		</div>
+	</section>
+
+	<section class='flex flex-col gap-4' aria-labelledby='links'>
+		<h2 id='links' class='text-xl font-semibold'>Links</h2>
+		<div class='grid gap-4 md:grid-cols-2'>
+			<Specimen label='One link' block>
+				<div class='flex min-h-48 flex-col justify-end'>
+					<p class='max-w-[44ch] leading-8'>
+						Settings live next to the database.
+						<HoverCard label='Further reading from this sentence, 1 link' links={[settings]} hitArea>3</HoverCard>
+					</p>
+				</div>
+			</Specimen>
+
+			<Specimen label='Several links' block>
+				<div class='flex min-h-48 flex-col justify-end'>
+					<p class='max-w-[44ch] leading-8'>
+						Backups are plain files.
+						<HoverCard
+							label='Further reading from this sentence, 3 links'
+							links={[quickStart, installation, settings]}
+							hitArea>
+							4
+						</HoverCard>
+					</p>
+				</div>
+			</Specimen>
+
+			<Specimen label='Long titles reach the maximum width' block>
+				<div class='flex min-h-72 flex-col justify-end'>
+					<p class='max-w-[44ch] leading-8'>
+						Boards, tasks and their comments are stored together.
+						<HoverCard label='Further reading from this sentence, 2 links' links={longLinks} hitArea>5</HoverCard>
+					</p>
+				</div>
+			</Specimen>
+		</div>
+	</section>
+
+	<section class='flex flex-col gap-4' aria-labelledby='hit-area'>
+		<h2 id='hit-area' class='text-xl font-semibold'>Hit area</h2>
+		<div class='grid gap-4 md:grid-cols-2'>
+			<Specimen label='hitArea: the dashed area opens the card' block>
+				<div class='flex min-h-48 flex-col justify-end'>
+					<p class='max-w-[44ch] leading-8'>
+						A small trigger stays easy to reach.
+						<HoverCard
+							label='Further reading from this sentence, 2 links'
+							links={[quickStart, installation]}
+							triggerClass='after:outline-1 after:outline-dashed after:outline-clay'
+							hitArea>
+							6
+						</HoverCard>
+					</p>
+				</div>
+			</Specimen>
+
+			<Specimen label='Without hitArea: only the drawn trigger opens the card' block>
+				<div class='flex min-h-48 flex-col justify-end'>
+					<p class='max-w-[44ch] leading-8'>
+						A small trigger stays easy to reach.
+						<HoverCard label='Further reading from this sentence, 2 links' links={[quickStart, installation]}>
+							7
+						</HoverCard>
+					</p>
+				</div>
+			</Specimen>
+		</div>
+	</section>
+</FoundryLayout>
+
+<script>
+	import { initHoverCards } from "../../proposed/hover-card/hover-card";
+
+	initHoverCards(document);
+</script>

@@ -1,0 +1,55 @@
+---
+interface Link {
+	href: string;
+	title: string;
+	/** A muted second line under the title. */
+	detail?: string;
+}
+
+interface Props {
+	/** The trigger's accessible name. It says what opens. */
+	label: string;
+	links: Array<Link>;
+	/** A CSS selector for the element whose bottom edge limits the room above the trigger, such as a sticky header. The top of the viewport limits it when omitted. */
+	boundary?: string;
+	/** Gives the trigger an invisible hit area around its drawn size. */
+	hitArea?: boolean;
+	/** Classes for the trigger. */
+	triggerClass?: string;
+}
+
+const { label, links, boundary, hitArea = false, triggerClass } = Astro.props;
+const cardId = `hover-card-${crypto.randomUUID()}`;
+---
+
+<span class='relative inline-flex' data-hover-card data-hover-card-boundary={boundary}>
+	<button
+		type='button'
+		class:list={[
+			"relative cursor-pointer font-mono text-[11px]/normal text-muted-foreground hover:text-soot aria-expanded:text-soot",
+			hitArea && "after:absolute after:-inset-1.5 after:content-['']",
+			triggerClass
+		]}
+		aria-label={label}
+		aria-expanded='false'
+		aria-controls={cardId}
+		data-hover-card-trigger>
+		<slot />
+	</button>
+	<span
+		id={cardId}
+		class='absolute bottom-full left-0 z-20 w-max max-w-[min(22rem,calc(100vw-2rem))] border border-soot bg-limestone py-1 font-mono text-[11px]/normal wrap-anywhere data-below:top-full data-below:bottom-auto'
+		data-hover-card-content
+		hidden>
+		{
+			links.map((link) => (
+				<a
+					class='grid px-2.5 py-1.5 text-soot no-underline hover:bg-soot/8 hover:no-underline focus-visible:bg-soot/8 focus-visible:-outline-offset-2'
+					href={link.href}>
+					<span>{link.title}</span>
+					{link.detail !== undefined && <span class='text-muted-foreground'>{link.detail}</span>}
+				</a>
+			))
+		}
+	</span>
+</span>
