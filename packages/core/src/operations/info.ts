@@ -92,124 +92,139 @@ function inspectTelemetryDirectory(telemetry: StoreInfo["telemetry"], directory:
   }
 }
 
+/** Reads settings and paths independently of any SQLite inspection */
+export function inspectStoreFiles(inputs: SettingsInputs): StoreInfo {
+  const settings = inspectSettings(inputs);
+  const selectedFiles = settings.files.filter((file) => file.state !== "not-read");
+  const localError = selectedFiles.find(
+    (file) => file.source === "local" && file.state === "error",
+  );
+  const globalError = selectedFiles.find(
+    (file) => file.source !== "local" && file.state === "error",
+  );
+  const settingsError = localError ?? globalError;
+  const unresolvedError = settingsError?.state === "error" ? settingsError.error : null;
+  const storageIsKnown =
+    inputs.env.ZINN_DIR !== undefined ||
+    (localError === undefined &&
+      (settings.local?.settings.storage !== undefined || globalError === undefined));
+  // A field is unknown when an unusable file could have set it: the nearest codebase file, or the global file when the codebase file leaves the field out.
+  const isKnown = (isSetInLocalFile: boolean) =>
+    localError === undefined && (isSetInLocalFile || globalError === undefined);
+  const projectIsKnown = isKnown(settings.local?.settings.defaultProject !== undefined);
+  const modeIsKnown = isKnown(settings.local?.settings.telemetry?.mode !== undefined);
+  const maxMegabytesIsKnown = isKnown(
+    settings.local?.settings.telemetry?.maxMegabytes !== undefined,
+  );
+  const maxAgeDaysIsKnown = isKnown(settings.local?.settings.telemetry?.maxAgeDays !== undefined);
+  const telemetryChoice = resolveTelemetry(settings, inputs.env);
+  const projectChoice = chooseDefaultProject(settings);
+  const report: StoreInfo = {
+    coreVersion: packageJson.version,
+    settingsFiles: settings.files,
+    storage: {
+      directory: null,
+      source: null,
+      settingsPath: null,
+      exists: null,
+      error: unresolvedError,
+    },
+    defaultProject: {
+      key: projectIsKnown ? (projectChoice?.key ?? null) : null,
+      settingsPath: projectIsKnown ? (projectChoice?.settingsPath ?? null) : null,
+      error: projectIsKnown ? null : unresolvedError,
+    },
+    telemetry: {
+      mode: modeIsKnown ? telemetryChoice.mode : null,
+      source: modeIsKnown ? telemetryChoice.source : null,
+      settingsPath: modeIsKnown ? telemetryChoice.settingsPath : null,
+      maxMegabytes: maxMegabytesIsKnown ? telemetryChoice.maxMegabytes : null,
+      maxAgeDays: maxAgeDaysIsKnown ? telemetryChoice.maxAgeDays : null,
+      directory: null,
+      exists: null,
+      sizeBytes: null,
+      error:
+        modeIsKnown && maxMegabytesIsKnown && maxAgeDaysIsKnown && storageIsKnown
+          ? null
+          : unresolvedError,
+    },
+    database: {
+      path: null,
+      state: "unavailable",
+      version: null,
+      latestVersion: latestVersion(MIGRATIONS),
+      error: unresolvedError,
+    },
+  };
+
+  if (!storageIsKnown) {
+    return report;
+  }
+
+  try {
+    const storage = resolveStorage(inputs, settings);
+    report.storage = {
+      directory: storage.directory,
+      source: storage.source,
+      settingsPath: storage.settingsPath,
+      exists: null,
+      error: null,
+    };
+
+    inspectTelemetryDirectory(
+      report.telemetry,
+      join(resolve(inputs.cwd, storage.directory), TELEMETRY_FOLDER_NAME),
+    );
+
+    try {
+      const directory = statSync(resolve(inputs.cwd, storage.directory));
+      report.storage.exists = directory.isDirectory();
+      if (!directory.isDirectory()) {
+        report.storage.error = `${storage.directory} is not a directory`;
+      }
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        report.storage.exists = false;
+      } else {
+        report.storage.error = errorMessage(error);
+      }
+    }
+
+    report.database.path = storage.databasePath;
+  } catch (error) {
+    report.storage.error = errorMessage(error);
+    report.database.error = errorMessage(error);
+    report.telemetry.error ??= errorMessage(error);
+  }
+
+  return report;
+}
+
+export function inspectStoreDatabase(
+  report: StoreInfo,
+  cwd: string,
+  classify: typeof classifyDatabase = classifyDatabase,
+) {
+  if (report.database.path === null) {
+    return;
+  }
+
+  try {
+    const databasePath = resolveDatabasePath(resolve(cwd, report.database.path));
+    report.database.path = databasePath;
+    report.database = { path: databasePath, ...classify(databasePath), error: null };
+  } catch (error) {
+    report.database.error = errorMessage(error);
+  }
+}
+
 export const info = {
   /** Reports the selected settings and database without initializing or upgrading them. */
   get(
     inputs: SettingsInputs = { cwd: process.cwd(), env: process.env, home: homedir() },
   ): StoreInfo {
-    const settings = inspectSettings(inputs);
-    const selectedFiles = settings.files.filter((file) => file.state !== "not-read");
-    const localError = selectedFiles.find(
-      (file) => file.source === "local" && file.state === "error",
-    );
-    const globalError = selectedFiles.find(
-      (file) => file.source !== "local" && file.state === "error",
-    );
-    const settingsError = localError ?? globalError;
-    const unresolvedError = settingsError?.state === "error" ? settingsError.error : null;
-    const storageIsKnown =
-      inputs.env.ZINN_DIR !== undefined ||
-      (localError === undefined &&
-        (settings.local?.settings.storage !== undefined || globalError === undefined));
-    // A field is unknown when an unusable file could have set it: the nearest codebase file, or the global file when the codebase file leaves the field out.
-    const isKnown = (isSetInLocalFile: boolean) =>
-      localError === undefined && (isSetInLocalFile || globalError === undefined);
-    const projectIsKnown = isKnown(settings.local?.settings.defaultProject !== undefined);
-    const modeIsKnown = isKnown(settings.local?.settings.telemetry?.mode !== undefined);
-    const maxMegabytesIsKnown = isKnown(
-      settings.local?.settings.telemetry?.maxMegabytes !== undefined,
-    );
-    const maxAgeDaysIsKnown = isKnown(settings.local?.settings.telemetry?.maxAgeDays !== undefined);
-    const telemetryChoice = resolveTelemetry(settings, inputs.env);
-    const projectChoice = chooseDefaultProject(settings);
-    const report: StoreInfo = {
-      coreVersion: packageJson.version,
-      settingsFiles: settings.files,
-      storage: {
-        directory: null,
-        source: null,
-        settingsPath: null,
-        exists: null,
-        error: unresolvedError,
-      },
-      defaultProject: {
-        key: projectIsKnown ? (projectChoice?.key ?? null) : null,
-        settingsPath: projectIsKnown ? (projectChoice?.settingsPath ?? null) : null,
-        error: projectIsKnown ? null : unresolvedError,
-      },
-      telemetry: {
-        mode: modeIsKnown ? telemetryChoice.mode : null,
-        source: modeIsKnown ? telemetryChoice.source : null,
-        settingsPath: modeIsKnown ? telemetryChoice.settingsPath : null,
-        maxMegabytes: maxMegabytesIsKnown ? telemetryChoice.maxMegabytes : null,
-        maxAgeDays: maxAgeDaysIsKnown ? telemetryChoice.maxAgeDays : null,
-        directory: null,
-        exists: null,
-        sizeBytes: null,
-        error:
-          modeIsKnown && maxMegabytesIsKnown && maxAgeDaysIsKnown && storageIsKnown
-            ? null
-            : unresolvedError,
-      },
-      database: {
-        path: null,
-        state: "unavailable",
-        version: null,
-        latestVersion: latestVersion(MIGRATIONS),
-        error: unresolvedError,
-      },
-    };
-
-    if (!storageIsKnown) {
-      return report;
-    }
-
-    try {
-      const storage = resolveStorage(inputs, settings);
-      report.storage = {
-        directory: storage.directory,
-        source: storage.source,
-        settingsPath: storage.settingsPath,
-        exists: null,
-        error: null,
-      };
-
-      inspectTelemetryDirectory(
-        report.telemetry,
-        join(resolve(inputs.cwd, storage.directory), TELEMETRY_FOLDER_NAME),
-      );
-
-      try {
-        const directory = statSync(resolve(inputs.cwd, storage.directory));
-        report.storage.exists = directory.isDirectory();
-        if (!directory.isDirectory()) {
-          report.storage.error = `${storage.directory} is not a directory`;
-        }
-      } catch (error) {
-        if (isMissingFileError(error)) {
-          report.storage.exists = false;
-        } else {
-          report.storage.error = errorMessage(error);
-        }
-      }
-
-      try {
-        const databasePath = resolveDatabasePath(resolve(inputs.cwd, storage.databasePath));
-        report.database.path = databasePath;
-        report.database = {
-          path: databasePath,
-          ...classifyDatabase(databasePath),
-          error: null,
-        };
-      } catch (error) {
-        report.database.path ??= storage.databasePath;
-        report.database.error = errorMessage(error);
-      }
-    } catch (error) {
-      report.storage.error = errorMessage(error);
-      report.database.error = errorMessage(error);
-      report.telemetry.error ??= errorMessage(error);
-    }
+    const report = inspectStoreFiles(inputs);
+    inspectStoreDatabase(report, inputs.cwd);
     return report;
   },
 };

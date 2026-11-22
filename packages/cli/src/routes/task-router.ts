@@ -14,6 +14,7 @@ import {
   activity,
   task,
   project,
+  readSnapshot,
   parseTaskKey,
   taskCreateSchema,
   taskEditSchema,
@@ -43,10 +44,12 @@ import {
   confirmAction,
   dashValueHelp,
   diagnostic,
+  getOutputMode,
   output,
   outputChanges,
   quit,
   validatePositionals,
+  validateTaskKey,
   validateOrderForms,
   requireStringOption,
   renameFlag,
@@ -71,7 +74,6 @@ import { currentActor } from "../actor.js";
 import {
   checkDefaultProject,
   chooseProjectKey,
-  resolveProjectKey,
   projectScopeConstraint,
   requiredProjectDescription,
   projectScopeDescription,
@@ -91,6 +93,7 @@ import { createColumnBoard } from "../presentation/column-presentation.js";
 import {
   formatTaskList,
   formatTaskTimestamps,
+  getLabelColorsByName,
   presentTask,
   presentTasks,
 } from "../presentation/task-presentation.js";
@@ -601,7 +604,10 @@ Examples:
         quit('Use either "--archived" or "--all", not both', undefined, { argument: "--archived" });
       }
 
-      const projectKey = resolveProjectKey(positionals[0], { allProjects: values["all-projects"] });
+      const projectChoice = chooseProjectKey(positionals[0], {
+        allProjects: values["all-projects"],
+      });
+      const projectKey = projectChoice?.key;
       const archive = values.all ? "all" : values.archived ? "archived" : "active";
 
       const limit = parseListLimit(values.limit);
@@ -621,24 +627,36 @@ Examples:
         );
       }
 
-      const page = task.getPage({
-        ...parseDeadlineFilters(values),
-        limit,
-        sort: sort.data,
-        projectKey,
-        archive,
-        state: state.data,
-        labelNames: values.label,
-        columnName: values.column,
-        startingAfter: values["starting-after"],
+      const deadlineFilters = parseDeadlineFilters(values);
+      const { presentedTasks, nextCursor, labelColorsByName } = readSnapshot(() => {
+        if (projectChoice !== undefined) {
+          checkDefaultProject(projectChoice);
+        }
+
+        const page = task.getPage({
+          ...deadlineFilters,
+          limit,
+          sort: sort.data,
+          projectKey,
+          archive,
+          state: state.data,
+          labelNames: values.label,
+          columnName: values.column,
+          startingAfter: values["starting-after"],
+        });
+
+        return {
+          presentedTasks: presentTasks(page.tasks),
+          nextCursor: page.nextCursor,
+          labelColorsByName: getOutputMode() === "text" ? getLabelColorsByName() : undefined,
+        };
       });
 
-      const board = createColumnBoard();
-      output(presentTasks(page.tasks, board), (presentedTasks) =>
-        formatTaskList(presentedTasks, { showsStatus: values.all }),
+      output(presentedTasks, (entries) =>
+        formatTaskList(entries, { showsStatus: values.all, labelColorsByName }),
       );
 
-      if (page.nextCursor !== undefined) {
+      if (nextCursor !== undefined) {
         const selectionTokens = tokens.filter(
           (token) => token.kind !== "option" || token.name !== "all-projects",
         );
@@ -650,7 +668,7 @@ Examples:
             projectScope,
             selectionTokens,
             "starting-after",
-            page.nextCursor,
+            nextCursor,
           )}`,
         );
       }
@@ -705,28 +723,40 @@ Example: zinn task list MDR --label cli`,
       const archive = values.all ? "all" : values.archived ? "archived" : "active";
 
       const isTaskKeyQuery = parseTaskKey(query.trim()) !== null;
-      const projectKey = resolveProjectKey(positionals[1], {
+      const projectChoice = chooseProjectKey(positionals[1], {
         allProjects: values["all-projects"],
         useDefault: !isTaskKeyQuery,
       });
       const limit = parseListLimit(values.limit);
-      const result = task.search({
-        ...parseDeadlineFilters(values),
-        query,
-        projectKey,
-        archive,
-        limit,
-        labelNames: values.label,
-        columnName: values.column,
+      const deadlineFilters = parseDeadlineFilters(values);
+      const { presentedTasks, hiddenArchivedCount, labelColorsByName } = readSnapshot(() => {
+        if (projectChoice !== undefined) {
+          checkDefaultProject(projectChoice);
+        }
+
+        const result = task.search({
+          ...deadlineFilters,
+          query,
+          projectKey: projectChoice?.key,
+          archive,
+          limit,
+          labelNames: values.label,
+          columnName: values.column,
+        });
+
+        return {
+          presentedTasks: presentTasks(result.tasks),
+          hiddenArchivedCount: result.hiddenArchivedCount,
+          labelColorsByName: getOutputMode() === "text" ? getLabelColorsByName() : undefined,
+        };
       });
 
-      const board = createColumnBoard();
-      output(presentTasks(result.tasks, board), (presentedTasks) =>
-        formatTaskList(presentedTasks, { showsStatus: values.all }),
+      output(presentedTasks, (entries) =>
+        formatTaskList(entries, { showsStatus: values.all, labelColorsByName }),
       );
 
-      if (result.hiddenArchivedCount > 0) {
-        const count = result.hiddenArchivedCount;
+      if (hiddenArchivedCount > 0) {
+        const count = hiddenArchivedCount;
         const noun = count === 1 ? "match" : "matches";
 
         diagnostic(`${count} archived ${noun} hidden, use --all to include them`);
@@ -767,12 +797,24 @@ Example: zinn task search 'refinement quota' MDR --limit 5`,
       validateUniqueOptions(tokens, taskInputs.next.options);
       validatePositionals(positionals, taskInputs.next.forms[0]);
 
-      const projectKey = resolveProjectKey(positionals[0], { allProjects: values["all-projects"] });
-      const nextTask = task.next({ projectKey, columnName: values.column });
-      const board = createColumnBoard();
+      const projectChoice = chooseProjectKey(positionals[0], {
+        allProjects: values["all-projects"],
+      });
+      const { presentedTask, labelColorsByName } = readSnapshot(() => {
+        if (projectChoice !== undefined) {
+          checkDefaultProject(projectChoice);
+        }
 
-      output(nextTask === null ? null : presentTask(nextTask, board), (presentedTask) =>
-        presentedTask === null ? "No task is ready." : formatTaskList([presentedTask]),
+        const nextTask = task.next({ projectKey: projectChoice?.key, columnName: values.column });
+        return {
+          presentedTask: nextTask === null ? null : presentTask(nextTask),
+          labelColorsByName:
+            nextTask !== null && getOutputMode() === "text" ? getLabelColorsByName() : undefined,
+        };
+      });
+
+      output(presentedTask, (entry) =>
+        entry === null ? "No task is ready." : formatTaskList([entry], { labelColorsByName }),
       );
     },
     help: `${generateCommandUsage("task next", taskInputs.next)}
@@ -812,26 +854,40 @@ Examples:
       });
       validateUniqueOptions(tokens, taskInputs.view.options);
       validatePositionals(positionals, taskInputs.view.forms[0]);
+      const taskKey = positionals[0]!;
+      validateTaskKey(taskKey);
 
-      const taskMatch = task.getByKey(positionals[0]!);
-      const board = createColumnBoard();
-      const detail = {
-        ...presentTask(taskMatch, board),
-        relations: presentRelations(taskMatch, board),
-        comments: presentComments(taskMatch.key),
-      };
-      const viewedTask =
-        values.history === true
-          ? ({
-              ...detail,
-              activity: task
-                .activity(taskMatch.key)
-                .sort(
-                  (left, right) =>
-                    right.created_at - left.created_at || right.id.localeCompare(left.id),
-                ),
-            } satisfies PresentedTaskDetailHistory)
-          : ({ ...detail } satisfies PresentedTaskDetail);
+      const { viewedTask, history, labelColorsByName } = readSnapshot(() => {
+        const taskMatch = task.getByKey(taskKey);
+        const board = createColumnBoard();
+        const detail: PresentedTaskDetail = {
+          ...presentTask(taskMatch, board),
+          relations: presentRelations(taskMatch, board),
+          comments: presentComments(taskMatch.key),
+        };
+        const viewedTask =
+          values.history === true
+            ? ({
+                ...detail,
+                activity: task
+                  .activity(taskMatch.key)
+                  .sort(
+                    (left, right) =>
+                      right.created_at - left.created_at || right.id.localeCompare(left.id),
+                  ),
+              } satisfies PresentedTaskDetailHistory)
+            : detail;
+        const isText = getOutputMode() === "text";
+
+        return {
+          viewedTask,
+          history:
+            isText && "activity" in viewedTask
+              ? presentActivities(viewedTask.activity, { keysFromEventsOnly: true })
+              : [],
+          labelColorsByName: isText ? getLabelColorsByName() : undefined,
+        };
+      });
 
       output(viewedTask, (t) => {
         const MIN_SECTION_SEPARATOR_WIDTH = 60;
@@ -850,6 +906,7 @@ Examples:
             showsStatus: isArchived,
             showsFullPriority: true,
             showsClaimDetail: true,
+            labelColorsByName,
           }),
         ];
 
@@ -865,13 +922,9 @@ Examples:
           sections.push(formatSection("Comments", comments, sectionOptions));
         }
 
-        if ("activity" in t) {
-          const history = formatActivityList(
-            presentActivities(t.activity, { keysFromEventsOnly: true }),
-          );
-          if (history.length > 0) {
-            sections.push(formatSection("History", history, sectionOptions));
-          }
+        const formattedHistory = formatActivityList(history);
+        if (formattedHistory.length > 0) {
+          sections.push(formatSection("History", formattedHistory, sectionOptions));
         }
 
         sections.push(formatTaskTimestamps(t));
@@ -908,19 +961,31 @@ Examples:
         strict: true,
       });
       validatePositionals(positionals, taskInputs.blame.forms[0]);
-      output(task.blame(positionals[0]!), (blame) => {
+      const { blame, textOptions } = readSnapshot(() => {
+        const blame = task.blame(positionals[0]!);
+        if (getOutputMode() === "json") {
+          return { blame };
+        }
+
         const taskMatch = task.getByKey(blame.task.key);
         const board = createColumnBoard();
-        return formatTaskBlame(blame, {
-          relations: presentRelations(taskMatch, board),
-          columnCategory:
-            board(taskMatch.project_id).find(
-              (boardColumn) => boardColumn.id === taskMatch.column_id,
-            )?.category ?? null,
-          isArchived: taskMatch.archived_at != null,
-          activityIdPrefixes: abbreviateActivityIds(activity.getIds()),
-        });
+
+        return {
+          blame,
+          textOptions: {
+            relations: presentRelations(taskMatch, board),
+            columnCategory:
+              board(taskMatch.project_id).find(
+                (boardColumn) => boardColumn.id === taskMatch.column_id,
+              )?.category ?? null,
+            isArchived: taskMatch.archived_at != null,
+            labelColorsByName:
+              blame.fields.labels.value.length === 0 ? new Map() : getLabelColorsByName(),
+            activityIdPrefixes: abbreviateActivityIds(activity.getIds()),
+          },
+        };
       });
+      output(blame, (entry) => formatTaskBlame(entry, textOptions!));
     },
     help: `${generateCommandUsage("task blame", taskInputs.blame)}
 

@@ -1,6 +1,6 @@
 import type { Activity, TaskAttribution, TaskBlame } from "../types.js";
 
-import { readTransaction } from "../db.js";
+import { readSnapshot } from "../db.js";
 import * as dbActivity from "../db/activity.js";
 import * as dbColumn from "../db/column.js";
 import * as dbTask from "../db/task.js";
@@ -32,7 +32,7 @@ function toAttribution(event: Activity): TaskAttribution {
 
 /** Who last set each field, the label set and the parent, plus per-line description provenance. */
 export function blameTask(taskKey: string): TaskBlame {
-  return readTransaction(() => {
+  return readSnapshot(() => {
     const current = getTaskByKey(taskKey);
     const history = dbActivity.getAllByEntity("task", current.id, REPLAYED_ACTIONS);
     const labels = dbTaskLabel.getAllByTaskId(current.id).map(({ id, name }) => ({ id, name }));

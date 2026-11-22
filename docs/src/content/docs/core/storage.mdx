@@ -12,6 +12,10 @@ Core opens the database on first use. `project.create` and `label.create` create
 
 By default it shares `~/.zinn/data/zinn.sqlite` with the CLI, but `ZINN_DIR` and settings files can select another location. See [Settings](/docs/settings) for directory selection.
 
+## Read together
+
+Use `readSnapshot(() => ...)` to compose several reads from core's configured database into one committed view. The callback runs synchronously and its return value becomes the result. Return the data you need from the callback and use it after the snapshot ends.
+
 ## Capture storage destinations
 
 `getStorage()` returns a fresh `Storage` snapshot on each call. Settings and the selected directory are chosen on first use and stay cached. Each snapshot resolves the database destination through the current filesystem links. `getBackupStorage()` resolves the backup folder as well, for an operation that writes a backup. Keep one snapshot throughout an operation. An existing connection retains the destination it opened, including for its errors and search reindexing.

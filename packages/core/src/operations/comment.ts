@@ -17,6 +17,7 @@ import { commentCreateSchema, commentDeleteSchema, commentEditSchema } from "../
 
 import {
   getTaskByKey,
+  readTaskByKey,
   getCommentByKey,
   attachCommentKey,
   updateTaskSearchRecord,
@@ -33,12 +34,12 @@ function describeComment(comment: CommentWithKey) {
 
 export const comment = {
   getByKey: getCommentByKey,
-  getAll: (taskKey: string) => {
-    const taskMatch = getTaskByKey(taskKey);
-    return dbComment
-      .getAllByTaskId(taskMatch.id)
-      .map((commentMatch) => attachCommentKey(commentMatch, taskMatch.key));
-  },
+  getAll: (taskKey: string) =>
+    readTaskByKey(taskKey, (taskMatch) =>
+      dbComment
+        .getAllByTaskId(taskMatch.id)
+        .map((commentMatch) => attachCommentKey(commentMatch, taskMatch.key)),
+    ),
   create: (input: CommentCreateInput, actor: Actor) => {
     const props = validateTaskInput(commentCreateSchema, input);
     const validActor = validateTaskInput(actorSchema, actor);

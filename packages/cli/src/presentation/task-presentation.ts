@@ -30,19 +30,17 @@ export function taskPriorityCell(
  * `PresentedTask` carries label names and IDs, without colors.
  * Text output looks the colors up from the label definitions instead.
  */
-function getLabelColorsByName() {
+export function getLabelColorsByName() {
   return new Map(label.getAll().map((labelMatch) => [labelMatch.name, labelMatch.color]));
 }
 
-function formatTaskLabelNames(labelNames: Array<string>, labelColorsByName: Map<string, string>) {
+export function formatLabelNames(
+  labelNames: Array<string>,
+  labelColorsByName: ReadonlyMap<string, string>,
+) {
   return labelNames
     .map((labelName) => formatCell(labelNameCell(labelName, labelColorsByName.get(labelName)!)))
     .join(LABEL_NAME_SEPARATOR);
-}
-
-/** A task's label names on their own, colored as in a task row. */
-export function formatLabelNames(labelNames: Array<string>) {
-  return formatTaskLabelNames(labelNames, getLabelColorsByName());
 }
 
 /** Shapes many tasks with one label read for all of them */
@@ -126,11 +124,12 @@ export function formatTaskList(
     showsStatus?: boolean;
     showsFullPriority?: boolean;
     prefix?: string;
+    labelColorsByName?: ReadonlyMap<string, string>;
     /** Shows an expired claim too, and when each claim's lease ends */
     showsClaimDetail?: boolean;
   } = {},
 ) {
-  const labelColorsByName = getLabelColorsByName();
+  const labelColorsByName = options.labelColorsByName ?? getLabelColorsByName();
 
   return formatRows(
     presentedTasks.map((presentedTask) => {
@@ -139,7 +138,7 @@ export function formatTaskList(
         : [];
       const hasLabels = presentedTask.labels.length > 0;
       // The last cell is never padded, so the color codes in its separator and label names do not affect column widths.
-      const labelNames = formatTaskLabelNames(presentedTask.labels, labelColorsByName);
+      const labelNames = formatLabelNames(presentedTask.labels, labelColorsByName);
       const labels = hasLabels ? `${formatCellSeparator()}${labelNames}` : "";
       const deadline =
         presentedTask.due_at == null

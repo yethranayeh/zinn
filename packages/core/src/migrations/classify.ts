@@ -74,6 +74,15 @@ export function classifyDatabase(
   databasePath: ResolvedPath,
   migrations: ReadonlyArray<Migration> = MIGRATIONS,
 ): DatabaseClassification {
+  return inspectClassifiedDatabase(databasePath, (classification) => classification, migrations);
+}
+
+/** Uses the same inspection snapshot to classify the database and read its contents */
+export function inspectClassifiedDatabase<T>(
+  databasePath: ResolvedPath,
+  inspect: (classification: DatabaseClassification, db: Database | null) => T,
+  migrations: ReadonlyArray<Migration> = MIGRATIONS,
+): T {
   try {
     statSync(databasePath);
   } catch (error) {
@@ -81,10 +90,12 @@ export function classifyDatabase(
       throw error;
     }
 
-    return { state: "absent", version: 0, latestVersion: latestVersion(migrations) };
+    return inspect({ state: "absent", version: 0, latestVersion: latestVersion(migrations) }, null);
   }
 
-  return withDatabaseInspection(databasePath, (db) => classifyConnection(db, migrations));
+  return withDatabaseInspection(databasePath, (db) =>
+    inspect(classifyConnection(db, migrations), db),
+  );
 }
 
 /**

@@ -25,6 +25,8 @@ Keep the active Zinn directory outside network shares such as SMB and synchroniz
 
 The CLI and core library can share the selected database. On a local filesystem, commands can share it too: Zinn waits up to 30 seconds for each lock acquisition, then fails if the lock is still held. Of course, the command's total running time can exceed 30 seconds.
 
+Each database read command sees one committed state. Each page of a cursor and each poll of `activity list --follow` reads a fresh snapshot. Settings and other filesystem checks are read independently.
+
 ## Back up the database
 
 Save a snapshot before installing a new version:

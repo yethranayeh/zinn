@@ -16,7 +16,7 @@ import { v7 as uuidv7 } from "uuid";
 import { generateKeyBetween } from "fractional-indexing";
 
 import { CoreError } from "../errors.js";
-import { readTransaction, writeTransaction } from "../db.js";
+import { readSnapshot, writeTransaction } from "../db.js";
 import { rethrowSearchError } from "../search-error.js";
 import { taskLabelSchema } from "../schemas/label.js";
 import { CLOSED_COLUMN_CATEGORIES } from "../schemas/column.js";
@@ -51,6 +51,7 @@ import {
   attachClaim,
   attachClaims,
   getTaskByKey,
+  readTaskByKey,
   findTaskByExactKey,
   attachTaskKey,
   resolveLabels,
@@ -558,12 +559,14 @@ export const task = {
   },
   getAll: (input: TaskListInput = {}) => {
     const props = validateTaskInput(taskListSchema, input);
-    const query = resolveTaskListSelection(props);
-    const taskMatches = dbTask.getList({ ...query, limit: props.limit });
+    return readSnapshot(() => {
+      const query = resolveTaskListSelection(props);
+      const taskMatches = dbTask.getList({ ...query, limit: props.limit });
 
-    return attachClaims(
-      taskMatches.map(({ project_key, ...row }) => attachTaskKey(row, project_key)),
-    );
+      return attachClaims(
+        taskMatches.map(({ project_key, ...row }) => attachTaskKey(row, project_key)),
+      );
+    });
   },
   getPage: (
     input: TaskPageInput = {},
@@ -574,7 +577,7 @@ export const task = {
         ? undefined
         : decodeTaskCursor(props.startingAfter, props.sort);
 
-    return readTransaction(() => {
+    return readSnapshot(() => {
       const query = resolveTaskListSelection(props);
       const fetchLimit = props.limit === undefined ? undefined : props.limit + 1;
       const rows = dbTask.getPage({ ...query, limit: fetchLimit, after });
@@ -605,7 +608,7 @@ export const task = {
   next: (input: TaskNextInput = {}): TaskWithKey | null => {
     const props = validateTaskInput(taskNextSchema, input);
 
-    return readTransaction(() => {
+    return readSnapshot(() => {
       const taskProject =
         props.projectKey === undefined ? undefined : requireProject(props.projectKey);
       const taskMatch = dbTask.getNext({
@@ -622,68 +625,73 @@ export const task = {
       return attachClaim(attachTaskKey(row, project_key));
     });
   },
-  getByKey: (taskKey: string): TaskWithKey => attachClaim(getTaskByKey(taskKey)),
+  getByKey: (taskKey: string): TaskWithKey => readTaskByKey(taskKey, attachClaim),
   blame: blameTask,
   search: (input: TaskSearchInput) => {
     const props = validateTaskInput(taskSearchSchema, input);
-    const archive = props.archive ?? "active";
-    let projectId: string | undefined;
+    return readSnapshot(() => {
+      const archive = props.archive ?? "active";
+      let projectId: string | undefined;
 
-    if (props.projectKey != null) {
-      const projectMatch = dbProject.getByKey(props.projectKey);
+      if (props.projectKey != null) {
+        const projectMatch = dbProject.getByKey(props.projectKey);
 
-      if (projectMatch == null) {
-        throw new CoreError(`Project with key "${props.projectKey}" does not exist`, "missing", {
-          entity: "project",
-          key: props.projectKey,
-        });
+        if (projectMatch == null) {
+          throw new CoreError(`Project with key "${props.projectKey}" does not exist`, "missing", {
+            entity: "project",
+            key: props.projectKey,
+          });
+        }
+
+        projectId = projectMatch.id;
       }
 
-      projectId = projectMatch.id;
-    }
+      const keyMatch = findTaskByExactKey(props.query);
+      const isKeyMatchInScope =
+        keyMatch != null && (projectId == null || keyMatch.project_id === projectId);
+      const pinnedTasks = isKeyMatchInScope ? [keyMatch] : [];
 
-    const keyMatch = findTaskByExactKey(props.query);
-    const isKeyMatchInScope =
-      keyMatch != null && (projectId == null || keyMatch.project_id === projectId);
-    const pinnedTasks = isKeyMatchInScope ? [keyMatch] : [];
+      let searchRows;
+      try {
+        searchRows = dbSearch.searchTasks({
+          match: getSearchMatchExpression(props.query),
+          projectId,
+        });
+      } catch (error) {
+        rethrowSearchError(error);
+      }
 
-    let searchRows;
-    try {
-      searchRows = dbSearch.searchTasks({
-        match: getSearchMatchExpression(props.query),
-        projectId,
-      });
-    } catch (error) {
-      rethrowSearchError(error);
-    }
-    const textMatches = searchRows
-      .filter((row) => !pinnedTasks.some((pinned) => pinned.id === row.id))
-      .map(({ project_key, ...row }) => attachTaskKey(row, project_key));
+      const textMatches = searchRows
+        .filter((row) => !pinnedTasks.some((pinned) => pinned.id === row.id))
+        .map(({ project_key, ...row }) => attachTaskKey(row, project_key));
 
-    const matches = filterTasksByDeadline(
-      filterTasksByColumn(
-        filterTasksByLabels([...pinnedTasks, ...textMatches], props.labelNames),
-        props.columnName,
-        projectId,
-      ),
-      props,
-    );
-    const hiddenArchivedCount =
-      archive === "active"
-        ? matches.filter((taskMatch) => taskMatch.archived_at != null).length
-        : 0;
+      const matches = filterTasksByDeadline(
+        filterTasksByColumn(
+          filterTasksByLabels([...pinnedTasks, ...textMatches], props.labelNames),
+          props.columnName,
+          projectId,
+        ),
+        props,
+      );
 
-    return {
-      tasks: attachClaims(
-        matches
-          .filter((taskMatch) => dbTask.matchesArchiveFilter(taskMatch, archive))
-          .slice(0, props.limit),
-      ),
-      hiddenArchivedCount,
-    };
+      const hiddenArchivedCount =
+        archive === "active"
+          ? matches.filter((taskMatch) => taskMatch.archived_at != null).length
+          : 0;
+
+      return {
+        tasks: attachClaims(
+          matches
+            .filter((taskMatch) => dbTask.matchesArchiveFilter(taskMatch, archive))
+            .slice(0, props.limit),
+        ),
+        hiddenArchivedCount,
+      };
+    });
   },
   label: {
-    getAll: (taskKey: string) => dbTaskLabel.getAllByTaskId(getTaskByKey(taskKey).id),
+    getAll: (taskKey: string) =>
+      readTaskByKey(taskKey, (task) => dbTaskLabel.getAllByTaskId(task.id)),
     /** Reads the labels of many tasks at once, keyed by task ID. An unknown ID has no labels. */
     getAllByTaskIds: (taskIds: ReadonlyArray<string>) => dbTaskLabel.getAllByTaskIds(taskIds),
     add: (input: TaskLabelInput, actor: Actor): TaskChange => {
@@ -941,7 +949,8 @@ export const task = {
       attachChangeClaims(taskKeys.map((taskKey) => unarchiveTask(taskKey, validActor))),
     );
   },
-  activity: (taskKey: string) => dbActivity.getAllByEntity("task", getTaskByKey(taskKey).id),
+  activity: (taskKey: string) =>
+    readTaskByKey(taskKey, (task) => dbActivity.getAllByEntity("task", task.id)),
   claim: taskClaim.claim,
   heartbeat: taskClaim.heartbeat,
   release: taskClaim.release,

@@ -1,18 +1,18 @@
 import type { SettingsInputs } from "../settings.js";
 import type { Database } from "../sqlite/database.js";
+import type { DatabaseState } from "../migrations/classify.js";
 import type { StoreInfo } from "./info.js";
 
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { z } from "zod";
 
-import { resolveDatabasePath } from "../database-path.js";
 import { errorMessage } from "../errors.js";
-import { checkIntegrity, withDatabaseInspection } from "../migrations/classify.js";
+import { checkIntegrity, inspectClassifiedDatabase } from "../migrations/classify.js";
 import { findForeignKeyViolations, findMissingParentTables } from "../migrations/runner.js";
 import { readSearchEntries } from "../migrations/search.js";
 import { createFolderCommand } from "../storage.js";
-import { info } from "./info.js";
+import { inspectStoreDatabase, inspectStoreFiles } from "./info.js";
 
 export const doctorStatusSchema = z.enum(["ok", "warning", "problem"]);
 export const doctorCheckIdSchema = z.enum([
@@ -36,12 +36,7 @@ export type DoctorCheck<Id extends string = z.infer<typeof doctorCheckIdSchema>>
 const RESTORE_REMEDY = "Restore a backup with `zinn restore <backup-file>`";
 
 /** Database states whose tables doctor reads. A database that is absent, empty or unreadable has none to check. */
-const STATES_WITH_TABLES = new Set<StoreInfo["database"]["state"]>([
-  "unmarked",
-  "older",
-  "current",
-  "newer",
-]);
+const STATES_WITH_TABLES = new Set<DatabaseState>(["unmarked", "older", "current", "newer"]);
 
 function ok(id: DoctorCheck["id"], message: string): DoctorCheck {
   return { id, status: "ok", message, remedy: null };
@@ -271,26 +266,17 @@ function searchIndexCheck(db: Database): DoctorCheck {
 }
 
 /** Reads the database's tables once for the integrity, foreign key and search checks */
-function tableChecks(database: StoreInfo["database"]): Array<DoctorCheck> {
-  const runsSearchCheck = database.state === "current";
+function tableChecks(db: Database, state: DatabaseState): Array<DoctorCheck> {
+  const checks = [
+    runDatabaseCheck("integrity", () => integrityCheck(db)),
+    runDatabaseCheck("foreign_keys", () => foreignKeysCheck(db)),
+  ];
 
-  try {
-    return withDatabaseInspection(resolveDatabasePath(database.path!), (db) => {
-      const checks = [
-        runDatabaseCheck("integrity", () => integrityCheck(db)),
-        runDatabaseCheck("foreign_keys", () => foreignKeysCheck(db)),
-      ];
-
-      if (runsSearchCheck) {
-        checks.push(runDatabaseCheck("search_index", () => searchIndexCheck(db)));
-      }
-
-      return checks;
-    });
-  } catch (error) {
-    // The database could not be opened for the checks, so the later ones cannot run.
-    return [readFailure("integrity", error)];
+  if (state === "current") {
+    checks.push(runDatabaseCheck("search_index", () => searchIndexCheck(db)));
   }
+
+  return checks;
 }
 
 export const doctor = {
@@ -301,7 +287,7 @@ export const doctor = {
   check(
     inputs: SettingsInputs = { cwd: process.cwd(), env: process.env, home: homedir() },
   ): Array<DoctorCheck> {
-    const report = info.get(inputs);
+    const report = inspectStoreFiles(inputs);
     const settings = settingsCheck(report);
     const checks = [settings];
 
@@ -320,12 +306,19 @@ export const doctor = {
       return checks;
     }
 
-    checks.push(databaseCheck(report.database));
+    let databaseTableChecks: Array<DoctorCheck> = [];
+    inspectStoreDatabase(report, inputs.cwd, (databasePath) =>
+      inspectClassifiedDatabase(databasePath, (classification, db) => {
+        if (db !== null && STATES_WITH_TABLES.has(classification.state)) {
+          databaseTableChecks = tableChecks(db, classification.state);
+        }
+        return classification;
+      }),
+    );
 
-    const hasTables =
-      report.database.error === null && STATES_WITH_TABLES.has(report.database.state);
-    if (hasTables) {
-      checks.push(...tableChecks(report.database));
+    checks.push(databaseCheck(report.database));
+    if (report.database.error === null) {
+      checks.push(...databaseTableChecks);
     }
 
     return checks;

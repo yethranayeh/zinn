@@ -25,7 +25,7 @@ import {
   isRecord,
 } from "./recorded-changes.js";
 import { attachTaskKey, findTaskByExactKey, requireSingleIdMatch } from "./shared.js";
-import { getDb, readTransaction } from "../db.js";
+import { getDb, readSnapshot } from "../db.js";
 import { readFileIdentity } from "../database-path.js";
 import { getStorage } from "../storage.js";
 import * as dbActivity from "../db/activity.js";
@@ -378,41 +378,43 @@ export const activity = {
     input: ActivityListInput = {},
   ): { events: Array<Activity>; hasMore: boolean; nextCursor?: string } => {
     const props = validateTaskInput(activityListSchema, input);
-    const { query, fetchCandidates, matchesFilters } = prepareSelection(props);
+    return readSnapshot(() => {
+      const { query, fetchCandidates, matchesFilters } = prepareSelection(props);
 
-    if (props.limit === undefined) {
-      return { events: fetchCandidates(query).filter(matchesFilters), hasMore: false };
-    }
+      if (props.limit === undefined) {
+        return { events: fetchCandidates(query).filter(matchesFilters), hasMore: false };
+      }
 
-    const matchingEvents: Array<Activity> = [];
-    const matchesNeeded = props.limit + 1;
-    query.limit = matchesNeeded;
+      const matchingEvents: Array<Activity> = [];
+      const matchesNeeded = props.limit + 1;
+      query.limit = matchesNeeded;
 
-    while (matchingEvents.length < matchesNeeded) {
-      const candidates = fetchCandidates(query);
+      while (matchingEvents.length < matchesNeeded) {
+        const candidates = fetchCandidates(query);
 
-      for (const event of candidates) {
-        if (matchesFilters(event)) {
-          matchingEvents.push(event);
-          if (matchingEvents.length === matchesNeeded) {
-            break;
+        for (const event of candidates) {
+          if (matchesFilters(event)) {
+            matchingEvents.push(event);
+            if (matchingEvents.length === matchesNeeded) {
+              break;
+            }
           }
         }
+
+        if (candidates.length < query.limit) {
+          break;
+        }
+        query.before = candidates.at(-1)!;
       }
 
-      if (candidates.length < query.limit) {
-        break;
+      const events = matchingEvents.slice(0, props.limit);
+      if (matchingEvents.length <= props.limit) {
+        return { events, hasMore: false };
       }
-      query.before = candidates.at(-1)!;
-    }
 
-    const events = matchingEvents.slice(0, props.limit);
-    if (matchingEvents.length <= props.limit) {
-      return { events, hasMore: false };
-    }
-
-    // Events never change position, so the last event's ID continues the list
-    return { events, hasMore: true, nextCursor: events.at(-1)!.id };
+      // Events never change position, so the last event's ID continues the list
+      return { events, hasMore: true, nextCursor: events.at(-1)!.id };
+    });
   },
   /**
    * Follows the activity that other connections commit from this point onward. Only reads.
@@ -424,7 +426,7 @@ export const activity = {
     const props = validateTaskInput(activityFollowSchema, input);
     const { databasePath } = getStorage();
     const databaseFile = readFileIdentity(databasePath);
-    const { schemaMarker, ...initial } = readTransaction(() => {
+    const { schemaMarker, ...initial } = readSnapshot(() => {
       prepareSelection(props);
 
       return {
@@ -441,7 +443,7 @@ export const activity = {
           return { stopped: "file_replaced", databasePath };
         }
 
-        return readTransaction(() => {
+        return readSnapshot(() => {
           const currentVersion = dbActivity.readDataVersion();
           if (currentVersion === dataVersion) {
             return { events: [] };
@@ -472,30 +474,36 @@ export const activity = {
       typeof input === "string" ? { taskKey: input } : input,
     );
 
-    return resolveTaskHistory(props).identities;
+    return readSnapshot(() => resolveTaskHistory(props).identities);
   },
   /** Existing tasks, active and archived, matching any given ID or key. Reads no history. */
   getCurrentTaskIdentities: (input: ActivityTaskIdentitiesInput): Array<ActivityTaskIdentity> => {
     const props = validateTaskInput(activityTaskIdentitiesSchema, input);
     const taskIds = props.taskIds ?? [];
     const keys = toStoredTaskKeys(props.taskKeys ?? []);
-    const rows = [
-      ...(taskIds.length === 0 ? [] : dbTask.getAllByIds(taskIds)),
-      ...(keys.length === 0 ? [] : dbTask.getAllByKeys(keys)),
-    ];
-    const identities = new Map<string, ActivityTaskIdentity>();
-
-    for (const { project_key, ...row } of rows) {
-      const item = attachTaskKey(row, project_key);
-      identities.set(item.id, {
-        id: item.id,
-        key: item.key,
-        title: item.title,
-        status: item.archived_at == null ? "active" : "archived",
-      });
+    if (taskIds.length === 0 && keys.length === 0) {
+      return [];
     }
 
-    return [...identities.values()];
+    return readSnapshot(() => {
+      const rows = [
+        ...(taskIds.length === 0 ? [] : dbTask.getAllByIds(taskIds)),
+        ...(keys.length === 0 ? [] : dbTask.getAllByKeys(keys)),
+      ];
+      const identities = new Map<string, ActivityTaskIdentity>();
+
+      for (const { project_key, ...row } of rows) {
+        const item = attachTaskKey(row, project_key);
+        identities.set(item.id, {
+          id: item.id,
+          key: item.key,
+          title: item.title,
+          status: item.archived_at == null ? "active" : "archived",
+        });
+      }
+
+      return [...identities.values()];
+    });
   },
   /** Deleted tasks matching any given ID or key, each with its newest recorded snapshot. */
   getDeletedTaskIdentities: (input: ActivityTaskIdentitiesInput): Array<ActivityTaskIdentity> => {

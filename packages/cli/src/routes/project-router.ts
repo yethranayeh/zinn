@@ -8,6 +8,7 @@ import { parseArgs } from "node:util";
 import {
   column,
   project,
+  readSnapshot,
   columnCategorySchema,
   columnOrderSchema,
   columnDeleteSchema,
@@ -353,23 +354,27 @@ Example: zinn project list`,
       });
       validatePositionals(positionals, projectInputs.view.forms[0]);
 
-      const projectKey = resolveProjectKey(positionals[0], { required: true })!;
-      const projectMatch = project.getByKey(projectKey);
+      const projectChoice = chooseProjectKey(positionals[0], { required: true })!;
+      const projectKey = projectChoice.key;
+      const presentedProject: PresentedProjectView = readSnapshot(() => {
+        checkDefaultProject(projectChoice);
+        const projectMatch = project.getByKey(projectKey);
 
-      if (projectMatch == null) {
-        throw new CliError(
-          `Project with key "${project.standardizeKey(projectKey)}" does not exist`,
-          "not_found",
-          { entity: "project", key: project.standardizeKey(projectKey), source: "explicit" },
-        );
-      }
+        if (projectMatch == null) {
+          throw new CliError(
+            `Project with key "${project.standardizeKey(projectKey)}" does not exist`,
+            "not_found",
+            { entity: "project", key: project.standardizeKey(projectKey), source: "explicit" },
+          );
+        }
 
-      const taskCounts = column.getTaskCountsByProjectKey(projectMatch.key);
-      const presentedProject: PresentedProjectView = {
-        ...presentProject(projectMatch),
-        columns: presentColumnTaskCounts(taskCounts),
-        archivedTaskCount: taskCounts.archivedTaskCount,
-      };
+        const taskCounts = column.getTaskCountsByProjectKey(projectMatch.key);
+        return {
+          ...presentProject(projectMatch),
+          columns: presentColumnTaskCounts(taskCounts),
+          archivedTaskCount: taskCounts.archivedTaskCount,
+        };
+      });
 
       output(presentedProject, (viewedProject) => {
         // The full description follows as its own section, so the row leaves out the preview.
@@ -612,8 +617,11 @@ Example: zinn project column create MDR Boardlog --category backlog`,
         });
         validatePositionals(positionals, projectInputs.column_list.forms[0]);
 
-        const projectKey = resolveProjectKey(positionals[0], { required: true })!;
-        const columns = presentColumnTaskCounts(column.getTaskCountsByProjectKey(projectKey));
+        const projectChoice = chooseProjectKey(positionals[0], { required: true })!;
+        const columns = readSnapshot(() => {
+          checkDefaultProject(projectChoice);
+          return presentColumnTaskCounts(column.getTaskCountsByProjectKey(projectChoice.key));
+        });
         output(columns, (presentedColumns) =>
           formatColumnList(presentedColumns, {
             showsTaskCounts: true,

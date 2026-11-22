@@ -3,7 +3,7 @@ import type { CommandInput } from "../input.js";
 import type { RouteDef } from "../types.js";
 
 import { parseArgs } from "node:util";
-import { relation, relationTypeSchema, task } from "@zinn-dev/core";
+import { readSnapshot, relation, relationTypeSchema, task } from "@zinn-dev/core";
 
 import { jsonResult } from "../results.js";
 import { generateCommandUsage, taskKeyPositional } from "../input.js";
@@ -15,6 +15,7 @@ import {
   quit,
   requireStringOption,
   validatePositionals,
+  validateTaskKey,
   validateUniqueOptions,
 } from "../lib.js";
 import { currentActor } from "../actor.js";
@@ -243,8 +244,14 @@ Example: zinn task relation create APP-1 APP-2 --type dependency`,
         allowPositionals: true,
         strict: true,
       });
+
       validatePositionals(positionals, relationInputs.list.forms[0]);
-      output(presentRelations(task.getByKey(positionals[0]!)), formatRelationList);
+
+      const taskKey = positionals[0]!;
+      validateTaskKey(taskKey);
+
+      const relations = readSnapshot(() => presentRelations(task.getByKey(taskKey)));
+      output(relations, formatRelationList);
     },
     help: `${generateCommandUsage("task relation list", relationInputs.list)}
 

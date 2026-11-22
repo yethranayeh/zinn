@@ -346,7 +346,22 @@ export function writeTransaction<T>(fn: () => T): T {
   return isNested ? write() : withChangeHooks(write);
 }
 
-/** Runs fn in one deferred transaction, so every read inside sees the same snapshot. */
-export function readTransaction<T>(fn: () => T): T {
-  return getDb().transaction(fn).deferred();
+/** Runs synchronous reads on the configured connection in one committed snapshot. */
+export function readSnapshot<T>(fn: () => T): T {
+  const connection = getDb();
+  const read = () => {
+    const result = fn();
+    const isThenable =
+      result !== null &&
+      (typeof result === "object" || typeof result === "function") &&
+      "then" in result &&
+      typeof result.then === "function";
+    if (isThenable) {
+      throw new TypeError("readSnapshot requires a synchronous callback");
+    }
+
+    return result;
+  };
+
+  return connection.inTransaction ? read() : connection.transaction(read).deferred();
 }

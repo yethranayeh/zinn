@@ -11,7 +11,11 @@ import {
   activityActionSchema,
   activityChangedFieldSchema,
   activityChangedSchema,
+  activityIdSchema,
+  activityListSchema,
   CoreError,
+  InputValidationError,
+  readSnapshot,
 } from "@zinn-dev/core";
 
 import { generateCommandUsage, getOptionInputs, violatesConstraint } from "../input.js";
@@ -20,6 +24,7 @@ import { parseTimestampInput } from "../timestamp-input.js";
 import { formatListContinuation } from "../list-continuation.js";
 import {
   diagnostic,
+  getOutputMode,
   output,
   outputStream,
   quit,
@@ -210,14 +215,21 @@ export const activityRouter = {
         since: parseTimestampInput(values.since, "--since"),
         until: parseTimestampInput(values.until, "--until"),
       };
-      const formatEvents = (events: Array<Activity>) =>
-        formatActivityList(presentActivities(events, selection));
+      const presentTextEvents = (events: Array<Activity>) =>
+        getOutputMode() === "text" ? presentActivities(events, selection) : [];
 
       if (values.follow === true) {
         const follower = readSelectedActivity(values, () => activity.follow(filters));
 
         return followUntilStopped(async (signal) => {
-          const polled = readSelectedActivity(values, () => follower.poll());
+          const polled = readSelectedActivity(values, () =>
+            readSnapshot(() => {
+              const polled = follower.poll();
+              return "stopped" in polled
+                ? polled
+                : { ...polled, presented: presentTextEvents(polled.events) };
+            }),
+          );
 
           if ("stopped" in polled) {
             const reason =
@@ -232,15 +244,19 @@ export const activityRouter = {
             );
           }
 
-          await outputStream(polled.events, formatEvents, signal);
+          await outputStream(polled.events, () => formatActivityList(polled.presented), signal);
         });
       }
 
+      const input = { ...filters, limit, startingAfter: values["starting-after"] };
       const page = readSelectedActivity(values, () =>
-        activity.getAll({ ...filters, limit, startingAfter: values["starting-after"] }),
+        readWithActivityPresentation(activityListSchema, input, () => {
+          const page = activity.getAll(input);
+          return { ...page, presented: presentTextEvents(page.events) };
+        }),
       );
 
-      output(page.events, formatEvents);
+      output(page.events, () => formatActivityList(page.presented));
       if (page.nextCursor !== undefined) {
         diagnostic(
           `More activity. Continue with: ${formatListContinuation(
@@ -337,12 +353,14 @@ Examples:
 
       validatePositionals(positionals, activityInputs.view.forms[0]);
 
-      const viewed = activity.getById(positionals[0]!) satisfies PresentedActivity;
-      output(viewed, (event) =>
-        formatActivityList(presentActivities([event], { showsFullIds: true }), {
-          showsDetails: true,
-        }),
-      );
+      const id = positionals[0]!;
+      const { viewed, presented } = readWithActivityPresentation(activityIdSchema, id, () => {
+        const viewed = activity.getById(id) satisfies PresentedActivity;
+        const presented =
+          getOutputMode() === "text" ? presentActivities([viewed], { showsFullIds: true }) : [];
+        return { viewed, presented };
+      });
+      output(viewed, () => formatActivityList(presented, { showsDetails: true }));
     },
     help: `${generateCommandUsage("activity view", activityInputs.view)}
 
@@ -355,6 +373,24 @@ With --json, return one full activity record.
 Example: zinn activity view 019abcdf-1234-7`,
   },
 } satisfies RouteDef;
+
+/** Text adds database lookups. Validate the input before opening their shared snapshot. */
+function readWithActivityPresentation<Result>(
+  schema: typeof activityListSchema | typeof activityIdSchema,
+  input: unknown,
+  read: () => Result,
+): Result {
+  if (getOutputMode() === "json") {
+    return read();
+  }
+
+  const validation = schema.safeParse(input);
+  if (!validation.success) {
+    throw new InputValidationError(validation.error.issues);
+  }
+
+  return readSnapshot(read);
+}
 
 /** Reads the selected activity, reporting core's refusals with the flag that caused them */
 function readSelectedActivity<Result>(

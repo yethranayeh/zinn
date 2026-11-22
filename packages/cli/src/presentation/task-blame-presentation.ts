@@ -16,6 +16,7 @@ export function formatTaskBlame(
     relations: Array<PresentedRelation>;
     columnCategory: string | null;
     isArchived: boolean;
+    labelColorsByName: ReadonlyMap<string, string>;
     /** Short forms of activity IDs, which `activity view` accepts as well as full IDs. */
     activityIdPrefixes: Map<string, string>;
   },
@@ -60,7 +61,9 @@ export function formatTaskBlame(
         ),
         field(
           "Labels",
-          labelNames.length === 0 ? "none" : formatLabelNames(labelNames),
+          labelNames.length === 0
+            ? "none"
+            : formatLabelNames(labelNames, options.labelColorsByName),
           fields.labels.attribution,
         ),
         field("Parent", fields.parent.value?.key ?? "none", fields.parent.attribution),

@@ -12,7 +12,7 @@ import type { OrderPlacement } from "./shared.js";
 import { v7 as uuidv7 } from "uuid";
 import { generateKeyBetween } from "fractional-indexing";
 
-import { writeTransaction } from "../db.js";
+import { readSnapshot, writeTransaction } from "../db.js";
 import * as dbProject from "../db/project.js";
 import * as dbColumn from "../db/column.js";
 import * as dbTask from "../db/task.js";
@@ -78,29 +78,34 @@ export const column = {
   },
   getById: dbColumn.getById,
   getByName: (projectKey: string, columnName: string) => {
-    const { project, projectColumns } = requireProjectColumns(projectKey);
-    return requireColumnByName(project, projectColumns, columnName).columnMatch;
+    return readSnapshot(() => {
+      const { project, projectColumns } = requireProjectColumns(projectKey);
+      return requireColumnByName(project, projectColumns, columnName).columnMatch;
+    });
   },
-  getAllByProjectKey: (key: string) => requireProjectColumns(key).projectColumns,
+  getAllByProjectKey: (key: string) =>
+    readSnapshot(() => requireProjectColumns(key).projectColumns),
   getTaskCountsByProjectKey: (key: string) => {
-    const { project, projectColumns } = requireProjectColumns(key);
-    const activeCountsByColumnId = new Map(
-      dbTask.countByColumnId(project.id, "active").map((row) => [row.column_id, row.task_count]),
-    );
-    const archivedCounts = dbTask.countByColumnId(project.id, "archived");
-    const archivedCountsByColumnId = new Map(
-      archivedCounts.map((row) => [row.column_id, row.task_count]),
-    );
+    return readSnapshot(() => {
+      const { project, projectColumns } = requireProjectColumns(key);
+      const activeCountsByColumnId = new Map(
+        dbTask.countByColumnId(project.id, "active").map((row) => [row.column_id, row.task_count]),
+      );
+      const archivedCounts = dbTask.countByColumnId(project.id, "archived");
+      const archivedCountsByColumnId = new Map(
+        archivedCounts.map((row) => [row.column_id, row.task_count]),
+      );
 
-    /** Columns come in board order. taskCount counts unarchived tasks, and archivedTaskCount totals the archived ones across columns. */
-    return {
-      columns: projectColumns.map((columnMatch) => ({
-        column: columnMatch,
-        taskCount: activeCountsByColumnId.get(columnMatch.id) ?? 0,
-        archivedTaskCount: archivedCountsByColumnId.get(columnMatch.id) ?? 0,
-      })),
-      archivedTaskCount: archivedCounts.reduce((total, row) => total + row.task_count, 0),
-    };
+      /** Columns come in board order. taskCount counts unarchived tasks, and archivedTaskCount totals the archived ones across columns. */
+      return {
+        columns: projectColumns.map((columnMatch) => ({
+          column: columnMatch,
+          taskCount: activeCountsByColumnId.get(columnMatch.id) ?? 0,
+          archivedTaskCount: archivedCountsByColumnId.get(columnMatch.id) ?? 0,
+        })),
+        archivedTaskCount: archivedCounts.reduce((total, row) => total + row.task_count, 0),
+      };
+    });
   },
   create: (input: ColumnCreateInput, actor: Actor) => {
     const props = validateTaskInput(columnCreateSchema, input);

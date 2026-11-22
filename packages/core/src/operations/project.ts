@@ -14,7 +14,7 @@ import { CoreError } from "../errors.js";
 import { actorSchema } from "../schemas/actor.js";
 import { validateTaskInput } from "../schemas/task.js";
 
-import { getDb, writeTransaction } from "../db.js";
+import { getDb, readSnapshot, writeTransaction } from "../db.js";
 import * as dbProject from "../db/project.js";
 import * as dbColumn from "../db/column.js";
 import * as dbTask from "../db/task.js";
@@ -169,18 +169,19 @@ export const project = {
     });
   },
   getAll: dbProject.getAll,
-  getAllWithTaskCounts: () => {
-    const countsByProjectId = new Map(
-      dbTask
-        .countByProjectId()
-        .map(({ project_id, active, archived }) => [project_id, { active, archived }]),
-    );
+  getAllWithTaskCounts: () =>
+    readSnapshot(() => {
+      const countsByProjectId = new Map(
+        dbTask
+          .countByProjectId()
+          .map(({ project_id, active, archived }) => [project_id, { active, archived }]),
+      );
 
-    return dbProject.getAll().map((projectMatch) => ({
-      ...projectMatch,
-      taskCounts: countsByProjectId.get(projectMatch.id) ?? { active: 0, archived: 0 },
-    }));
-  },
+      return dbProject.getAll().map((projectMatch) => ({
+        ...projectMatch,
+        taskCounts: countsByProjectId.get(projectMatch.id) ?? { active: 0, archived: 0 },
+      }));
+    }),
   delete: (key: string, actor: Actor) => {
     const validActor = validateTaskInput(actorSchema, actor);
 

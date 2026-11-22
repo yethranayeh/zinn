@@ -18,6 +18,7 @@ import type { Actor } from "../schemas/actor.js";
 import type { TextEdit } from "../schemas/text-edit.js";
 import type { FailureFacts } from "../errors.js";
 
+import { readSnapshot } from "../db.js";
 import { CoreError } from "../errors.js";
 import { columnNameSchema } from "../schemas/column.js";
 import { descriptionSchema } from "../schemas/description.js";
@@ -76,7 +77,7 @@ function requireTaskByParsedKey(parsedKey: ParsedTaskKey) {
   return task;
 }
 
-export function getTaskByKey(taskKey: string) {
+function requireParsedTaskKey(taskKey: string) {
   const parsedKey = parseTaskKey(taskKey);
   if (parsedKey == null) {
     throw new CoreError(`Invalid task key "${taskKey}". Expected format PROJECT-1`, "input", {
@@ -84,7 +85,16 @@ export function getTaskByKey(taskKey: string) {
     });
   }
 
-  return requireTaskByParsedKey(parsedKey);
+  return parsedKey;
+}
+
+export function getTaskByKey(taskKey: string) {
+  return requireTaskByParsedKey(requireParsedTaskKey(taskKey));
+}
+
+export function readTaskByKey<T>(taskKey: string, read: (task: KeyedTask) => T): T {
+  const parsedKey = requireParsedTaskKey(taskKey);
+  return readSnapshot(() => read(requireTaskByParsedKey(parsedKey)));
 }
 
 export function findTaskByExactKey(query: string) {
@@ -196,17 +206,19 @@ export function getCommentByKey(commentKey: string): CommentWithKey {
     );
   }
 
-  const taskMatch = requireTaskByParsedKey(parsedTaskKey);
   const commentNumber = Number(commentKeyMatch[2]);
-  const commentMatch = dbComment.getByTaskIdAndNumber(taskMatch.id, commentNumber);
-  if (commentMatch == null) {
-    throw new CoreError(`Comment "${taskMatch.key}#${commentNumber}" does not exist`, "missing", {
-      entity: "comment",
-      key: `${taskMatch.key}#${commentNumber}`,
-    });
-  }
+  return readSnapshot(() => {
+    const taskMatch = requireTaskByParsedKey(parsedTaskKey);
+    const commentMatch = dbComment.getByTaskIdAndNumber(taskMatch.id, commentNumber);
+    if (commentMatch == null) {
+      throw new CoreError(`Comment "${taskMatch.key}#${commentNumber}" does not exist`, "missing", {
+        entity: "comment",
+        key: `${taskMatch.key}#${commentNumber}`,
+      });
+    }
 
-  return attachCommentKey(commentMatch, taskMatch.key);
+    return attachCommentKey(commentMatch, taskMatch.key);
+  });
 }
 
 export function resolveLabels(names: Array<string>) {

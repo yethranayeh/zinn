@@ -14,6 +14,7 @@ import { actorSchema } from "../schemas/actor.js";
 
 import {
   getTaskByKey,
+  readTaskByKey,
   attachClaims,
   attachTaskKey,
   recordTaskActivity,
@@ -36,13 +37,14 @@ function getRelations(taskKey: string, options?: RelationGetOptions): Array<Rela
     });
   }
 
-  const taskMatch = getTaskByKey(taskKey);
-  const relations = dbRelation.getAllByTaskId(taskMatch.id);
-  if (!options?.include?.tasks) {
-    return relations;
-  }
+  return readTaskByKey(taskKey, (taskMatch) => {
+    const relations = dbRelation.getAllByTaskId(taskMatch.id);
+    if (!options?.include?.tasks) {
+      return relations;
+    }
 
-  return includeRelationTasks(relations);
+    return includeRelationTasks(relations);
+  });
 }
 
 /** Adds each relation's source and target task, with their claims read in one query */
@@ -61,8 +63,10 @@ function includeRelationTasks(entries: Array<TaskRelation>) {
   }));
 }
 
-function resolveRelationTaskIds(props: RelationDeleteInput) {
-  const sourceTask = getTaskByKey(props.sourceTaskKey);
+function resolveRelationTaskIds(
+  props: RelationDeleteInput,
+  sourceTask = getTaskByKey(props.sourceTaskKey),
+) {
   const targetTask = getTaskByKey(props.targetTaskKey);
 
   if (sourceTask.id === targetTask.id) {
@@ -144,12 +148,14 @@ export const relation = {
   /** Returns the validated creation's conflicting links with both connected tasks. */
   getConflicts: (input: RelationDeleteInput) => {
     const props = validateTaskInput(relationDeleteSchema, input);
-    const resolved = resolveRelationTaskIds(props);
-    const conflicts = getConflictingRelations(resolved);
+    return readTaskByKey(props.sourceTaskKey, (sourceTask) => {
+      const resolved = resolveRelationTaskIds(props, sourceTask);
+      const conflicts = getConflictingRelations(resolved);
 
-    validateRelationCreation(resolved, conflicts);
+      validateRelationCreation(resolved, conflicts);
 
-    return includeRelationTasks(conflicts);
+      return includeRelationTasks(conflicts);
+    });
   },
   /** Creates or explicitly replaces relations and records each change on both endpoints. */
   create: (input: RelationCreateInput, actor: Actor) => {

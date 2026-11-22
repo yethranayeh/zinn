@@ -118,7 +118,7 @@ test.each(parseRoutes(routes).filter((route) => route.effects.storage === "none"
     import { mock } from "bun:test";
     const { settingsFileSourceSchema, settingsFileStateSchema } = await import(${JSON.stringify(join(coreSource, "settings.ts"))});
     const forbidden = () => { throw new Error("Forbidden discovery access"); };
-    mock.module(${JSON.stringify(join(coreSource, "db.ts"))}, () => ({ configureDatabase: forbidden, assertWritable: forbidden, getDb: forbidden, hasSchemaVersion: forbidden, writeTransaction: forbidden, readTransaction: forbidden, closeDb: forbidden }));
+    mock.module(${JSON.stringify(join(coreSource, "db.ts"))}, () => ({ configureDatabase: forbidden, assertWritable: forbidden, getDb: forbidden, hasSchemaVersion: forbidden, writeTransaction: forbidden, readSnapshot: forbidden, closeDb: forbidden }));
     mock.module(${JSON.stringify(join(coreSource, "settings.ts"))}, () => ({ settingsFileSourceSchema, settingsFileStateSchema, resolveSettings: forbidden, chooseDefaultProject: forbidden, inspectSettings: forbidden }));
     mock.module("bun:sqlite", () => ({ Database: class { constructor() { forbidden(); } } }));
     ${runsAnotherProgram ? "" : "Bun.spawn = Bun.spawnSync = "}Bun.connect = forbidden;

@@ -169,7 +169,7 @@ export { reindex } from "./src/operations/reindex.js";
 export { TextEditMatchError } from "./src/operations/shared.js";
 export { MigrationRefusedError } from "./src/migrations/migrate.js";
 export { RestoreRefusedError } from "./src/migrations/restore.js";
-export { assertWritable, configureDatabase } from "./src/db.js";
+export { assertWritable, configureDatabase, readSnapshot } from "./src/db.js";
 export { ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./src/migrations/open-policy.js";
 export { AutomaticUpgradePausedError } from "./src/migrations/pause.js";
 export {

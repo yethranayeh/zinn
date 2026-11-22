@@ -7,7 +7,7 @@ import { once } from "node:events";
 import { parseArgs } from "node:util";
 import { createInterface } from "node:readline/promises";
 import { z } from "zod";
-import { assertWritable, InputValidationError } from "@zinn-dev/core";
+import { assertWritable, InputValidationError, parseTaskKey } from "@zinn-dev/core";
 
 import { CliError, classifyFailure, recoveryHint } from "./errors.js";
 import { writeFailureLog } from "./failure-log.js";
@@ -338,6 +338,18 @@ export function validatePositionals(positionals: Array<string>, form: InputForm)
       field: [],
       reason: "unexpected_argument",
     });
+  }
+}
+
+export function validateTaskKey(taskKey: string) {
+  if (parseTaskKey(taskKey) === null) {
+    throw new CliError(
+      `Invalid task key "${taskKey}". Expected format PROJECT-1`,
+      "invalid_input",
+      {
+        field: ["taskKey"],
+      },
+    );
   }
 }
 
