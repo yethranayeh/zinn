@@ -12,7 +12,7 @@ import Icon from "../../components/ui/icon/Icon.astro";
 import MarkdownH1 from "../../components/MarkdownH1.astro";
 
 import { integrationsHub } from "../../config/integrations-hub";
-import { integrations } from "../../config/integrations";
+import { hostLogos, integrations } from "../../config/integrations";
 ---
 
 <PageLayout title={integrationsHub.title} description={integrationsHub.description}>
@@ -39,7 +39,7 @@ import { integrations } from "../../config/integrations";
 						<CardContent>
 							<CardHeader>
 								<CardTitle>{entry.title}</CardTitle>
-								<Chip>{entry.host}</Chip>
+								<Chip image={hostLogos[entry.host]}>{entry.host}</Chip>
 							</CardHeader>
 							<p class='text-base leading-relaxed'>{entry.description}</p>
 						</CardContent>

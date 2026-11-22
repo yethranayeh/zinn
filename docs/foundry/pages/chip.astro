@@ -1,15 +1,30 @@
 ---
+import type { ChipVariant } from "../../src/components/ui/chip/variants";
+
 import Chip from "../../src/components/ui/chip/Chip.astro";
 import ComponentHeading from "../components/ComponentHeading.astro";
 import Specimen from "../components/Specimen.astro";
 import FoundryLayout from "../layouts/FoundryLayout.astro";
+
+import { chipVariants } from "../../src/components/ui/chip/variants";
+
+const variants = Object.keys(chipVariants.variants.variant) as ChipVariant[];
 ---
 
-<FoundryLayout title='Chip' description='Chip is a compact label on Soot.'>
+<FoundryLayout title='Chip' description='Chip is a compact label on Soot, with an optional icon or logo.'>
 	<ComponentHeading folder='chip'>
 		<p>
-			A compact label on Soot. It wraps with its text and has no interactive states. Content inside it keeps its own semantics,
-			such as a <code>time</code> element for a date.
+			A compact label on Soot. It wraps with its text and has no interactive states. Content inside it keeps its own
+			semantics, such as a <code>time</code> element for a date.
+		</p>
+		<p>
+			<code>icon</code> shows a symbol from the icon sprite and <code>image</code> shows an image file, such as a product
+			logo. A chip has one or neither. The mark is decorative, so the text names what the chip labels.
+		</p>
+		<p>
+			The default <code>variant="split"</code> sets the mark on its own Limestone cell, where an icon takes Soot.
+			<code>variant="inline"</code> keeps the mark on the Soot ground, where an icon takes the text color. An image always
+			shows as given. Pass a file in the colors the ground needs.
 		</p>
 	</ComponentHeading>
 
@@ -21,4 +36,44 @@ import FoundryLayout from "../layouts/FoundryLayout.astro";
 			<Chip><time datetime='2026-10-31'>31.10.2026</time></Chip>
 		</Specimen>
 	</div>
+
+	<section class='flex flex-col gap-4' aria-labelledby='variants'>
+		<h2 id='variants' class='text-xl font-semibold'>Variants</h2>
+		<div class='overflow-x-auto border border-soot/20'>
+			<table class='w-full border-collapse'>
+				<thead>
+					<tr class='border-b border-soot/20 font-mono text-xs text-muted-foreground'>
+						<th class='p-3 text-left font-normal'>mark</th>
+						{variants.map((variant) => <th class='p-3 text-left font-normal'>variant="{variant}"</th>)}
+					</tr>
+				</thead>
+				<tbody>
+					<tr class='border-b border-soot/20'>
+						<td class='p-3 font-mono text-xs text-muted-foreground'>icon="check"</td>
+						{
+							variants.map((variant) => (
+								<td class='p-6'>
+									<Chip icon='check' variant={variant}>
+										Synced
+									</Chip>
+								</td>
+							))
+						}
+					</tr>
+					<tr>
+						<td class='p-3 font-mono text-xs text-muted-foreground'>image="/favicon.svg"</td>
+						{
+							variants.map((variant) => (
+								<td class='p-6'>
+									<Chip image='/favicon.svg' variant={variant}>
+										Zinn
+									</Chip>
+								</td>
+							))
+						}
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</section>
 </FoundryLayout>

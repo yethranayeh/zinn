@@ -1,17 +1,45 @@
 ---
 import type { HTMLAttributes } from "astro/types";
+import type { IconName } from "../icon/names";
+import type { ChipVariant } from "./variants";
+
 import { twMerge } from "tailwind-merge";
 
-type Props = HTMLAttributes<"span">;
+import Icon from "../icon/Icon.astro";
+import { chipVariants } from "./variants";
 
-const { class: className, ...attributes } = Astro.props;
+// A chip shows at most one mark: a sprite icon or an image file, shown as given.
+type Mark = { icon: IconName; image?: never } | { image: string; icon?: never } | { icon?: never; image?: never };
+
+type Props = HTMLAttributes<"span"> &
+	Mark & {
+		/** Where the mark sits. Applies only when the chip has a mark. */
+		variant?: ChipVariant;
+	};
+
+const { icon, image, variant = chipVariants.defaultVariants.variant, class: className, ...attributes } = Astro.props;
+
+const parts = chipVariants.variants.variant[variant];
+const markSize = "size-5";
 ---
 
-<span
-	class={twMerge(
-		"inline-block bg-soot px-2.5 py-1.25 font-mono text-xs leading-normal text-soot-foreground",
-		className
-	)}
-	{...attributes}>
-	<slot />
-</span>
+{
+	icon || image ? (
+		<span class={twMerge(chipVariants.marked, parts.root, className)} {...attributes}>
+			<span class={parts.mark}>
+				{icon ? (
+					<Icon name={icon} class={markSize} />
+				) : (
+					<img src={image} alt='' class={twMerge(markSize, "object-contain")} />
+				)}
+			</span>
+			<span class={parts.label}>
+				<slot />
+			</span>
+		</span>
+	) : (
+		<span class={twMerge(chipVariants.base, className)} {...attributes}>
+			<slot />
+		</span>
+	)
+}

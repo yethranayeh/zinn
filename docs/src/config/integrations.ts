@@ -24,6 +24,15 @@ type IntegrationEntry = {
   discovery: { title?: string; description: string };
 };
 
+// Logos for the host chip on the integrations page, each in its colors for a light ground.
+export const hostLogos: Record<string, string> = {
+  "Claude Code": "/images/logos/claude.svg",
+  Codex: "/images/logos/openai.svg",
+  Firefox: "/images/logos/firefox-black.svg",
+  OpenCode: "/images/logos/opencode-logo-transparent-light.svg",
+  Rex: "/images/logos/rex.png",
+};
+
 export const integrations: IntegrationEntry[] = [
   {
     path: "/integrations/claude-code",

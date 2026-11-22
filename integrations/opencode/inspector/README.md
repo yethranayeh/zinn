@@ -1,5 +1,7 @@
 # Zinn task inspector for OpenCode
 
+[![Works with OpenCode](https://zinn.sh/images/badges/opencode-works-with.svg)](https://opencode.ai)
+
 Task inspection in the OpenCode TUI, plus an experimental board summary in OpenCode Desktop. Read mentioned tasks, open their details, and find tasks with `/zinn`.
 
 Requires OpenCode 2.3.2 and Zinn CLI 0.41.0 or newer on `PATH`.
