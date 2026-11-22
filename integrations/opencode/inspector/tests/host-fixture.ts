@@ -92,8 +92,8 @@ export async function verifyHost(fixture: ReturnType<typeof packInspector>, cons
     const config = join(configDirectory, "cli.json");
     const serverConfig = join(configDirectory, "opencode.json");
     const frames: string[] = [];
-    const launch = async (plugins: unknown[], mode: "install" | "update" | "remove") => {
-      writeFileSync(config, JSON.stringify({ plugins }));
+    const launch = async (plugins: unknown[], mode: "install" | "update" | "remove" | "hidden") => {
+      writeFileSync(config, JSON.stringify(mode === "hidden" ? { plugins, session: { sidebar: "hide" } } : { plugins }));
       writeFileSync(serverConfig, JSON.stringify({ enabled_providers: [], share: "disabled", plugins }));
       writeFileSync(log, "");
       writeFileSync(calls, "");
@@ -112,6 +112,28 @@ export async function verifyHost(fixture: ReturnType<typeof packInspector>, cons
         if (mode === "remove") {
           await until(() => output.includes("Inspector fixture conversation"), () => `Removed-plugin TUI did not open: ${output.slice(-1000)}`);
           assert.equal(readFileSync(log, "utf8"), "", "Removed inspector still loaded");
+        } else if (mode === "hidden") {
+          await until(() => output.includes("Inspector fixture conversation"), () => `Hidden-sidebar TUI did not open: ${output.slice(-1000)}`);
+          assert.ok(!output.includes("ZINN"), "The hidden sidebar rendered the inspector");
+          const pickers = () => readFileSync(log, "utf8").split("\n").filter((line) => line.includes("picker opened"));
+          tui.terminal!.write("/zinn");
+          await Bun.sleep(250);
+          tui.terminal!.write("\r");
+          await until(() => pickers().length === 1, () => `Board picker did not open without the sidebar: ${output.slice(-1000)}`);
+          const boardPicker = pickers()[0]!;
+          assert.equal(JSON.parse(boardPicker.slice(boardPicker.indexOf("{"))).options, 3, "Board picker included archived tasks");
+          const taskListCalls = readFileSync(calls, "utf8").split("\n").filter((line) => line.startsWith("task list"));
+          assert.deepEqual(taskListCalls, ["task list --all --json"], "The board picker did not read the board through the CLI");
+          tui.terminal!.write("\x1b");
+          await Bun.sleep(250);
+          tui.terminal!.write("\x10");
+          await Bun.sleep(250);
+          tui.terminal!.write("zinn.chat");
+          await Bun.sleep(250);
+          tui.terminal!.write("\r");
+          await until(() => pickers().length === 2, () => `Chat picker did not open without the sidebar: ${output.slice(-1000)}`);
+          const chatPicker = pickers()[1]!;
+          assert.equal(JSON.parse(chatPicker.slice(chatPicker.indexOf("{"))).options, 4, "Chat picker did not include every known key");
         } else {
           await until(() => readFileSync(log, "utf8").includes("board keys loaded") && output.includes("ZINN"), () => `Inspector did not render: ${readFileSync(log, "utf8")} ${output.slice(-2000)}`);
           const diagnostics = readFileSync(log, "utf8");
@@ -138,12 +160,15 @@ export async function verifyHost(fixture: ReturnType<typeof packInspector>, cons
           const activityCalls = readFileSync(calls, "utf8").split("\n").filter((line) => line.startsWith("activity list"));
           assert.ok(activityCalls.length > 0, "The mount made no activity read");
           assert.equal(new Set(activityCalls).size, activityCalls.length, `The mount repeated an activity read: ${activityCalls.join(" | ")}`);
+          const taskListCount = () => readFileSync(calls, "utf8").split("\n").filter((line) => line.startsWith("task list")).length;
+          const taskListsBeforePicker = taskListCount();
           tui.terminal!.write("/zinn");
           await Bun.sleep(250);
           tui.terminal!.write("\r");
           await until(() => readFileSync(log, "utf8").includes("picker opened"), () => `Task picker did not open: ${output.slice(-1000)}`);
           const boardPicker = readFileSync(log, "utf8").split("\n").find((line) => line.includes("picker opened"))!;
           assert.equal(JSON.parse(boardPicker.slice(boardPicker.indexOf("{"))).options, 3, "Board picker included archived tasks");
+          assert.equal(taskListCount(), taskListsBeforePicker, "The board picker re-read the board with the sidebar loaded");
           tui.terminal!.write("\r");
           await until(() => readFileSync(log, "utf8").includes('"kind":"ready"'), () => `Task detail did not settle: ${readFileSync(log, "utf8")}`);
           await until(
@@ -166,6 +191,7 @@ export async function verifyHost(fixture: ReturnType<typeof packInspector>, cons
     const bundle = guiResponse.data ?? guiResponse;
     assert.ok(bundle.code.includes("zinn.board"), "GUI bundle did not contain the board IPC");
     assert.deepEqual(bundle.options, { rows: 2, current: "glyph" });
+    await launch([{ package: fixture.extracted, options: { rows: 2, current: "glyph" } }], "hidden");
     await launch([{ package: updated.extracted, options: { rows: 2, current: "glyph" } }], "update");
     await launch([], "remove");
     return { version: hostVersion, frames };

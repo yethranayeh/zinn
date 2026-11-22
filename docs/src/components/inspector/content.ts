@@ -86,7 +86,7 @@ export const inspectorSections: InspectorSection[] = [
     blocks: [
       {
         kind: "paragraph",
-        text: "Mentioned archived tasks are recognized and their details open. Run `/zinn` to find a loaded active task. The command palette also offers **Zinn: task keys in this chat** and **Zinn: pick a task from the board**.",
+        text: "Mentioned archived tasks are recognized and their details open. Run `/zinn` to pick an active task. The command palette also offers **Zinn: task keys in this chat** and **Zinn: pick a task from the board**.",
       },
       {
         kind: "paragraph",

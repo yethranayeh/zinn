@@ -73,5 +73,5 @@ test("OpenCode 2.3.2 loads the extracted artifact, opens picker and detail, and 
   }
   const result = await verifyHost(fixture, consumer);
   expect(result.version).toBe("2.3.2");
-  expect(result.frames).toHaveLength(3);
+  expect(result.frames).toHaveLength(4);
 }, 120_000);

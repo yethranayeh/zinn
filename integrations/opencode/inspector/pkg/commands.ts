@@ -1,7 +1,9 @@
+import type { SessionSnapshot } from "./session-snapshot.ts";
 import type { Ctx, Mention, TaskSummary } from "./types.ts";
 
 import { openPicker } from "./dialogs.tsx";
 import { mentionCounts } from "./scan.ts";
+import { loadSessionSnapshot, sessionSnapshotSource } from "./session-snapshot.ts";
 
 export type PanelSnapshot = {
   map: Map<string, TaskSummary> | undefined;
@@ -20,6 +22,38 @@ export function clearPanel(snapshot: PanelSnapshot | undefined): void {
   }
 }
 export function registerCommands(ctx: Ctx): void {
+  const snapshotForCommand = async (): Promise<SessionSnapshot | undefined> => {
+    const panel = activePanel;
+    if (panel?.activeMap !== undefined) {
+      return {
+        sessionID: panel.sessionID,
+        map: panel.map,
+        activeMap: panel.activeMap,
+        known: panel.known,
+        counts: mentionCounts(panel.known),
+      };
+    }
+
+    const result = await loadSessionSnapshot(sessionSnapshotSource(ctx));
+    if (result.kind === "no-session") {
+      ctx.ui.toast.show({
+        variant: "warning",
+        title: "Zinn",
+        message: "Open a session to load tasks.",
+      });
+      return undefined;
+    }
+    if (result.kind === "error") {
+      ctx.ui.toast.show({
+        variant: "warning",
+        title: "Zinn",
+        message: result.error,
+      });
+      return undefined;
+    }
+    return result.snapshot;
+  };
+
   const commands: unknown[] = [
     {
       id: "zinn.chat",
@@ -31,25 +65,19 @@ export function registerCommands(ctx: Ctx): void {
       category: "Zinn",
       palette: true,
       namespace: "palette",
-      run() {
-        const panel = activePanel;
-        if (!panel) {
-          ctx.ui.toast.show({
-            variant: "warning",
-            title: "Zinn",
-            message: "no session sidebar mounted",
-          });
+      async run() {
+        const snapshot = await snapshotForCommand();
+        if (snapshot === undefined) {
           return;
         }
-        const keys = panel.known.map((mention) => mention.key);
         openPicker(
           ctx,
           "Zinn | keys in this chat",
-          keys,
-          panel.map,
+          snapshot.known.map((mention) => mention.key),
+          snapshot.map,
           false,
-          mentionCounts(panel.known),
-          panel.sessionID,
+          snapshot.counts,
+          snapshot.sessionID,
         );
       },
     },
@@ -65,25 +93,19 @@ export function registerCommands(ctx: Ctx): void {
       namespace: "palette",
       slash: { name: "zinn" },
       slashName: "zinn",
-      run() {
-        const panel = activePanel;
-        if (!panel?.activeMap) {
-          ctx.ui.toast.show({
-            variant: "warning",
-            title: "Zinn",
-            message: "Open a session to load tasks.",
-          });
+      async run() {
+        const snapshot = await snapshotForCommand();
+        if (snapshot === undefined) {
           return;
         }
-        const map = panel.activeMap;
         openPicker(
           ctx,
           "Zinn | all tasks",
-          [...map.keys()],
-          map,
+          [...snapshot.activeMap.keys()],
+          snapshot.map,
           false,
-          mentionCounts(panel.known),
-          panel.sessionID,
+          snapshot.counts,
+          snapshot.sessionID,
         );
       },
     },
