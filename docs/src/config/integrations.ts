@@ -1,6 +1,6 @@
 import { cloudinaryImage } from "../images/cloudinary";
 import { firefoxTheme } from "./firefox-theme";
-import { opencodeInspector } from "./opencode-inspector";
+import { inspectorCollage, opencodeInspector } from "./opencode-inspector";
 import { opencodeScenes, opencodeTheme } from "./opencode-theme";
 import { rexScenes, rexTheme } from "./rex-theme";
 
@@ -58,6 +58,12 @@ export const integrations: IntegrationEntry[] = [
     label: "OpenCode task inspector",
     description: opencodeInspector.description,
     action: "View inspector",
+    image: {
+      src: cloudinaryImage(inspectorCollage.base, 1280),
+      alt: "OpenCode Desktop with a demo session open",
+      width: inspectorCollage.width,
+      height: inspectorCollage.height,
+    },
     markdown: {
       links: (url) =>
         `[View the inspector](${url}) for setup, options, compatibility, update and removal.`,

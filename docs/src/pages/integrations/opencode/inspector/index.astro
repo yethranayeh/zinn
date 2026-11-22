@@ -2,6 +2,7 @@
 import BaseLayout from "../../../../layouts/BaseLayout.astro";
 import Button from "../../../../components/ui/button/Button.astro";
 import Breadcrumbs from "../../../../components/Breadcrumbs.astro";
+import Chip from "../../../../components/ui/chip/Chip.astro";
 import Icon from "../../../../components/ui/icon/Icon.astro";
 import InspectorCollage from "../../../../components/InspectorCollage.astro";
 import InspectorContent from "../../../../components/inspector/InspectorContent.astro";
@@ -9,10 +10,8 @@ import InlineText from "../../../../components/inspector/InlineText.astro";
 import MarkdownH1 from "../../../../components/MarkdownH1.astro";
 import Prose from "../../../../components/Prose.astro";
 
-import {
-	inspectorIntroduction,
-	inspectorSections,
-} from "../../../../components/inspector/content";
+import { inspectorIntroduction, inspectorSections } from "../../../../components/inspector/content";
+import { hostLogos } from "../../../../config/integrations";
 import { inspectorCollage, opencodeInspector } from "../../../../config/opencode-inspector";
 import { projectLinks } from "../../../../config/site";
 
@@ -26,7 +25,10 @@ const source = `${projectLinks.github}/tree/main/integrations/opencode/inspector
 		<section class='pb-9 md:pb-12'>
 			<MarkdownH1>{opencodeInspector.title}</MarkdownH1>
 			<div class='grid gap-7 md:grid-cols-[1.1fr_1fr] md:items-end md:gap-12'>
-				<p class='max-w-md text-lg leading-relaxed'>Experimental. {opencodeInspector.description}</p>
+				<div>
+					<Chip image={hostLogos.OpenCode}>OpenCode</Chip>
+					<p class='max-w-md text-lg leading-relaxed'>{opencodeInspector.description}</p>
+				</div>
 				<div class='flex flex-wrap gap-3 md:justify-end'>
 					<Button href='#installation' variant='solid' size='large'>Installation</Button>
 					<Button href={source} variant='outline' size='large'>Source</Button>

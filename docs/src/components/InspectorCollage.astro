@@ -33,12 +33,14 @@ const percent = (value: number, total: number) => `${((value / total) * 100).toF
 						decoding='async'
 						data-collage-base
 					/>
+					<div class='pointer-events-none absolute inset-0 bg-black/55' data-collage-backdrop hidden></div>
 					{
 						parts.map((part) =>
 							part.states.map((state) => (
 								<img
 									class='absolute'
 									data-part-image={part.id}
+									data-part-backdrop={part.backdrop ? "true" : undefined}
 									data-image-label={state.label}
 									src={state.image}
 									width={part.width}
@@ -79,6 +81,7 @@ const percent = (value: number, total: number) => `${((value / total) * 100).toF
 	for (const collage of document.querySelectorAll<HTMLElement>("[data-collage]")) {
 		const callouts = [...collage.querySelectorAll<HTMLElement>("[data-callout]")];
 		const images = [...collage.querySelectorAll<HTMLImageElement>("[data-part-image]")];
+		const backdrop = collage.querySelector<HTMLElement>("[data-collage-backdrop]");
 		const grouped = new Map<string, HTMLImageElement[]>();
 		for (const image of images) {
 			const part = image.dataset.partImage!;
@@ -98,6 +101,11 @@ const percent = (value: number, total: number) => `${((value / total) * 100).toF
 					image.hidden = part !== activePart || index !== stateIndex[part];
 				});
 			}
+
+			if (backdrop) {
+				backdrop.hidden = grouped.get(activePart ?? "")?.[0]?.dataset.partBackdrop !== "true";
+			}
+
 			for (const callout of callouts) {
 				const part = callout.dataset.callout!;
 				const partImages = grouped.get(part) ?? [];

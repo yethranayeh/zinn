@@ -77,15 +77,16 @@ export interface InspectorCollagePart {
   y: number;
   width: number;
   callout: { top: number; right: number };
+  backdrop?: boolean;
   states: Array<InspectorCollageState>;
 }
 
 const collageAssets = {
-  base: "https://res.cloudinary.com/drwbqceye/image/upload/v1793456931/base_rjvdw8.png",
+  base: "https://res.cloudinary.com/drwbqceye/image/upload/v1795373606/base_rjvdw8_tgbgwt.png",
   sidepanelRows2:
-    "https://res.cloudinary.com/drwbqceye/image/upload/v1793456931/sidepanel-rows-2_aszk0i.png",
+    "https://res.cloudinary.com/drwbqceye/image/upload/v1795373607/sidepanel-rows-2_aszk0i_kyoxds.png",
   sidepanelRows1:
-    "https://res.cloudinary.com/drwbqceye/image/upload/v1793456931/sidepanel-rows-1_tjtryl.png",
+    "https://res.cloudinary.com/drwbqceye/image/upload/v1795373606/sidepanel-rows-1_tjtryl_nkhtju.png",
   detailsZoc2:
     "https://res.cloudinary.com/drwbqceye/image/upload/v1793456931/details-zoc-2_wajnpy.png",
   detailsZoc9:
@@ -102,15 +103,15 @@ const collageAssets = {
 
 export const inspectorCollage = {
   base: collageAssets.base,
-  width: 2994,
-  height: 1570,
+  width: 2992,
+  height: 1780,
   caption: "The sidepanel, task details, command palette and composer revealed from the base.",
   parts: [
     {
       id: "sidepanel",
       label: "Sidepanel",
       x: 2372,
-      y: 142,
+      y: 442,
       width: 622,
       callout: { top: 15, right: 21.8 },
       states: [
@@ -118,13 +119,13 @@ export const inspectorCollage = {
           label: "Two rows",
           image: collageAssets.sidepanelRows2,
           alt: "Sidepanel with two rows per task",
-          height: 1428,
+          height: 441,
         },
         {
           label: "One row",
           image: collageAssets.sidepanelRows1,
           alt: "Sidepanel with one row per task",
-          height: 1428,
+          height: 441,
         },
       ],
     },
@@ -134,7 +135,8 @@ export const inspectorCollage = {
       x: 874,
       y: 440,
       width: 1232,
-      callout: { top: 28.025, right: 72 },
+      callout: { top: 28.025, right: 75 },
+      backdrop: true,
       states: [
         {
           label: "ZOC-2",
@@ -157,6 +159,7 @@ export const inspectorCollage = {
       y: 440,
       width: 840,
       callout: { top: 40, right: 72 },
+      backdrop: true,
       states: [
         {
           label: "Zinn",
@@ -182,9 +185,9 @@ export const inspectorCollage = {
       id: "composer",
       label: "Composer",
       x: 54,
-      y: 1056,
+      y: 1279,
       width: 2290,
-      callout: { top: 56, right: 72 },
+      callout: { top: 65, right: 77 },
       states: [
         {
           label: "Slash menu",
