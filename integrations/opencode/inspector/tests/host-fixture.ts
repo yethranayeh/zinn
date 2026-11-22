@@ -92,7 +92,7 @@ export async function verifyHost(fixture: ReturnType<typeof packInspector>, cons
     const config = join(configDirectory, "cli.json");
     const serverConfig = join(configDirectory, "opencode.json");
     const frames: string[] = [];
-    const launch = async (plugins: unknown[], mode: "install" | "update" | "remove" | "hidden") => {
+    const launch = async (plugins: unknown[], mode: "install" | "update" | "remove" | "hidden" | "settings") => {
       writeFileSync(config, JSON.stringify(mode === "hidden" ? { plugins, session: { sidebar: "hide" } } : { plugins }));
       writeFileSync(serverConfig, JSON.stringify({ enabled_providers: [], share: "disabled", plugins }));
       writeFileSync(log, "");
@@ -134,13 +134,33 @@ export async function verifyHost(fixture: ReturnType<typeof packInspector>, cons
           await until(() => pickers().length === 2, () => `Chat picker did not open without the sidebar: ${output.slice(-1000)}`);
           const chatPicker = pickers()[1]!;
           assert.equal(JSON.parse(chatPicker.slice(chatPicker.indexOf("{"))).options, 4, "Chat picker did not include every known key");
+        } else if (mode === "settings") {
+          await until(() => readFileSync(log, "utf8").includes("board keys loaded") && output.includes("ZINN"), () => `Settings TUI did not render: ${output.slice(-1000)}`);
+          const diagnostics = readFileSync(log, "utf8");
+          assert.ok(diagnostics.includes('"rows":2'), "Settings TUI did not start from the configured rows");
+          tui.terminal!.write("\x10");
+          await Bun.sleep(250);
+          tui.terminal!.write("zinn.settings");
+          await Bun.sleep(250);
+          tui.terminal!.write("\r");
+          await until(() => readFileSync(log, "utf8").includes("settings opened"), () => `Settings menu did not open: ${output.slice(-1000)}`);
+          await Bun.sleep(250);
+          tui.terminal!.write("\r");
+          await until(
+            () => readFileSync(log, "utf8").includes('"choice":"rows:1"'),
+            () => `Settings menu did not apply a choice: ${readFileSync(log, "utf8")} ${output.slice(-1000)}`,
+          );
+          const changed = readFileSync(log, "utf8").split("\n").find((line) => line.includes("setting changed"))!;
+          assert.equal(JSON.parse(changed.slice(changed.indexOf("{"))).rows, 1, "The changed option did not take effect");
+          tui.terminal!.write("\x1b");
+          await Bun.sleep(250);
         } else {
           await until(() => readFileSync(log, "utf8").includes("board keys loaded") && output.includes("ZINN"), () => `Inspector did not render: ${readFileSync(log, "utf8")} ${output.slice(-2000)}`);
           const diagnostics = readFileSync(log, "utf8");
           const expectedArtifact = mode === "update" ? "updated inspector artifact" : "plugin options";
           assert.ok(diagnostics.includes(expectedArtifact), "Expected package content did not load");
           assert.ok(diagnostics.includes('"rows":2'), "Package update lost configured options");
-          assert.ok(diagnostics.includes('"zinn.chat"') && diagnostics.includes('"zinn.board"'), "Inspector commands were not registered");
+          assert.ok(diagnostics.includes('"zinn.chat"') && diagnostics.includes('"zinn.board"') && diagnostics.includes('"zinn.settings"'), "Inspector commands were not registered");
           assert.ok(diagnostics.includes(root.id) && diagnostics.includes(child.id), "Host family did not include root and child");
           await until(
             () => ["3 tasks", "PKG-1", "PKG-2", "PKG-3"].every((text) => output.includes(text)),
@@ -193,6 +213,7 @@ export async function verifyHost(fixture: ReturnType<typeof packInspector>, cons
     assert.deepEqual(bundle.options, { rows: 2, current: "glyph" });
     await launch([{ package: fixture.extracted, options: { rows: 2, current: "glyph" } }], "hidden");
     await launch([{ package: updated.extracted, options: { rows: 2, current: "glyph" } }], "update");
+    await launch([{ package: updated.extracted, options: { rows: 2, current: "glyph" } }], "settings");
     await launch([], "remove");
     return { version: hostVersion, frames };
   } finally {

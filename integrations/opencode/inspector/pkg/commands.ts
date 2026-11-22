@@ -1,9 +1,12 @@
+import type { SettingsController } from "./settings.ts";
 import type { SessionSnapshot } from "./session-snapshot.ts";
 import type { Ctx, Mention, TaskSummary } from "./types.ts";
 
 import { openPicker } from "./dialogs.tsx";
+import { log } from "./data.ts";
 import { mentionCounts } from "./scan.ts";
 import { loadSessionSnapshot, sessionSnapshotSource } from "./session-snapshot.ts";
+import { runSettingsMenu } from "./settings.ts";
 
 export type PanelSnapshot = {
   map: Map<string, TaskSummary> | undefined;
@@ -21,7 +24,7 @@ export function clearPanel(snapshot: PanelSnapshot | undefined): void {
     activePanel = undefined;
   }
 }
-export function registerCommands(ctx: Ctx): void {
+export function registerCommands(ctx: Ctx, settings: SettingsController): void {
   const snapshotForCommand = async (): Promise<SessionSnapshot | undefined> => {
     const panel = activePanel;
     if (panel?.activeMap !== undefined) {
@@ -107,6 +110,21 @@ export function registerCommands(ctx: Ctx): void {
           snapshot.counts,
           snapshot.sessionID,
         );
+      },
+    },
+    {
+      id: "zinn.settings",
+      name: "zinn.settings",
+      title: "Zinn: settings",
+      description: "Change the sidepanel rows, conversation mark and claim renewal",
+      desc: "Change the sidepanel rows, conversation mark and claim renewal",
+      group: "Zinn",
+      category: "Zinn",
+      palette: true,
+      namespace: "palette",
+      async run() {
+        log(ctx, "settings opened");
+        await runSettingsMenu(ctx, settings);
       },
     },
   ];

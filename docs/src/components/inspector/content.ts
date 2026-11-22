@@ -121,6 +121,10 @@ export const inspectorSections: InspectorSection[] = [
           option.behavior,
         ]),
       },
+      {
+        kind: "paragraph",
+        text: "Change these from the command palette with `Zinn: settings`. The menu applies a choice immediately, and a value set there overrides the same value in `cli.json` and survives restarts. Reset in the same menu returns to the file's values.",
+      },
     ],
   },
   {

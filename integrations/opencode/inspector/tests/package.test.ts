@@ -64,7 +64,7 @@ for (const version of ["0.41.0", "current"]) {
   });
 }
 
-test("OpenCode 2.3.2 loads the extracted artifact, opens picker and detail, and applies update and removal", async () => {
+test("OpenCode 2.3.2 loads the extracted artifact, opens picker and detail, changes settings, and applies update and removal", async () => {
   const { verifyHost } = await import("./host-fixture.ts");
   consumer.useCLI(consumer.releasedCLI);
   run([process.execPath, consumer.releasedCLI, "project", "create", "PKG", "--json"], consumer.consumer, consumer.env);
@@ -73,5 +73,5 @@ test("OpenCode 2.3.2 loads the extracted artifact, opens picker and detail, and 
   }
   const result = await verifyHost(fixture, consumer);
   expect(result.version).toBe("2.3.2");
-  expect(result.frames).toHaveLength(4);
+  expect(result.frames).toHaveLength(5);
 }, 120_000);
