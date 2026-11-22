@@ -40,7 +40,7 @@ import {
 } from "./space.js";
 import { clearCommittedPause, withMigrationLock } from "./upgrade.js";
 import { readOwnPause } from "./pause.js";
-import { CoreError, isMissingFileError } from "../errors.js";
+import { CoreError, DatabaseChangeAppliedError, isMissingFileError } from "../errors.js";
 
 /** The name the backup is attached under while it is copied. */
 const SOURCE_SCHEMA = "restore_source";
@@ -528,7 +528,8 @@ function readUnchangedVersion(
  * Then, in the same transaction, it drops main's tables, views and triggers, creates the backup's,
  *  copies the rows and sets the backup's version, and requires no broken foreign keys and every table's
  *  row count to match before committing.
- * Any failure rolls back and is thrown as it was, a finished backup is kept, and nothing is retried.
+ * Failures through commit roll back the transaction and keep any finished backup.
+ * A failure resetting foreign keys after commit reports the applied restore.
  * @link https://www.sqlite.org/lang_attach.html
  */
 export function restoreBackup(
@@ -549,30 +550,34 @@ export function restoreBackup(
   let restoredPause: string | null = null;
 
   try {
-    result = withForeignKeysOff(db, () =>
-      withMigrationLock(db, databasePath, { ...lock, operation: "restore" }, () => {
-        const restoredVersion = readUnchangedVersion(db, checked, migrations);
-        const { state, version: previousVersion } = classifyConnection(db, migrations);
-        const sourceBytes = readSourceBytes(db);
-        const savesDatabase = state !== "empty";
+    result = withForeignKeysOff(
+      db,
+      () =>
+        withMigrationLock(db, databasePath, { ...lock, operation: "restore" }, () => {
+          const restoredVersion = readUnchangedVersion(db, checked, migrations);
+          const { state, version: previousVersion } = classifyConnection(db, migrations);
+          const sourceBytes = readSourceBytes(db);
+          const savesDatabase = state !== "empty";
 
-        // The free space of a missing directory is unknown, which would stop the restore.
-        mkdirSync(backup.directory, { recursive: true });
-        assertFreeSpace(spacePaths, requiredFree(db, sourceBytes, savesDatabase), readFree);
+          // The free space of a missing directory is unknown, which would stop the restore.
+          mkdirSync(backup.directory, { recursive: true });
+          assertFreeSpace(spacePaths, requiredFree(db, sourceBytes, savesDatabase), readFree);
 
-        let backupPath: string | null = null;
+          let backupPath: string | null = null;
 
-        if (savesDatabase) {
-          // db holds the write lock and has written nothing, so the backup is the database as it is.
-          backupPath = dbBackup.create(databasePath, backup.directory, backup).path;
-          assertFreeSpace(spacePaths, requiredFree(db, sourceBytes, false), readFree);
-        }
+          if (savesDatabase) {
+            // db holds the write lock and has written nothing, so the backup is the database as it is.
+            backupPath = dbBackup.create(databasePath, backup.directory, backup).path;
+            assertFreeSpace(spacePaths, requiredFree(db, sourceBytes, false), readFree);
+          }
 
-        replaceDatabaseContents(db, restoredVersion);
-        restoredPause = readOwnPause(databasePath);
+          replaceDatabaseContents(db, restoredVersion);
+          restoredPause = readOwnPause(databasePath);
 
-        return { databasePath, previousVersion, restoredVersion, backupPath };
-      }),
+          return { databasePath, previousVersion, restoredVersion, backupPath };
+        }),
+      (error, restored) =>
+        new DatabaseChangeAppliedError("restore", restored, restored.restoredVersion, error),
     );
   } catch (error) {
     try {
@@ -613,12 +618,13 @@ export function restoreDatabase(
 
   mkdirSync(dirname(databasePath), { recursive: true });
   const db = openResolvedDatabase(databasePath);
+  let restored: RestoreResult | undefined;
 
   try {
     applyConnectionSettings(db);
-    const result = restoreBackup(db, checked, options);
+    restored = restoreBackup(db, checked, options);
     db.close();
-    return result;
+    return restored;
   } catch (error) {
     try {
       db.close();
@@ -626,6 +632,9 @@ export function restoreDatabase(
       attachSuppressed(error, closeError);
     }
 
+    if (restored !== undefined) {
+      throw new DatabaseChangeAppliedError("restore", restored, restored.restoredVersion, error);
+    }
     throw error;
   }
 }

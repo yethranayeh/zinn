@@ -55,6 +55,7 @@ export type FailureFacts = {
   databasePath?: string;
   backupDirectory?: string;
   backupPath?: string;
+  applied?: true;
   schemaVersion?: number;
   supportedSchemaVersion?: number;
   expectedColumn?: string;
@@ -90,6 +91,35 @@ export function isMissingFileError(error: unknown) {
 
 export function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** A database change committed before connection cleanup failed */
+export class DatabaseChangeAppliedError extends CoreError {
+  override name = "DatabaseChangeAppliedError";
+
+  constructor(
+    operation: "upgrade" | "restore",
+    { databasePath, backupPath }: { databasePath: string; backupPath: string | null },
+    schemaVersion: number,
+    cause: unknown,
+  ) {
+    const outcome = operation === "upgrade" ? "upgraded to" : "restored at";
+    const snapshot =
+      backupPath === null ? "" : `. The previous database was saved to ${backupPath}`;
+
+    super(
+      `The database at ${databasePath} was ${outcome} schema version ${schemaVersion}. Connection cleanup failed (${errorMessage(cause)})${snapshot}`,
+      "storage",
+      {
+        entity: "database",
+        databasePath,
+        schemaVersion,
+        applied: true,
+        backupPath: backupPath ?? undefined,
+      },
+      { cause },
+    );
+  }
 }
 
 export type ValidationIssue = { code: string; path: Array<string | number>; message: string };

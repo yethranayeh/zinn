@@ -184,7 +184,12 @@ export { createOutputFileName, readOutputFileName } from "./src/output-file-name
 export { databaseStateSchema, readSchemaVersionWithoutWaiting } from "./src/migrations/classify.js";
 export { info, infoDatabaseStateSchema } from "./src/operations/info.js";
 export { doctor, doctorCheckIdSchema, doctorStatusSchema } from "./src/operations/doctor.js";
-export { CoreError, InputValidationError, isMissingFileError } from "./src/errors.js";
+export {
+  CoreError,
+  DatabaseChangeAppliedError,
+  InputValidationError,
+  isMissingFileError,
+} from "./src/errors.js";
 export { SqliteError, isSqliteErrorCode, isSqliteErrorFamily } from "./src/sqlite/database.js";
 export {
   MAX_LIST_LIMIT,

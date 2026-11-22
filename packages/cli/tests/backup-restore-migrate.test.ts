@@ -19,6 +19,7 @@ import { openDatabase } from "../../core/src/sqlite/bun";
 // ? per-spawn rather than set on `process.env`.
 
 const CURRENT_SCHEMA_VERSION = latestVersion(MIGRATIONS);
+const BEFORE_TASK_KEY_INDEX = taskKeyIndexMigration.version - 1;
 
 /** The task-key migration rejects this schema when the optional duplicate is present. */
 function createBeforeTaskKeyIndex(store: string, duplicate = false) {
@@ -38,10 +39,18 @@ function createBeforeTaskKeyIndex(store: string, duplicate = false) {
   return databasePath;
 }
 
+function runZinnWithPreload(args: Array<string>, store: string, source: string) {
+  const preload = join(store, "fault.ts");
+  writeFileSync(preload, source);
+  return runProcessAsync([process.execPath, "--preload", preload, CLI_PATH, ...args], {
+    cwd: store,
+    env: { ...TEST_ENVIRONMENT, ZINN_DIR: store },
+  });
+}
+
 function runWithBackupFailure(args: Array<string>, store: string, failure: "rename" | "directory-sync") {
-  const preload = join(store, "backup-failure.ts");
   const backupDirectory = join(realpathSync(store), "backups");
-  writeFileSync(preload, `
+  return runZinnWithPreload(args, store, `
     import { mock } from "bun:test";
     import * as fs from "node:fs";
     const original = { ...fs };
@@ -75,11 +84,220 @@ function runWithBackupFailure(args: Array<string>, store: string, failure: "rena
       },
     }));
   `);
-  return runProcessAsync([process.execPath, "--preload", preload, CLI_PATH, ...args], {
-    cwd: store,
-    env: { ...TEST_ENVIRONMENT, ZINN_DIR: store },
-  });
 }
+
+function runWithMigrationFailure(
+  args: Array<string>,
+  store: string,
+  failure: "commit" | "foreign-keys" | "close" | "close-after-no-op" | "detach",
+) {
+  const core = new URL("../../core/index.ts", import.meta.url).href;
+  const sqlite = new URL("../../core/src/sqlite/database.ts", import.meta.url).href;
+  const databasePath = join(realpathSync(store), "data", "zinn.sqlite");
+  return runZinnWithPreload(args, store, `
+    import { migrate } from ${JSON.stringify(core)};
+    import { Database } from ${JSON.stringify(sqlite)};
+    const failure = ${JSON.stringify(failure)};
+    const databasePath = ${JSON.stringify(databasePath)};
+    const exec = Database.prototype.exec;
+    const close = Database.prototype.close;
+    let committedConnection;
+    let waitingConnection;
+    let injected = false;
+
+    function fail(syscall) {
+      injected = true;
+      throw Object.assign(new Error("injected " + failure + " failure"), { code: "EIO", syscall });
+    }
+
+    Database.prototype.exec = function (sql) {
+      const isDestination = this.databasePath === databasePath;
+      if (isDestination && failure === "close-after-no-op" && sql === "BEGIN IMMEDIATE" && !waitingConnection) {
+        waitingConnection = this;
+        migrate.run({ client: "test", version: "1" });
+      }
+      if (!injected && isDestination && failure === "commit" && sql === "COMMIT") {
+        fail("write");
+      }
+      if (!injected && this === committedConnection) {
+        if (failure === "foreign-keys" && /^PRAGMA foreign_keys = [01]$/.test(sql)) {
+          fail("write");
+        }
+        if (failure === "detach" && sql.startsWith("DETACH DATABASE ")) {
+          fail("close");
+        }
+      }
+      exec.call(this, sql);
+      if (isDestination && sql === "COMMIT") {
+        committedConnection = this;
+      }
+    };
+    Database.prototype.close = function () {
+      const failsOnClose = failure === "close" || (failure === "close-after-no-op" && this === waitingConnection);
+      if (!injected && failsOnClose && this === committedConnection) {
+        fail("close");
+      }
+      close.call(this);
+    };
+    process.on("exit", () => {
+      if (!injected) {
+        throw new Error("Expected to inject a database failure");
+      }
+    });
+  `);
+}
+
+function createRestoreSource(store: string) {
+  const source = createBeforeTaskKeyIndex(store);
+  withTestDb(store, (db) => db.exec("UPDATE task SET title = 'Restored title' WHERE id = 't1'"));
+  return source;
+}
+
+test.each([
+  ["migrate", "close"],
+  ["migrate", "foreign-keys"],
+  ["restore", "close"],
+  ["restore", "foreign-keys"],
+] as const)("%s reports its applied result when %s fails after commit", async (operation, failure) => {
+  await withIsolatedZinnDir(async (root) => {
+    const store = join(root, "store");
+    const databasePath = createBeforeTaskKeyIndex(store);
+    const args = operation === "migrate"
+      ? ["migrate"]
+      : ["restore", createRestoreSource(join(root, "source")), "--yes"];
+    const schemaVersion = operation === "migrate" ? CURRENT_SCHEMA_VERSION : BEFORE_TASK_KEY_INDEX;
+
+    const result = await runWithMigrationFailure([...args, "--json"], store, failure);
+    expect(result.code, result.stderr).toBe(1);
+    expect(result.stdout).toBe("");
+    const snapshots = backupFiles(store);
+    expect(snapshots).toEqual([expect.stringMatching(/\.sqlite$/)]);
+    const backupPath = join(realpathSync(store), "backups", snapshots[0]!);
+    const { error } = errorDocumentSchema.parse(JSON.parse(result.stderr));
+    expect(error).toMatchObject({
+      code: "storage",
+      details: { applied: true, backupPath, databasePath: realpathSync(databasePath), schemaVersion, cause: { code: "EIO" } },
+    });
+    expect(error.details?.cause?.message).toContain(failure);
+    expect(error.message).toContain(backupPath);
+    expect(error.diagnostics?.join("\n") ?? "").not.toContain("unchanged");
+    expect(databaseSnapshot(store)).toMatchObject({
+      version: { user_version: schemaVersion },
+      tasks: expect.arrayContaining([
+        expect.objectContaining({ id: "t1", title: operation === "restore" ? "Restored title" : "First" }),
+      ]),
+    });
+  });
+});
+
+test.each(["migrate", "restore"] as const)("%s reports an unchanged database when COMMIT fails", async (operation) => {
+  await withIsolatedZinnDir(async (root) => {
+    const store = join(root, "store");
+    createBeforeTaskKeyIndex(store);
+    const before = databaseSnapshot(store);
+    const args = operation === "migrate"
+      ? ["migrate"]
+      : ["restore", createRestoreSource(join(root, "source")), "--yes"];
+
+    const result = await runWithMigrationFailure([...args, "--json"], store, "commit");
+    expect(result.code, result.stderr).toBe(1);
+    expect(result.stdout).toBe("");
+    const { error } = errorDocumentSchema.parse(JSON.parse(result.stderr));
+    expect(error.details?.applied).toBeUndefined();
+    expect(error.details?.cause?.code).toBe("EIO");
+    expect(error.diagnostics?.join("\n")).toContain("unchanged");
+    expect(databaseSnapshot(store)).toEqual(before);
+    expect(backupFiles(store)).toEqual([expect.stringMatching(/\.sqlite$/)]);
+  });
+});
+
+test("a restore onto a missing database reports the applied restore without a prior snapshot", async () => {
+  await withIsolatedZinnDir(async (root) => {
+    const store = join(root, "store");
+    mkdirSync(store);
+    const source = createRestoreSource(join(root, "source"));
+
+    const result = await runWithMigrationFailure(["restore", source, "--yes", "--json"], store, "close");
+    expect(result.code, result.stderr).toBe(1);
+    const { error } = errorDocumentSchema.parse(JSON.parse(result.stderr));
+    expect(error.details?.applied).toBe(true);
+    expect(error.details?.backupPath).toBeUndefined();
+    expect(backupFiles(store)).toEqual([]);
+    expect(databaseSnapshot(store).tasks).toContainEqual(expect.objectContaining({ id: "t1", title: "Restored title" }));
+  });
+});
+
+test("migrate reports the committed upgrade and retained backup in text mode", async () => {
+  await withIsolatedZinnDir(async (store) => {
+    createBeforeTaskKeyIndex(store);
+
+    const result = await runWithMigrationFailure(["migrate"], store, "close");
+    expect(result.code, result.stderr).toBe(1);
+    expect(result.stdout).toBe("");
+    const snapshots = backupFiles(store);
+    expect(snapshots).toHaveLength(1);
+    expect(result.stderr).toContain(join(realpathSync(store), "backups", snapshots[0]!));
+    expect(result.stderr).toContain(`schema version ${CURRENT_SCHEMA_VERSION}`);
+    expect(result.stderr).not.toContain("unchanged");
+  });
+});
+
+test("migrate reports no applied upgrade when another connection upgraded before it acquired the lock", async () => {
+  await withIsolatedZinnDir(async (store) => {
+    createBeforeTaskKeyIndex(store);
+
+    const result = await runWithMigrationFailure(["migrate", "--json"], store, "close-after-no-op");
+    expect(result.code, result.stderr).toBe(1);
+    const { error } = errorDocumentSchema.parse(JSON.parse(result.stderr));
+    expect(error.details?.applied).toBeUndefined();
+    expect(error.details?.backupPath).toBeUndefined();
+    expect(error.details?.cause?.code).toBe("EIO");
+    expect(databaseSnapshot(store).version).toEqual({ user_version: CURRENT_SCHEMA_VERSION });
+    expect(backupFiles(store)).toHaveLength(1);
+  });
+});
+
+test("restore returns the committed result when closing takes care of a failed detach", async () => {
+  await withIsolatedZinnDir(async (root) => {
+    const store = join(root, "store");
+    createBeforeTaskKeyIndex(store);
+    const source = createRestoreSource(join(root, "source"));
+
+    const result = await runWithMigrationFailure(["restore", source, "--yes", "--json"], store, "detach");
+    expect(result.code, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ restoredVersion: BEFORE_TASK_KEY_INDEX });
+    expect(databaseSnapshot(store).tasks).toContainEqual(expect.objectContaining({ id: "t1", title: "Restored title" }));
+  });
+});
+
+test("a committed automatic upgrade reports an applied change when resetting foreign keys fails", async () => {
+  await withIsolatedZinnDir(async (store) => {
+    const databasePath = createBeforeTaskKeyIndex(store);
+    const title = "Created after reopening";
+    const args = ["task", "create", "APP", "--title", title, "--json"];
+
+    const result = await runWithMigrationFailure(args, store, "foreign-keys");
+    expect(result.code, result.stderr).toBe(1);
+    expect(result.stdout).toBe("");
+    const { error } = errorDocumentSchema.parse(JSON.parse(result.stderr));
+    const snapshots = backupFiles(store);
+    expect(snapshots).toHaveLength(1);
+    expect(error).toMatchObject({
+      code: "storage",
+      details: { applied: true, databasePath: realpathSync(databasePath), schemaVersion: CURRENT_SCHEMA_VERSION, cause: { code: "EIO" } },
+    });
+    expect(error.details?.backupPath).toBe(join(realpathSync(store), "backups", snapshots[0]!));
+    expect(error.message).not.toContain("zinn migrate");
+    const afterUpgrade = databaseSnapshot(store);
+    expect(afterUpgrade.version).toEqual({ user_version: CURRENT_SCHEMA_VERSION });
+    expect(afterUpgrade.tasks).not.toContainEqual(expect.objectContaining({ title }));
+
+    const next = await runZinn(args, store);
+    expect(next.code, next.stderr).toBe(0);
+    expect(databaseSnapshot(store).tasks).toContainEqual(expect.objectContaining({ title }));
+    expect(backupFiles(store)).toEqual(snapshots);
+  });
+});
 
 test.skipIf(process.platform === "win32")("backup reports the final snapshot path and directory failure on stderr", async () => {
   await withIsolatedZinnDir(async (store) => {

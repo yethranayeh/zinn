@@ -37,10 +37,15 @@ function countRows(db: Database, table: string) {
  * Runs action with foreign keys off, then sets them back as they were, after a failure too.
  * Turning them off inside a transaction does nothing, and with them on, dropping a table to
  *  rebuild it deletes its rows first, which cascades into every child table.
+ * The reset error mapper receives the action's result only after the action returns.
  * @link https://www.sqlite.org/pragma.html#pragma_foreign_keys
  * @link https://www.sqlite.org/lang_droptable.html
  */
-export function withForeignKeysOff<T>(db: Database, action: () => T): T {
+export function withForeignKeysOff<T>(
+  db: Database,
+  action: () => T,
+  mapResetError?: (error: unknown, result: T) => unknown,
+): T {
   const previous = readForeignKeys(db);
   db.exec("PRAGMA foreign_keys = OFF");
 
@@ -68,7 +73,11 @@ export function withForeignKeysOff<T>(db: Database, action: () => T): T {
     throw error;
   }
 
-  restore();
+  try {
+    restore();
+  } catch (error) {
+    throw mapResetError === undefined ? error : mapResetError(error, result);
+  }
   return result;
 }
 

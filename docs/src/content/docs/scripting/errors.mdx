@@ -34,7 +34,9 @@ The error codes are:
 
 ## Details and diagnostics
 
-Optional `error.details` carries known facts: `argument`, `field` (an array of string or number path segments), `entity`, `key`, `source` (`explicit` or `defaultProject`), `settingsPath`, `reason`, `matchCount`, `candidateIds`, `path`, `databasePath`, `backupDirectory`, `backupPath`, `schemaVersion`, `supportedSchemaVersion`, `expectedColumn`, `actualColumn`, `changedFields`, `claimExpiresAt` (when a task's claim expires, in epoch milliseconds), `logPath`, `exitCode` (the exit code of a program Zinn ran), and `cause` (`message` and optional native `code` or `errcode`). Unknown facts are omitted.
+Optional `error.details` carries known facts: `argument`, `field` (an array of string or number path segments), `entity`, `key`, `source` (`explicit` or `defaultProject`), `settingsPath`, `reason`, `matchCount`, `candidateIds`, `path`, `databasePath`, `backupDirectory`, `backupPath`, `applied`, `schemaVersion`, `supportedSchemaVersion`, `expectedColumn`, `actualColumn`, `changedFields`, `claimExpiresAt` (when a task's claim expires, in epoch milliseconds), `logPath`, `exitCode` (the exit code of a program Zinn ran), and `cause` (`message` and optional native `code` or `errcode`). Unknown facts are omitted.
+
+If connection cleanup fails after a database upgrade or restore commits, the command exits with a `storage` error and `error.details.applied` is `true`. If the upgrade was automatic, the command stops during initialization and `applied` refers to the upgrade. The details identify the database and its committed schema version. `backupPath` names the snapshot of the previous database when one was saved.
 
 ### Help and prior notices
 

@@ -12,7 +12,7 @@ import type { FreeSpace } from "./space.js";
 import { mkdirSync } from "node:fs";
 
 import * as dbBackup from "../db/backup.js";
-import { CoreError } from "../errors.js";
+import { CoreError, DatabaseChangeAppliedError } from "../errors.js";
 import { isSqliteErrorFamily } from "../sqlite/database.js";
 import { checkAutomaticUpgrade, markPausingFailure, readOwnPause, removePause } from "./pause.js";
 import { assertMigrationOrder, latestVersion, MIGRATIONS } from "./registry.js";
@@ -211,9 +211,8 @@ export type UpgradeResult = {
  * An older one gets a free-space check, a snapshot through a separate connection while db
  *  holds the lock without writing, a second free-space check for the remaining work,
  *  then every pending migration and the version bump in the same transaction.
- * Failures through commit roll back the transaction and are thrown as they were,
- * while a finished snapshot is kept, and nothing is retried.
- * Foreign keys are set back on every path.
+ * Failures through commit roll back the transaction and keep any finished snapshot.
+ * A failure resetting foreign keys after an upgrade commits reports the applied result.
  * Refuses an unmarked database (version 0) before making a backup.
  */
 export function upgradeDatabase(
@@ -234,64 +233,74 @@ export function upgradeDatabase(
   let backupCompleted = false;
 
   const runUpgrade = () =>
-    withForeignKeysOff(db, () =>
-      withMigrationLock(db, databasePath, lock, (): UpgradeResult => {
-        // Another caller may have upgraded the database while this one waited for the lock.
-        const version = readSchemaVersion(db);
-        const unchanged = {
-          databasePath,
-          previousVersion: version,
-          finalVersion: version,
-          changed: false,
-          backupPath: null,
-        };
+    withForeignKeysOff(
+      db,
+      () =>
+        withMigrationLock(db, databasePath, lock, (): UpgradeResult => {
+          // Another caller may have upgraded the database while this one waited for the lock
+          const version = readSchemaVersion(db);
+          const unchanged = {
+            databasePath,
+            previousVersion: version,
+            finalVersion: version,
+            changed: false,
+            backupPath: null,
+          };
 
-        if (version === targetVersion) {
-          return { status: "current", ...unchanged };
-        }
+          if (version === targetVersion) {
+            return { status: "current", ...unchanged };
+          }
 
-        if (version > targetVersion) {
-          return { status: "newer", ...unchanged };
-        }
+          if (version > targetVersion) {
+            return { status: "newer", ...unchanged };
+          }
 
-        assertUpgradable(version, migrations);
+          assertUpgradable(version, migrations);
 
-        const attempt = automatic
-          ? checkAutomaticUpgrade(db, databasePath, version, targetVersion)
-          : undefined;
-        const directory =
-          typeof backup.directory === "function" ? backup.directory() : backup.directory;
-        const spacePaths = spacePathsFor(databasePath, directory);
+          const attempt = automatic
+            ? checkAutomaticUpgrade(db, databasePath, version, targetVersion)
+            : undefined;
+          const directory =
+            typeof backup.directory === "function" ? backup.directory() : backup.directory;
+          const spacePaths = spacePathsFor(databasePath, directory);
 
-        // The free space of a missing directory is unknown, which would stop the upgrade.
-        mkdirSync(directory, { recursive: true });
-        const before = estimateRequiredFree(measureSpace(db, migrations), { includeBackup: true });
-        assertFreeSpace(spacePaths, before, readFree);
+          // The free space of a missing directory is unknown, which would stop the upgrade
+          mkdirSync(directory, { recursive: true });
+          const before = estimateRequiredFree(measureSpace(db, migrations), {
+            includeBackup: true,
+          });
+          assertFreeSpace(spacePaths, before, readFree);
 
-        // db holds the write lock and has written nothing, so the snapshot is the database as it is.
-        const { path: backupPath } = dbBackup.create(
-          databasePath,
-          directory,
-          backup,
-          attempt?.beforePublish,
-        );
-        backupCompleted = true;
-        attempt?.confirmed(backupPath);
+          // `db` holds the write lock and has written nothing, so the snapshot is the database as it is
+          const { path: backupPath } = dbBackup.create(
+            databasePath,
+            directory,
+            backup,
+            attempt?.beforePublish,
+          );
+          backupCompleted = true;
+          attempt?.confirmed(backupPath);
 
-        const after = estimateRequiredFree(measureSpace(db, migrations), { includeBackup: false });
-        assertFreeSpace(spacePaths, after, readFree);
+          const after = estimateRequiredFree(measureSpace(db, migrations), {
+            includeBackup: false,
+          });
+          assertFreeSpace(spacePaths, after, readFree);
 
-        const changed = applyPendingMigrations(db, migrations, version);
-        completedPause = readOwnPause(databasePath);
-        return {
-          status: "upgraded",
-          databasePath,
-          previousVersion: version,
-          finalVersion: targetVersion,
-          changed,
-          backupPath,
-        };
-      }),
+          const changed = applyPendingMigrations(db, migrations, version);
+          completedPause = readOwnPause(databasePath);
+          return {
+            status: "upgraded",
+            databasePath,
+            previousVersion: version,
+            finalVersion: targetVersion,
+            changed,
+            backupPath,
+          };
+        }),
+      (error, result) =>
+        result.changed
+          ? new DatabaseChangeAppliedError("upgrade", result, result.finalVersion, error)
+          : error,
     );
 
   let result: UpgradeResult;
@@ -300,7 +309,7 @@ export function upgradeDatabase(
   } catch (error) {
     const backupWasPublished =
       backupCompleted || error instanceof dbBackup.BackupDirectorySyncError;
-    if (automatic && backupWasPublished) {
+    if (automatic && backupWasPublished && !(error instanceof DatabaseChangeAppliedError)) {
       markPausingFailure(error);
     }
     throw error;

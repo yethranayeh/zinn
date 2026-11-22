@@ -3,7 +3,12 @@ import type { Command } from "../types.js";
 
 import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
-import { migrate, MigrationRefusedError, getBackupStorage } from "@zinn-dev/core";
+import {
+  DatabaseChangeAppliedError,
+  migrate,
+  MigrationRefusedError,
+  getBackupStorage,
+} from "@zinn-dev/core";
 
 import { generateCommandUsage, noInput } from "../input.js";
 import { reportLockWait } from "../database.js";
@@ -41,8 +46,9 @@ export const migrateCommand = {
           : `The database is already at schema version ${r.finalVersion}`,
       );
     } catch (error) {
-      // A refusal attempted nothing, so only a failed upgrade points at the backups.
-      if (!(error instanceof MigrationRefusedError)) {
+      if (
+        !(error instanceof MigrationRefusedError || error instanceof DatabaseChangeAppliedError)
+      ) {
         diagnostic(
           `The database is unchanged. Backups taken before each upgrade attempt are kept in ${backupDirectory}.`,
         );

@@ -8,7 +8,7 @@ import { applyConnectionSettings } from "../connection.js";
 import { attachSuppressed } from "../sqlite/database.js";
 import { classifyDatabase } from "./classify.js";
 import { upgradeDatabase } from "./upgrade.js";
-import { CoreError } from "../errors.js";
+import { CoreError, DatabaseChangeAppliedError } from "../errors.js";
 
 /** Thrown when the database is in a state that `migrate` leaves alone, so nothing was attempted. */
 export class MigrationRefusedError extends CoreError {
@@ -94,6 +94,7 @@ export function migrateDatabase(
   }
 
   const db = openResolvedDatabase(databasePath);
+  let migrated: MigrateResult | undefined;
 
   try {
     applyConnectionSettings(db);
@@ -106,7 +107,8 @@ export function migrateDatabase(
       throw generateNewerDatabaseError(databasePath, result.previousVersion, latestVersion, backup);
     }
 
-    const { status: _status, ...migrated } = result;
+    const { status: _status, ...outcome } = result;
+    migrated = outcome;
     db.close();
     return migrated;
   } catch (error) {
@@ -116,6 +118,9 @@ export function migrateDatabase(
       attachSuppressed(error, closeError);
     }
 
+    if (migrated?.changed) {
+      throw new DatabaseChangeAppliedError("upgrade", migrated, migrated.finalVersion, error);
+    }
     throw error;
   }
 }

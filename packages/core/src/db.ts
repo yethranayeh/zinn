@@ -31,7 +31,7 @@ import { readCoreReleaseMode } from "./release.js";
 import { attachSuppressed, isSqliteErrorCode } from "./sqlite/database.js";
 import { rethrowSearchError } from "./search-error.js";
 import { withChangeHooks } from "./hooks.js";
-import { CoreError } from "./errors.js";
+import { CoreError, DatabaseChangeAppliedError } from "./errors.js";
 
 let db: Database | null = null;
 let policy: OpenPolicy = DEFAULT_OPEN_POLICY;
@@ -253,7 +253,11 @@ export function getDb(access: DatabaseAccess = {}) {
         }
       }
 
-      if (err instanceof UnmarkedDatabaseError || err instanceof MissingDatabaseError) {
+      if (
+        err instanceof UnmarkedDatabaseError ||
+        err instanceof MissingDatabaseError ||
+        err instanceof DatabaseChangeAppliedError
+      ) {
         throw err;
       }
 

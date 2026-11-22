@@ -49,7 +49,7 @@ zinn restore ~/.zinn/backups/2026-09-29T12-30-05Z-cli-0.32.0-b38178c0.sqlite
 
 Restore asks for confirmation unless `--yes` is used. It saves the current database first, then applies the restore completely or not at all. Restoring to a missing database creates it. With `--json`, it returns `databasePath`, `previousVersion`, `restoredVersion`, and `backupPath`. `backupPath` is `null` if the destination database was missing or empty. See [Confirmations in scripts](/docs/scripting/confirmations#confirm-unattended-changes) for confirmation behavior in unattended commands.
 
-A backup with an older schema version is restored at that version, then Zinn upgrades it under the normal upgrade policy. Restore works regardless of the version of the destination database, so you can return to an older Zinn and restore a backup saved by an upgrade. Missing, damaged, unmarked, non-Zinn, or newer-schema backups are **refused** without changing the database. So is a backup path that leads to the database itself, and a backup file that is deleted, replaced or overwritten after restore checked it. Any later failure rolls back the restore and retains the saved backup. If the destination database is damaged, restore leaves it unchanged and prints recovery steps.
+A backup with an older schema version is restored at that version, then Zinn upgrades it under the normal upgrade policy. Restore works regardless of the version of the destination database, so you can return to an older Zinn and restore a backup saved by an upgrade. Missing, damaged, unmarked, non-Zinn, or newer-schema backups are **refused** without changing the database. So is a backup path that leads to the database itself, and a backup file that is deleted, replaced or overwritten after restore checked it. A failure before commit rolls back the restore and retains any backup already saved. If the destination database is damaged, restore leaves it unchanged and prints recovery steps.
 
 ## Deleted projects and tasks
 
@@ -64,6 +64,8 @@ Deleting a task does not make its number available again within that project. De
 A newer Zinn upgrades an older database completely or not at all, saving a backup first. A published release upgrades an older database on first use. A source build upgrades only a separate database selected with `ZINN_DIR`. Other older databases open read-only until explicitly migrated.
 
 If an automatic upgrade saves a backup and then fails or is interrupted before committing, Zinn pauses automatic retries for that database, including after installing a newer release. Zinn keeps the backup. After you fix the cause, run `zinn migrate` to retry with a fresh backup. A successful restore also clears the pause and returns the database to the normal upgrade policy. So does replacing the database file with another database, such as a copy of a backup.
+
+If connection cleanup fails after an upgrade or restore commits, Zinn reports the applied change and names the backup of the previous database when one was saved. Scripts can check the [applied field](/docs/scripting/errors#details-and-diagnostics).
 
 To upgrade explicitly, run:
 
