@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { openResolvedDatabase } from "#sqlite";
 
 import { applyConnectionSettings } from "../connection.js";
+import { CoreError, errorMessage } from "../errors.js";
 import { syncDirectory, syncToDisk } from "../fs-sync.js";
 import { createOutputFileName, readOutputFileName } from "../output-file-name.js";
 import { attachSuppressed } from "../sqlite/database.js";
@@ -18,6 +19,19 @@ export type BackupCreateInput = {
   client: string;
   version: string;
 };
+
+export class BackupDirectorySyncError extends CoreError {
+  override name = "BackupDirectorySyncError";
+
+  constructor(backupPath: string, cause: unknown) {
+    super(
+      `Could not finish syncing the backup directory (${errorMessage(cause)}). The backup is at ${backupPath}. Its final name may be lost in a crash`,
+      "storage",
+      { entity: "backup", backupPath },
+      { cause },
+    );
+  }
+}
 
 /**
  * `VACUUM INTO` writes straight to its target,
@@ -59,13 +73,12 @@ function ensureDirectory(directory: string) {
  *  or that this build cannot write.
  * `VACUUM INTO` reads through SQLite, so the copy includes writes still in the WAL file.
  * It fails when the target file already exists.
- * The connection is read/write, since a read-only one cannot always open a WAL database,
- *  so it would create a missing database file.
- * Callers check that it exists.
+ * The connection opens an existing database read/write, since a read-only one
+ * cannot always open a WAL database.
  * @link https://www.sqlite.org/wal.html#readonly
  */
 function vacuumInto(databasePath: ResolvedPath, targetPath: string) {
-  const db = openResolvedDatabase(databasePath);
+  const db = openResolvedDatabase(databasePath, { create: false });
 
   try {
     applyConnectionSettings(db);
@@ -101,6 +114,8 @@ export function create(
     vacuumInto(databasePath, partialPath);
     syncToDisk(partialPath);
     beforePublish?.(path);
+    // A rename within one directory is atomic, so the final name only ever holds a complete backup
+    renameSync(partialPath, path);
   } catch (error) {
     try {
       rmSync(partialPath, { force: true });
@@ -111,10 +126,12 @@ export function create(
     throw error;
   }
 
-  // A rename within one directory is atomic, so the final name only ever holds a complete backup.
-  renameSync(partialPath, path);
   // The name needs a directory sync too. https://man7.org/linux/man-pages/man2/fsync.2.html
-  syncDirectory(directory);
+  try {
+    syncDirectory(directory);
+  } catch (error) {
+    throw new BackupDirectorySyncError(path, error);
+  }
 
   return { path };
 }

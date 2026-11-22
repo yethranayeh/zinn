@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,8 @@ type Event = { operation: string; path: string; flags?: string };
 type Outcome = {
   events: Array<Event>;
   error: string | null;
+  errorBackupPath: string | null;
+  sourceExists: boolean;
   suppressed: Array<string>;
   openDescriptors: number;
   before: unknown;
@@ -16,11 +18,12 @@ type Outcome = {
 };
 type Scenario = {
   action?: "backup" | "upgrade" | "restore";
-  failure?: "open" | "sync" | "close" | "sync-and-close" | "parent";
+  failure?: "open" | "sync" | "close" | "sync-and-close" | "parent" | "rename" | "rename-and-cleanup" | "source-removed";
   windows?: boolean;
 };
 
 const backupModule = fileURLToPath(new URL("./backup.ts", import.meta.url));
+const backupOperation = fileURLToPath(new URL("../operations/backup.ts", import.meta.url));
 const migrationsDirectory = fileURLToPath(new URL("../migrations/", import.meta.url));
 const DIRECTORY_SYNC_SUPPORTED = process.platform !== "win32";
 
@@ -35,10 +38,13 @@ async function runScenario(directory: string, backupDirectory: string, scenario:
     const directory = ${JSON.stringify(directory)};
     const backupDirectory = ${JSON.stringify(backupDirectory)};
     const scenario = ${JSON.stringify(scenario)};
+    const databasePath = join(directory, "data", "zinn.sqlite");
     const events = [];
     const descriptors = new Map();
     const failure = new Error("injected backup sync failure");
     const closeFailure = new Error("injected close failure");
+    const renameFailure = new Error("injected rename failure");
+    const cleanupFailure = new Error("injected partial cleanup failure");
     let renamed = false;
     let recording = false;
     function fails(path) {
@@ -48,6 +54,12 @@ async function runScenario(directory: string, backupDirectory: string, scenario:
     }
     mock.module("node:fs", () => ({
       ...original,
+      mkdirSync(path, options) {
+        if (recording && scenario.failure === "source-removed" && path === backupDirectory) {
+          original.unlinkSync(databasePath);
+        }
+        return original.mkdirSync(path, options);
+      },
       openSync(path, flags, mode) {
         const name = resolve(String(path));
         if (recording && scenario.failure === "open" && fails(name)) {
@@ -82,26 +94,40 @@ async function runScenario(directory: string, backupDirectory: string, scenario:
         }
       },
       renameSync(from, to) {
+        if (recording && ["rename", "rename-and-cleanup"].includes(scenario.failure)) {
+          throw renameFailure;
+        }
         original.renameSync(from, to);
         if (recording) {
           events.push({ operation: "rename", path: resolve(String(to)) });
           renamed = true;
         }
       },
+      rmSync(path, options) {
+        if (recording && scenario.failure === "rename-and-cleanup" && String(path).endsWith(".partial")) {
+          throw cleanupFailure;
+        }
+        return original.rmSync(path, options);
+      },
     }));
     if (scenario.windows) {
       Object.defineProperty(process, "platform", { value: "win32" });
     }
     const backup = await import(${JSON.stringify(backupModule)});
+    const { backup: backupOperations } = await import(${JSON.stringify(backupOperation)});
     const { seedBaseline, snapshot } = await import(${JSON.stringify(join(migrationsDirectory, "testing.ts"))});
     const { upgradeDatabase } = await import(${JSON.stringify(join(migrationsDirectory, "upgrade.ts"))});
     const { restoreDatabase } = await import(${JSON.stringify(join(migrationsDirectory, "restore.ts"))});
-    const databasePath = join(directory, "database.sqlite");
+    original.mkdirSync(dirname(databasePath));
     const db = openDatabase(databasePath);
     db.exec("PRAGMA journal_mode = WAL");
     db.exec("PRAGMA foreign_keys = ON");
     seedBaseline(db);
     const before = snapshot(db);
+    const removesSource = scenario.failure === "source-removed";
+    if (removesSource) {
+      db.close();
+    }
     let source;
     if (scenario.action === "restore") {
       source = join(directory, "source.sqlite");
@@ -113,6 +139,7 @@ async function runScenario(directory: string, backupDirectory: string, scenario:
     const build = { directory: backupDirectory, client: "test", version: "1.2.3" };
     const readFreeSpace = () => ({ availableBytes: 2 ** 40, blockBytes: 4096, device: 1 });
     let error = null;
+    let errorBackupPath = null;
     let suppressed = [];
     let changed = false;
     recording = true;
@@ -130,21 +157,44 @@ async function runScenario(directory: string, backupDirectory: string, scenario:
       } else if (scenario.action === "restore") {
         restoreDatabase(databasePath, source, { backup: build, readFreeSpace, migrations: [] });
         changed = true;
+      } else if (removesSource) {
+        backupOperations.create(build);
       } else {
         backup.create(databasePath, backupDirectory, build);
       }
       events.push({ operation: "return", path: backupDirectory });
     } catch (caught) {
-      if (caught !== failure && caught !== closeFailure) {
+      let cause = caught;
+      if (caught instanceof backup.BackupDirectorySyncError) {
+        if (caught.kind !== "storage" || caught.facts.entity !== "backup") {
+          throw caught;
+        }
+        errorBackupPath = caught.facts.backupPath;
+        cause = caught.cause;
+      }
+      if (cause === failure) {
+        error = "sync";
+      } else if (cause === closeFailure) {
+        error = "close";
+      } else if (cause === renameFailure) {
+        error = "rename";
+      } else if (removesSource && caught.code === "SQLITE_CANTOPEN") {
+        error = caught.code;
+      } else {
         throw caught;
       }
-      error = caught === failure ? "sync" : "close";
-      suppressed = caught.suppressed === undefined ? [] : [caught.suppressed === closeFailure ? "close" : "unknown"];
+      if (cause.suppressed !== undefined) {
+        const suppressedFailures = new Map([[closeFailure, "close"], [cleanupFailure, "cleanup"]]);
+        suppressed = [suppressedFailures.get(cause.suppressed) ?? "unknown"];
+      }
     }
     recording = false;
-    const after = snapshot(db);
-    db.close();
-    console.log(JSON.stringify({ events, error, suppressed, openDescriptors: descriptors.size, before, after, changed }));
+    const sourceExists = original.existsSync(databasePath);
+    const after = removesSource ? null : snapshot(db);
+    if (!removesSource) {
+      db.close();
+    }
+    console.log(JSON.stringify({ events, error, errorBackupPath, sourceExists, suppressed, openDescriptors: descriptors.size, before, after, changed }));
   `], {
     cwd: dirname(backupModule),
     env: { PATH: process.env.PATH, TMPDIR: process.env.TMPDIR, ZINN_DIR: directory, NODE_ENV: "test" },
@@ -165,8 +215,10 @@ async function withScenario(
   check: (outcome: Outcome, backupDirectory: string) => void,
   existing = false,
 ) {
-  const directory = mkdtempSync(join(tmpdir(), "zinn-backup-durability-"));
-  const backupDirectory = join(directory, "nested", "backups");
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), "zinn-backup-durability-")));
+  const backupDirectory = scenario.failure === "source-removed"
+    ? join(directory, "backups")
+    : join(directory, "nested", "backups");
   try {
     if (existing) {
       mkdirSync(backupDirectory, { recursive: true });
@@ -210,6 +262,30 @@ test.skipIf(!DIRECTORY_SYNC_SUPPORTED)("backup syncs existing parent entries lef
   await withScenario({}, expectSynced, true);
 });
 
+test("backup fails without recreating a source removed after classification", async () => {
+  await withScenario({ failure: "source-removed" }, (outcome, directory) => {
+    expect(outcome.error).toBe("SQLITE_CANTOPEN");
+    expect(outcome.sourceExists).toBe(false);
+    expect(readdirSync(directory)).toEqual([]);
+  });
+});
+
+test("a failed rename removes the partial snapshot and preserves the rename error", async () => {
+  await withScenario({ failure: "rename" }, (outcome, directory) => {
+    expect(outcome.error).toBe("rename");
+    expect(outcome.errorBackupPath).toBeNull();
+    expect(readdirSync(directory)).toEqual([]);
+  });
+});
+
+test("a failed partial cleanup is suppressed on the rename error", async () => {
+  await withScenario({ failure: "rename-and-cleanup" }, (outcome, directory) => {
+    expect(outcome.error).toBe("rename");
+    expect(outcome.suppressed).toEqual(["cleanup"]);
+    expect(readdirSync(directory)).toEqual([expect.stringMatching(/\.sqlite\.partial$/)]);
+  });
+});
+
 for (const failure of ["open", "sync", "close", "sync-and-close"] as const) {
   test.skipIf(!DIRECTORY_SYNC_SUPPORTED)(`a directory ${failure} failure retains the completed backup and closes its descriptor`, async () => {
     await withScenario({ failure }, (outcome, directory) => {
@@ -220,6 +296,7 @@ for (const failure of ["open", "sync", "close", "sync-and-close"] as const) {
       const saved = readdirSync(directory);
       expect(saved).toHaveLength(1);
       expect(saved[0]!.endsWith(".sqlite")).toBe(true);
+      expect(outcome.errorBackupPath).toBe(join(directory, saved[0]!));
       expect(outcome.after).toEqual(outcome.before);
     });
   });
@@ -241,7 +318,14 @@ for (const action of ["upgrade", "restore"] as const) {
         expect(outcome.openDescriptors).toBe(0);
         expect(outcome.changed).toBe(false);
         expect(outcome.after).toEqual(outcome.before);
-        expect(readdirSync(directory)).toHaveLength(failure === "sync" ? 1 : 0);
+        if (failure === "parent") {
+          expect(readdirSync(directory)).toEqual([]);
+          expect(outcome.errorBackupPath).toBeNull();
+        } else {
+          const files = readdirSync(directory);
+          expect(files).toEqual([expect.stringMatching(/\.sqlite$/)]);
+          expect(outcome.errorBackupPath).toBe(join(directory, files[0]!));
+        }
       });
     });
   }

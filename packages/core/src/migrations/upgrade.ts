@@ -231,7 +231,7 @@ export function upgradeDatabase(
   const databasePath = requireDatabaseFile(db, "schema upgrade");
   const targetVersion = latestVersion(migrations);
   let completedPause: string | null = null;
-  let pausesOnFailure = false;
+  let backupCompleted = false;
 
   const runUpgrade = () =>
     withForeignKeysOff(db, () =>
@@ -275,7 +275,7 @@ export function upgradeDatabase(
           backup,
           attempt?.beforePublish,
         );
-        pausesOnFailure = attempt !== undefined;
+        backupCompleted = true;
         attempt?.confirmed(backupPath);
 
         const after = estimateRequiredFree(measureSpace(db, migrations), { includeBackup: false });
@@ -298,7 +298,9 @@ export function upgradeDatabase(
   try {
     result = runUpgrade();
   } catch (error) {
-    if (pausesOnFailure) {
+    const backupWasPublished =
+      backupCompleted || error instanceof dbBackup.BackupDirectorySyncError;
+    if (automatic && backupWasPublished) {
       markPausingFailure(error);
     }
     throw error;

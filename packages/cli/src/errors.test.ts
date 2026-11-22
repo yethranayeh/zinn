@@ -85,6 +85,17 @@ test("SQLite reason translation leaves unknown primary codes and shaped errors i
   expect(classifyFailure(shaped)).toEqual({ code: "internal" });
 });
 
+test("a known storage failure preserves a system error with an unmapped code", () => {
+  const cause = Object.assign(new Error("directory sync failed"), { code: "EINVAL", syscall: "fsync" });
+  const error = new CoreError("cannot sync the backup directory", "storage", { entity: "backup" }, { cause });
+
+  expect(classifyFailure(cause)).toEqual({ code: "internal" });
+  expect(classifyFailure(error)).toEqual({
+    code: "storage",
+    details: { entity: "backup", cause: { code: "EINVAL", message: cause.message } },
+  });
+});
+
 test("ZINN-283: rare injected failures include buffered notices once and never serialize arbitrary error properties", async () => {
   const lib = new URL("./lib.ts", import.meta.url).pathname;
   const core = new URL("../../core/index.ts", import.meta.url).pathname;

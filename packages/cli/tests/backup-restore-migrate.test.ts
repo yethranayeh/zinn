@@ -6,7 +6,7 @@ import { basename, dirname, join } from "node:path";
 
 import packageJson from "../package.json";
 import { runCliInTerminal } from "../testing";
-import { backupFiles, createDatabase, databaseSnapshot, runZinn, withIsolatedZinnDir, withoutTelemetry, withTestDb } from "../test-helpers";
+import { backupFiles, CLI_PATH, createDatabase, databaseSnapshot, runProcessAsync, runZinn, withIsolatedZinnDir, withoutTelemetry, withTestDb } from "../test-helpers";
 import { errorDocumentSchema } from "../src/errors";
 import { latestVersion, MIGRATIONS } from "../../core/src/migrations/registry";
 import { createBaseline } from "../../core/src/migrations/baseline";
@@ -37,6 +37,122 @@ function createBeforeTaskKeyIndex(store: string, duplicate = false) {
   }
   return databasePath;
 }
+
+function runWithBackupFailure(args: Array<string>, store: string, failure: "rename" | "directory-sync") {
+  const preload = join(store, "backup-failure.ts");
+  const backupDirectory = join(realpathSync(store), "backups");
+  writeFileSync(preload, `
+    import { mock } from "bun:test";
+    import * as fs from "node:fs";
+    const original = { ...fs };
+    const backupDirectory = ${JSON.stringify(backupDirectory)};
+    const failure = ${JSON.stringify(failure)};
+    let renamed = false;
+    let directoryDescriptor;
+    mock.module("node:fs", () => ({
+      ...original,
+      renameSync(from, to) {
+        const publishesBackup = String(from).endsWith(".sqlite.partial");
+        if (publishesBackup && failure === "rename") {
+          throw Object.assign(new Error("injected backup rename failure"), { code: "EIO", syscall: "rename" });
+        }
+        original.renameSync(from, to);
+        renamed ||= publishesBackup;
+      },
+      openSync(path, ...args) {
+        const descriptor = original.openSync(path, ...args);
+        if (renamed && path === backupDirectory) {
+          directoryDescriptor = descriptor;
+        }
+        return descriptor;
+      },
+      fsyncSync(descriptor) {
+        if (failure === "directory-sync" && descriptor === directoryDescriptor) {
+          directoryDescriptor = undefined;
+          throw Object.assign(new Error("injected directory fsync failure"), { code: "EINVAL", syscall: "fsync" });
+        }
+        original.fsyncSync(descriptor);
+      },
+    }));
+  `);
+  return runProcessAsync([process.execPath, "--preload", preload, CLI_PATH, ...args], {
+    cwd: store,
+    env: { ...TEST_ENVIRONMENT, ZINN_DIR: store },
+  });
+}
+
+test.skipIf(process.platform === "win32")("backup reports the final snapshot path and directory failure on stderr", async () => {
+  await withIsolatedZinnDir(async (store) => {
+    createBeforeTaskKeyIndex(store);
+
+    const result = await runWithBackupFailure(["backup"], store, "directory-sync");
+    const files = backupFiles(store);
+    expect(files).toEqual([expect.stringMatching(/\.sqlite$/)]);
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    const backupPath = join(realpathSync(store), "backups", files[0]!);
+    expect(result.stderr).toContain(backupPath);
+    expect(result.stderr).toContain("injected directory fsync failure");
+
+    const snapshot = new Database(backupPath, { readonly: true });
+    try {
+      expect(snapshot.query("SELECT title FROM task WHERE id = 't1'").get()).toEqual({ title: "First" });
+    } finally {
+      snapshot.close();
+    }
+  });
+});
+
+test.skipIf(process.platform === "win32")("a directory sync failure after an automatic backup reports why retries are paused", async () => {
+  await withIsolatedZinnDir(async (store) => {
+    createBeforeTaskKeyIndex(store);
+    const before = databaseSnapshot(store);
+    const args = ["project", "list", "--json"];
+
+    const first = await runWithBackupFailure(args, store, "directory-sync");
+    const files = backupFiles(store);
+    expect(files).toEqual([expect.stringMatching(/\.sqlite$/)]);
+    expect(first.code).toBe(1);
+    expect(first.stdout).toBe("");
+    const { error } = errorDocumentSchema.parse(JSON.parse(first.stderr));
+    expect(error).toMatchObject({
+      code: "storage",
+      details: {
+        entity: "backup",
+        backupPath: join(realpathSync(store), "backups", files[0]!),
+        cause: { code: "EINVAL" },
+      },
+    });
+    expect(error.details?.cause?.message).toContain("injected directory fsync failure");
+    expect(error.message).toContain("zinn migrate");
+
+    const retry = await runZinn(args, store);
+    expect(retry.code).toBe(1);
+    expect(errorDocumentSchema.parse(JSON.parse(retry.stderr)).error.details?.reason).toBe("migration_paused");
+    expect(backupFiles(store)).toEqual(files);
+    expect(databaseSnapshot(store)).toEqual(before);
+  });
+});
+
+test("automatic upgrade retries after a failed backup rename", async () => {
+  await withIsolatedZinnDir(async (store) => {
+    createBeforeTaskKeyIndex(store);
+    const args = ["project", "list", "--json"];
+
+    const first = await runWithBackupFailure(args, store, "rename");
+    expect(first.code).toBe(1);
+    const { error } = errorDocumentSchema.parse(JSON.parse(first.stderr));
+    expect(error.details?.cause?.code).toBe("EIO");
+    expect(error.details?.backupPath).toBeUndefined();
+    expect(error.message).not.toContain("zinn migrate");
+    expect(backupFiles(store)).toEqual([]);
+
+    const retry = await runZinn(args, store);
+    expect(retry.code).toBe(0);
+    expect(backupFiles(store)).toEqual([expect.stringMatching(/\.sqlite$/)]);
+    expect(databaseSnapshot(store).version).toEqual({ user_version: CURRENT_SCHEMA_VERSION });
+  });
+});
 
 test("ZINN-508: ordinary opens pause after a failed automatic upgrade and explicit migrate retries", async () => {
   await withIsolatedZinnDir(async (root) => {

@@ -302,7 +302,7 @@ function publicDetails(facts: ErrorDetails): ErrorDetails {
   return Object.fromEntries(Object.entries(details).filter(([, value]) => value !== undefined));
 }
 
-function nativeFailure(error: Error): ErrorDetails | undefined {
+function nativeFailure(error: Error, hasStorageContext: boolean): ErrorDetails | undefined {
   const code = "code" in error && typeof error.code === "string" ? error.code : undefined;
   if (code === undefined) {
     return undefined;
@@ -313,12 +313,14 @@ function nativeFailure(error: Error): ErrorDetails | undefined {
       ? sqliteReasons.find(([primary]) => isSqliteErrorFamily(error, primary))?.[1]
       : osReasons[code];
 
-  if (reason === undefined) {
+  const isStorageCause =
+    hasStorageContext && "syscall" in error && typeof error.syscall === "string";
+  if (reason === undefined && !isStorageCause) {
     return undefined;
   }
 
   return {
-    reason,
+    ...(reason === undefined ? {} : { reason }),
     ...("path" in error && typeof error.path === "string" ? { path: error.path } : {}),
     cause: {
       code,
@@ -369,7 +371,7 @@ export function classifyFailure(error: unknown): ClassifiedFailure {
       };
     }
 
-    const native = nativeFailure(current);
+    const native = nativeFailure(current, classified?.code === "storage");
     if (classified?.code === "storage" && current instanceof SqliteError) {
       classified.details = {
         ...native,
