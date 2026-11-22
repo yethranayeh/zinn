@@ -77,7 +77,7 @@ export interface InspectorCollagePart {
   y: number;
   width: number;
   callout: { top: number; right: number };
-  states: InspectorCollageState[];
+  states: Array<InspectorCollageState>;
 }
 
 const collageAssets = {
@@ -93,7 +93,7 @@ const collageAssets = {
   paletteCommands:
     "https://res.cloudinary.com/drwbqceye/image/upload/v1793468909/palette-commands-zinn_vd9nvg.png",
   paletteAllTasks:
-    "https://res.cloudinary.com/drwbqceye/image/upload/v1793468908/palette-all-tasks_qf0iwd.png",
+    "https://res.cloudinary.com/drwbqceye/image/upload/v1795360227/palette-all-tasks_yxkcul.png",
   keysInChat:
     "https://res.cloudinary.com/drwbqceye/image/upload/v1793468909/palette-keys-in-chat_h2mp95.png",
   composer:
@@ -167,7 +167,7 @@ export const inspectorCollage = {
         {
           label: "All tasks",
           image: collageAssets.paletteAllTasks,
-          alt: "Zinn task picker searching all tasks for ZOC",
+          alt: "Zinn task picker listing all tasks",
           height: 756,
         },
         {
