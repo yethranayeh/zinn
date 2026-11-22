@@ -1,0 +1,31 @@
+---
+version: 0.6.0
+date: "2026-11-22"
+---
+
+### Added
+
+- OpenCode Desktop shows the default project's board at the bottom of the window. The strip carries the seal wordmark, the task total, the count in each column with tasks and when it was last read, and the wordmark opens the documentation. A failed read keeps the last counts and marks the stamp `no read`. Home and drafts make no reads and keep the last counts, and with no prior read the strip says `no session`.
+- The inspector marks a claimed task with `◆` when this conversation holds the claim, and with `◇` in the warning tone when another holder has it. The claim mark replaces the activity mark on that row and costs no extra CLI call.
+- The inspector renews this conversation's claims after a turn that ran a tool. A live claim is renewed once half its lease has passed, so an active conversation renews each claim about twice per lease. Renewal is on by default and `renewClaims` set to `false` turns it off. An expired claim is never renewed, so a lapse stays visible.
+- `Zinn: settings` in the command palette changes the inspector's sidepanel rows, conversation mark and claim renewal from the TUI. The menu applies each choice immediately, and a value set there overrides the same value in `cli.json` until you choose Reset.
+
+### Changed
+
+- Install `@zinn-dev/opencode@^0.6.0` in `opencode.json` for the server and desktop entries, and in `cli.json` for the TUI inspector options. Both entries use the same package spec, so they share one download. See [OpenCode inspector](/integrations/opencode/inspector).
+- The desktop board summary reads the board only while a session is open. Home and drafts make no Zinn CLI calls, and the refresh setting states the read rate.
+- Task pickers lay each row out in columns, with the task key padded to the longest key in the list and `|` between the key, the state and the title: `APP-52 | ◐ H | The title`. The priority is its CLI letter, `U`, `H`, `M` or `L`, and `-` when the task has no priority. An unknown key reads `APP-999 | ✗ not in store`. The expanded sidepanel row and task details show the full word, capitalized. One-row sidepanel tasks without a priority show `-` where the priority letter goes, matching the CLI.
+- The task pickers show each task's state as one glyph before the title: `○` backlog or todo, `◐` in progress, `◑` review, `●` done, `✕` cancelled, `⊘` a Blocked column without a category and `▪` archived. The column name and the status word are gone. A key outside the store reads `✗ not in store`. The sidebar uses the same shapes for the states it marks.
+- The inspector probes activity on scan events and rechecks at most every ten minutes. Opening a session with five mentioned tasks makes 10 activity calls instead of 20, and a turn end adds no activity probes.
+- **Breaking CLI:** The inspector requires Zinn CLI 0.45.0 or newer. Claim marks, claim renewal and column categories read fields and commands added in 0.45.0.
+
+### Fixed
+
+- `@zinn-dev/opencode` installs from the npm spec again on OpenCode 2.3.2. The inspector uses the OpenTUI and solid-js modules the host provides instead of asking npm for a second copy.
+- The inspector recognizes archived tasks mentioned in a conversation. Their details open, their activity marks them, and the task count and board picker still include only active tasks.
+- The inspector reads the column category, so a renamed Done column still gets the done treatment and a column named Done with another category does not.
+- The inspector refreshes the board and conversation marks after `zinn` commands that run inside an OpenCode Code Mode script.
+- The inspector's task detail reloads once when a turn ends instead of on every message. Edits, moves, comments and relations made during the conversation appear without a CLI read per tool call, and the open detail keeps its content while a reload is in flight.
+- The inspector's conversation mark follows recent work. A task is marked only from activity in the last ten minutes, and the mark expires ten minutes after the conversation's latest activity on the task without waiting for another turn.
+- The inspector's CLI reads time out after 15 seconds. A stuck Zinn CLI no longer blocks the panel, and later reads proceed.
+- `/zinn` and `/zinn.chat` open their pickers without the sidebar, including after a plugin reload. When the sidebar has not loaded the board and the session's mentions, the commands read both directly.

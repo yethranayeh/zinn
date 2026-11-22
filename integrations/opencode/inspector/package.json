@@ -1,6 +1,6 @@
 {
 	"name": "@zinn-dev/opencode",
-	"version": "0.6.0-dev",
+	"version": "0.6.0",
 	"type": "module",
 	"description": "Experimental Zinn task inspector and desktop board summary for OpenCode.",
 	"keywords": [

@@ -30,7 +30,7 @@ export const opencodeInspector = {
   verifiedVersion,
   openCodeRange,
   openTuiVersion: "0.8.4",
-  minimumCliVersion: "0.41.0",
+  minimumCliVersion: "0.45.0",
   options: [
     {
       name: "rows",
