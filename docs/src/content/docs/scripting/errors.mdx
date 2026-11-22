@@ -61,6 +61,10 @@ A checked suggestion to quote a column name uses reason `unquoted_column`. It re
 
 [Task claim](/docs/cli/next#claim-tasks) refusals use code `conflict` with reason `claimed` when someone else holds the claim, `not_claimed` when `task heartbeat` finds no claim, and `claim_limit` when the holder renews a claim 24 hours or more after last changing the task. `claimExpiresAt` is present when the task has a claim.
 
+## Paused upgrades
+
+When an automatic upgrade is paused, Zinn returns code `conflict` with reason `migration_paused`. The details include `databasePath`, `schemaVersion` and `supportedSchemaVersion` for the running build. See [database upgrades](/docs/data#upgrade-a-database) for how to retry.
+
 ## Messages and terminal output
 
 Parser and routing errors use the same message in text mode and `error.message`, capped at 1,024 UTF-16 units. Omitted text is marked with an ellipsis, and oversized repair commands are replaced with guidance. `error.help` and structured details retain their complete values.
