@@ -1,5 +1,5 @@
 {
-  "exclude": ["docs"],
+  "exclude": ["docs", "research"],
   "compilerOptions": {
     // Environment setup & latest features
     "lib": ["ESNext"],
