@@ -1,5 +1,36 @@
 import { expect, test } from "bun:test";
 import { scanSession } from "./scan.ts";
+test("counts zinn commands a Code Mode script runs", () => {
+  const messages = [
+    {
+      type: "assistant",
+      time: { completed: 1 },
+      content: [
+        {
+          type: "tool",
+          name: "execute",
+          state: {
+            status: "completed",
+            input: { code: "await tools.shell({ command: 'zinn task list' })" },
+            metadata: {
+              toolCalls: [
+                { tool: "shell", status: "completed", input: { command: "zinn task list" } },
+                { tool: "shell", status: "completed", input: { command: "echo hello" } },
+              ],
+            },
+          },
+        },
+        {
+          type: "tool",
+          name: "shell",
+          state: { status: "completed", input: { command: "zinn task list" } },
+        },
+      ],
+    },
+  ];
+  const ctx = { data: { session: { message: { list: () => messages } } } } as any;
+  expect(scanSession(ctx, "ses_code_mode", new Map()).zinnCommands).toBe(2);
+});
 test("scans completed prose and the latest plan with project-aware recency", () => {
 const summary = (key: string) => ({
   key,

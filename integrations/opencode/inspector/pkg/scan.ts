@@ -97,6 +97,18 @@ export function extractMessage(message: ScanMessage): CachedMessage {
       zinnCommands += 1;
     }
 
+    // Code Mode records the program's calls in the execute part's metadata.
+    const toolCalls = isRecord(state?.["metadata"]) ? state["metadata"]["toolCalls"] : undefined;
+    if (Array.isArray(toolCalls)) {
+      for (const call of toolCalls) {
+        const callInput = isRecord(call) && isRecord(call["input"]) ? call["input"] : undefined;
+        const callCommand = callInput?.["command"];
+        if (typeof callCommand === "string" && ZINN_INVOCATION.test(callCommand)) {
+          zinnCommands += 1;
+        }
+      }
+    }
+
     const toolName = raw["name"] ?? raw["tool"];
     if (
       toolName === "todowrite" &&
