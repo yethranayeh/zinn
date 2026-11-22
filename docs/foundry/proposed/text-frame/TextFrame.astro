@@ -1,0 +1,34 @@
+---
+interface Props {
+	/** The ids of the passages in the slot. Each is a `data-text-frame-passage` element. */
+	passages: string[];
+	/** The ids of the passages drawn highlighted. */
+	active?: string[];
+	/** Highlights a frame while its passage or a `data-text-frame-control` element is hovered or focused. */
+	interactive?: boolean;
+}
+
+const { passages, active = [], interactive = true } = Astro.props;
+---
+
+<div class='relative' data-text-frame data-text-frame-interactive={interactive ? "" : undefined}>
+	<slot />
+	<svg class='pointer-events-none absolute inset-0 h-full w-full overflow-visible' aria-hidden='true'>
+		{
+			passages.map((id) => (
+				<g class='group/frame' data-text-frame-frame={id} data-active={active.includes(id) ? "" : undefined}>
+					<path
+						class='fill-none stroke-clay/35 stroke-1 group-data-active/frame:stroke-soot/50'
+						data-text-frame-contour
+						d=''
+					/>
+					<path
+						class='fill-none stroke-clay stroke-1 group-data-active/frame:stroke-soot group-data-active/frame:stroke-[1.5]'
+						data-text-frame-corners
+						d=''
+					/>
+				</g>
+			))
+		}
+	</svg>
+</div>

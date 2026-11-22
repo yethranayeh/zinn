@@ -1,0 +1,101 @@
+---
+import ComponentHeading from "../../components/ComponentHeading.astro";
+import Specimen from "../../components/Specimen.astro";
+import FoundryLayout from "../../layouts/FoundryLayout.astro";
+import TextFrame from "../../proposed/text-frame/TextFrame.astro";
+import Button from "../../../src/components/ui/button/Button.astro";
+---
+
+<FoundryLayout
+	title='TextFrame'
+	description='TextFrame marks an exact passage of running text with corner brackets and a faint contour.'>
+	<ComponentHeading folder='text-frame'>
+		<p>
+			Corner brackets and a faint contour around a passage of running text. Use it to mark a sentence or phrase exactly,
+			including one that starts or ends mid-line.
+		</p>
+		<p>
+			A passage of several lines gets a hairline contour along its ragged shape. A single line gets corners only. The
+			frame draws over the text without changing its layout and redraws when the text reflows.
+		</p>
+		<p>
+			<code>active</code> draws a passage highlighted. Hovering or focusing a passage highlights its frame, and so does an
+			element marked <code>data-text-frame-control</code>.
+		</p>
+	</ComponentHeading>
+
+	<section class='flex flex-col gap-4' aria-labelledby='passages'>
+		<h2 id='passages' class='text-xl font-semibold'>Passages</h2>
+		<div class='grid gap-4 md:grid-cols-2'>
+			<Specimen label='One line' block>
+				<TextFrame passages={["line"]}>
+					<p class='max-w-[44ch] leading-8'>
+						Every task keeps its history, so <span data-text-frame-passage='line'>a closed task stays readable</span> long
+						after it ships.
+					</p>
+					<div class='mt-4 flex flex-wrap gap-2'>
+						<Button variant='outline' data-text-frame-control='line'>Frame</Button>
+					</div>
+				</TextFrame>
+			</Specimen>
+
+			<Specimen label='Several lines, starting and ending mid-line' block>
+				<TextFrame passages={["lines"]}>
+					<p class='max-w-[44ch] leading-8'>
+						A board holds the columns and tasks of one project. <span data-text-frame-passage='lines'
+							>Moving a task between columns records who moved it and when, so the history of a board explains how the
+							work got where it is</span
+						> without anyone writing it down.
+					</p>
+					<div class='mt-4 flex flex-wrap gap-2'>
+						<Button variant='outline' data-text-frame-control='lines'>Frame</Button>
+					</div>
+				</TextFrame>
+			</Specimen>
+
+			<Specimen label='Two passages sharing a line' block>
+				<TextFrame passages={["first", "second"]}>
+					<p class='max-w-[44ch] leading-8'>
+						Claims keep two agents from taking one task. <span data-text-frame-passage='first'
+							>A claim expires on its own</span
+						>, <span data-text-frame-passage='second'>so a session that stops never blocks the work</span> for long.
+					</p>
+					<div class='mt-4 flex flex-wrap gap-2'>
+						<Button variant='outline' data-text-frame-control='first'>First</Button>
+						<Button variant='outline' data-text-frame-control='second'>Second</Button>
+					</div>
+				</TextFrame>
+			</Specimen>
+		</div>
+	</section>
+
+	<section class='flex flex-col gap-4' aria-labelledby='states'>
+		<h2 id='states' class='text-xl font-semibold'>States</h2>
+		<div class='grid gap-4 md:grid-cols-2'>
+			<Specimen label='Resting' block>
+				<TextFrame passages={["rest"]} interactive={false}>
+					<p class='max-w-[44ch] leading-8'>
+						Backups are plain files. <span data-text-frame-passage='rest'
+							>Copy one to another machine and open it there with the same command</span
+						>, no export step required.
+					</p>
+				</TextFrame>
+			</Specimen>
+			<Specimen label='active=["lit"]' block>
+				<TextFrame passages={["lit"]} active={["lit"]} interactive={false}>
+					<p class='max-w-[44ch] leading-8'>
+						Backups are plain files. <span data-text-frame-passage='lit'
+							>Copy one to another machine and open it there with the same command</span
+						>, no export step required.
+					</p>
+				</TextFrame>
+			</Specimen>
+		</div>
+	</section>
+</FoundryLayout>
+
+<script>
+	import { initTextFrames } from "../../proposed/text-frame/text-frame";
+
+	initTextFrames(document);
+</script>
