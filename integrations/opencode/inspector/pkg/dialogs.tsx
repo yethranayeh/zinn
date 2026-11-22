@@ -15,6 +15,7 @@ import {
 } from "solid-js";
 
 import { labelColors, loadDetail, log, PRIORITY_COLOR } from "./data.ts";
+import { pickerOptions } from "./picker.ts";
 import { firstParagraph, truncate } from "./rows.ts";
 import { lastMentionExcerpt, newestIdleID, turnEnded } from "./scan.ts";
 import { inspectorTheme } from "./theme.ts";
@@ -297,41 +298,6 @@ export function Detail(props: {
   );
 }
 
-export type PickerOption = {
-  title: string;
-  description: string;
-  value: string;
-};
-export function pickerOptions(
-  keys: readonly string[],
-  map: Map<string, TaskSummary> | undefined,
-  includeUnknown: boolean,
-): PickerOption[] {
-  const out: PickerOption[] = [];
-  for (const key of keys) {
-    const summary = map?.get(key);
-
-    if (!summary) {
-      if (!includeUnknown) {
-        continue;
-      }
-
-      out.push({ title: key, description: "not in store", value: key });
-      continue;
-    }
-
-    const meta = [summary.column, summary.status, summary.priority].filter(
-      (part): part is string => typeof part === "string" && part !== "none" && part.length > 0,
-    );
-
-    out.push({
-      title: `${key} · ${truncate(summary.title, 64)}`,
-      description: meta.length > 0 ? meta.join(" · ") : "·",
-      value: key,
-    });
-  }
-  return out;
-}
 export function openDetail(
   ctx: Ctx,
   key: string,

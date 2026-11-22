@@ -16,7 +16,7 @@ import {
   labelColors,
 } from "./data.ts";
 import { CLAIM_GLYPH, RAIL_COLUMNS, SESSION_GLYPH, priorityLetter } from "./options.ts";
-import { isDoneColumn, truncate } from "./rows.ts";
+import { isDoneColumn, isRestingColumn, truncate } from "./rows.ts";
 import { TINT_ALPHA_STRONG, TINT_ALPHA_SUBTLE, inspectorTheme, toneColor } from "./theme.ts";
 
 export function Overflow(props: {
@@ -116,7 +116,7 @@ export function Row(props: {
       return "│";
     }
 
-    if (!props.dense) {
+    if (!props.dense && !isRestingColumn(props.row.column, props.row.category)) {
       return props.row.glyph || "│";
     }
 

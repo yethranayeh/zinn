@@ -460,7 +460,7 @@ export function Sidebar(props: {
         labels,
         column,
         category,
-        glyph: isCreated ? "+" : columnGlyph(column, category),
+        glyph: isCreated ? "+" : columnGlyph(column, category, summary?.status ?? "Active"),
         tone: rowTone(column, category, false, isCreated),
         unknown: false,
         created: isCreated,
