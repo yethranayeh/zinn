@@ -99,11 +99,11 @@ export const inspectorSections: InspectorSection[] = [
     blocks: [
       {
         kind: "paragraph",
-        text: "OpenCode Desktop shows an experimental board summary in the bottom slot. It reads the default project's board in the current session's directory. A successful read stamps `synced HH:MM`. A failed read keeps the last counts and stamps `no read`, with the error on hover.",
+        text: "OpenCode Desktop shows an experimental board summary in the bottom slot. It reads the default project's board in the current session's directory. A successful read stamps `synced HH:MM`. A failed read keeps the last counts and stamps `no read`, with the error on hover. With no routed session it says `no session`, and Home and drafts make no reads.",
       },
       {
         kind: "paragraph",
-        text: "The Zinn settings page turns the strip on or off and sets the refresh interval to 30 seconds, 1 minute, 5 minutes or 15 minutes. The default is 1 minute.",
+        text: "The Zinn settings page turns the strip on or off and sets the refresh interval to 30 seconds, 1 minute, 5 minutes or 15 minutes. The default is 1 minute: one read when a session opens, then one per interval, at most 60 per hour, and one when the interval changes. A measured 31 minute run made 32 reads.",
       },
       { kind: "figure", figure: desktopBottomSlot },
     ],
@@ -154,6 +154,40 @@ export const inspectorSections: InspectorSection[] = [
       {
         kind: "paragraph",
         text: "A claim renews once at least half its lease has passed since its last renewal, so a claim receives at most two heartbeats per lease, about four calls per hour per held claim on a 30 minute lease. An expired claim is not renewed, so a lapse stays visible, and a claim is also not renewed when another holder has taken it or when 24 hours pass without a change to the task. There is no timer, so an idle conversation makes no calls, and renewal adds no board read: it uses the task list the inspector already loaded. Renewal runs only while the conversation is shown in the TUI inspector's sidebar. A conversation in another tab, OpenCode Desktop or `opencode run` does not renew.",
+      },
+    ],
+  },
+  {
+    heading: "Background calls",
+    blocks: [
+      {
+        kind: "paragraph",
+        text: "The inspector reads the board and recorded activity through the local Zinn CLI. These are the rates to expect while a session is open.",
+      },
+      {
+        kind: "table",
+        columns: ["Surface", "While in use", "While idle"],
+        rows: [
+          [
+            "Desktop board summary",
+            "One `task list` when a session opens, then one per refresh interval, at most 60 per hour at the default 1 minute, and one when the interval changes. A measured 31 minute run made 32 reads.",
+            "0 on Home and drafts. An open session keeps reading every interval.",
+          ],
+          [
+            "TUI inspector",
+            "A board read on mount, on a header click, and at a turn end after a Zinn command or 60 seconds. Activity probes run on scan events and at most once every 10 minutes. Five mentioned tasks make 10 activity calls at mount, and a turn end inside the window adds none. At one board read per minute, about 60 activity calls per session hour.",
+            "0. The 30 second mark clock makes no CLI call.",
+          ],
+          [
+            "Claim renewal",
+            "At most two heartbeats per claim per lease, about four per hour per held claim on a 30 minute lease, and only after a turn that ran a tool.",
+            "0. There is no timer.",
+          ],
+        ],
+      },
+      {
+        kind: "paragraph",
+        text: "The label list is cached for 5 minutes, so it makes at most 12 reads per hour. The desktop interval is set in the Zinn settings page. The conversation mark uses the same activity reads and adds no call of its own.",
       },
     ],
   },

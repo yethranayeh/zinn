@@ -667,6 +667,16 @@ test.skipIf(!hasSteerdownGraph)("every page with a table of contents has further
   );
   const missing: string[] = [];
   const broken: string[] = [];
+  const targetPages = new Map<string, Promise<string>>();
+  // Targets repeat across pages, so fetch each target page once.
+  const targetPage = (path: string) => {
+    let page = targetPages.get(path);
+    if (page === undefined) {
+      page = server.fetch(path).then((response) => response.text());
+      targetPages.set(path, page);
+    }
+    return page;
+  };
   let pagesWithContents = 0;
   for (const pathname of pathnames) {
     const html = await (await server.fetch(pathname)).text();
@@ -684,7 +694,7 @@ test.skipIf(!hasSteerdownGraph)("every page with a table of contents has further
     const data = (await response.json()) as { targets: Array<[string, string, string]> };
     for (const [url] of data.targets) {
       const [targetPath, fragment] = url.split("#");
-      const targetHtml = await (await server.fetch(targetPath!)).text();
+      const targetHtml = await targetPage(targetPath!);
       if (fragment && !targetHtml.includes(`id="${fragment}"`)) {
         broken.push(`${pathname} -> ${url}`);
       }
