@@ -25,7 +25,7 @@
         "@tailwindcss/vite": "^4.3.3",
         "pagefind": "1.6.0",
         "satori": "0.60.0",
-        "steerdown": "0.2.0",
+        "steerdown": "0.2.1",
         "typescript": "^5",
         "wrangler": "4.147.0",
       },
@@ -1479,7 +1479,7 @@
 
     "ssri": ["ssri@13.0.1", "", { "dependencies": { "minipass": "^7.0.3" } }, "sha512-QUiRf1+u9wPTL/76GTYlKttDEBWV1ga9ZXW8BG6kfdeyyM8LGPix9gROyg9V2+P0xNyF3X2Go526xKFdMZrHSQ=="],
 
-    "steerdown": ["steerdown@0.2.0", "", { "dependencies": { "parse5": "8.1.1" }, "bin": { "steerdown": "dist/cli.js" } }, "sha512-1lBSL8qKTsoFz9s9UoypxgiHpZqIx9Jzn6riFqjL8eHeFOkny6//+q5GiJ2+uu1BJM4acXLkcKhgZap+v73GFg=="],
+    "steerdown": ["steerdown@0.2.1", "", { "dependencies": { "parse5": "8.1.1" }, "bin": { "steerdown": "dist/cli.js" } }, "sha512-zOS61NtwfE0RdWrqX+9pgSzsdPqro7+kzogOx4KZEK0VxpH1BdMgzGZoWab7P9onK66hBTL7o8ELkbpCwG1eHA=="],
 
     "string-width": ["string-width@7.2.0", "", { "dependencies": { "emoji-regex": "^10.3.0", "get-east-asian-width": "^1.0.0", "strip-ansi": "^7.1.0" } }, "sha512-tsaTIkKW9b4N+AEj+SVA+WhJzV7/zMhcSu78mLKWSk7cXMOSHsBKFWUs0fWwq8QyK3MgJBQRX6Gbi4kYbdvGkQ=="],
 
