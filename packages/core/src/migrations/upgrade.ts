@@ -14,7 +14,7 @@ import { mkdirSync } from "node:fs";
 import * as dbBackup from "../db/backup.js";
 import { CoreError } from "../errors.js";
 import { isSqliteErrorFamily } from "../sqlite/database.js";
-import { checkAutomaticUpgrade, readPauseRecord, removePause } from "./pause.js";
+import { checkAutomaticUpgrade, markPausingFailure, readOwnPause, removePause } from "./pause.js";
 import { assertMigrationOrder, latestVersion, MIGRATIONS } from "./registry.js";
 import {
   applyPendingMigrations,
@@ -168,17 +168,14 @@ export type UpgradeOptions = LockOptions & {
 };
 
 /**
- * The database change committed.
- * Its pause record could not be cleared.
+ * Removes the pause record read before a committed upgrade or restore, unless another attempt replaced it.
+ * Best effort: the commit changed the schema version or the schema itself, so a record left behind
+ *  no longer matches the database and pauses nothing.
  */
-export class MigrationPauseCleanupError extends CoreError {
-  override name = "MigrationPauseCleanupError";
-}
-
 export function clearCommittedPause(
   db: Database,
   databasePath: ResolvedPath,
-  lock: LockOptions,
+  { budgetMs }: LockOptions,
   record: string | null,
 ) {
   if (record === null) {
@@ -186,22 +183,12 @@ export function clearCommittedPause(
   }
 
   try {
-    // Reacquire the lock after commit and leave any intervening attempt's record alone
-    withMigrationLock(
-      db,
-      databasePath,
-      { ...lock, operation: "clearing the upgrade pause" },
-      () => {
-        removePause(databasePath, record);
-      },
-    );
-  } catch (cause) {
-    throw new MigrationPauseCleanupError(
-      `The database change at ${databasePath} committed. Zinn could not clear its automatic upgrade pause`,
-      "storage",
-      { entity: "database", databasePath },
-      { cause },
-    );
+    // No wait notice: the caller's change is already done
+    withMigrationLock(db, databasePath, { budgetMs, operation: "upgrade record cleanup" }, () => {
+      removePause(databasePath, record);
+    });
+  } catch {
+    // The record no longer pauses anything, so the committed change stands without its removal
   }
 }
 
@@ -244,65 +231,79 @@ export function upgradeDatabase(
   const databasePath = requireDatabaseFile(db, "schema upgrade");
   const targetVersion = latestVersion(migrations);
   let completedPause: string | null = null;
+  let pausesOnFailure = false;
 
-  const result = withForeignKeysOff(db, () =>
-    withMigrationLock(db, databasePath, lock, (): UpgradeResult => {
-      // Another caller may have upgraded the database while this one waited for the lock.
-      const version = readSchemaVersion(db);
-      const unchanged = {
-        databasePath,
-        previousVersion: version,
-        finalVersion: version,
-        changed: false,
-        backupPath: null,
-      };
+  const runUpgrade = () =>
+    withForeignKeysOff(db, () =>
+      withMigrationLock(db, databasePath, lock, (): UpgradeResult => {
+        // Another caller may have upgraded the database while this one waited for the lock.
+        const version = readSchemaVersion(db);
+        const unchanged = {
+          databasePath,
+          previousVersion: version,
+          finalVersion: version,
+          changed: false,
+          backupPath: null,
+        };
 
-      if (version === targetVersion) {
-        return { status: "current", ...unchanged };
-      }
+        if (version === targetVersion) {
+          return { status: "current", ...unchanged };
+        }
 
-      if (version > targetVersion) {
-        return { status: "newer", ...unchanged };
-      }
+        if (version > targetVersion) {
+          return { status: "newer", ...unchanged };
+        }
 
-      assertUpgradable(version, migrations);
+        assertUpgradable(version, migrations);
 
-      const attempt = automatic
-        ? checkAutomaticUpgrade(databasePath, version, targetVersion)
-        : undefined;
-      const directory =
-        typeof backup.directory === "function" ? backup.directory() : backup.directory;
-      const spacePaths = spacePathsFor(databasePath, directory);
+        const attempt = automatic
+          ? checkAutomaticUpgrade(db, databasePath, version, targetVersion)
+          : undefined;
+        const directory =
+          typeof backup.directory === "function" ? backup.directory() : backup.directory;
+        const spacePaths = spacePathsFor(databasePath, directory);
 
-      // The free space of a missing directory is unknown, which would stop the upgrade.
-      mkdirSync(directory, { recursive: true });
-      const before = estimateRequiredFree(measureSpace(db, migrations), { includeBackup: true });
-      assertFreeSpace(spacePaths, before, readFree);
+        // The free space of a missing directory is unknown, which would stop the upgrade.
+        mkdirSync(directory, { recursive: true });
+        const before = estimateRequiredFree(measureSpace(db, migrations), { includeBackup: true });
+        assertFreeSpace(spacePaths, before, readFree);
 
-      // db holds the write lock and has written nothing, so the snapshot is the database as it is.
-      const { path: backupPath } = dbBackup.create(
-        databasePath,
-        directory,
-        backup,
-        attempt?.beforePublish,
-      );
-      attempt?.confirmed(backupPath);
+        // db holds the write lock and has written nothing, so the snapshot is the database as it is.
+        const { path: backupPath } = dbBackup.create(
+          databasePath,
+          directory,
+          backup,
+          attempt?.beforePublish,
+        );
+        pausesOnFailure = attempt !== undefined;
+        attempt?.confirmed(backupPath);
 
-      const after = estimateRequiredFree(measureSpace(db, migrations), { includeBackup: false });
-      assertFreeSpace(spacePaths, after, readFree);
+        const after = estimateRequiredFree(measureSpace(db, migrations), { includeBackup: false });
+        assertFreeSpace(spacePaths, after, readFree);
 
-      const changed = applyPendingMigrations(db, migrations, version);
-      completedPause = readPauseRecord(databasePath);
-      return {
-        status: "upgraded",
-        databasePath,
-        previousVersion: version,
-        finalVersion: targetVersion,
-        changed,
-        backupPath,
-      };
-    }),
-  );
+        const changed = applyPendingMigrations(db, migrations, version);
+        completedPause = readOwnPause(databasePath);
+        return {
+          status: "upgraded",
+          databasePath,
+          previousVersion: version,
+          finalVersion: targetVersion,
+          changed,
+          backupPath,
+        };
+      }),
+    );
+
+  let result: UpgradeResult;
+  try {
+    result = runUpgrade();
+  } catch (error) {
+    if (pausesOnFailure) {
+      markPausingFailure(error);
+    }
+    throw error;
+  }
+
   clearCommittedPause(db, databasePath, lock, completedPause);
   return result;
 }

@@ -25,6 +25,7 @@ import {
 } from "./migrations/open-policy.js";
 import { MIGRATIONS } from "./migrations/registry.js";
 import { createLatestSchema, readSchemaVersion, SchemaNotEmptyError } from "./migrations/runner.js";
+import { AutomaticUpgradePausedError, isPausingFailure } from "./migrations/pause.js";
 import { upgradeDatabase } from "./migrations/upgrade.js";
 import { readCoreReleaseMode } from "./release.js";
 import { attachSuppressed, isSqliteErrorCode } from "./sqlite/database.js";
@@ -262,6 +263,13 @@ export function getDb(access: DatabaseAccess = {}) {
 
       const error = err as NodeJS.ErrnoException;
       const causeDetails = error.code == null ? error.message : `${error.message} (${error.code})`;
+      if (isPausingFailure(err)) {
+        throw new AutomaticUpgradePausedError(
+          `There was a problem initializing Zinn: ${causeDetails}. Automatic upgrades of this database are paused until an explicit upgrade succeeds`,
+          { cause: err },
+        );
+      }
+
       throw new Error(`There was a problem initializing Zinn: ${causeDetails}`, { cause: err });
     }
   }

@@ -1,7 +1,7 @@
 import { TEST_ENVIRONMENT } from "../../../scripts/test-isolation.ts";
 import { expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
 import packageJson from "../package.json";
@@ -48,7 +48,9 @@ test("ZINN-508: ordinary opens pause after a failed automatic upgrade and explic
 
     const first = await runZinn(["project", "list", "--json"], store);
     expect(first.code).toBe(1);
-    expect(first.stderr).toContain("APP-2");
+    const firstError = errorDocumentSchema.parse(JSON.parse(first.stderr)).error;
+    expect(firstError.message).toContain("APP-2");
+    expect(firstError.message).toContain("zinn migrate");
     expect(backupFiles(store)).toHaveLength(1);
 
     for (const location of [store, alias]) {
@@ -94,7 +96,7 @@ test("ZINN-508: ordinary opens pause after a failed automatic upgrade and explic
   });
 });
 
-test.each(["restore", "replace"] as const)("ZINN-508: a database %s resets the pause at the same schema", async (operation) => {
+test.each(["restore", "replace", "copy"] as const)("ZINN-508: a database %s resets the pause at the same schema", async (operation) => {
   await withIsolatedZinnDir(async (root) => {
     const store = join(root, "store");
     const databasePath = createBeforeTaskKeyIndex(store, true);
@@ -126,8 +128,23 @@ test.each(["restore", "replace"] as const)("ZINN-508: a database %s resets the p
         restoredVersion: taskKeyIndexMigration.version - 1,
       });
       expect(existsSync(`${databasePath}.migration.json`)).toBe(false);
-    } else {
+    } else if (operation === "replace") {
       renameSync(replacement, databasePath);
+    } else {
+      // A copy of a Zinn backup over the file keeps its inode
+      const copied = join(root, "copied.sqlite");
+      const source = new Database(replacement);
+      try {
+        source.exec(`VACUUM INTO '${copied}'`);
+      } finally {
+        source.close();
+      }
+      const inode = statSync(databasePath).ino;
+      for (const sidecar of ["-wal", "-shm"]) {
+        rmSync(`${databasePath}${sidecar}`, { force: true });
+      }
+      copyFileSync(copied, databasePath);
+      expect(statSync(databasePath).ino).toBe(inode);
     }
 
     const kept = backupFiles(store);

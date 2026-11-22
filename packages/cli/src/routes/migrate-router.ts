@@ -3,12 +3,7 @@ import type { Command } from "../types.js";
 
 import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
-import {
-  migrate,
-  MigrationPauseCleanupError,
-  MigrationRefusedError,
-  getBackupStorage,
-} from "@zinn-dev/core";
+import { migrate, MigrationRefusedError, getBackupStorage } from "@zinn-dev/core";
 
 import { generateCommandUsage, noInput } from "../input.js";
 import { reportLockWait } from "../database.js";
@@ -47,9 +42,7 @@ export const migrateCommand = {
       );
     } catch (error) {
       // A refusal attempted nothing, so only a failed upgrade points at the backups.
-      if (
-        !(error instanceof MigrationRefusedError || error instanceof MigrationPauseCleanupError)
-      ) {
+      if (!(error instanceof MigrationRefusedError)) {
         diagnostic(
           `The database is unchanged. Backups taken before each upgrade attempt are kept in ${backupDirectory}.`,
         );

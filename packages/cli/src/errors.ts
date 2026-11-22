@@ -2,6 +2,7 @@ import type { SqlitePrimaryCode } from "@zinn-dev/core";
 
 import { z } from "zod";
 import {
+  AutomaticUpgradePausedError,
   CoreError,
   ReadOnlyDatabaseError,
   SqliteError,
@@ -167,6 +168,13 @@ export function recoveryHint(
 
   if (error instanceof CoreError && error.facts.reason === "migration_paused") {
     return { suffix: ". Run `zinn migrate` to retry.", suggestedRoute: ["migrate"] };
+  }
+
+  if (error instanceof AutomaticUpgradePausedError) {
+    return {
+      suffix: ". Run `zinn migrate` to retry after fixing the cause.",
+      suggestedRoute: ["migrate"],
+    };
   }
 
   if (error instanceof TextEditMatchError && error.matchCount > 1) {

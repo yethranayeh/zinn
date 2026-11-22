@@ -4,7 +4,16 @@ import type { FreeSpace } from "./space";
 import type { LockWait, UpgradeOptions, UpgradeResult } from "./upgrade";
 
 import { expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
@@ -14,6 +23,7 @@ import * as dbBackup from "../db/backup";
 import { driver as bunDriver } from "../sqlite/bun.ts";
 import { openWith, SqliteError } from "../sqlite/database";
 import { createBaseline } from "./baseline";
+import { isPausingFailure } from "./pause";
 import { readSchemaVersion } from "./runner";
 import { readDatabaseFile } from "./space";
 import {
@@ -400,6 +410,103 @@ test("a post-snapshot space failure pauses automatic upgrades to the same or a h
     expect(backups(db)).toHaveLength(1);
     expect(snapshot(db)).toEqual(before);
     expectBackupHolds(join(backupDirectory(db), backups(db)[0]!), before);
+  });
+});
+
+/** Fails an automatic upgrade after its backup, which pauses later automatic attempts at version 1. */
+function pauseAfterSnapshot(db: Database) {
+  let reads = 0;
+  const readFreeSpace = () => reads++ < SPACE_READS_PER_CHECK ? PLENTY_OF_SPACE : NO_SPACE;
+  expect(() => upgradeDatabase(db, options(db, { automatic: true, migrations: [migration(2)], readFreeSpace })))
+    .toThrow(expect.objectContaining({ facts: expect.objectContaining({ reason: "disk_full" }) }));
+}
+
+const PAUSED = expect.objectContaining({ facts: expect.objectContaining({ reason: "migration_paused" }) });
+
+test("a committed schema change at the paused version permits a fresh automatic attempt", () => {
+  withDatabase((db) => {
+    seedBaseline(db);
+    pauseAfterSnapshot(db);
+    const record = readFileSync(`${databasePath(db)}.migration.json`, "utf8");
+
+    // Stands in for a restore, which recreates every table, or a copy of a backup over the file.
+    db.exec("CREATE TABLE replaced (id INTEGER)");
+    db.exec("DROP TABLE replaced");
+    expect(readFileSync(`${databasePath(db)}.migration.json`, "utf8")).toBe(record);
+
+    expect(upgradeDatabase(db, options(db, { automatic: true, migrations: [migration(2)] })).status).toBe("upgraded");
+    expect(backups(db)).toHaveLength(2);
+    expect(existsSync(`${databasePath(db)}.migration.json`)).toBe(false);
+  });
+});
+
+test("a record the upgrade cannot remove after commit neither fails it nor pauses later upgrades", () => {
+  withDatabase((db) => {
+    seedBaseline(db);
+    pauseAfterSnapshot(db);
+    const directory = dirname(databasePath(db));
+    // The database and its -wal file already exist, so only removing the record needs the folder.
+    const lockFolder = migration(2, () => chmodSync(directory, READ_ONLY_DIRECTORY_MODE));
+
+    try {
+      const result = upgradeDatabase(db, options(db, { migrations: [lockFolder] }));
+      expect(result).toMatchObject({ status: "upgraded", finalVersion: 2 });
+    } finally {
+      chmodSync(directory, WRITABLE_DIRECTORY_MODE);
+    }
+    expect(existsSync(`${databasePath(db)}.migration.json`)).toBe(true);
+
+    const next = upgradeDatabase(db, options(db, { automatic: true, migrations: [migration(2), migration(3)] }));
+    expect(next).toMatchObject({ status: "upgraded", previousVersion: 2, finalVersion: 3 });
+  });
+});
+
+test.each([
+  ["an unrelated file", (path: string) => writeFileSync(path, "not an upgrade record")],
+  ["a folder", (path: string) => mkdirSync(path)],
+])("%s at the record path pauses automatic upgrades and survives an explicit one", (_, occupy) => {
+  withDatabase((db) => {
+    seedBaseline(db);
+    const before = snapshot(db);
+    const path = `${databasePath(db)}.migration.json`;
+    occupy(path);
+
+    expect(() => upgradeDatabase(db, options(db, { automatic: true }))).toThrow(
+      expect.objectContaining({ facts: expect.objectContaining({ reason: "migration_paused", path }) }),
+    );
+    expect(backups(db)).toHaveLength(0);
+    expect(snapshot(db)).toEqual(before);
+
+    expect(upgradeDatabase(db, options(db)).status).toBe("upgraded");
+    expect(existsSync(path)).toBe(true);
+  });
+});
+
+test("an interrupted record write leaves one partial file, which the next write replaces", () => {
+  withDatabase((db) => {
+    seedBaseline(db);
+    const partial = `${databasePath(db)}.migration.json.partial`;
+    writeFileSync(partial, "left by a killed process");
+    pauseAfterSnapshot(db);
+
+    expect(existsSync(partial)).toBe(false);
+    expect(() => upgradeDatabase(db, options(db, { automatic: true, migrations: [migration(2)] }))).toThrow(PAUSED);
+  });
+});
+
+test("the error of an automatic attempt that paused later ones is marked, and one before the backup is not", () => {
+  withDatabase((db) => {
+    seedBaseline(db);
+    const early = catchError(() => upgradeDatabase(db, options(db, { automatic: true, readFreeSpace: () => NO_SPACE })));
+    expect(isPausingFailure(early)).toBe(false);
+
+    let reads = 0;
+    const readFreeSpace = () => reads++ < SPACE_READS_PER_CHECK ? PLENTY_OF_SPACE : NO_SPACE;
+    const late = catchError(() => upgradeDatabase(db, options(db, { automatic: true, readFreeSpace })));
+    expect(isPausingFailure(late)).toBe(true);
+
+    const manual = catchError(() => upgradeDatabase(db, options(db, { readFreeSpace: () => NO_SPACE })));
+    expect(isPausingFailure(manual)).toBe(false);
   });
 });
 

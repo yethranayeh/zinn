@@ -39,7 +39,7 @@ import {
   spacePathsFor,
 } from "./space.js";
 import { clearCommittedPause, withMigrationLock } from "./upgrade.js";
-import { readPauseRecord } from "./pause.js";
+import { readOwnPause } from "./pause.js";
 import { CoreError, isMissingFileError } from "../errors.js";
 
 /** The name the backup is attached under while it is copied. */
@@ -569,7 +569,7 @@ export function restoreBackup(
         }
 
         replaceDatabaseContents(db, restoredVersion);
-        restoredPause = readPauseRecord(databasePath);
+        restoredPause = readOwnPause(databasePath);
 
         return { databasePath, previousVersion, restoredVersion, backupPath };
       }),
@@ -584,7 +584,11 @@ export function restoreBackup(
     throw error;
   }
 
-  detachSource(db);
+  try {
+    detachSource(db);
+  } catch {
+    // The restore committed, and closing the connection detaches the backup
+  }
   clearCommittedPause(db, databasePath, lock, restoredPause);
   return result;
 }
