@@ -1,6 +1,7 @@
 import type { TaskSummary } from "./types.ts";
 
-import { MISSING_GLYPH, columnGlyph, truncate } from "./rows.ts";
+import { MISSING_GLYPH, columnGlyph, taskPriorityCell } from "./presentation.ts";
+import { truncate } from "./rows.ts";
 
 export type PickerOption = {
   title: string;
@@ -31,7 +32,7 @@ export function pickerOptions(
     };
     const priority = summary.priority;
     if (priority !== null && priority.length > 0 && priority !== "none") {
-      option.description = priority;
+      option.description = taskPriorityCell(priority, { full: false }).text;
     }
     out.push(option);
   }

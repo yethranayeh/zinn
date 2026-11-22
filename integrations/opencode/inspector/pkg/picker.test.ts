@@ -17,7 +17,7 @@ test("shows a known task as key, glyph, title", () => {
   const options = pickerOptions(["ZTP-1"], new Map([["ZTP-1", summary()]]), false);
   expect(options).toHaveLength(1);
   expect(options[0]?.title).toBe("ZTP-1 ◐ Fix the calibration");
-  expect(options[0]?.description).toBe("high");
+  expect(options[0]?.description).toBe("H");
   expect(options[0]?.value).toBe("ZTP-1");
   const titleAt = options[0]?.title.indexOf("Fix the calibration") ?? -1;
   const glyphAt = options[0]?.title.indexOf("◐") ?? -1;
@@ -49,10 +49,13 @@ test("the column category decides the glyph before the name", () => {
     "ZTP-2 ● Ship the release",
   ]);
 });
-test("keeps only the priority as the description", () => {
-  const tasks = new Map([["ZTP-1", summary({ priority: "urgent" })]]);
-  const options = pickerOptions(["ZTP-1"], tasks, false);
-  expect(options[0]?.description).toBe("urgent");
+test("shows the priority letter as the description", () => {
+  const tasks = new Map([
+    ["ZTP-1", summary({ priority: "urgent" })],
+    ["ZTP-2", summary({ key: "ZTP-2", priority: "low" })],
+  ]);
+  const options = pickerOptions(["ZTP-1", "ZTP-2"], tasks, false);
+  expect(options.map((option) => option.description)).toEqual(["U", "L"]);
 });
 test("omits the description without a priority", () => {
   for (const priority of [null, "", "none"]) {

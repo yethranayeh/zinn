@@ -58,56 +58,12 @@ export function excerptAround(
     after: `${flat.slice(at + key.length, end)}${end < flat.length ? "…" : ""}`,
   };
 }
-export const CATEGORY_GLYPH: Record<string, string | undefined> = {
-  backlog: "○",
-  todo: "○",
-  in_progress: "◐",
-  review: "◑",
-  done: "●",
-  cancelled: "✕",
-};
-export const NAME_GLYPH: Record<string, string | undefined> = {
-  Backlog: "○",
-  TODO: "○",
-  "In Progress": "◐",
-  Review: "◑",
-  Blocked: "⊘",
-  Done: "●",
-  Cancelled: "✕",
-};
-export const ARCHIVED_GLYPH = "▪";
-export const UNKNOWN_GLYPH = "·";
-export const MISSING_GLYPH = "✗";
 /** Column category decides the done state. Older CLIs and read-only older databases send none. */
 export function isDoneColumn(column: string, category: string | null): boolean {
   if (category === null) {
     return column === "Done";
   }
   return category === "done";
-}
-/** The category first, then the column name when the CLI sends no category. */
-export function columnGlyph(column: string, category: string | null, status = "Active"): string {
-  if (status === "Archived") {
-    return ARCHIVED_GLYPH;
-  }
-
-  const byCategory = category === null ? undefined : CATEGORY_GLYPH[category];
-  if (byCategory !== undefined) {
-    return byCategory;
-  }
-
-  if (category === null) {
-    return NAME_GLYPH[column] ?? UNKNOWN_GLYPH;
-  }
-
-  return UNKNOWN_GLYPH;
-}
-/** Backlog and todo keep the plain rail instead of a state glyph. */
-export function isRestingColumn(column: string, category: string | null): boolean {
-  if (category === null) {
-    return column === "Backlog" || column === "TODO";
-  }
-  return category === "backlog" || category === "todo";
 }
 export type RowTone = "normal" | "done" | "created" | "blocked" | "warning";
 export type Holder = "mine" | "theirs";

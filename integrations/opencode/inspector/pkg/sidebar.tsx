@@ -22,7 +22,8 @@ import { clearPanel, publishPanel } from "./commands.ts";
 import { Overflow, RailLine, Row } from "./components.tsx";
 import { openDetail, openPicker } from "./dialogs.tsx";
 
-import { claimHolder, columnGlyph, rowTone, stableRows, truncate } from "./rows.ts";
+import { columnGlyph } from "./presentation.ts";
+import { claimHolder, rowTone, stableRows, truncate } from "./rows.ts";
 import { renewDueClaims } from "./renew.ts";
 import { mentionCounts, newestIdleID, scanSession, turnEnded } from "./scan.ts";
 import {

@@ -2,6 +2,7 @@
 import type { Accessor } from "solid-js";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
+import type { PriorityCell } from "./presentation.ts";
 import type { Ctx, DetailState, Excerpt, Relation, TaskSummary } from "./types.ts";
 
 import {
@@ -14,8 +15,9 @@ import {
   untrack,
 } from "solid-js";
 
-import { labelColors, loadDetail, log, PRIORITY_COLOR } from "./data.ts";
+import { labelColors, loadDetail, log } from "./data.ts";
 import { pickerOptions } from "./picker.ts";
+import { taskPriorityCell } from "./presentation.ts";
 import { firstParagraph, truncate } from "./rows.ts";
 import { lastMentionExcerpt, newestIdleID, turnEnded } from "./scan.ts";
 import { inspectorTheme } from "./theme.ts";
@@ -183,6 +185,7 @@ export function Detail(props: {
     }
 
     const detail = current.detail;
+    const priority = detail.priority ? taskPriorityCell(detail.priority, { full: true }) : null;
     return (
       <box flexDirection="column" gap={1}>
         <text fg={theme().text}>
@@ -192,10 +195,10 @@ export function Detail(props: {
         <text wrapMode="none" fg={theme().textMuted}>
           <span style={{ fg: theme().text }}>{detail.key}</span>
           <span>{` · ${detail.column} · ${detail.status} · priority `}</span>
-          <Show when={detail.priority} fallback={<span>none</span>}>
-            <span style={{ fg: PRIORITY_COLOR[detail.priority ?? ""] ?? theme().textMuted }}>
-              {detail.priority}
-            </span>
+          <Show when={priority} fallback={<span>none</span>}>
+            {(cell: Accessor<PriorityCell>) => (
+              <span style={{ fg: cell().color ?? theme().textMuted }}>{cell().text}</span>
+            )}
           </Show>
         </text>
         <Show

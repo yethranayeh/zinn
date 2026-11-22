@@ -7,16 +7,10 @@ import type { DisplayRow } from "./rows.ts";
 
 import { For, Show, createMemo, createSignal } from "solid-js";
 
-import {
-  CHIP_PAD,
-  CHIP_PRIORITY,
-  CONTEXT_SEPARATOR,
-  LABEL_SEPARATOR,
-  PRIORITY_COLOR,
-  labelColors,
-} from "./data.ts";
-import { CLAIM_GLYPH, RAIL_COLUMNS, SESSION_GLYPH, priorityLetter } from "./options.ts";
-import { isDoneColumn, isRestingColumn, truncate } from "./rows.ts";
+import { CONTEXT_SEPARATOR, LABEL_SEPARATOR, labelColors } from "./data.ts";
+import { CLAIM_GLYPH, RAIL_COLUMNS, SESSION_GLYPH } from "./options.ts";
+import { CHIP_PAD, isRestingColumn, taskPriorityCell, taskPriorityMeta } from "./presentation.ts";
+import { isDoneColumn, truncate } from "./rows.ts";
 import { TINT_ALPHA_STRONG, TINT_ALPHA_SUBTLE, inspectorTheme, toneColor } from "./theme.ts";
 
 export function Overflow(props: {
@@ -195,7 +189,7 @@ export function Row(props: {
       </text>
       {!props.dense && (
         <text flexShrink={0} fg={metaColor()}>
-          {priorityLetter(props.row.priority)}
+          {taskPriorityCell(props.row.priority, { full: false }).text}
         </text>
       )}
 
@@ -212,11 +206,12 @@ export function Row(props: {
     if (props.row.column.length > 0) {
       contexts.push({ text: props.row.column, color: null, chip: false, sep: false });
     }
-    if (props.row.priority) {
+    const priority = taskPriorityMeta(props.row.priority);
+    if (priority !== null) {
       contexts.push({
-        text: props.row.priority,
-        color: PRIORITY_COLOR[props.row.priority] ?? null,
-        chip: props.row.priority === CHIP_PRIORITY,
+        text: priority.text,
+        color: priority.color,
+        chip: priority.chip,
         sep: false,
       });
     }

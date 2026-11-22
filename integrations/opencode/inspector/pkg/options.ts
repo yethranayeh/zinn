@@ -12,20 +12,6 @@ export const RUNNING_INTERVAL = 300;
 export const SCROLLBAR_COLUMNS = 1;
 // Sidebar width minus horizontal padding and its scrollbar.
 export const SLOT_COLUMNS = 42 - 2 - 2 - SCROLLBAR_COLUMNS;
-export const PRIORITY_LETTER: Record<string, string | undefined> = {
-  urgent: "U",
-  high: "H",
-  medium: "M",
-  low: "L",
-};
-// A task row's cell for an unassigned priority, matching the CLI.
-const EMPTY_PRIORITY_MARKER = "-";
-export function priorityLetter(priority: string | null): string {
-  if (!priority) {
-    return EMPTY_PRIORITY_MARKER;
-  }
-  return PRIORITY_LETTER[priority] ?? "";
-}
 export type CurrentMark = "off" | "glyph";
 export type InspectorOptions = {
   rows: 1 | 2;

@@ -1,14 +1,5 @@
 import { expect, test } from "bun:test";
-import {
-  CATEGORY_GLYPH,
-  NAME_GLYPH,
-  claimHolder,
-  columnGlyph,
-  isRestingColumn,
-  rowTone,
-  sameDisplayRow,
-  stableRows,
-} from "./rows.ts";
+import { claimHolder, rowTone, sameDisplayRow, stableRows } from "./rows.ts";
 type Row = Parameters<typeof stableRows>[1][number];
 type Claim = NonNullable<Row["claim"]>;
 const claim = (over: Partial<Claim> = {}): Claim => ({
@@ -160,53 +151,8 @@ test("reads the claim holder from the conversation family", () => {
 });
 test("reads the done treatment from the column category", () => {
   check("a renamed done column keeps the done tone", rowTone("Shipped", "done", false, false) === "done", "");
-  check("a renamed done column keeps the done glyph", columnGlyph("Shipped", "done") === "●", "");
   check("a Done-named column with another category keeps the normal tone", rowTone("Done", "review", false, false) === "normal", "");
-  check("a Done-named column with another category gets the review glyph", columnGlyph("Done", "review") === "◑", "");
   check("a cancelled column keeps the normal tone", rowTone("Dropped", "cancelled", false, false) === "normal", "");
-  check("a cancelled column gets the cancelled glyph", columnGlyph("Dropped", "cancelled") === "✕", "");
   check("a missing category falls back to the Done name for the tone", rowTone("Done", null, false, false) === "done", "");
-  check("a null category falls back to the Done name for the glyph", columnGlyph("Done", null) === "●", "");
-  check("a missing category leaves other names alone", rowTone("Shipped", null, false, false) === "normal" && columnGlyph("Shipped", null) === "·", "");
-  check("the category decides before a column name that reads like another state", columnGlyph("Blocked", "backlog") === "○" && columnGlyph("In Progress", "in_progress") === "◐", "");
-});
-test("maps every column category to its state glyph", () => {
-  const expected: Record<string, string> = {
-    backlog: "○",
-    todo: "○",
-    in_progress: "◐",
-    review: "◑",
-    done: "●",
-    cancelled: "✕",
-  };
-  const categories = Object.entries(CATEGORY_GLYPH);
-  check("the scale has one entry per decided category", categories.length === Object.keys(expected).length, `count=${categories.length}`);
-  for (const [category, glyph] of categories) {
-    check(`${category} maps to its glyph`, columnGlyph("Any", category) === glyph, "");
-    check(`${category} keeps the decided glyph`, glyph === expected[category], `got=${glyph}`);
-  }
-});
-test("reads a null category from the column name", () => {
-  for (const [column, glyph] of Object.entries(NAME_GLYPH)) {
-    check(`${column} maps to its glyph`, columnGlyph(column, null) === glyph, "");
-  }
-  check("Backlog gets the backlog glyph", columnGlyph("Backlog", null) === "○", "");
-  check("Blocked gets its own glyph", columnGlyph("Blocked", null) === "⊘", "");
-  check("Done gets the done glyph", columnGlyph("Done", null) === "●", "");
-  check("any other name gets the unknown glyph", columnGlyph("Elsewhere", null) === "·", "");
-});
-test("an archived task keeps the archived glyph", () => {
-  check("archived in a done column", columnGlyph("Done", "done", "Archived") === "▪", "");
-  check("archived without a category", columnGlyph("Blocked", null, "Archived") === "▪", "");
-});
-test("treats backlog and todo columns as resting", () => {
-  check("a backlog category rests", isRestingColumn("Backlog", "backlog"), "");
-  check("a todo category rests", isRestingColumn("TODO", "todo"), "");
-  check("an in-progress category does not rest", !isRestingColumn("Doing", "in_progress"), "");
-  check("a review category does not rest", !isRestingColumn("Review", "review"), "");
-  check("a done category does not rest", !isRestingColumn("Done", "done"), "");
-  check("a cancelled category does not rest", !isRestingColumn("Cancelled", "cancelled"), "");
-  check("a null category rests on the Backlog name", isRestingColumn("Backlog", null), "");
-  check("a null category rests on the TODO name", isRestingColumn("TODO", null), "");
-  check("a null category leaves other names alone", !isRestingColumn("Doing", null), "");
+  check("a missing category leaves other names alone", rowTone("Shipped", null, false, false) === "normal", "");
 });

@@ -262,14 +262,6 @@ export const LABEL_HEX = {
 };
 export type LabelColor = string | null;
 export type LabelColors = ReadonlyMap<string, LabelColor>;
-export const PRIORITY_COLOR: Record<string, string> = {
-  urgent: LABEL_HEX["red"],
-  high: LABEL_HEX["yellow"],
-  medium: LABEL_HEX["blue"],
-  low: LABEL_HEX["gray"],
-};
-export const CHIP_PRIORITY = "urgent";
-export const CHIP_PAD = 2;
 export const CONTEXT_SEPARATOR = " | ";
 export const LABEL_SEPARATOR = ", ";
 export const [labelColors, setLabelColors] = createSignal<LabelColors>(new Map());
