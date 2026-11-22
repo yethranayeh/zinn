@@ -53,17 +53,16 @@ const hasBreadcrumbs = items.length > 0 || hasContents;
 				!hasBreadcrumbs && "my-auto"
 			]}>
 			<article class:list={["min-w-0 w-full max-w-3xl", hasContents && "relative"]}>
+				<Prose class='[&>div:first-child]:gap-y-4'><slot /></Prose>
 				{
 					hasContents && (
 						<div
-							class='pointer-events-none absolute inset-0 max-lg:hidden'
+							class='pointer-events-none absolute inset-0 max-lg:hidden [&>*]:pointer-events-auto'
 							data-further-reading-marks
 							data-pagefind-ignore
-							aria-hidden='true'
 						/>
 					)
 				}
-				<Prose class='[&>div:first-child]:gap-y-4'><slot /></Prose>
 				{
 					lastUpdated && (
 						<Chip>

@@ -1,0 +1,38 @@
+---
+import { twMerge } from "tailwind-merge";
+
+interface Props {
+	/** The number to show. An interactive bracket renders its label even without one. */
+	number?: number;
+	/** Renders the label as a button with a larger hit area, and makes the full height of the bracket take the pointer. */
+	interactive?: boolean;
+	class?: string;
+}
+
+const { number, interactive = false, class: className } = Astro.props;
+const Label = interactive ? "button" : "span";
+// drawBrackets clones an interactive bracket and fills in its number, so the button exists before a number does
+const showsLabel = interactive || number !== undefined;
+---
+
+<div
+	aria-hidden={interactive ? undefined : "true"}
+	class={twMerge(
+		"group/bracket w-1.5 border-y-[1.5px] border-l-[1.5px] border-clay data-active:border-y-2 data-active:border-l-2 data-active:border-soot",
+		interactive && "before:absolute before:inset-y-0 before:-right-1 before:-left-1.5",
+		className
+	)}>
+	{
+		showsLabel && (
+			<Label
+				type={interactive ? "button" : undefined}
+				class={twMerge(
+					"absolute -top-0.5 right-[calc(100%+0.3rem)] font-mono text-[0.6875rem] leading-none text-clay group-data-active/bracket:font-semibold group-data-active/bracket:text-soot",
+					interactive &&
+						"cursor-pointer after:absolute after:-inset-y-1.5 after:-right-1.5 after:-left-2 hover:text-soot"
+				)}>
+				{number}
+			</Label>
+		)
+	}
+</div>

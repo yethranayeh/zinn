@@ -1,0 +1,16 @@
+---
+import Icon from "../ui/icon/Icon.astro";
+
+interface Props {
+	direction: "up" | "down";
+}
+
+const { direction } = Astro.props;
+---
+
+<div
+	aria-hidden='true'
+	class='invisible flex h-5 items-center justify-center text-muted-foreground hover:text-soot data-visible:visible'
+	data-further-reading-arrow={direction}>
+	<Icon name='arrow-right' class:list={["size-4", direction === "up" ? "-rotate-90" : "rotate-90"]} />
+</div>

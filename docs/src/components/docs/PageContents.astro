@@ -34,10 +34,12 @@ const { headings, mobile = false } = Astro.props;
 		</details>
 	) : (
 		<aside class='hidden min-w-0 lg:block' data-pagefind-ignore>
-			<div class='sticky top-[calc(var(--site-header-height)_+_var(--reading-rail-height)_+_2rem)] max-h-[calc(100svh_-_var(--site-header-height)_-_var(--reading-rail-height)_-_4rem)] overflow-y-auto overscroll-contain'>
-				<nav aria-label='On this page'>
-					<p class='mb-4 border-b border-soot/22 pb-3 font-mono text-xs text-muted-foreground'>On this page</p>
-					<ContentsLinks headings={headings} />
+			<div class='sticky top-[calc(var(--site-header-height)_+_var(--reading-rail-height)_+_2rem)] flex max-h-[calc(100svh_-_var(--site-header-height)_-_var(--reading-rail-height)_-_4rem)] flex-col'>
+				<nav aria-label='On this page' class='flex min-h-0 flex-col'>
+					<p class='mb-4 shrink-0 border-b border-soot/22 pb-3 font-mono text-xs text-muted-foreground'>On this page</p>
+					<div class='min-h-0 overflow-y-auto overscroll-contain' data-contents-scroll>
+						<ContentsLinks headings={headings} />
+					</div>
 				</nav>
 				<FurtherReading />
 			</div>
@@ -46,8 +48,6 @@ const { headings, mobile = false } = Astro.props;
 }
 
 <script>
-	import { readingSectionEvent } from "./reading-section";
-
 	const rail = document.querySelector<HTMLElement>("[data-reading-rail]");
 	const links = [...document.querySelectorAll<HTMLAnchorElement>("[data-section-link]")];
 	const targets = [...new Set(links.map((link) => document.getElementById(link.hash.slice(1))))].filter(
@@ -55,19 +55,25 @@ const { headings, mobile = false } = Astro.props;
 	);
 	const header = document.querySelector<HTMLElement>("body > header");
 	const disclosure = document.querySelector<HTMLDetailsElement>("[data-page-contents]");
+	// The desktop list scrolls inside its own box when its entries do not fit
+	const contentsBox = document.querySelector<HTMLElement>("[data-contents-scroll]");
+	let currentBoxLink: HTMLAnchorElement | undefined;
 	let scheduled = false;
 
-	// The h2 section the reader is in, empty above the first one, for parts that follow it.
-	function publishSection(reached: HTMLElement | undefined) {
-		const index = reached === undefined ? -1 : targets.indexOf(reached);
-		const section = targets.slice(0, index + 1).findLast((target) => target.localName === "h2")?.id ?? "";
-
-		if (document.documentElement.dataset.readingSection === section) {
+	/** Scrolls the box, not the page, until the current entry is inside it. */
+	function keepCurrentInBox() {
+		if (contentsBox === null || currentBoxLink === undefined) {
 			return;
 		}
 
-		document.documentElement.dataset.readingSection = section;
-		document.dispatchEvent(new CustomEvent(readingSectionEvent, { detail: section }));
+		const box = contentsBox.getBoundingClientRect();
+		const entry = currentBoxLink.getBoundingClientRect();
+
+		if (entry.top < box.top) {
+			contentsBox.scrollTop -= box.top - entry.top;
+		} else if (entry.bottom > box.bottom) {
+			contentsBox.scrollTop += entry.bottom - box.bottom;
+		}
 	}
 
 	function updateCurrent() {
@@ -93,14 +99,24 @@ const { headings, mobile = false } = Astro.props;
 		}
 
 		const current = reached ?? targets[0];
-		publishSection(reached);
+		let currentLink: HTMLAnchorElement | undefined;
 
 		for (const link of links) {
 			if (current !== undefined && link.hash.slice(1) === current.id) {
 				link.setAttribute("aria-current", "location");
+
+				if (contentsBox?.contains(link)) {
+					currentLink = link;
+				}
 			} else {
 				link.removeAttribute("aria-current");
 			}
+		}
+
+		// The box only follows when the current entry changes, so the reader can scroll it freely in between
+		if (currentLink !== currentBoxLink) {
+			currentBoxLink = currentLink;
+			keepCurrentInBox();
 		}
 	}
 
@@ -136,6 +152,10 @@ const { headings, mobile = false } = Astro.props;
 	window.addEventListener("load", scheduleCurrent);
 	if (rail) {
 		new ResizeObserver(scheduleCurrent).observe(rail);
+	}
+	// Parts under the contents, such as further reading, change the box's height
+	if (contentsBox) {
+		new ResizeObserver(keepCurrentInBox).observe(contentsBox);
 	}
 	document.fonts.ready.then(scheduleCurrent);
 </script>

@@ -695,6 +695,21 @@ test.skipIf(!hasSteerdownGraph)("every page with a table of contents has further
   expect(broken).toEqual([]);
 });
 
+test("the further reading debug view is built only outside the production site", async () => {
+  const isProductionBuild = process.env.SITE_TEST_ENV === "production";
+  const html = await (await server.fetch("/docs/installation")).text();
+  expect(html.includes("data-further-reading-debug")).toBe(!isProductionBuild);
+  const scriptsDirectory = join(docsDirectory, "dist/_astro");
+  const scripts = (await readdir(scriptsDirectory)).filter((file) => file.endsWith(".js"));
+  const withDebugView: string[] = [];
+  for (const script of scripts) {
+    if ((await Bun.file(join(scriptsDirectory, script)).text()).includes("further-reading-debug")) {
+      withDebugView.push(script);
+    }
+  }
+  expect(withDebugView.length > 0).toBe(!isProductionBuild);
+});
+
 async function expectSocialImage(path: string) {
   const response = await server.fetch(path);
   expect(response.status).toBe(200);

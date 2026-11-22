@@ -22,7 +22,7 @@ bun run foundry:build
 
 The `foundry:` scripts run and build Foundry, which acts as the reference source for the components in `src/components/ui`.
 
-Default builds are previews: they carry `noindex` and omit analytics. For a production build, use `PUBLIC_SITE_ENV=production bun run docs:build`.
+Default builds are previews: they carry `noindex`, omit analytics and show a Debug toggle in further reading. For a production build, use `PUBLIC_SITE_ENV=production bun run docs:build`.
 
 Builds generate `/social/zinn.png` from the shared installation command and the [social-card component](src/components/SocialCard.ts).
 
