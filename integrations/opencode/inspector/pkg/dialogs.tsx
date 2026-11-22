@@ -4,11 +4,19 @@ import type { ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import type { Ctx, DetailState, Excerpt, Relation, TaskSummary } from "./types.ts";
 
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  onCleanup,
+  Show,
+  untrack,
+} from "solid-js";
 
 import { labelColors, loadDetail, log, PRIORITY_COLOR } from "./data.ts";
 import { firstParagraph, truncate } from "./rows.ts";
-import { lastMentionExcerpt } from "./scan.ts";
+import { lastMentionExcerpt, newestIdleID, turnEnded } from "./scan.ts";
 import { inspectorTheme } from "./theme.ts";
 
 const RELATION_ROWS = 3;
@@ -61,28 +69,30 @@ export function Detail(props: {
   const [backHovered, setBackHovered] = createSignal(false);
   const [closeHovered, setCloseHovered] = createSignal(false);
 
+  // Load the task on open and navigation, and again at each turn end while the dialog stays open.
+  const [reloadDue, setReloadDue] = createSignal(0);
+  let loadedKey: string | undefined;
   createEffect(() => {
     const taskKey = key();
-    const sessionID = props.sessionID;
-    const mentioned = props.mentions?.get(taskKey) !== undefined;
-    const mentionExcerpt =
-      mentioned && sessionID !== undefined
-        ? lastMentionExcerpt(props.ctx, sessionID, taskKey)
-        : undefined;
+    reloadDue();
+    const isSameKey = loadedKey === taskKey;
+    loadedKey = taskKey;
+    const showLoading = !isSameKey || untrack(() => state()).kind !== "ready";
     let alive = true;
 
-    setState({ kind: "loading" });
-    setExcerpt(mentionExcerpt);
+    if (showLoading) {
+      setState({ kind: "loading" });
+    }
 
     const started = Date.now();
 
-    log(props.ctx, "detail loading", { key: taskKey });
+    log(props.ctx, "detail loading", { key: taskKey, reload: isSameKey });
     void loadDetail(taskKey).then((result) => {
       log(props.ctx, "detail settled", {
         key: taskKey,
         kind: result.kind,
         ms: Date.now() - started,
-        excerpt: mentionExcerpt !== undefined,
+        excerpt: untrack(() => excerpt()) !== undefined,
       });
       if (alive) {
         setState(result);
@@ -92,6 +102,40 @@ export function Detail(props: {
     onCleanup(() => {
       alive = false;
     });
+  });
+
+  // The mention excerpt follows the conversation without reloading the task.
+  createEffect(() => {
+    const taskKey = key();
+    const sessionID = props.sessionID;
+    const mentioned = props.mentions?.get(taskKey) !== undefined;
+    if (!mentioned || sessionID === undefined) {
+      setExcerpt(undefined);
+      return;
+    }
+    setExcerpt(lastMentionExcerpt(props.ctx, sessionID, taskKey));
+  });
+
+  // A turn end is the only transcript event that refreshes an open task.
+  let baselineSession: string | undefined;
+  let lastIdleID: string | undefined;
+  createEffect(() => {
+    const sessionID = props.sessionID;
+    if (sessionID === undefined) {
+      return;
+    }
+    const messages = props.ctx.data.session.message.list(sessionID);
+    if (baselineSession !== sessionID) {
+      baselineSession = sessionID;
+      lastIdleID = newestIdleID(messages);
+      return;
+    }
+    const turn = turnEnded(messages, lastIdleID);
+    if (turn === undefined) {
+      return;
+    }
+    lastIdleID = turn.id;
+    setReloadDue((count) => count + 1);
   });
 
   const open = (next: string) => {
