@@ -4,8 +4,8 @@ import type { Sentence } from "./model";
 const lineOverlapTolerance = 2;
 // Brackets closer than this many pixels vertically share a lane
 const bracketGap = 2;
-// Horizontal room between overlapping brackets in the gutter, in pixels
-const laneWidth = 10;
+// Leave one character width between number labels in neighboring lanes
+const laneGapCharacterWidth = 1.5;
 // How far the nearest lane sits to the left of the article's text
 const firstLaneOffset = "1.25rem";
 
@@ -45,6 +45,8 @@ export function drawBrackets(
   const layerTop = layer.getBoundingClientRect().top;
   const laneBottoms: Array<number> = [];
   const brackets = new Map<string, HTMLElement>();
+  const widestNumberLength = Math.max(1, ...sentences.map(({ number }) => String(number).length));
+  const laneWidth = widestNumberLength + laneGapCharacterWidth;
 
   for (const sentence of sentences) {
     const lines = lineBoxes(sentence.range, layerTop);
@@ -66,13 +68,11 @@ export function drawBrackets(
     const bracket = template.content.firstElementChild!.cloneNode(true) as HTMLElement;
     const number = bracket.querySelector("button")!;
 
-    console.log("step 1");
     number.textContent = String(sentence.number);
-    console.log("success");
     number.setAttribute("aria-label", `Show further reading for sentence ${sentence.number}`);
     bracket.style.top = `${top}px`;
     bracket.style.height = `${bottom - top}px`;
-    bracket.style.left = `calc(-${firstLaneOffset} - ${lane * laneWidth}px)`;
+    bracket.style.left = `calc(-${firstLaneOffset} - ${lane * laneWidth}ch)`;
     brackets.set(sentence.key, bracket);
   }
 
