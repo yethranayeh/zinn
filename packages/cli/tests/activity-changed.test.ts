@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Activity } from "@zinn-dev/core";
 import { activityActionSchema, activityChangedFieldSchema } from "@zinn-dev/core";
+import type { Capabilities } from "../src/capabilities";
 import { errorDocumentSchema } from "../src/errors";
 import { resultSchemas } from "../src/result-schemas";
 import { runZinn, withIsolatedZinnDir, withTestDb } from "../test-helpers";
@@ -189,5 +190,34 @@ test("activity help names the accepted changed fields without opening storage", 
       expect(result.stdout).toContain(field);
     }
     expect(existsSync(join(directory, "data"))).toBe(false);
+  });
+});
+
+test("the capabilities pattern and CLI agree on changed filter syntax", async () => {
+  await withIsolatedZinnDir(async directory => {
+    const discovery = await runZinn(["capabilities", "--json"], directory);
+    expect(discovery.code, discovery.stderr).toBe(0);
+    const manifest: Capabilities = JSON.parse(discovery.stdout);
+    const route = manifest.commands.find(({ path }) => path.join(" ") === "activity list");
+    const patternSource = route?.input.options.changed?.value?.pattern;
+    expect(typeof patternSource).toBe("string");
+    const pattern = new RegExp(patternSource!);
+
+    const setup = await runZinn(["project", "create", "APP"], directory);
+    expect(setup.code, setup.stderr).toBe(0);
+    const inputs = activityChangedFieldSchema.options.flatMap(field => [
+      field, field + "=value", field + "=", field + "=a=b", field + "=a\nb",
+    ]);
+    inputs.push("", "=value", "unknown", "Column=Review", "priority=NoNe");
+
+    for (const input of inputs) {
+      const result = await runZinn(["activity", "list", "--changed", input, "--json"], directory);
+      expect(result.code, JSON.stringify(input)).toBe(pattern.test(input) ? 0 : 1);
+      if (result.code === 1) {
+        const { error } = errorDocumentSchema.parse(JSON.parse(result.stderr));
+        expect(error.code).toBe("invalid_input");
+        expect(error.details?.argument).toBe("--changed");
+      }
+    }
   });
 });

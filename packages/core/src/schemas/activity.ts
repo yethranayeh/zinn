@@ -37,13 +37,11 @@ export const activityActionSchema = z.enum([
   "claim_release",
 ]);
 export const activityEntityTypeSchema = z.enum(["task", "project", "column", "label"]);
+export const activityChangedFieldsWithOptionalValue = ["column", "priority", "labels"] as const;
+export const activityChangedFieldsWithoutValue = ["title", "description", "due_at"] as const;
 const changedFieldNames = [
-  "column",
-  "priority",
-  "labels",
-  "title",
-  "description",
-  "due_at",
+  ...activityChangedFieldsWithOptionalValue,
+  ...activityChangedFieldsWithoutValue,
 ] as const;
 const changedFieldMessage = `Changed field must be one of ${changedFieldNames.join(", ")}`;
 export const activityChangedFieldSchema = z.enum(changedFieldNames, {
@@ -53,7 +51,7 @@ export const activityChangedSchema = z.discriminatedUnion(
   "field",
   [
     z.strictObject({
-      field: activityChangedFieldSchema.exclude(["priority", "title", "description", "due_at"]),
+      field: activityChangedFieldSchema.exclude(["priority", ...activityChangedFieldsWithoutValue]),
       value: z.string().min(1, "Changed value cannot be empty").optional(),
     }),
     z.strictObject({
@@ -61,7 +59,7 @@ export const activityChangedSchema = z.discriminatedUnion(
       value: z.string().min(1, "Changed value cannot be empty").nullable().optional(),
     }),
     z.strictObject({
-      field: activityChangedFieldSchema.extract(["title", "description", "due_at"]),
+      field: activityChangedFieldSchema.extract(activityChangedFieldsWithoutValue),
       value: z
         .never({ error: "Title, description and due_at filters match any change. Omit the value" })
         .optional(),

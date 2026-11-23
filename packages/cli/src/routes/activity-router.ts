@@ -10,6 +10,8 @@ import {
   activity,
   activityActionSchema,
   activityChangedFieldSchema,
+  activityChangedFieldsWithOptionalValue,
+  activityChangedFieldsWithoutValue,
   activityChangedSchema,
   activityIdSchema,
   activityListSchema,
@@ -35,6 +37,12 @@ import { followUntilStopped } from "../follow.js";
 import { formatActivityList, presentActivities } from "../presentation/activity-presentation.js";
 
 const changedFieldList = activityChangedFieldSchema.options.join(", ");
+const changedFieldListFormatter = new Intl.ListFormat("en-GB");
+const changedFieldsWithoutValue = changedFieldListFormatter.format(activityChangedFieldsWithoutValue);
+const changedFieldsWithValue = changedFieldListFormatter.format(
+  activityChangedFieldsWithOptionalValue.map(field => field === "labels" ? "added labels" : field),
+);
+const changedValueHelp = `Values apply to ${changedFieldsWithValue}, ignoring case.`;
 
 const activityInputs = {
   list: {
@@ -97,8 +105,8 @@ const activityInputs = {
         value: {
           kind: "activity-change",
           name: "field[=value]",
-          pattern: `^((${activityChangedFieldSchema.options.join("|")})|(${activityChangedFieldSchema.exclude(["title", "description"]).options.join("|")})=.+)$`,
-          description: `Fields: ${changedFieldList}. Omit the value to match any change. Values apply to column, priority and added labels, ignoring case. priority=none matches an unassigned priority.`,
+          pattern: String.raw`^(?:(?:${activityChangedFieldsWithOptionalValue.join("|")})(?:=[\s\S]+)?|${activityChangedFieldsWithoutValue.join("|")})$`,
+          description: `Fields: ${changedFieldList}. Omit the value to match any change. ${changedValueHelp} priority=none matches an unassigned priority.`,
         },
       },
       follow: { type: "boolean" },
@@ -291,9 +299,9 @@ Returns all matching events unless --limit is supplied.
 --action <action>  Match a recorded action. Repeat to match any listed action.
 --changed <field>[=<value>] Match a task field change, with an optional value.
                    Fields: ${changedFieldList}.
-                   Values apply to column, priority and added labels, ignoring case.
+                   ${changedValueHelp}
                    Without a value, labels match additions and removals.
-                   Title and description match any change, without a value.
+                   Use ${changedFieldsWithoutValue} without a value.
                    Use priority=none for an unassigned priority.
 --follow           Print new activity as it is committed, until stopped.
 --limit <n>        ${listLimitDescription}

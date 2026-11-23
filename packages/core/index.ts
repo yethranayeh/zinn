@@ -130,6 +130,8 @@ export {
   activityActionSchema,
   activityEntityTypeSchema,
   activityChangedFieldSchema,
+  activityChangedFieldsWithOptionalValue,
+  activityChangedFieldsWithoutValue,
   activityChangedSchema,
   activityIdSchema,
   activityListSchema,
