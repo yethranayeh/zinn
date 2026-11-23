@@ -55,6 +55,48 @@ jobs:
       - name: Check Node SQLite adapter
         run: bun run test:node
 
+  stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+
+      - name: Read minimum Node version
+        id: node-version
+        run: |
+          bun --eval '
+            import { readNodeMinimum } from "./scripts/package-fixture.ts";
+            console.log(`version=${readNodeMinimum(process.cwd()).version}`);
+          ' >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ steps.node-version.outputs.version }}
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run stress suite
+        id: stress
+        timeout-minutes: 12 # Leave time to upload evidence before the job timeout.
+        run: bun run test:stress --dir "$RUNNER_TEMP/zinn-stress" --keep
+
+      - name: Upload stress evidence
+        if: ${{ failure() && steps.stress.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zinn-stress-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/zinn-stress
+
   opencode:
     runs-on: ubuntu-latest
     steps:
