@@ -456,7 +456,8 @@ async function main() {
       }
       targetArguments.push(...releaseTests);
     } else if (!hasTargets) {
-      targetArguments.push(...DEFAULT_TARGETS);
+      // Bun matches bare names against paths anywhere in the repository.
+      targetArguments.push(...DEFAULT_TARGETS.map((directory) => `./${directory}/`));
     }
     selections = [{ arguments: targetArguments }];
   }

@@ -67,6 +67,37 @@ test("--release selects the release checks and is not passed to bun test", () =>
   expect(readArguments(["./scripts/pack.release.test.ts"])).toMatchObject({ release: false, hasTargets: true });
 });
 
+test("default discovery runs only the root packages and scripts suites", withDirectory((directory) => {
+  writeFileSync(join(directory, ".gitignore"), "/research/\n");
+  for (const suite of ["packages/example", "scripts", "integrations/example"]) {
+    mkdirSync(join(directory, suite), { recursive: true });
+    writeFileSync(
+      join(directory, suite, "suite.test.ts"),
+      `import { test } from "bun:test";\ntest(${JSON.stringify(suite)}, () => {});\n`,
+    );
+  }
+  for (const suite of ["packages", "scripts"]) {
+    const copy = join(directory, "research", "nested", suite);
+    mkdirSync(copy, { recursive: true });
+    writeFileSync(join(copy, "copy.test.ts"), 'throw new Error("Copied test was loaded");\n');
+  }
+
+  const resultsDirectory = join(directory, ".test-results");
+  const run = (args: Array<string>) => {
+    const previousRuns = existsSync(resultsDirectory) ? readdirSync(resultsDirectory) : [];
+    const result = Bun.spawnSync([process.execPath, SCRIPT_PATH, ...args], { cwd: directory, env: TEST_ENVIRONMENT });
+    if (result.exitCode !== 0) {
+      throw new Error(result.stderr.toString());
+    }
+    const runId = readdirSync(resultsDirectory).find((entry) => !previousRuns.includes(entry))!;
+    return readJunit(readFileSync(join(resultsDirectory, runId, "junit.xml"), "utf8"));
+  };
+
+  expect(run([])).toEqual({ passed: 2, failed: [] });
+  expect(run(["-t", "scripts"])).toEqual({ passed: 1, failed: [] });
+  expect(run(["./integrations/example/suite.test.ts"])).toEqual({ passed: 1, failed: [] });
+}));
+
 test("release checks run only with --release, by path, or in a rerun of their run", withDirectory((directory) => {
   const passing = (name: string) => `import { test } from "bun:test";\ntest(${JSON.stringify(name)}, () => {});\n`;
   mkdirSync(join(directory, "packages", "node_modules", "dependency"), { recursive: true });
