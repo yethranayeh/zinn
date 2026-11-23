@@ -1,5 +1,6 @@
 ---
 import "../styles/foundry.css";
+import Button from "../../src/components/ui/button/Button.astro";
 
 interface Props {
 	/** The page name. The document title is `{title} | Zinn Foundry`, or `Zinn Foundry` without one. */
@@ -16,19 +17,33 @@ const documentTitle = title ? `${title} | Zinn Foundry` : "Zinn Foundry";
 	<head>
 		<meta charset='utf-8' />
 		<meta name='viewport' content='width=device-width, initial-scale=1' />
-		<meta name='theme-color' content='#e8e0cc' />
+		<meta name='theme-color' content='#e8e0cc' data-foundry-theme-color />
 		<meta name='description' content={description} />
 		<meta name='robots' content='noindex' />
 		<title>{documentTitle}</title>
 		<link rel='icon' href='/favicon.svg' type='image/svg+xml' />
 		<link rel='preload' href='/fonts/AlanSans.ttf' as='font' type='font/ttf' crossorigin />
 		<link rel='preload' href='/fonts/monoMMM_5.ttf' as='font' type='font/ttf' crossorigin />
+		<script is:inline>
+			const savedTheme = localStorage.getItem("zinn-foundry-theme");
+			const prefersDark = matchMedia("(prefers-color-scheme: dark)").matches;
+			const theme = savedTheme === "dark" || savedTheme === "light" ? savedTheme : prefersDark ? "dark" : "light";
+			document.documentElement.dataset.theme = theme;
+		</script>
 	</head>
 	<body class='flex min-h-svh flex-col selection:bg-soot selection:text-limestone'>
 		<header class='border-b border-soot'>
-			<nav class='site-container flex h-(--site-brand-height) items-center gap-5' aria-label='Foundry'>
-				<a href='/' class='font-mono text-xs no-underline hover:underline'>Zinn Foundry</a>
-				<a href='/inspector/' class='font-mono text-xs no-underline hover:underline'>Inspector</a>
+			<nav class='site-container flex h-(--site-brand-height) items-center gap-2 sm:gap-5' aria-label='Foundry'>
+				<a href='/' class='font-mono text-xs whitespace-nowrap no-underline hover:underline'>Zinn Foundry</a>
+				<a href='/inspector/' class='font-mono text-xs whitespace-nowrap no-underline hover:underline'>Inspector</a>
+				<Button
+					class='ml-auto whitespace-nowrap border-y-0'
+					variant='outline'
+					size='default'
+					data-theme-switch
+					aria-pressed='false'>
+					Toggle Theme
+				</Button>
 			</nav>
 		</header>
 
@@ -37,3 +52,24 @@ const documentTitle = title ? `${title} | Zinn Foundry` : "Zinn Foundry";
 		</main>
 	</body>
 </html>
+
+<script>
+	const root = document.documentElement;
+	const themeSwitch = document.querySelector<HTMLButtonElement>("[data-theme-switch]")!;
+	const themeColor = document.querySelector<HTMLMetaElement>("[data-foundry-theme-color]")!;
+
+	const applyTheme = (theme: "light" | "dark") => {
+		const isDark = theme === "dark";
+		root.dataset.theme = theme;
+		themeSwitch.setAttribute("aria-pressed", String(isDark));
+		themeColor.content = isDark ? "#1c1815" : "#e8e0cc";
+	};
+
+	applyTheme(root.dataset.theme === "dark" ? "dark" : "light");
+
+	themeSwitch.addEventListener("click", () => {
+		const theme = root.dataset.theme === "dark" ? "light" : "dark";
+		localStorage.setItem("zinn-foundry-theme", theme);
+		applyTheme(theme);
+	});
+</script>

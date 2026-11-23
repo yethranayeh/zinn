@@ -14,6 +14,7 @@ const colors = [...colorsCss.matchAll(/(?:\/\* (.+?) \*\/\s*)?--color-([\w-]+): 
 		value: value.replace(/^var\(--color-([\w-]+)\)$/, "$1")
 	})
 );
+const colorValues = new Map(colors.map((color) => [color.name, color.value]));
 const typefaces = [...theme.matchAll(/--font-([\w-]+): "([^"]+)"/g)].map(([, name, family]) => ({ name, family }));
 ---
 
@@ -69,7 +70,7 @@ const typefaces = [...theme.matchAll(/--font-([\w-]+): "([^"]+)"/g)].map(([, nam
 			{
 				colors.map((color) => (
 					<li class='flex flex-col gap-2'>
-						<Swatch color={`var(--color-${color.name})`} class='h-16 w-full' />
+						<Swatch color={colorValues.get(color.value) ?? color.value} class='h-16 w-full' />
 						<span class='font-mono text-xs'>{color.name}</span>
 						<span class='font-mono text-xs text-muted-foreground'>{color.value}</span>
 						{color.note && <span class='text-sm text-muted-foreground'>{color.note}</span>}

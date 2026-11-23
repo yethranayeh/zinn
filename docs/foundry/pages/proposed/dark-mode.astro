@@ -1,0 +1,103 @@
+---
+import colorsCss from "../../../src/styles/colors.css?raw";
+import Chip from "../../../src/components/ui/chip/Chip.astro";
+import FoundryLayout from "../../layouts/FoundryLayout.astro";
+import DarkMode from "../../proposed/dark-mode/DarkMode.astro";
+import darkThemeCss from "../../styles/dark-theme.css?raw";
+
+import { contrastRatio, paletteFrom } from "../../contrast";
+import { themePalette } from "../../../src/components/ui/swatch/theme-palette";
+
+const lightPalette = paletteFrom(colorsCss);
+const darkPalette = paletteFrom(darkThemeCss);
+const lightTokens = {
+	...lightPalette,
+	"soot-foreground": "var(--color-limestone)"
+};
+const tokenStyle = (tokens: Record<string, string>) =>
+	Object.entries(tokens)
+		.map(([name, value]) => `--color-${name}:${value}`)
+		.join(";");
+
+const lightContrast = contrastRatio(lightPalette.cinnabar, lightPalette.limestone);
+const darkCinnabarContrast = contrastRatio(darkPalette.cinnabar, darkPalette.limestone);
+const darkClayContrast = contrastRatio(darkPalette.clay, darkPalette.limestone);
+const contrastText = (ratio: number) => `${ratio.toFixed(2)}:1`;
+---
+
+<FoundryLayout
+	title='Dark mode study'
+	description='A Foundry only comparison of the current palette and a proposed dark palette.'>
+	<header class='flex max-w-[65ch] flex-col gap-4'>
+		<div class='flex flex-wrap items-baseline gap-3'>
+			<h1 class='text-3xl font-semibold md:text-4xl'>Dark mode study</h1>
+			<Chip data-status='proposed'>Proposed</Chip>
+		</div>
+		<p>
+			The current palette and a dark mode proposal, shown on Limestone and Soot. Use the Foundry switch to view its
+			components with the proposed dark colors.
+		</p>
+		<p>Cinnabar keeps its depth in dark mode. Reading links use Clay for contrast against Soot.</p>
+	</header>
+
+	<section class='grid gap-4 md:grid-cols-2' aria-label='Palette comparison'>
+		<article
+			class='flex min-w-0 flex-col gap-5 border border-soot/20 bg-limestone p-4 text-soot'
+			style={tokenStyle(lightTokens)}>
+			<header class='flex flex-col gap-1'>
+				<h2 class='text-lg font-semibold'>Current palette</h2>
+				<p class='font-mono text-xs text-muted-foreground'>Limestone · {lightPalette.limestone}</p>
+			</header>
+			<DarkMode />
+			<ul class='grid grid-cols-1 gap-y-1 font-mono text-xs'>
+				{
+					themePalette.map((color) => (
+						<li class='flex justify-between gap-2'>
+							<span>{color}</span>
+							<span>{lightPalette[color]}</span>
+						</li>
+					))
+				}
+			</ul>
+			<p class='font-mono text-xs text-muted-foreground'>Cinnabar on Limestone · {contrastText(lightContrast)}</p>
+		</article>
+
+		<article
+			class='flex min-w-0 flex-col gap-5 border border-soot/20 bg-limestone p-4 text-soot'
+			data-foundry-palette='dark'>
+			<header class='flex flex-col gap-1'>
+				<h2 class='text-lg font-semibold'>Dark mode proposal</h2>
+				<p class='font-mono text-xs text-muted-foreground'>Soot · {darkPalette.limestone}</p>
+			</header>
+			<DarkMode />
+			<ul class='grid grid-cols-1 gap-y-1 font-mono text-xs'>
+				{
+					themePalette.map((color) => (
+						<li class='flex justify-between gap-2'>
+							<span>{color}</span>
+							<span>{darkPalette[color]}</span>
+						</li>
+					))
+				}
+			</ul>
+			<div class='flex flex-col gap-1 font-mono text-xs text-muted-foreground'>
+				<p>Cinnabar accent on Soot · {contrastText(darkCinnabarContrast)}</p>
+				<p>Clay text on Soot · {contrastText(darkClayContrast)}</p>
+			</div>
+		</article>
+	</section>
+
+	<section class='flex flex-col gap-4' aria-labelledby='sample-text'>
+		<h2 id='sample-text' class='text-xl font-semibold'>Reading text</h2>
+		<div class='grid gap-4 md:grid-cols-2'>
+			<div class='flex flex-col gap-3 border border-soot/20 bg-limestone p-4 text-soot' style={tokenStyle(lightTokens)}>
+				<p class='text-cinnabar underline decoration-1 underline-offset-4'>A reading link on Limestone</p>
+				<p class='font-mono text-xs text-muted-foreground'>{contrastText(lightContrast)} contrast</p>
+			</div>
+			<div class='flex flex-col gap-3 border border-soot/20 bg-limestone p-4 text-soot' data-foundry-palette='dark'>
+				<p class='text-cinnabar underline decoration-1 underline-offset-4'>A reading link on Soot</p>
+				<p class='font-mono text-xs text-muted-foreground'>{contrastText(darkClayContrast)} contrast</p>
+			</div>
+		</div>
+	</section>
+</FoundryLayout>

@@ -1,0 +1,40 @@
+@layer base {
+	html[data-theme="dark"],
+	[data-foundry-palette="dark"] {
+		color-scheme: dark;
+		--color-limestone: #1c1815;
+		--color-bone: #2c2924;
+		--color-clay: #c16d4a;
+		--color-cinnabar: #b04128;
+		--color-bronze: #cca15e;
+		--color-soot: #e8e0cc;
+		--color-pewter: #a8a293;
+		--color-muted-foreground: #a8a293;
+		--color-soot-foreground: #1c1815;
+		--color-soot-muted-foreground: #655e53;
+		--foundry-soot-hover: #d5cdbb;
+	}
+}
+
+@layer utilities {
+	html[data-theme="dark"] {
+		color-scheme: dark;
+	}
+
+	:is(html[data-theme="dark"], [data-foundry-palette="dark"]) [class~="hover:bg-soot/90"]:hover {
+		background-color: var(--foundry-soot-hover);
+	}
+
+	:is(html[data-theme="dark"], [data-foundry-palette="dark"]) [class~="text-cinnabar"] {
+		color: var(--color-clay);
+	}
+
+	:is(html[data-theme="dark"], [data-foundry-palette="dark"]) [class~="hover:bg-limestone/8"]:hover {
+		background-color: var(--color-limestone);
+		color: var(--color-soot);
+	}
+
+	html[data-theme="dark"] dialog::backdrop {
+		background-color: rgb(28 24 21 / 90%);
+	}
+}

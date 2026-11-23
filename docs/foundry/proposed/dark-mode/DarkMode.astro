@@ -1,0 +1,15 @@
+---
+import Swatch from "../../../src/components/ui/swatch/Swatch.astro";
+import { themePalette } from "../../../src/components/ui/swatch/theme-palette";
+---
+
+<ul class='flex gap-1' aria-label='Zinn palette'>
+	{
+		themePalette.map((color) => (
+			<li title={color}>
+				<Swatch color={`var(--color-${color})`} />
+				<span class='sr-only'>{color}</span>
+			</li>
+		))
+	}
+</ul>
