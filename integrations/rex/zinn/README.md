@@ -16,7 +16,7 @@ The list holds the 2000 most recently active open tasks.
 ## Requirements
 
 - Rex with `rex.ui` prompts
-- The `zinn` command on the PATH of the Rex server. The actions run where the server runs and use the database `zinn` uses there.
+- The `zinn` command on the PATH of the Rex server or of your login shell. The actions run where the server runs and use the database `zinn` uses there.
 
 ## Install
 
