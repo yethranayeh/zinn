@@ -219,7 +219,13 @@ test.each(["migrate", "restore"] as const)("%s reports an unchanged database whe
     expect(error.details?.cause?.code).toBe("EIO");
     expect(error.diagnostics?.join("\n")).toContain("unchanged");
     expect(databaseSnapshot(store)).toEqual(before);
-    expect(backupFiles(store)).toEqual([expect.stringMatching(/\.sqlite$/)]);
+    const snapshots = backupFiles(store);
+    expect(snapshots).toEqual([expect.stringMatching(/\.sqlite$/)]);
+    if (operation === "migrate") {
+      const backupPath = join(realpathSync(store), "backups", snapshots[0]!);
+      expect(error.details?.backupPath).toBe(backupPath);
+      expect(error.message).toContain(backupPath);
+    }
   });
 });
 
@@ -345,11 +351,12 @@ test.skipIf(process.platform === "win32")("a directory sync failure after an aut
     expect(first.code).toBe(1);
     expect(first.stdout).toBe("");
     const { error } = errorDocumentSchema.parse(JSON.parse(first.stderr));
+    const backupPath = join(realpathSync(store), "backups", files[0]!);
     expect(error).toMatchObject({
       code: "storage",
       details: {
         entity: "backup",
-        backupPath: join(realpathSync(store), "backups", files[0]!),
+        backupPath,
         cause: { code: "EINVAL" },
       },
     });
@@ -358,9 +365,22 @@ test.skipIf(process.platform === "win32")("a directory sync failure after an aut
 
     const retry = await runZinn(args, store);
     expect(retry.code).toBe(1);
-    expect(errorDocumentSchema.parse(JSON.parse(retry.stderr)).error.details?.reason).toBe("migration_paused");
+    expect(errorDocumentSchema.parse(JSON.parse(retry.stderr)).error.details).toMatchObject({
+      reason: "migration_paused",
+      backupPath,
+    });
     expect(backupFiles(store)).toEqual(files);
     expect(databaseSnapshot(store)).toEqual(before);
+
+    // The unconfirmed record still pauses upgrades when the path is occupied by a folder.
+    renameSync(backupPath, join(store, "moved.sqlite"));
+    mkdirSync(backupPath);
+    const uncertain = await runZinn(args, store);
+    expect(uncertain.code).toBe(1);
+    const paused = errorDocumentSchema.parse(JSON.parse(uncertain.stderr)).error;
+    expect(paused.details?.reason).toBe("migration_paused");
+    expect(paused.details?.backupPath).toBeUndefined();
+    expect(paused.message).not.toContain(backupPath);
   });
 });
 
@@ -375,6 +395,15 @@ test("automatic upgrade retries after a failed backup rename", async () => {
     expect(error.details?.cause?.code).toBe("EIO");
     expect(error.details?.backupPath).toBeUndefined();
     expect(error.message).not.toContain("zinn migrate");
+    expect(backupFiles(store)).toEqual([]);
+
+    const explicit = await runWithBackupFailure(["migrate", "--json"], store, "rename");
+    expect(explicit.code).toBe(1);
+    const explicitError = errorDocumentSchema.parse(JSON.parse(explicit.stderr)).error;
+    expect(explicitError.details?.cause?.code).toBe("EIO");
+    expect(explicitError.details?.backupPath).toBeUndefined();
+    expect(explicitError.diagnostics?.join("\n")).toContain("unchanged");
+    expect(explicit.stderr).not.toContain(join(realpathSync(store), "backups"));
     expect(backupFiles(store)).toEqual([]);
 
     const retry = await runZinn(args, store);
@@ -397,7 +426,15 @@ test("ZINN-508: ordinary opens pause after a failed automatic upgrade and explic
     const firstError = errorDocumentSchema.parse(JSON.parse(first.stderr)).error;
     expect(firstError.message).toContain("APP-2");
     expect(firstError.message).toContain("zinn migrate");
-    expect(backupFiles(store)).toHaveLength(1);
+    const firstBackups = backupFiles(store);
+    expect(firstBackups).toHaveLength(1);
+    const backupDirectory = join(realpathSync(store), "backups");
+    const firstBackupPath = join(backupDirectory, firstBackups[0]!);
+    expect(firstError).toMatchObject({
+      code: "conflict",
+      details: { entity: "task", reason: "already_exists", backupPath: firstBackupPath },
+    });
+    expect(firstError.message).toContain(firstBackupPath);
 
     for (const location of [store, alias]) {
       const paused = await runZinn(["project", "list", "--json"], location);
@@ -412,6 +449,7 @@ test("ZINN-508: ordinary opens pause after a failed automatic upgrade and explic
           databasePath,
           schemaVersion: taskKeyIndexMigration.version - 1,
           supportedSchemaVersion: CURRENT_SCHEMA_VERSION,
+          backupPath: firstBackupPath,
         },
       });
       expect(error.message).toContain("zinn migrate");
@@ -421,11 +459,28 @@ test("ZINN-508: ordinary opens pause after a failed automatic upgrade and explic
     expect((await runZinn(["info", "--json"], store)).code).toBe(0);
     expect((await runZinn(["backup", "--json"], store)).code).toBe(0);
 
+    const beforeRetry = backupFiles(store);
     const failedRetry = await runZinn(["migrate", "--json"], store);
     expect(failedRetry.code).toBe(1);
-    expect(failedRetry.stderr).toContain("APP-2");
-    expect((await runZinn(["project", "list"], store)).stderr).toContain("zinn migrate");
-    expect(backupFiles(store)).toHaveLength(3);
+    const retryError = errorDocumentSchema.parse(JSON.parse(failedRetry.stderr)).error;
+    const retained = backupFiles(store);
+    expect(retained).toHaveLength(3);
+    const retryBackup = retained.find((file) => !beforeRetry.includes(file));
+    const retryBackupPath = join(backupDirectory, retryBackup!);
+    expect(retryError).toMatchObject({
+      code: "conflict",
+      details: { entity: "task", reason: "already_exists", backupPath: retryBackupPath },
+    });
+    expect(retryError.message).toContain("APP-2");
+    expect(retryError.message).toContain(retryBackupPath);
+
+    const movedBackup = join(root, "original-upgrade.sqlite");
+    renameSync(firstBackupPath, movedBackup);
+    const stillPaused = await runZinn(["project", "list"], store);
+    expect(stillPaused.code).toBe(1);
+    expect(stillPaused.stderr).toContain("zinn migrate");
+    expect(stillPaused.stderr).toContain(firstBackupPath);
+    expect(stillPaused.stderr).not.toContain(retryBackupPath);
 
     const db = openDatabase(databasePath);
     try {
@@ -437,7 +492,8 @@ test("ZINN-508: ordinary opens pause after a failed automatic upgrade and explic
     expect(retry.code).toBe(0);
     expect(JSON.parse(retry.stdout)).toMatchObject({ changed: true, finalVersion: CURRENT_SCHEMA_VERSION });
     expect((await runZinn(["project", "list", "--json"], store)).code).toBe(0);
-    expect(backupFiles(store)).toHaveLength(4);
+    expect(backupFiles(store)).toHaveLength(3);
+    expect(existsSync(movedBackup)).toBe(true);
     expect(existsSync(`${databasePath}.migration.json`)).toBe(false);
   });
 });

@@ -7,7 +7,12 @@ import { once } from "node:events";
 import { parseArgs } from "node:util";
 import { createInterface } from "node:readline/promises";
 import { z } from "zod";
-import { assertWritable, InputValidationError, parseTaskKey } from "@zinn-dev/core";
+import {
+  assertWritable,
+  getFailedUpgradeBackupPath,
+  parseTaskKey,
+  InputValidationError,
+} from "@zinn-dev/core";
 
 import { CliError, classifyFailure, recoveryHint } from "./errors.js";
 import { writeFailureLog } from "./failure-log.js";
@@ -261,6 +266,12 @@ export function renderFailure(reason: unknown): void {
     help: classified.help,
     message: failureMessage(reason, "Something went wrong"),
   };
+  const backupPath = getFailedUpgradeBackupPath(reason);
+  if (backupPath !== undefined && failure.details?.backupPath === undefined) {
+    failure.details = { ...failure.details, backupPath };
+    failure.message += `. The pre-upgrade backup was saved to ${backupPath}`;
+  }
+
   const logPath = LOGGED_ERROR_CODES.includes(failure.code)
     ? writeFailureLog(reason, runNotices)
     : undefined;

@@ -3,10 +3,7 @@ import { migrate, getBackupStorage } from "@zinn-dev/core";
 
 import { migrateCommand } from "./migrate-router";
 
-// ? The shipped migration list is empty, so the CLI cannot reach an older database yet.
-// ? Making the core call fail stands in for any failure of an upgrade, since the line
-// ? on stderr does not depend on the stage that failed.
-test("a failed upgrade names the backup folder on stderr and rethrows the original error", () => {
+test("a failure before saving a snapshot reports the database was unchanged and rethrows the error", () => {
   const failure = new Error("migration broke");
   const run = spyOn(migrate, "run").mockImplementation(() => {
     throw failure;
@@ -15,11 +12,9 @@ test("a failed upgrade names the backup folder on stderr and rethrows the origin
 
   try {
     expect(() => migrateCommand.run([])).toThrow(failure);
-    expect(stderr.mock.calls).toEqual([
-      [
-        `The database is unchanged. Backups taken before each upgrade attempt are kept in ${getBackupStorage().backupDirectory}.`,
-      ],
-    ]);
+    expect(stderr.mock.calls).toHaveLength(1);
+    expect(stderr.mock.calls[0]?.[0]).toContain("unchanged");
+    expect(stderr.mock.calls[0]?.[0]).not.toContain(getBackupStorage().backupDirectory);
   } finally {
     run.mockRestore();
     stderr.mockRestore();

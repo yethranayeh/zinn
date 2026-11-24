@@ -14,7 +14,12 @@ import { mkdirSync } from "node:fs";
 import * as dbBackup from "../db/backup.js";
 import { CoreError, DatabaseChangeAppliedError } from "../errors.js";
 import { isSqliteErrorFamily } from "../sqlite/database.js";
-import { checkAutomaticUpgrade, markPausingFailure, readOwnPause, removePause } from "./pause.js";
+import {
+  checkAutomaticUpgrade,
+  readOwnPause,
+  removePause,
+  AutomaticUpgradePausedError,
+} from "./pause.js";
 import { assertMigrationOrder, latestVersion, MIGRATIONS } from "./registry.js";
 import {
   applyPendingMigrations,
@@ -204,6 +209,15 @@ export type UpgradeResult = {
   backupPath: string | null;
 };
 
+/** Keeps the original error so callers can still classify the cause of a failed upgrade */
+const failedUpgradeBackupPaths = new WeakMap<Error, string | undefined>();
+
+/** The snapshot saved by an upgrade that failed before commit, if it saved one */
+export function getFailedUpgradeBackupPath(error: unknown): string | undefined {
+  const failure = error instanceof AutomaticUpgradePausedError ? error.cause : error;
+  return failure instanceof Error ? failedUpgradeBackupPaths.get(failure) : undefined;
+}
+
 /**
  * Brings the database behind db to the latest schema version, backing it up first.
  * Under the write lock, with foreign keys off, it rereads the version, and
@@ -230,7 +244,7 @@ export function upgradeDatabase(
   const databasePath = requireDatabaseFile(db, "schema upgrade");
   const targetVersion = latestVersion(migrations);
   let completedPause: string | null = null;
-  let backupCompleted = false;
+  let backupPath: string | undefined;
 
   const runUpgrade = () =>
     withForeignKeysOff(
@@ -272,10 +286,10 @@ export function upgradeDatabase(
           assertFreeSpace(spacePaths, before, readFree);
 
           // `db` holds the write lock and has written nothing, so the snapshot is the database as it is
-          const { path: backupPath } = dbBackup.create(databasePath, directory, backup, {
+          const snapshot = dbBackup.create(databasePath, directory, backup, {
             beforePublish: attempt?.beforePublish,
           });
-          backupCompleted = true;
+          backupPath = snapshot.path;
           attempt?.confirmed(backupPath);
 
           const after = estimateRequiredFree(measureSpace(db, migrations), {
@@ -304,10 +318,10 @@ export function upgradeDatabase(
   try {
     result = runUpgrade();
   } catch (error) {
-    const backupWasPublished =
-      backupCompleted || error instanceof dbBackup.BackupDirectorySyncError;
-    if (automatic && backupWasPublished && !(error instanceof DatabaseChangeAppliedError)) {
-      markPausingFailure(error);
+    if (error instanceof Error && !(error instanceof DatabaseChangeAppliedError)) {
+      const retainedPath =
+        error instanceof dbBackup.BackupDirectorySyncError ? error.facts.backupPath : backupPath;
+      failedUpgradeBackupPaths.set(error, retainedPath);
     }
     throw error;
   }

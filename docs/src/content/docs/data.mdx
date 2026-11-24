@@ -67,7 +67,9 @@ Deleting a task does not make its number available again within that project. De
 
 A newer Zinn upgrades an older database completely or not at all, saving a backup first. A published release upgrades an older database on first use. A source build upgrades only a separate database selected with `ZINN_DIR`. Other older databases open read-only until explicitly migrated.
 
-If an automatic upgrade saves a backup and then fails or is interrupted before committing, Zinn pauses automatic retries for that database, including after installing a newer release. Zinn keeps the backup. After you fix the cause, run `zinn migrate` to retry with a fresh backup. A successful restore also clears the pause and returns the database to the normal upgrade policy. So does replacing the database file with another database, such as a copy of a backup.
+If an automatic upgrade saves a backup and then fails or is interrupted before committing, Zinn pauses automatic retries for that database, including after installing a newer release. The pause identifies where the original backup was saved when Zinn can confirm it. After you fix the cause, run `zinn migrate` to retry with a fresh backup. A successful restore also clears the pause and returns the database to the normal upgrade policy. So does replacing the database file with another database, such as a copy of a backup.
+
+When an upgrade fails after saving a backup, the error names the snapshot from that attempt. With `--json`, the full path is in `error.details.backupPath`.
 
 If connection cleanup fails after an upgrade or restore commits, Zinn reports the applied change and names the backup of the previous database when one was saved. Scripts can check the [applied field](/docs/scripting/errors#details-and-diagnostics).
 

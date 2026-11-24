@@ -23,7 +23,6 @@ import * as dbBackup from "../db/backup";
 import { driver as bunDriver } from "../sqlite/bun.ts";
 import { openWith, SqliteError } from "../sqlite/database";
 import { createBaseline } from "./baseline";
-import { isPausingFailure } from "./pause";
 import { readSchemaVersion } from "./runner";
 import { readDatabaseFile } from "./space";
 import {
@@ -34,7 +33,7 @@ import {
   snapshot,
   withDatabase,
 } from "./testing";
-import { upgradeDatabase, withMigrationLock } from "./upgrade";
+import { getFailedUpgradeBackupPath, upgradeDatabase, withMigrationLock } from "./upgrade";
 
 type Suppressing = { suppressed?: unknown };
 
@@ -494,19 +493,20 @@ test("an interrupted record write leaves one partial file, which the next write 
   });
 });
 
-test("the error of an automatic attempt that paused later ones is marked, and one before the backup is not", () => {
+test("upgrade errors identify the snapshot only after it was saved", () => {
   withDatabase((db) => {
     seedBaseline(db);
     const early = catchError(() => upgradeDatabase(db, options(db, { automatic: true, readFreeSpace: () => NO_SPACE })));
-    expect(isPausingFailure(early)).toBe(false);
+    expect(getFailedUpgradeBackupPath(early)).toBeUndefined();
 
     let reads = 0;
     const readFreeSpace = () => reads++ < SPACE_READS_PER_CHECK ? PLENTY_OF_SPACE : NO_SPACE;
     const late = catchError(() => upgradeDatabase(db, options(db, { automatic: true, readFreeSpace })));
-    expect(isPausingFailure(late)).toBe(true);
+    const [backup] = backups(db);
+    expect(getFailedUpgradeBackupPath(late)).toBe(join(backupDirectory(db), backup!));
 
     const manual = catchError(() => upgradeDatabase(db, options(db, { readFreeSpace: () => NO_SPACE })));
-    expect(isPausingFailure(manual)).toBe(false);
+    expect(getFailedUpgradeBackupPath(manual)).toBeUndefined();
   });
 });
 
@@ -642,6 +642,7 @@ test.each(FAILURE_CASES)(
       expect(snapshot(db)).toEqual(before);
       expect(backups(db)).toHaveLength(1);
       const keptBackup = join(backupDirectory(db), backups(db)[0]!);
+      expect(getFailedUpgradeBackupPath(error)).toBe(keptBackup);
       expectBackupHolds(keptBackup, before);
       expectHealthy(db);
 

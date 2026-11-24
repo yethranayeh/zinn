@@ -174,6 +174,7 @@ export { RestoreRefusedError } from "./src/migrations/restore.js";
 export { assertWritable, configureDatabase, readSnapshot } from "./src/db.js";
 export { ReadOnlyDatabaseError, UnmarkedDatabaseError } from "./src/migrations/open-policy.js";
 export { AutomaticUpgradePausedError } from "./src/migrations/pause.js";
+export { getFailedUpgradeBackupPath } from "./src/migrations/upgrade.js";
 export {
   getBackupStorage,
   getConfiguredStorage,

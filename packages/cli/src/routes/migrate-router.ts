@@ -3,12 +3,7 @@ import type { Command } from "../types.js";
 
 import { jsonResult } from "../results.js";
 import { parseArgs } from "node:util";
-import {
-  DatabaseChangeAppliedError,
-  migrate,
-  MigrationRefusedError,
-  getBackupStorage,
-} from "@zinn-dev/core";
+import { migrate, DatabaseChangeAppliedError, MigrationRefusedError } from "@zinn-dev/core";
 
 import { generateCommandUsage, noInput } from "../input.js";
 import { reportLockWait } from "../database.js";
@@ -30,9 +25,6 @@ export const migrateCommand = {
     });
     validatePositionals(positionals, noInput.forms[0]);
 
-    // Resolved before the try, so a store that cannot be resolved fails without the note about backups.
-    const { backupDirectory } = getBackupStorage();
-
     try {
       const result: PresentedMigrate = migrate.run({
         client: "cli",
@@ -49,9 +41,7 @@ export const migrateCommand = {
       if (
         !(error instanceof MigrationRefusedError || error instanceof DatabaseChangeAppliedError)
       ) {
-        diagnostic(
-          `The database is unchanged. Backups taken before each upgrade attempt are kept in ${backupDirectory}.`,
-        );
+        diagnostic("The database is unchanged.");
       }
 
       throw error;

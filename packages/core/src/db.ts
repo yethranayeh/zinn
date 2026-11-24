@@ -25,13 +25,13 @@ import {
 } from "./migrations/open-policy.js";
 import { MIGRATIONS } from "./migrations/registry.js";
 import { createLatestSchema, readSchemaVersion, SchemaNotEmptyError } from "./migrations/runner.js";
-import { AutomaticUpgradePausedError, isPausingFailure } from "./migrations/pause.js";
-import { upgradeDatabase } from "./migrations/upgrade.js";
+import { getFailedUpgradeBackupPath, upgradeDatabase } from "./migrations/upgrade.js";
 import { readCoreReleaseMode } from "./release.js";
 import { attachSuppressed, isSqliteErrorCode } from "./sqlite/database.js";
 import { rethrowSearchError } from "./search-error.js";
 import { withChangeHooks } from "./hooks.js";
 import { CoreError, DatabaseChangeAppliedError } from "./errors.js";
+import { AutomaticUpgradePausedError } from "./migrations/pause.js";
 
 let db: Database | null = null;
 let policy: OpenPolicy = DEFAULT_OPEN_POLICY;
@@ -267,7 +267,7 @@ export function getDb(access: DatabaseAccess = {}) {
 
       const error = err as NodeJS.ErrnoException;
       const causeDetails = error.code == null ? error.message : `${error.message} (${error.code})`;
-      if (isPausingFailure(err)) {
+      if (getFailedUpgradeBackupPath(err) !== undefined) {
         throw new AutomaticUpgradePausedError(
           `There was a problem initializing Zinn: ${causeDetails}. Automatic upgrades of this database are paused until an explicit upgrade succeeds`,
           { cause: err },

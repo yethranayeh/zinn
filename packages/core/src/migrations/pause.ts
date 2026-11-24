@@ -35,9 +35,6 @@ export class AutomaticUpgradePausedError extends Error {
   override name = "AutomaticUpgradePausedError";
 }
 
-/** Errors from an automatic upgrade that failed after its backup was published, and so paused retries */
-const pausingFailures = new WeakSet<Error>();
-
 function pausePath(databasePath: ResolvedPath) {
   return `${databasePath}.migration.json`;
 }
@@ -104,17 +101,22 @@ function writePause(databasePath: ResolvedPath, pause: Pause) {
   }
 }
 
-function hasBackup(pause: Pause) {
+function backupPublication(pause: Pause) {
   if (pause.published) {
-    return true;
+    return "published";
   }
 
   // The previous process can stop after the rename and before confirming publication
   try {
-    return statSync(pause.backupPath, { throwIfNoEntry: false }) !== undefined;
+    const entry = statSync(pause.backupPath, { throwIfNoEntry: false });
+    if (entry === undefined) {
+      return "absent";
+    }
+
+    return entry.isFile() ? "published" : "unknown";
   } catch {
     // A backup that cannot be checked may exist, so the pause holds
-    return true;
+    return "unknown";
   }
 }
 
@@ -123,11 +125,14 @@ function pausedError(
   startingVersion: number,
   targetVersion: number,
   message: string,
-  extra: { path?: string; cause?: unknown } = {},
+  extra: { path?: string; backupPath?: string; cause?: unknown } = {},
 ) {
-  const { path, cause } = extra;
+  const { path, backupPath, cause } = extra;
+
   return new CoreError(
-    message,
+    backupPath === undefined
+      ? message
+      : `${message}. The pre-upgrade backup was saved to ${backupPath}`,
     "conflict",
     {
       entity: "database",
@@ -136,6 +141,7 @@ function pausedError(
       supportedSchemaVersion: targetVersion,
       reason: "migration_paused",
       ...(path === undefined ? {} : { path }),
+      ...(backupPath === undefined ? {} : { backupPath }),
     },
     cause === undefined ? undefined : { cause },
   );
@@ -183,12 +189,14 @@ export function checkAutomaticUpgrade(
       pause.schemaCookie === schemaCookie &&
       pause.startingVersion === startingVersion;
 
-    if (isSameAttempt && hasBackup(pause)) {
+    const publication = isSameAttempt ? backupPublication(pause) : "absent";
+    if (publication !== "absent") {
       throw pausedError(
         databasePath,
         startingVersion,
         targetVersion,
         `Automatic upgrade of the database at ${databasePath} is paused after an incomplete attempt from schema ${startingVersion} to ${pause.targetVersion}`,
+        { backupPath: publication === "published" ? pause.backupPath : undefined },
       );
     }
   }
@@ -200,15 +208,4 @@ export function checkAutomaticUpgrade(
     confirmed: (backupPath: string) =>
       writePause(databasePath, { ...attempt, backupPath, published: true }),
   };
-}
-
-export function markPausingFailure(error: unknown) {
-  if (error instanceof Error) {
-    pausingFailures.add(error);
-  }
-}
-
-/** Whether the error failed an automatic upgrade that now pauses later automatic attempts */
-export function isPausingFailure(error: unknown) {
-  return error instanceof Error && pausingFailures.has(error);
 }
