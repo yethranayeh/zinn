@@ -11,7 +11,7 @@ import packageJson from "../../package.json" with { type: "json" };
 
 export const backupCommand = {
   summary:
-    "Save a copy of the database to ~/.zinn/backups/, or to backups/ in ZINN_DIR when it is set.",
+    "Save a verified copy of the database to ~/.zinn/backups/, or to backups/ in ZINN_DIR when it is set.",
   effects: { domain: "none", storage: "backup" },
   confirmation: { kind: "none" },
   input: noInput,
@@ -31,8 +31,9 @@ export const backupCommand = {
   },
   help: `${generateCommandUsage("backup", noInput)}
 
-Save a copy of the database to ~/.zinn/backups/, or to backups/ in ZINN_DIR when it is set.
+Save a verified copy of the database to ~/.zinn/backups/, or to backups/ in ZINN_DIR when it is set.
 
 The copy includes recent writes and is safe to take while Zinn is in use.
+Zinn checks the copy's SQLite integrity and foreign keys. If a check fails, the command reports the path of the copy retained for recovery.
 Fails when there is no database yet. Existing backups are never overwritten.`,
 } satisfies Command;

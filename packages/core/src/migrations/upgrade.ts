@@ -272,12 +272,9 @@ export function upgradeDatabase(
           assertFreeSpace(spacePaths, before, readFree);
 
           // `db` holds the write lock and has written nothing, so the snapshot is the database as it is
-          const { path: backupPath } = dbBackup.create(
-            databasePath,
-            directory,
-            backup,
-            attempt?.beforePublish,
-          );
+          const { path: backupPath } = dbBackup.create(databasePath, directory, backup, {
+            beforePublish: attempt?.beforePublish,
+          });
           backupCompleted = true;
           attempt?.confirmed(backupPath);
 

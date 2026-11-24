@@ -42,6 +42,12 @@ export class BackupDirectorySyncError extends CoreError {
  */
 const PARTIAL_BACKUP_SUFFIX = ".partial";
 const BACKUP_FILE_EXTENSION = ".sqlite";
+const FAILED_BACKUP_SUFFIX = ".failed";
+
+type BackupCreateOptions = {
+  verify?: (partialPath: string) => void;
+  beforePublish?: (path: string) => void;
+};
 
 /** Creates the backup directory and syncs the parent entries that make it reachable. */
 function ensureDirectory(directory: string) {
@@ -96,6 +102,30 @@ function vacuumInto(databasePath: ResolvedPath, targetPath: string) {
   db.close();
 }
 
+function retainFailedBackup(partialPath: string, path: string, cause: unknown) {
+  const failedPath = `${path}${FAILED_BACKUP_SUFFIX}`;
+  let backupPath = partialPath;
+  try {
+    renameSync(partialPath, failedPath);
+    backupPath = failedPath;
+  } catch (renameError) {
+    attachSuppressed(cause, renameError);
+  }
+
+  try {
+    syncDirectory(dirname(backupPath));
+  } catch (syncError) {
+    attachSuppressed(cause, syncError);
+  }
+
+  return new CoreError(
+    `Backup verification failed (${errorMessage(cause)}). The copy is at ${backupPath}`,
+    "storage",
+    { entity: "backup", backupPath },
+    { cause },
+  );
+}
+
 /**
  * Snapshots the database at `databasePath` into directory, named after the time, the client
  *  and its version, and returns the snapshot's path.
@@ -104,18 +134,28 @@ export function create(
   databasePath: ResolvedPath,
   directory: string,
   { client, version }: BackupCreateInput,
-  beforePublish?: (path: string) => void,
+  { verify, beforePublish }: BackupCreateOptions = {},
 ) {
   ensureDirectory(directory);
   const path = join(directory, createOutputFileName({ client, version }, BACKUP_FILE_EXTENSION));
   const partialPath = `${path}${PARTIAL_BACKUP_SUFFIX}`;
 
+  let verificationFailure: { cause: unknown } | undefined;
   try {
     vacuumInto(databasePath, partialPath);
     syncToDisk(partialPath);
-    beforePublish?.(path);
-    // A rename within one directory is atomic, so the final name only ever holds a complete backup
-    renameSync(partialPath, path);
+
+    try {
+      verify?.(partialPath);
+    } catch (cause) {
+      verificationFailure = { cause };
+    }
+
+    if (verificationFailure === undefined) {
+      beforePublish?.(path);
+      // A rename within one directory is atomic, so the final name only ever holds a complete backup
+      renameSync(partialPath, path);
+    }
   } catch (error) {
     try {
       rmSync(partialPath, { force: true });
@@ -124,6 +164,10 @@ export function create(
     }
 
     throw error;
+  }
+
+  if (verificationFailure !== undefined) {
+    throw retainFailedBackup(partialPath, path, verificationFailure.cause);
   }
 
   // The name needs a directory sync too. https://man7.org/linux/man-pages/man2/fsync.2.html

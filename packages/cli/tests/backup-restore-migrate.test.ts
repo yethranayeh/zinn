@@ -48,7 +48,11 @@ function runZinnWithPreload(args: Array<string>, store: string, source: string) 
   });
 }
 
-function runWithBackupFailure(args: Array<string>, store: string, failure: "rename" | "directory-sync") {
+function runWithBackupFailure(
+  args: Array<string>,
+  store: string,
+  failure: "rename" | "directory-sync" | "verification" | "verification-and-rename",
+) {
   const backupDirectory = join(realpathSync(store), "backups");
   return runZinnWithPreload(args, store, `
     import { mock } from "bun:test";
@@ -58,11 +62,12 @@ function runWithBackupFailure(args: Array<string>, store: string, failure: "rena
     const failure = ${JSON.stringify(failure)};
     let renamed = false;
     let directoryDescriptor;
+    let snapshot;
     mock.module("node:fs", () => ({
       ...original,
       renameSync(from, to) {
         const publishesBackup = String(from).endsWith(".sqlite.partial");
-        if (publishesBackup && failure === "rename") {
+        if (publishesBackup && (failure === "rename" || failure === "verification-and-rename")) {
           throw Object.assign(new Error("injected backup rename failure"), { code: "EIO", syscall: "rename" });
         }
         original.renameSync(from, to);
@@ -73,9 +78,16 @@ function runWithBackupFailure(args: Array<string>, store: string, failure: "rena
         if (renamed && path === backupDirectory) {
           directoryDescriptor = descriptor;
         }
+        if (String(path).endsWith(".sqlite.partial") && failure.startsWith("verification")) {
+          snapshot = { descriptor, path };
+        }
         return descriptor;
       },
       fsyncSync(descriptor) {
+        if (snapshot?.descriptor === descriptor) {
+          original.writeFileSync(snapshot.path, "damaged snapshot");
+          snapshot = undefined;
+        }
         if (failure === "directory-sync" && descriptor === directoryDescriptor) {
           directoryDescriptor = undefined;
           throw Object.assign(new Error("injected directory fsync failure"), { code: "EINVAL", syscall: "fsync" });
@@ -508,6 +520,54 @@ test("backup saves a copy of the database named with the UTC time and CLI versio
       expect(backupDb.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
     } finally {
       backupDb.close();
+    }
+  });
+});
+
+for (const failure of ["verification", "verification-and-rename"] as const) {
+  test(`backup reports and retains a damaged copy after ${failure}`, async () => {
+    await withIsolatedZinnDir(async (dir) => {
+      await runZinn(["project", "create", "BAK"], dir);
+      const result = await runWithBackupFailure(["backup", "--json"], dir, failure);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      const { error } = errorDocumentSchema.parse(JSON.parse(result.stderr));
+      const path = error.details?.backupPath;
+      expect(error).toMatchObject({
+        code: "storage",
+        details: { entity: "backup", cause: { code: "SQLITE_NOTADB" } },
+      });
+      expect(path).toEndWith(failure === "verification" ? ".sqlite.failed" : ".sqlite.partial");
+      expect(error.message).toContain(path!);
+      expect(backupFiles(dir)).toEqual([basename(path!)]);
+      expect(readFileSync(path!, "utf8")).toBe("damaged snapshot");
+    });
+  });
+}
+
+test("backup fails and retains a copy whose foreign keys point to missing rows", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "BAK"], dir);
+    withTestDb(dir, (db) => {
+      db.exec("PRAGMA foreign_keys = OFF");
+      db.exec("UPDATE project_column SET project_id = 'missing-project' WHERE rowid = (SELECT min(rowid) FROM project_column)");
+    });
+
+    const result = await runZinn(["backup", "--json"], dir);
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    const { error } = errorDocumentSchema.parse(JSON.parse(result.stderr));
+    const path = error.details?.backupPath;
+    expect(error).toMatchObject({ code: "storage", details: { entity: "backup" } });
+    expect(path).toEndWith(".sqlite.failed");
+    expect(error.message).toContain(path!);
+    expect(backupFiles(dir)).toEqual([basename(path!)]);
+    const copy = new Database(path!, { readonly: true });
+    try {
+      expect(copy.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
+      expect(copy.query("PRAGMA foreign_key_check").all()).toHaveLength(1);
+    } finally {
+      copy.close();
     }
   });
 });
