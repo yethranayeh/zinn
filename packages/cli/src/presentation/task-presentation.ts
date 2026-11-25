@@ -1,4 +1,4 @@
-import type { TaskWithKey } from "@zinn-dev/core";
+import type { TaskSearchMatch, TaskWithKey } from "@zinn-dev/core";
 import type { RowCell } from "./row-layout.js";
 import type { PresentedTask, PresentedTaskDetail } from "../result-schemas.js";
 import type { ColumnBoard } from "./column-presentation.js";
@@ -10,6 +10,7 @@ import { labelNameCell } from "./label-presentation.js";
 import { formatCell, formatCellSeparator, formatRows } from "./row-layout.js";
 import { formatLocalTime } from "./time.js";
 import { formatActorLabel } from "./activity-presentation.js";
+import { styleOutputText } from "./color.js";
 
 const EMPTY_CELL_MARKER = "-";
 const LABEL_NAME_SEPARATOR = ", ";
@@ -85,6 +86,17 @@ export function presentTask(taskMatch: TaskWithKey, board?: ColumnBoard): Presen
   return presentTasks([taskMatch], board)[0]!;
 }
 
+export function presentTaskSearchResults(
+  taskMatches: TaskWithKey[],
+  matchesByTaskId: ReadonlyMap<string, TaskSearchMatch[]> | undefined,
+): Array<PresentedTask & { matches?: TaskSearchMatch[] }> {
+  const tasks = presentTasks(taskMatches);
+  if (matchesByTaskId === undefined) {
+    return tasks;
+  }
+  return tasks.map((task) => ({ ...task, matches: matchesByTaskId.get(task.id)! }));
+}
+
 function presentClaim(claim: TaskWithKey["claim"]): PresentedTask["claim"] {
   if (claim == null) {
     return null;
@@ -118,8 +130,26 @@ function formatClaim(claim: NonNullable<PresentedTask["claim"]>, showsExpiry: bo
     : `Claim by ${holder} expired at ${expiresAt}`;
 }
 
+const SEARCH_SOURCE_LABELS = { key: "Task key", title: "Title", description: "Description" };
+
+function formatSearchExcerpt(match: TaskSearchMatch) {
+  const source =
+    match.field === "comment" ? `Comment ${match.comment_key}` : SEARCH_SOURCE_LABELS[match.field];
+  // Render stored control characters without interpreting them as terminal commands
+  const points = Array.from(match.snippet.replace(/\p{Cc}/gu, "�"));
+  let snippet = "";
+  let offset = 0;
+  for (const [start, end] of match.highlights) {
+    snippet += points.slice(offset, start).join("");
+    snippet += styleOutputText(["bold", "yellow"], points.slice(start, end).join(""));
+    offset = end;
+  }
+  snippet += points.slice(offset).join("");
+  return `\n  ${source}${formatCellSeparator()}${snippet}`;
+}
+
 export function formatTaskList(
-  presentedTasks: Array<PresentedTask>,
+  presentedTasks: Array<PresentedTask & { matches?: TaskSearchMatch[] }>,
   options: {
     showsStatus?: boolean;
     showsFullPriority?: boolean;
@@ -150,13 +180,14 @@ export function formatTaskList(
       const claimText = showsClaim
         ? `${formatCellSeparator()}${formatClaim(claim, showsClaimDetail)}`
         : "";
+      const excerpts = presentedTask.matches?.map(formatSearchExcerpt).join("") ?? "";
 
       return [
         { text: `${options.prefix ?? ""}${presentedTask.key}` },
         ...statusCells,
         columnNameCell(presentedTask.column, presentedTask.column_category),
         taskPriorityCell(presentedTask.priority, options.showsFullPriority ?? false),
-        { text: `${presentedTask.title}${deadline}${claimText}${labels}` },
+        { text: `${presentedTask.title}${deadline}${claimText}${labels}${excerpts}` },
       ];
     }),
   );

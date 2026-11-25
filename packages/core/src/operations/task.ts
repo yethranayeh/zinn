@@ -45,6 +45,7 @@ import { decodeTaskCursor, encodeTaskCursor } from "../task-cursor.js";
 
 import { relation } from "./relation.js";
 import { blameTask } from "./task-blame.js";
+import { getSearchMatches } from "./search-matches.js";
 import { releaseTaskClaim, taskClaim } from "./task-claim.js";
 import {
   attachChangeClaims,
@@ -650,11 +651,12 @@ export const task = {
       const isKeyMatchInScope =
         keyMatch != null && (projectId == null || keyMatch.project_id === projectId);
       const pinnedTasks = isKeyMatchInScope ? [keyMatch] : [];
+      const searchExpression = getSearchMatchExpression(props.query);
 
       let searchRows;
       try {
         searchRows = dbSearch.searchTasks({
-          match: getSearchMatchExpression(props.query),
+          match: searchExpression,
           projectId,
         });
       } catch (error) {
@@ -663,7 +665,7 @@ export const task = {
 
       const textMatches = searchRows
         .filter((row) => !pinnedTasks.some((pinned) => pinned.id === row.id))
-        .map(({ project_key, ...row }) => attachTaskKey(row, project_key));
+        .map(({ project_key, search_rowid, ...row }) => attachTaskKey(row, project_key));
 
       const matches = filterTasksByDeadline(
         filterTasksByColumn(
@@ -679,14 +681,23 @@ export const task = {
           ? matches.filter((taskMatch) => taskMatch.archived_at != null).length
           : 0;
 
-      return {
-        tasks: attachClaims(
-          matches
-            .filter((taskMatch) => dbTask.matchesArchiveFilter(taskMatch, archive))
-            .slice(0, props.limit),
-        ),
-        hiddenArchivedCount,
-      };
+      const tasks = attachClaims(
+        matches
+          .filter((taskMatch) => dbTask.matchesArchiveFilter(taskMatch, archive))
+          .slice(0, props.limit),
+      );
+      if (!props.includeMatches) {
+        return { tasks, hiddenArchivedCount };
+      }
+
+      const rowIdsByTaskId = new Map(searchRows.map((row) => [row.id, row.search_rowid]));
+      const matchesByTaskId = getSearchMatches(
+        tasks,
+        searchExpression,
+        rowIdsByTaskId,
+        pinnedTasks[0]?.id,
+      );
+      return { tasks, hiddenArchivedCount, matchesByTaskId };
     });
   },
   label: {

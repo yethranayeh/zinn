@@ -183,7 +183,10 @@ export function attachChangeClaims(changes: Array<{ task: KeyedTask; changed: bo
   return changes.map((change, index) => ({ task: tasks[index]!, changed: change.changed }));
 }
 
-export function attachCommentKey(comment: Comment, taskKey: string): CommentWithKey {
+export function attachCommentKey<T extends Pick<Comment, "number">>(
+  comment: T,
+  taskKey: string,
+): T & { key: string } {
   return { ...comment, key: `${taskKey}#${comment.number}` };
 }
 

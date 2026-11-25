@@ -3,7 +3,8 @@
  * The tokenizer drops whitespace and punctuation, so the boundary needs a token of its own: U+E000
  * The newlines keep it from merging with the neighboring words.
  */
-export const SEARCH_COMMENT_SEPARATOR = "\n\uE000\n";
+export const SEARCH_COMMENT_SEPARATOR_CHARACTER = "\uE000";
+export const SEARCH_COMMENT_SEPARATOR = `\n${SEARCH_COMMENT_SEPARATOR_CHARACTER}\n`;
 
 export type SearchEntry = {
   taskId: string;

@@ -54,6 +54,7 @@ export type {
   CommentEditInput,
 } from "./src/schemas/comment.js";
 export type { TextEdit } from "./src/schemas/text-edit.js";
+export type { TaskSearchMatch } from "./src/operations/search-matches.js";
 export type { ActivityChangedField, ActivityListInput } from "./src/schemas/activity.js";
 export type {
   ActivityFollower,

@@ -10,6 +10,7 @@ import {
   generateCommandUsage,
   generateInputUsage,
   getOptionInputs,
+  routerOptions,
   violatesConstraint,
   type CommandInput,
 } from "./input.js";
@@ -29,7 +30,7 @@ test("every runnable route declares its inputs, effects, confirmation and genera
     expect(new Set(formIds).size).toBe(formIds.length);
     for (const form of input.forms) {
       const inputs = new Set([
-        ...Object.keys(input.options).map((name) => `option:${name}`),
+        ...Object.keys({ ...routerOptions, ...input.options }).map((name) => `option:${name}`),
         ...form.positionals.map(({ name }) => `positional:${name}`),
       ]);
       for (const constraint of input.constraints) {

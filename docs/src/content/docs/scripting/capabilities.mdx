@@ -22,6 +22,8 @@ Task command descriptors expose `due` timestamp options on create and edit, `due
 
 A `requiresAny` constraint means that supplying its `input` requires at least one of its `members`. For example, `--show-deleted` requires either `--project` or `--task` on `activity list`.
 
+An option reference in a constraint can refer to a command option or a global option from `invocation.routerOptions`. For example, `task search --with-matches` requires `--json`.
+
 ### Invocation
 
 `invocation` describes router options, help and version precedence, and literal values. Build argv from the command path, command options (use `--name=value` for string values), `--json`, then `--` and positional words when needed. Repeat an option only when `multiple` is `true`. Words after `--` are literal values.

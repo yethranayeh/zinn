@@ -49,6 +49,60 @@ test("words can match across title, description and comments of the same task", 
   });
 });
 
+test("search evidence identifies the full spans and the original comment keys", () => {
+  runSearchCheck(({ human, create }) => {
+    const created = create("Refinement on terminal", "📋  xterm\n\tclipboard");
+    comment.create({ taskKey: created.key, text: "Literal separator:\n\uE000\n here." }, human);
+    const removed = comment.create({ taskKey: created.key, text: "xterm in a deleted comment" }, human);
+    comment.delete({ commentKey: removed.key }, human);
+    const first = comment.create({ taskKey: created.key, text: "xterm message" }, human);
+    const second = comment.create({ taskKey: created.key, text: "clipboard and clipboard" }, human);
+
+    const query = "refin xterm clip";
+    const ordinary = task.search({ query });
+    assert.deepEqual(task.search({ query, includeMatches: false }), ordinary);
+    const enriched = task.search({ query, includeMatches: true });
+    assert.deepEqual(enriched.tasks, ordinary.tasks);
+    assert.deepEqual(enriched.matchesByTaskId?.get(created.id), [
+      { field: "title", snippet: "Refinement on terminal", highlights: [[0, 10]] },
+      { field: "description", snippet: "📋 xterm clipboard", highlights: [[2, 7], [8, 17]] },
+      { field: "comment", comment_key: first.key, snippet: "xterm message", highlights: [[0, 5]] },
+      { field: "comment", comment_key: second.key, snippet: "clipboard and clipboard", highlights: [[0, 9], [14, 23]] },
+    ]);
+  });
+});
+
+test("search evidence centers the first hit and clips excerpts and ranges by code point", () => {
+  runSearchCheck(({ human, create }) => {
+    const created = create("Unrelated", "🧪 before ".repeat(18) + "résumé " + "🧪 after ".repeat(18) + "résumé");
+    const longWord = "word".repeat(45);
+    comment.create({ taskKey: created.key, text: longWord }, human);
+    const result = task.search({ query: "resume word", includeMatches: true, limit: 1 });
+    const [description, body] = result.matchesByTaskId!.get(created.id)!;
+    const points = Array.from(description!.snippet);
+    assert.equal(points.length, 120);
+    assert.equal(points[0], "…");
+    assert.equal(points.at(-1), "…");
+    assert.equal(description!.highlights.length, 1);
+    assert.equal(points.slice(...description!.highlights[0]!).join(""), "résumé");
+    assert.deepEqual(body?.highlights, [[0, 119]]);
+    assert.equal(body?.snippet, longWord.slice(0, 119) + "…");
+  });
+});
+
+test("search highlights preserve offsets in text after an embedded NUL", () => {
+  runSearchCheck(({ human, create }) => {
+    const created = create("Unrelated", "Stop\0then sign\0into the account");
+    comment.create({ taskKey: created.key, text: "before\0the boundary" }, human);
+    const later = comment.create({ taskKey: created.key, text: "sign into the dashboard" }, human);
+    const result = task.search({ query: "sign-in", includeMatches: true });
+    assert.deepEqual(result.matchesByTaskId?.get(created.id), [
+      { field: "description", snippet: "Stop\0then sign\0into the account", highlights: [[10, 19]] },
+      { field: "comment", comment_key: later.key, snippet: "sign into the dashboard", highlights: [[0, 9]] },
+    ]);
+  });
+});
+
 test("a phrase does not match across two comments", () => {
   runSearchCheck(({ human, create, keys }) => {
     create("Across comments", null);
@@ -59,6 +113,10 @@ test("a phrase does not match across two comments", () => {
 
     assert.deepEqual(keys("sign-in"), ["APP-2"]);
     assert.deepEqual(keys("sign morning"), ["APP-1"], "words still match in separate comments");
+    for (const query of ["\uE000", "sign-\uE000-in"]) {
+      assert.throws(() => keys(query), (error) =>
+        error instanceof CoreError && error.kind === "input" && error.facts.field?.[0] === "query");
+    }
   });
 });
 
@@ -84,7 +142,7 @@ test("FTS syntax characters in the query are searched as text and never throw", 
 
 test("an exact task key is pinned first, followed by text matches", () => {
   runSearchCheck(({ app, create, keys }) => {
-    create("Parser", null);
+    const pinnedTask = create("Parser", "Self-reference APP-1");
     create("Depends on app-1 landing", null);
     create("Other", "mentions APP-1 twice: app-1");
 
@@ -95,6 +153,11 @@ test("an exact task key is pinned first, followed by text matches", () => {
     assert.deepEqual(keys("APP-99"), [], "an unknown key is only text");
     assert.deepEqual(keys("NOPE-1"), []);
     assert.deepEqual(keys("parser"), ["APP-1"]);
+    assert.deepEqual(task.search({ query: "app-1", limit: 1, includeMatches: true }).matchesByTaskId,
+      new Map([[pinnedTask.id, [
+        { field: "key", snippet: "APP-1", highlights: [[0, 5]] },
+        { field: "description", snippet: "Self-reference APP-1", highlights: [[15, 20]] },
+      ]]]));
   });
 });
 

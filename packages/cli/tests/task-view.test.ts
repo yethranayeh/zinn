@@ -212,7 +212,7 @@ test("human task output omits empty descriptions while JSON returns null", async
     expect((await runZinn(["task", "list", "EMPTY"], testDir)).stdout).toBe(
       `EMPTY-1 | Backlog | - | Empty description\n`,
     );
-    expect((await runZinn(["task", "search", "Empty", "EMPTY"], testDir)).stdout).toBe(
+    expect((await runZinn(["task", "search", "Empty", "EMPTY"], testDir)).stdout).toStartWith(
       `EMPTY-1 | Backlog | - | Empty description\n`,
     );
     expect(taskViewContent((await runZinn(["task", "view", "EMPTY-1"], testDir)).stdout)).toBe(

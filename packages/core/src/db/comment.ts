@@ -1,6 +1,7 @@
 import type { Bind, Comment } from "../types.js";
 
 import { v7 as uuidv7 } from "uuid";
+import { Buffer } from "node:buffer";
 
 import { DB_TABLE } from "../constant.js";
 import { getDb } from "../db.js";
@@ -23,6 +24,16 @@ export function getAllByTaskId(taskId: string) {
     WHERE task_id = $taskId
     ORDER BY number;`)
     .all({ $taskId: taskId });
+}
+
+export function getSearchSourcesByTaskIds(taskIds: string[]) {
+  return getDb()
+    .query<Pick<Comment, "task_id" | "number"> & { text: Uint8Array }>(`SELECT task_id, number,
+      CAST(text AS BLOB) AS text
+    FROM ${DB_TABLE.comment} WHERE task_id IN (SELECT value FROM json_each($taskIds))
+    ORDER BY task_id, number`)
+    .all({ $taskIds: JSON.stringify(taskIds) })
+    .map((row) => ({ ...row, text: Buffer.from(row.text).toString("utf8") }));
 }
 
 export function create(props: Pick<Comment, "task_id" | "number" | "text">) {

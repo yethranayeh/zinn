@@ -110,7 +110,7 @@ test.serial("task rows color each attached label name by its label color, with d
 
     expect((await runZinnInTerminal(["task", "list", "TAGS"], dir)).output).toBe(coloredRows);
     expect((await runZinn(["task", "list", "TAGS"], dir, { FORCE_COLOR: "1" })).stdout).toBe(coloredRows);
-    expect((await runZinn(["task", "search", "Several", "TAGS"], dir, { FORCE_COLOR: "1" })).stdout).toBe(
+    expect((await runZinn(["task", "search", "Several", "TAGS"], dir, { FORCE_COLOR: "1" })).stdout).toStartWith(
       `TAGS-1${DIM_SEPARATOR}${GRAY_BACKLOG}${DIM_SEPARATOR}U${DIM_SEPARATOR}Several labels${DIM_SEPARATOR}${coloredLabels}\n`,
     );
     expect((await runZinn(["task", "list", "TAGS", "--all"], dir, { FORCE_COLOR: "1" })).stdout).toContain(

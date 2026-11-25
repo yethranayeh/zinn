@@ -142,6 +142,7 @@ function expectEntityIds(schema: ResultSchemaName, value: any, rows: ReturnType<
   switch (schema) {
     case "Task":
     case "TaskList":
+    case "TaskSearchResults":
     case "NextTask":
     case "TaskDetail":
     case "TaskDetailHistory":
@@ -294,7 +295,12 @@ const fixtures: Record<string, Fixture[]> = {
     { schema: "TaskList", args: ["APP", "--archived"], prepare: async (dir) => { await success(dir, ["task", "archive", "APP-1"]); } },
     { schema: "TaskList", args: ["APP", "--all"], prepare: async (dir) => { await success(dir, ["task", "archive", "APP-1"]); } },
   ],
-  "task search": [{ schema: "TaskList", args: ["Alpha", "APP"] }, { schema: "TaskList", args: ["Unmatched"] }],
+  "task search": [
+    { schema: "TaskList", args: ["Alpha", "APP"] },
+    { schema: "TaskList", args: ["Unmatched"] },
+    { schema: "TaskSearchResults", args: ["Alpha", "APP", "--with-matches"] },
+    { schema: "TaskSearchResults", args: ["Unmatched", "--with-matches"] },
+  ],
   "task next": [
     { schema: "NextTask", args: ["APP"], check: (value) => expect(value.key).toBe("APP-2") },
     { schema: "NextTask", args: ["APP", "--column", "Done"], check: (value) => expect(value).toBeNull() },

@@ -14,6 +14,8 @@ toc: true
 
 `task.getAll`, `task.search` and `activity.getAll` accept an optional numeric `limit`, an integer from `1` through `Number.MAX_SAFE_INTEGER`, inclusive. The cap applies after all filters and preserves the existing order. Omitting it returns every match. `task.search` counts all hidden archived matches before applying the cap.
 
+`task.search` returns `{ tasks, hiddenArchivedCount }`. Pass `includeMatches: true` to also get `matchesByTaskId`, a map from each returned task ID to its match excerpts. Each `TaskSearchMatch` carries the source field, snippet, highlight ranges, and the comment key for a comment hit. It uses the same fields and offset units as [CLI search match JSON](/docs/cli/tasks#search-tasks). Core gathers the excerpts within the same read snapshot after applying filters and the limit.
+
 ### Sort by activity
 
 `task.getAll({ sort: "activity", limit: 10 })` returns the ten most recently active tasks. Last activity is the newest recorded task event, including comments and relations, or `updated_at` when no events exist. Filters apply before sorting, and the limit applies afterward. Equal times keep board order. Omitting `sort` preserves board order.

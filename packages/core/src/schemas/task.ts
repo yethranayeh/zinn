@@ -10,6 +10,7 @@ import { relationTypeSchema } from "./relation.js";
 import { projectKeyPattern } from "./project.js";
 import { positiveIntegerPattern, listLimitSchema } from "./integer.js";
 import { timestampSchema } from "./timestamp.js";
+import { SEARCH_COMMENT_SEPARATOR_CHARACTER } from "../search-entry.js";
 
 export { positiveIntegerPattern } from "./integer.js";
 export { listLimitMessage as searchLimitMessage } from "./integer.js";
@@ -199,12 +200,17 @@ export const taskSearchSchema = z
     ...deadlineFilters,
     query: z
       .string({ error: searchQueryMessage })
-      .refine((value) => value.trim().length > 0, searchQueryMessage),
+      .refine((value) => value.trim().length > 0, searchQueryMessage)
+      .refine(
+        (value) => !value.includes(SEARCH_COMMENT_SEPARATOR_CHARACTER),
+        "Search query cannot contain U+E000, the reserved comment separator.",
+      ),
     projectKey: z.string().optional(),
     columnName: columnNameSchema.optional(),
     archive: taskArchiveFilterSchema.optional(),
     labelNames: z.array(labelNameSchema).optional(),
     limit: listLimitSchema.optional(),
+    includeMatches: z.boolean().optional(),
   })
   .superRefine(validateDeadlineBounds);
 

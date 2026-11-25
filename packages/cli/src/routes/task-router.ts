@@ -95,6 +95,7 @@ import {
   formatTaskTimestamps,
   getLabelColorsByName,
   presentTask,
+  presentTaskSearchResults,
   presentTasks,
 } from "../presentation/task-presentation.js";
 
@@ -114,6 +115,12 @@ function suggestTaskMove(args: Array<string>, options: ParseArgsOptionsConfig = 
 
 // Project view lists the archived count beside the columns, so "Archived" reads like a move target.
 const archiveTargetNames = ["archive", "archived"];
+
+const searchMatchesConstraint = {
+  kind: "requires",
+  input: "option:with-matches",
+  requires: "option:json",
+} as const satisfies InputConstraint;
 
 /** Moves tasks, and points a move to a missing Archived column at task archive. */
 function moveOrPointToArchive(taskKeys: Array<string>, targetColumn: string, fromColumn?: string) {
@@ -302,6 +309,7 @@ const taskInputs = {
       limit: listLimitOption,
       label: { type: "string", multiple: true, value: { kind: "label-name", name: "name" } },
       column: { type: "string", value: { kind: "column-name", name: "name" } },
+      "with-matches": { type: "boolean", description: "Include match excerpts in JSON results" },
     },
     forms: [
       {
@@ -312,7 +320,7 @@ const taskInputs = {
         ],
       },
     ],
-    constraints: [archiveConstraint, projectScopeConstraint],
+    constraints: [archiveConstraint, projectScopeConstraint, searchMatchesConstraint],
     notes: [
       projectScopeDescription,
       "A query that is a task key ignores defaultProject unless a project was typed. --all-projects still excludes a typed project.",
@@ -696,12 +704,14 @@ Use 'task view' to see a task's full details, including its description and an e
 Example: zinn task list MDR --label cli`,
   },
   search: {
-    summary:
-      "Search task titles, descriptions, and comments. A comment match lists the task it belongs to.",
+    summary: "Search task titles, descriptions, and comments with excerpts from matching sources.",
     effects: { domain: "read", storage: "normal-open" },
     confirmation: { kind: "none" },
     input: taskInputs.search,
-    results: [jsonResult("TaskList")],
+    results: [
+      jsonResult("TaskList", { kind: "booleanOption", name: "with-matches", value: false }),
+      jsonResult("TaskSearchResults", { kind: "booleanOption", name: "with-matches", value: true }),
+    ],
     run: (args) => {
       const { values, positionals, tokens } = parseArgs({
         args,
@@ -718,6 +728,15 @@ Example: zinn task list MDR --label cli`,
 
       if (violatesConstraint(archiveConstraint, getOptionInputs(values))) {
         quit('Use either "--archived" or "--all", not both', undefined, { argument: "--archived" });
+      }
+      const isText = getOutputMode() === "text";
+      if (
+        violatesConstraint(searchMatchesConstraint, {
+          ...getOptionInputs(values),
+          "option:json": !isText,
+        })
+      ) {
+        quit("Add --json to use --with-matches.", undefined, { argument: "--with-matches" });
       }
 
       const archive = values.all ? "all" : values.archived ? "archived" : "active";
@@ -742,12 +761,13 @@ Example: zinn task list MDR --label cli`,
           limit,
           labelNames: values.label,
           columnName: values.column,
+          includeMatches: isText || values["with-matches"] === true,
         });
 
         return {
-          presentedTasks: presentTasks(result.tasks),
+          presentedTasks: presentTaskSearchResults(result.tasks, result.matchesByTaskId),
           hiddenArchivedCount: result.hiddenArchivedCount,
-          labelColorsByName: getOutputMode() === "text" ? getLabelColorsByName() : undefined,
+          labelColorsByName: isText ? getLabelColorsByName() : undefined,
         };
       });
 
@@ -764,10 +784,11 @@ Example: zinn task list MDR --label cli`,
     },
     help: `${generateCommandUsage("task search", taskInputs.search)}
 
-Search task titles, descriptions, and comments. A comment match lists the task it belongs to.
+Search task titles, descriptions, and comments. Comment excerpts include the comment key for 'task comment view'.
 ${projectScopeDescription}
 Each word matches the start of a word, ignoring case and accents: e.g. "auth" finds "Authentication".
 Every word must match. Quote a query with several words.
+U+E000 is reserved for separating comments in the search index.
 
 A task-key query overrides the configured default project; a typed project key still filters it.
 
@@ -776,6 +797,8 @@ By default, only active tasks are searched. Use --archived to search archived ta
 Repeat --label to require every specified label, ignoring case.
 --column matches an exact column name. Column and label matching ignore case.
 ${deadlineFilterHelp}
+
+Use --json --with-matches to include excerpts and highlight ranges. --limit counts tasks.
 
 Example: zinn task search 'refinement quota' MDR --limit 5`,
   },

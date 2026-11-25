@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
+import { stripVTControlCharacters } from "node:util";
 import { errorDocumentSchema } from "../src/errors";
 import { runZinn, withIsolatedZinnDir } from "../test-helpers";
 
-test("task search prints matches in task list rows and JSON shape", async () => {
+test("task search adds text excerpts and keeps the ordinary JSON task list", async () => {
   await withIsolatedZinnDir(async (dir) => {
     const run = (...args: Array<string>) => runZinn(args, dir);
     await run("project", "create", "FIND");
@@ -13,21 +14,33 @@ test("task search prints matches in task list rows and JSON shape", async () => 
     const result = await run("task", "search", "REFIN");
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toBe(
-      [
-        `FIND-1 | Backlog | H | Refine the numbers`,
-        `FIND-2 | Backlog | - | Unrelated`,
-        "",
-      ].join("\n"),
-    );
+    expect(result.stdout).toContain("FIND-1 | Backlog | H | Refine the numbers");
+    expect(result.stdout).toContain("Title | Refine the numbers");
+    expect(result.stdout).toContain("FIND-2 | Backlog | - | Unrelated");
+    expect(result.stdout).toContain("Comment FIND-2#1 | Blocked on refinement tools");
+    expect(result.stdout).toBe(stripVTControlCharacters(result.stdout));
+
+    const colored = await runZinn(["task", "search", "REFIN"], dir, { FORCE_COLOR: "1" });
+    expect(stripVTControlCharacters(colored.stdout)).toBe(result.stdout);
+    expect(colored.stdout).toMatch(/on (?:\x1b\[[\d;]+m)+refinement\x1b\[/);
+
+    const noColor = await runZinn(["task", "search", "REFIN"], dir, { NO_COLOR: "1" });
+    expect(noColor.stdout).toBe(result.stdout);
 
     const listed = JSON.parse((await run("task", "list", "FIND", "--json")).stdout);
     const searched = JSON.parse((await run("task", "search", "refine quota", "--json")).stdout);
     expect(searched).toEqual([listed[0]]);
+    const enriched = await run("task", "search", "refine quota", "--json", "--with-matches");
+    expect(enriched.code).toBe(0);
+    expect(enriched.stderr).toBe("");
+    expect(JSON.parse(enriched.stdout)).toEqual([{ ...listed[0], matches: [
+      { field: "title", snippet: "Refine the numbers", highlights: [[0, 6]] },
+      { field: "description", snippet: "Quarterly quota", highlights: [[10, 15]] },
+    ] }]);
   });
 });
 
-test("task search finds a description-only match and prints its plain task row", async () => {
+test("task search shows why a description-only result matched", async () => {
   await withIsolatedZinnDir(async (dir) => {
     const run = (...args: Array<string>) => runZinn(args, dir);
     const description = "Quarterly refinement checklist";
@@ -39,7 +52,8 @@ test("task search finds a description-only match and prints its plain task row",
     const result = await run("task", "search", "checklist");
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toBe("SEEK-1 | Backlog | - | Calibrate sensors | ops\n");
+    expect(result.stdout).toContain("SEEK-1 | Backlog | - | Calibrate sensors | ops");
+    expect(result.stdout).toContain(`Description | ${description}`);
 
     expect(JSON.parse((await run("task", "search", "checklist", "--json")).stdout)).toEqual([
       expect.objectContaining({ key: "SEEK-1", description, labels: ["ops"] }),
@@ -155,7 +169,7 @@ test("task search hides archived matches with a stderr hint and filters by proje
 
     const active = await run("task", "search", "widget", "one");
     expect(active.code).toBe(0);
-    expect(active.stdout).toBe(`ONE-1 | Backlog | - | Widget active\n`);
+    expect(active.stdout).toContain("ONE-1 | Backlog | - | Widget active");
     expect(active.stderr).toContain("2");
     expect(active.stderr).toContain("--all");
 
@@ -172,30 +186,37 @@ test("task search hides archived matches with a stderr hint and filters by proje
 
     const archived = await run("task", "search", "widget", "ONE", "--archived");
     expect(archived.stderr).toBe("");
-    expect(archived.stdout.trimEnd().split("\n").sort()).toEqual([
+    expect(archived.stdout.trimEnd().split("\n").filter((line) => line.startsWith("ONE-")).sort()).toEqual([
       `ONE-2 | Backlog | - | Widget archived`,
       `ONE-3 | Backlog | - | Widget also archived`,
     ]);
 
     const all = await run("task", "search", "widget", "--all");
     expect(all.stderr).toBe("");
-    expect(all.stdout.trimEnd().split("\n")).toHaveLength(4);
+    expect(all.stdout.trimEnd().split("\n").filter((line) => /^\w+-\d+ /.test(line))).toHaveLength(4);
     expect(all.stdout).toContain(`ONE-2 | Archived | Backlog | - | Widget archived`);
     expect(all.stdout).toContain(`TWO-1 | Active   | Backlog | - | Widget elsewhere`);
 
-    expect((await run("task", "search", "widget", "--all", "--limit", "3")).stdout.trimEnd().split("\n")).toHaveLength(3);
-    expect((await run("task", "search", "widget", "TWO")).stdout).toBe(`TWO-1 | Backlog | - | Widget elsewhere\n`);
+    const limited = await run("task", "search", "widget", "--all", "--limit", "3");
+    expect(limited.stdout.trimEnd().split("\n").filter((line) => /^\w+-\d+ /.test(line))).toHaveLength(3);
+    expect((await run("task", "search", "widget", "TWO")).stdout).toContain("TWO-1 | Backlog | - | Widget elsewhere");
   });
 });
 
 test("task search validates its arguments", async () => {
   await withIsolatedZinnDir(async (dir) => {
     await runZinn(["project", "create", "VAL"], dir);
+    const matchesWithoutJson = await runZinn(["task", "search", "a", "--with-matches"], dir);
+    expect(matchesWithoutJson.code).toBe(1);
+    expect(matchesWithoutJson.stdout).toBe("");
+    expect(matchesWithoutJson.stderr).toContain("--json");
+    expect(matchesWithoutJson.stderr).toContain("--with-matches");
 
     const usage = "Usage: zinn task search";
     const cases = [
       [[], { code: "invalid_input", details: { argument: "query" }, help: expect.stringContaining(usage) }],
       [[""], { code: "invalid_input", details: { field: ["query"] } }],
+      [["\uE000", "--with-matches"], { code: "invalid_input", details: { field: ["query"] } }],
       [["a", "VAL", "extra"], { code: "invalid_input", message: expect.stringContaining("extra"), details: { field: [] }, help: expect.stringContaining(usage) }],
       [["a", "--archived", "--all"], { code: "invalid_input", details: { argument: "--archived" } }],
       [["a", "--limit", "0"], { code: "invalid_input", details: { argument: "--limit" } }],

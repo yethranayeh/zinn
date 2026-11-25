@@ -116,9 +116,13 @@ test("emitted core works on both runtimes and its declarations need no Bun types
         const actor = { name: "build check", email: "build@example.test", kind: "agent" };
         const createdProject = core.project.create({ key: "BUILD" }, actor);
         const createdTask = core.task.create({ project_id: createdProject.id, title: "Emitted JavaScript", description: "first\\nsecond" }, actor);
-        core.comment.create({ taskKey: createdTask.key, text: "searchable comment" }, actor);
+        const createdComment = core.comment.create({ taskKey: createdTask.key, text: "📋\\0 searchable comment" }, actor);
         assert.equal(createdTask.key, "BUILD-1");
         assert.equal(core.task.search({ query: "searchable" }).tasks[0].id, createdTask.id);
+        const search = core.task.search({ query: "search", includeMatches: true });
+        assert.deepEqual(search.matchesByTaskId.get(createdTask.id), [{
+          field: "comment", comment_key: createdComment.key, snippet: "📋\\0 searchable comment", highlights: [[3, 13]],
+        }]);
         assert.equal(core.task.getByKey(createdTask.key).title, "Emitted JavaScript");
         const createdEvent = core.task.activity(createdTask.key).find(event => event.action === "create");
         core.task.edit({ taskKey: createdTask.key, description: "first\\nchanged" }, {

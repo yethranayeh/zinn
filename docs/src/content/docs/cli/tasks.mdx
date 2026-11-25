@@ -95,6 +95,7 @@ Search task titles, descriptions, and comments, optionally in one project:
 zinn task search refine
 zinn task search refine --all-projects
 zinn task search 'quarterly quota' MDR
+zinn task search 'quarterly quota' MDR --json --with-matches
 zinn task search MDR-1
 zinn task search auth --all --limit 5
 zinn task search auth MDR --label cli
@@ -102,7 +103,9 @@ zinn task search auth MDR --column Review
 zinn task search refinement --due-until 2026-10-25T17:00:00+02:00
 ```
 
-Each query matches the start of a word, ignoring case and accents, so `cafe` finds "Café" and `auth` finds "Authentication". Every word must match somewhere in the task: its title, its description, or any of its comments. A comment match lists the task the comment belongs to.
+Each query matches the start of a word, ignoring case and accents, so `cafe` finds "Café" and `auth` finds "Authentication". Every word must match somewhere in the task's title, description, or comments. U+E000 is reserved for separating comments in the search index and is invalid in a query.
+
+Search shows an excerpt around the first hit in each matching source. Excerpts collapse whitespace and fit within 120 Unicode code points, including any ellipses. Color highlights the full word or phrase that matched. Use a matching comment's key with `zinn task comment view '<comment-key>'` to read the full comment.
 
 The query comes first, then the optional project key. An omitted key uses [defaultProject](/docs/settings), or every project when none is configured. `--all-projects` overrides the default.
 
@@ -116,7 +119,9 @@ Search defaults to active tasks. `--archived` searches archived tasks and `--all
 
 `--label` works as it does for `task list`: repeat it to require every specified label. `--column` matches an exact column name, ignoring case, in the selected project or across projects. Label and column filtering happen before `--limit` and before archived matches are counted.
 
-With `--json`, search returns an array of tasks like `task list` does. A search with no results succeeds. A query that begins with a dash goes after `--` (see [Words and repeated flags](/docs/cli/conventions#words-and-repeated-flags)).
+With `--json`, search returns an array of tasks like `task list` does. Add `--with-matches` to include a `matches` array on each task. Each match has a `field` (`key`, `title`, `description`, or `comment`), a `snippet`, and `highlights`. The highlight pairs give zero-based, end-exclusive Unicode code-point offsets within the snippet. Comment entries also have a `comment_key`.
+
+A search with no results succeeds. A query that begins with a dash goes after `--` (see [Words and repeated flags](/docs/cli/conventions#words-and-repeated-flags)).
 
 ### Rebuild the search index
 

@@ -86,6 +86,22 @@ export const taskSchema = z.strictObject({
     .describe("The task's claim, or null when it has none or the database predates claims."),
 });
 
+const searchExcerptFields = {
+  snippet: z.string().describe("Excerpt containing the first match in this source."),
+  highlights: z
+    .array(z.tuple([count, count]))
+    .describe("Zero-based, end-exclusive Unicode code-point ranges relative to the snippet."),
+};
+const taskSearchMatchSchema = z.discriminatedUnion("field", [
+  z.strictObject({ field: z.enum(["key", "title", "description"]), ...searchExcerptFields }),
+  z.strictObject({
+    field: z.literal("comment"),
+    comment_key: z.string(),
+    ...searchExcerptFields,
+  }),
+]);
+const taskSearchResultSchema = taskSchema.extend({ matches: z.array(taskSearchMatchSchema) });
+
 export const relationSchema = z.strictObject({
   id: z.string().describe("Stored relation ID."),
   type: z
@@ -382,6 +398,7 @@ export const reindexSchema = z.strictObject({ databasePath: z.string(), taskCoun
 export const resultSchemas = {
   Task: taskSchema,
   TaskList: z.array(taskSchema),
+  TaskSearchResults: z.array(taskSearchResultSchema),
   NextTask: taskSchema.nullable(),
   TaskDetail: taskDetailSchema,
   TaskBlame: taskBlameSchema,
