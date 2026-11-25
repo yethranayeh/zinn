@@ -7,6 +7,10 @@ export const rexTheme = {
   path: "/integrations/rex/theme",
   site: "https://www.superlogical.com/rex",
   importDocs: "https://www.superlogical.com/rex/docs/reference/mac-settings#import-theme",
+  tintDocs: {
+    mac: "https://www.superlogical.com/rex/docs/reference/mac-settings#setting-appearance-tint-with-theme",
+    ios: "https://www.superlogical.com/rex/docs/reference/ios-settings#setting-interface-tint-with-theme",
+  },
   downloads: {
     dark: "/integrations/rex/theme/zinn-dark",
     light: "/integrations/rex/theme/zinn-light",

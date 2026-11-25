@@ -72,12 +72,18 @@ import { projectLinks } from "../../../../config/site";
 						<li>Download <code>zinn-dark</code> and <code>zinn-light</code>.</li>
 						<li>Import each file with <code>rex do client.theme.import</code>.</li>
 						<li>Import both files to fill the dark and light sides of the theme pair.</li>
+						<li>Turn on Tint with theme, so the palette, settings and toolbar take the theme's colors too.</li>
 					</ol>
 
 					<p>
 						Rex uses the file name as the theme name and an import applies the theme immediately. With one app client
 						connected, <code>rex do</code> picks it automatically. With more than one, add <code>-C</code> with the label
 						from <code>rex client ls</code>. Switch the appearance mode to move between the two.
+					</p>
+
+					<p>
+						On the Mac, <Link href={rexTheme.tintDocs.mac}>Tint with theme</Link> is in Settings, Interface, Appearance.
+						On iOS, <Link href={rexTheme.tintDocs.ios}>Tint with Theme</Link> is in Settings, Interface.
 					</p>
 
 					<p>

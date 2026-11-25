@@ -28,10 +28,13 @@ Download both files and import them with the Rex CLI.
 1. Download [zinn-dark](https://zinn.sh${rexTheme.downloads.dark}) and [zinn-light](https://zinn.sh${rexTheme.downloads.light}).
 2. Import each file with \`rex do client.theme.import\`.
 3. Import both files to fill the dark and light sides of the theme pair.
+4. Turn on Tint with theme, so the palette, settings and toolbar take the theme's colors too.
 
 Rex uses the file name as the theme name and an import applies the theme immediately. With one app client connected, \`rex do\` picks it automatically. With more than one, add \`-C\` with the label from \`rex client ls\`. Switch the appearance mode to move between the two.
 
 The files are in Ghostty's theme format, so they also work in Ghostty itself.
+
+On the Mac, [Tint with theme](${rexTheme.tintDocs.mac}) is in Settings, Interface, Appearance. On iOS, [Tint with Theme](${rexTheme.tintDocs.ios}) is in Settings, Interface.
 
 Rex's [settings reference](${rexTheme.importDocs}) covers Import Theme and the theme sheet.
 
