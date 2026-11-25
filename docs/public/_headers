@@ -17,3 +17,6 @@
 /integrations/rex/theme/zinn-light
   Content-Type: text/plain; charset=utf-8
   Content-Disposition: attachment; filename="zinn-light"
+
+/integrations/rex/actions/zinn/*
+  Content-Type: text/plain; charset=utf-8

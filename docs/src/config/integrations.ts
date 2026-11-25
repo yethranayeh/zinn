@@ -2,6 +2,7 @@ import { cloudinaryImage } from "../images/cloudinary";
 import { firefoxTheme } from "./firefox-theme";
 import { inspectorCollage, opencodeInspector } from "./opencode-inspector";
 import { opencodeScenes, opencodeTheme } from "./opencode-theme";
+import { rexActions } from "./rex-actions";
 import { rexScenes, rexTheme } from "./rex-theme";
 
 const opencodePreview = opencodeScenes.find((scene) => scene.id === "code")!;
@@ -132,6 +133,22 @@ export const integrations: IntegrationEntry[] = [
     },
     discovery: {
       description: "Screenshots, download and setup for the Zinn theme in Rex, in light and dark.",
+    },
+  },
+  {
+    path: rexActions.path,
+    title: "Zinn actions",
+    host: "Rex",
+    label: "Rex actions",
+    description: rexActions.introduction,
+    action: "View actions",
+    markdown: {
+      links: (url) =>
+        `[View the actions](${url}) for installation, key bindings, arguments and calls to Zinn.`,
+    },
+    discovery: {
+      description:
+        "Palette actions that file a new task and paste a task into a pane: requirements, installation, key bindings and calls to Zinn.",
     },
   },
   {

@@ -1,0 +1,134 @@
+---
+import Button from "../ui/button/Button.astro";
+
+import { pastedText, pickedKey, pickerRows } from "./insert-task-rows";
+
+// Pane and palette colors in each appearance: Rex with the Zinn theme and Tint with theme on.
+const appearanceColors = [
+	"[--rex-pane:#1c1815] [--rex-ink:#e8e0cc] [--rex-muted:#8f8a83] [--rex-palette:#2c2926] [--rex-field:#423f3c] [--rex-chip:#5c5a57] [--rex-line:#49463f] [--rex-accent:#96773b] [--rex-accent-ink:#f4efe4] [--rex-cursor:#c8963c]",
+	"data-[appearance=light]:[--rex-pane:#e8e0cc] data-[appearance=light]:[--rex-ink:#1c1815] data-[appearance=light]:[--rex-muted:#6e675c] data-[appearance=light]:[--rex-palette:#f2ecdc] data-[appearance=light]:[--rex-field:#e4decf] data-[appearance=light]:[--rex-chip:#cfcabc] data-[appearance=light]:[--rex-line:#a89e86] data-[appearance=light]:[--rex-accent:#71261b] data-[appearance=light]:[--rex-accent-ink:#f2ecdc] data-[appearance=light]:[--rex-cursor:#7b1e15]"
+];
+const pane =
+	"flex min-w-0 flex-1 flex-col rounded-xl border border-(--rex-line) bg-(--rex-pane) p-3 text-(--rex-ink) sm:p-5";
+const stepLabel = "mb-3 flex items-baseline gap-3 font-mono text-xs";
+---
+
+<figure class:list={["m-0", appearanceColors]} data-appearance='dark' data-insert-task-figure>
+	<p class='sr-only'>
+		An illustration of Zinn: Insert task. The palette lists open Zinn tasks with their key, title, first description
+		line and column. After a pick, the task's key, title and description wait in the program's input, not yet sent.
+	</p>
+	<div class='grid gap-6 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] md:gap-8' aria-hidden='true'>
+		<div class='flex min-w-0 flex-col'>
+			<p class={stepLabel}><span class='text-pewter'>1</span>Pick a task</p>
+			<div class={pane}>
+				<div
+					class='rounded-[18px] border border-(--rex-line) bg-(--rex-palette) p-2 font-sans shadow-[0_14px_36px_-12px_rgb(28_24_21/0.55)]'>
+					<div class='flex items-center gap-2 rounded-xl bg-(--rex-field) p-1.5'>
+						<span class='shrink-0 rounded-lg bg-(--rex-chip) px-2.5 py-1 text-[15px] leading-tight'>Insert task</span>
+						<span class='flex min-w-0 flex-1 items-center gap-px text-[15px] text-(--rex-muted)'>
+							<span class='h-[1.15em] w-0.5 shrink-0 bg-(--rex-cursor)'></span>
+							<span class='truncate'>Filter by key or title</span>
+						</span>
+					</div>
+					<ul class='m-0 list-none p-0 pt-2'>
+						{
+							pickerRows.map((row) => {
+								const isPicked = row.key === pickedKey;
+								return (
+									<li
+										class:list={[
+											"flex items-center gap-3 rounded-xl px-2.5 py-2 sm:px-3",
+											isPicked && "bg-(--rex-accent) text-(--rex-accent-ink)"
+										]}>
+										<svg
+											class:list={["size-4.5 shrink-0", !isPicked && "text-(--rex-muted)"]}
+											viewBox='0 0 20 20'
+											fill='none'
+											stroke='currentColor'
+											stroke-width='1.5'
+											stroke-linejoin='round'>
+											<path d='M3 10.6V4.2C3 3.5 3.5 3 4.2 3h6.4c.3 0 .6.1.8.4l5.6 5.6c.5.5.5 1.2 0 1.7l-6.4 6.4c-.5.5-1.2.5-1.7 0L3.4 11.4c-.3-.2-.4-.5-.4-.8z' />
+											<circle cx='6.8' cy='6.8' r='1.2' />
+										</svg>
+										<span class='min-w-0 flex-1'>
+											<span class='block truncate text-[15px] leading-snug'>
+												{row.key}
+												<span class='ml-1.5'>{row.title}</span>
+											</span>
+											<span
+												class:list={[
+													"block truncate text-[13px] leading-snug",
+													isPicked ? "opacity-80" : "text-(--rex-muted)"
+												]}>
+												{row.subtitle}
+											</span>
+										</span>
+										<span
+											class:list={[
+												"shrink-0 text-[13px] max-[380px]:hidden",
+												isPicked ? "opacity-80" : "text-(--rex-muted)"
+											]}>
+											{row.column}
+										</span>
+									</li>
+								);
+							})
+						}
+					</ul>
+				</div>
+			</div>
+		</div>
+
+		<div class='flex min-w-0 flex-col'>
+			<p class={stepLabel}><span class='text-pewter'>2</span>Pasted, not sent</p>
+			<div class:list={[pane, "justify-end gap-5 font-mono text-[13px] leading-relaxed"]}>
+				<div class='flex flex-col gap-2.5 opacity-70'>
+					<span class='h-2 w-3/5 rounded-full bg-(--rex-line)'></span>
+					<span class='h-2 w-2/5 rounded-full bg-(--rex-line)'></span>
+					<span class='h-2 w-1/2 rounded-full bg-(--rex-line)'></span>
+				</div>
+				<div class='flex gap-2.5 rounded-lg border border-(--rex-line) p-3 sm:p-4'>
+					<span class='text-(--rex-cursor)'>›</span>
+					<p class='m-0 min-w-0 whitespace-pre-wrap wrap-break-word'>
+						{pastedText}<span class='ml-px inline-block h-[1.15em] w-[0.55em] translate-y-[0.2em] bg-(--rex-cursor)'
+						></span>
+					</p>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class='mt-3 flex justify-end [@media(scripting:none)]:hidden'>
+		<div class='flex items-center gap-1' role='group' aria-label='Appearance of the illustration'>
+			<Button
+				variant='ghost'
+				data-appearance-choice='dark'
+				aria-pressed='true'
+				class='text-pewter aria-pressed:bg-soot/10 aria-pressed:text-soot'>
+				Dark
+			</Button>
+			<Button
+				variant='ghost'
+				data-appearance-choice='light'
+				aria-pressed='false'
+				class='text-pewter aria-pressed:bg-soot/10 aria-pressed:text-soot'>
+				Light
+			</Button>
+		</div>
+	</div>
+</figure>
+
+<script>
+	for (const figure of document.querySelectorAll<HTMLElement>("[data-insert-task-figure]")) {
+		const choices = [...figure.querySelectorAll<HTMLElement>("[data-appearance-choice]")];
+		for (const choice of choices) {
+			choice.addEventListener("click", () => {
+				figure.dataset.appearance = choice.dataset.appearanceChoice;
+				for (const other of choices) {
+					other.setAttribute("aria-pressed", String(other === choice));
+				}
+			});
+		}
+	}
+</script>

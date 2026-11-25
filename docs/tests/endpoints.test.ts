@@ -18,6 +18,7 @@ import {
   opencodeInspector,
 } from "../src/config/opencode-inspector";
 import { opencodeScenes, opencodeTheme } from "../src/config/opencode-theme";
+import { rexActions } from "../src/config/rex-actions";
 import { rexScenes, rexTheme } from "../src/config/rex-theme";
 import {
   exactBytes,
@@ -560,6 +561,7 @@ test("every generated public endpoint is served with its expected type", async (
       opencodeTheme.path.slice(1),
       opencodeInspector.path.slice(1),
       rexTheme.path.slice(1),
+      rexActions.path.slice(1),
       firefoxTheme.path.slice(1),
     ]
       .sort()
@@ -811,6 +813,7 @@ test.each([
   opencodeTheme.path.slice(1),
   opencodeInspector.path.slice(1),
   rexTheme.path.slice(1),
+  rexActions.path.slice(1),
   firefoxTheme.path.slice(1),
 ])("%s offers its Markdown actions directly after the heading", async (page) => {
   const html = await (await server.fetch(`/${page}`)).text();
@@ -968,6 +971,46 @@ test("Rex theme page and its Markdown twin offer both downloadable theme files",
     expect(download.headers.get("Content-Disposition")).toContain(`filename="${fileName}"`);
     expect(await download.text()).toBe(
       await Bun.file(join(docsDirectory, `../integrations/rex/theme/${fileName}`)).text(),
+    );
+  }
+});
+
+test("Rex actions page, its Markdown twin and each action file download", async () => {
+  const index = await server.fetch("/integrations");
+  expect(index.status).toBe(200);
+  expect(await index.text()).toContain(`href="${rexActions.path}"`);
+
+  const response = await server.fetch(rexActions.path);
+  expect(response.status).toBe(200);
+  const html = await response.text();
+  expect(html).toContain(`rel="canonical" href="https://zinn.sh${rexActions.path}/"`);
+  expect(html).toContain("data-insert-task-figure");
+  expect(html).toContain('href="#installation"');
+
+  const markdownResponse = await server.fetch(`${rexActions.path}.md`);
+  expect(markdownResponse.status).toBe(200);
+  expect(markdownResponse.headers.get("Content-Type")).toContain("text/markdown");
+  const markdown = await markdownResponse.text();
+  for (const command of rexActions.commands) {
+    expect(markdown).toContain(command);
+  }
+
+  // Every action file in the repository is published, and nothing else
+  const actionsDirectory = join(docsDirectory, "../integrations/rex/zinn");
+  const sourceFiles = (await readdir(actionsDirectory)).filter((name) => name.endsWith(".lua"));
+  expect([...rexActions.files].sort()).toEqual(sourceFiles.sort());
+
+  for (const name of rexActions.files) {
+    const downloadPath = `${rexActions.downloadBase}/${name}`;
+    expect(html).toContain(`href="${downloadPath}"`);
+    expect(markdown).toContain(downloadPath);
+    expect(rexActions.commands.join("\n")).toContain(name.replace(/\.lua$/, ""));
+
+    const download = await server.fetch(downloadPath);
+    expect(download.status).toBe(200);
+    expect(download.headers.get("Content-Type")).toContain("text/plain");
+    expect(new Uint8Array(await download.arrayBuffer())).toEqual(
+      await Bun.file(join(actionsDirectory, name)).bytes(),
     );
   }
 });
