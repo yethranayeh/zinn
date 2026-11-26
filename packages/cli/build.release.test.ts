@@ -93,6 +93,7 @@ for (const runtime of ["node", "bun"]) {
       expect(JSON.parse(result.stdout)).toEqual({
         actor_name: "codex", actor_email: null, actor_kind: "agent", actor_source: "env:CODEX_THREAD_ID",
         actor_session_id: "session", actor_thread_id: "thread", actor_agent: null, actor_model: "model", actor_effort: null, actor_client: `zinn-cli/${packageJson.version}`,
+        actor_directory: process.cwd(),
       });
       const text = await runBuilt(runtime, ["whoami"], directory, declarations);
       expect(text.code).toBe(0);

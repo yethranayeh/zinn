@@ -552,7 +552,7 @@ test("activity preserves every action, relation pair, null and unknown payload f
     const event = activity.getById(unknownId);
     assert.deepEqual(event.changes, changes);
     assert.deepEqual(activity.getAll({ taskKey: first.key }).events.find((item) => item.id === unknownId), event);
-    assert.deepEqual(Object.keys(event).sort(), ["id", "created_at", "actor_name", "actor_email", "actor_kind", "actor_source", "actor_session_id", "actor_thread_id", "actor_agent", "actor_model", "actor_effort", "actor_client", "entity_type", "entity_id", "action", "changes"].sort());
+    assert.deepEqual(Object.keys(event).sort(), ["id", "created_at", "actor_name", "actor_email", "actor_kind", "actor_source", "actor_session_id", "actor_thread_id", "actor_agent", "actor_model", "actor_effort", "actor_client", "actor_directory", "entity_type", "entity_id", "action", "changes"].sort());
     assert.equal(all.find((event) => event.entity_id === first.id && event.action === "create")!.changes!.description, "  First line\nSecond line  ");
   });
 });

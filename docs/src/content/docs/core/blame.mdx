@@ -53,6 +53,7 @@ type TaskAttribution = {
 	actor_model: string | null;
 	actor_effort: string | null;
 	actor_client: string | null;
+	actor_directory: string | null;
 };
 type TaskBlamedValue<T> = { value: T; attribution: TaskAttribution | null };
 type TaskBlame = {

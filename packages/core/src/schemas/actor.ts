@@ -40,6 +40,8 @@ export const actorSchema = z
       effort: actorDeclarationSchema.nullish(),
       /** The client chain supplied by the caller, preserved as given. */
       client: z.string().nullish(),
+      /** The working directory of the process that made the change, preserved as given. */
+      directory: z.string().min(1, "Actor directory cannot be empty").nullish(),
     },
     { error: "An actor is required" },
   )

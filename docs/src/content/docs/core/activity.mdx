@@ -8,7 +8,7 @@ toc: true
 
 ## Activity records
 
-Core exports the `Activity` type for a recorded event. Its fields are `id`, `created_at` (epoch milliseconds), `actor_name`, `actor_email`, `actor_kind`, `actor_source`, `actor_session_id`, `actor_thread_id`, `actor_agent`, `actor_model`, `actor_effort`, `actor_client`, `entity_type`, `entity_id`, `action`, and `changes` (parsed JSON or `null`).
+Core exports the `Activity` type for a recorded event. Its fields are `id`, `created_at` (epoch milliseconds), `actor_name`, `actor_email`, `actor_kind`, `actor_source`, `actor_session_id`, `actor_thread_id`, `actor_agent`, `actor_model`, `actor_effort`, `actor_client`, `actor_directory`, `entity_type`, `entity_id`, `action`, and `changes` (parsed JSON or `null`).
 
 The `id` identifies the activity event itself. `actor_name` can be `null` for an unnamed agent. Optional actor metadata is `null` when absent. Payloads and IDs are preserved in full, including after deletion. Project deletion events keep the project's `entity_id`, with removed task IDs in `changes.tasks`.
 

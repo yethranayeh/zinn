@@ -161,6 +161,7 @@ export const activitySchema = z.strictObject({
   actor_model: nullableText,
   actor_effort: nullableText,
   actor_client: nullableText,
+  actor_directory: nullableText,
   entity_type: z
     .string()
     .describe(
@@ -191,6 +192,7 @@ export const actorSchema = activitySchema.pick({
   actor_model: true,
   actor_effort: true,
   actor_client: true,
+  actor_directory: true,
 });
 
 export const taskAttributionSchema = actorSchema.extend({

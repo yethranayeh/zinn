@@ -14,6 +14,10 @@ Library callers may supply `Actor.client` as a string or `null`. Core preserves 
 
 Clients can follow Zinn's [client chain convention](/docs/core/actors#client-chain-convention) when constructing their value. Core supplies no client token of its own.
 
+## Actor directories
+
+Library callers may supply `Actor.directory`, the working directory of the process making the change, as a non-empty string or `null`. Core preserves the supplied string exactly in `actor_directory` on every recorded activity event. Omitting it stores `null`. Events recorded before schema version 8 also have a `null` directory after migration. The CLI supplies its working directory as an absolute path.
+
 ## Parse a client chain
 
 `parseClientChain(client)` returns an array of `{ name, version }` objects in chain order. It splits on whitespace and separates each token at its first `/`. Tokens without `/` have a `null` version. Null or blank input returns an empty array. Names and versions preserve case and arbitrary text, including any further slashes in a version. Parsing does not validate tokens or change the stored string.

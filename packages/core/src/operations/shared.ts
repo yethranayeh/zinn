@@ -385,6 +385,7 @@ export function recordActivity(
     actor_model: actor.model ?? null,
     actor_effort: actor.effort ?? null,
     actor_client: actor.client ?? null,
+    actor_directory: actor.directory ?? null,
     entity_type: props.entityType,
     entity_id: props.entityId,
     action: props.action,

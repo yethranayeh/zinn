@@ -43,7 +43,7 @@ test("creation, setters, no-ops, nullable clears and archived reads retain compl
     expect(result.fields.title).toEqual({ value: "Changed", attribution: {
       id: edit.id, created_at: edit.created_at, actor_name: agent.name, actor_email: null, actor_kind: "agent",
       actor_source: agent.source, actor_session_id: agent.sessionId, actor_thread_id: agent.threadId,
-      actor_agent: agent.agent, actor_model: agent.model, actor_effort: agent.effort, actor_client: agent.client,
+      actor_agent: agent.agent, actor_model: agent.model, actor_effort: agent.effort, actor_client: agent.client, actor_directory: null,
     } });
     expect(result.fields.priority).toEqual({ value: null, attribution: result.fields.title.attribution });
     expect(result.fields.due_at).toEqual({ value: null, attribution: result.fields.title.attribution });
@@ -241,7 +241,7 @@ test("deleted and reused keys select only the current task lifetime", () => {
 
 const original: TaskAttribution = { id: "original", created_at: 0, actor_name: "original", actor_kind: "human",
   actor_email: null, actor_source: null, actor_session_id: null, actor_thread_id: null,
-  actor_agent: null, actor_model: null, actor_effort: null, actor_client: null };
+  actor_agent: null, actor_model: null, actor_effort: null, actor_client: null, actor_directory: null };
 const edited = { ...original, id: "edited" };
 
 test("duplicate line ties trim prefix and suffix before preferring deletion in the middle", () => {

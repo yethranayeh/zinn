@@ -237,3 +237,11 @@ test("every CLI actor supplies its version and preserves the trimmed client decl
     }
   }
 });
+
+test("every CLI actor records the process working directory", () => {
+  for (const env of [{}, { OPENCODE: "1" }]) {
+    expect(resolveActor(env).directory).toBe(process.cwd());
+    expect(resolveActor(env, "/work/app").directory).toBe("/work/app");
+    expect(detectAgent(env)?.directory).toBeUndefined();
+  }
+});

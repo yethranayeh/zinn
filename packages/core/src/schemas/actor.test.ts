@@ -4,7 +4,7 @@ import { actorSchema, parseClientChain } from "./actor";
 
 const namedAgent = { name: "Tool@1.2", email: null, kind: "agent" as const };
 const declarationFields = Object.keys(actorSchema.shape).filter(
-  (field) => !["name", "email", "kind", "client"].includes(field),
+  (field) => !["name", "email", "kind", "client", "directory"].includes(field),
 );
 
 test.each([null, "", " \n\t\r\u00a0 "])("an empty client chain %j has no tokens", (client) => {

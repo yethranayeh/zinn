@@ -84,6 +84,7 @@ const ACTOR_DETAIL_FIELDS = [
   { key: "actor_model", label: "Model" },
   { key: "actor_effort", label: "Effort" },
   { key: "actor_client", label: "Client" },
+  { key: "actor_directory", label: "Directory" },
 ] as const;
 const ACTION_LABELS: Record<ActivityAction, string> = {
   create: "created",
@@ -732,6 +733,7 @@ export function presentActor(actor: Actor): PresentedActor {
     actor_model: actor.model ?? null,
     actor_effort: actor.effort ?? null,
     actor_client: actor.client ?? null,
+    actor_directory: actor.directory ?? null,
   };
 }
 

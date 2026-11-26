@@ -130,6 +130,7 @@ export type Activity = {
   actor_model: string | null;
   actor_effort: string | null;
   actor_client: string | null;
+  actor_directory: string | null;
   entity_type: ActivityEntityType;
   entity_id: string;
   action: ActivityAction;
@@ -150,6 +151,7 @@ export type TaskAttribution = Pick<
   | "actor_model"
   | "actor_effort"
   | "actor_client"
+  | "actor_directory"
 >;
 
 export type TaskBlamedValue<T> = { value: T; attribution: TaskAttribution | null };

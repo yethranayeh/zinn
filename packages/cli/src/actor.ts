@@ -121,7 +121,11 @@ function readGitConfig(key: string, env: Env) {
   }
 }
 
-export function resolveActor(env: Env): Actor {
+export function resolveActor(env: Env, directory = process.cwd()): Actor {
+  return { ...resolveIdentity(env), directory };
+}
+
+function resolveIdentity(env: Env): Actor {
   const agent = detectAgent(env);
   if (agent != null) {
     return agent;

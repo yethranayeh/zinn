@@ -7,6 +7,7 @@ import { actorClientMigration } from "./actor-client.js";
 import { columnCategoryMigration } from "./column-category.js";
 import { taskClaimMigration } from "./task-claim.js";
 import { taskKeyIndexMigration } from "./task-key-index.js";
+import { actorDirectoryMigration } from "./actor-directory.js";
 
 export type ForeignKeyDefinition = {
   table: string;
@@ -57,6 +58,7 @@ export const MIGRATIONS: ReadonlyArray<Migration> = [
   columnCategoryMigration,
   taskClaimMigration,
   taskKeyIndexMigration,
+  actorDirectoryMigration,
 ];
 
 /** Each migration's version follows the one before it, starting right after the baseline. */
