@@ -1,7 +1,6 @@
 import type { Bind, Comment } from "../types.js";
 
 import { v7 as uuidv7 } from "uuid";
-import { Buffer } from "node:buffer";
 
 import { DB_TABLE } from "../constant.js";
 import { getDb } from "../db.js";
@@ -17,23 +16,16 @@ export function getByTaskIdAndNumber(taskId: string, number: number) {
 }
 
 export function getAllByTaskId(taskId: string) {
-  const db = getDb();
-
-  return db
-    .query<Comment, Bind<{ taskId: string }>>(`SELECT * FROM ${DB_TABLE.comment}
-    WHERE task_id = $taskId
-    ORDER BY number;`)
-    .all({ $taskId: taskId });
+  return getAllByTaskIds([taskId]);
 }
 
-export function getSearchSourcesByTaskIds(taskIds: string[]) {
+export function getAllByTaskIds(taskIds: ReadonlyArray<string>) {
   return getDb()
-    .query<Pick<Comment, "task_id" | "number"> & { text: Uint8Array }>(`SELECT task_id, number,
-      CAST(text AS BLOB) AS text
-    FROM ${DB_TABLE.comment} WHERE task_id IN (SELECT value FROM json_each($taskIds))
+    .query<Comment, Bind<{ taskIds: string }>>(`SELECT *
+    FROM ${DB_TABLE.comment}
+    WHERE task_id IN (SELECT value FROM json_each($taskIds))
     ORDER BY task_id, number`)
-    .all({ $taskIds: JSON.stringify(taskIds) })
-    .map((row) => ({ ...row, text: Buffer.from(row.text).toString("utf8") }));
+    .all({ $taskIds: JSON.stringify(taskIds) });
 }
 
 export function create(props: Pick<Comment, "task_id" | "number" | "text">) {

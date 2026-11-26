@@ -2,7 +2,6 @@ import type { Task } from "../types.js";
 import type { Database } from "../sqlite/database.js";
 
 import { randomUUID } from "node:crypto";
-import { Buffer } from "node:buffer";
 import { openDatabase } from "#sqlite";
 import { getDb } from "../db.js";
 import { DB_TABLE } from "../constant.js";
@@ -56,15 +55,18 @@ export function searchTasks(props: { match: string; projectId?: string }) {
     .all(bindings);
 }
 
-type SearchHighlightRow = {
-  rowid: number;
-  task_id: string;
+type SearchText = {
   title: string;
   description: string | null;
   comments: string;
+};
+
+type SearchHighlightRow = SearchText & {
+  rowid: number;
+  task_id: string;
   has_marker: number;
   has_nul: number;
-  originalDescription?: string | null;
+  original?: SearchText;
 };
 
 function readHighlights(database: Database, match: string, rowIds: number[], marker: string) {
@@ -89,14 +91,9 @@ function readHighlightsWithNul(
   marker: string,
 ) {
   const sources = database
-    .query<{
-      rowid: number;
-      task_id: string;
-      title: Uint8Array;
-      description: Uint8Array | null;
-      comments: Uint8Array;
-    }>(`SELECT rowid, task_id, CAST(title AS BLOB) AS title,
-      CAST(description AS BLOB) AS description, CAST(comments AS BLOB) AS comments
+    .query<
+      SearchText & { rowid: number; task_id: string }
+    >(`SELECT rowid, task_id, title, description, comments
     FROM ${DB_TABLE.taskSearch} WHERE rowid IN (SELECT value FROM json_each($rowIds))`)
     .all({ $rowIds: JSON.stringify(rowIds) });
 
@@ -106,8 +103,7 @@ function readHighlightsWithNul(
     const insert = scratch.query(`INSERT INTO ${DB_TABLE.taskSearch}
       (rowid, task_id, title, description, comments) VALUES (?, ?, ?, ?, ?)`);
     // FTS5 can drop text after NUL when highlighting. Both characters delimit tokens without changing offsets.
-    const replaceNul = (text: Uint8Array) =>
-      Buffer.from(text).toString("utf8").replaceAll("\0", "\u0003");
+    const replaceNul = (text: string) => text.replaceAll("\0", "\u0003");
     for (const source of sources) {
       insert.run(
         source.rowid,
@@ -117,15 +113,10 @@ function readHighlightsWithNul(
         replaceNul(source.comments),
       );
     }
-    const originalDescriptions = new Map(
-      sources.map((source) => [
-        source.rowid,
-        source.description === null ? null : Buffer.from(source.description).toString("utf8"),
-      ]),
-    );
+    const originalsByRowId = new Map(sources.map((source) => [source.rowid, source]));
     return readHighlights(scratch, match, rowIds, marker).map((row) => ({
       ...row,
-      originalDescription: originalDescriptions.get(row.rowid)!,
+      original: originalsByRowId.get(row.rowid)!,
     }));
   } finally {
     scratch.close();

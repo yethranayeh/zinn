@@ -2,7 +2,7 @@ import type { TaskWithKey } from "../types.js";
 
 import * as dbComment from "../db/comment.js";
 import * as dbSearch from "../db/search.js";
-import { SEARCH_COMMENT_SEPARATOR } from "../search-entry.js";
+import { assembleSearchEntry, SEARCH_COMMENT_SEPARATOR } from "../search-entry.js";
 import { attachCommentKey } from "./shared.js";
 
 type Highlight = [start: number, end: number];
@@ -18,6 +18,7 @@ export type TaskSearchMatch = Excerpt &
 
 const MAX_SNIPPET_LENGTH = 120;
 const ELLIPSIS = "…";
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 /** Reads FTS markers into offsets in the original, unmarked text. */
 function splitHighlights(markedText: string, marker: string) {
@@ -32,6 +33,22 @@ function splitHighlights(markedText: string, marker: string) {
     offset = end;
   }
   return { text: pieces.join(""), ranges };
+}
+
+/** Moves cuts inward so a grapheme stays intact within the code-point budget. */
+function wholeGraphemeWindow(points: Array<string>, start: number, end: number): Highlight {
+  const segments = graphemeSegmenter.segment(points.join(""));
+  const startOffset = points.slice(0, start).join("").length;
+  const endOffset = startOffset + points.slice(start, end).join("").length;
+  const first = segments.containing(startOffset)!;
+  const last = segments.containing(endOffset);
+  const leftTrim =
+    first.index === startOffset
+      ? 0
+      : Array.from(first.segment.slice(startOffset - first.index)).length;
+  const rightTrim =
+    last === undefined ? 0 : Array.from(last.segment.slice(0, endOffset - last.index)).length;
+  return [start + leftTrim, end - rightTrim];
 }
 
 function makeExcerpt(text: string, sourceRanges: Array<Highlight>): Excerpt | null {
@@ -81,11 +98,15 @@ function makeExcerpt(text: string, sourceRanges: Array<Highlight>): Excerpt | nu
 
   // Leave one character for each ellipsis when choosing the context around the first hit.
   const context = Math.floor(Math.max(0, MAX_SNIPPET_LENGTH - 2 - (first[1] - first[0])) / 2);
-  const start = Math.max(0, Math.min(first[0] - context, points.length - MAX_SNIPPET_LENGTH + 1));
-  const prefix = start > 0 ? ELLIPSIS : "";
-  const endWithoutSuffix = start + MAX_SNIPPET_LENGTH - prefix.length;
+  const windowStart = Math.max(
+    0,
+    Math.min(first[0] - context, points.length - MAX_SNIPPET_LENGTH + 1),
+  );
+  const prefix = windowStart > 0 ? ELLIPSIS : "";
+  const endWithoutSuffix = windowStart + MAX_SNIPPET_LENGTH - prefix.length;
   const suffix = endWithoutSuffix < points.length ? ELLIPSIS : "";
-  const end = Math.min(points.length, endWithoutSuffix - suffix.length);
+  const windowEnd = Math.min(points.length, endWithoutSuffix - suffix.length);
+  const [start, end] = wholeGraphemeWindow(points, windowStart, windowEnd);
   const highlights: Array<Highlight> = [];
   for (const [rangeStart, rangeEnd] of ranges) {
     const visibleStart = Math.max(start, rangeStart);
@@ -93,6 +114,9 @@ function makeExcerpt(text: string, sourceRanges: Array<Highlight>): Excerpt | nu
     if (visibleStart < visibleEnd) {
       highlights.push([visibleStart - start + prefix.length, visibleEnd - start + prefix.length]);
     }
+  }
+  if (highlights.length === 0) {
+    return null;
   }
   return { snippet: prefix + points.slice(start, end).join("") + suffix, highlights };
 }
@@ -126,8 +150,7 @@ export function getSearchMatches(
   const commentTaskIds = rows
     .filter((row) => row.comments.includes(marker))
     .map((row) => row.task_id);
-  const comments =
-    commentTaskIds.length === 0 ? [] : dbComment.getSearchSourcesByTaskIds(commentTaskIds);
+  const comments = commentTaskIds.length === 0 ? [] : dbComment.getAllByTaskIds(commentTaskIds);
   const commentsByTaskId = Map.groupBy(comments, (comment) => comment.task_id);
 
   for (const task of tasks) {
@@ -137,23 +160,37 @@ export function getSearchMatches(
     }
     const matches = byTaskId.get(task.id)!;
     const title = splitHighlights(row.title, marker);
-    const titleExcerpt = makeExcerpt(title.text, title.ranges);
+    const titleExcerpt = makeExcerpt(row.original?.title ?? title.text, title.ranges);
     if (titleExcerpt !== null) {
       matches.push({ field: "title", ...titleExcerpt });
     }
     if (row.description !== null) {
       const description = splitHighlights(row.description, marker);
-      const excerpt = makeExcerpt(row.originalDescription ?? description.text, description.ranges);
+      const excerpt = makeExcerpt(
+        row.original?.description ?? description.text,
+        description.ranges,
+      );
       if (excerpt !== null) {
         matches.push({ field: "description", ...excerpt });
       }
     }
 
-    const { ranges } = splitHighlights(row.comments, marker);
+    const taskComments = commentsByTaskId.get(task.id);
+    if (taskComments === undefined) {
+      continue;
+    }
+    const { text, ranges } = splitHighlights(row.comments, marker);
+    const current = assembleSearchEntry(
+      task,
+      taskComments.map((comment) => comment.text),
+    );
+    if ((row.original?.comments ?? text) !== current.comments) {
+      continue;
+    }
     let start = 0;
     let rangeIndex = 0;
     // The separator can also occur in real text. Locate boundaries using the stored comments.
-    for (const comment of commentsByTaskId.get(task.id) ?? []) {
+    for (const comment of taskComments) {
       const end = start + comment.text.length;
       const commentRanges: Array<Highlight> = [];
       for (; rangeIndex < ranges.length; rangeIndex++) {

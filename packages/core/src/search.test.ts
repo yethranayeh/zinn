@@ -1,6 +1,6 @@
 import { test } from "bun:test";
 import { strict as assert } from "node:assert";
-import { comment, label, project, task } from "../index";
+import { comment, label, project, reindex, task } from "../index";
 import { getDb } from "./db";
 import { CoreError } from "./errors";
 import { withTestStore } from "./testing";
@@ -72,6 +72,29 @@ test("search evidence identifies the full spans and the original comment keys", 
   });
 });
 
+test("search omits comment excerpts from a stale index and restores them after reindex", () => {
+  runSearchCheck(({ create, human }) => {
+    const created = create("Needle task");
+    const first = comment.create({ taskKey: created.key, text: "short" }, human);
+    const second = comment.create({ taskKey: created.key, text: "needle is here" }, human);
+    getDb().query("UPDATE comment SET text = ? WHERE id = ?")
+      .run("Changed text runs through that offset", first.id);
+
+    const search = () => task.search({ query: "needle", includeMatches: true });
+    const stale = search();
+    assert.deepEqual(stale.tasks.map((entry) => entry.key), [created.key]);
+    assert.deepEqual(stale.matchesByTaskId?.get(created.id), [
+      { field: "title", snippet: "Needle task", highlights: [[0, 6]] },
+    ]);
+
+    reindex.run();
+    assert.deepEqual(search().matchesByTaskId?.get(created.id), [
+      { field: "title", snippet: "Needle task", highlights: [[0, 6]] },
+      { field: "comment", comment_key: second.key, snippet: "needle is here", highlights: [[0, 6]] },
+    ]);
+  });
+});
+
 test("search evidence centers the first hit and clips excerpts and ranges by code point", () => {
   runSearchCheck(({ human, create }) => {
     const created = create("Unrelated", "🧪 before ".repeat(18) + "résumé " + "🧪 after ".repeat(18) + "résumé");
@@ -90,6 +113,22 @@ test("search evidence centers the first hit and clips excerpts and ranges by cod
   });
 });
 
+test("search excerpts preserve flag emoji and combining accents at both cuts", () => {
+  runSearchCheck(({ create }) => {
+    const flag = "🇹🇷";
+    const accent = "e\u0301";
+    const created = create("Unicode example", flag.repeat(80) + " marker " + accent.repeat(80));
+    const result = task.search({ query: "marker", includeMatches: true });
+    const [excerpt] = result.matchesByTaskId!.get(created.id)!;
+    assert.ok(excerpt);
+    assert.ok(excerpt.snippet.startsWith(`…${flag}`));
+    assert.ok(excerpt.snippet.endsWith(`${accent}…`));
+    const points = Array.from(excerpt.snippet);
+    assert.ok(points.length <= 120);
+    assert.deepEqual(excerpt.highlights.map(([start, end]) => points.slice(start, end).join("")), ["marker"]);
+  });
+});
+
 test("search highlights preserve offsets in text after an embedded NUL", () => {
   runSearchCheck(({ human, create }) => {
     const created = create("Unrelated", "Stop\0then sign\0into the account");
@@ -99,6 +138,20 @@ test("search highlights preserve offsets in text after an embedded NUL", () => {
     assert.deepEqual(result.matchesByTaskId?.get(created.id), [
       { field: "description", snippet: "Stop\0then sign\0into the account", highlights: [[10, 19]] },
       { field: "comment", comment_key: later.key, snippet: "sign into the dashboard", highlights: [[0, 9]] },
+    ]);
+  });
+});
+
+test("search evidence preserves the original text of a legacy title containing NUL", () => {
+  runSearchCheck(({ create }) => {
+    const created = create("Old title");
+    const title = "Old\0legacy title";
+    getDb().query("UPDATE task SET title = ? WHERE id = ?").run(title, created.id);
+    reindex.run();
+
+    const result = task.search({ query: "legacy", includeMatches: true });
+    assert.deepEqual(result.matchesByTaskId?.get(created.id), [
+      { field: "title", snippet: title, highlights: [[4, 10]] },
     ]);
   });
 });

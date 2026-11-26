@@ -105,7 +105,7 @@ zinn task search refinement --due-until 2026-10-25T17:00:00+02:00
 
 Each query matches the start of a word, ignoring case and accents, so `cafe` finds "Café" and `auth` finds "Authentication". Every word must match somewhere in the task's title, description, or comments. U+E000 is reserved for separating comments in the search index and is invalid in a query.
 
-Search shows an excerpt around the first hit in each matching source. Excerpts collapse whitespace and fit within 120 Unicode code points, including any ellipses. Color highlights the full word or phrase that matched. Use a matching comment's key with `zinn task comment view '<comment-key>'` to read the full comment.
+Search shows an excerpt around the first hit in each matching source. Excerpts collapse whitespace and fit within 120 Unicode code points, including any ellipses. Use a matching comment's key with `zinn task comment view '<comment-key>'` to read the full comment.
 
 The query comes first, then the optional project key. An omitted key uses [defaultProject](/docs/settings), or every project when none is configured. `--all-projects` overrides the default.
 
