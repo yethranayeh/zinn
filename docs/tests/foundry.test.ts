@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { join, relative, resolve } from "node:path";
 
 import { alignmentEdgeOf, gapOf, parsePlacement } from "../foundry/inspector/drafting";
 import {
@@ -10,21 +10,15 @@ import {
   slotCapacity,
   slotStops,
 } from "../foundry/inspector/plates";
+import { foundryBuildDirectory } from "./build-directories";
+import { importsOf } from "./imports";
 
 const docsDirectory = resolve(import.meta.dir, "..");
 const sourceDirectory = join(docsDirectory, "src");
 const uiDirectory = join(sourceDirectory, "components/ui");
-const stylesDirectory = join(sourceDirectory, "styles");
 const foundryDirectory = join(docsDirectory, "foundry");
 const foundryPagesDirectory = join(foundryDirectory, "pages");
 const proposedDirectory = join(foundryDirectory, "proposed");
-const foundryBuildDirectory = join(docsDirectory, "dist-foundry");
-
-const sourceFilePattern = "**/*.{astro,ts,mts,js,mjs,mdx}";
-// Packages that ui components and Foundry may import. Relative imports are checked by folder.
-const allowedPackages = ["astro/types", "tailwind-merge"];
-// Matches the specifier in `from "x"`, `import "x"` and `import("x")`.
-const importPattern = /(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"']+)["']/g;
 
 const uiFolders = readdirSync(uiDirectory, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
@@ -33,35 +27,6 @@ const uiFolders = readdirSync(uiDirectory, { withFileTypes: true })
 const proposedFolders = readdirSync(proposedDirectory, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name);
-
-function sourceFilesIn(directory: string): string[] {
-  return [...new Bun.Glob(sourceFilePattern).scanSync({ cwd: directory, absolute: true })];
-}
-
-function isInside(path: string, directory: string): boolean {
-  return path === directory || path.startsWith(directory + sep);
-}
-
-// Each import as written, with the file it resolves to when it is relative.
-function importsOf(file: string): { specifier: string; target?: string }[] {
-  return [...readFileSync(file, "utf8").matchAll(importPattern)].map(([, specifier]) => {
-    const isRelative = specifier.startsWith(".") || specifier.startsWith("/");
-    return { specifier, target: isRelative ? resolve(dirname(file), specifier.split("?")[0]) : undefined };
-  });
-}
-
-// Lists each import of the files in `directory` that resolves outside `allowedDirectories` or names a package not allowed.
-function importsOutside(directory: string, allowedDirectories: string[]): string[] {
-  return sourceFilesIn(directory).flatMap((file) =>
-    importsOf(file)
-      .filter(({ specifier, target }) =>
-        target === undefined
-          ? !allowedPackages.includes(specifier)
-          : !allowedDirectories.some((allowed) => isInside(target, allowed)),
-      )
-      .map(({ specifier }) => `${relative(docsDirectory, file)}: ${specifier}`),
-  );
-}
 
 test.each(uiFolders)("src/components/ui/%s has a Foundry page", (folder) => {
   expect(existsSync(join(foundryPagesDirectory, `${folder}.astro`))).toBe(true);
@@ -75,52 +40,6 @@ test.each(uiFolders.filter((folder) => existsSync(join(uiDirectory, folder, "var
     expect(pageImports.some(({ target }) => target === variantsFile || target === variantsFile.slice(0, -".ts".length))).toBe(true);
   },
 );
-
-test("ui components import only other ui components, Astro types and tailwind-merge", () => {
-  expect(importsOutside(uiDirectory, [uiDirectory])).toEqual([]);
-});
-
-// `:focus\b` also matches :focus-visible and :focus-within.
-// A style-block comment that names a forbidden token will trip the scan.
-const forbiddenStyleCss = [
-  /:hover\b/,
-  /:focus\b/,
-  /:active\b/,
-  /:disabled\b/,
-  /@media\s*\(\s*hover/,
-  /prefers-reduced-motion/,
-  /\btransition(?:-[\w-]+)?\s*:/,
-  /\banimation(?:-[\w-]+)?\s*:/,
-];
-
-test("ui style blocks contain no hand-written state, transition or animation CSS", () => {
-  const violations = sourceFilesIn(uiDirectory)
-    .filter((file) => file.endsWith(".astro"))
-    .flatMap((file) => {
-      const source = readFileSync(file, "utf8");
-      return [...source.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].flatMap(([, css]) =>
-        forbiddenStyleCss.flatMap((pattern) => {
-          const match = css.match(pattern);
-          return match ? [`${relative(docsDirectory, file)}: ${match[0]}`] : [];
-        }),
-      );
-    });
-
-  expect(violations).toEqual([]);
-});
-
-test("Foundry imports only ui components, styles and its own files", () => {
-  expect(importsOutside(foundryDirectory, [foundryDirectory, uiDirectory, stylesDirectory])).toEqual([]);
-});
-
-test("nothing in src imports Foundry", () => {
-  const foundryImports = sourceFilesIn(sourceDirectory).flatMap((file) =>
-    importsOf(file)
-      .filter(({ target }) => target !== undefined && isInside(target, foundryDirectory))
-      .map(({ specifier }) => `${relative(docsDirectory, file)}: ${specifier}`),
-  );
-  expect(foundryImports).toEqual([]);
-});
 
 test.each(proposedFolders)("foundry/proposed/%s has a Foundry page", (folder) => {
   expect(existsSync(join(foundryPagesDirectory, "proposed", `${folder}.astro`))).toBe(true);

@@ -2,7 +2,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { siteBuildDirectory } from "./build-directories";
+
 const docsDirectory = resolve(import.meta.dir, "..");
+// Arguments name the tests to run, as bun test takes them. Without any, every site test runs.
+const testPaths = process.argv.length > 2 ? process.argv.slice(2) : ["worker", "tests"];
 const temporaryDirectory = await mkdtemp(join(tmpdir(), "zinn-site-test-"));
 const emptyEnvironmentFile = join(temporaryDirectory, "empty.vars");
 await Bun.write(emptyEnvironmentFile, "");
@@ -18,6 +22,8 @@ const wrangler = Bun.spawn(
     "--ip",
     "127.0.0.1",
     "--show-interactive-dev-session=false",
+    "--assets",
+    siteBuildDirectory,
     "--env-file",
     emptyEnvironmentFile,
   ],
@@ -60,7 +66,7 @@ try {
     while (!(await reader.read()).done) {}
     reader.releaseLock();
   })();
-  const tests = Bun.spawn([process.execPath, "test", "worker", "tests"], {
+  const tests = Bun.spawn([process.execPath, "test", ...testPaths], {
     cwd: docsDirectory,
     env: {
       ...process.env,

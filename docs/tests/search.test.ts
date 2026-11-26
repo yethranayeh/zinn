@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 import { orderResults } from "../src/components/search/pagefind";
+import { siteBuildDirectory } from "./build-directories";
 
-const docsDirectory = resolve(import.meta.dir, "..");
 const baseUrl = process.env.SITE_TEST_URL;
 if (!baseUrl) {
   throw new Error("Run bun run --cwd docs test to start the local Cloudflare server.");
@@ -16,7 +16,7 @@ interface SearchPage {
   sub_results: { url: string; title: string }[];
 }
 
-const pagefind = await import(join(docsDirectory, "dist/pagefind/pagefind.js"));
+const pagefind = await import(join(siteBuildDirectory, "pagefind/pagefind.js"));
 await pagefind.options({ basePath: new URL("/pagefind/", baseUrl).href, noWorker: true });
 
 const pathOf = (url: string) => url.replace(baseUrl, "");

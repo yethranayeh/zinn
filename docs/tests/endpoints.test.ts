@@ -38,6 +38,7 @@ import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { siteBuildDirectory } from "./build-directories";
 
 const docsDirectory = resolve(import.meta.dir, "..");
 const contentDirectory = join(docsDirectory, "src/content");
@@ -512,7 +513,7 @@ test.each(["text/markdown", "text/html"])(
     } else {
       expect(body).toContain('<meta name="robots" content="noindex">');
       expect(body).not.toContain('rel="canonical"');
-      expect(body).toBe(await Bun.file(join(docsDirectory, "dist/404.html")).text());
+      expect(body).toBe(await Bun.file(join(siteBuildDirectory, "404.html")).text());
       expect(body).not.toContain('aria-label="Zinn project information"');
       expect(body).toMatch(/<a\b[^>]*href="\/"[^>]*>/);
     }
@@ -711,7 +712,7 @@ test("the further reading debug view is built only outside the production site",
   const isProductionBuild = process.env.SITE_TEST_ENV === "production";
   const html = await (await server.fetch("/docs/installation")).text();
   expect(html.includes("data-further-reading-debug")).toBe(!isProductionBuild);
-  const scriptsDirectory = join(docsDirectory, "dist/_astro");
+  const scriptsDirectory = join(siteBuildDirectory, "_astro");
   const scripts = (await readdir(scriptsDirectory)).filter((file) => file.endsWith(".js"));
   const withDebugView: string[] = [];
   for (const script of scripts) {

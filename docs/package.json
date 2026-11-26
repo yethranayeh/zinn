@@ -9,11 +9,11 @@
 		"steerdown": "steerdown build dist --exclude changelog/ --scope integrations/codex --scope integrations/claude-code --scope integrations/opencode/inspector --scope integrations/opencode/theme --scope integrations/rex/theme --scope integrations/firefox/theme",
 		"check": "bun --bun astro check",
 		"test": "PUBLIC_SITE_ENV=production bun run build && bun run foundry:build && bun tests/run.ts",
-		"deploy": "bun run test && bunx wrangler deploy",
+		"deploy": "bun scripts/deploy.ts site",
 		"preview": "bun --bun astro preview --host 127.0.0.1",
 		"foundry:dev": "bun --bun astro dev --config foundry.config.mjs --host 127.0.0.1 --port 4322 --ignore-lock",
 		"foundry:build": "bun --bun astro build --config foundry.config.mjs",
-		"foundry:deploy": "bun run test && bunx wrangler deploy --config wrangler.foundry.jsonc"
+		"foundry:deploy": "bun scripts/deploy.ts foundry"
 	},
 	"dependencies": {
 		"@astrojs/markdown-satteri": "0.4.3",
