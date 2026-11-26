@@ -57,7 +57,9 @@ And reload the configuration:
 
 ${fence("sh", [rexActions.reload])}
 
-To load one action only, require it by name, such as \`require("zinn.new_task")\`. Run the download again to update the files. To remove the actions, delete the folder and the \`require\` line.
+To load one action only, require it by name, such as \`require("zinn.new_task")\`. To remove the actions, delete the folder and the \`require\` line.
+
+Run the download again to update the files to the current version, ${rexActions.version}. \`${rexActions.versionCheck}\` returns the version you have, and the [changelog](https://zinn.sh${rexActions.changelog}.md) lists the changes.
 
 The download fetches ${fileLinks}.
 

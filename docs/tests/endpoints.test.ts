@@ -996,6 +996,12 @@ test("Rex actions page, its Markdown twin and each action file download", async 
     expect(markdown).toContain(command);
   }
 
+  // Both pages name the version that the served cli.lua carries
+  expect(html).toContain(rexActions.version);
+  expect(markdown).toContain(rexActions.version);
+  const servedCli = await (await server.fetch(`${rexActions.downloadBase}/cli.lua`)).text();
+  expect(servedCli).toContain(`local version = "${rexActions.version}"`);
+
   // Every action file in the repository is published, and nothing else
   const actionsDirectory = join(docsDirectory, "../integrations/rex/zinn");
   const sourceFiles = (await readdir(actionsDirectory)).filter((name) => name.endsWith(".lua"));

@@ -1,8 +1,37 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
+// The docs build and its tests run from docs/, while other tests run from the repository root.
+const actionRoots = ["../integrations/rex/zinn", "integrations/rex/zinn"];
+const versionLine = /^local version = "([^"]+)"$/m;
+
+/** The actions' version, read from the cli.lua that zinn.sh serves. */
+function readActionsVersion(): string {
+  for (const root of actionRoots) {
+    const path = join(process.cwd(), root, "cli.lua");
+    if (!existsSync(path)) {
+      continue;
+    }
+
+    const version = versionLine.exec(readFileSync(path, "utf8"))?.[1];
+    if (version === undefined) {
+      throw new Error(`${path} has no version line`);
+    }
+
+    return version;
+  }
+
+  throw new Error(`No integrations/rex/zinn/cli.lua under ${process.cwd()}`);
+}
+
 export const rexActions = {
   title: "Zinn actions for Rex",
   description:
     "Rex palette actions that file a new Zinn task and paste a Zinn task into the program in a pane: requirements, installation, key bindings and calls to Zinn.",
   path: "/integrations/rex/actions",
+  version: readActionsVersion(),
+  versionCheck: 'require("zinn").version',
+  changelog: "/changelog",
   site: "https://www.superlogical.com/rex",
   configDocs: "https://www.superlogical.com/rex/docs/customize/config#file-location",
   introduction:

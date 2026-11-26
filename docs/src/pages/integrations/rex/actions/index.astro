@@ -115,8 +115,13 @@ const sectionBody = "[&>:first-child]:mt-0";
 				<TerminalCommands class='mt-6' label='Reload the Rex configuration' commands={[rexActions.reload]} />
 				<Prose class={sectionBody}>
 					<p>
-						To load one action only, require it by name, such as <code>require("zinn.new_task")</code>. Run the download
-						again to update the files. To remove the actions, delete the folder and the <code>require</code> line.
+						To load one action only, require it by name, such as <code>require("zinn.new_task")</code>. To remove the
+						actions, delete the folder and the <code>require</code> line.
+					</p>
+					<p>
+						Run the download again to update the files to the current version, {rexActions.version}.{" "}
+						<code>{rexActions.versionCheck}</code> returns the version you have, and the{" "}
+						<Link href={rexActions.changelog}>changelog</Link> lists the changes.
 					</p>
 					<p>
 						The download fetches{" "}

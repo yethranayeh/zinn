@@ -1,8 +1,10 @@
 -- Runs the zinn CLI where the Rex server runs and returns its decoded JSON output
 local cli = {}
 
--- Version is recorded in each command's client chain
+-- The actions' version, recorded in each command's client chain and exposed as require("zinn").version
 local version = "0.1.0"
+cli.version = version
+
 local command_timeout_seconds = 20
 local shell_timeout_seconds = 10
 -- Printed around the shell's environment so that output from its startup files is skipped
