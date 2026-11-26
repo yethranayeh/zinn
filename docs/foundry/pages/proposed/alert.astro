@@ -1,0 +1,53 @@
+---
+import ComponentHeading from "../../components/ComponentHeading.astro";
+import Specimen from "../../components/Specimen.astro";
+import FoundryLayout from "../../layouts/FoundryLayout.astro";
+import Alert from "../../proposed/alert/Alert.astro";
+
+import { alertVariants, type AlertVariant } from "../../proposed/alert/variants";
+
+const variants = Object.keys(alertVariants.variants.variant) as AlertVariant[];
+---
+
+<FoundryLayout
+	title='Alert'
+	description='Alert reports a state of the page or of the browser, with a title that names it.'>
+	<ComponentHeading folder='alert'>
+		<p>
+			A boxed notice that reports a state of the page or of the visitor's browser. The title says what happened. The
+			body explains it and can hold a control that responds to it.
+		</p>
+		<p>
+			<code>note</code> is the default. <code>error</code> reports something that does not work as intended. The title carries
+			the meaning, and the color repeats it.
+		</p>
+	</ComponentHeading>
+
+	<section class='flex flex-col gap-4' aria-labelledby='variants'>
+		<h2 id='variants' class='text-xl font-semibold'>Variants</h2>
+		<div class='grid gap-4 md:grid-cols-2'>
+			{
+				variants.map((variant) => (
+					<Specimen label={`<Alert variant="${variant}" title="..." />`} block>
+						<Alert variant={variant} title='Block caret not supported'>
+							<p>This browser draws a thin bar instead of the block.</p>
+						</Alert>
+					</Specimen>
+				))
+			}
+		</div>
+	</section>
+
+	<section class='flex flex-col gap-4' aria-labelledby='in-context'>
+		<h2 id='in-context' class='text-xl font-semibold'>In context</h2>
+		<Specimen label='With a control in the body' block>
+			<Alert variant='error' title='Block caret not supported'>
+				<p>This browser draws a thin bar instead of the block.</p>
+				<label class='flex min-h-11 cursor-pointer items-center gap-2 font-mono text-xs'>
+					<input type='checkbox' class='size-4 cursor-pointer accent-soot' />
+					Simulate block caret
+				</label>
+			</Alert>
+		</Specimen>
+	</section>
+</FoundryLayout>

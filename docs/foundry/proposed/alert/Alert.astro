@@ -1,0 +1,20 @@
+---
+import type { HTMLAttributes } from "astro/types";
+import type { AlertVariant } from "./variants";
+
+import { twMerge } from "tailwind-merge";
+import { alertVariants } from "./variants";
+
+type Props = HTMLAttributes<"div"> & {
+	/** Says what happened. The variant's color only repeats it. */
+	title: string;
+	variant?: AlertVariant;
+};
+
+const { title, variant = alertVariants.defaultVariants.variant, class: className, ...attributes } = Astro.props;
+---
+
+<div class={twMerge(alertVariants.base, alertVariants.variants.variant[variant], className)} {...attributes}>
+	<p class='font-semibold'>{title}</p>
+	<slot />
+</div>
