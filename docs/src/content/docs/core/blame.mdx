@@ -4,6 +4,8 @@ description: Read recorded field and description attribution and the TaskBlame r
 toc: true
 ---
 
+import TypeShape from "../../../components/docs/TypeShape.astro";
+
 # Task attribution
 
 ## Read attribution
@@ -39,46 +41,10 @@ The replay follows per-task activity ID order. Missing or unrecognized history y
 
 ## Result types
 
-```ts title="Task blame result shape"
-type TaskAttribution = {
-	id: string;
-	created_at: number;
-	actor_name: string | null;
-	actor_email: string | null;
-	actor_kind: ActorKind;
-	actor_source: string | null;
-	actor_session_id: string | null;
-	actor_thread_id: string | null;
-	actor_agent: string | null;
-	actor_model: string | null;
-	actor_effort: string | null;
-	actor_client: string | null;
-	actor_directory: string | null;
-};
-type TaskBlamedValue<T> = { value: T; attribution: TaskAttribution | null };
-type TaskBlame = {
-	task: { id: string; key: string };
-	fields: {
-		title: TaskBlamedValue<string>;
-		column: TaskBlamedValue<{ id: string; name: string }>;
-		priority: TaskBlamedValue<TaskPriority | null>;
-		due_at: TaskBlamedValue<number | null>;
-		labels: TaskBlamedValue<Array<{ id: string; name: string }>>;
-		parent: TaskBlamedValue<{ id: string; key: string } | null>;
-	};
-	relations: Array<{
-		id: string;
-		type: TaskRelationType;
-		direction: "outgoing" | "incoming" | null;
-		task: { id: string; key: string };
-		attribution: TaskAttribution | null;
-	}>;
-	description: Array<{
-		line: number;
-		text: string;
-		attribution: TaskAttribution | null;
-	}>;
-};
-```
+<TypeShape
+	from='packages/core/index.ts'
+	names={["TaskAttribution", "TaskBlamedValue", "TaskBlame"]}
+	title='Task blame result shape'
+/>
 
 `TaskAttribution` contains only the listed recorded event fields, without a changes payload. Timestamps are integer Unix epoch milliseconds. Labels use the existing label name order. Relations use creation time ascending, then relation ID ascending. `direction` is relative to the inspected task and is `null` for symmetric `related` links. Description line numbers start at one.

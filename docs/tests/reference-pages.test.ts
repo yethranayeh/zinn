@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { exportedPropertyNames } from "./type-shape-source";
 
 const baseUrl = process.env.SITE_TEST_URL;
 if (!baseUrl) {
@@ -101,6 +102,17 @@ test.each(pages)("%s has working documentation links in its Markdown twin", asyn
     expect(targetResponse.headers.get("Content-Type")).toContain("text/markdown");
     if (fragment) {
       expect(await htmlAt(target!.replace(/\.md$/, ""))).toContain(`id="${fragment}"`);
+    }
+  }
+});
+
+test("the blame page and its Markdown twin print every TaskAttribution property", async () => {
+  const markdownResponse = await fetch(new URL("/docs/core/blame.md", baseUrl));
+  expect(markdownResponse.status).toBe(200);
+  const pages = [await htmlAt("/docs/core/blame"), await markdownResponse.text()];
+  for (const page of pages) {
+    for (const property of exportedPropertyNames("packages/core/index.ts", "TaskAttribution")) {
+      expect(page).toMatch(new RegExp(`\\b${property}\\??: `));
     }
   }
 });

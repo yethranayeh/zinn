@@ -1,0 +1,15 @@
+---
+import MarkdownCommands from "../MarkdownCommands.astro";
+import { typeShape } from "./type-shape";
+
+interface Props {
+	from: string;
+	names: Array<string>;
+	title: string;
+	asWritten?: Array<string>;
+}
+
+const { from, names, title, asWritten } = Astro.props;
+---
+
+<MarkdownCommands data-label={title} data-commands={typeShape(from, names, asWritten)} data-language='ts' />

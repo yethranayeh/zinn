@@ -135,6 +135,7 @@ async function expectMarkdownTwin(page: string, source: string) {
     .replace('import Aside from "../../components/ui/aside/Aside.astro";\n', "")
     .replace(/^import Kbd from "[^"]+";\n/m, "")
     .replace(/^import TopicIndex from "[^"]+";\n/m, "")
+    .replace(/^import TypeShape from "[^"]+";\n/m, "")
     .replace(/^\n/, "")
     .replace(/<Kbd\b[^>]*>([\s\S]*?)<\/Kbd>/g, (_match, label) => `\`${label.trim()}\``)
     .replace("<AgentSetup />\n\n", "")
@@ -162,12 +163,19 @@ async function expectMarkdownTwin(page: string, source: string) {
       return `](${target === "" ? "/index.md" : `${target}.md`}${anchor})`;
     },
   );
-  const topicIndex = expectedMarkdown.match(/<TopicIndex(?:\s+label=(["'])(.*?)\1)?\s*\/>/);
-  if (topicIndex) {
-    const [before, after] = expectedMarkdown.split(topicIndex[0]);
-    expect(markdown).toStartWith(before!);
-    expect(markdown).toEndWith(after!);
-    expect(markdown).not.toContain("<TopicIndex");
+  // Components whose Markdown text is generated at build time.
+  const generatedComponent = /<(?:TopicIndex|TypeShape)\b[^>]*\/>/;
+  if (generatedComponent.test(expectedMarkdown)) {
+    const parts = expectedMarkdown.split(new RegExp(generatedComponent, "g"));
+    expect(markdown).toStartWith(parts[0]!);
+    expect(markdown).toEndWith(parts.at(-1)!);
+    let position = 0;
+    for (const part of parts) {
+      const found = markdown.indexOf(part, position);
+      expect(found).toBeGreaterThanOrEqual(position);
+      position = found + part.length;
+    }
+    expect(markdown).not.toMatch(/<(?:TopicIndex|TypeShape)\b/);
   } else {
     expect(markdown).toBe(expectedMarkdown);
   }
@@ -367,6 +375,14 @@ test.each(docsSources)(
     expect(html).toContain(`rel="canonical" href="https://zinn.sh/${page}/"`);
     const markdown = await expectMarkdownTwin(page, source);
     const sourceText = await Bun.file(join(contentDirectory, source)).text();
+    for (const [, title] of sourceText.matchAll(/<TypeShape\b[^>]*\btitle="([^"]+)"[^>]*\/>/g)) {
+      const htmlBlock = html.match(
+        new RegExp(`<pre\\b[^>]*aria-label="${title}"[^>]*>[\\s\\S]*?<span class="whitespace-pre">([\\s\\S]*?)</span>`),
+      )?.[1];
+      const markdownBlock = markdown.match(new RegExp(`\`\`\`ts title="${title}"\\n([\\s\\S]*?)\\n\`\`\``))?.[1];
+      expect(markdownBlock).toBeDefined();
+      expect(decodeHtmlText(htmlBlock!)).toBe(markdownBlock!);
+    }
     const article = html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/)![1]!;
     const hasContents = /^toc: true$/m.test(sourceText) && /<h[23]\b/.test(article);
     expect(html.includes("data-section-link")).toBe(hasContents);
@@ -1116,3 +1132,12 @@ test("inspector integration page carries the setup guide and its Markdown twin",
     expect(text).toContain(range);
   }
 });
+
+function decodeHtmlText(text: string) {
+  return text
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
+}

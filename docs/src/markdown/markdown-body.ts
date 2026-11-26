@@ -1,4 +1,5 @@
 import { getTopicIndex } from "../components/docs/topic-index";
+import { typeShape, typeShapeProps } from "../components/docs/type-shape";
 import { markdownTwinPath } from "./twin-path";
 
 // HTML controls are omitted. Content indexes, notes and key labels keep their text.
@@ -16,11 +17,17 @@ export async function markdownBody(body: string, pageId: string) {
       .join("\n");
     body = body.replace(topicIndex[0], () => `## ${topicIndex[2] ?? "All topics"}\n\n${links}`);
   }
+  body = body.replace(/<TypeShape\b[^>]*\/>/g, (tag) => {
+    const { from, names, title, asWritten } = typeShapeProps(tag);
+    return `\`\`\`ts title="${title}"\n${typeShape(from, names, asWritten)}\n\`\`\``;
+  });
+
   return body
     .replace(/^import AgentSetup from ["'][^"']+["'];\r?\n/m, "")
     .replace(/^import Aside from ["'][^"']+["'];\r?\n/m, "")
     .replace(/^import Kbd from ["'][^"']+["'];\r?\n/m, "")
     .replace(/^import TopicIndex from ["'][^"']+["'];\r?\n/m, "")
+    .replace(/^import TypeShape from ["'][^"']+["'];\r?\n/m, "")
     .replace(/^\r?\n/, "")
     .replace(/<Kbd\b[^>]*>([\s\S]*?)<\/Kbd>/g, (_match, label: string) => `\`${label.trim()}\``)
     .replace(/^<AgentSetup \/>\r?\n\r?\n/m, "")
