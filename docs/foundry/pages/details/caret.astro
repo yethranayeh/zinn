@@ -1,0 +1,100 @@
+---
+import FoundryLayout from "../../layouts/FoundryLayout.astro";
+import CaretSimulation from "../../components/CaretSimulation.astro";
+import Specimen from "../../components/Specimen.astro";
+import Icon from "../../../src/components/ui/icon/Icon.astro";
+import Input from "../../../src/components/ui/input/Input.astro";
+import Link from "../../../src/components/ui/link/Link.astro";
+import Table from "../../../src/components/ui/table/Table.astro";
+import TableCell from "../../../src/components/ui/table/TableCell.astro";
+import TableHead from "../../../src/components/ui/table/TableHead.astro";
+import TableRow from "../../../src/components/ui/table/TableRow.astro";
+
+import { inputVariants, type InputVariant } from "../../../src/components/ui/input/variants";
+
+const variants = Object.keys(inputVariants.variants.variant) as InputVariant[];
+const browsers = ["Chrome", "Edge", "Firefox", "Safari"];
+// First supporting version per browser, from MDN's browser compatibility data
+const support = [
+	{
+		property: "caret-color",
+		reference: "https://developer.mozilla.org/docs/Web/CSS/caret-color",
+		versions: ["57", "79", "53", "11.1"]
+	},
+	{
+		property: "caret-shape",
+		reference: "https://developer.mozilla.org/docs/Web/CSS/caret-shape",
+		versions: ["144", "144", null, null]
+	}
+];
+---
+
+<FoundryLayout title='Caret' description='The text caret in Input, a bronze block that turns cinnabar while deleting.'>
+	<header class='flex max-w-[65ch] flex-col gap-4'>
+		<h1 class='text-3xl font-semibold md:text-4xl'>Caret</h1>
+		<p class='font-mono text-xs wrap-anywhere text-muted-foreground'>docs/src/components/ui/input/variants.ts</p>
+		<div
+			class='flex flex-col gap-3 [&_code]:bg-[color-mix(in_srgb,currentColor_8%,transparent)] [&_code]:px-[0.22em] [&_code]:py-[0.05em] [&_code]:text-[0.85em]'>
+			<p>
+				Every Input has a bronze block caret that turns cinnabar while text is being deleted. The block covers the next
+				character, which keeps the text color. The browser controls the blink.
+			</p>
+			<p>
+				Browsers without <code>caret-shape</code> draw a thin bar in the same colors. Where the block is missing, an alert
+				above the fields offers to simulate it there. zinn.sh always uses the native caret.
+			</p>
+		</div>
+	</header>
+
+	<section class='flex flex-col gap-4' aria-labelledby='specimens'>
+		<h2 id='specimens' class='text-xl font-semibold'>Specimens</h2>
+		<CaretSimulation />
+		<div class='grid gap-4 md:grid-cols-2'>
+			{
+				variants.map((variant) => (
+					<Specimen label={`<Input variant="${variant}" />`} block>
+						<Input variant={variant} class='w-full' aria-label='Command' value='zinn task list' spellcheck='false' />
+					</Specimen>
+				))
+			}
+		</div>
+		<p class='text-sm text-muted-foreground'>Click into a field and press Backspace to see the deleting color.</p>
+	</section>
+
+	<section class='flex flex-col gap-4' aria-labelledby='browser-support'>
+		<h2 id='browser-support' class='text-xl font-semibold'>Browser support</h2>
+		<Table>
+			<thead>
+				<TableRow>
+					<TableHead>Property</TableHead>
+					{browsers.map((browser) => <TableHead>{browser}</TableHead>)}
+				</TableRow>
+			</thead>
+			<tbody>
+				{
+					support.map(({ property, reference, versions }) => (
+						<TableRow>
+							<TableCell>
+								<Link href={reference} target='_blank'>
+									{property}
+								</Link>
+							</TableCell>
+							{versions.map((version) => (
+								<TableCell>
+									{version ? (
+										`${version} and later`
+									) : (
+										<>
+											<Icon name='close' class='inline-block size-5 align-[-0.25em] text-cinnabar' />
+											<span class='sr-only'>No</span>
+										</>
+									)}
+								</TableCell>
+							))}
+						</TableRow>
+					))
+				}
+			</tbody>
+		</Table>
+	</section>
+</FoundryLayout>

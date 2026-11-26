@@ -1,0 +1,141 @@
+---
+import Alert from "../proposed/alert/Alert.astro";
+---
+
+<div class='hidden not-supports-[caret-shape:block]:block'>
+	<Alert variant='error' title='Block caret not supported'>
+		<p>This browser draws a thin bar instead of the block.</p>
+		<label class='flex min-h-11 cursor-pointer items-center gap-2 font-mono text-xs'>
+			<input type='checkbox' class='size-4 cursor-pointer accent-soot' data-caret-simulation-switch />
+			Simulate block caret
+		</label>
+	</Alert>
+</div>
+
+<style>
+	@keyframes foundry-caret-blink {
+		0% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0;
+		}
+		100% {
+			opacity: 0;
+		}
+	}
+</style>
+
+<script>
+	// Draws a block caret over every Input on the page, for browsers without caret-shape
+	const OVERLAY_CLASSES =
+		"pointer-events-none absolute z-10 hidden overflow-hidden whitespace-pre bg-bronze data-deleting:bg-cinnabar data-visible:block data-blink:animate-[foundry-caret-blink_1s_steps(1)_infinite] motion-reduce:animate-none";
+
+	const simulationSwitch = document.querySelector<HTMLInputElement>("[data-caret-simulation-switch]")!;
+	// Measures text as the page lays it out, with the input's font
+	const measure = document.createElement("span");
+	measure.className = "invisible absolute top-0 left-0 whitespace-pre";
+	measure.setAttribute("aria-hidden", "true");
+	document.body.append(measure);
+
+	type Caret = { input: HTMLInputElement; overlay: HTMLElement; lastState: string };
+	let carets: Caret[] = [];
+	let frame = 0;
+
+	function textWidth(font: string, text: string) {
+		measure.style.font = font;
+		measure.textContent = text;
+		return measure.getBoundingClientRect().width;
+	}
+
+	function place({ input, overlay }: Caret) {
+		const start = input.selectionStart ?? 0;
+		const collapsed = start === input.selectionEnd;
+		const focused = document.activeElement === input;
+		overlay.toggleAttribute("data-deleting", input.hasAttribute("data-deleting"));
+		if (!focused || !collapsed) {
+			overlay.removeAttribute("data-visible");
+			return;
+		}
+
+		const style = getComputedStyle(input);
+		// The input's clientLeft and clientTop can include its padding, so read the borders directly
+		const paddingLeft = parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+		const paddingTop = parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop);
+		const contentWidth = input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+		const contentHeight = input.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+		// The block covers the next character, or a space's width at the end of the text
+		const nextCharacter = input.value.charAt(start);
+		const x = textWidth(style.font, input.value.slice(0, start)) - input.scrollLeft;
+		const visibleWidth = Math.min(textWidth(style.font, nextCharacter || " "), contentWidth - x);
+
+		// A space keeps the block one line tall at the end of the text
+		overlay.textContent = nextCharacter || " ";
+		overlay.style.font = style.font;
+		overlay.style.color = style.color;
+		const container = overlay.offsetParent ?? document.documentElement;
+		const inputBox = input.getBoundingClientRect();
+		const containerBox = container.getBoundingClientRect();
+		const inputLeft = inputBox.left - containerBox.left - container.clientLeft + container.scrollLeft;
+		const inputTop = inputBox.top - containerBox.top - container.clientTop + container.scrollTop;
+		overlay.style.left = `${inputLeft + paddingLeft + x}px`;
+		overlay.style.width = `${visibleWidth}px`;
+		overlay.toggleAttribute("data-visible", x >= 0 && visibleWidth > 0);
+		overlay.style.top = `${inputTop + paddingTop + (contentHeight - overlay.offsetHeight) / 2}px`;
+	}
+
+	// Restarts the blink whenever the caret moves or the text changes, as native carets do
+	function restartBlink(caret: Caret) {
+		const { input, overlay } = caret;
+		const state = JSON.stringify([
+			input.value,
+			input.selectionStart,
+			input.scrollLeft,
+			document.activeElement === input
+		]);
+		if (state === caret.lastState) {
+			return;
+		}
+		caret.lastState = state;
+		overlay.removeAttribute("data-blink");
+		void overlay.offsetWidth;
+		overlay.setAttribute("data-blink", "");
+	}
+
+	function update() {
+		for (const caret of carets) {
+			place(caret);
+			restartBlink(caret);
+		}
+		frame = requestAnimationFrame(update);
+	}
+
+	function start() {
+		carets = [...document.querySelectorAll<HTMLInputElement>("[data-input]")].map((input) => {
+			const overlay = document.createElement("span");
+			overlay.className = OVERLAY_CLASSES;
+			overlay.setAttribute("aria-hidden", "true");
+			input.after(overlay);
+			input.style.caretColor = "transparent";
+			return { input, overlay, lastState: "" };
+		});
+		frame = requestAnimationFrame(update);
+	}
+
+	function stop() {
+		cancelAnimationFrame(frame);
+		for (const { input, overlay } of carets) {
+			overlay.remove();
+			input.style.caretColor = "";
+		}
+		carets = [];
+	}
+
+	simulationSwitch.addEventListener("change", () => {
+		if (simulationSwitch.checked) {
+			start();
+		} else {
+			stop();
+		}
+	});
+</script>

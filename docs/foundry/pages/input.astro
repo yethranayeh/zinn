@@ -7,6 +7,7 @@ import Specimen from "../components/Specimen.astro";
 import Button from "../../src/components/ui/button/Button.astro";
 import Dialog from "../../src/components/ui/dialog/Dialog.astro";
 import Input from "../../src/components/ui/input/Input.astro";
+import Link from "../../src/components/ui/link/Link.astro";
 
 import { inputVariants } from "../../src/components/ui/input/variants";
 
@@ -27,8 +28,8 @@ const variants = Object.keys(inputVariants.variants.variant) as InputVariant[];
 			shows the site's outline unless a class changes it.
 		</p>
 		<p>
-			The caret is a bronze block, and turns cinnabar while text is being deleted. The block shows in Chrome and Edge
-			144 and later. Other browsers show a thin bar in the same colors. The browser controls the blink.
+			The <Link href='/details/caret/'>Caret</Link> is a bronze block, and turns cinnabar while text is being deleted. The
+			browser controls the blink.
 		</p>
 	</ComponentHeading>
 

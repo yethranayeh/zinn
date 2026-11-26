@@ -17,6 +17,12 @@ export const uiComponents = componentsIn(
   "docs/src/components/ui",
 );
 
+export const detailPages = Object.keys(import.meta.glob("./pages/details/*.astro")).map((file) => {
+  const slug = file.slice("./pages/details/".length, -".astro".length);
+  const name = slug.charAt(0).toUpperCase() + slug.slice(1).replaceAll("-", " ");
+  return { href: `/details/${slug}/`, name };
+});
+
 // Foundry-owned components that zinn.sh does not use.
 export const proposedComponents = componentsIn(
   Object.keys(import.meta.glob("./proposed/*/*.astro")),

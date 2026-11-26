@@ -3,7 +3,7 @@ import colorsCss from "../../src/styles/colors.css?raw";
 import globalCss from "../../src/styles/global.css?raw";
 import FoundryLayout from "../layouts/FoundryLayout.astro";
 import Swatch from "../../src/components/ui/swatch/Swatch.astro";
-import { proposedComponents, uiComponents } from "../ui";
+import { detailPages, proposedComponents, uiComponents } from "../ui";
 
 // The palette and typefaces come from their CSS sources.
 const theme = globalCss.match(/@theme \{([\s\S]*?)\n\}/)?.[1] ?? "";
@@ -50,12 +50,32 @@ const typefaces = [...theme.matchAll(/--font-([\w-]+): "([^"]+)"/g)].map(([, nam
 				<h2 id='proposed' class='text-xl font-semibold'>
 					Proposed
 				</h2>
-				<p>Proposed specimens are not used on zinn.sh.</p>
+				<p>Proposed specimens for future consideration</p>
 				<ul class='grid border-t border-l border-soot/20 sm:grid-cols-2 lg:grid-cols-3'>
 					{proposedComponents.map((component) => (
 						<li class='border-r border-b border-soot/20'>
 							<a href={`/proposed/${component.folder}/`} class='block p-4 font-mono text-sm'>
 								{component.name}
+							</a>
+						</li>
+					))}
+				</ul>
+			</section>
+		)
+	}
+
+	{
+		detailPages.length > 0 && (
+			<section class='flex flex-col gap-4' aria-labelledby='details'>
+				<h2 id='details' class='text-xl font-semibold'>
+					Details
+				</h2>
+				<p>The finer aspects of the design for the keen eye</p>
+				<ul class='grid border-t border-l border-soot/20 sm:grid-cols-2 lg:grid-cols-3'>
+					{detailPages.map((page) => (
+						<li class='border-r border-b border-soot/20'>
+							<a href={page.href} class='block p-4 font-mono text-sm'>
+								{page.name}
 							</a>
 						</li>
 					))}
