@@ -13,7 +13,7 @@ test("parser repairs stay complete through the message limit and become guidance
     try {
       parseArgs({ args, options: { description: { type: "string" } }, allowPositionals: true });
     } catch (error) {
-      return parseArgsFailure(error, args, () => undefined, ["task", "create"])!.message;
+      return parseArgsFailure(error, args, () => undefined, ["task", "create"], { description: { type: "string" } })!.message;
     }
     throw new Error("Expected a parser refusal");
   };

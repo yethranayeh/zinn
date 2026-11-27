@@ -491,38 +491,59 @@ export function shellQuote(word: string) {
 }
 
 /**
- * The message for `parseArgs` refusal of a value that begins with a dash, showing the user's
- *  command with that value joined to its flag.
+ * The message for `parseArgs` refusal of values that begin with a dash, showing the user's
+ *  command with every such value joined to its flag.
  * `null` for any other error
  */
-function dashValueMessage(error: any, args: Array<string>) {
-  const isInvalidOptionValue = error?.code === "ERR_PARSE_ARGS_INVALID_OPTION_VALUE";
-  const flag = isInvalidOptionValue ? DASH_VALUE_ERROR_PATTERN.exec(error.message)?.[1] : undefined;
-  const flagIndex = args.findIndex(
-    (arg, index) => arg === flag && args[index + 1]?.startsWith("-"),
-  );
-
-  if (flagIndex === -1) {
+function dashValueMessage(error: any, args: Array<string>, options: ParseArgsOptionsConfig) {
+  const isDashValueError =
+    error?.code === "ERR_PARSE_ARGS_INVALID_OPTION_VALUE" &&
+    DASH_VALUE_ERROR_PATTERN.test(error.message);
+  if (!isDashValueError) {
     return null;
   }
 
-  const value = args[flagIndex + 1]!;
-  const fixedCommand = [
-    "zinn",
-    ...args.slice(0, flagIndex).map(shellQuote),
-    `${flag}=${shellQuote(value)}`,
-    ...args.slice(flagIndex + 2).map(shellQuote),
-  ].join(" ");
-
-  const reason = `Option "${flag}" is followed by "${value}", which begins with a dash.`;
-  return boundParserMessage(
-    `${reason} If it is the value, join it to the flag with =: ${fixedCommand}`,
-    {
-      reason,
-      guidance:
-        "Join the original value to its flag with =. Full command omitted because it is long.",
-    },
+  // Without strict checks, parseArgs reads the word after a string flag as its value.
+  const { tokens } = parseArgs({
+    args,
+    options,
+    allowPositionals: true,
+    strict: false,
+    tokens: true,
+  });
+  const dashValues = tokens.flatMap((token) =>
+    token.kind === "option" && !token.inlineValue && token.value?.startsWith("-")
+      ? [{ index: token.index, flag: token.rawName, value: token.value }]
+      : [],
   );
+
+  if (dashValues.length === 0) {
+    return null;
+  }
+
+  const fixedWords = args.map(shellQuote);
+  for (const { index, flag, value } of dashValues) {
+    fixedWords[index] = `${flag}=${shellQuote(value)}`;
+    fixedWords[index + 1] = "";
+  }
+  const fixedCommand = ["zinn", ...fixedWords.filter((word) => word !== "")].join(" ");
+
+  const [first] = dashValues;
+  const reason =
+    dashValues.length === 1
+      ? `Option "${first!.flag}" is followed by "${first!.value}", which begins with a dash.`
+      : `Options are followed by values that begin with a dash: ${dashValues
+          .map(({ flag, value }) => `${flag} "${value}"`)
+          .join(", ")}.`;
+  const fix =
+    dashValues.length === 1
+      ? "If it is the value, join it to the flag with ="
+      : "If they are the values, join each to its flag with =";
+  return boundParserMessage(`${reason} ${fix}: ${fixedCommand}`, {
+    reason,
+    guidance:
+      "Join each original value to its flag with =. Full command omitted because it is long.",
+  });
 }
 
 // "Unknown option '--project'."
@@ -652,6 +673,7 @@ export function parseArgsFailure(
   args: Array<string>,
   suggestFor: SuggestFor,
   route: Array<string>,
+  options: ParseArgsOptionsConfig,
 ) {
   if (!isParseArgsError(error)) {
     return null;
@@ -670,7 +692,7 @@ export function parseArgsFailure(
     );
   }
 
-  const dashMessage = dashValueMessage(error, args);
+  const dashMessage = dashValueMessage(error, args, options);
   const isMissingValue =
     code === "ERR_PARSE_ARGS_INVALID_OPTION_VALUE" && / argument missing$/.test(error.message);
   const reason =

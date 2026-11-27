@@ -1,3 +1,4 @@
+import type { ParseArgsOptionsConfig } from "node:util";
 import type { Command, ParsedRoute, RouteDef } from "../types.js";
 
 import { parseArgs } from "node:util";
@@ -353,9 +354,15 @@ async function route(
         : { args: suggestion, route: target.match.command.split(" ") };
     };
 
-    const parserFailure = parseArgsFailure(err, rawArgs, suggestFor, match.command.split(" "));
-    if (parserFailure !== null) {
-      parserFailure.help = getUsage(match.help);
+    if (isParseArgsError(err)) {
+      const parserFailure = parseArgsFailure(
+        err,
+        rawArgs,
+        suggestFor,
+        match.command.split(" "),
+        match.input.options as ParseArgsOptionsConfig,
+      );
+      parserFailure!.help = getUsage(match.help);
       throw parserFailure;
     }
 

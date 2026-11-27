@@ -519,6 +519,26 @@ test("the command shown for a value that begins with a dash runs as shown", asyn
   });
 });
 
+test("the command shown for several values that begin with a dash joins each of them and runs as shown", async () => {
+  // ZINN-617
+  await withIsolatedZinnDir(async (dir) => {
+    await runZinn(["project", "create", "SHOP"], dir);
+    const refused = await runZinn(["task", "create", "SHOP", "--title", "- first", "--description", "- second", "--json"], dir);
+    expect(refused.code).toBe(1);
+    expect(refused.stdout).toBe("");
+
+    const { error } = JSON.parse(refused.stderr);
+    expect(error.message).toContain("--title='- first'");
+    expect(error.message).toContain("--description='- second'");
+    const shownArgs = error.message.match(/zinn (.*)$/)[1];
+    const proc = await runProcessAsync(["/bin/sh", "-c", `exec bun "$0" ${shownArgs}`, CLI_PATH], {
+      env: { ...TEST_ENVIRONMENT, ZINN_DIR: dir }, cwd: dir,
+    });
+    expect(proc.code).toBe(0);
+    expect(JSON.parse(proc.stdout)).toMatchObject({ title: "- first", description: "- second" });
+  });
+});
+
 test("long parser and routing errors bound both output modes without changing error facts or writing data", async () => {
   await withIsolatedZinnDir(async (directory) => {
     const longText = "x".repeat(1300);
