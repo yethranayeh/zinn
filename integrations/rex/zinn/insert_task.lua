@@ -1,42 +1,10 @@
 local cli = require("zinn.cli")
+local task_picker = require("zinn.task_picker")
 
 local part = "insert-task"
 local terminal = "com.superlogical.terminal"
--- Max limit of items accepted by rex.ui.pick
-local picker_item_limit = 2000
--- Recognizable enough length
-local subtitle_length = 120
 local paste_start = "\27[200~"
 local paste_end = "\27[201~"
-
-local function first_line(text)
-  local line = (text or ""):match("^[^\n]*")
-  if #line <= subtitle_length then
-    return line
-  end
-
-  return (line:sub(1, subtitle_length):gsub("[\192-\255][\128-\191]*$", "")) .. "…"
-end
-
-local function choose_task()
-  local tasks = cli.run(part, {
-    "task", "list", "--all-projects", "--state", "open",
-    "--sort", "activity", "--limit", tostring(picker_item_limit),
-  })
-
-  local items = {}
-  for _, task in ipairs(tasks) do
-    items[#items + 1] = {
-      id = task.key,
-      title = task.key .. "  " .. task.title,
-      subtitle = first_line(task.description),
-      detail = task.column,
-      icon = "tag",
-    }
-  end
-
-  return rex.ui.pick{ title = "Insert task", placeholder = "Filter by key or title", items = items }
-end
 
 local function block_call(method, block_id)
   local result, call_error = rex.block.call(terminal, method, { block_id = block_id })
@@ -121,7 +89,7 @@ rex.action{
 
     if key == nil then
       local reason
-      key, reason = choose_task()
+      key, reason = task_picker.choose(part, "Insert task")
       if key == nil then
         return { inserted = false, reason = reason }
       end

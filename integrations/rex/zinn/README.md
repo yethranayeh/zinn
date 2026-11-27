@@ -8,6 +8,8 @@ Rex palette actions that work with your Zinn tasks.
 
 **Zinn: Insert task** (`zinn_insert_task`) lets you pick an open task. When you pick it, the task's key, title and description are insserted to the input area of whatever is running in the pane. It's just a glorified copy/paste action for a task's details.
 
+**Zinn: Resume session** (`zinn_resume_session`) lets you pick an open task and opens the Claude Code, OpenCode or Codex conversation that changed it in a new tab. The tab is autonamed after the task. If and when several sessions changed a task, it will first asks which agent session you would like to continue with. If a tab it opened for that conversation is still running, it focuses that tab instead.
+
 The list holds the 2000 most recently active open tasks.
 
 > [!CAUTION]
@@ -47,6 +49,7 @@ The actions come without any key bindings. You can optionally bind keys to them 
 ```lua
 rex.bind("cmd+alt+n", "zinn_new_task")
 rex.bind("cmd+i", "zinn_insert_task")
+rex.bind("cmd+alt+r", "zinn_resume_session")
 ```
 
 The actions can also take arguments, and they don't ask for any value they are given. With `project`, Zinn: New task files the task there without asking:
@@ -57,8 +60,8 @@ rex.bind("cmd+alt+n", "zinn_new_task", { project = "WEB" })
 
 With `title` as well, it asks nothing, which suits scripts: `rex do zinn_new_task title="Fix the login" project=WEB`.
 
-Zinn: Insert task takes `task` to paste that task without showing the list: `rex.bind("cmd+alt+i", "zinn_insert_task", { task = "WEB-12" })`.
+Zinn: Insert task takes `task` to paste that task without showing the list: `rex.bind("cmd+alt+i", "zinn_insert_task", { task = "WEB-12" })`. Zinn: Resume session takes `task` the same way.
 
 ## Zinn commands
 
-Zinn: New task runs `project list` and `task create`, or only `task create` when `project` is given. Zinn: Insert task runs `task list` and `task view`, or only `task view` when `task` is given. Neither runs anything until you use it. Each command declares `zinn-rex:<action>/<version>` in its [client chain](https://zinn.sh/docs/cli/identity#client-chains).
+Zinn: New task runs `project list` and `task create`, or only `task create` when `project` is given. Zinn: Insert task runs `task list` and `task view`, or only `task view` when `task` is given. Zinn: Resume session runs `task list` and `activity list`, or only `activity list` when `task` is given. None of them runs anything until you use it. Each command declares `zinn-rex:<action>/<version>` in its [client chain](https://zinn.sh/docs/cli/identity#client-chains).

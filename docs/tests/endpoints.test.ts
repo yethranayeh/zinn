@@ -375,7 +375,7 @@ test.each(docsSources)(
     expect(html).toContain(`rel="canonical" href="https://zinn.sh/${page}/"`);
     const markdown = await expectMarkdownTwin(page, source);
     const sourceText = await Bun.file(join(contentDirectory, source)).text();
-    for (const [, title] of sourceText.matchAll(/<TypeShape\b[^>]*\btitle="([^"]+)"[^>]*\/>/g)) {
+    for (const [, , title] of sourceText.matchAll(/<TypeShape\b[^>]*\btitle=(["'])(.+?)\1[^>]*\/>/g)) {
       const htmlBlock = html.match(
         new RegExp(`<pre\\b[^>]*aria-label="${title}"[^>]*>[\\s\\S]*?<span class="whitespace-pre">([\\s\\S]*?)</span>`),
       )?.[1];

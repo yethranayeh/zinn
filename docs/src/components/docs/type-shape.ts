@@ -13,7 +13,7 @@ const resolvedTypeFlags =
 
 // Reads TypeShape's props from its MDX tag for pages that are rendered without MDX
 export function typeShapeProps(tag: string) {
-  const text = (name: string) => tag.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1];
+  const text = (name: string) => tag.match(new RegExp(`\\b${name}=(["'])(.*?)\\1`))?.[2];
   const list = (name: string) => {
     const written = tag.match(new RegExp(`\\b${name}=\\{(\\[[^\\]]*\\])\\}`))?.[1];
     return written === undefined ? undefined : (JSON.parse(written) as Array<string>);

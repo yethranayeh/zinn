@@ -16,6 +16,11 @@ const section = "grid gap-7 border-t border-pewter pt-8 pb-10 md:grid-cols-2 md:
 const sectionHeading = "max-w-sm text-3xl leading-tight tracking-tight md:text-4xl";
 const actionHeading = "mb-3 text-xl font-semibold md:text-2xl";
 const sectionBody = "[&>:first-child]:mt-0";
+const introList = "mt-4 grid gap-2";
+const introItem =
+	"relative pl-[1.3rem] before:absolute before:left-0 before:top-[calc(0.5lh_-_0.19em)] before:size-[0.38em] before:bg-current before:content-['']";
+const introCode =
+	"bg-[color-mix(in_srgb,currentColor_8%,transparent)] px-[0.22em] py-[0.05em] text-[0.85em] box-decoration-clone wrap-anywhere";
 ---
 
 <BaseLayout title='Rex actions' description={rexActions.description}>
@@ -25,10 +30,18 @@ const sectionBody = "[&>:first-child]:mt-0";
 		<section class='pb-9 md:pb-12' aria-labelledby='actions-heading'>
 			<MarkdownH1 id='actions-heading'>{rexActions.title}</MarkdownH1>
 			<div class='grid gap-7 md:grid-cols-[1.1fr_1fr] md:items-end md:gap-12'>
-				<p class='max-w-md text-lg leading-relaxed'>
-					Two palette actions for <Link href={rexActions.site}>Rex</Link>. Zinn: New task files a task. Zinn: Insert
-					task pastes one into the program in the pane, ready for you to send.
-				</p>
+				<div class='max-w-md text-lg leading-relaxed'>
+					<p>Three palette actions for <Link href={rexActions.site}>Rex</Link>.</p>
+					<ul class={introList}>
+						<li class={introItem}><code class={introCode}>Zinn: New task</code> files a task.</li>
+						<li class={introItem}>
+							<code class={introCode}>Zinn: Insert task</code> pastes one into the program in the pane, ready for you to send.
+						</li>
+						<li class={introItem}>
+							<code class={introCode}>Zinn: Resume session</code> opens the agent conversation that changed one.
+						</li>
+					</ul>
+				</div>
 				<div class='flex flex-wrap gap-3 md:justify-end'>
 					<Button href='#installation' variant='solid' size='large'>Installation</Button>
 					<Button href='#keys-and-arguments' variant='outline' size='large'>Keys and arguments</Button>
@@ -67,6 +80,27 @@ const sectionBody = "[&>:first-child]:mt-0";
 					<li>the program does not accept bracketed paste,</li>
 					<li>or the task text contains terminal control characters other than tab and newline.</li>
 				</ul>
+
+				<h3 class:list={[actionHeading, "mt-10"]}>Zinn: Resume session</h3>
+				<p>
+					Pick a task from the same list, and the Claude Code, OpenCode or Codex conversation that changed it opens
+					again in a new tab named after the task. The action finds the conversations in the task's
+					<Link href='/docs/core/activity#activity-records'>activity</Link>. When more than one changed the task, a
+					second list shows them, newest first, with their host, model and directory.
+				</p>
+				<p>
+					The tab starts a shell in the directory Zinn recorded with the change and runs the host's resume command
+					there:
+					<code>claude --resume</code>, <code>opencode --session</code> or <code>codex resume</code>, with the session
+					ID. When you leave the conversation, the shell stays open. Claude Code resumes a session only from the
+					directory it started in, so for Claude Code the tab starts in the nearest parent of the recorded directory
+					that holds the session.
+				</p>
+				<p>
+					When a tab this action opened for the same conversation still runs a program, that tab gets focus and no new
+					tab opens. When no Claude Code, OpenCode or Codex session changed the task, a notification says so and nothing
+					opens.
+				</p>
 			</Prose>
 		</section>
 
@@ -76,6 +110,11 @@ const sectionBody = "[&>:first-child]:mt-0";
 				<ul>
 					<li>Rex with <code>rex.ui</code> prompts, which need control API revision 17 or later.</li>
 					<li>The <code>zinn</code> command on the <code>PATH</code> of the Rex server or of your login shell.</li>
+					<li>
+						To resume a conversation, its host's command, <code>claude</code>, <code>opencode</code> or <code
+							>codex</code
+						>, on your shell's <code>PATH</code>.
+					</li>
 				</ul>
 				<p>
 					The actions run <code>zinn</code> where the Rex server runs, so they use the database that <code>zinn</code>
@@ -162,8 +201,8 @@ const sectionBody = "[&>:first-child]:mt-0";
 			<div class='min-w-0'>
 				<Prose class={sectionBody}>
 					<p>
-						The actions come without key bindings. Bind keys to <code>zinn_new_task</code> and
-						<code>zinn_insert_task</code> in <code>init.lua</code>:
+						The actions come without key bindings. Bind keys to <code>zinn_new_task</code>,
+						<code>zinn_insert_task</code> and <code>zinn_resume_session</code> in <code>init.lua</code>:
 					</p>
 				</Prose>
 				<TerminalCommands
@@ -197,6 +236,9 @@ const sectionBody = "[&>:first-child]:mt-0";
 					commands={[rexActions.taskBinding]}
 					showsPrompt={false}
 				/>
+				<Prose class={sectionBody}>
+					<p>Zinn: Resume session takes <code>task</code> the same way.</p>
+				</Prose>
 			</div>
 		</section>
 
@@ -211,10 +253,14 @@ const sectionBody = "[&>:first-child]:mt-0";
 					Each use of Zinn: New task makes at most two calls, <code>project list</code> and <code>task create</code>, or
 					only <code>task create</code> when <code>project</code> is given. Each use of Zinn: Insert task makes at most two,
 					<code>task list</code> and <code>task view</code>, or only <code>task view</code> when <code>task</code> is given.
+					Each use of Zinn: Resume session makes at most two, <code>task list</code> and <code>activity list</code>, or
+					only
+					<code>activity list</code> when <code>task</code> is given.
 				</p>
 				<p>
 					Each call names its action in the <Link href='/docs/cli/identity#client-chains'>client chain</Link>, as
-					<code>zinn-rex:new-task/&lt;version&gt;</code> or <code>zinn-rex:insert-task/&lt;version&gt;</code>.
+					<code>zinn-rex:new-task/&lt;version&gt;</code>, <code>zinn-rex:insert-task/&lt;version&gt;</code> or
+					<code>zinn-rex:resume-session/&lt;version&gt;</code>.
 				</p>
 			</Prose>
 		</section>

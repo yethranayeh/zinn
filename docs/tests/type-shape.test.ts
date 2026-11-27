@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { typeShape } from "../src/components/docs/type-shape";
+import { typeShape, typeShapeProps } from "../src/components/docs/type-shape";
 import { exportedPropertyNames } from "./type-shape-source";
 
 const core = "packages/core/index.ts";
@@ -44,4 +44,10 @@ test("a CLI type inferred from a zod schema prints its fields", () => {
   const shape = typeShape(cliSchemas, ["PresentedActor"]);
   expect(shape).not.toContain("infer");
   expect(declaredProperties(shape)).toEqual(exportedPropertyNames(cliSchemas, "PresentedActor"));
+});
+
+test("props read the same with single or double quotes, across lines", () => {
+  const expected = { from: "packages/core/index.ts", names: ["TaskBlame"], title: "Task blame result shape", asWritten: undefined };
+  expect(typeShapeProps(`<TypeShape from="packages/core/index.ts" names={["TaskBlame"]} title="Task blame result shape" />`)).toEqual(expected);
+  expect(typeShapeProps(`<TypeShape\n\tfrom='packages/core/index.ts'\n\tnames={["TaskBlame"]}\n\ttitle='Task blame result shape'\n/>`)).toEqual(expected);
 });
