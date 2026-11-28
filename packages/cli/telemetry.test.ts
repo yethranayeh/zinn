@@ -375,6 +375,15 @@ describe("runs that write no record", () => {
     });
   });
 
+  test("a successful skill uninstall leaves a record", async () => {
+    await withIsolatedZinnDir(async (store) => {
+      const stub = stubNpx(store);
+      expect((await runZinn(["skill", "uninstall"], store, stub.env)).code).toBe(0);
+      expect(readRecords(store)).toHaveLength(1);
+      expect(lastRecord(store)).toMatchObject({ exitCode: 0, command: { route: "skill uninstall", help: false } });
+    });
+  });
+
   test("a successful command that writes files outside the store leaves a record", async () => {
     await withIsolatedZinnDir(async (store) => {
       const stub = stubNpx(store);

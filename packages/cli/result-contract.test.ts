@@ -267,6 +267,7 @@ const fixtures: Record<string, Fixture[]> = {
   "capabilities": [{ schema: "Capabilities", args: [] }],
   "whoami": [{ schema: "Actor", args: [] }],
   "skill install": [{ schema: "SkillInstall", args: [], empty: true, env: (directory) => stubNpx(directory).env }],
+  "skill uninstall": [{ schema: "SkillUninstall", args: [], empty: true, env: (directory) => stubNpx(directory).env }],
   "project create": [{ schema: "Project", args: ["NEW"] }],
   "project list": [{ schema: "ProjectList", args: [] }, { schema: "ProjectList", args: [], empty: true, prepare: createEmptyDatabase }],
   "project view": [{ schema: "ProjectView", args: ["APP"] }],

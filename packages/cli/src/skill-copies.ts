@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isMissingFileError } from "@zinn-dev/core";
 
+/** The name the skills CLI and agents know the workflow skill by */
+export const SKILL_NAME = "zinn";
 /** The workflow skill folder that ships with the CLI */
 export const bundledSkillDirectory = fileURLToPath(new URL("../skills/zinn", import.meta.url));
 
@@ -96,7 +98,7 @@ export function findSkillCopies(home: string, workingFolder: string): SkillCopie
     const path = join(
       scope === "home" ? home : workingFolder,
       ...segments,
-      "zinn",
+      SKILL_NAME,
       SKILL_FILE_NAME,
     );
     const realPath = resolveRealPath(path);

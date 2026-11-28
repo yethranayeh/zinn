@@ -85,6 +85,7 @@ const commandWords: Record<string, CommandWords> = {
   doctor: { words: [], required: 0 },
   whoami: { words: [], required: 0 },
   "skill install": { words: [], required: 0 },
+  "skill uninstall": { words: [], required: 0 },
   capabilities: { words: [], required: 0 },
   backup: { words: [], required: 0 },
   restore: { words: ["backup.sqlite"], required: 1 },

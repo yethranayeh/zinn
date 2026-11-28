@@ -43,6 +43,7 @@ test("the emitted contract covers every route and finite result, including itsel
     value: { kind: "task-cursor", name: "cursor" },
   });
   expect(commands.get("skill install")!.effects.external).toEqual(["files", "network"]);
+  expect(commands.get("skill uninstall")!.effects.external).toEqual(["files", "network"]);
   const validator = capabilityValidator(actual);
   for (const route of parseRoutes(routes)) {
     const command = commands.get(route.command);
@@ -109,6 +110,12 @@ test("discovery is deterministic across settings, stores, cwd, locale and debug 
   }
 });
 
+// The --json result of each command that runs another program, given the stub npx.
+const anotherProgramResults: Record<string, unknown> = {
+  "skill install": { source: expect.stringContaining(join("skills", "zinn")) },
+  "skill uninstall": { name: "zinn" },
+};
+
 test.each(parseRoutes(routes).filter((route) => route.effects.storage === "none").map((route) => [route.command, route.effects.external] as const))("%s bypasses settings, storage policy, SQLite and Bun process APIs", async (command, external) => {
   // A command with effects outside Zinn reaches them through another program, so it keeps process APIs and gets a stub npx.
   const runsAnotherProgram = external.length > 0;
@@ -135,7 +142,7 @@ test.each(parseRoutes(routes).filter((route) => route.effects.storage === "none"
   if (command === "capabilities") {
     expect(JSON.parse(result.stdout)).toEqual(manifest);
   } else if (runsAnotherProgram) {
-    expect(JSON.parse(result.stdout)).toEqual({ source: expect.stringContaining(join("skills", "zinn")) });
+    expect(JSON.parse(result.stdout)).toEqual(anotherProgramResults[command]);
   } else {
     expect(JSON.parse(result.stdout)).toMatchObject({ actor_name: "opencode", actor_source: "env:OPENCODE" });
   }
