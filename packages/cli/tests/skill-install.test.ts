@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { errorDocumentSchema } from "../src/errors";
 import { runZinn, stubNpx, withIsolatedZinnDir } from "../test-helpers";
@@ -19,6 +19,31 @@ test("skill install hands the bundled skill folder to the skills CLI and passes 
     expect(readFileSync(join(args[3]!, "SKILL.md"), "utf8")).toBe(
       readFileSync(join(import.meta.dir, "../skills/zinn/SKILL.md"), "utf8"),
     );
+  });
+});
+
+test("skill install --project installs into the caller's working directory without -g", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const stub = stubNpx(dir);
+    const result = await runZinn(["skill", "install", "--project"], dir, stub.env);
+
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout).toContain("stub npx ran");
+    const args = npxArgs(stub.argsPath);
+    expect(args).toEqual(["--yes", "skills", "add", args[3]!, "-y"]);
+    expect(existsSync(join(args[3]!, "SKILL.md"))).toBe(true);
+    expect(readFileSync(stub.cwdPath, "utf8").trimEnd()).toBe(realpathSync(dir));
+  });
+});
+
+test("skill install --project --json reports the same result as the global install", async () => {
+  await withIsolatedZinnDir(async (dir) => {
+    const stub = stubNpx(dir);
+    const result = await runZinn(["skill", "install", "--project", "--json"], dir, stub.env);
+
+    expect(result.code, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ source: npxArgs(stub.argsPath)[3] });
+    expect(result.stderr).toContain("stub npx ran");
   });
 });
 

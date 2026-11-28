@@ -1,14 +1,22 @@
 import type { PresentedSkillInstall } from "../result-schemas.js";
 import type { RouteDef } from "../types.js";
 import type { StdioOptions } from "node:child_process";
+import type { CommandInput } from "../input.js";
 
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { CliError } from "../errors.js";
-import { generateCommandUsage, noInput } from "../input.js";
-import { diagnostic, getOutputMode, output, validatePositionals } from "../lib.js";
+
+import { generateCommandUsage } from "../input.js";
+import {
+  diagnostic,
+  getOutputMode,
+  output,
+  validatePositionals,
+  validateUniqueOptions,
+} from "../lib.js";
 import { jsonResult } from "../results.js";
 
 /** The workflow skill folder that ships with the CLI */
@@ -28,16 +36,26 @@ function startNpx(args: Array<string>, stdio: StdioOptions) {
   return spawn("npx", args, { stdio });
 }
 
+const skillInputs = {
+  install: {
+    options: { project: { type: "boolean" } },
+    forms: [{ id: "default", positionals: [] }],
+    constraints: [],
+  },
+} as const satisfies Record<string, CommandInput>;
+
 /**
- * Runs the skills CLI and resolves with its exit code
+ * Runs the skills CLI in the current working directory and resolves with its exit code
  * If a signal ends it, it's `null`
  */
-function runSkillsCli(skillDirectory: string): Promise<number | null> {
+function runSkillsCli(skillDirectory: string, isProject: boolean): Promise<number | null> {
   const isJson = getOutputMode() === "json";
   // JSON output keeps stdout for the result and stderr for one error document,
   // so the skills CLI's output is captured and reported as notices.
+  // Without -g the skills CLI installs into the current folder.
+  const scopeArgs = isProject ? [] : ["-g"];
   const child = startNpx(
-    ["--yes", "skills", "add", skillDirectory, "-g", "-y"],
+    ["--yes", "skills", "add", skillDirectory, ...scopeArgs, "-y"],
     ["inherit", isJson ? "pipe" : "inherit", isJson ? "pipe" : "inherit"],
   );
   const captured: Array<string> = [];
@@ -74,19 +92,21 @@ export const skillRouter = {
     summary: "Install the agent skill bundled with this CLI using the skills CLI.",
     effects: { domain: "none", storage: "none", external: ["files", "network"] },
     confirmation: { kind: "none" },
-    input: noInput,
+    input: skillInputs.install,
     results: [jsonResult("SkillInstall")],
     run: async (args) => {
-      const { positionals } = parseArgs({
-        options: noInput.options,
+      const { positionals, values, tokens } = parseArgs({
+        options: skillInputs.install.options,
         args,
         strict: true,
         allowPositionals: true,
+        tokens: true,
       });
 
-      validatePositionals(positionals, noInput.forms[0]);
+      validateUniqueOptions(tokens, skillInputs.install.options);
+      validatePositionals(positionals, skillInputs.install.forms[0]);
 
-      const exitCode = await runSkillsCli(bundledSkillDirectory);
+      const exitCode = await runSkillsCli(bundledSkillDirectory, values.project === true);
 
       if (exitCode !== 0) {
         const endedBySignal = exitCode === null;
@@ -108,12 +128,13 @@ export const skillRouter = {
       const installed: PresentedSkillInstall = { source: bundledSkillDirectory };
       output(installed, () => "");
     },
-    help: `${generateCommandUsage("skill install", noInput)}
+    help: `${generateCommandUsage("skill install", skillInputs.install)}
 
 Install the agent skill bundled with this CLI using the skills CLI (https://github.com/vercel-labs/skills).
 
 Runs npx --yes skills add <skill folder> -g -y, where the skill folder is the one inside this CLI's package, and passes the skills CLI's output and exit code through.
-Rerun it after upgrading Zinn, or run npx skills update -g, which reads the same folder.
+Use --project to install into the current folder instead. It runs the same command without -g there, and the skills CLI records the copy in that folder's skills-lock.json.
+Rerun it after upgrading Zinn, or run npx skills update -g, which reads the same folder. Each project with its own copy needs zinn skill install --project rerun there after an upgrade.
 With --json, the skills CLI's output is reported as notices: on stderr after the result, or in error.diagnostics when it fails.`,
   },
 } satisfies RouteDef;

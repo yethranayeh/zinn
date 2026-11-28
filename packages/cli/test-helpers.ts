@@ -69,7 +69,8 @@ export function runZinn(
 
 /**
  * Puts a stub npx in a bin folder inside dir. It writes each argument it receives on its own line
- * to npx-args.txt beside it, prints a line on stdout and exits with STUB_NPX_EXIT (default 0).
+ * to npx-args.txt and its working directory to npx-cwd.txt beside it, prints a line on stdout
+ * and exits with STUB_NPX_EXIT (default 0).
  * Returns env that puts the stub first on PATH.
  */
 export function stubNpx(dir: string) {
@@ -78,10 +79,14 @@ export function stubNpx(dir: string) {
   const script = join(bin, "npx");
   writeFileSync(
     script,
-    `#!/bin/sh\nprintf '%s\\n' "$@" > "${join(bin, "npx-args.txt")}"\necho "stub npx ran"\nexit "\${STUB_NPX_EXIT:-0}"\n`,
+    `#!/bin/sh\nprintf '%s\\n' "$@" > "${join(bin, "npx-args.txt")}"\npwd -P > "${join(bin, "npx-cwd.txt")}"\necho "stub npx ran"\nexit "\${STUB_NPX_EXIT:-0}"\n`,
   );
   chmodSync(script, 0o755);
-  return { argsPath: join(bin, "npx-args.txt"), env: { PATH: `${bin}:${TEST_ENVIRONMENT.PATH}` } };
+  return {
+    argsPath: join(bin, "npx-args.txt"),
+    cwdPath: join(bin, "npx-cwd.txt"),
+    env: { PATH: `${bin}:${TEST_ENVIRONMENT.PATH}` },
+  };
 }
 
 export function runZinnAs(args: Array<string>, testDir: string, env: Record<string, string>) {
