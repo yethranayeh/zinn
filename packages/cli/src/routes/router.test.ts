@@ -12,7 +12,7 @@ const commandMetadata = {
   input: { options: {}, forms: [{ id: "default", positionals: [] }], constraints: [] },
   results: [jsonResult("Task")],
   summary: "",
-  effects: { domain: "none", storage: "normal-open" },
+  effects: { domain: "none", storage: "normal-open", external: [] },
   confirmation: { kind: "none" },
 } satisfies Omit<Command, "run" | "help">;
 

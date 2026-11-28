@@ -38,9 +38,13 @@ import { formatActivityList, presentActivities } from "../presentation/activity-
 
 const changedFieldList = activityChangedFieldSchema.options.join(", ");
 const changedFieldListFormatter = new Intl.ListFormat("en-GB");
-const changedFieldsWithoutValue = changedFieldListFormatter.format(activityChangedFieldsWithoutValue);
+const changedFieldsWithoutValue = changedFieldListFormatter.format(
+  activityChangedFieldsWithoutValue,
+);
 const changedFieldsWithValue = changedFieldListFormatter.format(
-  activityChangedFieldsWithOptionalValue.map(field => field === "labels" ? "added labels" : field),
+  activityChangedFieldsWithOptionalValue.map((field) =>
+    field === "labels" ? "added labels" : field,
+  ),
 );
 const changedValueHelp = `Values apply to ${changedFieldsWithValue}, ignoring case.`;
 
@@ -147,7 +151,7 @@ const activityInputs = {
 export const activityRouter = {
   list: {
     summary: "List recorded activity across the database, newest first.",
-    effects: { domain: "read", storage: "normal-open" },
+    effects: { domain: "read", storage: "normal-open", external: [] },
     confirmation: { kind: "none" },
     input: activityInputs.list,
     results: [
@@ -347,7 +351,7 @@ Examples:
   },
   view: {
     summary: "Show one recorded event with full activity/entity IDs, actor and complete changes.",
-    effects: { domain: "read", storage: "normal-open" },
+    effects: { domain: "read", storage: "normal-open", external: [] },
     confirmation: { kind: "none" },
     input: activityInputs.view,
     results: [jsonResult("Activity")],

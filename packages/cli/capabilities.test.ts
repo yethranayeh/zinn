@@ -42,6 +42,7 @@ test("the emitted contract covers every route and finite result, including itsel
     type: "string",
     value: { kind: "task-cursor", name: "cursor" },
   });
+  expect(commands.get("skill install")!.effects.external).toEqual(["files", "network"]);
   const validator = capabilityValidator(actual);
   for (const route of parseRoutes(routes)) {
     const command = commands.get(route.command);
@@ -52,6 +53,7 @@ test("the emitted contract covers every route and finite result, including itsel
     if (command!.aliases.length === 0) {
       expect(route.help).not.toMatch(/^Alias:/m);
     }
+    expect(command!.effects.external, route.command).toEqual(route.effects.external);
     expect(command!.results.length).toBeGreaterThan(0);
     for (const result of command!.results) {
       expect(validator.getSchema(`results#${result.schemaRef.slice("#/schemas".length)}`)).toBeDefined();
@@ -107,9 +109,9 @@ test("discovery is deterministic across settings, stores, cwd, locale and debug 
   }
 });
 
-test.each(parseRoutes(routes).filter((route) => route.effects.storage === "none").map((route) => route.command))("%s bypasses settings, storage policy, SQLite and Bun process APIs", async (command) => {
-  // skill install's job is to start npx, so it keeps process APIs and gets a stub npx.
-  const runsAnotherProgram = command === "skill install";
+test.each(parseRoutes(routes).filter((route) => route.effects.storage === "none").map((route) => [route.command, route.effects.external] as const))("%s bypasses settings, storage policy, SQLite and Bun process APIs", async (command, external) => {
+  // A command with effects outside Zinn reaches them through another program, so it keeps process APIs and gets a stub npx.
+  const runsAnotherProgram = external.length > 0;
   const directory = join(root, `intercepted-${command}`);
   mkdirSync(directory);
   const preload = join(directory, "guard.ts");

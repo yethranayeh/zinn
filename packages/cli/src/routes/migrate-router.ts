@@ -12,7 +12,7 @@ import packageJson from "../../package.json" with { type: "json" };
 
 export const migrateCommand = {
   summary: "Upgrade an existing database to the latest schema version.",
-  effects: { domain: "none", storage: "migrate" },
+  effects: { domain: "none", storage: "migrate", external: [] },
   confirmation: { kind: "none" },
   input: noInput,
   results: [jsonResult("Migrate")],

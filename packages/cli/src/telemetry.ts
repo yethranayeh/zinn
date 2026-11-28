@@ -46,8 +46,8 @@ const FILES_PER_CAP = 10;
 const MILLISECONDS_PER_DAY = 86_400_000;
 /** parseArgs reads any word starting with `--` as an option up to its first `=`, spaces included */
 const OPTION_NAME_SHAPE = /^--?[A-Za-z0-9][\w-]*$/;
-/** A successful run of a command that declares one of these only reads or reports, and leaves no record */
-export const UNRECORDED_STORAGE_EFFECTS: ReadonlyArray<ParsedRoute["effects"]["storage"]> = [
+/** A command that declares one of these only reads or reports Zinn's data */
+const UNRECORDED_STORAGE_EFFECTS: ReadonlyArray<ParsedRoute["effects"]["storage"]> = [
   "none",
   "inspect",
 ];
@@ -249,12 +249,18 @@ function createRecord(outcome: RunOutcome, startedAt: Date, elapsedMs: number) {
   };
 }
 
+/** A successful run leaves no record when its command only reads or reports and writes no files outside the store */
+export function isUnrecordedOnSuccess(effects: ParsedRoute["effects"]) {
+  const writesExternalFiles = effects.external.includes("files");
+  return UNRECORDED_STORAGE_EFFECTS.includes(effects.storage) && !writesExternalFiles;
+}
+
 function isUnrecordedRun({ failure }: RunOutcome) {
   return (
     failure === undefined &&
     matchedRun !== null &&
     !matchedRun.help &&
-    UNRECORDED_STORAGE_EFFECTS.includes(matchedRun.match.effects.storage)
+    isUnrecordedOnSuccess(matchedRun.match.effects)
   );
 }
 

@@ -40,7 +40,7 @@ const restoreInputs = {
 export const restoreCommand = {
   summary:
     "Replace the database with the one in a backup file, such as one saved by `zinn backup` or by an upgrade, after confirmation.",
-  effects: { domain: "replace", storage: "restore" },
+  effects: { domain: "replace", storage: "restore", external: [] },
   confirmation: { kind: "prompt", description: confirmationDescription },
   input: restoreInputs.command,
   results: [jsonResult("Restore")],

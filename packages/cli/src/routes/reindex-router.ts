@@ -12,7 +12,7 @@ import { output, validatePositionals } from "../lib.js";
 export const reindexCommand = {
   summary:
     "Rebuild the search index that `zinn task search` uses from the tasks and their comments, archived tasks included.",
-  effects: { domain: "none", storage: "reindex" },
+  effects: { domain: "none", storage: "reindex", external: [] },
   confirmation: { kind: "none" },
   input: noInput,
   results: [jsonResult("Reindex")],

@@ -16,8 +16,8 @@ import { BYTES_PER_MEGABYTE } from "@zinn-dev/core";
 import { TEST_ENVIRONMENT } from "../../scripts/test-isolation.ts";
 import packageJson from "./package.json" with { type: "json" };
 import { parsedRoutes } from "./src/routes/routes";
-import { UNRECORDED_STORAGE_EFFECTS } from "./src/telemetry";
-import { CLI_PATH, runProcessAsync, runZinn, withIsolatedZinnDir } from "./test-helpers";
+import { isUnrecordedOnSuccess } from "./src/telemetry";
+import { CLI_PATH, runProcessAsync, runZinn, stubNpx, withIsolatedZinnDir } from "./test-helpers";
 
 type Run = { code: number | null; stdout: string; stderr: string };
 
@@ -27,7 +27,7 @@ const RECORD_FILE_NAME = /^\d{4}-\d{2}-\d{2}-\d{4}\.jsonl$/;
 const MILLISECONDS_PER_DAY = 86_400_000;
 /** Commands whose successful run leaves no record, as words to run */
 const UNRECORDED_ROUTES = parsedRoutes
-  .filter(({ effects }) => UNRECORDED_STORAGE_EFFECTS.includes(effects.storage))
+  .filter(({ effects }) => isUnrecordedOnSuccess(effects))
   .map(({ command }) => command.split(" "));
 /** Folder modes do not bind for root or on Windows */
 const doFolderModesBind = process.platform !== "win32" && process.getuid?.() !== 0;
@@ -372,6 +372,20 @@ describe("runs that write no record", () => {
         expect((await runZinn([...words, "--help"], store)).code, route).toBe(0);
         expect(expectOneMore(store, before + 1)).toMatchObject({ exitCode: 0, command: { route, help: true } });
       }
+    });
+  });
+
+  test("a successful command that writes files outside the store leaves a record", async () => {
+    await withIsolatedZinnDir(async (store) => {
+      const stub = stubNpx(store);
+      expect((await runZinn(["skill", "install"], store, stub.env)).code).toBe(0);
+      expect(readRecords(store)).toHaveLength(1);
+      expect(lastRecord(store)).toMatchObject({ exitCode: 0, command: { route: "skill install", help: false } });
+
+      for (const route of [["doctor"], ["whoami"]]) {
+        expect((await runZinn(route, store)).code, route.join(" ")).toBe(0);
+      }
+      expect(readRecords(store)).toHaveLength(1);
     });
   });
 

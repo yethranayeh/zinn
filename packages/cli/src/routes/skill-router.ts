@@ -72,7 +72,7 @@ function runSkillsCli(skillDirectory: string): Promise<number | null> {
 export const skillRouter = {
   install: {
     summary: "Install the agent skill bundled with this CLI using the skills CLI.",
-    effects: { domain: "none", storage: "none" },
+    effects: { domain: "none", storage: "none", external: ["files", "network"] },
     confirmation: { kind: "none" },
     input: noInput,
     results: [jsonResult("SkillInstall")],

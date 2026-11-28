@@ -11,7 +11,7 @@ import { formatInfo, presentInfo } from "../presentation/info-presentation.js";
 export const infoCommand = {
   summary:
     "Show the selected store, settings sources, telemetry state, database schema state and CLI, core and runtime versions.",
-  effects: { domain: "none", storage: "inspect" },
+  effects: { domain: "none", storage: "inspect", external: [] },
   confirmation: { kind: "none" },
   input: noInput,
   results: [jsonResult("Info")],

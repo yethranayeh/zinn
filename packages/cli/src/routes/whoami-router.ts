@@ -10,7 +10,7 @@ import { jsonResult } from "../results.js";
 
 export const whoamiCommand = {
   summary: "Show the actor a change would record in the current environment and folder.",
-  effects: { domain: "none", storage: "none" },
+  effects: { domain: "none", storage: "none", external: [] },
   confirmation: { kind: "none" },
   input: noInput,
   results: [jsonResult("Actor")],

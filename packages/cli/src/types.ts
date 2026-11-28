@@ -6,6 +6,12 @@ import { z } from "zod";
 export const commandEffectsSchema = z.strictObject({
   domain: z.enum(["read", "create", "update", "delete", "replace", "none"]),
   storage: z.enum(["normal-open", "backup", "restore", "migrate", "reindex", "inspect", "none"]),
+  /**
+   * Kinds of effect outside Zinn's own data,
+   *  like files written or deleted outside the store
+   *  or making HTTP requests
+   */
+  external: z.array(z.enum(["files", "network"])),
 });
 export const commandConfirmationSchema = z.strictObject({
   kind: z.enum(["none", "prompt", "project-delete"]),

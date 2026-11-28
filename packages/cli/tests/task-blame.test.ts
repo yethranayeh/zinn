@@ -60,7 +60,7 @@ test("task blame exposes fields, line provenance, full identity and the read-onl
     }
     const capabilities = JSON.parse(await run(["capabilities", "--json"]));
     const command = capabilities.commands.find((entry: { path: string[] }) => entry.path.join(" ") === "task blame");
-    expect(command.effects).toEqual({ domain: "read", storage: "normal-open" });
+    expect(command.effects).toEqual({ domain: "read", storage: "normal-open", external: [] });
     expect(command.confirmation).toEqual({ kind: "none" });
     expect(command.results[0].schemaRef).toBe("#/schemas/definitions/TaskBlame");
     const event = JSON.parse(await run(["activity", "view", attribution.id, "--json"]));

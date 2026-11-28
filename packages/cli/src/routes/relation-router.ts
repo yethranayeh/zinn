@@ -163,7 +163,7 @@ const relationInputs = {
 export const relationRouter = {
   create: {
     summary: "Create a relation, confirming replacement of conflicting links.",
-    effects: { domain: "replace", storage: "normal-open" },
+    effects: { domain: "replace", storage: "normal-open", external: [] },
     confirmation: {
       kind: "prompt",
       description: `Only asks when replacing existing relations. ${confirmationDescription}`,
@@ -233,7 +233,7 @@ Example: zinn task relation create APP-1 APP-2 --type dependency`,
   },
   list: {
     summary: "Show incoming and outgoing relations with connected task keys, columns and titles.",
-    effects: { domain: "read", storage: "normal-open" },
+    effects: { domain: "read", storage: "normal-open", external: [] },
     confirmation: { kind: "none" },
     input: relationInputs.list,
     results: [jsonResult("RelationList")],
@@ -263,7 +263,7 @@ Example: zinn task relation list APP-1`,
   },
   delete: {
     summary: "Remove only the specified relation. No confirmation is required.",
-    effects: { domain: "delete", storage: "normal-open" },
+    effects: { domain: "delete", storage: "normal-open", external: [] },
     confirmation: { kind: "none" },
     input: relationInputs.delete,
     results: [jsonResult("RelationChange")],

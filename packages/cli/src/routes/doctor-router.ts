@@ -96,7 +96,7 @@ function checkAgentSkill(): DoctorCheck<"agent_skill"> {
 
 export const doctorCommand = {
   summary: "Check the selected settings, database and installed agent skill for problems.",
-  effects: { domain: "none", storage: "inspect" },
+  effects: { domain: "none", storage: "inspect", external: [] },
   confirmation: { kind: "none" },
   input: noInput,
   results: [{ ...jsonResult("Doctor"), findingsExitCode: 1 }],

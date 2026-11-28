@@ -12,7 +12,7 @@ import packageJson from "../../package.json" with { type: "json" };
 export const backupCommand = {
   summary:
     "Save a verified copy of the database to ~/.zinn/backups/, or to backups/ in ZINN_DIR when it is set.",
-  effects: { domain: "none", storage: "backup" },
+  effects: { domain: "none", storage: "backup", external: [] },
   confirmation: { kind: "none" },
   input: noInput,
   results: [jsonResult("Backup")],

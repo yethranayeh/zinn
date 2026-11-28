@@ -9,7 +9,7 @@ import { jsonResult } from "../results.js";
 
 export const capabilitiesCommand = {
   summary: "Describe the installed CLI commands, inputs, results and errors.",
-  effects: { domain: "none", storage: "none" },
+  effects: { domain: "none", storage: "none", external: [] },
   confirmation: { kind: "none" },
   input: noInput,
   results: [jsonResult("Capabilities")],
