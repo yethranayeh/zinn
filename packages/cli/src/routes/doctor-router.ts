@@ -1,79 +1,59 @@
 import type { DoctorCheck } from "@zinn-dev/core";
 import type { Command } from "../types.js";
+import type { SkillCopy } from "../skill-copies.js";
 
-import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { doctor, isMissingFileError } from "@zinn-dev/core";
+import { doctor } from "@zinn-dev/core";
 
 import { generateCommandUsage, noInput } from "../input.js";
 import { output, validatePositionals } from "../lib.js";
 import { jsonResult } from "../results.js";
 import { formatDoctor, presentDoctor } from "../presentation/doctor-presentation.js";
-import { bundledSkillDirectory } from "./skill-router.js";
+import { findSkillCopies } from "../skill-copies.js";
 
-/** Where the `skills` CLI installs the Zinn workflow skill, inside the home folder */
-const INSTALLED_SKILL_PATH = [".agents", "skills", "zinn", "SKILL.md"];
-const SKILL_FILE_NAME = "SKILL.md";
-const SKILL_INSTALL_REMEDY = "Update the skill with `zinn skill install`";
-/** The YAML frontmatter block that opens a skill file */
-const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
-/**
- * The reviewed version under the frontmatter's `metadata:`
- *  map, quoted or plain
- */
-const REVIEWED_VERSION_PATTERN =
-  /^metadata:[ \t]*\r?\n(?:[ \t]+.*\r?\n)*?[ \t]+zinn-cli-reviewed-version:[ \t]*(?:"([^"\r\n]*)"|'([^'\r\n]*)'|([^\s#'"]+))/m;
+const SKILL_INSTALL_COMMAND = "`zinn skill install`";
 
-/** A skill file's reviewed CLI version, `null` when the file has none that can be read */
-function readReviewedVersion(skill: string) {
-  const frontmatter = FRONTMATTER_PATTERN.exec(skill)?.[1];
+/** How to replace the differing copies, by where they are */
+function skillInstallRemedy(differing: ReadonlyArray<SkillCopy>, workingFolder: string) {
+  const hasHomeCopy = differing.some(({ scope }) => scope === "home");
+  const hasProjectCopy = differing.some(({ scope }) => scope === "project");
+  const projectCommand = `\`zinn skill install --project\` run in ${workingFolder}`;
 
-  if (frontmatter === undefined) {
-    return null;
+  if (hasHomeCopy && hasProjectCopy) {
+    return `Update the skill with ${SKILL_INSTALL_COMMAND}, and with ${projectCommand}`;
   }
 
-  const match = REVIEWED_VERSION_PATTERN.exec(frontmatter);
+  return `Update the skill with ${hasProjectCopy ? projectCommand : SKILL_INSTALL_COMMAND}`;
+}
 
-  if (match === null) {
-    return null;
+/** What is wrong with one differing copy */
+function describeDifference({ readable, reviewedVersion }: SkillCopy) {
+  if (!readable) {
+    return "cannot be read";
   }
 
-  return match[1] ?? match[2] ?? match[3] ?? null;
+  return reviewedVersion === null
+    ? "names no reviewed CLI version"
+    : `was reviewed for CLI ${reviewedVersion}`;
 }
 
 function checkAgentSkill(): DoctorCheck<"agent_skill"> {
-  const path = join(homedir(), ...INSTALLED_SKILL_PATH);
-  let skill: string;
+  const workingFolder = process.cwd();
+  const { bundledVersion, copies } = findSkillCopies(homedir(), workingFolder);
 
-  try {
-    skill = readFileSync(path, "utf8");
-  } catch (error) {
-    if (isMissingFileError(error)) {
-      return {
-        id: "agent_skill",
-        status: "ok",
-        message: "No Zinn skill is installed for agents",
-        remedy: null,
-      };
-    }
-
+  if (copies.length === 0) {
     return {
       id: "agent_skill",
-      status: "warning",
-      message: `The installed Zinn skill at ${path} cannot be read`,
-      remedy: SKILL_INSTALL_REMEDY,
+      status: "ok",
+      message: "No Zinn skill is installed for agents",
+      remedy: null,
     };
   }
 
-  const reviewedVersion = readReviewedVersion(skill);
-  // The skill `zinn skill install` installs. It ships with the CLI, and release checks guarantee its version.
-  const bundledVersion = readReviewedVersion(
-    readFileSync(join(bundledSkillDirectory, SKILL_FILE_NAME), "utf8"),
-  );
+  const differing = copies.filter(({ matches }) => !matches);
 
-  if (reviewedVersion !== null && reviewedVersion === bundledVersion) {
+  if (differing.length === 0) {
     return {
       id: "agent_skill",
       status: "ok",
@@ -82,15 +62,22 @@ function checkAgentSkill(): DoctorCheck<"agent_skill"> {
     };
   }
 
-  const found =
-    reviewedVersion === null
-      ? "names no reviewed CLI version"
-      : `was reviewed for CLI ${reviewedVersion}`;
+  const [first, ...others] = differing.map((copy) => `at ${copy.path} ${describeDifference(copy)}`);
+  const differences = [
+    `The installed Zinn skill ${first}`,
+    ...others.map((difference) => `the one ${difference}`),
+  ];
+  const isOnlyUnreadable = differing.every(({ readable }) => !readable);
+
+  if (!isOnlyUnreadable) {
+    differences.push(`and the skill this CLI installs was reviewed for CLI ${bundledVersion}`);
+  }
+
   return {
     id: "agent_skill",
     status: "warning",
-    message: `The installed Zinn skill at ${path} ${found}, and the skill this CLI installs was reviewed for CLI ${bundledVersion}`,
-    remedy: SKILL_INSTALL_REMEDY,
+    message: differences.join(", "),
+    remedy: skillInstallRemedy(differing, workingFolder),
   };
 }
 
@@ -117,7 +104,7 @@ export const doctorCommand = {
   },
   help: `${generateCommandUsage("doctor", noInput)}
 
-Check the selected settings, store folder, database, search index and installed agent skill for problems, and suggest a fix for each.
+Check the selected settings, store folder, database, search index and the Zinn agent skill copies in the home and working folders for problems, and suggest a fix for each.
 
 Exits 0 when every check is ok and 1 when any reports a warning or problem. The checks print on standard output either way.
 Changes nothing: it creates no folder, database or settings file, and repairs nothing. SQLite may perform its normal file housekeeping.`,

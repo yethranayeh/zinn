@@ -4,7 +4,6 @@ import type { StdioOptions } from "node:child_process";
 import type { CommandInput } from "../input.js";
 
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { CliError } from "../errors.js";
@@ -18,9 +17,8 @@ import {
   validateUniqueOptions,
 } from "../lib.js";
 import { jsonResult } from "../results.js";
+import { bundledSkillDirectory } from "../skill-copies.js";
 
-/** The workflow skill folder that ships with the CLI */
-export const bundledSkillDirectory = fileURLToPath(new URL("../../skills/zinn", import.meta.url));
 /** On Windows npx is `npx.cmd`, which Node only starts through a shell */
 const needsShell = process.platform === "win32";
 
