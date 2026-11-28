@@ -1,0 +1,35 @@
+---
+interface Props {
+	id: string;
+	headingId: string;
+	title: string;
+	surface: "limestone" | "bone";
+	titleSide?: "left" | "right";
+}
+
+const { id, headingId, title, surface, titleSide = "left" } = Astro.props;
+---
+
+<section
+	id={id}
+	aria-labelledby={headingId}
+	class:list={["border-t border-pewter", surface === "bone" ? "bg-bone" : "bg-limestone"]}>
+	<div class='site-container grid gap-8 py-4 md:py-6 xl:grid-cols-2 xl:gap-12'>
+		<div
+			class:list={[
+				"min-w-0 xl:sticky xl:top-(--site-header-height) xl:self-start",
+				titleSide === "right" && "xl:order-2"
+			]}>
+			<h2 id={headingId} class='max-w-sm text-3xl leading-tight tracking-tight md:text-4xl'>{title}</h2>
+			<slot name='visualization' />
+		</div>
+		<div
+			class:list={[
+				"min-w-0",
+				titleSide === "right" && "xl:order-1",
+				Astro.slots.has("visualization") && "border-t border-pewter xl:border-t-0"
+			]}>
+			<slot />
+		</div>
+	</div>
+</section>

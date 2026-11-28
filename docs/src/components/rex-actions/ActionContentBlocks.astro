@@ -1,0 +1,65 @@
+---
+import type { RexActionBlock, RexProseElement } from "./content";
+
+import MarkdownList from "../MarkdownList.astro";
+import InlineText from "../inspector/InlineText.astro";
+import TerminalCommands from "../TerminalCommands.astro";
+import ActionSectionCopy from "./ActionSectionCopy.astro";
+
+interface Props {
+	blocks: RexActionBlock[];
+}
+
+const { blocks } = Astro.props;
+
+const isDetails = (element: RexProseElement): element is Extract<RexProseElement, { kind: "details" }> =>
+	element.kind === "details";
+const isParagraph = (element: RexProseElement): element is Extract<RexProseElement, { kind: "paragraph" }> =>
+	element.kind === "paragraph";
+---
+
+{
+	blocks.map((block) =>
+		block.kind === "prose" ? (
+			<ActionSectionCopy>
+				{block.blocks.map((element) =>
+					isParagraph(element) ? (
+						<p>
+							<InlineText text={element.text} />
+						</p>
+					) : isDetails(element) ? (
+						<details class='mt-6'>
+							<summary class='min-h-11 cursor-pointer py-3 font-mono text-xs'>{element.summary}</summary>
+							<p>
+								<InlineText text={element.paragraph} />
+							</p>
+							<TerminalCommands
+								class='mt-6'
+								label={element.code.label}
+								commands={element.code.commands}
+								showsPrompt={element.code.showsPrompt ?? true}
+								wraps={element.code.wraps}
+							/>
+						</details>
+					) : (
+						<MarkdownList>
+							{element.items.map((item) => (
+								<li>
+									<InlineText text={item} />
+								</li>
+							))}
+						</MarkdownList>
+					)
+				)}
+			</ActionSectionCopy>
+		) : (
+			<TerminalCommands
+				class='mt-6'
+				label={block.label}
+				commands={block.commands}
+				showsPrompt={block.showsPrompt ?? block.language === "sh"}
+				wraps={block.wraps}
+			/>
+		)
+	)
+}

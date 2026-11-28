@@ -66,3 +66,15 @@ export function inlineMarkdown(text: string): string {
     .replace(/<kbd>([^<]+)<\/kbd>/g, "`$1`")
     .replace(/\]\(\/(?!\/)/g, "](https://zinn.sh/");
 }
+
+export function inlineMarkdownWithLinkOverrides(
+  text: string,
+  hrefOverrides: Record<string, string>,
+): string {
+  let markdown = text;
+  for (const [href, markdownHref] of Object.entries(hrefOverrides)) {
+    markdown = markdown.replaceAll(`](${href})`, `](${markdownHref})`);
+  }
+
+  return inlineMarkdown(markdown);
+}

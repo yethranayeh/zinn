@@ -1,0 +1,17 @@
+---
+interface Props {
+	action: string;
+	description: string;
+}
+
+const { action, description } = Astro.props;
+---
+
+<li
+	class="relative pl-[1.3rem] before:absolute before:left-0 before:top-[calc(0.5lh_-_0.19em)] before:size-[0.38em] before:bg-current before:content-['']">
+	<code
+		class='bg-[color-mix(in_srgb,currentColor_8%,transparent)] px-[0.22em] py-[0.05em] text-[0.85em] box-decoration-clone wrap-anywhere'
+		>{action}</code
+	>
+	{` ${description}`}
+</li>

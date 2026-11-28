@@ -6,22 +6,26 @@ interface Props {
 	commands: string[];
 	class?: string;
 	showsPrompt?: boolean;
+	wraps?: boolean;
 }
-const { label, commands, class: className, showsPrompt = true } = Astro.props;
+const { label, commands, class: className, showsPrompt = true, wraps = false } = Astro.props;
 ---
 
 <div class:list={["group/terminal mb-6", className]} data-terminal>
 	<div class='flex items-start bg-soot text-soot-foreground scheme-dark'>
 		<pre
-			class='command-block min-w-0 flex-1 overflow-x-auto whitespace-normal p-5 pr-0 text-[13px] leading-[1.8] selection:bg-limestone! selection:text-soot! md:p-6 md:pr-0 md:text-[14px]'
+			class:list={[
+				"command-block min-w-0 flex-1 overflow-x-auto p-5 pr-0 text-[13px] leading-[1.8] selection:bg-limestone! selection:text-soot! md:p-6 md:pr-0 md:text-[14px]",
+				wraps ? "whitespace-pre-wrap wrap-anywhere" : "whitespace-normal"
+			]}
 			tabindex='0'
 			role='region'
 			aria-label={label}>
 			<code class='block'>
 				{commands.map((command) => (
-					<span data-terminal-command class='block whitespace-nowrap [&:not(:first-child)]:mt-[1.8em]'>
+						<span data-terminal-command class:list={['block', !wraps && 'whitespace-nowrap', '[&:not(:first-child)]:mt-[1.8em]']}>
 						{showsPrompt && <span data-terminal-prompt class='text-bronze select-none' aria-hidden='true'>$ </span>}
-						<span class='whitespace-pre' set:text={command} />
+							<span class:list={[wraps ? 'whitespace-pre-wrap wrap-anywhere' : 'whitespace-pre']} set:text={command} />
 					</span>
 				))}
 			</code>

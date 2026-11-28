@@ -1,0 +1,17 @@
+---
+import type { RexActionBlock } from "./content";
+import ActionContentBlocks from "./ActionContentBlocks.astro";
+
+interface Props {
+	title: string;
+	blocks: RexActionBlock[];
+	first?: boolean;
+}
+
+const { title, blocks, first = false } = Astro.props;
+---
+
+<article class:list={["py-6", first ? "xl:pt-0" : "border-t border-pewter"]}>
+	<h3 class='mb-3 text-xl font-semibold md:text-2xl'>{title}</h3>
+	<ActionContentBlocks blocks={blocks} />
+</article>

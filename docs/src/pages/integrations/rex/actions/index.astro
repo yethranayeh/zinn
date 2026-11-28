@@ -2,25 +2,19 @@
 import BaseLayout from "../../../../layouts/BaseLayout.astro";
 import Button from "../../../../components/ui/button/Button.astro";
 import Breadcrumbs from "../../../../components/Breadcrumbs.astro";
+import ActionContentBlocks from "../../../../components/rex-actions/ActionContentBlocks.astro";
+import ActionDescription from "../../../../components/rex-actions/ActionDescription.astro";
+import ActionPaletteFlow from "../../../../components/rex-actions/ActionPaletteFlow.astro";
+import ActionSection from "../../../../components/rex-actions/ActionSection.astro";
+import ActionSummaryItem from "../../../../components/rex-actions/ActionSummaryItem.astro";
+import InlineText from "../../../../components/inspector/InlineText.astro";
 import Icon from "../../../../components/ui/icon/Icon.astro";
 import InsertTaskFigure from "../../../../components/rex-actions/InsertTaskFigure.astro";
-import Link from "../../../../components/ui/link/Link.astro";
 import MarkdownH1 from "../../../../components/MarkdownH1.astro";
-import Prose from "../../../../components/Prose.astro";
-import TerminalCommands from "../../../../components/TerminalCommands.astro";
 
-import { rexActions } from "../../../../config/rex-actions";
+import { actionIntroduction, actionSections, actionSummaries } from "../../../../components/rex-actions/content";
 import { projectLinks } from "../../../../config/site";
-
-const section = "grid gap-7 border-t border-pewter pt-8 pb-10 md:grid-cols-2 md:gap-12";
-const sectionHeading = "max-w-sm text-3xl leading-tight tracking-tight md:text-4xl";
-const actionHeading = "mb-3 text-xl font-semibold md:text-2xl";
-const sectionBody = "[&>:first-child]:mt-0";
-const introList = "mt-4 grid gap-2";
-const introItem =
-	"relative pl-[1.3rem] before:absolute before:left-0 before:top-[calc(0.5lh_-_0.19em)] before:size-[0.38em] before:bg-current before:content-['']";
-const introCode =
-	"bg-[color-mix(in_srgb,currentColor_8%,transparent)] px-[0.22em] py-[0.05em] text-[0.85em] box-decoration-clone wrap-anywhere";
+import { rexActions } from "../../../../config/rex-actions";
 ---
 
 <BaseLayout title='Rex actions' description={rexActions.description}>
@@ -31,15 +25,13 @@ const introCode =
 			<MarkdownH1 id='actions-heading'>{rexActions.title}</MarkdownH1>
 			<div class='grid gap-7 md:grid-cols-[1.1fr_1fr] md:items-end md:gap-12'>
 				<div class='max-w-md text-lg leading-relaxed'>
-					<p>Three palette actions for <Link href={rexActions.site}>Rex</Link>.</p>
-					<ul class={introList}>
-						<li class={introItem}><code class={introCode}>Zinn: New task</code> files a task.</li>
-						<li class={introItem}>
-							<code class={introCode}>Zinn: Insert task</code> pastes one into the program in the pane, ready for you to send.
-						</li>
-						<li class={introItem}>
-							<code class={introCode}>Zinn: Resume session</code> opens the agent conversation that changed one.
-						</li>
+					<p><InlineText text={actionIntroduction} /></p>
+					<ul class='mt-4 grid gap-2'>
+						{
+							actionSummaries.map(({ action, description }) => (
+								<ActionSummaryItem action={action} description={description} />
+							))
+						}
 					</ul>
 				</div>
 				<div class='flex flex-wrap gap-3 md:justify-end'>
@@ -52,219 +44,26 @@ const introCode =
 		<div class='pb-10 md:pb-12'>
 			<InsertTaskFigure />
 		</div>
+	</div>
 
-		<section id='actions' aria-labelledby='actions-list-heading' class={section}>
-			<h2 id='actions-list-heading' class={sectionHeading}>The actions</h2>
-			<Prose class={sectionBody}>
-				<h3 class={actionHeading}>Zinn: New task</h3>
-				<p>
-					Asks for a title, then for a project from the list of your projects, and creates the task there. On macOS and
-					Windows, a system notification names the new task. Elsewhere, or when the notification cannot be shown, the
-					palette shows it. Closing either prompt creates nothing.
-				</p>
+	{
+		actionSections.map((section) => (
+			<ActionSection
+				id={section.id}
+				headingId={section.headingId}
+				title={section.title}
+				surface={section.surface}
+				titleSide={section.titleSide}>
+				{section.id === "actions" && <ActionPaletteFlow slot='visualization' />}
+				{section.actions?.map((action, index) => (
+					<ActionDescription title={action.title} blocks={action.blocks} first={index === 0} />
+				))}
+				{section.blocks && <ActionContentBlocks blocks={section.blocks} />}
+			</ActionSection>
+		))
+	}
 
-				<h3 class:list={[actionHeading, "mt-10"]}>Zinn: Insert task</h3>
-				<p>
-					Run it from the terminal pane that should receive the task. It lists the 2,000 most recently active open tasks
-					of all your projects, each with the first line of its description and its column. Filter by key or title and
-					pick one.
-				</p>
-				<p>
-					The task's key and title, a blank line and its description go into the program in the pane as one bracketed
-					paste. Nothing presses Return, so you can edit the text before you send it.
-				</p>
-				<p>Nothing is pasted, and the action stops with a message, when:</p>
-				<ul>
-					<li>the pane has no running program,</li>
-					<li>the program in the pane changed while you picked,</li>
-					<li>the program does not accept bracketed paste,</li>
-					<li>or the task text contains terminal control characters other than tab and newline.</li>
-				</ul>
-
-				<h3 class:list={[actionHeading, "mt-10"]}>Zinn: Resume session</h3>
-				<p>
-					Pick a task from the same list, and the Claude Code, OpenCode or Codex conversation that changed it opens
-					again in a new tab named after the task. The action finds the conversations in the task's
-					<Link href='/docs/core/activity#activity-records'>activity</Link>. When more than one changed the task, a
-					second list shows them, newest first, with their host, model and directory.
-				</p>
-				<p>
-					The tab starts a shell in the directory Zinn recorded with the change and runs the host's resume command
-					there:
-					<code>claude --resume</code>, <code>opencode --session</code> or <code>codex resume</code>, with the session
-					ID. When you leave the conversation, the shell stays open. Claude Code resumes a session only from the
-					directory it started in, so for Claude Code the tab starts in the nearest parent of the recorded directory
-					that holds the session.
-				</p>
-				<p>
-					When a tab this action opened for the same conversation still runs a program, that tab gets focus and no new
-					tab opens. When no Claude Code, OpenCode or Codex session changed the task, a notification says so and nothing
-					opens.
-				</p>
-			</Prose>
-		</section>
-
-		<section id='requirements' aria-labelledby='requirements-heading' class={section}>
-			<h2 id='requirements-heading' class={sectionHeading}>Requirements</h2>
-			<Prose class={sectionBody}>
-				<ul>
-					<li>Rex with <code>rex.ui</code> prompts, which need control API revision 17 or later.</li>
-					<li>The <code>zinn</code> command on the <code>PATH</code> of the Rex server or of your login shell.</li>
-					<li>
-						To resume a conversation, its host's command, <code>claude</code>, <code>opencode</code> or <code
-							>codex</code
-						>, on your shell's <code>PATH</code>.
-					</li>
-				</ul>
-				<p>
-					The actions run <code>zinn</code> where the Rex server runs, so they use the database that <code>zinn</code>
-					<Link href='/docs/settings#choose-the-data-directory'>selects</Link> there. When the server's
-					<code>PATH</code> has no <code>zinn</code>, they read your login shell's <code>PATH</code> once and use that.
-				</p>
-			</Prose>
-		</section>
-
-		<section id='installation' aria-labelledby='installation-heading' class={section}>
-			<div>
-				<h2 id='installation-heading' class={sectionHeading}>Install the actions</h2>
-				<p class='mt-5 max-w-sm text-lg leading-relaxed'>
-					Put the <code>zinn</code> folder beside your Rex <code>init.lua</code> and load it there.
-				</p>
-			</div>
-			<div class='min-w-0'>
-				<Prose class={sectionBody}>
-					<p>
-						On macOS and Linux, this downloads the files into <code>~/.config/rex/zinn</code>, or into
-						<code>rex/zinn</code> under <code>$XDG_CONFIG_HOME</code> when that is set:
-					</p>
-				</Prose>
-				<TerminalCommands class='mt-6' label='Download the Zinn actions for Rex' commands={rexActions.commands} />
-				<Prose class={sectionBody}>
-					<p>Then load the actions in <code>init.lua</code>:</p>
-				</Prose>
-				<TerminalCommands
-					class='mt-6'
-					label='Load the Zinn actions in init.lua'
-					commands={[rexActions.require]}
-					showsPrompt={false}
-				/>
-				<Prose class={sectionBody}>
-					<p>And reload the configuration:</p>
-				</Prose>
-				<TerminalCommands class='mt-6' label='Reload the Rex configuration' commands={[rexActions.reload]} />
-				<Prose class={sectionBody}>
-					<p>
-						To load one action only, require it by name, such as <code>require("zinn.new_task")</code>. To remove the
-						actions, delete the folder and the <code>require</code> line.
-					</p>
-					<p>
-						Run the download again to update the files to the current version, {rexActions.version}.{" "}
-						<code>{rexActions.versionCheck}</code> returns the version you have, and the{" "}
-						<Link href={rexActions.changelog}>changelog</Link> lists the changes.
-					</p>
-					<p>
-						The download fetches{" "}
-						{
-							rexActions.files.map((name, index) => (
-								<>
-									<Link href={`${rexActions.downloadBase}/${name}`}>
-										<code>{name}</code>
-									</Link>
-									{index < rexActions.files.length - 1 ? ", " : "."}
-								</>
-							))
-						}
-					</p>
-					<p>
-						Rex's <Link href={rexActions.configDocs}>configuration reference</Link> says where <code>init.lua</code> lives.
-					</p>
-
-					<details class='mt-6'>
-						<summary class='min-h-11 cursor-pointer py-3 font-mono text-xs'>Windows</summary>
-						<p>
-							On Windows, the folder goes in <code>%AppData%\rex\</code>. Windows 10 and later include
-							<code>curl</code> and <code>tar</code>, so in Command Prompt this fetches the folder from GitHub:
-						</p>
-						<TerminalCommands
-							class='mt-6'
-							label='Download the Zinn actions for Rex on Windows'
-							commands={[rexActions.windowsCommand]}
-							showsPrompt={false}
-						/>
-					</details>
-				</Prose>
-			</div>
-		</section>
-
-		<section id='keys-and-arguments' aria-labelledby='keys-heading' class={section}>
-			<h2 id='keys-heading' class={sectionHeading}>Keys and arguments</h2>
-			<div class='min-w-0'>
-				<Prose class={sectionBody}>
-					<p>
-						The actions come without key bindings. Bind keys to <code>zinn_new_task</code>,
-						<code>zinn_insert_task</code> and <code>zinn_resume_session</code> in <code>init.lua</code>:
-					</p>
-				</Prose>
-				<TerminalCommands
-					class='mt-6'
-					label='Bind keys to the Zinn actions'
-					commands={rexActions.bindings}
-					showsPrompt={false}
-				/>
-				<Prose class={sectionBody}>
-					<p>
-						An action asks for nothing it is given as an argument. With <code>project</code>, Zinn: New task files the
-						task there without asking:
-					</p>
-				</Prose>
-				<TerminalCommands
-					class='mt-6'
-					label='Bind a key that files tasks in one project'
-					commands={[rexActions.projectBinding]}
-					showsPrompt={false}
-				/>
-				<Prose class={sectionBody}>
-					<p>With <code>title</code> as well, it asks nothing, which suits scripts:</p>
-				</Prose>
-				<TerminalCommands class='mt-6' label='Create a task from a script' commands={[rexActions.scriptCommand]} />
-				<Prose class={sectionBody}>
-					<p>Zinn: Insert task takes <code>task</code> to paste that task without showing the list:</p>
-				</Prose>
-				<TerminalCommands
-					class='mt-6'
-					label='Bind a key that pastes one task'
-					commands={[rexActions.taskBinding]}
-					showsPrompt={false}
-				/>
-				<Prose class={sectionBody}>
-					<p>Zinn: Resume session takes <code>task</code> the same way.</p>
-				</Prose>
-			</div>
-		</section>
-
-		<section id='calls-to-zinn' aria-labelledby='calls-heading' class={section}>
-			<h2 id='calls-heading' class={sectionHeading}>Calls to Zinn</h2>
-			<Prose class={sectionBody}>
-				<p>
-					The actions run <code>zinn</code> only when you use one. While they are unused they make no calls, so none that
-					you did not trigger, in use or idle.
-				</p>
-				<p>
-					Each use of Zinn: New task makes at most two calls, <code>project list</code> and <code>task create</code>, or
-					only <code>task create</code> when <code>project</code> is given. Each use of Zinn: Insert task makes at most two,
-					<code>task list</code> and <code>task view</code>, or only <code>task view</code> when <code>task</code> is given.
-					Each use of Zinn: Resume session makes at most two, <code>task list</code> and <code>activity list</code>, or
-					only
-					<code>activity list</code> when <code>task</code> is given.
-				</p>
-				<p>
-					Each call names its action in the <Link href='/docs/cli/identity#client-chains'>client chain</Link>, as
-					<code>zinn-rex:new-task/&lt;version&gt;</code>, <code>zinn-rex:insert-task/&lt;version&gt;</code> or
-					<code>zinn-rex:resume-session/&lt;version&gt;</code>.
-				</p>
-			</Prose>
-		</section>
-
+	<div class='site-container'>
 		<div class='flex flex-wrap items-center justify-between gap-5 border-t border-pewter pt-6'>
 			<a class='inline-flex min-h-11 items-center gap-2 font-mono text-xs' href='/integrations/rex/theme'
 				>Zinn theme for Rex</a

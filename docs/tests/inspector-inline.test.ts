@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
-import { inlineMarkdown, parseInline } from "../src/components/inspector/inline";
+import {
+  inlineMarkdown,
+  inlineMarkdownWithLinkOverrides,
+  parseInline,
+} from "../src/components/inspector/inline";
 
 test("parses code, bold, links and keys into tokens", () => {
   expect(
@@ -32,4 +36,12 @@ test("Markdown keeps the text and opens local links on the site", () => {
   expect(inlineMarkdown("[OpenCode](https://opencode.ai/docs)")).toBe(
     "[OpenCode](https://opencode.ai/docs)",
   );
+});
+
+test("Markdown links can target a page twin", () => {
+  expect(
+    inlineMarkdownWithLinkOverrides("Read [changelog](/changelog).", {
+      "/changelog": "/changelog.md",
+    }),
+  ).toBe("Read [changelog](https://zinn.sh/changelog.md).");
 });
